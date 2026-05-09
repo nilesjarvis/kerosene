@@ -15,7 +15,27 @@ impl CandlestickChart {
         pos: Point,
         chart_w: f32,
         chart_h: f32,
+        bounds_height: f32,
     ) -> Option<canvas::Action<Message>> {
+        if self.funding_mode_button_contains(bounds_height, pos, chart_w) {
+            return Some(
+                canvas::Action::publish(Message::ToggleFundingRateDisplayMode(self.id))
+                    .and_capture(),
+            );
+        }
+
+        if pos.x < chart_w
+            && self
+                .funding_panel_resize_target_y(bounds_height, pos.y)
+                .is_some()
+        {
+            state.drag = Some(DragKind::ResizeFundingPanel);
+            state.drag_start = Some(pos);
+            state.drag_start_funding_panel_height = self.funding_panel_height;
+            state.drag_funding_panel_height = Some(self.funding_panel_height);
+            return Some(canvas::Action::capture());
+        }
+
         if pos.x < chart_w && pos.y < chart_h {
             if state.range_anchor_price.is_some() {
                 state.range_anchor_price = None;
@@ -111,6 +131,17 @@ impl CandlestickChart {
             if let Some(action) = self.viewport_action(state, bounds) {
                 return Some(action);
             }
+            return Some(canvas::Action::request_redraw());
+        }
+
+        let (_, funding_panel_h) = self.chart_area_heights(bounds.height);
+        if funding_panel_h > 0.0
+            && pos.x >= chart_w
+            && pos.y >= chart_h
+            && pos.y < chart_h + funding_panel_h
+        {
+            state.funding_y_scale = 1.0;
+            self.candle_cache.clear();
             return Some(canvas::Action::request_redraw());
         }
 

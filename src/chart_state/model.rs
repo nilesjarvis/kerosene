@@ -19,6 +19,15 @@ pub(crate) struct CandleFetchRequest {
     pub(crate) attempt: u8,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FundingFetchRequest {
+    pub(crate) chart_id: ChartId,
+    pub(crate) symbol: String,
+    pub(crate) coin: String,
+    pub(crate) start_ms: u64,
+    pub(crate) end_ms: u64,
+}
+
 /// Per-chart instance state. Each chart pane has its own symbol, timeframe,
 /// candle data, and WebSocket subscriptions.
 pub(crate) struct ChartInstance {
@@ -61,6 +70,8 @@ pub(crate) struct ChartInstance {
     pub(crate) candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking refresh error shown while previously loaded candles remain visible.
     pub(crate) candle_fetch_error: Option<String>,
+    /// Latest in-flight funding history request for stale-response guards.
+    pub(crate) funding_fetch_request: Option<FundingFetchRequest>,
     /// Active macro indicators configuration.
     pub(crate) macro_indicators: config::MacroIndicatorsConfig,
     /// Toggle state for the macro indicators dropdown menu.
@@ -94,6 +105,7 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            funding_fetch_request: None,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
         }
@@ -125,6 +137,7 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            funding_fetch_request: None,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
         }

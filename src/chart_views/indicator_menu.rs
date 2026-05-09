@@ -131,11 +131,18 @@ impl TradingTerminal {
             .push(separator())
             .push(indicator_footer(
                 chart_id,
-                IndicatorOption {
-                    label: "Labels",
-                    key: "show_labels",
-                    checked: indicator_options.show_labels,
-                },
+                [
+                    IndicatorOption {
+                        label: "Funding",
+                        key: "show_funding_rate",
+                        checked: indicator_options.show_funding_rate,
+                    },
+                    IndicatorOption {
+                        label: "Labels",
+                        key: "show_labels",
+                        checked: indicator_options.show_labels,
+                    },
+                ],
             ));
 
         let menu_card = container(scrollable(menu_col).height(iced::Length::Shrink))
@@ -216,15 +223,20 @@ fn indicator_group<const N: usize>(
     .into()
 }
 
-fn indicator_footer(chart_id: ChartId, option: IndicatorOption) -> Element<'static, Message> {
-    row![
-        Space::new().width(24.0),
-        indicator_checkbox(chart_id, option)
-    ]
-    .spacing(6)
-    .align_y(Alignment::Center)
-    .width(Fill)
-    .into()
+fn indicator_footer<const N: usize>(
+    chart_id: ChartId,
+    options: [IndicatorOption; N],
+) -> Element<'static, Message> {
+    let mut option_row = row![].spacing(8).align_y(Alignment::Center).width(Fill);
+    for option in options {
+        option_row = option_row.push(indicator_checkbox(chart_id, option));
+    }
+
+    row![Space::new().width(24.0), option_row]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .width(Fill)
+        .into()
 }
 
 fn indicator_checkbox(chart_id: ChartId, option: IndicatorOption) -> Element<'static, Message> {

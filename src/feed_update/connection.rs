@@ -31,6 +31,7 @@ impl TradingTerminal {
                 if !self.hydromancer_api_key.trim().is_empty() {
                     ws::reconnect_hydromancer(self.hydromancer_api_key.trim());
                 }
+                return self.refresh_enabled_funding_charts();
             }
             Message::ReconnectLiquidations if !self.hydromancer_api_key.trim().is_empty() => {
                 ws::reconnect_hydromancer(self.hydromancer_api_key.trim());

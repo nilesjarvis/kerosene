@@ -4,6 +4,7 @@
 
 use crate::annotations::{Annotation, DrawingTool};
 use crate::api::Candle;
+use crate::hydromancer_api::FundingRatePoint;
 use crate::hyperdash_api::{HeatmapRect, LiquidationBucket};
 use iced::Color;
 use iced::widget::canvas;
@@ -11,6 +12,16 @@ use iced::widget::canvas;
 // Layout constants for chart regions.
 pub const PRICE_AXIS_WIDTH: f32 = 70.0;
 pub const TIME_AXIS_HEIGHT: f32 = 24.0;
+pub const DEFAULT_FUNDING_PANEL_HEIGHT: f32 = 56.0;
+pub const MIN_FUNDING_PANEL_HEIGHT: f32 = 44.0;
+pub const MAX_FUNDING_PANEL_HEIGHT: f32 = 220.0;
+pub const MIN_MAIN_CHART_HEIGHT: f32 = 96.0;
+pub const FUNDING_PANEL_RESIZE_HIT_PX: f32 = 5.0;
+pub(in crate::chart) const FUNDING_MODE_BUTTON_X: f32 = 6.0;
+pub(in crate::chart) const FUNDING_MODE_BUTTON_Y_OFFSET: f32 = 6.0;
+pub(in crate::chart) const FUNDING_MODE_BUTTON_WIDTH: f32 = 38.0;
+pub(in crate::chart) const FUNDING_MODE_BUTTON_HEIGHT: f32 = 15.0;
+pub(in crate::chart) const FUNDING_RATE_ANNUALIZATION_FACTOR: f64 = 24.0 * 365.0;
 pub const VOLUME_REGION_RATIO: f32 = 0.18; // bottom 18% of chart area for volume bars
 pub const PRICE_PADDING_PCT: f64 = 0.04; // 4% padding above/below price range
 
@@ -44,6 +55,14 @@ pub struct CandlestickChart {
     pub heatmap_rects: Vec<HeatmapRect>,
     /// Max absolute USD value for heatmap color normalization.
     pub heatmap_max_usd: f64,
+    /// Funding-rate history rendered in the optional funding sub-panel.
+    pub funding_rates: Vec<FundingRatePoint>,
+    /// Optional funding sub-panel status text and error flag.
+    pub funding_status: Option<(String, bool)>,
+    /// Desired funding sub-panel height in pixels.
+    pub funding_panel_height: f32,
+    /// Render funding as hourly rate or annualized rate.
+    pub funding_annualized: bool,
     // Macro MAs
     pub macro_indicators: crate::config::MacroIndicatorsConfig,
     pub daily_candles: Vec<crate::api::Candle>,

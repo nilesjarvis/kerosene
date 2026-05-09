@@ -17,6 +17,7 @@ impl TradingTerminal {
                 timeframe: cfg.active_timeframe.clone(),
                 annotations: Vec::new(),
                 inverted: false,
+                funding_panel_height: 56,
                 macro_indicators: config::MacroIndicatorsConfig::default(),
             }]
         } else {
@@ -30,6 +31,7 @@ impl TradingTerminal {
                 timeframe: cfg.active_timeframe.clone(),
                 annotations: Vec::new(),
                 inverted: false,
+                funding_panel_height: 56,
                 macro_indicators: config::MacroIndicatorsConfig::default(),
             });
         }
@@ -78,6 +80,7 @@ impl TradingTerminal {
                         timeframe: "H1".to_string(),
                         annotations: Vec::new(),
                         inverted: false,
+                        funding_panel_height: 56,
                         macro_indicators: config::MacroIndicatorsConfig::default(),
                     });
                     next_chart_id = next_chart_id.max(id.saturating_add(1));

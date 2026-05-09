@@ -42,6 +42,9 @@ impl TradingTerminal {
             let tf = Timeframe::from_config_str(&chart_cfg.timeframe);
             let mut instance = ChartInstance::new(id, chart_cfg.symbol.clone(), tf);
             instance.chart.inverted = chart_cfg.inverted;
+            instance
+                .chart
+                .set_funding_panel_height(chart_cfg.funding_panel_height as f32);
             instance.macro_indicators = chart_cfg.macro_indicators.clone();
             instance.chart.macro_indicators = chart_cfg.macro_indicators.clone();
             let mut ann_id: AnnotationId = 0;

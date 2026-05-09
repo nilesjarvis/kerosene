@@ -2,8 +2,7 @@ use super::annotation_overlays::AnnotationOverlayContext;
 use super::candle_layer::CandleLayerContext;
 use super::crosshair::CrosshairOverlayContext;
 use super::model::{
-    CANDLE_GAP_RATIO, CandlestickChart, HEATMAP_MAX_RECTS, PRICE_AXIS_WIDTH, TIME_AXIS_HEIGHT,
-    VOLUME_REGION_RATIO,
+    CANDLE_GAP_RATIO, CandlestickChart, HEATMAP_MAX_RECTS, PRICE_AXIS_WIDTH, VOLUME_REGION_RATIO,
 };
 use super::overlays::TradingOverlayContext;
 use super::price_range::visible_price_stats;
@@ -44,7 +43,10 @@ impl canvas::Program<Message> for CandlestickChart {
         }
 
         let chart_w = bounds.width - PRICE_AXIS_WIDTH;
-        let chart_h = bounds.height - TIME_AXIS_HEIGHT;
+        let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
+        if chart_w <= 0.0 || chart_h <= 0.0 {
+            return vec![];
+        }
         let volume_h = chart_h * VOLUME_REGION_RATIO;
         let price_h = chart_h - volume_h;
 
@@ -98,6 +100,7 @@ impl canvas::Program<Message> for CandlestickChart {
             state,
             chart_w,
             chart_h,
+            funding_panel_h,
             price_h,
             volume_h,
             candle_w,
@@ -149,6 +152,7 @@ impl canvas::Program<Message> for CandlestickChart {
             theme,
             chart_w,
             chart_h,
+            funding_panel_h,
             price_h,
             price_hi,
             price_range,

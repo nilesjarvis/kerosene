@@ -77,6 +77,7 @@ impl TradingTerminal {
             || self.charts.values().any(|inst| {
                 matches!(inst.chart.status, ChartStatus::Loading)
                     || inst.candle_fetch_request.is_some()
+                    || inst.funding_fetch_request.is_some()
                     || inst.heatmap_fetching
             })
     }

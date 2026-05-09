@@ -28,7 +28,20 @@ impl CandlestickChart {
             return None;
         }
 
-        if pos.x >= chart_w && pos.x <= bounds.width && pos.y < chart_h {
+        let (_, funding_panel_h) = self.chart_area_heights(bounds.height);
+        let funding_axis_hover = funding_panel_h > 0.0
+            && pos.x >= chart_w
+            && pos.y >= chart_h
+            && pos.y < chart_h + funding_panel_h;
+
+        if funding_axis_hover {
+            let factor = if dy > 0.0 {
+                1.0 / ZOOM_SPEED as f64
+            } else {
+                ZOOM_SPEED as f64
+            };
+            state.funding_y_scale = (state.funding_y_scale * factor).clamp(0.1, 20.0);
+        } else if pos.x >= chart_w && pos.x <= bounds.width && pos.y < chart_h {
             let factor = if dy > 0.0 {
                 1.0 / ZOOM_SPEED as f64
             } else {

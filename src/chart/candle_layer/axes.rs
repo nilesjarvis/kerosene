@@ -108,7 +108,7 @@ impl CandlestickChart {
             if x > 0.0 && x < ctx.chart_w {
                 frame.fill_text(canvas::Text {
                     content: label,
-                    position: Point::new(x, ctx.chart_h + 4.0),
+                    position: Point::new(x, ctx.chart_h + ctx.funding_panel_h + 4.0),
                     color: Color {
                         a: 0.45,
                         ..ctx.theme.palette().text
@@ -133,7 +133,7 @@ impl CandlestickChart {
     {
         let axis_border = canvas::Path::line(
             Point::new(ctx.chart_w, 0.0),
-            Point::new(ctx.chart_w, ctx.chart_h),
+            Point::new(ctx.chart_w, ctx.chart_h + ctx.funding_panel_h),
         );
         frame.stroke(
             &axis_border,

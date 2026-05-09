@@ -21,6 +21,7 @@ where
     pub(super) theme: &'a Theme,
     pub(super) chart_w: f32,
     pub(super) chart_h: f32,
+    pub(super) funding_panel_h: f32,
     pub(super) price_h: f32,
     pub(super) price_hi: f64,
     pub(super) price_range: f64,
@@ -39,12 +40,13 @@ impl CandlestickChart {
         let Some(pos) = ctx.state.cursor_position else {
             return;
         };
-        if pos.x >= ctx.chart_w || pos.y >= ctx.chart_h {
+        let drawable_h = ctx.chart_h + ctx.funding_panel_h;
+        if pos.x >= ctx.chart_w || pos.y >= drawable_h {
             return;
         }
 
         let h_line = canvas::Path::line(Point::new(0.0, pos.y), Point::new(ctx.chart_w, pos.y));
-        let v_line = canvas::Path::line(Point::new(pos.x, 0.0), Point::new(pos.x, ctx.chart_h));
+        let v_line = canvas::Path::line(Point::new(pos.x, 0.0), Point::new(pos.x, drawable_h));
         let stroke = canvas::Stroke::default()
             .with_color(Color {
                 a: 0.25,
@@ -53,6 +55,19 @@ impl CandlestickChart {
             .with_width(0.5);
         ctx.frame.stroke(&h_line, stroke);
         ctx.frame.stroke(&v_line, stroke);
+
+        if ctx.funding_panel_h > 0.0 && pos.y >= ctx.chart_h {
+            let mut tooltip_surface =
+                TooltipSurface::new(ctx.frame, ctx.theme, pos, ctx.chart_w, ctx.price_h);
+            tooltip_surface.draw_funding_hover(
+                &self.funding_rates,
+                ctx.chart_h,
+                ctx.funding_panel_h,
+                self.funding_annualized,
+                |point| self.timestamp_to_x(point.time_ms, ctx.state, ctx.chart_w),
+            );
+            return;
+        }
 
         if pos.y > ctx.price_h || ctx.price_range <= 0.0 {
             return;

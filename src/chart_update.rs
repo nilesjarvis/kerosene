@@ -26,6 +26,7 @@ impl TradingTerminal {
             message @ (Message::ChartReload(_)
             | Message::ChartSwitchTimeframe(_, _)
             | Message::ChartCandlesLoaded(_, _)
+            | Message::ChartFundingHistoryLoaded(_, _)
             | Message::ChartWsCandleUpdate(_, _, _, _)) => {
                 return self.update_chart_candles(message);
             }
@@ -68,6 +69,19 @@ impl TradingTerminal {
                 };
                 if should_fetch {
                     return self.maybe_fetch_heatmap(id);
+                }
+            }
+            Message::ChartFundingPanelHeightChanged(id, height, persist) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.chart.set_funding_panel_height(height as f32);
+                }
+                if persist {
+                    self.persist_config();
+                }
+            }
+            Message::ToggleFundingRateDisplayMode(id) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.chart.toggle_funding_rate_display_mode();
                 }
             }
             _ => {}

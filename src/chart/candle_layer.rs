@@ -1,6 +1,9 @@
 mod axes;
 mod candles;
+mod funding;
 mod liquidity;
+
+pub(in crate::chart) use funding::format_funding_rate_percent;
 
 use super::model::CandlestickChart;
 use super::moving_averages::MovingAverageLayer;
@@ -23,6 +26,7 @@ where
     pub(super) state: &'a ChartState,
     pub(super) chart_w: f32,
     pub(super) chart_h: f32,
+    pub(super) funding_panel_h: f32,
     pub(super) price_h: f32,
     pub(super) volume_h: f32,
     pub(super) candle_w: f32,
@@ -71,6 +75,7 @@ impl CandlestickChart {
 
                 self.draw_liquidation_bucket_bars(ctx, frame);
                 self.draw_price_axis_labels(ctx, frame);
+                self.draw_funding_panel(ctx, frame);
                 self.draw_time_axis_labels(ctx, frame);
                 self.draw_axis_border(ctx, frame);
             })

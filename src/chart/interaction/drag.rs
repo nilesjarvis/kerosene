@@ -50,6 +50,22 @@ impl CandlestickChart {
                         state.drag_order_new_price = Some(new_price);
                     }
                 }
+                DragKind::ResizeFundingPanel => {
+                    let dy = pos.y - start.y;
+                    let height = CandlestickChart::clamp_funding_panel_height(
+                        state.drag_start_funding_panel_height - dy,
+                    );
+                    state.drag_funding_panel_height = Some(height);
+                    self.candle_cache.clear();
+                    return Some(
+                        canvas::Action::publish(Message::ChartFundingPanelHeightChanged(
+                            self.id,
+                            height.round() as u16,
+                            false,
+                        ))
+                        .and_capture(),
+                    );
+                }
             }
             return Some(canvas::Action::request_redraw());
         }
@@ -89,8 +105,24 @@ impl CandlestickChart {
             return Some(canvas::Action::request_redraw());
         }
         if let Some(kind) = state.drag {
+            let funding_height = state.drag_funding_panel_height.take();
             state.drag = None;
             state.drag_start = None;
+            if matches!(kind, DragKind::ResizeFundingPanel) {
+                let height = funding_height
+                    .unwrap_or(self.funding_panel_height)
+                    .round()
+                    .clamp(
+                        super::super::MIN_FUNDING_PANEL_HEIGHT,
+                        super::super::MAX_FUNDING_PANEL_HEIGHT,
+                    ) as u16;
+                return Some(
+                    canvas::Action::publish(Message::ChartFundingPanelHeightChanged(
+                        self.id, height, true,
+                    ))
+                    .and_capture(),
+                );
+            }
             if matches!(kind, DragKind::PanX | DragKind::PanY)
                 && let Some(action) = self.viewport_action(state, bounds)
             {

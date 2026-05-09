@@ -13,6 +13,9 @@ impl TradingTerminal {
                 }
             }
             Message::ToggleMacroIndicator(id, key) => {
+                let hydromancer_key_missing = self.hydromancer_api_key.trim().is_empty();
+                let mut fetch_funding = false;
+                let mut show_funding_key_prompt = false;
                 if let Some(inst) = self.charts.get_mut(&id) {
                     match key.as_str() {
                         "tf_sma_50" => {
@@ -41,6 +44,16 @@ impl TradingTerminal {
                         "ema_50w" => inst.macro_indicators.ema_50w = !inst.macro_indicators.ema_50w,
                         "sma_12m" => inst.macro_indicators.sma_12m = !inst.macro_indicators.sma_12m,
                         "ema_12m" => inst.macro_indicators.ema_12m = !inst.macro_indicators.ema_12m,
+                        "show_funding_rate" => {
+                            inst.macro_indicators.show_funding_rate =
+                                !inst.macro_indicators.show_funding_rate;
+                            if inst.macro_indicators.show_funding_rate {
+                                fetch_funding = true;
+                                show_funding_key_prompt = hydromancer_key_missing;
+                            } else {
+                                Self::clear_funding_display(inst);
+                            }
+                        }
                         "show_labels" => {
                             inst.macro_indicators.show_labels = !inst.macro_indicators.show_labels
                         }
@@ -49,6 +62,16 @@ impl TradingTerminal {
                     inst.chart.macro_indicators = inst.macro_indicators.clone();
                     inst.chart.candle_cache.clear();
                     self.persist_config();
+                }
+                if show_funding_key_prompt {
+                    self.push_toast(
+                        "Add a Hydromancer API key in Settings > Integrations to load Funding"
+                            .to_string(),
+                        true,
+                    );
+                }
+                if fetch_funding {
+                    return self.maybe_fetch_chart_funding(id);
                 }
             }
             Message::MacroCandlesLoaded(id, symbol, tf, result) => {

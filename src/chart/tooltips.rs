@@ -1,6 +1,7 @@
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme, alignment};
 
+mod funding;
 mod heatmap;
 mod liquidations;
 

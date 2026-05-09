@@ -104,7 +104,8 @@ impl TradingTerminal {
         if fetch_overlays {
             let liq_task = self.maybe_fetch_liquidations(id);
             let heat_task = self.maybe_fetch_heatmap(id);
-            return Task::batch([liq_task, heat_task]);
+            let funding_task = self.maybe_fetch_chart_funding(id);
+            return Task::batch([liq_task, heat_task, funding_task]);
         }
 
         Task::none()

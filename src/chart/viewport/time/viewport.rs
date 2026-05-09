@@ -1,6 +1,4 @@
-use crate::chart::{
-    CandlestickChart, ChartState, ChartViewport, PRICE_AXIS_WIDTH, TIME_AXIS_HEIGHT,
-};
+use crate::chart::{CandlestickChart, ChartState, ChartViewport, PRICE_AXIS_WIDTH};
 use crate::message::Message;
 use iced::Rectangle;
 use iced::widget::canvas;
@@ -46,7 +44,7 @@ impl CandlestickChart {
         bounds: Rectangle,
     ) -> Option<canvas::Action<Message>> {
         let chart_w = bounds.width - PRICE_AXIS_WIDTH;
-        let chart_h = bounds.height - TIME_AXIS_HEIGHT;
+        let (chart_h, _) = self.chart_area_heights(bounds.height);
         self.current_viewport(state, chart_w, chart_h)
             .map(|viewport| {
                 canvas::Action::publish(Message::ChartViewportChanged(self.id, viewport))

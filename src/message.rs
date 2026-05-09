@@ -6,8 +6,9 @@ use crate::api::{self, Candle, ExchangeSymbol, OrderBook};
 use crate::assistant::{self, AssistantPlannedTurn};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
-use crate::chart_state::{CandleFetchRequest, ChartId};
+use crate::chart_state::{CandleFetchRequest, ChartId, FundingFetchRequest};
 use crate::config;
+use crate::hydromancer_api::FundingRatePoint;
 use crate::hyperdash_api::{LiquidationHeatmap, LiquidationLevel};
 use crate::journal;
 use crate::market_state::{
@@ -255,10 +256,16 @@ pub(crate) enum Message {
     ChartReload(ChartId),
     ChartResetView(ChartId),
     ChartCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
+    ChartFundingHistoryLoaded(
+        FundingFetchRequest,
+        Box<Result<Vec<FundingRatePoint>, String>>,
+    ),
     MacroCandlesLoaded(ChartId, String, Timeframe, Result<Vec<Candle>, String>),
     ChartWsCandleUpdate(ChartId, String, String, Candle),
     ChartWsAssetCtxUpdate(ChartId, String, AssetContext),
     ChartViewportChanged(ChartId, ChartViewport),
+    ChartFundingPanelHeightChanged(ChartId, u16, bool),
+    ToggleFundingRateDisplayMode(ChartId),
     ChartSymbolSelected(ChartId, String),
     ToggleChartInvert(ChartId),
     ChartOpenEditor(ChartId),

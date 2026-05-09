@@ -44,6 +44,7 @@ impl TradingTerminal {
                 instance.heatmap_status = None;
                 instance.heatmap_fetching = false;
                 Self::clear_heatmap_display(instance);
+                Self::clear_funding_display(instance);
             }
 
             let chase_cancel_task = if self.active_chase.is_some() {
@@ -109,6 +110,7 @@ impl TradingTerminal {
             instance.heatmap_fetching = false;
             instance.candle_fetch_error = None;
             Self::clear_heatmap_display(instance);
+            Self::clear_funding_display(instance);
             tf = instance.interval;
         }
         self.persist_config();

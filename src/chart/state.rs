@@ -11,6 +11,8 @@ pub(super) enum DragKind {
     PanX,
     /// Dragging on the price axis -- scales / pans the Y axis.
     PanY,
+    /// Dragging the top edge of the funding sub-panel.
+    ResizeFundingPanel,
     /// Dragging an order line to a new price.
     MoveOrder { oid: u64 },
 }
@@ -24,10 +26,13 @@ pub struct ChartState {
     pub(super) y_auto: bool,
     pub(super) y_offset: f64,
     pub(super) y_scale: f64,
+    pub(super) funding_y_scale: f64,
     pub(super) drag: Option<DragKind>,
     pub(super) drag_start: Option<Point>,
     pub(super) drag_start_scroll: f32,
     pub(super) drag_start_y_offset: f64,
+    pub(super) drag_start_funding_panel_height: f32,
+    pub(super) drag_funding_panel_height: Option<f32>,
     /// Temporary price for an order being dragged (live preview).
     pub(super) drag_order_new_price: Option<f64>,
     /// OID of the order line the cursor is currently hovering near
@@ -52,10 +57,13 @@ impl Default for ChartState {
             y_auto: true,
             y_offset: 0.0,
             y_scale: 1.0,
+            funding_y_scale: 1.0,
             drag: None,
             drag_start: None,
             drag_start_scroll: 0.0,
             drag_start_y_offset: 0.0,
+            drag_start_funding_panel_height: 0.0,
+            drag_funding_panel_height: None,
             drag_order_new_price: None,
             hover_order_oid: None,
             pending_anchor: None,
@@ -73,10 +81,13 @@ impl ChartState {
         self.y_auto = true;
         self.y_offset = 0.0;
         self.y_scale = 1.0;
+        self.funding_y_scale = 1.0;
         self.drag = None;
         self.drag_start = None;
         self.drag_start_scroll = 0.0;
         self.drag_start_y_offset = 0.0;
+        self.drag_start_funding_panel_height = 0.0;
+        self.drag_funding_panel_height = None;
         self.drag_order_new_price = None;
         self.hover_order_oid = None;
         self.pending_anchor = None;

@@ -33,6 +33,8 @@ pub struct MacroIndicatorsConfig {
     pub sma_12m: bool,
     #[serde(default)]
     pub ema_12m: bool,
+    #[serde(default)]
+    pub show_funding_rate: bool,
     #[serde(default = "default_true")]
     pub show_labels: bool,
 }
@@ -54,6 +56,7 @@ impl Default for MacroIndicatorsConfig {
             ema_50w: false,
             sma_12m: false,
             ema_12m: false,
+            show_funding_rate: false,
             show_labels: true,
         }
     }
@@ -77,6 +80,9 @@ pub struct ChartConfig {
     /// Whether chart price axis is visually inverted.
     #[serde(default)]
     pub inverted: bool,
+    /// Desired funding-rate sub-panel height in pixels.
+    #[serde(default = "default_funding_panel_height")]
+    pub funding_panel_height: u16,
     /// Active macro timeframe moving averages
     #[serde(default)]
     pub macro_indicators: MacroIndicatorsConfig,
@@ -138,6 +144,10 @@ pub fn default_pair_notional() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_funding_panel_height() -> u16 {
+    56
 }
 
 fn default_spread_chart_height() -> f32 {
