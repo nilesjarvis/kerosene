@@ -270,6 +270,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartViewportChanged(_, _)
         | Message::ChartFundingPanelHeightChanged(_, _, _)
         | Message::ToggleFundingRateDisplayMode(_)
+        | Message::FundingRefreshTick
         | Message::ChartSymbolSelected(_, _)
         | Message::ToggleChartInvert(_)
         | Message::ChartOpenEditor(_)

@@ -266,6 +266,7 @@ pub(crate) enum Message {
     ChartViewportChanged(ChartId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
     ToggleFundingRateDisplayMode(ChartId),
+    FundingRefreshTick,
     ChartSymbolSelected(ChartId, String),
     ToggleChartInvert(ChartId),
     ChartOpenEditor(ChartId),

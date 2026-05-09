@@ -30,5 +30,17 @@ impl TradingTerminal {
         subs.push(
             iced::time::every(std::time::Duration::from_secs(60 * 15)).map(|_| Message::Tick),
         );
+
+        if !self.hydromancer_api_key.trim().is_empty()
+            && self
+                .charts
+                .values()
+                .any(|instance| instance.macro_indicators.show_funding_rate)
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(60 * 5))
+                    .map(|_| Message::FundingRefreshTick),
+            );
+        }
     }
 }

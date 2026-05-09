@@ -121,30 +121,38 @@ impl canvas::Program<Message> for CandlestickChart {
 
         let mut overlay_frame = canvas::Frame::new(renderer, bounds.size());
 
-        let mut trading_overlay_context = TradingOverlayContext {
-            frame: &mut overlay_frame,
-            state,
-            theme,
-            chart_w,
-            price_h,
-            price_range,
-            candle_bull_color,
-            candle_bear_color,
-            price_to_y: &price_to_y,
+        let chart_region = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: bounds.width,
+            height: chart_h,
         };
-        self.draw_trading_overlays(&mut trading_overlay_context);
+        overlay_frame.with_clip(chart_region, |frame| {
+            let mut trading_overlay_context = TradingOverlayContext {
+                frame: &mut *frame,
+                state,
+                theme,
+                chart_w,
+                price_h,
+                price_range,
+                candle_bull_color,
+                candle_bear_color,
+                price_to_y: &price_to_y,
+            };
+            self.draw_trading_overlays(&mut trading_overlay_context);
 
-        let mut annotation_overlay_context = AnnotationOverlayContext {
-            frame: &mut overlay_frame,
-            state,
-            theme,
-            chart_w,
-            chart_h,
-            price_h,
-            price_range,
-            price_to_y: &price_to_y,
-        };
-        self.draw_annotation_overlays(&mut annotation_overlay_context);
+            let mut annotation_overlay_context = AnnotationOverlayContext {
+                frame: &mut *frame,
+                state,
+                theme,
+                chart_w,
+                chart_h,
+                price_h,
+                price_range,
+                price_to_y: &price_to_y,
+            };
+            self.draw_annotation_overlays(&mut annotation_overlay_context);
+        });
 
         let mut crosshair_context = CrosshairOverlayContext {
             frame: &mut overlay_frame,

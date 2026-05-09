@@ -84,6 +84,7 @@ impl TradingTerminal {
                     instance.chart.toggle_funding_rate_display_mode();
                 }
             }
+            Message::FundingRefreshTick => return self.refresh_due_funding_charts(),
             _ => {}
         }
 

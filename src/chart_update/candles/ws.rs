@@ -16,11 +16,16 @@ impl TradingTerminal {
         if self.is_ticker_muted(&symbol) {
             return Task::none();
         }
+        let mut refresh_funding = false;
         if let Some(instance) = self.charts.get_mut(&id)
             && instance.symbol == symbol
             && instance.interval.api_str() == interval
         {
             instance.chart.push_candle(candle);
+            refresh_funding = instance.macro_indicators.show_funding_rate;
+        }
+        if refresh_funding {
+            return self.maybe_fetch_chart_funding(id);
         }
         Task::none()
     }

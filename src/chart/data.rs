@@ -10,6 +10,7 @@ use crate::api::{Candle, is_valid_candle, normalize_candles};
 use crate::hydromancer_api::FundingRatePoint;
 use iced::Color;
 use iced::widget::canvas;
+use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
 // Chart Data Lifecycle
@@ -195,7 +196,7 @@ impl CandlestickChart {
     }
 
     pub(crate) fn set_funding_history(&mut self, points: Vec<FundingRatePoint>) {
-        self.funding_rates = points;
+        self.funding_rates = normalized_funding_rates(points);
         self.funding_status = Some((
             if self.funding_rates.is_empty() {
                 "Funding no data".to_string()
@@ -207,7 +208,30 @@ impl CandlestickChart {
         self.candle_cache.clear();
     }
 
+    pub(crate) fn merge_funding_history(&mut self, mut points: Vec<FundingRatePoint>) {
+        if points.is_empty() {
+            self.set_funding_status("Funding current".to_string(), false);
+            return;
+        }
+
+        let mut merged = std::mem::take(&mut self.funding_rates);
+        merged.append(&mut points);
+        self.funding_rates = normalized_funding_rates(merged);
+        self.funding_status = Some(("Funding loaded".to_string(), false));
+        self.candle_cache.clear();
+    }
+
     pub(crate) fn set_funding_status(&mut self, label: String, is_error: bool) {
+        if self
+            .funding_status
+            .as_ref()
+            .is_some_and(|(current, current_is_error)| {
+                current == &label && *current_is_error == is_error
+            })
+        {
+            return;
+        }
+
         self.funding_status = Some((label, is_error));
         self.candle_cache.clear();
     }
@@ -217,4 +241,12 @@ impl CandlestickChart {
         self.funding_status = None;
         self.candle_cache.clear();
     }
+}
+
+fn normalized_funding_rates(points: Vec<FundingRatePoint>) -> Vec<FundingRatePoint> {
+    let mut by_time = BTreeMap::new();
+    for point in points {
+        by_time.insert(point.time_ms, point);
+    }
+    by_time.into_values().collect()
 }

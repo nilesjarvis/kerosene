@@ -57,23 +57,31 @@ impl CandlestickChart {
             .draw(ctx.renderer, ctx.bounds.size(), |frame| {
                 frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), Color::TRANSPARENT);
 
-                self.draw_price_grid(ctx, frame);
-                self.draw_historical_heatmap(ctx, frame);
-                self.draw_candles_and_volume(ctx, frame);
-
-                let mut moving_average_layer = MovingAverageLayer {
-                    frame,
-                    theme: ctx.theme,
-                    first_vis: ctx.first_vis,
-                    last_vis: ctx.last_vis,
-                    chart_w: ctx.chart_w,
-                    candle_w: ctx.candle_w,
-                    idx_to_cx: ctx.idx_to_cx,
-                    price_to_y: ctx.price_to_y,
+                let chart_region = Rectangle {
+                    x: 0.0,
+                    y: 0.0,
+                    width: ctx.bounds.width,
+                    height: ctx.chart_h,
                 };
-                self.draw_macro_moving_averages(&mut moving_average_layer);
+                frame.with_clip(chart_region, |frame| {
+                    self.draw_price_grid(ctx, frame);
+                    self.draw_historical_heatmap(ctx, frame);
+                    self.draw_candles_and_volume(ctx, frame);
 
-                self.draw_liquidation_bucket_bars(ctx, frame);
+                    let mut moving_average_layer = MovingAverageLayer {
+                        frame: &mut *frame,
+                        theme: ctx.theme,
+                        first_vis: ctx.first_vis,
+                        last_vis: ctx.last_vis,
+                        chart_w: ctx.chart_w,
+                        candle_w: ctx.candle_w,
+                        idx_to_cx: ctx.idx_to_cx,
+                        price_to_y: ctx.price_to_y,
+                    };
+                    self.draw_macro_moving_averages(&mut moving_average_layer);
+
+                    self.draw_liquidation_bucket_bars(ctx, frame);
+                });
                 self.draw_price_axis_labels(ctx, frame);
                 self.draw_funding_panel(ctx, frame);
                 self.draw_time_axis_labels(ctx, frame);

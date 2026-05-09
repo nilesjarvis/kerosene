@@ -26,6 +26,13 @@ pub(crate) struct FundingFetchRequest {
     pub(crate) coin: String,
     pub(crate) start_ms: u64,
     pub(crate) end_ms: u64,
+    pub(crate) mode: FundingFetchMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FundingFetchMode {
+    Snapshot,
+    Incremental,
 }
 
 /// Per-chart instance state. Each chart pane has its own symbol, timeframe,
@@ -72,6 +79,8 @@ pub(crate) struct ChartInstance {
     pub(crate) candle_fetch_error: Option<String>,
     /// Latest in-flight funding history request for stale-response guards.
     pub(crate) funding_fetch_request: Option<FundingFetchRequest>,
+    /// Last time this chart attempted a funding history fetch.
+    pub(crate) funding_last_attempt_ms: Option<u64>,
     /// Active macro indicators configuration.
     pub(crate) macro_indicators: config::MacroIndicatorsConfig,
     /// Toggle state for the macro indicators dropdown menu.
@@ -106,6 +115,7 @@ impl ChartInstance {
             candle_fetch_request: None,
             candle_fetch_error: None,
             funding_fetch_request: None,
+            funding_last_attempt_ms: None,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
         }
@@ -138,6 +148,7 @@ impl ChartInstance {
             candle_fetch_request: None,
             candle_fetch_error: None,
             funding_fetch_request: None,
+            funding_last_attempt_ms: None,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
         }
