@@ -100,6 +100,9 @@ impl TradingTerminal {
                 }
             }
             Self::refresh_spaghetti_session_anchor(inst);
+            if inst.pair_mode {
+                inst.canvas.reset_epoch = inst.canvas.reset_epoch.saturating_add(1);
+            }
             inst.canvas.cache.clear();
         }
 

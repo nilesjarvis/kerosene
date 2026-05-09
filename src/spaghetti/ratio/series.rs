@@ -1,4 +1,4 @@
-use super::PairRatioRenderContext;
+use super::{PairRatioRenderContext, RatioCandle};
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme};
 
@@ -9,7 +9,7 @@ use iced::{Color, Point, Size, Theme};
 pub(super) fn draw_ratio_candles(
     frame: &mut canvas::Frame,
     ctx: &PairRatioRenderContext<'_>,
-    ratio_candles: &[(f32, f64, f64, f64, f64)],
+    ratio_candles: &[RatioCandle],
     ratio_to_y: &impl Fn(f64) -> f32,
     theme: &Theme,
 ) {
@@ -17,7 +17,7 @@ pub(super) fn draw_ratio_candles(
         let mut sum = 0.0_f32;
         let mut n = 0usize;
         for window in ratio_candles.windows(2) {
-            sum += (window[1].0 - window[0].0).abs();
+            sum += (window[1].x - window[0].x).abs();
             n += 1;
         }
         if n > 0 { sum / n as f32 } else { 6.0 }
@@ -26,13 +26,13 @@ pub(super) fn draw_ratio_candles(
     };
     let body_w = (step_px * 0.62).clamp(2.0, 14.0);
 
-    for (x, open, high, low, close) in ratio_candles {
-        let px = x.clamp(-10.0, ctx.chart_w + 10.0);
-        let y_open = ratio_to_y(*open).clamp(-50.0, ctx.chart_h + 50.0);
-        let y_high = ratio_to_y(*high).clamp(-50.0, ctx.chart_h + 50.0);
-        let y_low = ratio_to_y(*low).clamp(-50.0, ctx.chart_h + 50.0);
-        let y_close = ratio_to_y(*close).clamp(-50.0, ctx.chart_h + 50.0);
-        let bullish = close >= open;
+    for candle in ratio_candles {
+        let px = candle.x.clamp(-10.0, ctx.chart_w + 10.0);
+        let y_open = ratio_to_y(candle.open).clamp(-50.0, ctx.chart_h + 50.0);
+        let y_high = ratio_to_y(candle.high).clamp(-50.0, ctx.chart_h + 50.0);
+        let y_low = ratio_to_y(candle.low).clamp(-50.0, ctx.chart_h + 50.0);
+        let y_close = ratio_to_y(candle.close).clamp(-50.0, ctx.chart_h + 50.0);
+        let bullish = candle.close >= candle.open;
         let color = if bullish {
             theme.palette().success
         } else {
@@ -59,14 +59,14 @@ pub(super) fn draw_ratio_candles(
 pub(super) fn draw_ratio_line(
     frame: &mut canvas::Frame,
     ctx: &PairRatioRenderContext<'_>,
-    ratio_candles: &[(f32, f64, f64, f64, f64)],
+    ratio_candles: &[RatioCandle],
     ratio_to_y: &impl Fn(f64) -> f32,
     color: Color,
 ) {
     let mut path = canvas::path::Builder::new();
-    for (i, (x, _open, _high, _low, close)) in ratio_candles.iter().enumerate() {
-        let px = x.clamp(-10.0, ctx.chart_w + 10.0);
-        let py = ratio_to_y(*close).clamp(-50.0, ctx.chart_h + 50.0);
+    for (i, candle) in ratio_candles.iter().enumerate() {
+        let px = candle.x.clamp(-10.0, ctx.chart_w + 10.0);
+        let py = ratio_to_y(candle.close).clamp(-50.0, ctx.chart_h + 50.0);
         if i == 0 {
             path.move_to(Point::new(px, py));
         } else {

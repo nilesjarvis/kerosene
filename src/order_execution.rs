@@ -1,6 +1,5 @@
 mod active_symbol;
 mod chase;
-mod pair_trade;
 mod position_actions;
 pub(crate) mod pricing;
 mod quick_order;

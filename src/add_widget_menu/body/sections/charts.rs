@@ -27,9 +27,9 @@ pub(in crate::add_widget_menu::body) fn add_chart_section(
             theme,
         ))
         .push(menu_item(
-            "Pair Trade",
+            "Pair Ratio",
             "Pane",
-            Some(Message::AddPairTradeChart),
+            Some(Message::AddPairRatioChart),
             context.can_add_pane,
             theme,
         ))

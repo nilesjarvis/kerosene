@@ -1,4 +1,5 @@
 use super::PairRatioRenderContext;
+use super::format_ratio_value;
 use crate::spaghetti::helpers::format_relative_time;
 use iced::alignment;
 use iced::widget::canvas;
@@ -31,7 +32,7 @@ pub(super) fn draw_ratio_crosshair(
 
         let hover_ratio = ratio_hi - (pos.y as f64 / ctx.chart_h as f64) * ratio_range;
         overlay.fill_text(canvas::Text {
-            content: format!("{hover_ratio:.4}"),
+            content: format_ratio_value(hover_ratio),
             position: Point::new(ctx.chart_w + 4.0, pos.y),
             color: Color::WHITE,
             size: iced::Pixels(10.0),

@@ -1,26 +1,39 @@
 use crate::api::Candle;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::spaghetti_state::SpaghettiChartId;
+use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
 
 use iced::Task;
 
 impl TradingTerminal {
     pub(in crate::spaghetti_update) fn apply_spaghetti_candles_loaded(
         &mut self,
-        id: SpaghettiChartId,
-        symbol: String,
+        request: SpaghettiCandleFetch,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
+        let symbol = request.symbol;
         if self.is_ticker_muted(&symbol) {
             return Task::none();
         }
         let mut new_cache_data = None;
         let mut remove_cache_data = None;
 
-        if let Some(inst) = self.spaghetti_charts.get_mut(&id)
+        if let Some(inst) = self.spaghetti_charts.get_mut(&request.chart_id)
             && let Some(series) = inst.canvas.series.iter_mut().find(|s| s.symbol == symbol)
         {
+            let current_tf = Self::spaghetti_effective_timeframe_for(
+                inst.interval,
+                inst.canvas.active_session,
+                inst.session_granularity,
+                Self::now_ms(),
+            );
+            if current_tf != request.timeframe
+                || inst.canvas.active_session != request.session
+                || inst.session_granularity != request.session_granularity
+            {
+                return Task::none();
+            }
+
             match result {
                 Ok(mut new_candles) => {
                     if series.candles.is_empty() {
@@ -35,25 +48,19 @@ impl TradingTerminal {
                     }
                     series.loaded = true;
 
-                    let target_tf = Self::spaghetti_effective_timeframe_for(
-                        inst.interval,
-                        inst.canvas.active_session,
-                        inst.session_granularity,
-                        Self::now_ms(),
-                    );
-                    new_cache_data =
-                        Some((series.symbol.clone(), target_tf, series.candles.clone()));
+                    new_cache_data = Some((
+                        series.symbol.clone(),
+                        request.timeframe,
+                        series.candles.clone(),
+                    ));
                 }
                 Err(_) => {
                     series.loaded = false;
-                    let target_tf = Self::spaghetti_effective_timeframe_for(
-                        inst.interval,
-                        inst.canvas.active_session,
-                        inst.session_granularity,
-                        Self::now_ms(),
-                    );
-                    remove_cache_data = Some((series.symbol.clone(), target_tf));
+                    remove_cache_data = Some((series.symbol.clone(), request.timeframe));
                 }
+            }
+            if inst.pair_mode {
+                inst.canvas.reset_epoch = inst.canvas.reset_epoch.saturating_add(1);
             }
             Self::refresh_spaghetti_session_anchor(inst);
             inst.canvas.cache.clear();

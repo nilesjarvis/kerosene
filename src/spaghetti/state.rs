@@ -25,7 +25,7 @@ pub struct SpaghettiChartState {
 
 /// Default zoom: ~10 pixels per hour.
 pub(super) const DEFAULT_PX_PER_MS: f64 = 10.0 / 3_600_000.0;
-pub(super) const MIN_PX_PER_MS: f64 = 0.5 / 3_600_000.0;
+pub(super) const MIN_PX_PER_MS: f64 = 0.01 / 3_600_000.0;
 pub(super) const MAX_PX_PER_MS: f64 = 200.0 / 3_600_000.0;
 
 impl Default for SpaghettiChartState {
@@ -47,9 +47,9 @@ impl Default for SpaghettiChartState {
 }
 
 impl SpaghettiChartState {
-    pub(super) fn reset_view(&mut self, reset_epoch: u64) {
+    pub(super) fn reset_view_with_px(&mut self, reset_epoch: u64, px_per_ms: f64) {
         self.scroll_offset_ms = 0.0;
-        self.px_per_ms = DEFAULT_PX_PER_MS;
+        self.px_per_ms = px_per_ms.clamp(MIN_PX_PER_MS, MAX_PX_PER_MS);
         self.y_auto = true;
         self.y_offset = 0.0;
         self.y_scale = 1.0;

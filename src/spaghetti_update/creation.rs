@@ -10,8 +10,8 @@ impl TradingTerminal {
         self.add_spaghetti_chart(SpaghettiChartInstance::new_empty, "Comparison Chart")
     }
 
-    pub(super) fn add_pair_trade_chart(&mut self) -> Task<Message> {
-        self.add_spaghetti_chart(SpaghettiChartInstance::new_pair, "Pair Trade")
+    pub(super) fn add_pair_ratio_chart(&mut self) -> Task<Message> {
+        self.add_spaghetti_chart(SpaghettiChartInstance::new_pair, "Pair Ratio")
     }
 
     fn add_spaghetti_chart(

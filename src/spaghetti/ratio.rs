@@ -31,6 +31,15 @@ pub(super) struct PairRatioRenderContext<'a> {
     pub(super) base_timestamp: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct RatioCandle {
+    pub(super) x: f32,
+    pub(super) open: f64,
+    pub(super) high: f64,
+    pub(super) low: f64,
+    pub(super) close: f64,
+}
+
 impl SpaghettiCanvas {
     pub(super) fn draw_pair_ratio(
         &self,
@@ -41,53 +50,33 @@ impl SpaghettiCanvas {
         let series_b = loaded_series[1];
         let ts_to_x = |ts: u64| -> f32 { ((ts as f64 - ctx.left_ts) * ctx.time_px_per_ms) as f32 };
 
-        let mut b_by_ts: HashMap<u64, &Candle> = HashMap::new();
-        for candle in &series_b.candles {
-            if candle.open > 0.0 && candle.high > 0.0 && candle.low > 0.0 && candle.close > 0.0 {
-                b_by_ts.insert(candle.open_time, candle);
-            }
-        }
-
-        let ratio_candles: Vec<(f32, f64, f64, f64, f64)> = series_a
-            .candles
-            .iter()
-            .filter(|candle| {
-                (candle.open_time as f64) >= ctx.left_ts
-                    && (candle.open_time as f64) <= ctx.right_ts
-            })
-            .filter_map(|candle| {
-                let b = b_by_ts.get(&candle.open_time).copied()?;
-                if candle.open <= 0.0
-                    || candle.high <= 0.0
-                    || candle.low <= 0.0
-                    || candle.close <= 0.0
-                {
-                    return None;
-                }
-                let open = candle.open / b.open;
-                let high = candle.high / b.high;
-                let low = candle.low / b.low;
-                let close = candle.close / b.close;
-                Some((ts_to_x(candle.open_time), open, high, low, close))
-            })
-            .collect();
+        let ratio_candles = build_ratio_candles(
+            &series_a.candles,
+            &series_b.candles,
+            ctx.left_ts,
+            ctx.right_ts,
+            &ts_to_x,
+        );
 
         if ratio_candles.is_empty() {
             return vec![];
         }
 
         let (auto_lo, auto_hi) = if self.pair_candle_mode {
-            ratio_candles.iter().fold(
-                (f64::INFINITY, f64::NEG_INFINITY),
-                |(lo, hi), (_, _o, h, l, _c)| (lo.min(*l), hi.max(*h)),
-            )
+            ratio_candles
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), candle| {
+                    (lo.min(candle.low), hi.max(candle.high))
+                })
         } else {
-            ratio_candles.iter().fold(
-                (f64::INFINITY, f64::NEG_INFINITY),
-                |(lo, hi), (_, _o, _h, _l, c)| (lo.min(*c), hi.max(*c)),
-            )
+            ratio_candles
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), candle| {
+                    (lo.min(candle.close), hi.max(candle.close))
+                })
         };
-        let pad = (auto_hi - auto_lo).max(0.0001) * PRICE_PADDING_PCT;
+        let min_range = minimum_ratio_range(auto_lo, auto_hi);
+        let pad = (auto_hi - auto_lo).max(min_range) * PRICE_PADDING_PCT;
         let auto_lo = auto_lo - pad;
         let auto_hi = auto_hi + pad;
 
@@ -98,7 +87,7 @@ impl SpaghettiCanvas {
             let mid = (auto_hi + auto_lo) * 0.5 + ctx.state.y_offset;
             (mid - range * 0.5, mid + range * 0.5)
         };
-        let ratio_range = (ratio_hi - ratio_lo).max(0.0001);
+        let ratio_range = (ratio_hi - ratio_lo).max(minimum_ratio_range(ratio_lo, ratio_hi));
         let ratio_to_y =
             |ratio: f64| -> f32 { ((ratio_hi - ratio) / ratio_range * ctx.chart_h as f64) as f32 };
 
@@ -121,11 +110,13 @@ impl SpaghettiCanvas {
             );
         }
 
-        if let Some((_, _, _, _, last_ratio)) = ratio_candles.last() {
+        if let Some(last) = ratio_candles.last() {
             frame.fill_text(canvas::Text {
                 content: format!(
-                    "{} / {}  {last_ratio:.4}",
-                    series_a.display, series_b.display
+                    "{} / {}  {}",
+                    series_a.display,
+                    series_b.display,
+                    format_ratio_value(last.close)
                 ),
                 position: Point::new(8.0, 12.0),
                 color: ctx.theme.palette().primary,
@@ -140,5 +131,190 @@ impl SpaghettiCanvas {
         let base_geo = frame.into_geometry();
         let overlay = draw_ratio_crosshair(&ctx, ratio_hi, ratio_range);
         vec![base_geo, overlay]
+    }
+}
+
+pub(super) fn build_ratio_candles(
+    series_a: &[Candle],
+    series_b: &[Candle],
+    left_ts: f64,
+    right_ts: f64,
+    ts_to_x: &impl Fn(u64) -> f32,
+) -> Vec<RatioCandle> {
+    let mut b_by_ts: HashMap<u64, &Candle> = HashMap::new();
+    for candle in series_b {
+        if has_positive_finite_prices(candle) {
+            b_by_ts.insert(candle.open_time, candle);
+        }
+    }
+
+    series_a
+        .iter()
+        .filter(|candle| {
+            (candle.open_time as f64) >= left_ts && (candle.open_time as f64) <= right_ts
+        })
+        .filter_map(|candle| {
+            if !has_positive_finite_prices(candle) {
+                return None;
+            }
+
+            let b = b_by_ts.get(&candle.open_time).copied()?;
+            let ratio = RatioCandle {
+                x: ts_to_x(candle.open_time),
+                open: candle.open / b.open,
+                high: candle.high / b.low,
+                low: candle.low / b.high,
+                close: candle.close / b.close,
+            };
+
+            (ratio.open.is_finite()
+                && ratio.high.is_finite()
+                && ratio.low.is_finite()
+                && ratio.close.is_finite()
+                && ratio.high >= ratio.low)
+                .then_some(ratio)
+        })
+        .collect()
+}
+
+fn has_positive_finite_prices(candle: &Candle) -> bool {
+    candle.open.is_finite()
+        && candle.high.is_finite()
+        && candle.low.is_finite()
+        && candle.close.is_finite()
+        && candle.open > 0.0
+        && candle.high > 0.0
+        && candle.low > 0.0
+        && candle.close > 0.0
+        && candle.low <= candle.high
+        && candle.low <= candle.open
+        && candle.low <= candle.close
+        && candle.high >= candle.open
+        && candle.high >= candle.close
+}
+
+pub(super) fn format_ratio_value(value: f64) -> String {
+    if !value.is_finite() {
+        return "--".to_string();
+    }
+
+    let abs = value.abs();
+    if abs >= 1_000.0 {
+        format!("{value:.0}")
+    } else if abs >= 1.0 {
+        format!("{value:.4}")
+    } else if abs >= 0.01 {
+        format!("{value:.5}")
+    } else if abs >= 0.0001 {
+        format!("{value:.6}")
+    } else {
+        format!("{value:.8}")
+    }
+}
+
+fn minimum_ratio_range(lo: f64, hi: f64) -> f64 {
+    let magnitude = ((lo + hi) * 0.5).abs().max(lo.abs()).max(hi.abs());
+    (magnitude * 0.02).max(f64::EPSILON)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candle_at(open_time: u64, open: f64, high: f64, low: f64, close: f64) -> Candle {
+        Candle {
+            open_time,
+            close_time: open_time + 59_999,
+            open,
+            high,
+            low,
+            close,
+            volume: 1.0,
+        }
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn ratio_candles_align_by_timestamp_and_use_conservative_high_low() {
+        let series_a = vec![
+            candle_at(1_000, 10.0, 11.0, 9.0, 10.5),
+            candle_at(2_000, 100.0, 120.0, 90.0, 110.0),
+        ];
+        let series_b = vec![
+            candle_at(1_500, 40.0, 44.0, 36.0, 38.0),
+            candle_at(2_000, 50.0, 55.0, 40.0, 44.0),
+        ];
+
+        let ratios = build_ratio_candles(&series_a, &series_b, 0.0, 3_000.0, &|ts| ts as f32);
+
+        assert_eq!(ratios.len(), 1);
+        assert_eq!(ratios[0].x, 2_000.0);
+        assert_close(ratios[0].open, 2.0);
+        assert_close(ratios[0].high, 3.0);
+        assert_close(ratios[0].low, 90.0 / 55.0);
+        assert_close(ratios[0].close, 2.5);
+        assert!(ratios[0].high >= ratios[0].low);
+    }
+
+    #[test]
+    fn ratio_candles_ignore_invalid_or_non_positive_prices() {
+        let mut bad_a = candle_at(1_000, 10.0, 11.0, 9.0, 10.5);
+        bad_a.low = 0.0;
+        let series_a = vec![bad_a, candle_at(2_000, 100.0, 120.0, 90.0, 110.0)];
+        let series_b = vec![
+            candle_at(1_000, 50.0, 55.0, 40.0, 44.0),
+            candle_at(2_000, 50.0, 55.0, 40.0, 44.0),
+        ];
+
+        let ratios = build_ratio_candles(&series_a, &series_b, 0.0, 3_000.0, &|_| 0.0);
+
+        assert_eq!(ratios.len(), 1);
+        assert_close(ratios[0].open, 2.0);
+    }
+
+    #[test]
+    fn ratio_candles_ignore_points_outside_visible_time_window() {
+        let series_a = vec![
+            candle_at(1_000, 10.0, 11.0, 9.0, 10.5),
+            candle_at(2_000, 100.0, 120.0, 90.0, 110.0),
+        ];
+        let series_b = vec![
+            candle_at(1_000, 5.0, 5.5, 4.0, 4.4),
+            candle_at(2_000, 50.0, 55.0, 40.0, 44.0),
+        ];
+
+        let ratios = build_ratio_candles(&series_a, &series_b, 1_500.0, 2_500.0, &|_| 0.0);
+
+        assert_eq!(ratios.len(), 1);
+        assert_close(ratios[0].open, 2.0);
+    }
+
+    #[test]
+    fn ratio_candles_return_empty_without_timestamp_overlap() {
+        let series_a = vec![candle_at(1_000, 10.0, 11.0, 9.0, 10.5)];
+        let series_b = vec![candle_at(2_000, 5.0, 5.5, 4.0, 4.4)];
+
+        let ratios = build_ratio_candles(&series_a, &series_b, 0.0, 3_000.0, &|_| 0.0);
+
+        assert!(ratios.is_empty());
+    }
+
+    #[test]
+    fn ratio_format_preserves_small_pair_precision() {
+        assert_eq!(format_ratio_value(0.00053204), "0.000532");
+        assert_eq!(format_ratio_value(0.00001234), "0.00001234");
+        assert_eq!(format_ratio_value(f64::NAN), "--");
+    }
+
+    #[test]
+    fn minimum_ratio_range_scales_with_ratio_magnitude() {
+        assert_close(minimum_ratio_range(0.00050, 0.00054), 0.0000108);
+        assert_close(minimum_ratio_range(2.0, 2.1), 0.042);
     }
 }

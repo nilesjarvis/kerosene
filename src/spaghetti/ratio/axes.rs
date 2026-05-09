@@ -1,4 +1,5 @@
 use super::PairRatioRenderContext;
+use super::format_ratio_value;
 use crate::spaghetti::helpers::format_relative_time;
 use iced::alignment;
 use iced::widget::canvas;
@@ -30,7 +31,7 @@ pub(super) fn draw_ratio_grid(
         );
         let ratio_val = ratio_hi - (frac as f64) * ratio_range;
         frame.fill_text(canvas::Text {
-            content: format!("{ratio_val:.4}"),
+            content: format_ratio_value(ratio_val),
             position: Point::new(ctx.chart_w + 4.0, y),
             color: Color {
                 a: 0.45,

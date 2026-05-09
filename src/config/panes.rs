@@ -121,12 +121,9 @@ pub struct SpaghettiChartConfig {
     /// Chart timeframe.
     #[serde(default = "default_timeframe")]
     pub timeframe: String,
-    /// Whether this chart is pair-trade mode.
+    /// Whether this chart is pair-ratio mode.
     #[serde(default)]
     pub pair_mode: bool,
-    /// Pair notional per leg.
-    #[serde(default = "default_pair_notional")]
-    pub pair_notional: String,
     /// Pair chart render mode: true = candlesticks, false = line.
     #[serde(default)]
     pub pair_candle_mode: bool,
@@ -136,10 +133,6 @@ pub struct SpaghettiChartConfig {
     /// Optional manual granularity while anchor mode is active (e.g. "M5").
     #[serde(default)]
     pub anchor_granularity: Option<String>,
-}
-
-pub fn default_pair_notional() -> String {
-    "100".to_string()
 }
 
 fn default_true() -> bool {

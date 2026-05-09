@@ -94,7 +94,6 @@ impl TradingTerminal {
                         symbols: Vec::new(),
                         timeframe: "H1".to_string(),
                         pair_mode: false,
-                        pair_notional: "100".to_string(),
                         pair_candle_mode: false,
                         anchor: None,
                         anchor_granularity: None,

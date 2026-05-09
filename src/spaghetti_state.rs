@@ -12,8 +12,6 @@ pub(crate) struct SpaghettiChartInstance {
     pub(crate) canvas: spaghetti::SpaghettiCanvas,
     pub(crate) interval: Timeframe,
     pub(crate) pair_mode: bool,
-    pub(crate) pair_notional: String,
-    pub(crate) pair_pending: bool,
     pub(crate) pair_candle_mode: bool,
     pub(crate) session_granularity: Option<Timeframe>,
     pub(crate) editor_open: bool,
@@ -29,8 +27,6 @@ impl SpaghettiChartInstance {
             canvas: spaghetti::SpaghettiCanvas::new(),
             interval: Timeframe::H1,
             pair_mode: false,
-            pair_notional: "100".to_string(),
-            pair_pending: false,
             pair_candle_mode: false,
             session_granularity: None,
             editor_open: true,
@@ -49,6 +45,15 @@ impl SpaghettiChartInstance {
         inst.editor_open = true;
         inst
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpaghettiCandleFetch {
+    pub(crate) chart_id: SpaghettiChartId,
+    pub(crate) symbol: String,
+    pub(crate) timeframe: Timeframe,
+    pub(crate) session: Option<spaghetti::Session>,
+    pub(crate) session_granularity: Option<Timeframe>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

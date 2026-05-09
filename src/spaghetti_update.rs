@@ -13,11 +13,11 @@ impl TradingTerminal {
     pub(crate) fn update_spaghetti(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::AddComparisonChart => self.add_comparison_chart(),
-            Message::AddPairTradeChart => self.add_pair_trade_chart(),
+            Message::AddPairRatioChart => self.add_pair_ratio_chart(),
             Message::SpaghettiReload(id) => self.reload_spaghetti_chart(id),
             Message::SpaghettiSwitchTimeframe(id, tf) => self.switch_spaghetti_timeframe(id, tf),
-            Message::SpaghettiCandlesLoaded(id, symbol, result) => {
-                self.apply_spaghetti_candles_loaded(id, symbol, result)
+            Message::SpaghettiCandlesLoaded(request, result) => {
+                self.apply_spaghetti_candles_loaded(request, result)
             }
             Message::SpaghettiWsCandleUpdate(id, symbol, candle) => {
                 self.apply_spaghetti_ws_candle_update(id, symbol, candle)
@@ -34,10 +34,7 @@ impl TradingTerminal {
                 self.set_spaghetti_session_granularity_auto(id)
             }
             Message::SpaghettiResetView(id) => self.reset_spaghetti_view(id),
-            Message::PairNotionalChanged(id, value) => self.update_pair_notional(id, value),
             Message::PairSetCandleMode(id, enabled) => self.set_pair_candle_mode(id, enabled),
-            Message::PairExecute(id, long_a_short_b) => self.execute_pair_trade(id, long_a_short_b),
-            Message::PairExecutionDone(id, result) => self.finish_pair_execution(id, *result),
             _ => Task::none(),
         }
     }

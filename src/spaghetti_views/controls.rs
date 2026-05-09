@@ -47,7 +47,8 @@ impl TradingTerminal {
             .text_size(11);
 
             let reload_btn = reload_button(id);
-            r = r.push(picker).push(reload_btn);
+            let reset_view_btn = reset_view_button(id);
+            r = r.push(picker).push(reload_btn).push(reset_view_btn);
 
             let mode_text = if let Some(tf) = inst.session_granularity {
                 format!("Anchor mode: manual {}", tf.label())
@@ -63,7 +64,7 @@ impl TradingTerminal {
             .padding([2, 8])
             .text_size(11);
 
-            row![picker, reload_button(id)]
+            row![picker, reload_button(id), reset_view_button(id)]
                 .spacing(4)
                 .align_y(iced::Alignment::Center)
         };
@@ -83,7 +84,27 @@ impl TradingTerminal {
         } else {
             tf_row = tf_row
                 .push(container(rule::vertical(1)).height(16).width(8))
-                .push(text("Pair ratio mode").size(10).color(color!(0x8e9cc2)));
+                .push(timeframe_button(
+                    "LINE",
+                    !inst.pair_candle_mode,
+                    Message::PairSetCandleMode(id, false),
+                ))
+                .push(timeframe_button(
+                    "CANDLE",
+                    inst.pair_candle_mode,
+                    Message::PairSetCandleMode(id, true),
+                ));
+
+            let has_two = inst.canvas.series.len() >= 2;
+            let pair_label = if has_two {
+                format!(
+                    "{} / {}",
+                    inst.canvas.series[0].display, inst.canvas.series[1].display
+                )
+            } else {
+                "Add two symbols".to_string()
+            };
+            tf_row = tf_row.push(text(pair_label).size(10).color(color!(0x8e9cc2)));
         }
 
         tf_row.into()
@@ -105,4 +126,8 @@ fn reload_button(id: SpaghettiChartId) -> button::Button<'static, Message> {
                 ..Default::default()
             }
         })
+}
+
+fn reset_view_button(id: SpaghettiChartId) -> Element<'static, Message> {
+    timeframe_button("Reset View", false, Message::SpaghettiResetView(id))
 }

@@ -51,7 +51,7 @@ impl TradingTerminal {
         {
             if inst.pair_mode && inst.canvas.series.len() >= 2 {
                 self.push_toast(
-                    "Pair trade chart supports exactly two symbols".to_string(),
+                    "Pair ratio chart supports exactly two symbols".to_string(),
                     true,
                 );
                 return Task::none();

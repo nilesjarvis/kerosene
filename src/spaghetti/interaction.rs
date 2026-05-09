@@ -1,10 +1,12 @@
 use super::helpers::{anchored_max_scroll_offset, anchored_time_px_per_ms, global_time_range};
-use super::state::DragKind;
+use super::state::{DEFAULT_PX_PER_MS, DragKind, MAX_PX_PER_MS, MIN_PX_PER_MS};
 use super::{PRICE_AXIS_WIDTH, SpaghettiCanvas, SpaghettiChartState, TIME_AXIS_HEIGHT};
+use crate::api::Candle;
 use crate::message::Message;
 use iced::Rectangle;
 use iced::mouse;
 use iced::widget::canvas;
+use std::collections::HashSet;
 
 mod drag;
 mod rules;
@@ -33,7 +35,8 @@ impl SpaghettiCanvas {
         let loaded = self.loaded_series();
 
         if state.reset_epoch_seen != self.reset_epoch {
-            state.reset_view(self.reset_epoch);
+            let reset_px_per_ms = self.reset_px_per_ms(chart_w, &loaded);
+            state.reset_view_with_px(self.reset_epoch, reset_px_per_ms);
             self.cache.clear();
             return Some(canvas::Action::request_redraw());
         }
@@ -169,5 +172,149 @@ impl SpaghettiCanvas {
         }
 
         px_per_ms
+    }
+
+    fn reset_px_per_ms(&self, chart_w: f32, loaded: &[&super::Series]) -> f64 {
+        if self.pair_ratio_mode && self.active_session.is_none() {
+            pair_ratio_reset_px_per_ms(chart_w, loaded).unwrap_or(DEFAULT_PX_PER_MS)
+        } else {
+            DEFAULT_PX_PER_MS
+        }
+    }
+}
+
+const PAIR_RATIO_RESET_TARGET_CANDLES: usize = 96;
+
+fn pair_ratio_reset_px_per_ms(chart_w: f32, loaded: &[&super::Series]) -> Option<f64> {
+    if chart_w <= 0.0 || loaded.len() < 2 {
+        return None;
+    }
+
+    let b_times: HashSet<u64> = loaded[1]
+        .candles
+        .iter()
+        .filter(|candle| has_positive_finite_prices(candle))
+        .map(|candle| candle.open_time)
+        .collect();
+    let overlap: Vec<u64> = loaded[0]
+        .candles
+        .iter()
+        .filter(|candle| has_positive_finite_prices(candle) && b_times.contains(&candle.open_time))
+        .map(|candle| candle.open_time)
+        .collect();
+
+    if overlap.len() < 2 {
+        return None;
+    }
+
+    let first_idx = overlap
+        .len()
+        .saturating_sub(PAIR_RATIO_RESET_TARGET_CANDLES);
+    let first_visible = overlap[first_idx];
+    let last_visible = *overlap.last()?;
+    let target_span = last_visible.saturating_sub(first_visible);
+    if target_span == 0 {
+        return None;
+    }
+
+    let default_visible_ms = f64::from(chart_w) / DEFAULT_PX_PER_MS;
+    let span_ms = (target_span as f64).max(default_visible_ms);
+    Some((f64::from(chart_w) / span_ms).clamp(MIN_PX_PER_MS, MAX_PX_PER_MS))
+}
+
+fn has_positive_finite_prices(candle: &Candle) -> bool {
+    candle.open.is_finite()
+        && candle.high.is_finite()
+        && candle.low.is_finite()
+        && candle.close.is_finite()
+        && candle.open > 0.0
+        && candle.high > 0.0
+        && candle.low > 0.0
+        && candle.close > 0.0
+        && candle.low <= candle.high
+        && candle.low <= candle.open
+        && candle.low <= candle.close
+        && candle.high >= candle.open
+        && candle.high >= candle.close
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::spaghetti::Series;
+    use iced::Color;
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    fn candle_at(open_time: u64, close: f64) -> Candle {
+        Candle {
+            open_time,
+            close_time: open_time + 59_999,
+            open: close,
+            high: close + 1.0,
+            low: close - 1.0,
+            close,
+            volume: 1.0,
+        }
+    }
+
+    fn series(symbol: &str, candles: Vec<Candle>) -> Series {
+        Series {
+            symbol: symbol.to_string(),
+            display: symbol.to_string(),
+            candles,
+            color: Color::WHITE,
+            loaded: true,
+        }
+    }
+
+    #[test]
+    fn pair_ratio_reset_keeps_intraday_default_window() {
+        let chart_w = 720.0;
+        let mut a_candles = Vec::new();
+        let mut b_candles = Vec::new();
+        for idx in 0..48 {
+            let ts = idx * 3_600_000;
+            a_candles.push(candle_at(ts, 10.0));
+            b_candles.push(candle_at(ts, 20.0));
+        }
+        let a = series("HYPE", a_candles);
+        let b = series("BTC", b_candles);
+
+        let px = pair_ratio_reset_px_per_ms(chart_w, &[&a, &b]).expect("reset px");
+
+        assert_close(px, DEFAULT_PX_PER_MS);
+    }
+
+    #[test]
+    fn pair_ratio_reset_fits_high_timeframe_overlap() {
+        let chart_w = 720.0;
+        let day_ms = 86_400_000;
+        let mut a_candles = Vec::new();
+        let mut b_candles = Vec::new();
+        for idx in 0..120 {
+            let ts = idx * day_ms;
+            a_candles.push(candle_at(ts, 10.0));
+            b_candles.push(candle_at(ts, 20.0));
+        }
+        let a = series("HYPE", a_candles);
+        let b = series("BTC", b_candles);
+
+        let px = pair_ratio_reset_px_per_ms(chart_w, &[&a, &b]).expect("reset px");
+        let visible_days = chart_w as f64 / px / day_ms as f64;
+
+        assert!(
+            visible_days >= 94.0,
+            "expected at least 94 visible days, got {visible_days}"
+        );
+        assert!(
+            visible_days <= 96.0,
+            "expected at most 96 visible days, got {visible_days}"
+        );
     }
 }

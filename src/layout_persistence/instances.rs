@@ -83,7 +83,6 @@ impl TradingTerminal {
             let mut inst = SpaghettiChartInstance::new_empty(sid);
             inst.interval = tf;
             inst.pair_mode = scfg.pair_mode;
-            inst.pair_notional = scfg.pair_notional.clone();
             inst.canvas.pair_ratio_mode = scfg.pair_mode;
             inst.pair_candle_mode = scfg.pair_candle_mode;
             inst.canvas.pair_candle_mode = scfg.pair_candle_mode;

@@ -2,7 +2,7 @@ use crate::api;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::spaghetti;
-use crate::spaghetti_state::SpaghettiChartId;
+use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
 use crate::timeframe::Timeframe;
 use iced::Task;
 
@@ -29,6 +29,13 @@ impl TradingTerminal {
         }
         let sid = spaghetti_id;
         let coin_str = coin.to_string();
+        let request = SpaghettiCandleFetch {
+            chart_id: sid,
+            symbol: coin_str.clone(),
+            timeframe: api_tf,
+            session,
+            session_granularity,
+        };
         Task::perform(
             api::fetch_candles(
                 coin_str.clone(),
@@ -36,7 +43,7 @@ impl TradingTerminal {
                 start,
                 now_ms,
             ),
-            move |result| Message::SpaghettiCandlesLoaded(sid, coin_str.clone(), result),
+            move |result| Message::SpaghettiCandlesLoaded(request.clone(), result),
         )
     }
 }

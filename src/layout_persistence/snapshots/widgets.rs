@@ -50,7 +50,6 @@ impl TradingTerminal {
                     .collect(),
                 timeframe: inst.interval.config_str().to_string(),
                 pair_mode: inst.pair_mode,
-                pair_notional: inst.pair_notional.clone(),
                 pair_candle_mode: inst.pair_candle_mode,
                 anchor: inst
                     .canvas

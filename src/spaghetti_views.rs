@@ -1,7 +1,6 @@
 mod chart_area;
 mod controls;
 mod editor;
-mod pair;
 mod toolbar;
 
 use crate::app_state::TradingTerminal;
@@ -38,13 +37,7 @@ impl TradingTerminal {
         let tf_row = self.view_spaghetti_controls(id, inst);
         let chart_area = self.view_spaghetti_chart_area(inst, &theme);
 
-        let pair_controls = self.view_spaghetti_pair_controls(id, inst, &theme);
-
-        let content = if let Some(panel) = pair_controls {
-            column![toolbar, tf_row, chart_area, panel].spacing(4)
-        } else {
-            column![toolbar, tf_row, chart_area].spacing(4)
-        };
+        let content = column![toolbar, tf_row, chart_area].spacing(4);
 
         container(content)
             .width(Fill)
