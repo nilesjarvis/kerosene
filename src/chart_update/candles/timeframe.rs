@@ -53,6 +53,7 @@ impl TradingTerminal {
             instance.heatmap_status = None;
             instance.heatmap_fetching = false;
             Self::clear_heatmap_display(instance);
+            Self::clear_liquidation_display(instance);
             Self::clear_funding_display(instance);
             instance.chart.request_view_reset();
             if let Some(candles) = cached_candles {

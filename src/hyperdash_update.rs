@@ -15,8 +15,8 @@ impl TradingTerminal {
             Message::ToggleLiquidationOverlay(chart_id) => {
                 return self.toggle_liquidation_overlay(chart_id);
             }
-            Message::ChartLiquidationLoaded(chart_id, result) => {
-                return self.apply_chart_liquidation_loaded(chart_id, *result);
+            Message::ChartLiquidationLoaded(request_key, result) => {
+                return self.apply_chart_liquidation_loaded(request_key, *result);
             }
             Message::RefreshLiquidations => return self.refresh_liquidations(),
             message @ (Message::ToggleHeatmapOverlay(_)

@@ -336,7 +336,7 @@ pub(crate) enum Message {
     HyperdashKeyInputChanged(String),
     SaveHyperdashKey,
     ToggleLiquidationOverlay(ChartId),
-    ChartLiquidationLoaded(ChartId, Box<Result<LiquidationLevel, String>>),
+    ChartLiquidationLoaded(String, Box<Result<LiquidationLevel, String>>),
     RefreshLiquidations,
     // HyperDash historical liquidation heatmap
     ToggleHeatmapOverlay(ChartId),

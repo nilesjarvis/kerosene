@@ -25,12 +25,12 @@ impl TradingTerminal {
         instance.editor_open = false;
         instance.editor_search_query.clear();
         instance.editor_keyboard_selected = false;
-        instance.liquidation_data = None;
         instance.heatmap_last_fetch = None;
         instance.heatmap_viewport = None;
         instance.heatmap_status = None;
         instance.heatmap_fetching = false;
         Self::clear_heatmap_display(instance);
+        Self::clear_liquidation_display(instance);
     }
 
     pub(crate) fn scrub_muted_ticker_state(&mut self) -> Task<Message> {

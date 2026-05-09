@@ -216,4 +216,6 @@ pub(crate) struct TradingTerminal {
     pub(crate) heatmap_data_cache: HashMap<String, LiquidationHeatmap>,
     pub(crate) heatmap_data_cache_order: VecDeque<String>,
     pub(crate) heatmap_pending_charts: HashMap<String, Vec<ChartId>>,
+    // Shared in-flight dedupe for HyperDash liquidation level requests
+    pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
 }

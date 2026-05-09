@@ -61,6 +61,12 @@ pub(crate) struct ChartInstance {
     pub(crate) show_liquidations: bool,
     /// Cached liquidation level data from HyperDash API.
     pub(crate) liquidation_data: Option<LiquidationLevel>,
+    /// Whether current liquidation levels are currently being fetched.
+    pub(crate) liquidation_fetching: bool,
+    /// Last LIQ status shown near the chart controls.
+    pub(crate) liquidation_status: Option<(String, bool)>,
+    /// Shared request key for the latest in-flight LIQ request.
+    pub(crate) liquidation_pending_key: Option<String>,
     /// Whether the historical liquidation heatmap is enabled for this chart.
     pub(crate) show_heatmap: bool,
     /// Cached heatmap data from HyperDash API.
@@ -106,6 +112,9 @@ impl ChartInstance {
             next_annotation_id: 0,
             show_liquidations: false,
             liquidation_data: None,
+            liquidation_fetching: false,
+            liquidation_status: None,
+            liquidation_pending_key: None,
             show_heatmap: false,
             heatmap_data: None,
             heatmap_last_fetch: None,
@@ -139,6 +148,9 @@ impl ChartInstance {
             next_annotation_id: 0,
             show_liquidations: false,
             liquidation_data: None,
+            liquidation_fetching: false,
+            liquidation_status: None,
+            liquidation_pending_key: None,
             show_heatmap: false,
             heatmap_data: None,
             heatmap_last_fetch: None,

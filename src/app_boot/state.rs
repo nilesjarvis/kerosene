@@ -210,6 +210,7 @@ impl TradingTerminal {
             heatmap_data_cache: HashMap::new(),
             heatmap_data_cache_order: VecDeque::new(),
             heatmap_pending_charts: HashMap::new(),
+            liquidation_pending_charts: HashMap::new(),
             hotkeys: cfg.hotkeys.clone(),
             recording_hotkey_for: None,
         };

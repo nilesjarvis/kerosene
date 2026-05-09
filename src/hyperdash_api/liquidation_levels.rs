@@ -8,9 +8,10 @@ use super::errors::{hyperdash_graphql_error, hyperdash_http_error, hyperdash_mis
 use super::models::{GqlError, LiquidationEntry, LiquidationLevel};
 use super::{HYPERDASH_API_URL, KEROSENE_USER_AGENT, response_snippet};
 pub use buckets::bucket_liquidations;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
-// HyperDash Current Liquidation Levels
+// HyperDash Historical Liquidation Levels
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -26,8 +27,8 @@ struct GqlData {
 
 #[derive(Debug, Deserialize)]
 struct GqlAnalytics {
-    #[serde(rename = "currentLiquidationLevel")]
-    current_liquidation_level: GqlLiquidationLevel,
+    #[serde(rename = "historicalLiquidationLevel")]
+    historical_liquidation_level: GqlLiquidationLevel,
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,16 +41,28 @@ struct GqlLiquidationLevel {
     total_amount: f64,
 }
 
-/// Fetch liquidation levels for a coin from the HyperDash GraphQL API.
+/// Fetch the latest available liquidation levels for a coin from the HyperDash GraphQL API.
 pub async fn fetch_liquidation_levels(
     coin: String,
     min: f64,
     max: f64,
     api_key: String,
 ) -> Result<LiquidationLevel, String> {
-    let query = r#"query GetCurrentLiquidationLevel($coin: String!, $min: Float, $max: Float) {
+    let timestamp = current_unix_timestamp_secs()?;
+    fetch_liquidation_levels_at(coin, min, max, timestamp, api_key).await
+}
+
+/// Fetch liquidation levels for a coin at a specific Unix timestamp.
+pub async fn fetch_liquidation_levels_at(
+    coin: String,
+    min: f64,
+    max: f64,
+    timestamp: u64,
+    api_key: String,
+) -> Result<LiquidationLevel, String> {
+    let query = r#"query GetHistoricalLiquidationLevel($coin: String!, $min: Float!, $max: Float!, $timestamp: Float!) {
   analytics {
-    currentLiquidationLevel(coin: $coin, min: $min, max: $max) {
+    historicalLiquidationLevel(coin: $coin, min: $min, max: $max, timestamp: $timestamp) {
       coin
       min
       max
@@ -63,8 +76,8 @@ pub async fn fetch_liquidation_levels(
 }"#;
 
     let body = serde_json::json!({
-        "operationName": "GetCurrentLiquidationLevel",
-        "variables": { "coin": coin, "min": min, "max": max },
+        "operationName": "GetHistoricalLiquidationLevel",
+        "variables": { "coin": coin, "min": min, "max": max, "timestamp": timestamp },
         "query": query,
     });
 
@@ -103,7 +116,7 @@ pub async fn fetch_liquidation_levels(
             return Err(hyperdash_missing_data_error("liquidation levels"));
         }
     };
-    let liq = data.analytics.current_liquidation_level;
+    let liq = data.analytics.historical_liquidation_level;
 
     Ok(LiquidationLevel {
         coin: liq.coin,
@@ -112,4 +125,11 @@ pub async fn fetch_liquidation_levels(
         liquidations: liq.liquidations,
         total_amount: liq.total_amount,
     })
+}
+
+fn current_unix_timestamp_secs() -> Result<u64, String> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|e| format!("System clock is before Unix epoch: {e}"))
 }

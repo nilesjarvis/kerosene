@@ -1,147 +1,327 @@
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartId;
-use crate::hyperdash_api::{LiquidationLevel, bucket_liquidations, fetch_liquidation_levels};
+use crate::chart_state::{ChartId, ChartInstance};
+use crate::hyperdash_api::{LiquidationLevel, bucket_liquidations, fetch_liquidation_levels_at};
 use crate::message::Message;
 use iced::Task;
+
+const LIQUIDATION_BUCKET_COUNT: usize = 200;
 
 impl TradingTerminal {
     pub(in crate::hyperdash_update) fn toggle_liquidation_overlay(
         &mut self,
         chart_id: ChartId,
     ) -> Task<Message> {
-        let coin = self
-            .charts
-            .get(&chart_id)
-            .filter(|inst| !self.is_ticker_muted(&inst.symbol))
-            .and_then(|inst| self.hyperdash_coin_for_symbol(&inst.symbol));
+        let plan = self.plan_liquidation_fetch_for_toggle(chart_id);
         if let Some(instance) = self.charts.get_mut(&chart_id) {
             instance.show_liquidations = !instance.show_liquidations;
             if !instance.show_liquidations {
-                instance.chart.liquidation_buckets.clear();
-                instance.chart.candle_cache.clear();
+                Self::clear_liquidation_display(instance);
+                return Task::none();
             }
-            if instance.show_liquidations
-                && instance.liquidation_data.is_none()
-                && !self.hyperdash_api_key.is_empty()
-                && !instance.symbol.is_empty()
-            {
-                let mark = liquidation_mark_from_ctx(
-                    instance
-                        .asset_ctx
-                        .as_ref()
-                        .and_then(|ctx| ctx.mark_px.as_deref()),
-                );
-                if let Some(mark) = mark {
-                    let Some(coin) = coin else {
-                        self.push_toast(
-                            "Liquidation overlay is only available for perp symbols".to_string(),
-                            true,
-                        );
-                        return Task::none();
-                    };
-                    return liquidation_fetch_task(
-                        chart_id,
-                        coin,
-                        mark,
-                        self.hyperdash_api_key.trim().to_string(),
-                    );
-                }
-            }
+        } else {
+            return Task::none();
         }
 
-        Task::none()
+        match plan {
+            LiquidationRequestPlan::Fetch { coin, mark } => {
+                self.queue_liquidation_fetch(chart_id, coin, mark)
+            }
+            LiquidationRequestPlan::Status(message, is_error) => {
+                if let Some(instance) = self.charts.get_mut(&chart_id) {
+                    instance.liquidation_status = Some((message.clone(), is_error));
+                    instance.chart.candle_cache.clear();
+                }
+                if is_error {
+                    self.push_toast(message, true);
+                }
+                Task::none()
+            }
+            LiquidationRequestPlan::Wait => Task::none(),
+        }
     }
 
     pub(in crate::hyperdash_update) fn apply_chart_liquidation_loaded(
         &mut self,
-        chart_id: ChartId,
+        request_key: String,
         result: Result<LiquidationLevel, String>,
     ) -> Task<Message> {
-        if self
-            .charts
-            .get(&chart_id)
-            .is_some_and(|instance| self.is_ticker_muted(&instance.symbol))
-        {
+        let waiting_charts = self
+            .liquidation_pending_charts
+            .remove(&request_key)
+            .unwrap_or_default();
+        if waiting_charts.is_empty() {
             return Task::none();
         }
-        if let Some(instance) = self.charts.get_mut(&chart_id) {
-            match result {
-                Ok(data) => {
-                    let buckets = bucket_liquidations(&data.liquidations, data.min, data.max, 200);
-                    instance.chart.liquidation_buckets = buckets;
-                    instance.liquidation_data = Some(data);
-                    instance.chart.candle_cache.clear();
-                }
-                Err(_e) => {
-                    instance.liquidation_data = None;
-                    instance.chart.liquidation_buckets.clear();
-                    instance.chart.candle_cache.clear();
+
+        let mut toast = None;
+        match result {
+            Ok(data) => {
+                let buckets = bucket_liquidations(
+                    &data.liquidations,
+                    data.min,
+                    data.max,
+                    LIQUIDATION_BUCKET_COUNT,
+                );
+                for id in waiting_charts {
+                    if !self.chart_can_accept_liquidation_result(id, &data.coin) {
+                        if let Some(instance) = self.charts.get_mut(&id) {
+                            instance.liquidation_fetching = false;
+                            instance.liquidation_pending_key = None;
+                        }
+                        continue;
+                    }
+                    if let Some(instance) = self.charts.get_mut(&id) {
+                        instance.chart.liquidation_buckets = buckets.clone();
+                        instance.liquidation_data = Some(data.clone());
+                        instance.liquidation_fetching = false;
+                        instance.liquidation_pending_key = None;
+                        instance.liquidation_status = Some(("LIQ loaded".to_string(), false));
+                        instance.chart.candle_cache.clear();
+                    }
                 }
             }
+            Err(error) => {
+                for id in waiting_charts {
+                    if let Some(instance) = self.charts.get_mut(&id) {
+                        instance.liquidation_fetching = false;
+                        instance.liquidation_pending_key = None;
+                        instance.liquidation_status = Some(("LIQ fetch failed".to_string(), true));
+                        if instance.liquidation_data.is_none() {
+                            instance.chart.liquidation_buckets.clear();
+                        }
+                        instance.chart.candle_cache.clear();
+                    }
+                }
+                toast = Some(format!("LIQ fetch failed: {error}"));
+            }
+        }
+
+        if let Some(message) = toast {
+            self.push_toast(message, true);
         }
 
         Task::none()
     }
 
-    pub(in crate::hyperdash_update) fn refresh_liquidations(&self) -> Task<Message> {
+    pub(in crate::hyperdash_update) fn refresh_liquidations(&mut self) -> Task<Message> {
         if self.hyperdash_api_key.is_empty() {
             return Task::none();
         }
-        let mut tasks = Vec::new();
-        for instance in self.charts.values() {
-            if instance.show_liquidations
-                && !instance.symbol.is_empty()
-                && !self.is_ticker_muted(&instance.symbol)
-            {
-                let Some(coin) = self.hyperdash_coin_for_symbol(&instance.symbol) else {
-                    continue;
+        let plans: Vec<(ChartId, String, f64)> = self
+            .charts
+            .values()
+            .filter(|instance| instance.show_liquidations)
+            .filter_map(|instance| {
+                let LiquidationRequestPlan::Fetch { coin, mark } =
+                    self.plan_liquidation_fetch_for_instance(instance)
+                else {
+                    return None;
                 };
-                if let Some(mark) = liquidation_mark_from_ctx(
-                    instance
-                        .asset_ctx
-                        .as_ref()
-                        .and_then(|ctx| ctx.mark_px.as_deref()),
-                ) {
-                    tasks.push(liquidation_fetch_task(
-                        instance.id,
-                        coin,
-                        mark,
-                        self.hyperdash_api_key.trim().to_string(),
-                    ));
-                }
-            }
-        }
+                Some((instance.id, coin, mark))
+            })
+            .collect();
+        let now_secs = Self::now_ms() / 1_000;
+        let tasks: Vec<Task<Message>> = plans
+            .into_iter()
+            .map(|(id, coin, mark)| self.queue_liquidation_fetch_at(id, coin, mark, now_secs))
+            .collect();
         if tasks.is_empty() {
             Task::none()
         } else {
             Task::batch(tasks)
         }
     }
+
+    pub(crate) fn maybe_fetch_liquidations(&mut self, chart_id: ChartId) -> Task<Message> {
+        let plan = self
+            .charts
+            .get(&chart_id)
+            .map(|instance| self.plan_liquidation_fetch_for_instance(instance))
+            .unwrap_or(LiquidationRequestPlan::Wait);
+        match plan {
+            LiquidationRequestPlan::Fetch { coin, mark } => {
+                self.queue_liquidation_fetch(chart_id, coin, mark)
+            }
+            LiquidationRequestPlan::Status(message, is_error) => {
+                if let Some(instance) = self.charts.get_mut(&chart_id) {
+                    instance.liquidation_status = Some((message, is_error));
+                    instance.chart.candle_cache.clear();
+                }
+                Task::none()
+            }
+            LiquidationRequestPlan::Wait => Task::none(),
+        }
+    }
+
+    pub(crate) fn clear_liquidation_display(instance: &mut ChartInstance) {
+        instance.liquidation_data = None;
+        instance.liquidation_fetching = false;
+        instance.liquidation_status = None;
+        instance.liquidation_pending_key = None;
+        instance.chart.liquidation_buckets.clear();
+        instance.chart.candle_cache.clear();
+    }
+
+    fn plan_liquidation_fetch_for_toggle(&self, chart_id: ChartId) -> LiquidationRequestPlan {
+        let Some(instance) = self.charts.get(&chart_id) else {
+            return LiquidationRequestPlan::Wait;
+        };
+        if instance.show_liquidations {
+            return LiquidationRequestPlan::Wait;
+        }
+        self.plan_liquidation_fetch_for_instance(instance)
+    }
+
+    fn plan_liquidation_fetch_for_instance(
+        &self,
+        instance: &ChartInstance,
+    ) -> LiquidationRequestPlan {
+        if instance.liquidation_fetching {
+            return LiquidationRequestPlan::Wait;
+        }
+        if !instance.show_liquidations && instance.liquidation_data.is_some() {
+            return LiquidationRequestPlan::Wait;
+        }
+        if self.hyperdash_api_key.is_empty() {
+            return LiquidationRequestPlan::Status(
+                "Add HyperDash key in Settings > Integrations".to_string(),
+                true,
+            );
+        }
+        if instance.symbol.is_empty() || self.is_ticker_muted(&instance.symbol) {
+            return LiquidationRequestPlan::Wait;
+        }
+        let Some(coin) = self.hyperdash_coin_for_symbol(&instance.symbol) else {
+            return LiquidationRequestPlan::Status(
+                "Liquidation overlay is only available for perp symbols".to_string(),
+                true,
+            );
+        };
+        let Some(mark) = liquidation_mark_from_ctx(
+            instance
+                .asset_ctx
+                .as_ref()
+                .and_then(|ctx| ctx.mark_px.as_deref()),
+            instance.chart.candles.last().map(|candle| candle.close),
+        ) else {
+            return LiquidationRequestPlan::Status("LIQ waiting for mark price".to_string(), false);
+        };
+
+        LiquidationRequestPlan::Fetch { coin, mark }
+    }
+
+    fn queue_liquidation_fetch(&mut self, id: ChartId, coin: String, mark: f64) -> Task<Message> {
+        self.queue_liquidation_fetch_at(id, coin, mark, Self::now_ms() / 1_000)
+    }
+
+    fn queue_liquidation_fetch_at(
+        &mut self,
+        id: ChartId,
+        coin: String,
+        mark: f64,
+        timestamp_secs: u64,
+    ) -> Task<Message> {
+        if self.hyperdash_api_key.is_empty() {
+            return Task::none();
+        }
+        let min = 0.0;
+        let max = mark * 2.0;
+        let request_key = liquidation_request_key(&coin, min, max, timestamp_secs);
+
+        if let Some(waiting_charts) = self.liquidation_pending_charts.get_mut(&request_key) {
+            if !waiting_charts.contains(&id) {
+                waiting_charts.push(id);
+            }
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.liquidation_fetching = true;
+                instance.liquidation_pending_key = Some(request_key);
+                instance.liquidation_status =
+                    Some(("LIQ waiting for shared request".to_string(), false));
+                instance.chart.candle_cache.clear();
+            }
+            return Task::none();
+        }
+
+        self.liquidation_pending_charts
+            .insert(request_key.clone(), vec![id]);
+        if let Some(instance) = self.charts.get_mut(&id) {
+            instance.liquidation_fetching = true;
+            instance.liquidation_pending_key = Some(request_key);
+            instance.liquidation_status = Some(("LIQ loading".to_string(), false));
+            instance.chart.candle_cache.clear();
+        }
+
+        let api_key = self.hyperdash_api_key.trim().to_string();
+        let response_key = liquidation_request_key(&coin, min, max, timestamp_secs);
+        Task::perform(
+            fetch_liquidation_levels_at(coin, min, max, timestamp_secs, api_key),
+            move |r| Message::ChartLiquidationLoaded(response_key.clone(), Box::new(r)),
+        )
+    }
+
+    fn chart_can_accept_liquidation_result(&self, chart_id: ChartId, coin: &str) -> bool {
+        self.charts.get(&chart_id).is_some_and(|instance| {
+            instance.show_liquidations
+                && !instance.symbol.is_empty()
+                && !self.is_ticker_muted(&instance.symbol)
+                && self
+                    .hyperdash_coin_for_symbol(&instance.symbol)
+                    .is_some_and(|chart_coin| chart_coin == coin)
+        })
+    }
 }
 
-fn liquidation_mark_from_ctx(mark_px: Option<&str>) -> Option<f64> {
-    let mark = mark_px?.trim().parse::<f64>().ok()?;
-    (mark.is_finite() && mark > 0.0).then_some(mark)
+enum LiquidationRequestPlan {
+    Fetch { coin: String, mark: f64 },
+    Status(String, bool),
+    Wait,
 }
 
-fn liquidation_fetch_task(id: ChartId, coin: String, mark: f64, api_key: String) -> Task<Message> {
-    Task::perform(
-        fetch_liquidation_levels(coin, 0.0, mark * 2.0, api_key),
-        move |r| Message::ChartLiquidationLoaded(id, Box::new(r)),
-    )
+fn liquidation_mark_from_ctx(mark_px: Option<&str>, fallback_close: Option<f64>) -> Option<f64> {
+    mark_px
+        .and_then(parse_positive_finite_str)
+        .or_else(|| fallback_close.filter(|close| close.is_finite() && *close > 0.0))
+}
+
+fn parse_positive_finite_str(value: &str) -> Option<f64> {
+    let parsed = value.trim().parse::<f64>().ok()?;
+    (parsed.is_finite() && parsed > 0.0).then_some(parsed)
+}
+
+fn liquidation_request_key(coin: &str, min: f64, max: f64, timestamp_secs: u64) -> String {
+    format!("{coin}:{min:.8}:{max:.8}:{timestamp_secs}")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::liquidation_mark_from_ctx;
+    use super::{liquidation_mark_from_ctx, liquidation_request_key};
 
     #[test]
     fn liquidation_mark_parser_rejects_missing_nonpositive_or_nonfinite_values() {
-        assert_eq!(liquidation_mark_from_ctx(Some("100.5")), Some(100.5));
-        assert_eq!(liquidation_mark_from_ctx(None), None);
-        assert_eq!(liquidation_mark_from_ctx(Some("0")), None);
-        assert_eq!(liquidation_mark_from_ctx(Some("-1")), None);
-        assert_eq!(liquidation_mark_from_ctx(Some("NaN")), None);
-        assert_eq!(liquidation_mark_from_ctx(Some("bad")), None);
+        assert_eq!(liquidation_mark_from_ctx(Some("100.5"), None), Some(100.5));
+        assert_eq!(liquidation_mark_from_ctx(None, None), None);
+        assert_eq!(liquidation_mark_from_ctx(Some("0"), Some(90.0)), Some(90.0));
+        assert_eq!(
+            liquidation_mark_from_ctx(Some("-1"), Some(90.0)),
+            Some(90.0)
+        );
+        assert_eq!(
+            liquidation_mark_from_ctx(Some("NaN"), Some(90.0)),
+            Some(90.0)
+        );
+        assert_eq!(
+            liquidation_mark_from_ctx(Some("bad"), Some(90.0)),
+            Some(90.0)
+        );
+        assert_eq!(liquidation_mark_from_ctx(None, Some(f64::INFINITY)), None);
+        assert_eq!(liquidation_mark_from_ctx(None, Some(0.0)), None);
+    }
+
+    #[test]
+    fn liquidation_request_key_is_stable_for_shared_requests() {
+        assert_eq!(
+            liquidation_request_key("BTC", 0.0, 161_782.0, 1_778_357_590),
+            "BTC:0.00000000:161782.00000000:1778357590"
+        );
     }
 }

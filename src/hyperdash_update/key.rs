@@ -16,14 +16,28 @@ impl TradingTerminal {
                 self.hyperdash_api_key = self.hyperdash_key_input.trim().to_string().into();
                 self.persist_hyperdash_secret();
                 self.persist_config();
-                let ids: Vec<ChartId> = self
+                let heatmap_ids: Vec<ChartId> = self
                     .charts
                     .iter()
                     .filter(|(_, inst)| inst.show_heatmap && !inst.symbol.is_empty())
                     .map(|(id, _)| *id)
                     .collect();
+                let liquidation_ids: Vec<ChartId> = self
+                    .charts
+                    .iter()
+                    .filter(|(_, inst)| inst.show_liquidations && !inst.symbol.is_empty())
+                    .map(|(id, _)| *id)
+                    .collect();
+                self.liquidation_pending_charts.clear();
+                for id in &liquidation_ids {
+                    if let Some(instance) = self.charts.get_mut(id) {
+                        instance.liquidation_fetching = false;
+                        instance.liquidation_pending_key = None;
+                    }
+                }
                 if self.hyperdash_api_key.is_empty() {
-                    for id in ids {
+                    self.heatmap_pending_charts.clear();
+                    for id in heatmap_ids {
                         if let Some(instance) = self.charts.get_mut(&id) {
                             instance.heatmap_fetching = false;
                             instance.heatmap_last_fetch = None;
@@ -34,12 +48,27 @@ impl TradingTerminal {
                             Self::clear_heatmap_display(instance);
                         }
                     }
+                    for id in liquidation_ids {
+                        if let Some(instance) = self.charts.get_mut(&id) {
+                            Self::clear_liquidation_display(instance);
+                            instance.liquidation_status = Some((
+                                "Add HyperDash key in Settings > Integrations".to_string(),
+                                true,
+                            ));
+                            instance.chart.candle_cache.clear();
+                        }
+                    }
                     return Task::none();
                 }
-                let tasks: Vec<Task<Message>> = ids
+                let mut tasks: Vec<Task<Message>> = heatmap_ids
                     .into_iter()
                     .map(|id| self.maybe_fetch_heatmap(id))
                     .collect();
+                tasks.extend(
+                    liquidation_ids
+                        .into_iter()
+                        .map(|id| self.maybe_fetch_liquidations(id)),
+                );
                 if !tasks.is_empty() {
                     return Task::batch(tasks);
                 }
