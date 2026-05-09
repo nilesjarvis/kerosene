@@ -46,3 +46,41 @@ fn hyperliquid_theme_uses_source_palette_after_extended_processing() {
         [0xED, 0x70, 0x88, 255]
     );
 }
+
+#[test]
+fn bloomberg_theme_keeps_primary_backgrounds_true_black() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0x00, 0x00, 0x00),
+        text: Color::from_rgb8(0xF2, 0xF2, 0xE8),
+        primary: Color::from_rgb8(0xFF, 0x9F, 0x1A),
+        success: Color::from_rgb8(0x00, 0xB0, 0x50),
+        warning: Color::from_rgb8(0xFF, 0xD8, 0x4A),
+        danger: Color::from_rgb8(0xB0, 0x00, 0x24),
+    };
+
+    assert!(TradingTerminal::palette_matches_bloomberg_source(
+        source_palette
+    ));
+
+    let extended = TradingTerminal::bloomberg_source_extended_palette();
+    assert_eq!(
+        extended.background.base.color.into_rgba8(),
+        [0x00, 0x00, 0x00, 255]
+    );
+    assert_eq!(
+        extended.background.weak.color.into_rgba8(),
+        [0x00, 0x00, 0x00, 255]
+    );
+    assert_eq!(
+        extended.background.strong.color.into_rgba8(),
+        [0x00, 0x00, 0x00, 255]
+    );
+    assert_eq!(
+        extended.background.stronger.color.into_rgba8(),
+        [0x05, 0x05, 0x05, 255]
+    );
+    assert_eq!(
+        extended.primary.base.color.into_rgba8(),
+        [0xFF, 0x9F, 0x1A, 255]
+    );
+}

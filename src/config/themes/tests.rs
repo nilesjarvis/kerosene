@@ -28,6 +28,20 @@ fn default_custom_themes_include_kerosene_chart_colors() {
     assert_eq!(hyperliquid.danger, "#ED7088");
     assert_eq!(hyperliquid.chart_bull.as_deref(), Some("#26A69A"));
     assert_eq!(hyperliquid.chart_bear.as_deref(), Some("#EF5350"));
+
+    let bloomberg = themes
+        .iter()
+        .find(|theme| theme.name == "Bloomberg")
+        .expect("Bloomberg theme should be present");
+
+    assert_eq!(bloomberg.background, "#000000");
+    assert_eq!(bloomberg.text, "#F2F2E8");
+    assert_eq!(bloomberg.primary, "#FF9F1A");
+    assert_eq!(bloomberg.success, "#00B050");
+    assert_eq!(bloomberg.warning, "#FFD84A");
+    assert_eq!(bloomberg.danger, "#B00024");
+    assert_eq!(bloomberg.chart_bull.as_deref(), Some("#00C853"));
+    assert_eq!(bloomberg.chart_bear.as_deref(), Some("#D50032"));
 }
 
 #[test]
