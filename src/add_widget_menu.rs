@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
 use iced::widget::container as container_style;
-use iced::widget::{container, scrollable};
+use iced::widget::{Space, container, mouse_area, opaque, scrollable, stack};
 use iced::{Element, Fill, Length, Theme};
 
 mod body;
@@ -39,16 +39,26 @@ impl TradingTerminal {
             ..Default::default()
         });
 
+        let dismiss_layer: Element<'a, Message> =
+            mouse_area(container(Space::new()).width(Fill).height(Fill))
+                .on_press(Message::CloseAllMenus)
+                .into();
+
+        let menu_layer: Element<'a, Message> = container(opaque(menu_card))
+            .width(Fill)
+            .padding(iced::Padding {
+                top: 42.0,
+                right: 16.0,
+                bottom: 0.0,
+                left: 0.0,
+            })
+            .align_x(iced::Alignment::End)
+            .into();
+
         Some(
-            container(menu_card)
+            stack![dismiss_layer, menu_layer]
                 .width(Fill)
-                .padding(iced::Padding {
-                    top: 42.0,
-                    right: 16.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                })
-                .align_x(iced::Alignment::End)
+                .height(Fill)
                 .into(),
         )
     }
