@@ -1,0 +1,12 @@
+<svg width="1500" height="500" viewBox="0 0 1500 500" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Kerosene X banner</title>
+  <desc id="desc">A flat orange X banner with a simple black Kerosene K mark and wordmark.</desc>
+
+  <rect width="1500" height="500" fill="#FF5A00"/>
+
+  <rect x="124" y="118" width="70" height="264" fill="#050505"/>
+  <polygon points="194,238 318,118 402,118 252,262" fill="#050505"/>
+  <polygon points="194,262 402,382 314,382 194,312" fill="#050505"/>
+
+  <text x="472" y="281" fill="#050505" font-family="Inter, Satoshi, Avenir Next, Arial, sans-serif" font-size="88" font-weight="800">KEROSENE</text>
+</svg>

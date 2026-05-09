@@ -1,0 +1,59 @@
+use serde::{Deserialize, de};
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Candle {
+    #[serde(rename = "t")]
+    pub open_time: u64,
+    #[serde(rename = "T")]
+    pub close_time: u64,
+    #[serde(rename = "o", deserialize_with = "de_string_or_number_to_f64")]
+    pub open: f64,
+    #[serde(rename = "h", deserialize_with = "de_string_or_number_to_f64")]
+    pub high: f64,
+    #[serde(rename = "l", deserialize_with = "de_string_or_number_to_f64")]
+    pub low: f64,
+    #[serde(rename = "c", deserialize_with = "de_string_or_number_to_f64")]
+    pub close: f64,
+    #[serde(rename = "v", deserialize_with = "de_string_or_number_to_f64")]
+    pub volume: f64,
+}
+
+/// Deserialize a value that may be either a JSON string (e.g. `"29258.0"`)
+/// or a JSON number (e.g. `29258.0`) into an f64. The Hyperliquid API is
+/// inconsistent: some assets return strings, others return raw numbers.
+pub fn de_string_or_number_to_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct StringOrNumber;
+
+    impl<'de> de::Visitor<'de> for StringOrNumber {
+        type Value = f64;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or number representing an f64")
+        }
+
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<f64, E> {
+            Ok(v)
+        }
+
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<f64, E> {
+            Ok(v as f64)
+        }
+
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<f64, E> {
+            Ok(v as f64)
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<f64, E> {
+            v.parse::<f64>().map_err(de::Error::custom)
+        }
+
+        fn visit_string<E: de::Error>(self, v: String) -> Result<f64, E> {
+            v.parse::<f64>().map_err(de::Error::custom)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrNumber)
+}

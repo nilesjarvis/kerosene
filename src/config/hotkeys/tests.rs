@@ -1,0 +1,20 @@
+use super::{HotkeyAction, HotkeyConfig};
+
+#[test]
+fn switch_account_hotkey_round_trips_secret_id() {
+    let hotkey = HotkeyConfig {
+        action: HotkeyAction::SwitchAccount {
+            secret_id: "acct-a".to_string(),
+        },
+        key: "1".to_string(),
+        shift: false,
+        ctrl: true,
+        alt: false,
+        logo: false,
+    };
+
+    let json = serde_json::to_string(&hotkey).expect("hotkey should serialize");
+    let loaded: HotkeyConfig = serde_json::from_str(&json).expect("hotkey should deserialize");
+
+    assert_eq!(loaded, hotkey);
+}

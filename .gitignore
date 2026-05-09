@@ -1,0 +1,36 @@
+/target/
+/.hermes/
+/.opencode/
+/.github/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs, backups, and temporary files
+*.log
+*.bak
+*.tmp
+*.temp
+
+# Local scratch/transcript artifacts from pre-open-source cleanup
+/check_*
+/explore
+/sim_iced
+/plan_test
+/test_display
+/tests/manual/test_display
+/hyperliquid-python-sdk/
+/patch*.py
+/patch.py
+/fix_*.py
+/*_history.txt
+/leverage.txt
+/margin*.txt
+/slider.txt
+/meta.json
+/spot.json
+/plan_draft.md
+/plan_gradient.md

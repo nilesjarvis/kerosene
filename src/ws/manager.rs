@@ -1,0 +1,218 @@
+use self::commands::handle_ws_command;
+use self::frames::{WsTextFrame, parse_ws_text_frame};
+use self::subscriptions::ActiveWsSubscriptions;
+use super::WS_URL;
+use super::telemetry::{
+    now_ms, telemetry_add_rx, telemetry_add_tx, telemetry_mark_ws_ping_start, telemetry_on_connect,
+    telemetry_on_disconnect, telemetry_update_api_latency,
+    telemetry_update_ws_latency_from_ping_start,
+};
+use futures::SinkExt as _;
+use serde_json::Value;
+use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+use tokio::sync::{broadcast, mpsc};
+
+mod commands;
+mod frames;
+mod subscriptions;
+
+#[cfg(test)]
+mod tests;
+
+const WS_RECONNECT_BASE_DELAY_SECS: u64 = 1;
+const WS_RECONNECT_MAX_DELAY_SECS: u64 = 60;
+const WS_RECONNECT_RESET_AFTER_SECS: u64 = 30;
+
+fn next_reconnect_delay_secs(current_secs: u64) -> u64 {
+    if current_secs < WS_RECONNECT_BASE_DELAY_SECS {
+        return WS_RECONNECT_BASE_DELAY_SECS;
+    }
+    current_secs
+        .saturating_mul(2)
+        .min(WS_RECONNECT_MAX_DELAY_SECS)
+}
+
+fn reconnect_delay_after_disconnect(current_secs: u64, connected_for: Duration) -> (u64, u64) {
+    let delay_secs = if connected_for >= Duration::from_secs(WS_RECONNECT_RESET_AFTER_SECS) {
+        WS_RECONNECT_BASE_DELAY_SECS
+    } else {
+        current_secs.clamp(WS_RECONNECT_BASE_DELAY_SECS, WS_RECONNECT_MAX_DELAY_SECS)
+    };
+    (delay_secs, next_reconnect_delay_secs(delay_secs))
+}
+
+// ---------------------------------------------------------------------------
+// Global Multiplexer Setup
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct WsRoutedMessage {
+    pub channel: String,
+    pub data: Arc<Value>,
+}
+
+#[derive(Debug)]
+pub enum WsCommand {
+    Subscribe { topic: String, payload: Value },
+    Unsubscribe { topic: String },
+    Ping,
+}
+
+struct WsManager {
+    cmd_tx: mpsc::UnboundedSender<WsCommand>,
+    msg_rx: broadcast::Receiver<WsRoutedMessage>,
+}
+
+static WS_MANAGER: OnceLock<WsManager> = OnceLock::new();
+
+pub(crate) fn get_manager() -> (
+    mpsc::UnboundedSender<WsCommand>,
+    broadcast::Receiver<WsRoutedMessage>,
+) {
+    let mgr = WS_MANAGER.get_or_init(|| {
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let (msg_tx, msg_rx) = broadcast::channel(10000);
+
+        let ping_tx = cmd_tx.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                if ping_tx.send(WsCommand::Ping).is_err() {
+                    break;
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            loop {
+                let start_time = now_ms();
+                let client = crate::api::CLIENT.clone();
+                let req_payload = serde_json::json!({ "type": "ping" });
+
+                if let Ok(resp) = client
+                    .post(crate::api::API_URL)
+                    .json(&req_payload)
+                    .send()
+                    .await
+                    && resp.status().is_success()
+                {
+                    let latency = now_ms().saturating_sub(start_time);
+                    telemetry_update_api_latency(latency);
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+
+        tokio::spawn(ws_manager_task(cmd_rx, msg_tx));
+        WsManager { cmd_tx, msg_rx }
+    });
+    (mgr.cmd_tx.clone(), mgr.msg_rx.resubscribe())
+}
+
+async fn ws_manager_task(
+    mut cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
+    msg_tx: broadcast::Sender<WsRoutedMessage>,
+) {
+    let mut active_subs = ActiveWsSubscriptions::default();
+    use futures::StreamExt as _;
+    use futures::future::{Either, select};
+    use tokio_tungstenite::tungstenite::Message as WsMsg;
+
+    let mut reconnect_delay_secs = WS_RECONNECT_BASE_DELAY_SECS;
+
+    loop {
+        let ws_stream = match tokio_tungstenite::connect_async(WS_URL).await {
+            Ok((ws, _)) => ws,
+            Err(_) => {
+                tokio::time::sleep(Duration::from_secs(reconnect_delay_secs)).await;
+                reconnect_delay_secs = next_reconnect_delay_secs(reconnect_delay_secs);
+                continue;
+            }
+        };
+        telemetry_on_connect();
+        let connected_at = Instant::now();
+
+        let (mut write, mut read) = ws_stream.split();
+        let mut disconnected = false;
+
+        for payload in active_subs.payloads() {
+            let text = payload.to_string();
+            telemetry_add_tx(text.len() as u64);
+            if write.send(WsMsg::Text(text.into())).await.is_err() {
+                disconnected = true;
+                break;
+            }
+        }
+
+        while !disconnected {
+            let cmd_fut = Box::pin(cmd_rx.recv());
+            let read_fut = Box::pin(read.next());
+
+            match select(cmd_fut, read_fut).await {
+                Either::Left((Some(cmd), _)) => {
+                    let action = handle_ws_command(&mut active_subs, cmd);
+                    if action.mark_ping_start {
+                        telemetry_mark_ws_ping_start();
+                    }
+                    if let Some(payload) = action.outbound_payload {
+                        let text = payload.to_string();
+                        telemetry_add_tx(text.len() as u64);
+                        if write.send(WsMsg::Text(text.into())).await.is_err()
+                            && action.disconnect_on_send_error
+                        {
+                            disconnected = true;
+                        }
+                    }
+                }
+                Either::Left((None, _)) => {
+                    disconnected = true;
+                }
+                Either::Right((msg_opt, _)) => match msg_opt {
+                    Some(Ok(WsMsg::Text(text))) => {
+                        telemetry_add_rx(text.len() as u64);
+                        match parse_ws_text_frame(&text) {
+                            WsTextFrame::Pong => {
+                                telemetry_update_ws_latency_from_ping_start();
+                            }
+                            WsTextFrame::Data { channel, data } => {
+                                let _ = msg_tx.send(WsRoutedMessage {
+                                    channel,
+                                    data: Arc::new(data),
+                                });
+                            }
+                            WsTextFrame::Ignored => {}
+                        }
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) | None => {
+                        disconnected = true;
+                    }
+                },
+            }
+        }
+
+        telemetry_on_disconnect();
+        let (delay_secs, next_delay_secs) =
+            reconnect_delay_after_disconnect(reconnect_delay_secs, connected_at.elapsed());
+        tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+        reconnect_delay_secs = next_delay_secs;
+    }
+}
+
+pub(crate) struct SubscriptionGuard {
+    pub(crate) cmd_tx: mpsc::UnboundedSender<WsCommand>,
+    pub(crate) topics: Vec<String>,
+}
+
+impl Drop for SubscriptionGuard {
+    fn drop(&mut self) {
+        for topic in &self.topics {
+            let _ = self.cmd_tx.send(WsCommand::Unsubscribe {
+                topic: topic.clone(),
+            });
+        }
+    }
+}

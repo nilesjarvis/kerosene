@@ -1,0 +1,60 @@
+[package]
+name = "kerosene"
+version = "0.1.0"
+edition = "2024"
+description = "Hyperliquid Trading Terminal"
+license = "MIT"
+authors = ["Kerosene Contributors"]
+
+[package.metadata.deb]
+maintainer = "Kerosene Contributors"
+copyright = "2026 Kerosene Contributors"
+section = "finance"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/kerosene", "usr/bin/", "755"],
+    ["assets/kerosene.desktop", "usr/share/applications/", "644"],
+    ["assets/kerosene.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["assets/kerosene.svg", "usr/share/icons/hicolor/scalable/apps/", "644"],
+]
+
+[dependencies]
+iced = { version = "0.14", features = ["default", "tokio", "canvas", "svg"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio-tungstenite = { version = "0.26", features = ["connect", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["time"] }
+futures = "0.3"
+# Signing / order placement
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha3 = "0.10"
+rmp-serde = "1"
+hex = "0.4"
+# Config persistence
+dirs = "6"
+argon2 = "0.5"
+base64 = "0.22"
+chacha20poly1305 = "0.10"
+zeroize = { version = "1", features = ["serde"] }
+# Notifications
+rodio = { version = "0.20", default-features = false, features = ["wav"] }
+notify-rust = "4"
+chrono = "0.4"
+chrono-tz = "0.10"
+rust-embed = "8.11.0"
+rfd = "0.17.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
+
+[target.'cfg(any(target_os = "freebsd", target_os = "openbsd"))'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }

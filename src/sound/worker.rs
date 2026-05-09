@@ -1,0 +1,74 @@
+use super::spec::{SAMPLE_RATE, sound_spec};
+use super::synthesis::generate_samples;
+use super::{SoundKind, report_sound_status};
+
+use rodio::buffer::SamplesBuffer;
+use std::collections::HashMap;
+use std::process::Command;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+const MIN_EVENT_SPACING: Duration = Duration::from_millis(80);
+
+pub(super) fn run_audio_worker(rx: mpsc::Receiver<SoundKind>) {
+    let stream = rodio::OutputStream::try_default();
+    let Ok((_stream, handle)) = stream else {
+        report_sound_status(
+            "Audio output unavailable; using system notification sound fallback",
+            false,
+        );
+        run_external_fallback_worker(rx);
+        return;
+    };
+
+    let mut last_played_by_kind: HashMap<SoundKind, Instant> = HashMap::new();
+    for kind in rx {
+        if is_rate_limited(kind, &mut last_played_by_kind) {
+            continue;
+        }
+
+        let spec = sound_spec(kind);
+        let samples = generate_samples(&spec);
+        let source = SamplesBuffer::new(1, SAMPLE_RATE, samples);
+        if let Err(e) = handle.play_raw(source) {
+            report_sound_status(
+                format!("Audio playback failed: {e}; using system notification sound fallback"),
+                true,
+            );
+            if !try_external_sound(spec.fallback_event) {
+                report_sound_status("System notification sound fallback failed", true);
+            }
+        }
+    }
+}
+
+fn run_external_fallback_worker(rx: mpsc::Receiver<SoundKind>) {
+    let mut last_played_by_kind: HashMap<SoundKind, Instant> = HashMap::new();
+    for kind in rx {
+        if is_rate_limited(kind, &mut last_played_by_kind) {
+            continue;
+        }
+        if !try_external_sound(sound_spec(kind).fallback_event) {
+            report_sound_status("System notification sound fallback failed", true);
+        }
+    }
+}
+
+fn is_rate_limited(kind: SoundKind, last_played_by_kind: &mut HashMap<SoundKind, Instant>) -> bool {
+    let now = Instant::now();
+    if let Some(last) = last_played_by_kind.get(&kind)
+        && now.duration_since(*last) < MIN_EVENT_SPACING
+    {
+        return true;
+    }
+    last_played_by_kind.insert(kind, now);
+    false
+}
+
+pub(super) fn try_external_sound(event_id: &str) -> bool {
+    Command::new("canberra-gtk-play")
+        .arg("-i")
+        .arg(event_id)
+        .spawn()
+        .is_ok()
+}

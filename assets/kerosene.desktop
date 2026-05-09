@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Kerosene
+Comment=Hyperliquid Trading Terminal
+Exec=kerosene
+Icon=kerosene
+Type=Application
+Categories=Finance;Office;
+Terminal=false
+StartupWMClass=kerosene

@@ -1,0 +1,91 @@
+use crate::app_state::TradingTerminal;
+use crate::message::Message;
+
+use iced::Task;
+
+mod chase;
+mod form;
+mod move_order;
+mod nuke;
+mod presets;
+mod quick_order;
+mod results;
+
+pub(crate) use nuke::nuke_confirmation_is_armed;
+
+impl TradingTerminal {
+    pub(crate) fn update_order(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::OrderPriceChanged(value) => self.handle_order_price_changed(value),
+            Message::SetMidPrice => self.handle_set_mid_price(),
+            Message::OrderQuantityChanged(value) => self.handle_order_quantity_changed(value),
+            Message::ToggleOrderDenomination => self.handle_toggle_order_denomination(),
+            Message::OrderPercentageChanged(value) => self.handle_order_percentage_changed(value),
+            Message::SetOrderKind(kind) => self.handle_set_order_kind(kind),
+            Message::ToggleReduceOnly => self.handle_toggle_reduce_only(),
+            Message::TogglePresetsMenu => self.handle_toggle_presets_menu(),
+            Message::TogglePresetCurrency => self.handle_toggle_preset_currency(),
+            Message::TogglePresetEditMode => self.handle_toggle_preset_edit_mode(),
+            Message::EditPresetStart(kind, idx, current_size_str) => {
+                self.handle_edit_preset_start(kind, idx, current_size_str)
+            }
+            Message::EditPresetChanged(new_text) => self.handle_edit_preset_changed(new_text),
+            Message::EditPresetSave(kind, idx) => self.handle_edit_preset_save(kind, idx),
+            Message::ExecutePreset(kind, preset, is_buy) => {
+                return self.handle_execute_preset(kind, preset, is_buy);
+            }
+            Message::DismissOrderStatus => self.handle_dismiss_order_status(),
+            Message::PlaceBuy | Message::PlaceSell => {
+                let is_buy = matches!(message, Message::PlaceBuy);
+                return self.execute_order(is_buy);
+            }
+            Message::OrderResult(result) => return self.handle_order_result(*result),
+            Message::CancelOrder { coin, oid } => return self.execute_cancel(&coin, oid),
+            Message::CancelResult(result) => return self.handle_cancel_result(*result),
+            Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin),
+            Message::ClosePosition {
+                coin,
+                fraction,
+                use_market,
+            } => {
+                self.close_menu_coin = None;
+                return self.execute_close_position(&coin, fraction, use_market);
+            }
+            Message::ClosePositionResult(result) => {
+                return self.handle_close_position_result(*result);
+            }
+            Message::NukePositions => return self.handle_nuke_positions(),
+            Message::NukeResult(result) => return self.handle_nuke_result(*result),
+            Message::StartChase(is_buy) => return self.start_chase(is_buy),
+            Message::StopChase => return self.stop_chase(),
+            Message::ChasePlaceResult(result) => return self.handle_chase_place_result(*result),
+            Message::ChaseCancelResult(result) => return self.handle_chase_cancel_result(*result),
+            Message::OpenQuickOrder(chart_id, price, click_x, click_y, chart_w, chart_h) => {
+                return self
+                    .handle_open_quick_order(chart_id, price, click_x, click_y, chart_w, chart_h);
+            }
+            Message::QuickOrderQtyChanged(id, qty) => self.handle_quick_order_qty_changed(id, qty),
+            Message::QuickOrderToggleType(id) => self.handle_quick_order_toggle_type(id),
+            Message::CloseQuickOrder(id) => self.handle_close_quick_order(id),
+            Message::SubmitQuickOrder(chart_id, is_buy) => {
+                return self.handle_submit_quick_order(chart_id, is_buy);
+            }
+            Message::QuickOrderResult(result) => return self.handle_quick_order_result(*result),
+            Message::EscapePressed => self.clear_transient_order_ui(),
+            Message::MoveOrder { oid, new_price } => return self.handle_move_order(oid, new_price),
+            Message::MoveOrderModifyResult { oid, result } => {
+                return self.handle_move_order_modify_result(oid, *result);
+            }
+            Message::ChaseRestingOrder {
+                coin,
+                oid,
+                is_buy,
+                sz,
+                limit_px,
+            } => return self.handle_chase_resting_order(coin, oid, is_buy, sz, limit_px),
+            _ => {}
+        }
+
+        Task::none()
+    }
+}
