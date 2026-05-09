@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Kerosene"
+    Manufacturer="Kerosene Contributors"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="{D49829A2-7724-4F8D-96FD-764D3C1E6001}"
+    Scope="perMachine"
+    Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Kerosene is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="KeroseneIcon.ico" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="KeroseneIcon.ico" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Kerosene" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Kerosene" />
+    </StandardDirectory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="KeroseneExecutable" Guid="{86599D7C-5353-4BF6-B508-B684E54A82D4}">
+        <File Id="KeroseneExe" Source="$(var.SourceDir)\kerosene.exe" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="{F0105256-1C03-4757-A3B1-F9F03AB97E2E}">
+        <Shortcut
+          Id="KeroseneStartMenuShortcut"
+          Name="Kerosene"
+          Description="Hyperliquid Trading Terminal"
+          Target="[INSTALLFOLDER]kerosene.exe"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="KeroseneIcon.ico" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\Kerosene\Kerosene"
+          Name="installed"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="MainFeature" Title="Kerosene" Level="1">
+      <ComponentRef Id="KeroseneExecutable" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+  </Package>
+</Wix>

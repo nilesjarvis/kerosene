@@ -140,13 +140,12 @@ A timeout after the window starts is acceptable; a panic is not.
 A convenience script handles the packaging workflow:
 
 ```sh
-# Build .deb, .AppImage, and Windows .exe where toolchains are available
+# Build .deb and .AppImage where toolchains are available
 ./scripts/package.sh all
 
 # Or build individually
 ./scripts/package.sh deb
 ./scripts/package.sh appimage
-./scripts/package.sh exe
 ```
 
 The script builds the release binary if needed, installs missing Rust packaging tools such as `cargo-deb`, and places output files in `target/`.
@@ -173,6 +172,16 @@ chmod +x target/Kerosene-*-*.AppImage
 ### Manual packaging
 
 If you prefer not to use the script, inspect `scripts/package.sh` for the exact commands. It calls `cargo-deb` and `appimagetool` for Linux packaging.
+
+## Package for Windows
+
+Windows production builds use the MSVC target and emit a portable zip plus an MSI installer:
+
+```powershell
+pwsh ./scripts/package-windows.ps1
+```
+
+Release builds must be Authenticode-signed. The packaging script signs artifacts when `WINDOWS_SIGNING_CERT_PFX_BASE64` and `WINDOWS_SIGNING_CERT_PASSWORD` are set, and fails unsigned release builds when invoked with `-Release`.
 
 ## Config
 

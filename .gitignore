@@ -1,7 +1,6 @@
 /target/
 /.hermes/
 /.opencode/
-/.github/
 
 # OS/editor noise
 .DS_Store

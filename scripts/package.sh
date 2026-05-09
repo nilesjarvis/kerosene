@@ -29,21 +29,23 @@ check_free_space() {
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [deb|appimage|exe|all]
+Usage: $(basename "$0") [deb|appimage|all]
 
 Build distributable packages for Kerosene.
 
 Commands:
   deb        Build a .deb package (requires cargo-deb)
   appimage   Build an .AppImage (requires appimagetool)
-  exe        Build a Windows .exe (requires mingw-w64)
-  all        Build .deb, .AppImage, and .exe (default)
+  all        Build .deb and .AppImage (default)
 
 Options:
   -h, --help   Show this help message
 
 The release binary is built automatically if not already present.
 Output files are placed in target/.
+
+Windows release artifacts are built on Windows/MSVC with:
+  pwsh ./scripts/package-windows.ps1
 EOF
     exit 0
 }
@@ -149,55 +151,13 @@ APPRUN
 }
 
 # -----------------------------------------------------------------------
-# Windows .exe
-# -----------------------------------------------------------------------
-build_exe() {
-    bold "=== Building Windows .exe ==="
-
-    local target="x86_64-pc-windows-gnu"
-    local target_dir="$ROOT/target/$target/release"
-    local binary_path="$target_dir/kerosene.exe"
-    local output="$ROOT/target/Kerosene-${VERSION}-x86_64-windows.exe"
-
-    if ! command -v rustup &>/dev/null; then
-        error "rustup is required to add the Windows target"
-        return 1
-    fi
-
-    check_free_space "$ROOT" 4096
-
-    if ! rustup target list --installed | grep -q "^${target}$"; then
-        info "Installing Rust target ${target}..."
-        rustup target add "$target"
-    fi
-
-    if ! command -v x86_64-w64-mingw32-gcc &>/dev/null; then
-        error "Missing linker: x86_64-w64-mingw32-gcc"
-        error "Install mingw-w64 (example: 'sudo apt install mingw-w64')"
-        return 1
-    fi
-
-    info "Building Windows release binary..."
-    cargo build --release --target "$target" --manifest-path "$ROOT/Cargo.toml"
-
-    if [ ! -f "$binary_path" ]; then
-        error "Failed to build Windows binary at $binary_path"
-        return 1
-    fi
-
-    cp "$binary_path" "$output"
-    info "Done: $output ($(du -h "$output" | cut -f1))"
-}
-
-# -----------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------
-case "${1:---help}" in
+case "${1:-all}" in
     -h|--help) usage ;;
     deb)       build_deb ;;
     appimage)  build_appimage ;;
-    exe)       build_exe ;;
-    all)       build_deb; build_appimage; build_exe ;;
+    all)       build_deb; build_appimage ;;
     *)
         error "Unknown command: $1"
         usage

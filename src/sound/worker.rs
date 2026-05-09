@@ -4,9 +4,13 @@ use super::{SoundKind, report_sound_status};
 
 use rodio::buffer::SamplesBuffer;
 use std::collections::HashMap;
+#[cfg(not(target_os = "windows"))]
 use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
+
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ALIAS, SND_ASYNC};
 
 const MIN_EVENT_SPACING: Duration = Duration::from_millis(80);
 
@@ -65,10 +69,30 @@ fn is_rate_limited(kind: SoundKind, last_played_by_kind: &mut HashMap<SoundKind,
     false
 }
 
+#[cfg(not(target_os = "windows"))]
 pub(super) fn try_external_sound(event_id: &str) -> bool {
     Command::new("canberra-gtk-play")
         .arg("-i")
         .arg(event_id)
         .spawn()
         .is_ok()
+}
+
+#[cfg(target_os = "windows")]
+pub(super) fn try_external_sound(event_id: &str) -> bool {
+    let alias = match event_id {
+        "complete" => "SystemAsterisk",
+        "dialog-error" => "SystemHand",
+        "message-new-instant" => "SystemNotification",
+        _ => "SystemDefault",
+    };
+    let wide_alias: Vec<u16> = alias.encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe {
+        PlaySoundW(
+            wide_alias.as_ptr(),
+            std::ptr::null_mut(),
+            SND_ALIAS | SND_ASYNC,
+        ) != 0
+    }
 }

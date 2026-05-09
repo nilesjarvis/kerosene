@@ -6,6 +6,13 @@ description = "Hyperliquid Trading Terminal"
 license = "MIT"
 authors = ["Kerosene Contributors"]
 
+[package.metadata.winresource]
+OriginalFilename = "kerosene.exe"
+FileDescription = "Kerosene Trading Terminal"
+ProductName = "Kerosene"
+CompanyName = "Kerosene Contributors"
+LegalCopyright = "Copyright 2026 Kerosene Contributors"
+
 [package.metadata.deb]
 maintainer = "Kerosene Contributors"
 copyright = "2026 Kerosene Contributors"
@@ -58,3 +65,7 @@ keyring = { version = "3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
+windows-sys = { version = "0.61", features = ["Win32_Media_Audio"] }
+
+[build-dependencies]
+winresource = { version = "0.1", default-features = false }
