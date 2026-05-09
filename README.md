@@ -4,6 +4,32 @@ Kerosene is a GPU-accelerated desktop trading terminal for [Hyperliquid](https:/
 
 > **Risk notice:** Kerosene is trading software. Use it at your own risk, test with small order sizes first, and verify behavior before relying on it with real funds. Nothing in this project is financial advice.
 
+## Preview
+
+<p align="center">
+  <img src="assets/screenshots/live%20watchlists.png" alt="Kerosene trading terminal with charts, live watchlists, order book, positions, and order entry panes" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <img src="assets/screenshots/comparison%20chart.png" alt="Comparison chart view with multiple assets plotted together">
+      <br>
+      <sub><strong>Compare markets.</strong> Overlay assets and keep related charts, books, and positions visible in one workspace.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <img src="assets/screenshots/add%20widget.png" alt="Add widget menu for customizing the trading workspace">
+      <br>
+      <sub><strong>Build the layout.</strong> Add charts, order books, watchlists, tools, and account panes as your workflow changes.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <img src="assets/screenshots/theme%20selector.png" alt="Theme selector showing bundled and custom Kerosene themes">
+      <br>
+      <sub><strong>Make it yours.</strong> Switch between bundled themes or keep custom palettes for different desks and sessions.</sub>
+    </td>
+  </tr>
+</table>
+
 ## Features
 
 **Market Data**
