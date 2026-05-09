@@ -17,7 +17,7 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         match kind {
             PaneKind::AccountSummary => self.view_account_summary(),
-            PaneKind::Chart(id) => self.view_chart(*id, pane, chart_count),
+            PaneKind::Chart(id) => self.view_chart(*id, chart_count),
             PaneKind::OrderBook(id) => self.view_order_book(*id),
             PaneKind::LiveWatchlist(id) => self.view_live_watchlist(*id),
             PaneKind::Watchlist => self.view_watchlist(),

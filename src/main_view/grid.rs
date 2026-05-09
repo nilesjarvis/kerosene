@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::pane_title;
 use crate::message::Message;
+use crate::pane_state::PaneKind;
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, pane_grid, row, text};
 use iced::{Element, Fill, Theme};
@@ -13,7 +14,14 @@ impl TradingTerminal {
         let pane_grid_widget = pane_grid(&self.panes, |pane, kind, _is_maximized| {
             let content = self.view_pane_content(pane, kind, chart_count);
             let close_btn = pane_close_button(pane, pane_count);
-            let controls = pane_grid::Controls::new(row![close_btn]);
+            let controls_row = if matches!(kind, PaneKind::Chart(_)) {
+                row![self.view_chart_add_button(pane), close_btn]
+            } else {
+                row![close_btn]
+            }
+            .spacing(4)
+            .align_y(iced::Alignment::Center);
+            let controls = pane_grid::Controls::new(controls_row);
 
             let title_bar = pane_grid::TitleBar::new(
                 text(pane_title(kind))

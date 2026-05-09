@@ -7,14 +7,13 @@ use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::ChartId;
 use crate::message::Message;
-use iced::widget::{button, canvas, column, container, pane_grid, stack, text};
+use iced::widget::{button, canvas, column, container, stack, text};
 use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_chart(
         &self,
         chart_id: ChartId,
-        pane: pane_grid::Pane,
         _chart_count: usize,
     ) -> Element<'_, Message> {
         let theme = self.theme();
@@ -114,7 +113,7 @@ impl TradingTerminal {
         // Always use the same 4-element column structure so the canvas
         // stays at the same widget tree position (preserving ChartState).
         {
-            let header = self.view_chart_header(chart_id, pane, instance);
+            let header = self.view_chart_header(chart_id, instance);
             let toolbar = self.view_chart_toolbar(chart_id, instance);
 
             let chart_canvas = canvas(&instance.chart).width(Fill).height(Fill);

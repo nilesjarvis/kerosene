@@ -92,7 +92,7 @@ pub(super) fn push_market_overlay_buttons<'a>(
     chart_id: ChartId,
     instance: &ChartInstance,
     is_perp_chart: bool,
-    theme: &Theme,
+    heatmap_spinner: Option<Element<'a, Message>>,
 ) -> Row<'a, Message> {
     if !is_perp_chart {
         return toolbar;
@@ -111,15 +111,8 @@ pub(super) fn push_market_overlay_buttons<'a>(
             Message::ToggleHeatmapOverlay(chart_id),
         ));
 
-    if instance.show_heatmap
-        && let Some((status, is_error)) = &instance.heatmap_status
-    {
-        let status_color = if *is_error {
-            theme.palette().danger
-        } else {
-            theme.extended_palette().background.weak.text
-        };
-        toolbar = toolbar.push(heatmap_status_label(status.clone(), status_color));
+    if let Some(spinner) = heatmap_spinner {
+        toolbar = toolbar.push(spinner);
     }
 
     toolbar
@@ -147,12 +140,4 @@ fn drawing_tool_button(
             },
         ),
     )
-}
-
-fn heatmap_status_label(status: String, color: Color) -> Element<'static, Message> {
-    text(status)
-        .size(10)
-        .font(iced::Font::MONOSPACE)
-        .color(color)
-        .into()
 }

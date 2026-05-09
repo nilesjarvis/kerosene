@@ -6,14 +6,13 @@ use self::metrics::push_asset_context_columns;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::message::Message;
-use iced::widget::{Space, column, pane_grid, row, text};
+use iced::widget::{Space, column, row, text};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
     pub(crate) fn view_chart_header<'a>(
         &'a self,
         chart_id: ChartId,
-        pane: pane_grid::Pane,
         instance: &'a ChartInstance,
     ) -> Element<'a, Message> {
         let theme = self.theme();
@@ -40,8 +39,6 @@ impl TradingTerminal {
 
         let sym_btn =
             self.view_chart_symbol_button(chart_id, instance, last.close, change_color, &theme);
-        let ma_btn = self.view_chart_indicator_button(chart_id, instance.macro_menu_open, &theme);
-        let add_btn = self.view_chart_add_button(pane);
 
         let chg_val = text(format!("{change:+.2} ({change_pct:+.2}%)"))
             .size(12)
@@ -63,10 +60,7 @@ impl TradingTerminal {
             header_row = push_asset_context_columns(header_row, &theme, ctx);
         }
 
-        header_row = header_row
-            .push(Space::new().width(Fill))
-            .push(ma_btn)
-            .push(add_btn);
+        header_row = header_row.push(Space::new().width(Fill));
 
         header_row.into()
     }

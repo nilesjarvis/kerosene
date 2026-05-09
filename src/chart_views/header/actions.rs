@@ -5,7 +5,7 @@ use iced::widget::{button, pane_grid, text};
 use iced::{Element, Theme};
 
 impl TradingTerminal {
-    pub(super) fn view_chart_indicator_button(
+    pub(crate) fn view_chart_indicator_button(
         &self,
         chart_id: ChartId,
         macro_menu_open: bool,
@@ -17,9 +17,9 @@ impl TradingTerminal {
             theme.palette().text
         };
 
-        button(text("Indicators").size(11).color(text_color))
+        button(text("IND").size(11).color(text_color))
             .on_press(Message::ToggleMacroMenu(chart_id))
-            .padding([6, 8])
+            .padding([2, 8])
             .style(|theme: &Theme, status| {
                 let bg = match status {
                     button::Status::Hovered => theme.extended_palette().background.strong.color,
@@ -38,10 +38,10 @@ impl TradingTerminal {
             .into()
     }
 
-    pub(super) fn view_chart_add_button(&self, pane: pane_grid::Pane) -> Element<'static, Message> {
+    pub(crate) fn view_chart_add_button(&self, pane: pane_grid::Pane) -> Element<'static, Message> {
         button(text("+").size(11).center())
             .on_press(Message::AddChart(pane))
-            .padding([6, 8])
+            .padding([2, 6])
             .style(|theme: &Theme, status| {
                 let bg = match status {
                     button::Status::Hovered => theme.extended_palette().background.strong.color,
