@@ -15,20 +15,29 @@ use iced::widget::pane_grid;
 impl TradingTerminal {
     pub(crate) fn pane_layout_to_configuration(
         layout: &PaneLayoutConfig,
-    ) -> pane_grid::Configuration<PaneKind> {
+    ) -> Option<pane_grid::Configuration<PaneKind>> {
         match layout {
             PaneLayoutConfig::Leaf(kind) => {
-                pane_grid::Configuration::Pane(pane_kind_from_config(kind))
+                pane_kind_from_config(kind).map(pane_grid::Configuration::Pane)
             }
-            PaneLayoutConfig::Split { axis, ratio, a, b } => pane_grid::Configuration::Split {
-                axis: match axis {
-                    AxisConfig::Horizontal => pane_grid::Axis::Horizontal,
-                    AxisConfig::Vertical => pane_grid::Axis::Vertical,
-                },
-                ratio: *ratio,
-                a: Box::new(Self::pane_layout_to_configuration(a)),
-                b: Box::new(Self::pane_layout_to_configuration(b)),
-            },
+            PaneLayoutConfig::Split { axis, ratio, a, b } => {
+                match (
+                    Self::pane_layout_to_configuration(a),
+                    Self::pane_layout_to_configuration(b),
+                ) {
+                    (Some(a), Some(b)) => Some(pane_grid::Configuration::Split {
+                        axis: match axis {
+                            AxisConfig::Horizontal => pane_grid::Axis::Horizontal,
+                            AxisConfig::Vertical => pane_grid::Axis::Vertical,
+                        },
+                        ratio: *ratio,
+                        a: Box::new(a),
+                        b: Box::new(b),
+                    }),
+                    (Some(remaining), None) | (None, Some(remaining)) => Some(remaining),
+                    (None, None) => None,
+                }
+            }
         }
     }
 
@@ -96,5 +105,38 @@ impl TradingTerminal {
         let mut ratios = Vec::new();
         walk(self.panes.layout(), &mut ratios);
         ratios
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AxisConfig, PaneKindConfig, PaneLayoutConfig};
+
+    #[test]
+    fn pane_layout_conversion_prunes_unsupported_sibling() {
+        let layout = PaneLayoutConfig::Split {
+            axis: AxisConfig::Vertical,
+            ratio: 0.4,
+            a: Box::new(PaneLayoutConfig::Leaf(PaneKindConfig::Chart {
+                chart_id: 42,
+            })),
+            b: Box::new(PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported)),
+        };
+
+        let config = TradingTerminal::pane_layout_to_configuration(&layout)
+            .expect("supported sibling should remain");
+
+        assert!(matches!(
+            config,
+            pane_grid::Configuration::Pane(PaneKind::Chart(42))
+        ));
+    }
+
+    #[test]
+    fn pane_layout_conversion_drops_unsupported_only_layout() {
+        let layout = PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported);
+
+        assert!(TradingTerminal::pane_layout_to_configuration(&layout).is_none());
     }
 }

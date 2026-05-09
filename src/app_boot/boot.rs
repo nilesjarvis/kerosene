@@ -65,7 +65,7 @@ impl TradingTerminal {
         let pane_config = cfg
             .pane_layout
             .as_ref()
-            .map(Self::pane_layout_to_configuration)
+            .and_then(Self::pane_layout_to_configuration)
             .unwrap_or(default_pane_config);
 
         let boot_account = Self::boot_account_profile(&cfg);

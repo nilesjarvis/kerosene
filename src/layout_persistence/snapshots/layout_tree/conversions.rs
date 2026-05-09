@@ -36,7 +36,6 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
         PaneKind::Watchlist => PaneKindConfig::Watchlist,
         PaneKind::Portfolio => PaneKindConfig::Portfolio,
         PaneKind::Income => PaneKindConfig::Income,
-        PaneKind::Assistant => PaneKindConfig::Assistant,
         PaneKind::BottomTabs { active_tab } => PaneKindConfig::BottomTabs {
             active_tab: bottom_tab_to_config(*active_tab),
         },
@@ -50,26 +49,28 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
     }
 }
 
-pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> PaneKind {
+pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
     match kind {
-        PaneKindConfig::AccountSummary => PaneKind::AccountSummary,
-        PaneKindConfig::Chart { chart_id } => PaneKind::Chart(*chart_id),
-        PaneKindConfig::OrderBook { id } => PaneKind::OrderBook(*id),
-        PaneKindConfig::LiveWatchlist { id } => PaneKind::LiveWatchlist(*id),
+        PaneKindConfig::AccountSummary => Some(PaneKind::AccountSummary),
+        PaneKindConfig::Chart { chart_id } => Some(PaneKind::Chart(*chart_id)),
+        PaneKindConfig::OrderBook { id } => Some(PaneKind::OrderBook(*id)),
+        PaneKindConfig::LiveWatchlist { id } => Some(PaneKind::LiveWatchlist(*id)),
 
-        PaneKindConfig::Watchlist => PaneKind::Watchlist,
-        PaneKindConfig::Portfolio => PaneKind::Portfolio,
-        PaneKindConfig::Income => PaneKind::Income,
-        PaneKindConfig::Assistant => PaneKind::Assistant,
-        PaneKindConfig::Settings => PaneKind::Settings,
-        PaneKindConfig::BottomTabs { active_tab } => PaneKind::BottomTabs {
+        PaneKindConfig::Watchlist => Some(PaneKind::Watchlist),
+        PaneKindConfig::Portfolio => Some(PaneKind::Portfolio),
+        PaneKindConfig::Income => Some(PaneKind::Income),
+        PaneKindConfig::Settings => Some(PaneKind::Settings),
+        PaneKindConfig::BottomTabs { active_tab } => Some(PaneKind::BottomTabs {
             active_tab: bottom_tab_from_config(*active_tab),
-        },
-        PaneKindConfig::OrderEntry => PaneKind::OrderEntry,
-        PaneKindConfig::SpaghettiChart { spaghetti_id } => PaneKind::SpaghettiChart(*spaghetti_id),
-        PaneKindConfig::Calendar => PaneKind::Calendar,
-        PaneKindConfig::Liquidations => PaneKind::Liquidations,
-        PaneKindConfig::TrackedTrades => PaneKind::TrackedTrades,
-        PaneKindConfig::Outcomes => PaneKind::Outcomes,
+        }),
+        PaneKindConfig::OrderEntry => Some(PaneKind::OrderEntry),
+        PaneKindConfig::SpaghettiChart { spaghetti_id } => {
+            Some(PaneKind::SpaghettiChart(*spaghetti_id))
+        }
+        PaneKindConfig::Calendar => Some(PaneKind::Calendar),
+        PaneKindConfig::Liquidations => Some(PaneKind::Liquidations),
+        PaneKindConfig::TrackedTrades => Some(PaneKind::TrackedTrades),
+        PaneKindConfig::Outcomes => Some(PaneKind::Outcomes),
+        PaneKindConfig::Unsupported => None,
     }
 }

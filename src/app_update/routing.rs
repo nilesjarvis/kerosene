@@ -8,7 +8,6 @@ use crate::message::Message;
 pub(super) enum UpdateRoute {
     Account,
     Annotations,
-    Assistant,
     Calendar,
     Chart,
     Chrome,
@@ -55,7 +54,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddPortfolioPane
         | Message::AddIncomePane
         | Message::AddTradingJournal
-        | Message::AddAssistantPane
         | Message::AddCalendarPane
         | Message::AddLiquidationsPane
         | Message::AddTrackedTradesPane
@@ -196,10 +194,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalRefresh => UpdateRoute::Journal,
 
         Message::AddComparisonChart
-        | Message::AddPairTradeChart
+        | Message::AddPairRatioChart
         | Message::SpaghettiReload(_)
         | Message::SpaghettiSwitchTimeframe(_, _)
-        | Message::SpaghettiCandlesLoaded(_, _, _)
+        | Message::SpaghettiCandlesLoaded(_, _)
         | Message::SpaghettiWsCandleUpdate(_, _, _)
         | Message::SpaghettiOpenEditor(_)
         | Message::SpaghettiCloseEditor(_)
@@ -209,10 +207,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SpaghettiSetSession(_, _)
         | Message::SpaghettiSetSessionGranularityAuto(_)
         | Message::SpaghettiResetView(_)
-        | Message::PairNotionalChanged(_, _)
-        | Message::PairSetCandleMode(_, _)
-        | Message::PairExecute(_, _)
-        | Message::PairExecutionDone(_, _) => UpdateRoute::Spaghetti,
+        | Message::PairSetCandleMode(_, _) => UpdateRoute::Spaghetti,
 
         Message::OpenWalletTrackerWindow
         | Message::OpenWalletDetailsWindow(_)
@@ -238,19 +233,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::IncomeLoaded(_, _)
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,
-
-        Message::AssistantModelsRefresh
-        | Message::AssistantModelsLoaded(_)
-        | Message::AssistantModelSelected(_)
-        | Message::AssistantInputChanged(_)
-        | Message::AssistantInsertTicker(_)
-        | Message::AssistantSend
-        | Message::AssistantPlanLoaded(_)
-        | Message::AssistantExecuteLoaded(_)
-        | Message::AssistantCopyText(_)
-        | Message::AssistantToggleAccountContext(_)
-        | Message::AssistantToggleCodeExecution(_)
-        | Message::AssistantClearChat => UpdateRoute::Assistant,
 
         Message::SetDrawingTool(_, _)
         | Message::AddAnnotation(_)

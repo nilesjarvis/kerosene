@@ -23,7 +23,6 @@ impl TradingTerminal {
             PaneKind::Watchlist => self.view_watchlist(),
             PaneKind::Portfolio => self.view_portfolio(),
             PaneKind::Income => self.view_income(),
-            PaneKind::Assistant => self.view_assistant(),
             PaneKind::BottomTabs { active_tab } => self.view_bottom_tabs(*active_tab),
             PaneKind::OrderEntry => self.view_order_entry(),
             PaneKind::SpaghettiChart(id) => self.view_spaghetti_chart(*id, pane),

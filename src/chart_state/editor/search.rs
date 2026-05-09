@@ -8,15 +8,6 @@ mod tests;
 // Chart Editor Search
 // ---------------------------------------------------------------------------
 
-pub(super) fn assistant_symbol_query(input: &str) -> Option<(usize, String)> {
-    let start = input.rfind("${")?;
-    let fragment = &input[start + 2..];
-    if fragment.contains('}') {
-        return None;
-    }
-    Some((start, fragment.trim().to_lowercase()))
-}
-
 pub(super) fn chart_editor_symbol_matches(symbol: &ExchangeSymbol, query: &str) -> bool {
     query.is_empty()
         || symbol.ticker.to_lowercase().contains(query)

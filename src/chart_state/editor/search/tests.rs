@@ -26,16 +26,6 @@ fn symbol(
 }
 
 #[test]
-fn assistant_symbol_query_uses_last_open_fragment() {
-    assert_eq!(
-        assistant_symbol_query("compare ${btc} and ${ ETH "),
-        Some((19, "eth".to_string()))
-    );
-    assert_eq!(assistant_symbol_query("compare ${BTC}"), None);
-    assert_eq!(assistant_symbol_query("no token"), None);
-}
-
-#[test]
 fn symbol_match_checks_ticker_category_display_keywords_and_key() {
     let btc = symbol(
         "xyz:NVDA",

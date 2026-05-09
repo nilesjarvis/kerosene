@@ -1,7 +1,7 @@
 use crate::config::themes::{default_custom_themes, is_known_default_hyperliquid_theme};
 use crate::config::{
     AccountProfile, KeroseneConfig, default_layout_ratios, default_market_slippage_pct,
-    new_secret_id, normalize_market_slippage_pct,
+    new_secret_id, normalize_market_slippage_pct, prune_unsupported_pane_layout,
 };
 use zeroize::Zeroize;
 
@@ -12,10 +12,25 @@ use zeroize::Zeroize;
 pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     merge_default_themes(config);
     ensure_layout_ratios(config);
+    prune_unsupported_pane_layouts(config);
     normalize_market_slippage(config);
     migrate_legacy_single_account(config);
     ensure_account_profile(config);
     clamp_active_account(config);
+}
+
+fn prune_unsupported_pane_layouts(config: &mut KeroseneConfig) {
+    config.pane_layout = config
+        .pane_layout
+        .take()
+        .and_then(prune_unsupported_pane_layout);
+
+    for layout in &mut config.saved_layouts {
+        layout.pane_layout = layout
+            .pane_layout
+            .take()
+            .and_then(prune_unsupported_pane_layout);
+    }
 }
 
 fn normalize_market_slippage(config: &mut KeroseneConfig) {
@@ -137,5 +152,39 @@ mod tests {
             config.saved_layouts[0].market_slippage_pct,
             default_market_slippage_pct()
         );
+    }
+
+    #[test]
+    fn prunes_unsupported_panes_from_loaded_layouts() {
+        let mut config = KeroseneConfig {
+            pane_layout: Some(crate::config::PaneLayoutConfig::Split {
+                axis: crate::config::AxisConfig::Vertical,
+                ratio: 0.5,
+                a: Box::new(crate::config::PaneLayoutConfig::Leaf(
+                    crate::config::PaneKindConfig::Chart { chart_id: 7 },
+                )),
+                b: Box::new(crate::config::PaneLayoutConfig::Leaf(
+                    crate::config::PaneKindConfig::Unsupported,
+                )),
+            }),
+            saved_layouts: vec![
+                serde_json::from_value(serde_json::json!({
+                    "name": "legacy-assistant-only",
+                    "pane_layout": { "Leaf": "Assistant" }
+                }))
+                .expect("legacy saved layout should deserialize"),
+            ],
+            ..KeroseneConfig::default()
+        };
+
+        normalize_loaded_config(&mut config);
+
+        assert_eq!(
+            config.pane_layout,
+            Some(crate::config::PaneLayoutConfig::Leaf(
+                crate::config::PaneKindConfig::Chart { chart_id: 7 }
+            ))
+        );
+        assert_eq!(config.saved_layouts[0].pane_layout, None);
     }
 }

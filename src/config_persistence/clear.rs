@@ -87,10 +87,6 @@ impl TradingTerminal {
         self.tracked_trade_alerts_enabled = defaults.tracked_trade_alerts_enabled;
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;
-        self.assistant.use_account_context = defaults.assistant_use_account_context;
-        self.assistant.allow_code_execution = defaults.assistant_allow_code_execution;
-        self.assistant.ollama_url = defaults.assistant_api_key;
-        self.assistant.selected_model = None;
         self.order_presets = defaults.order_presets;
         self.preset_is_usd = defaults.preset_is_usd;
         self.favourite_symbols.clear();

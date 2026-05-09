@@ -21,10 +21,6 @@ pub fn default_timeframe() -> String {
     "H1".to_string()
 }
 
-pub fn default_api_key() -> String {
-    "".to_string()
-}
-
 pub fn default_order_kind() -> String {
     "Limit".to_string()
 }
@@ -98,10 +94,6 @@ impl Default for KeroseneConfig {
             tracked_trade_alerts_enabled: false,
             tracked_trade_aggregation_enabled: false,
             liquidation_feed_aggregation_enabled: false,
-            assistant_api_key: default_api_key(),
-            assistant_model: String::new(),
-            assistant_use_account_context: true,
-            assistant_allow_code_execution: false,
             spaghetti_charts: Vec::new(),
             wallet_tracker: WalletTrackerConfig {
                 tracked_addresses: Vec::new(),

@@ -26,15 +26,4 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
             context.can_add_pane,
             theme,
         ))
-        .push(menu_item(
-            "AI Assistant",
-            if context.assistant_open {
-                "Open"
-            } else {
-                "Pane"
-            },
-            Some(Message::AddAssistantPane),
-            context.can_add_pane,
-            theme,
-        ))
 }

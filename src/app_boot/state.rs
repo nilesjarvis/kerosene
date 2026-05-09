@@ -1,6 +1,5 @@
 use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
-use crate::assistant::AssistantPaneState;
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::config::{self, KeroseneConfig};
@@ -46,7 +45,6 @@ impl TradingTerminal {
             .cloned()
             .collect();
         let live_watchlists = Self::boot_live_watchlists(cfg, &muted_tickers);
-        let assistant = boot_assistant_state(cfg);
 
         let mut state = Self {
             saved_layouts: cfg.saved_layouts.clone(),
@@ -196,7 +194,6 @@ impl TradingTerminal {
             address_book: parts.address_book,
             portfolio: PortfolioState::default(),
             income: IncomeState::default(),
-            assistant,
             settings_active_tab: SettingsTab::Themes,
             custom_themes: cfg.custom_themes.clone(),
             journal: journal::JournalState::new_for_account(
@@ -216,19 +213,5 @@ impl TradingTerminal {
         };
         state.refresh_live_watchlist_row_caches();
         state
-    }
-}
-
-fn boot_assistant_state(cfg: &KeroseneConfig) -> AssistantPaneState {
-    AssistantPaneState {
-        selected_model: if cfg.assistant_model.trim().is_empty() {
-            None
-        } else {
-            Some(cfg.assistant_model.trim().to_string())
-        },
-        use_account_context: cfg.assistant_use_account_context,
-        allow_code_execution: cfg.assistant_allow_code_execution,
-        ollama_url: cfg.assistant_api_key.trim().to_string(),
-        ..AssistantPaneState::default()
     }
 }

@@ -3,7 +3,6 @@ use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
 use crate::annotations::{Annotation, AnnotationId, DrawingTool};
 use crate::api::{self, Candle, ExchangeSymbol, OrderBook};
-use crate::assistant::{self, AssistantPlannedTurn};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
 use crate::chart_state::{CandleFetchRequest, ChartId, FundingFetchRequest};
@@ -20,7 +19,7 @@ use crate::portfolio_state::{PortfolioScope, PortfolioWindow};
 use crate::settings_state::SettingsTab;
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
-use crate::spaghetti_state::SpaghettiChartId;
+use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
 use crate::timeframe::Timeframe;
 use crate::ws::WsUserData;
 use iced::widget::pane_grid;
@@ -94,9 +93,8 @@ pub(crate) enum Message {
     CloseAllMenus,
     AddPortfolioPane,
     AddIncomePane,
-    AddAssistantPane,
     AddComparisonChart,
-    AddPairTradeChart,
+    AddPairRatioChart,
     OpenSettingsWindow,
     SettingsTabSelected(SettingsTab),
     OpenUnlockCredentialsPopup,
@@ -153,7 +151,7 @@ pub(crate) enum Message {
     // Spaghetti chart
     SpaghettiSwitchTimeframe(SpaghettiChartId, Timeframe),
     SpaghettiReload(SpaghettiChartId),
-    SpaghettiCandlesLoaded(SpaghettiChartId, String, Result<Vec<Candle>, String>),
+    SpaghettiCandlesLoaded(SpaghettiCandleFetch, Result<Vec<Candle>, String>),
     SpaghettiWsCandleUpdate(SpaghettiChartId, String, Candle),
     SpaghettiOpenEditor(SpaghettiChartId),
     SpaghettiCloseEditor(SpaghettiChartId),
@@ -163,10 +161,7 @@ pub(crate) enum Message {
     SpaghettiSetSession(SpaghettiChartId, Option<spaghetti::Session>),
     SpaghettiSetSessionGranularityAuto(SpaghettiChartId),
     SpaghettiResetView(SpaghettiChartId),
-    PairNotionalChanged(SpaghettiChartId, String),
     PairSetCandleMode(SpaghettiChartId, bool),
-    PairExecute(SpaghettiChartId, bool),
-    PairExecutionDone(SpaghettiChartId, Box<Result<String, String>>),
     WalletTrackerInputChanged(String),
     WalletTrackerLabelInputChanged(String),
     WalletTrackerAdd,
@@ -183,18 +178,6 @@ pub(crate) enum Message {
     PortfolioLoaded(String, Box<Result<PortfolioHistory, String>>),
     RefreshIncome,
     IncomeLoaded(String, Box<Result<IncomeSnapshot, String>>),
-    AssistantModelsRefresh,
-    AssistantModelsLoaded(Result<Vec<String>, String>),
-    AssistantModelSelected(String),
-    AssistantInputChanged(String),
-    AssistantInsertTicker(String),
-    AssistantSend,
-    AssistantPlanLoaded(Result<AssistantPlannedTurn, String>),
-    AssistantExecuteLoaded(Result<assistant::AssistantTurnResult, String>),
-    AssistantCopyText(String),
-    AssistantToggleAccountContext(bool),
-    AssistantToggleCodeExecution(bool),
-    AssistantClearChat,
     ToggleIncomeAlerts,
     ToggleLiquidationAlerts,
     ToggleTrackedTradeAlerts,

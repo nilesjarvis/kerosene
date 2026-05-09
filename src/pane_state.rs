@@ -13,7 +13,6 @@ pub(crate) enum PaneKind {
 
     Portfolio,
     Income,
-    Assistant,
     BottomTabs { active_tab: BottomTab },
     OrderEntry,
     SpaghettiChart(SpaghettiChartId),

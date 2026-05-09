@@ -4,9 +4,7 @@ mod liquidation_levels;
 mod models;
 
 pub use heatmap::{fetch_liquidation_heatmap, normalize_heatmap_time_range};
-pub use liquidation_levels::{
-    bucket_liquidations, fetch_liquidation_levels, fetch_liquidation_levels_at,
-};
+pub use liquidation_levels::{bucket_liquidations, fetch_liquidation_levels_at};
 pub use models::{
     HeatmapFetchParams, HeatmapRect, LiquidationBucket, LiquidationHeatmap, LiquidationLevel,
 };

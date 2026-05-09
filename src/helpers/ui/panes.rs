@@ -15,7 +15,6 @@ pub fn pane_title(kind: &PaneKind) -> String {
         PaneKind::Watchlist => "Symbol Search".to_string(),
         PaneKind::Portfolio => "Portfolio".to_string(),
         PaneKind::Income => "Income".to_string(),
-        PaneKind::Assistant => "AI Assistant".to_string(),
         PaneKind::BottomTabs { .. } => "Positions / History".to_string(),
         PaneKind::OrderEntry => "Order Entry".to_string(),
         PaneKind::SpaghettiChart(_) => "Comparison Chart".to_string(),

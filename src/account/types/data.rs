@@ -66,11 +66,6 @@ impl AccountData {
         }
     }
 
-    /// Total margin used from perp margin summary.
-    pub fn total_margin_used(&self) -> Option<f64> {
-        parse_account_number(&self.clearinghouse.margin_summary.total_margin_used)
-    }
-
     /// Withdrawable amount.
     pub fn withdrawable(&self) -> Option<f64> {
         parse_account_number(&self.clearinghouse.withdrawable)

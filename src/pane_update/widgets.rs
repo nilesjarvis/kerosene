@@ -1,7 +1,6 @@
 use crate::account::AccountData;
 use crate::account_analytics::{fetch_income_data, fetch_portfolio_history};
 use crate::app_state::TradingTerminal;
-use crate::assistant;
 use crate::message::Message;
 use crate::pane_management::AddPaneOutcome;
 use crate::pane_state::PaneKind;
@@ -77,22 +76,6 @@ impl TradingTerminal {
                     return Task::perform(fetch_income_data(addr.clone()), move |r| {
                         Message::IncomeLoaded(requested_addr.clone(), Box::new(r))
                     });
-                }
-            }
-            Message::AddAssistantPane => {
-                self.add_widget_menu_open = false;
-                let outcome = self.add_or_focus_singleton_pane(
-                    self.add_widget_axis(),
-                    PaneKind::Assistant,
-                    "AI Assistant",
-                    |kind| matches!(kind, PaneKind::Assistant),
-                );
-                if !matches!(outcome, AddPaneOutcome::Failed) && self.assistant.models.is_empty() {
-                    let url = self.assistant.ollama_url.clone();
-                    return Task::perform(
-                        async move { assistant::list_models(&url).await },
-                        Message::AssistantModelsLoaded,
-                    );
                 }
             }
             Message::AddCalendarPane => {

@@ -24,7 +24,6 @@ impl TradingTerminal {
             UpdateRoute::Spaghetti => self.update_spaghetti(message),
             UpdateRoute::WalletTracker => self.update_wallet_tracker(message),
             UpdateRoute::PortfolioIncome => self.update_portfolio_income(message),
-            UpdateRoute::Assistant => self.update_assistant(message),
             UpdateRoute::Annotations => self.update_annotations(message),
             UpdateRoute::Chart => self.update_chart(message),
             UpdateRoute::Account => self.update_account(message),

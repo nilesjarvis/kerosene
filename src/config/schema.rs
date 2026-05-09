@@ -19,10 +19,9 @@ pub use accounts::{AccountProfile, CredentialStorageMode};
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
 use defaults::default_true;
 pub use defaults::{
-    DEFAULT_MARKET_SLIPPAGE_PCT, default_api_key, default_layout_ratios,
-    default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
-    default_symbol, default_tick_size, default_timeframe, new_secret_id,
-    normalize_market_slippage_pct,
+    DEFAULT_MARKET_SLIPPAGE_PCT, default_layout_ratios, default_liquidation_alert_threshold,
+    default_market_slippage_pct, default_order_kind, default_symbol, default_tick_size,
+    default_timeframe, new_secret_id, normalize_market_slippage_pct,
 };
 
 // ---------------------------------------------------------------------------
@@ -128,18 +127,6 @@ pub struct KeroseneConfig {
     pub tracked_trade_aggregation_enabled: bool,
     #[serde(default)]
     pub liquidation_feed_aggregation_enabled: bool,
-    /// Ollama base URL for local AI assistant.
-    #[serde(default = "default_api_key")]
-    pub assistant_api_key: String,
-    /// Selected local model for AI assistant.
-    #[serde(default)]
-    pub assistant_model: String,
-    /// Include account context in assistant prompts.
-    #[serde(default = "default_true")]
-    pub assistant_use_account_context: bool,
-    /// Allow assistant code execution tooling (off by default).
-    #[serde(default)]
-    pub assistant_allow_code_execution: bool,
     /// Per-spaghetti (comparison) chart configurations.
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,

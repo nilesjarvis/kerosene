@@ -114,7 +114,6 @@ Optional integrations may require API keys:
 
 - Hydromancer: liquidation and tracked-trade streams
 - HyperDash: liquidation heatmap data
-- Local assistant: uses a local Ollama-compatible URL; code execution is disabled by default
 
 ## Test and Validate
 
@@ -217,7 +216,6 @@ Real-time data arrives via WebSocket subscriptions for candles, books, asset con
 - `src/signing/`: EIP-712 signing and Hyperliquid action payloads
 - `src/config/`: config schema, persistence, wallets, themes, secret references
 - `src/secret_storage/`: keychain and encrypted secret loading/apply flows
-- `src/assistant/`: optional local assistant features
 
 ## Key Dependencies
 

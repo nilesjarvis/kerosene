@@ -1,7 +1,6 @@
 use crate::account::AccountData;
 use crate::account_state::PositionsSortColumn;
 use crate::api::{self, ExchangeSymbol};
-use crate::assistant::AssistantPaneState;
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::hyperdash_api::LiquidationHeatmap;
@@ -192,7 +191,6 @@ pub(crate) struct TradingTerminal {
     pub(crate) address_book: HashMap<String, AddressBookEntry>,
     pub(crate) portfolio: PortfolioState,
     pub(crate) income: IncomeState,
-    pub(crate) assistant: AssistantPaneState,
     pub(crate) settings_active_tab: SettingsTab,
     // Custom Themes
     pub(crate) custom_themes: Vec<config::CustomThemeConfig>,

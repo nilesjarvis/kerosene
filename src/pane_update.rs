@@ -16,7 +16,6 @@ impl TradingTerminal {
             Message::AddTradingJournal => self.add_trading_journal_window(),
             Message::AddPortfolioPane
             | Message::AddIncomePane
-            | Message::AddAssistantPane
             | Message::AddCalendarPane
             | Message::AddLiquidationsPane
             | Message::AddTrackedTradesPane

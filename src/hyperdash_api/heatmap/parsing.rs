@@ -27,11 +27,6 @@ struct GqlHeatmapAnalytics {
 
 #[derive(Debug, Deserialize)]
 struct GqlHeatmapLevels {
-    coin: String,
-    #[serde(rename = "minPrice")]
-    min_price: f64,
-    #[serde(rename = "maxPrice")]
-    max_price: f64,
     bands: Vec<GqlHeatmapBand>,
 }
 
@@ -102,13 +97,7 @@ pub(super) fn parse_heatmap_response(text: &str) -> Result<LiquidationHeatmap, S
         }
     }
 
-    Ok(LiquidationHeatmap {
-        coin: lev.coin,
-        min_price: lev.min_price,
-        max_price: lev.max_price,
-        rects,
-        max_abs_usd,
-    })
+    Ok(LiquidationHeatmap { rects, max_abs_usd })
 }
 
 /// Parse a "YYYY-MM-DD HH:MM:SS" UTC string to epoch milliseconds.

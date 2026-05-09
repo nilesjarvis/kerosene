@@ -8,7 +8,6 @@ use super::errors::{hyperdash_graphql_error, hyperdash_http_error, hyperdash_mis
 use super::models::{GqlError, LiquidationEntry, LiquidationLevel};
 use super::{HYPERDASH_API_URL, KEROSENE_USER_AGENT, response_snippet};
 pub use buckets::bucket_liquidations;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
 // HyperDash Historical Liquidation Levels
@@ -37,19 +36,6 @@ struct GqlLiquidationLevel {
     min: f64,
     max: f64,
     liquidations: Vec<LiquidationEntry>,
-    #[serde(rename = "totalAmount")]
-    total_amount: f64,
-}
-
-/// Fetch the latest available liquidation levels for a coin from the HyperDash GraphQL API.
-pub async fn fetch_liquidation_levels(
-    coin: String,
-    min: f64,
-    max: f64,
-    api_key: String,
-) -> Result<LiquidationLevel, String> {
-    let timestamp = current_unix_timestamp_secs()?;
-    fetch_liquidation_levels_at(coin, min, max, timestamp, api_key).await
 }
 
 /// Fetch liquidation levels for a coin at a specific Unix timestamp.
@@ -70,7 +56,6 @@ pub async fn fetch_liquidation_levels_at(
         amount
         price
       }
-      totalAmount
     }
   }
 }"#;
@@ -123,13 +108,5 @@ pub async fn fetch_liquidation_levels_at(
         min: liq.min,
         max: liq.max,
         liquidations: liq.liquidations,
-        total_amount: liq.total_amount,
     })
-}
-
-fn current_unix_timestamp_secs() -> Result<u64, String> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .map_err(|e| format!("System clock is before Unix epoch: {e}"))
 }

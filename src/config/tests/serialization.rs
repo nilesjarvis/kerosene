@@ -1,7 +1,7 @@
 use super::super::secrets;
 use super::super::{
-    AccountProfile, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig,
-    default_market_slippage_pct,
+    AccountProfile, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig, PaneKindConfig,
+    PaneLayoutConfig, default_market_slippage_pct,
 };
 
 #[test]
@@ -88,4 +88,23 @@ fn legacy_config_without_market_slippage_uses_default() {
         serde_json::from_value(value).expect("legacy config should deserialize");
 
     assert_eq!(config.market_slippage_pct, default_market_slippage_pct());
+}
+
+#[test]
+fn legacy_assistant_pane_deserializes_as_unsupported() {
+    let layout: PaneLayoutConfig = serde_json::from_value(serde_json::json!({"Leaf": "Assistant"}))
+        .expect("legacy assistant pane should deserialize");
+
+    assert_eq!(layout, PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported));
+}
+
+#[test]
+fn serialized_config_omits_removed_assistant_settings() {
+    let json =
+        serde_json::to_string(&KeroseneConfig::default()).expect("default config should serialize");
+
+    assert!(!json.contains("assistant_api_key"));
+    assert!(!json.contains("assistant_model"));
+    assert!(!json.contains("assistant_use_account_context"));
+    assert!(!json.contains("assistant_allow_code_execution"));
 }

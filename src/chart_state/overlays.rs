@@ -1,4 +1,4 @@
-use super::{ChartId, ChartInstance};
+use super::ChartId;
 use crate::app_state::TradingTerminal;
 use crate::chart::{OrderOverlay, PositionOverlay};
 
@@ -79,24 +79,6 @@ impl TradingTerminal {
         if let Some(inst) = self.charts.get_mut(&chart_id) {
             inst.chart.active_orders = order_overlays;
         }
-    }
-
-    pub(crate) fn chart_current_price(inst: &ChartInstance) -> Option<f64> {
-        inst.asset_ctx
-            .as_ref()
-            .and_then(|ctx| ctx.mark_px.as_deref())
-            .and_then(|s| s.parse::<f64>().ok())
-            .or_else(|| inst.chart.candles.last().map(|c| c.close))
-            .filter(|p| *p > 0.0)
-    }
-
-    pub(crate) fn active_mark_price_for_symbol(&self, symbol: &str) -> Option<f64> {
-        let _theme = self.theme();
-        self.charts
-            .values()
-            .filter(|inst| inst.symbol == symbol)
-            .find_map(Self::chart_current_price)
-            .or_else(|| self.resolve_mid_for_symbol(symbol))
     }
 
     /// Sync overlays for all chart instances.

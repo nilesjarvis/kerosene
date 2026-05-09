@@ -22,7 +22,6 @@ pub struct LiquidationLevel {
     pub min: f64,
     pub max: f64,
     pub liquidations: Vec<LiquidationEntry>,
-    pub total_amount: f64,
 }
 
 /// A single bucket in the aggregated liquidation heatmap.
@@ -61,9 +60,6 @@ pub struct HeatmapRect {
 /// Full historical liquidation heatmap data from HyperDash.
 #[derive(Debug, Clone)]
 pub struct LiquidationHeatmap {
-    pub coin: String,
-    pub min_price: f64,
-    pub max_price: f64,
     /// Flattened grid of renderable heatmap cells.
     pub rects: Vec<HeatmapRect>,
     /// Maximum absolute USD value across all cells (for color normalization).

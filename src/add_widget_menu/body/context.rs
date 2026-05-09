@@ -12,7 +12,6 @@ pub(super) struct AddWidgetMenuContext {
     pub(super) placement: AddWidgetPlacement,
     pub(super) portfolio_open: bool,
     pub(super) income_open: bool,
-    pub(super) assistant_open: bool,
     pub(super) calendar_open: bool,
     pub(super) liquidations_open: bool,
     pub(super) tracked_trades_open: bool,
@@ -34,7 +33,6 @@ impl AddWidgetMenuContext {
             placement: terminal.add_widget_placement,
             portfolio_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio)),
             income_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Income)),
-            assistant_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Assistant)),
             calendar_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Calendar)),
             liquidations_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Liquidations)),
             tracked_trades_open: terminal

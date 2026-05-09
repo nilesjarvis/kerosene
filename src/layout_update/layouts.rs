@@ -91,6 +91,10 @@ impl TradingTerminal {
             Message::LayoutImported(result) => match result {
                 Ok(layout) => {
                     let mut final_layout = layout;
+                    final_layout.pane_layout = final_layout
+                        .pane_layout
+                        .take()
+                        .and_then(config::prune_unsupported_pane_layout);
                     let base_name = final_layout.name.clone();
                     let mut counter = 1;
                     while self

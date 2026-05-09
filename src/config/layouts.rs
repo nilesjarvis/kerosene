@@ -24,8 +24,40 @@ pub enum BottomTabConfig {
 }
 
 /// Persisted pane content kind.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub enum PaneKindConfig {
+    AccountSummary,
+    Chart {
+        chart_id: u64,
+    },
+    OrderBook {
+        id: u64,
+    },
+    Watchlist,
+    LiveWatchlist {
+        id: u64,
+    },
+
+    Portfolio,
+    Income,
+    BottomTabs {
+        active_tab: BottomTabConfig,
+    },
+    OrderEntry,
+    SpaghettiChart {
+        spaghetti_id: u64,
+    },
+    Settings,
+    Calendar,
+    Liquidations,
+    TrackedTrades,
+    Outcomes,
+    /// Legacy or unknown persisted panes that no longer have runtime support.
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+enum KnownPaneKindConfig {
     AccountSummary,
     Chart { chart_id: u64 },
     OrderBook { id: u64 },
@@ -34,7 +66,6 @@ pub enum PaneKindConfig {
 
     Portfolio,
     Income,
-    Assistant,
     BottomTabs { active_tab: BottomTabConfig },
     OrderEntry,
     SpaghettiChart { spaghetti_id: u64 },
@@ -43,6 +74,50 @@ pub enum PaneKindConfig {
     Liquidations,
     TrackedTrades,
     Outcomes,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum PaneKindConfigWire {
+    Known(KnownPaneKindConfig),
+    Unknown(serde_json::Value),
+}
+
+impl From<KnownPaneKindConfig> for PaneKindConfig {
+    fn from(kind: KnownPaneKindConfig) -> Self {
+        match kind {
+            KnownPaneKindConfig::AccountSummary => Self::AccountSummary,
+            KnownPaneKindConfig::Chart { chart_id } => Self::Chart { chart_id },
+            KnownPaneKindConfig::OrderBook { id } => Self::OrderBook { id },
+            KnownPaneKindConfig::Watchlist => Self::Watchlist,
+            KnownPaneKindConfig::LiveWatchlist { id } => Self::LiveWatchlist { id },
+            KnownPaneKindConfig::Portfolio => Self::Portfolio,
+            KnownPaneKindConfig::Income => Self::Income,
+            KnownPaneKindConfig::BottomTabs { active_tab } => Self::BottomTabs { active_tab },
+            KnownPaneKindConfig::OrderEntry => Self::OrderEntry,
+            KnownPaneKindConfig::SpaghettiChart { spaghetti_id } => {
+                Self::SpaghettiChart { spaghetti_id }
+            }
+            KnownPaneKindConfig::Settings => Self::Settings,
+            KnownPaneKindConfig::Calendar => Self::Calendar,
+            KnownPaneKindConfig::Liquidations => Self::Liquidations,
+            KnownPaneKindConfig::TrackedTrades => Self::TrackedTrades,
+            KnownPaneKindConfig::Outcomes => Self::Outcomes,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PaneKindConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(match PaneKindConfigWire::deserialize(deserializer)? {
+            PaneKindConfigWire::Known(kind) => kind.into(),
+            PaneKindConfigWire::Unknown(_) => Self::Unsupported,
+        })
+    }
 }
 
 /// Persisted pane-grid tree.
@@ -55,6 +130,28 @@ pub enum PaneLayoutConfig {
         a: Box<PaneLayoutConfig>,
         b: Box<PaneLayoutConfig>,
     },
+}
+
+pub fn prune_unsupported_pane_layout(layout: PaneLayoutConfig) -> Option<PaneLayoutConfig> {
+    match layout {
+        PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported) => None,
+        PaneLayoutConfig::Leaf(kind) => Some(PaneLayoutConfig::Leaf(kind)),
+        PaneLayoutConfig::Split { axis, ratio, a, b } => {
+            match (
+                prune_unsupported_pane_layout(*a),
+                prune_unsupported_pane_layout(*b),
+            ) {
+                (Some(a), Some(b)) => Some(PaneLayoutConfig::Split {
+                    axis,
+                    ratio,
+                    a: Box::new(a),
+                    b: Box::new(b),
+                }),
+                (Some(remaining), None) | (None, Some(remaining)) => Some(remaining),
+                (None, None) => None,
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

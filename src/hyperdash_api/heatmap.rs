@@ -74,9 +74,6 @@ pub async fn fetch_liquidation_heatmap(
       startTime: $startTime
       endTime: $endTime
     ) {
-      coin
-      minPrice
-      maxPrice
       bands {
         minPrice
         maxPrice

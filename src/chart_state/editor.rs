@@ -7,15 +7,9 @@ use crate::message::Message;
 use crate::pane_state::PaneKind;
 use iced::Task;
 
-use self::search::{
-    assistant_symbol_query, chart_editor_symbol_matches, compare_chart_editor_symbols,
-};
+use self::search::{chart_editor_symbol_matches, compare_chart_editor_symbols};
 
 impl TradingTerminal {
-    pub(crate) fn assistant_symbol_query(input: &str) -> Option<(usize, String)> {
-        assistant_symbol_query(input)
-    }
-
     pub(crate) fn chart_symbol_search_input_id(chart_id: ChartId) -> iced::widget::Id {
         iced::widget::Id::from(format!("chart_symbol_search_{chart_id}"))
     }
