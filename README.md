@@ -7,7 +7,7 @@ Kerosene is a GPU-accelerated desktop trading terminal for [Hyperliquid](https:/
 ## Preview
 
 <p align="center">
-  <img src="assets/screenshots/live%20watchlists.png" alt="Kerosene trading terminal with charts, live watchlists, order book, positions, and order entry panes" width="100%">
+  <img src="assets/screenshots/themes/dark.png" alt="Kerosene trading terminal in a dark theme with charts, live watchlists, order book, positions, and order entry panes" width="100%">
 </p>
 
 <table>
@@ -29,6 +29,8 @@ Kerosene is a GPU-accelerated desktop trading terminal for [Hyperliquid](https:/
     </td>
   </tr>
 </table>
+
+More screenshots, including alternate themes and focused feature views, are available in [assets/screenshots](assets/screenshots/).
 
 ## Features
 
