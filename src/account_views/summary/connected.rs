@@ -16,7 +16,6 @@ impl TradingTerminal {
         if let Some(data) = &self.account_data {
             let summary_values = self.connected_summary_values(data);
             let items = self.connected_summary_base_row(addr, &account_label, &theme);
-            let items = self.push_connected_summary_secret_status(items);
             let items = self.push_connected_summary_metrics(items, data, &summary_values, &theme);
             let items = self.push_connected_summary_actions(items);
 

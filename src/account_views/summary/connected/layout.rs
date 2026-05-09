@@ -49,17 +49,6 @@ impl TradingTerminal {
         .align_y(iced::Alignment::Center)
     }
 
-    pub(super) fn push_connected_summary_secret_status<'a>(
-        &'a self,
-        items: Row<'a, Message>,
-    ) -> Row<'a, Message> {
-        if let Some(status) = self.summary_secret_status() {
-            items.push(status).push(vertical_spacer())
-        } else {
-            items
-        }
-    }
-
     pub(super) fn push_connected_summary_metrics<'a>(
         &self,
         items: Row<'a, Message>,
