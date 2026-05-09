@@ -7,48 +7,31 @@ use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_main_pane_grid(&self) -> Element<'_, Message> {
-        let theme = self.theme();
-        let focus = self.focus;
         let chart_count = self.charts.len();
         let pane_count = self.panes.iter().count();
 
         let pane_grid_widget = pane_grid(&self.panes, |pane, kind, _is_maximized| {
-            let is_focused = focus == Some(pane);
             let content = self.view_pane_content(pane, kind, chart_count);
             let close_btn = pane_close_button(pane, pane_count);
             let controls = pane_grid::Controls::new(row![close_btn]);
 
-            let title_theme = theme.clone();
             let title_bar = pane_grid::TitleBar::new(
-                text(pane_title(kind)).size(13).font(iced::Font::MONOSPACE),
+                text(pane_title(kind))
+                    .size(11)
+                    .font(iced::Font::MONOSPACE)
+                    .style(|theme: &Theme| iced::widget::text::Style {
+                        color: Some(subtle_pane_title_color(theme)),
+                    }),
             )
             .controls(controls)
             .always_show_controls()
-            .padding(4)
-            .style(move |_theme: &Theme| container_style::Style {
-                background: Some(
-                    if is_focused {
-                        title_theme.extended_palette().background.weak.color
-                    } else {
-                        title_theme.extended_palette().background.base.color
-                    }
-                    .into(),
-                ),
-                ..Default::default()
-            });
+            .padding([3, 6])
+            .style(pane_title_bar_style);
 
-            let content_theme = theme.clone();
             pane_grid::Content::new(content)
                 .title_bar(title_bar)
-                .style(move |_theme: &Theme| container_style::Style {
-                    background: Some(
-                        content_theme
-                            .extended_palette()
-                            .background
-                            .strong
-                            .color
-                            .into(),
-                    ),
+                .style(|theme: &Theme| container_style::Style {
+                    background: Some(theme.extended_palette().background.strong.color.into()),
                     ..Default::default()
                 })
         })
@@ -82,6 +65,32 @@ impl TradingTerminal {
 
         container(pane_grid_widget).width(Fill).height(Fill).into()
     }
+}
+
+fn pane_title_bar_style(theme: &Theme) -> container_style::Style {
+    use iced::gradient;
+
+    let background = theme.extended_palette().background.strong.color;
+    let mut separator = theme.extended_palette().background.strong.text;
+    separator.a = 0.08;
+
+    container_style::Style {
+        background: Some(
+            gradient::Linear::new(iced::Degrees(180.0))
+                .add_stop(0.00, background)
+                .add_stop(0.97, background)
+                .add_stop(0.985, separator)
+                .add_stop(1.00, separator)
+                .into(),
+        ),
+        ..Default::default()
+    }
+}
+
+fn subtle_pane_title_color(theme: &Theme) -> iced::Color {
+    let mut color = theme.extended_palette().background.strong.text;
+    color.a = 0.46;
+    color
 }
 
 fn pane_close_button(pane: pane_grid::Pane, pane_count: usize) -> button::Button<'static, Message> {
