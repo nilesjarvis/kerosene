@@ -86,6 +86,13 @@ impl TradingTerminal {
                 instance.symbol = valid_key.clone();
                 instance.symbol_display = display;
                 instance.chart.request_view_reset();
+                instance.heatmap_last_fetch = None;
+                instance.heatmap_viewport = None;
+                instance.heatmap_status = None;
+                instance.heatmap_fetching = false;
+                Self::clear_heatmap_display(instance);
+                Self::clear_liquidation_display(instance);
+                Self::clear_funding_display(instance);
 
                 if let Some(candles) = cached_candles {
                     cached_last_time = candles.last().map(|c| c.open_time);
