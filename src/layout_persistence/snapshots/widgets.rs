@@ -28,6 +28,7 @@ impl TradingTerminal {
                     .map(|annotation| annotation.to_config())
                     .collect(),
                 inverted: inst.chart.inverted,
+                show_trade_markers: inst.chart.show_trade_markers,
                 funding_panel_height: inst.chart.funding_panel_height_config(),
                 macro_indicators: inst.macro_indicators.clone(),
             })

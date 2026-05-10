@@ -16,6 +16,7 @@ impl TradingTerminal {
             }
             message @ (Message::ChartSymbolSelected(_, _)
             | Message::ToggleChartInvert(_)
+            | Message::ToggleChartTradeMarkers(_)
             | Message::ChartOpenEditor(_)
             | Message::ChartCloseEditor(_)
             | Message::ChartEditorSearchChanged(_, _)

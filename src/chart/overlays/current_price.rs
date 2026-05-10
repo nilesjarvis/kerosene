@@ -9,11 +9,12 @@ use iced::Color;
 // ---------------------------------------------------------------------------
 
 impl CandlestickChart {
-    pub(super) fn draw_current_price_line<PriceToY>(
+    pub(super) fn draw_current_price_line<PriceToY, IdxToCx>(
         &self,
-        ctx: &mut TradingOverlayContext<'_, PriceToY>,
+        ctx: &mut TradingOverlayContext<'_, PriceToY, IdxToCx>,
     ) where
         PriceToY: Fn(f64) -> f32,
+        IdxToCx: Fn(usize) -> f32,
     {
         if let Some(last_candle) = self.candles.last()
             && ctx.price_range > 0.0

@@ -84,6 +84,7 @@ impl TradingTerminal {
         for instance in self.charts.values_mut() {
             instance.chart.active_position = None;
             instance.chart.active_orders.clear();
+            instance.chart.trade_markers.clear();
         }
         self.portfolio.loading = false;
         self.portfolio.data = None;

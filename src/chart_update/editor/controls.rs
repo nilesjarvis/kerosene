@@ -12,6 +12,12 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ToggleChartTradeMarkers(id) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.chart.show_trade_markers = !instance.chart.show_trade_markers;
+                    self.persist_config();
+                }
+            }
             Message::ChartOpenEditor(id) => {
                 if let Some(instance) = self.charts.get_mut(&id) {
                     instance.editor_open = true;

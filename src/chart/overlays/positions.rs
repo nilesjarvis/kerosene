@@ -10,11 +10,12 @@ use iced::{Color, Point, Size, alignment};
 // ---------------------------------------------------------------------------
 
 impl CandlestickChart {
-    pub(super) fn draw_active_position_lines<PriceToY>(
+    pub(super) fn draw_active_position_lines<PriceToY, IdxToCx>(
         &self,
-        ctx: &mut TradingOverlayContext<'_, PriceToY>,
+        ctx: &mut TradingOverlayContext<'_, PriceToY, IdxToCx>,
     ) where
         PriceToY: Fn(f64) -> f32,
+        IdxToCx: Fn(usize) -> f32,
     {
         if let Some(pos_overlay) = &self.active_position
             && ctx.price_range > 0.0

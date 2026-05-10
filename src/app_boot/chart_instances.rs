@@ -22,6 +22,7 @@ impl TradingTerminal {
             let tf = Timeframe::from_config_str(&chart_cfg.timeframe);
             let mut instance = ChartInstance::new(id, chart_cfg.symbol.clone(), tf);
             instance.chart.inverted = chart_cfg.inverted;
+            instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
             instance
                 .chart
                 .set_funding_panel_height(chart_cfg.funding_panel_height as f32);
@@ -116,5 +117,37 @@ impl TradingTerminal {
         }
 
         (spaghetti_charts, boot_tasks)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::MacroIndicatorsConfig;
+
+    #[test]
+    fn boot_chart_instances_restores_trade_marker_toggle() {
+        let configs = vec![ChartConfig {
+            id: 3,
+            symbol: String::new(),
+            timeframe: "H1".to_string(),
+            annotations: Vec::new(),
+            inverted: false,
+            show_trade_markers: true,
+            funding_panel_height: 56,
+            macro_indicators: MacroIndicatorsConfig::default(),
+        }];
+
+        let (charts, tasks) =
+            TradingTerminal::boot_chart_instances(&configs, &std::collections::HashSet::new());
+
+        assert!(tasks.is_empty());
+        assert!(
+            charts
+                .get(&3)
+                .expect("chart instance")
+                .chart
+                .show_trade_markers
+        );
     }
 }

@@ -19,6 +19,7 @@ impl TradingTerminal {
         instance.chart.candle_cache.clear();
         instance.chart.active_position = None;
         instance.chart.active_orders.clear();
+        instance.chart.trade_markers.clear();
         instance.asset_ctx = None;
         instance.candle_fetch_request = None;
         instance.candle_fetch_error = None;

@@ -9,9 +9,9 @@ mod liquidations;
 // Chart Tooltip Rendering
 // ---------------------------------------------------------------------------
 
-struct TooltipLine {
-    content: String,
-    color: Color,
+pub(in crate::chart) struct TooltipLine {
+    pub(in crate::chart) content: String,
+    pub(in crate::chart) color: Color,
 }
 
 pub(super) struct TooltipSurface<'a> {
@@ -39,7 +39,7 @@ impl<'a> TooltipSurface<'a> {
         }
     }
 
-    fn draw_card(&mut self, origin: Point, size: Size, lines: &[TooltipLine]) {
+    pub(in crate::chart) fn draw_card(&mut self, origin: Point, size: Size, lines: &[TooltipLine]) {
         let pad: f32 = 6.0;
         let line_h: f32 = 14.0;
 

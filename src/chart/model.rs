@@ -45,6 +45,10 @@ pub struct CandlestickChart {
     pub active_position: Option<PositionOverlay>,
     /// Open limit orders on the currently viewed symbol.
     pub active_orders: Vec<OrderOverlay>,
+    /// Recent user fills on the currently viewed symbol.
+    pub trade_markers: Vec<TradeMarker>,
+    /// Whether recent user fills should be rendered as trade dots.
+    pub show_trade_markers: bool,
     /// User-drawn annotations (levels, trend lines).
     pub annotations: Vec<Annotation>,
     /// Currently active drawing tool (None = normal pan/zoom mode).
@@ -100,6 +104,15 @@ pub struct OrderOverlay {
     pub sz: f64,
     pub is_buy: bool,
     pub oid: u64,
+}
+
+/// Lightweight user fill info passed to the chart for marker rendering.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TradeMarker {
+    pub time_ms: u64,
+    pub price: f64,
+    pub size: f64,
+    pub is_buy: bool,
 }
 
 /// Status of chart data loading.

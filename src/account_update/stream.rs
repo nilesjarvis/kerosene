@@ -45,6 +45,35 @@ fn prepend_recent_fills(
     *existing = updated;
 }
 
+fn apply_fills_update<F>(
+    existing: &mut Vec<crate::account::UserFill>,
+    fills: Vec<crate::account::UserFill>,
+    is_snapshot: bool,
+    is_muted: F,
+) -> Vec<String>
+where
+    F: Fn(&str) -> bool,
+{
+    let fills: Vec<_> = fills
+        .into_iter()
+        .filter(|fill| !is_muted(&fill.coin))
+        .collect();
+    if is_snapshot {
+        *existing = fills;
+        Vec::new()
+    } else {
+        let toast_msgs: Vec<String> = fills
+            .iter()
+            .map(|fill| {
+                let side = if fill.side == "B" { "BUY" } else { "SELL" };
+                format!("Filled {side} {} {} @ ${}", fill.sz, fill.coin, fill.px)
+            })
+            .collect();
+        prepend_recent_fills(existing, fills, 200);
+        toast_msgs
+    }
+}
+
 impl TradingTerminal {
     pub(super) fn apply_ws_user_data_update(
         &mut self,
@@ -58,6 +87,7 @@ impl TradingTerminal {
         }
 
         let mut orders_changed = false;
+        let mut fills_changed = false;
         let mut fill_toast_msgs: Vec<String> = Vec::new();
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
@@ -99,23 +129,9 @@ impl TradingTerminal {
                     orders_changed = true;
                 }
                 WsUserData::Fills { fills, is_snapshot } => {
-                    let fills: Vec<_> = fills
-                        .into_iter()
-                        .filter(|fill| !is_muted(&fill.coin))
-                        .collect();
-                    if is_snapshot {
-                        data.fills = fills;
-                    } else {
-                        let toast_msgs: Vec<String> = fills
-                            .iter()
-                            .map(|fill| {
-                                let side = if fill.side == "B" { "BUY" } else { "SELL" };
-                                format!("Filled {side} {} {} @ ${}", fill.sz, fill.coin, fill.px)
-                            })
-                            .collect();
-                        prepend_recent_fills(&mut data.fills, fills, 200);
-                        fill_toast_msgs = toast_msgs;
-                    }
+                    fill_toast_msgs =
+                        apply_fills_update(&mut data.fills, fills, is_snapshot, is_muted);
+                    fills_changed = true;
                 }
                 WsUserData::SpotBalances(balances) => {
                     data.spot.balances = balances
@@ -161,6 +177,9 @@ impl TradingTerminal {
         if orders_changed {
             self.sync_all_chart_orders();
             self.handle_chase_order_disappearance();
+        }
+        if fills_changed {
+            self.sync_all_chart_trade_markers();
         }
         self.apply_wallet_details_ws_update(source_address, wallet_details_update);
         Task::none()

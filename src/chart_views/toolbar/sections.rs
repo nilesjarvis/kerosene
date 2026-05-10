@@ -2,7 +2,7 @@ use crate::annotations::DrawingTool;
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::helpers::timeframe_button;
 use crate::message::Message;
-use iced::widget::{Row, button, container, rule, text};
+use iced::widget::{Row, button, container, rule, text, tooltip};
 use iced::{Color, Element, Theme};
 
 pub(super) fn chart_reload_button(chart_id: ChartId) -> Element<'static, Message> {
@@ -84,6 +84,17 @@ pub(super) fn push_chart_mode_buttons<'a>(
             "INV",
             instance.chart.inverted,
             Message::ToggleChartInvert(chart_id),
+        ))
+        .push(tooltip(
+            timeframe_button(
+                "FILL",
+                instance.chart.show_trade_markers,
+                Message::ToggleChartTradeMarkers(chart_id),
+            ),
+            text("Show account buy/sell fills")
+                .size(10)
+                .font(iced::Font::MONOSPACE),
+            tooltip::Position::Top,
         ))
 }
 

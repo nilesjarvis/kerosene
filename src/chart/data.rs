@@ -26,6 +26,8 @@ impl CandlestickChart {
             reset_epoch: 0,
             active_position: None,
             active_orders: Vec::new(),
+            trade_markers: Vec::new(),
+            show_trade_markers: false,
             annotations: Vec::new(),
             active_tool: None,
             liquidation_buckets: Vec::new(),

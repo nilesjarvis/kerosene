@@ -105,3 +105,37 @@ fn recent_fills_drop_extra_incoming_when_batch_exceeds_limit() {
     let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
     assert_eq!(times, vec![1, 2]);
 }
+
+#[test]
+fn fill_snapshot_replaces_existing_history_and_filters_muted_symbols() {
+    let mut existing = vec![fill(10)];
+    let mut muted_fill = fill(1);
+    muted_fill.coin = "ETH".to_string();
+
+    let toasts = apply_fills_update(&mut existing, vec![fill(2), muted_fill], true, |coin| {
+        coin == "ETH"
+    });
+
+    assert!(toasts.is_empty());
+    let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
+    assert_eq!(times, vec![2]);
+}
+
+#[test]
+fn live_fill_update_prepends_history_and_returns_toasts() {
+    let mut existing = vec![fill(3)];
+    let mut sell_fill = fill(1);
+    sell_fill.side = "A".to_string();
+
+    let toasts = apply_fills_update(&mut existing, vec![sell_fill, fill(2)], false, |_| false);
+
+    let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
+    assert_eq!(times, vec![1, 2, 3]);
+    assert_eq!(
+        toasts,
+        vec![
+            "Filled SELL 0.1 BTC @ $100".to_string(),
+            "Filled BUY 0.1 BTC @ $100".to_string(),
+        ]
+    );
+}

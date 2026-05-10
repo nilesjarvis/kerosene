@@ -1,7 +1,7 @@
 use super::super::secrets;
 use super::super::{
-    AccountProfile, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig, PaneKindConfig,
-    PaneLayoutConfig, default_market_slippage_pct,
+    AccountProfile, ChartConfig, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig,
+    MacroIndicatorsConfig, PaneKindConfig, PaneLayoutConfig, default_market_slippage_pct,
 };
 
 #[test]
@@ -88,6 +88,38 @@ fn legacy_config_without_market_slippage_uses_default() {
         serde_json::from_value(value).expect("legacy config should deserialize");
 
     assert_eq!(config.market_slippage_pct, default_market_slippage_pct());
+}
+
+#[test]
+fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
+    let config = KeroseneConfig {
+        charts: vec![ChartConfig {
+            id: 7,
+            symbol: "BTC".to_string(),
+            timeframe: "H1".to_string(),
+            annotations: Vec::new(),
+            inverted: false,
+            show_trade_markers: true,
+            funding_panel_height: 56,
+            macro_indicators: MacroIndicatorsConfig::default(),
+        }],
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+
+    assert!(decoded.charts[0].show_trade_markers);
+
+    let mut legacy_chart = serde_json::to_value(&config.charts[0]).expect("chart serializes");
+    legacy_chart
+        .as_object_mut()
+        .expect("chart config is an object")
+        .remove("show_trade_markers");
+    let decoded_chart: ChartConfig =
+        serde_json::from_value(legacy_chart).expect("legacy chart config should deserialize");
+
+    assert!(!decoded_chart.show_trade_markers);
 }
 
 #[test]

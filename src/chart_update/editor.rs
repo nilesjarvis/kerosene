@@ -11,6 +11,7 @@ impl TradingTerminal {
         match message {
             message @ Message::ChartSymbolSelected(_, _) => self.select_chart_symbol(message),
             message @ (Message::ToggleChartInvert(_)
+            | Message::ToggleChartTradeMarkers(_)
             | Message::ChartOpenEditor(_)
             | Message::ChartCloseEditor(_)
             | Message::ChartEditorSearchChanged(_, _)

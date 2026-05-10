@@ -135,9 +135,13 @@ impl canvas::Program<Message> for CandlestickChart {
                 chart_w,
                 price_h,
                 price_range,
+                candles: &self.candles,
+                first_vis,
+                last_vis,
                 candle_bull_color,
                 candle_bear_color,
                 price_to_y: &price_to_y,
+                idx_to_cx: &idx_to_cx,
             };
             self.draw_trading_overlays(&mut trading_overlay_context);
 

@@ -252,6 +252,7 @@ pub(crate) enum Message {
     FundingRefreshTick,
     ChartSymbolSelected(ChartId, String),
     ToggleChartInvert(ChartId),
+    ToggleChartTradeMarkers(ChartId),
     ChartOpenEditor(ChartId),
     ChartCloseEditor(ChartId),
     ChartEditorSearchChanged(ChartId, String),

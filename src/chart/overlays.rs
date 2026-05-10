@@ -1,19 +1,22 @@
 use super::model::CandlestickChart;
 use super::state::ChartState;
+use crate::api::Candle;
 use iced::widget::canvas;
 use iced::{Color, Theme};
 
 mod current_price;
 mod orders;
 mod positions;
+mod trades;
 
 // ---------------------------------------------------------------------------
 // Trading Overlays
 // ---------------------------------------------------------------------------
 
-pub(super) struct TradingOverlayContext<'a, PriceToY>
+pub(super) struct TradingOverlayContext<'a, PriceToY, IdxToCx>
 where
     PriceToY: Fn(f64) -> f32,
+    IdxToCx: Fn(usize) -> f32,
 {
     pub(super) frame: &'a mut canvas::Frame,
     pub(super) state: &'a ChartState,
@@ -21,20 +24,26 @@ where
     pub(super) chart_w: f32,
     pub(super) price_h: f32,
     pub(super) price_range: f64,
+    pub(super) candles: &'a [Candle],
+    pub(super) first_vis: usize,
+    pub(super) last_vis: usize,
     pub(super) candle_bull_color: Color,
     pub(super) candle_bear_color: Color,
     pub(super) price_to_y: &'a PriceToY,
+    pub(super) idx_to_cx: &'a IdxToCx,
 }
 
 impl CandlestickChart {
-    pub(super) fn draw_trading_overlays<PriceToY>(
+    pub(super) fn draw_trading_overlays<PriceToY, IdxToCx>(
         &self,
-        ctx: &mut TradingOverlayContext<'_, PriceToY>,
+        ctx: &mut TradingOverlayContext<'_, PriceToY, IdxToCx>,
     ) where
         PriceToY: Fn(f64) -> f32,
+        IdxToCx: Fn(usize) -> f32,
     {
         self.draw_current_price_line(ctx);
         self.draw_active_position_lines(ctx);
         self.draw_active_order_lines(ctx);
+        self.draw_trade_markers(ctx);
     }
 }

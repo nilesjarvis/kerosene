@@ -94,6 +94,7 @@ impl TradingTerminal {
         if let Some((symbol, tf, new_cache)) = new_cache_data {
             self.sync_chart_position_for(id);
             self.sync_chart_orders_for(id);
+            self.sync_chart_trade_markers_for(id);
             self.cache_candles(&symbol, tf, new_cache);
         } else if let Some((symbol, tf)) = remove_cache_data {
             let key = (symbol, tf);
