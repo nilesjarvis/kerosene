@@ -95,6 +95,13 @@ pub struct LiveWatchlistInstance {
 
 pub type OrderBookId = u64;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OrderBookDisplayMode {
+    #[default]
+    DepthList,
+    DomLadder,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum OrderBookSymbolMode {
     #[default]
@@ -111,6 +118,7 @@ pub struct OrderBookInstance {
     pub tick_size: f64,
     pub settings_open: bool,
     pub search_query: String,
+    pub display_mode: OrderBookDisplayMode,
     pub book_loading: bool,
     pub book_error: Option<String>,
     pub show_spread_chart: bool,
@@ -129,6 +137,7 @@ impl OrderBookInstance {
             tick_size,
             settings_open: false,
             search_query: String::new(),
+            display_mode: OrderBookDisplayMode::DepthList,
             book_loading: false,
             book_error: None,
             show_spread_chart: false,

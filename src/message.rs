@@ -11,8 +11,8 @@ use crate::hydromancer_api::FundingRatePoint;
 use crate::hyperdash_api::{LiquidationHeatmap, LiquidationLevel};
 use crate::journal;
 use crate::market_state::{
-    LiveWatchlistId, OrderBookId, OrderBookSymbolMode, SymbolSearchMarketFilter,
-    SymbolSearchSortMode,
+    LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
+    SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::pane_management::AddWidgetPlacement;
 use crate::portfolio_state::{PortfolioScope, PortfolioWindow};
@@ -299,6 +299,7 @@ pub(crate) enum Message {
     OrderBookSpreadChartResize(OrderBookId, f32),
     OrderBookSearchChanged(OrderBookId, String),
     OrderBookSetMode(OrderBookId, OrderBookSymbolMode),
+    SetOrderBookDisplayMode(OrderBookId, OrderBookDisplayMode),
     WalletKeyInputChanged(String),
     WalletAddressInputChanged(String),
     HydromancerKeyInputChanged(String),

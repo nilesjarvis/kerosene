@@ -1,3 +1,4 @@
+mod dom;
 mod spread;
 
 use crate::app_state::TradingTerminal;
@@ -90,5 +91,19 @@ impl TradingTerminal {
         ))
         .id(inst.scroll_id.clone())
         .into()
+    }
+
+    pub(super) fn view_order_book_dom_ladder(
+        id: OrderBookId,
+        inst: &OrderBookInstance,
+        tick: f64,
+        theme: &Theme,
+    ) -> Element<'static, Message> {
+        let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
+        dom::view_order_book_dom_ladder(inst, tick, spread_widget)
+    }
+
+    pub(super) fn view_order_book_dom_header() -> Element<'static, Message> {
+        dom::view_order_book_dom_header()
     }
 }

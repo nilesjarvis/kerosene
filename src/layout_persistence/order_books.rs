@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
-use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
+use crate::market_state::{OrderBookDisplayMode, OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use iced::Task;
@@ -31,6 +31,10 @@ impl TradingTerminal {
 
             let mut instance =
                 OrderBookInstance::new(order_book_config.id, mode, order_book_config.tick_size);
+            instance.display_mode = match order_book_config.display_mode {
+                config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
+                config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
+            };
             instance.show_spread_chart = order_book_config.show_spread_chart;
             instance.spread_chart_height = order_book_config.spread_chart_height;
             instance.book_loading = true;

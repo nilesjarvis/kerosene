@@ -149,6 +149,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::OrderBookSpreadChartResize(_, _)
         | Message::OrderBookSearchChanged(_, _)
         | Message::OrderBookSetMode(_, _)
+        | Message::SetOrderBookDisplayMode(_, _)
         | Message::CenterOrderBook(_) => UpdateRoute::Market,
 
         Message::ThemeChanged(_)

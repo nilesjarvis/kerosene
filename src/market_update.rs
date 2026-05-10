@@ -30,7 +30,20 @@ impl TradingTerminal {
             | Message::LiveWatchlistHistoryLoaded(_, _, _)) => {
                 return self.update_live_watchlist_market(message);
             }
-            message @ (Message::AddOrderBookPane
+            message if is_order_book_market_message(&message) => {
+                return self.update_order_book_market(message);
+            }
+            _ => {}
+        }
+
+        Task::none()
+    }
+}
+
+fn is_order_book_market_message(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::AddOrderBookPane
             | Message::BookLoaded(_, _)
             | Message::OrderBookWsAssetCtxUpdate(_, _)
             | Message::WsBookUpdate(_, _, _)
@@ -40,12 +53,20 @@ impl TradingTerminal {
             | Message::OrderBookSpreadChartResize(_, _)
             | Message::OrderBookSearchChanged(_, _)
             | Message::OrderBookSetMode(_, _)
-            | Message::CenterOrderBook(_)) => {
-                return self.update_order_book_market(message);
-            }
-            _ => {}
-        }
+            | Message::SetOrderBookDisplayMode(_, _)
+            | Message::CenterOrderBook(_)
+    )
+}
 
-        Task::none()
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::market_state::OrderBookDisplayMode;
+
+    #[test]
+    fn order_book_market_dispatch_includes_display_mode_switches() {
+        assert!(is_order_book_market_message(
+            &Message::SetOrderBookDisplayMode(7, OrderBookDisplayMode::DomLadder)
+        ));
     }
 }

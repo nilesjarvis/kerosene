@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{self, KeroseneConfig};
-use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
+use crate::market_state::{OrderBookDisplayMode, OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 
@@ -25,6 +25,10 @@ impl TradingTerminal {
                 }
             };
             let mut inst = OrderBookInstance::new(ob_cfg.id, mode, ob_cfg.tick_size);
+            inst.display_mode = match ob_cfg.display_mode {
+                config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
+                config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
+            };
             inst.show_spread_chart = ob_cfg.show_spread_chart;
             inst.spread_chart_height = ob_cfg.spread_chart_height;
             inst.book_loading = true;

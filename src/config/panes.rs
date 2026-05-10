@@ -95,6 +95,13 @@ pub enum OrderBookSymbolModeConfig {
     Fixed(String),
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum OrderBookDisplayModeConfig {
+    #[default]
+    DepthList,
+    DomLadder,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OrderBookConfig {
     #[serde(default)]
@@ -103,6 +110,8 @@ pub struct OrderBookConfig {
     pub mode: OrderBookSymbolModeConfig,
     #[serde(default)]
     pub tick_size: f64,
+    #[serde(default)]
+    pub display_mode: OrderBookDisplayModeConfig,
     #[serde(default)]
     pub show_spread_chart: bool,
     #[serde(default = "default_spread_chart_height")]
@@ -145,4 +154,27 @@ fn default_funding_panel_height() -> u16 {
 
 fn default_spread_chart_height() -> f32 {
     60.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OrderBookConfig, OrderBookDisplayModeConfig};
+
+    #[test]
+    fn order_book_config_defaults_to_depth_list_display_mode() {
+        let config: OrderBookConfig =
+            serde_json::from_str(r#"{"id":7,"tick_size":1.0}"#).expect("config");
+
+        assert_eq!(config.display_mode, OrderBookDisplayModeConfig::DepthList);
+    }
+
+    #[test]
+    fn order_book_config_round_trips_dom_ladder_display_mode() {
+        let config: OrderBookConfig =
+            serde_json::from_str(r#"{"id":7,"tick_size":1.0,"display_mode":"DomLadder"}"#)
+                .expect("config");
+
+        let rendered = serde_json::to_string(&config).expect("json");
+        assert!(rendered.contains(r#""display_mode":"DomLadder""#));
+    }
 }

@@ -1,10 +1,12 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::market_state::{OrderBookId, OrderBookInstance, OrderBookSymbolMode};
+use crate::market_state::{
+    OrderBookDisplayMode, OrderBookId, OrderBookInstance, OrderBookSymbolMode,
+};
 use crate::message::Message;
 
 use iced::widget::{button, row, text};
-use iced::{Element, Fill, Theme};
+use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(in crate::market_views::order_book) fn view_order_book_header() -> Element<'static, Message>
@@ -55,6 +57,18 @@ impl TradingTerminal {
                     color: Some(theme.palette().text)
                 })
                 .width(Fill),
+            display_mode_button(
+                id,
+                inst.display_mode,
+                OrderBookDisplayMode::DepthList,
+                "Book"
+            ),
+            display_mode_button(
+                id,
+                inst.display_mode,
+                OrderBookDisplayMode::DomLadder,
+                "DOM"
+            ),
             button(text("\u{2699}").size(12).style(move |theme: &Theme| {
                 text::Style {
                     color: Some(theme.extended_palette().background.weak.text),
@@ -84,4 +98,47 @@ impl TradingTerminal {
         .height(iced::Length::Fixed(inst.spread_chart_height))
         .into()
     }
+}
+
+fn display_mode_button(
+    id: OrderBookId,
+    active: OrderBookDisplayMode,
+    mode: OrderBookDisplayMode,
+    label: &'static str,
+) -> button::Button<'static, Message> {
+    let is_active = active == mode;
+    button(text(label).size(10).center())
+        .on_press(Message::SetOrderBookDisplayMode(id, mode))
+        .padding([2, 6])
+        .style(move |theme: &Theme, status| {
+            let bg = if is_active {
+                theme.extended_palette().background.strong.color
+            } else {
+                match status {
+                    button::Status::Hovered => theme.extended_palette().background.weak.color,
+                    _ => Color::TRANSPARENT,
+                }
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: if is_active {
+                    theme.palette().text
+                } else {
+                    theme.extended_palette().background.weak.text
+                },
+                border: iced::Border {
+                    radius: 2.0.into(),
+                    width: if is_active { 1.0 } else { 0.0 },
+                    color: if is_active {
+                        Color {
+                            a: 0.4,
+                            ..theme.palette().primary
+                        }
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                },
+                ..Default::default()
+            }
+        })
 }

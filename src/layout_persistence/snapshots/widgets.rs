@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
-use crate::market_state::OrderBookSymbolMode;
+use crate::market_state::{OrderBookDisplayMode, OrderBookSymbolMode};
 use crate::signing::OrderKind;
 
 // ---------------------------------------------------------------------------
@@ -78,6 +78,14 @@ impl TradingTerminal {
                     }
                 },
                 tick_size: book.tick_size,
+                display_mode: match book.display_mode {
+                    OrderBookDisplayMode::DepthList => {
+                        config::OrderBookDisplayModeConfig::DepthList
+                    }
+                    OrderBookDisplayMode::DomLadder => {
+                        config::OrderBookDisplayModeConfig::DomLadder
+                    }
+                },
                 show_spread_chart: book.show_spread_chart,
                 spread_chart_height: book.spread_chart_height,
             })

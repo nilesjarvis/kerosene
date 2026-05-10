@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::market_state::{OrderBookId, OrderBookSymbolMode};
+use crate::market_state::{OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode};
 use crate::message::Message;
 
 use iced::widget::{column, container, row, rule, text};
@@ -54,7 +54,10 @@ impl TradingTerminal {
         let tick_options = helpers::book_tick_options(mid);
         let tick = Self::resolved_order_book_tick(inst, &tick_options);
         let tick_buttons = Self::view_order_book_tick_buttons(id, &tick_options, tick);
-        let header = Self::view_order_book_header();
+        let header = match inst.display_mode {
+            OrderBookDisplayMode::DepthList => Self::view_order_book_header(),
+            OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_header(),
+        };
 
         if inst.book.bids.is_empty() && inst.book.asks.is_empty() {
             let loading_row: Element<'_, Message> = if let Some(error) = &inst.book_error {
@@ -94,7 +97,12 @@ impl TradingTerminal {
                 .into();
         }
 
-        let scroll = Self::view_order_book_rows(id, inst, tick, &theme);
+        let scroll = match inst.display_mode {
+            OrderBookDisplayMode::DepthList => Self::view_order_book_rows(id, inst, tick, &theme),
+            OrderBookDisplayMode::DomLadder => {
+                Self::view_order_book_dom_ladder(id, inst, tick, &theme)
+            }
+        };
         let title_row = self.view_order_book_title(id, inst);
 
         let mut content_col = column![title_row].spacing(4);

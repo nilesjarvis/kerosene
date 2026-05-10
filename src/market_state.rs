@@ -4,7 +4,8 @@ mod symbol_search;
 mod types;
 
 pub use types::{
-    LiveWatchlistId, LiveWatchlistInstance, OrderBookId, OrderBookInstance, OrderBookSymbolMode,
+    LiveWatchlistId, LiveWatchlistInstance, OrderBookDisplayMode, OrderBookId, OrderBookInstance,
+    OrderBookSymbolMode,
 };
 pub(crate) use types::{
     LiveWatchlistRowData, SYMBOL_SEARCH_ALL_HIP3_DEXES, SymbolSearchMarketFilter,

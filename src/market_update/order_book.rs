@@ -140,6 +140,17 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
+            Message::SetOrderBookDisplayMode(id, display_mode) => {
+                if let Some(inst) = self.order_books.get_mut(&id) {
+                    if inst.display_mode == display_mode {
+                        return Task::none();
+                    }
+                    inst.display_mode = display_mode;
+                    self.persist_config();
+                    return self.center_order_book(id);
+                }
+                Task::none()
+            }
             Message::CenterOrderBook(id) => self.center_order_book(id),
             _ => Task::none(),
         }
