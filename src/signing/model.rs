@@ -294,6 +294,28 @@ impl ExchangeResponse {
         false
     }
 
+    /// Whether an order placement response is too ambiguous to continue automation safely.
+    pub fn is_ambiguous_order_result(&self) -> bool {
+        if self.status != "ok" {
+            return false;
+        }
+        if self.raw_response.is_some() {
+            return true;
+        }
+        let Some(statuses) = self
+            .response
+            .as_ref()
+            .and_then(|inner| inner.data.as_ref())
+            .map(|data| data.statuses.as_slice())
+        else {
+            return true;
+        };
+        if statuses.is_empty() {
+            return true;
+        }
+        statuses.iter().any(ambiguous_order_status)
+    }
+
     /// Hyperliquid reports this for IOC orders that were marketable from the
     /// client's last book snapshot but found no resting liquidity at match time.
     pub fn is_ioc_no_match(&self) -> bool {
@@ -324,6 +346,27 @@ impl ExchangeResponse {
         }
         messages
     }
+}
+
+fn ambiguous_order_status(status: &Value) -> bool {
+    if status.get("error").is_some() {
+        return false;
+    }
+    if let Some(resting) = status.get("resting") {
+        return resting
+            .get("oid")
+            .and_then(|value| value.as_u64())
+            .is_none();
+    }
+    if let Some(filled) = status.get("filled") {
+        return filled
+            .get("totalSz")
+            .and_then(|value| value.as_str())
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|size| size.is_finite() && *size > 0.0)
+            .is_none();
+    }
+    true
 }
 
 fn raw_exchange_response_summary(value: &Value) -> String {
