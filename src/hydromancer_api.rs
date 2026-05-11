@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 const KEROSENE_USER_AGENT: &str = concat!("Kerosene/", env!("CARGO_PKG_VERSION"));
 const FUNDING_HISTORY_PAGE_LIMIT: u16 = 500;
 const FUNDING_HISTORY_MAX_PAGES: usize = 96;
+// Reject absurd hourly funding rates before chart math can overflow.
+const MAX_ABS_FUNDING_RATE: f64 = 1.0;
 
 pub const HYDROMANCER_API_URL: &str = "https://api.hydromancer.xyz/info";
 
@@ -158,6 +160,11 @@ fn normalize_funding_history(
         if !rate.is_finite() {
             return Err("Hydromancer funding response included non-finite rate".to_string());
         }
+        if rate.abs() > MAX_ABS_FUNDING_RATE {
+            return Err(
+                "Hydromancer funding response included unrealistic rate magnitude".to_string(),
+            );
+        }
         points.push(FundingRatePoint {
             time_ms: point.time,
             rate,
@@ -194,6 +201,16 @@ mod tests {
         assert_eq!(points[0].time_ms, 1778198400069);
         assert_eq!(points[0].rate, -0.000003);
         assert_eq!(points[1].rate, 0.0000125);
+    }
+
+    #[test]
+    fn rejects_oversized_funding_rate() {
+        let err = parse_funding_history_response(
+            r#"[{"coin":"BTC","fundingRate":"1.7e308","time":1778198400069}]"#,
+        )
+        .expect_err("oversized rate should fail");
+
+        assert!(err.contains("unrealistic rate magnitude"));
     }
 
     #[test]
