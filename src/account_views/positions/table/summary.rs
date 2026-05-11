@@ -20,6 +20,11 @@ impl TradingTerminal {
         let neutral_text = theme.palette().text;
         let long_color = theme.palette().success;
         let short_color = theme.palette().danger;
+        let account_balance = self
+            .account_data
+            .as_ref()
+            .and_then(|data| self.position_summary_account_value(data));
+        let total_pnl_pct = position_total_pnl_percent(totals.total_pnl, account_balance);
 
         let summary = row![
             summary_cell(
@@ -62,7 +67,7 @@ impl TradingTerminal {
             ),
             summary_cell(
                 "Total PnL",
-                format_optional_signed_usd(totals.total_pnl, self.hide_pnl),
+                format_optional_total_pnl(totals.total_pnl, total_pnl_pct, self.hide_pnl),
                 weak_text,
                 totals
                     .total_pnl
@@ -91,6 +96,56 @@ impl TradingTerminal {
                 }
             })
             .into()
+    }
+
+    fn position_summary_account_value(&self, data: &account::AccountData) -> Option<f64> {
+        let live_upnl = sum_required(
+            data.clearinghouse
+                .asset_positions
+                .iter()
+                .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                .map(|ap| {
+                    position_summary_position_upnl_value(
+                        &ap.position.szi,
+                        &ap.position.entry_px,
+                        &ap.position.unrealized_pnl,
+                        self.resolve_mid_for_symbol(&ap.position.coin),
+                    )
+                }),
+        );
+        let stale_upnl = sum_required(
+            data.clearinghouse
+                .asset_positions
+                .iter()
+                .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                .map(|ap| parse_summary_number(&ap.position.unrealized_pnl)),
+        );
+        let spot_value = sum_required(
+            data.spot
+                .balances
+                .iter()
+                .filter(|balance| !self.is_ticker_muted(&balance.coin))
+                .map(|balance| {
+                    position_summary_spot_balance_value(
+                        &balance.coin,
+                        &balance.total,
+                        &balance.entry_ntl,
+                        self.resolve_mid_for_symbol(&balance.coin),
+                    )
+                }),
+        );
+        let perp_equity = if data.is_portfolio_margin() {
+            Some(0.0)
+        } else {
+            parse_summary_number(&data.clearinghouse.margin_summary.account_value)
+        };
+
+        match (perp_equity, spot_value, live_upnl, stale_upnl) {
+            (Some(perp_equity), Some(spot_value), Some(live_upnl), Some(stale_upnl)) => {
+                Some(perp_equity + spot_value + (live_upnl - stale_upnl))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -208,6 +263,19 @@ fn format_optional_signed_usd(total: OptionalTotal, hide_pnl: bool) -> String {
     }
 }
 
+fn format_optional_total_pnl(total: OptionalTotal, percent: Option<f64>, hide_pnl: bool) -> String {
+    match total.value() {
+        Some(_) if hide_pnl => "$*** (***)".to_string(),
+        Some(value) => {
+            let percent = percent
+                .map(format_signed_percent)
+                .unwrap_or_else(|| "--%".to_string());
+            format!("{} ({percent})", format_signed_usd(value))
+        }
+        None => "--".to_string(),
+    }
+}
+
 fn format_signed_usd(value: f64) -> String {
     let display_value = if value.abs() < 0.005 { 0.0 } else { value };
     let formatted = format_usd(&format!("{display_value:.2}"));
@@ -216,6 +284,77 @@ fn format_signed_usd(value: f64) -> String {
     } else {
         formatted
     }
+}
+
+fn format_signed_percent(value: f64) -> String {
+    let display_value = if value.abs() < 0.005 { 0.0 } else { value };
+    if display_value > 0.0 {
+        format!("+{display_value:.2}%")
+    } else {
+        format!("{display_value:.2}%")
+    }
+}
+
+fn position_total_pnl_percent(
+    total_pnl: OptionalTotal,
+    account_balance: Option<f64>,
+) -> Option<f64> {
+    match (total_pnl.value(), account_balance) {
+        (Some(total_pnl), Some(account_balance)) if account_balance.abs() > f64::EPSILON => {
+            Some(total_pnl / account_balance * 100.0)
+        }
+        _ => None,
+    }
+}
+
+fn parse_summary_number(raw: &str) -> Option<f64> {
+    raw.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+}
+
+fn position_summary_position_upnl_value(
+    szi_raw: &str,
+    entry_raw: &str,
+    wire_upnl_raw: &str,
+    live_mid: Option<f64>,
+) -> Option<f64> {
+    match (
+        live_mid,
+        parse_summary_number(szi_raw),
+        parse_summary_number(entry_raw),
+    ) {
+        (Some(mid), Some(szi), Some(entry)) => Some(szi * (mid - entry)),
+        _ => parse_summary_number(wire_upnl_raw),
+    }
+}
+
+fn position_summary_spot_balance_value(
+    coin: &str,
+    total_raw: &str,
+    entry_ntl_raw: &str,
+    live_mid: Option<f64>,
+) -> Option<f64> {
+    let total = parse_summary_number(total_raw)?;
+    if total.abs() < 1e-12 {
+        return Some(0.0);
+    }
+    if matches!(coin, "USDC" | "USDE" | "USDT0" | "USDH") {
+        Some(total)
+    } else if let Some(mid) = live_mid {
+        Some(total * mid)
+    } else {
+        parse_summary_number(entry_ntl_raw)
+    }
+}
+
+fn sum_required(values: impl IntoIterator<Item = Option<f64>>) -> Option<f64> {
+    let mut total = 0.0;
+    for value in values {
+        total += value?;
+    }
+    Some(total)
 }
 
 #[cfg(test)]
@@ -247,5 +386,59 @@ mod tests {
 
         assert_eq!(format_optional_signed_usd(total, true), "$***");
         assert_eq!(format_optional_signed_usd(total, false), "-$12.34");
+    }
+
+    #[test]
+    fn total_pnl_percent_uses_overall_account_balance() {
+        let mut total = OptionalTotal::default();
+        total.add(Some(50.0));
+
+        assert_eq!(position_total_pnl_percent(total, Some(1_000.0)), Some(5.0));
+        assert_eq!(position_total_pnl_percent(total, Some(0.0)), None);
+        assert_eq!(position_total_pnl_percent(total, None), None);
+    }
+
+    #[test]
+    fn total_pnl_display_includes_percent_and_masks_when_hidden() {
+        let mut total = OptionalTotal::default();
+        total.add(Some(12.5));
+
+        assert_eq!(
+            format_optional_total_pnl(total, Some(1.25), false),
+            "+$12.50 (+1.25%)"
+        );
+        assert_eq!(
+            format_optional_total_pnl(total, None, false),
+            "+$12.50 (--%)"
+        );
+        assert_eq!(
+            format_optional_total_pnl(total, Some(1.25), true),
+            "$*** (***)"
+        );
+    }
+
+    #[test]
+    fn account_balance_helpers_use_live_position_and_spot_values() {
+        assert_eq!(
+            position_summary_position_upnl_value("2", "100", "1", Some(110.0)),
+            Some(20.0)
+        );
+        assert_eq!(
+            position_summary_position_upnl_value("bad", "100", "1", Some(110.0)),
+            Some(1.0)
+        );
+
+        assert_eq!(
+            position_summary_spot_balance_value("USDC", "10", "0", None),
+            Some(10.0)
+        );
+        assert_eq!(
+            position_summary_spot_balance_value("PURR", "2", "3", Some(4.0)),
+            Some(8.0)
+        );
+        assert_eq!(
+            position_summary_spot_balance_value("PURR", "2", "3", None),
+            Some(3.0)
+        );
     }
 }

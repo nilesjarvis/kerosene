@@ -111,7 +111,7 @@ impl TradingTerminal {
                     .map(Self::format_signed_amount)
                     .unwrap_or_else(|| "-".to_string()),
                 data.total_pnl
-                    .map(|total_pnl| format!("{total_pnl:.2}"))
+                    .map(|total_pnl| format_usd(&format!("{total_pnl:.2}")))
                     .unwrap_or_else(|| "Invalid".to_string()),
             )
         };
