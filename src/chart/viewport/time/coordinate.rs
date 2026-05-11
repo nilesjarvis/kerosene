@@ -1,5 +1,8 @@
 use crate::chart::{CANDLE_GAP_RATIO, CandlestickChart, ChartState};
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Timestamp Coordinate Mapping
 // ---------------------------------------------------------------------------
@@ -63,6 +66,29 @@ impl CandlestickChart {
 
         let ts = t0 + (t1 - t0) * fraction;
         Some(ts as u64)
+    }
+
+    /// Return the index of the candle whose vertical band the cursor falls
+    /// within, or None when the cursor sits outside the candle range.
+    pub(in crate::chart) fn x_to_candle_index(
+        &self,
+        x: f32,
+        state: &ChartState,
+        chart_w: f32,
+    ) -> Option<usize> {
+        if self.candles.is_empty() || chart_w <= 0.0 || state.candle_width <= 0.0 {
+            return None;
+        }
+        let step = state.candle_width * (1.0 + CANDLE_GAP_RATIO);
+        let last_idx = self.candles.len() as isize - 1;
+        let scroll_offset = self.effective_scroll_offset(state, chart_w);
+        let right_idx = last_idx as f64 - scroll_offset as f64;
+        let slots_from_right = ((chart_w - x) / step) as f64 - 0.5;
+        let float_idx = (right_idx - slots_from_right).round() as isize;
+        if float_idx < 0 || float_idx > last_idx {
+            return None;
+        }
+        Some(float_idx as usize)
     }
 
     /// Convert a timestamp to a pixel X coordinate.
