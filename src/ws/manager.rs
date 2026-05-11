@@ -24,6 +24,15 @@ mod tests;
 const WS_RECONNECT_BASE_DELAY_SECS: u64 = 1;
 const WS_RECONNECT_MAX_DELAY_SECS: u64 = 60;
 const WS_RECONNECT_RESET_AFTER_SECS: u64 = 30;
+// Force a reconnect if no frame (data or pong) has arrived for this long.
+// The manager pings every 30s, so 45s = "missed at least one heartbeat round-trip"
+// and is the recovery path for half-open sockets left behind by VPN/NAT rebinds,
+// where reads silently stall while writes still queue into the kernel buffer.
+const WS_READ_STALE_AFTER_SECS: u64 = 45;
+
+fn stale_read_remaining(last_rx_elapsed: Duration) -> Duration {
+    Duration::from_secs(WS_READ_STALE_AFTER_SECS).saturating_sub(last_rx_elapsed)
+}
 
 fn next_reconnect_delay_secs(current_secs: u64) -> u64 {
     if current_secs < WS_RECONNECT_BASE_DELAY_SECS {
@@ -137,6 +146,7 @@ async fn ws_manager_task(
 
         let (mut write, mut read) = ws_stream.split();
         let mut disconnected = false;
+        let mut last_rx_at = Instant::now();
 
         for payload in active_subs.payloads() {
             let text = payload.to_string();
@@ -150,9 +160,16 @@ async fn ws_manager_task(
         while !disconnected {
             let cmd_fut = Box::pin(cmd_rx.recv());
             let read_fut = Box::pin(read.next());
+            let stale_in = stale_read_remaining(last_rx_at.elapsed());
 
-            match select(cmd_fut, read_fut).await {
-                Either::Left((Some(cmd), _)) => {
+            match tokio::time::timeout(stale_in, select(cmd_fut, read_fut)).await {
+                Err(_) => {
+                    // No frame received within the stale window. Force a
+                    // reconnect to recover from half-open sockets that a
+                    // VPN/NAT rebind has silently abandoned.
+                    disconnected = true;
+                }
+                Ok(Either::Left((Some(cmd), _))) => {
                     let action = handle_ws_command(&mut active_subs, cmd);
                     if action.mark_ping_start {
                         telemetry_mark_ws_ping_start();
@@ -167,11 +184,12 @@ async fn ws_manager_task(
                         }
                     }
                 }
-                Either::Left((None, _)) => {
+                Ok(Either::Left((None, _))) => {
                     disconnected = true;
                 }
-                Either::Right((msg_opt, _)) => match msg_opt {
+                Ok(Either::Right((msg_opt, _))) => match msg_opt {
                     Some(Ok(WsMsg::Text(text))) => {
+                        last_rx_at = Instant::now();
                         telemetry_add_rx(text.len() as u64);
                         match parse_ws_text_frame(&text) {
                             WsTextFrame::Pong => {
@@ -186,7 +204,9 @@ async fn ws_manager_task(
                             WsTextFrame::Ignored => {}
                         }
                     }
-                    Some(Ok(_)) => {}
+                    Some(Ok(_)) => {
+                        last_rx_at = Instant::now();
+                    }
                     Some(Err(_)) | None => {
                         disconnected = true;
                     }
