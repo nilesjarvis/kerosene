@@ -3,12 +3,13 @@ use crate::message::Message;
 use crate::spaghetti;
 use crate::spaghetti_state::SpaghettiChartId;
 
-use iced::{Task, Theme};
+use iced::Task;
 
 impl TradingTerminal {
     pub(super) fn open_spaghetti_editor(&mut self, id: SpaghettiChartId) -> Task<Message> {
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             inst.editor_open = true;
+            inst.style_menu_open = false;
             inst.editor_search_query.clear();
         }
         Task::none()
@@ -45,6 +46,7 @@ impl TradingTerminal {
         let display = sym
             .map(Self::exchange_symbol_display_name)
             .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
+        let theme = self.theme();
         let mut task = Task::none();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id)
             && !inst.canvas.series.iter().any(|s| s.symbol == key)
@@ -58,7 +60,7 @@ impl TradingTerminal {
             }
             let color_idx = inst.next_color_idx;
             inst.next_color_idx += 1;
-            let colors = spaghetti::series_colors(&Theme::Dark);
+            let colors = spaghetti::series_colors(&theme);
             let color = colors[color_idx % colors.len()];
             inst.canvas.series.push(spaghetti::Series {
                 symbol: key.clone(),
@@ -67,6 +69,7 @@ impl TradingTerminal {
                 color,
                 loaded: false,
             });
+            inst.canvas.apply_style_colors(&theme);
             task = Self::fetch_spaghetti_candles(
                 id,
                 &key,

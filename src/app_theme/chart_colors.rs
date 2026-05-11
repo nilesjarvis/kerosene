@@ -38,10 +38,14 @@ impl TradingTerminal {
     }
 
     pub(crate) fn apply_chart_theme_colors(&mut self) {
+        let theme = self.theme();
         let (bull, bear) = self.active_chart_theme_colors();
         for instance in self.charts.values_mut() {
             instance.chart.set_chart_colors(bull, bear);
             instance.chart.candle_cache.clear();
+        }
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.canvas.apply_style_colors(&theme);
         }
     }
 }

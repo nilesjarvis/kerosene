@@ -52,6 +52,8 @@ impl TradingTerminal {
                 timeframe: inst.interval.config_str().to_string(),
                 pair_mode: inst.pair_mode,
                 pair_candle_mode: inst.pair_candle_mode,
+                color_mode: inst.canvas.color_mode,
+                show_labels: inst.canvas.show_labels,
                 anchor: inst
                     .canvas
                     .active_session

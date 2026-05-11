@@ -3,6 +3,7 @@ mod data;
 mod editor;
 mod pair;
 mod session;
+mod style;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -34,6 +35,9 @@ impl TradingTerminal {
                 self.set_spaghetti_session_granularity_auto(id)
             }
             Message::SpaghettiResetView(id) => self.reset_spaghetti_view(id),
+            Message::ToggleSpaghettiStyleMenu(id) => self.toggle_spaghetti_style_menu(id),
+            Message::ToggleSpaghettiLabels(id) => self.toggle_spaghetti_labels(id),
+            Message::SpaghettiSetColorMode(id, mode) => self.set_spaghetti_color_mode(id, mode),
             Message::PairSetCandleMode(id, enabled) => self.set_pair_candle_mode(id, enabled),
             _ => Task::none(),
         }

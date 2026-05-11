@@ -91,8 +91,11 @@ impl SpaghettiCanvas {
 
         axes::draw_grid_and_axes(&mut frame, &ctx, pct_hi, pct_range, &pct_to_y);
         series::draw_session_start_line(&mut frame, &ctx, &ts_to_x, self.base_timestamp);
-        series::draw_series_lines(&mut frame, &ctx, &series_data, &pct_to_y);
-        series::draw_legend(&mut frame, &series_data);
+        series::draw_series_lines(&mut frame, &ctx, &series_data, &pct_to_y, self.color_mode);
+        if self.effective_show_labels() {
+            series::draw_series_labels(&mut frame, &ctx, &series_data, &pct_to_y, self.color_mode);
+        }
+        series::draw_legend(&mut frame, ctx.theme, self.color_mode, &series_data);
 
         let base_geo = frame.into_geometry();
         let overlay_geo = crosshair::draw_crosshair_overlay(&ctx, pct_hi, pct_range);

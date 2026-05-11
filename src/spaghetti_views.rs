@@ -1,6 +1,7 @@
 mod chart_area;
 mod controls;
 mod editor;
+mod style_menu;
 mod toolbar;
 
 use crate::app_state::TradingTerminal;
@@ -39,7 +40,12 @@ impl TradingTerminal {
 
         let content = column![toolbar, tf_row, chart_area].spacing(4);
 
-        container(content)
+        let mut chart_layers: Vec<Element<'_, Message>> = vec![content.into()];
+        if inst.style_menu_open {
+            chart_layers.push(self.view_spaghetti_style_menu(id, inst));
+        }
+
+        container(iced::widget::stack(chart_layers))
             .width(Fill)
             .height(Fill)
             .padding([4, 4])

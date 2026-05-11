@@ -14,6 +14,7 @@ use iced::widget::canvas;
 use iced::{Rectangle, Renderer, Theme};
 
 use self::helpers::{chart_time_window, global_time_range};
+pub use self::model::ComparisonColorMode;
 pub use self::model::{Series, SpaghettiCanvas, series_colors};
 use self::normalized::NormalizedRenderContext;
 use self::ratio::PairRatioRenderContext;

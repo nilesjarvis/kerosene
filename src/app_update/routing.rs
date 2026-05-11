@@ -208,6 +208,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SpaghettiSetSession(_, _)
         | Message::SpaghettiSetSessionGranularityAuto(_)
         | Message::SpaghettiResetView(_)
+        | Message::ToggleSpaghettiStyleMenu(_)
+        | Message::ToggleSpaghettiLabels(_)
+        | Message::SpaghettiSetColorMode(_, _)
         | Message::PairSetCandleMode(_, _) => UpdateRoute::Spaghetti,
 
         Message::OpenWalletTrackerWindow

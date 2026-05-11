@@ -14,6 +14,7 @@ pub(crate) struct SpaghettiChartInstance {
     pub(crate) pair_mode: bool,
     pub(crate) pair_candle_mode: bool,
     pub(crate) session_granularity: Option<Timeframe>,
+    pub(crate) style_menu_open: bool,
     pub(crate) editor_open: bool,
     pub(crate) editor_search_query: String,
     /// Monotonic counter for color assignment (never resets on removal).
@@ -29,6 +30,7 @@ impl SpaghettiChartInstance {
             pair_mode: false,
             pair_candle_mode: false,
             session_granularity: None,
+            style_menu_open: false,
             editor_open: true,
             editor_search_query: String::new(),
             next_color_idx: 0,

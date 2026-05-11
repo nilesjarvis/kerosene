@@ -1,4 +1,5 @@
 use crate::annotations::AnnotationConfig;
+use crate::spaghetti::ComparisonColorMode;
 use serde::{Deserialize, Serialize};
 
 use super::{default_symbol, default_timeframe};
@@ -139,6 +140,12 @@ pub struct SpaghettiChartConfig {
     /// Pair chart render mode: true = candlesticks, false = line.
     #[serde(default)]
     pub pair_candle_mode: bool,
+    /// Comparison chart line color mode.
+    #[serde(default)]
+    pub color_mode: ComparisonColorMode,
+    /// Whether comparison chart ticker labels are shown.
+    #[serde(default)]
+    pub show_labels: bool,
     /// Optional comparison anchor (e.g. "us", "utc_week").
     #[serde(default)]
     pub anchor: Option<String>,

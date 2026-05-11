@@ -75,6 +75,8 @@ impl TradingTerminal {
             inst.canvas.pair_ratio_mode = scfg.pair_mode;
             inst.pair_candle_mode = scfg.pair_candle_mode;
             inst.canvas.pair_candle_mode = scfg.pair_candle_mode;
+            inst.canvas.color_mode = scfg.color_mode;
+            inst.canvas.show_labels = scfg.show_labels;
             inst.canvas.active_session = scfg
                 .anchor
                 .as_deref()

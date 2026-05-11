@@ -103,6 +103,8 @@ impl TradingTerminal {
                         timeframe: "H1".to_string(),
                         pair_mode: false,
                         pair_candle_mode: false,
+                        color_mode: crate::spaghetti::ComparisonColorMode::default(),
+                        show_labels: false,
                         anchor: None,
                         anchor_granularity: None,
                     });

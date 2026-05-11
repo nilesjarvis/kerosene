@@ -3,6 +3,31 @@ use crate::api::{Candle, is_valid_candle};
 
 use iced::widget::canvas;
 use iced::{Color, Theme};
+use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// Comparison Style
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ComparisonColorMode {
+    #[default]
+    Multi,
+    Single,
+}
+
+impl ComparisonColorMode {
+    pub const ALL: [Self; 2] = [Self::Multi, Self::Single];
+}
+
+impl std::fmt::Display for ComparisonColorMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Multi => write!(f, "Multi-color"),
+            Self::Single => write!(f, "Single color"),
+        }
+    }
+}
 
 /// Color palette for series lines.
 pub fn series_colors(theme: &Theme) -> Vec<Color> {
@@ -31,6 +56,10 @@ pub struct Series {
 pub struct SpaghettiCanvas {
     pub series: Vec<Series>,
     pub cache: canvas::Cache,
+    /// Render all comparison series with one theme color or each with its assigned color.
+    pub color_mode: ComparisonColorMode,
+    /// Show horizontal ticker labels at the latest visible value for each comparison series.
+    pub show_labels: bool,
     /// If true and at least two series are loaded, render A/B ratio.
     pub pair_ratio_mode: bool,
     /// In pair ratio mode, render as candlesticks when true.
@@ -49,6 +78,8 @@ impl SpaghettiCanvas {
         Self {
             series: Vec::new(),
             cache: canvas::Cache::new(),
+            color_mode: ComparisonColorMode::default(),
+            show_labels: false,
             pair_ratio_mode: false,
             pair_candle_mode: false,
             reset_epoch: 0,
@@ -62,6 +93,39 @@ impl SpaghettiCanvas {
             .iter()
             .filter(|s| s.loaded && !s.candles.is_empty())
             .collect()
+    }
+
+    pub fn effective_show_labels(&self) -> bool {
+        self.show_labels || self.color_mode == ComparisonColorMode::Single
+    }
+
+    pub fn series_render_color(&self, theme: &Theme, series: &Series) -> Color {
+        match self.color_mode {
+            ComparisonColorMode::Multi => series.color,
+            ComparisonColorMode::Single => Self::single_color(theme),
+        }
+    }
+
+    pub fn apply_style_colors(&mut self, theme: &Theme) {
+        match self.color_mode {
+            ComparisonColorMode::Multi => {
+                let colors = series_colors(theme);
+                for (idx, series) in self.series.iter_mut().enumerate() {
+                    series.color = colors[idx % colors.len()];
+                }
+            }
+            ComparisonColorMode::Single => {
+                let color = Self::single_color(theme);
+                for series in &mut self.series {
+                    series.color = color;
+                }
+            }
+        }
+        self.cache.clear();
+    }
+
+    pub fn single_color(theme: &Theme) -> Color {
+        theme.palette().primary
     }
 
     /// Push or update a candle for a specific series, maintaining sorted order.
@@ -89,5 +153,54 @@ impl SpaghettiCanvas {
             }
             self.cache.clear();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_series(symbol: &str, color: Color) -> Series {
+        Series {
+            symbol: symbol.to_string(),
+            display: symbol.to_string(),
+            candles: Vec::new(),
+            color,
+            loaded: false,
+        }
+    }
+
+    #[test]
+    fn single_color_mode_recolors_all_series() {
+        let theme = Theme::Dark;
+        let mut canvas = SpaghettiCanvas::new();
+        canvas
+            .series
+            .push(test_series("BTC", Color::from_rgb8(1, 2, 3)));
+        canvas
+            .series
+            .push(test_series("ETH", Color::from_rgb8(4, 5, 6)));
+        canvas.color_mode = ComparisonColorMode::Single;
+
+        canvas.apply_style_colors(&theme);
+
+        let expected = SpaghettiCanvas::single_color(&theme);
+        assert!(canvas.series.iter().all(|series| series.color == expected));
+        assert!(canvas.effective_show_labels());
+    }
+
+    #[test]
+    fn multi_color_mode_restores_theme_palette_series_colors() {
+        let theme = Theme::Dark;
+        let mut canvas = SpaghettiCanvas::new();
+        canvas.series.push(test_series("BTC", Color::BLACK));
+        canvas.series.push(test_series("ETH", Color::BLACK));
+        canvas.color_mode = ComparisonColorMode::Multi;
+
+        canvas.apply_style_colors(&theme);
+
+        let colors = series_colors(&theme);
+        assert_eq!(canvas.series[0].color, colors[0]);
+        assert_eq!(canvas.series[1].color, colors[1]);
     }
 }

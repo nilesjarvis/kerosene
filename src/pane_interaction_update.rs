@@ -25,6 +25,9 @@ impl TradingTerminal {
                 for inst in self.charts.values_mut() {
                     inst.macro_menu_open = false;
                 }
+                for inst in self.spaghetti_charts.values_mut() {
+                    inst.style_menu_open = false;
+                }
                 self.account_picker_open = false;
 
                 if let Some(PaneKind::Chart(id)) = self.panes.get(pane).cloned() {
