@@ -60,7 +60,14 @@ impl TradingTerminal {
             content = content.push(text(warning).size(11).color(theme.palette().warning));
         }
         let content = content.push(rule::horizontal(1)).push(rows);
-        positions_scrollable(content)
+        column![
+            positions_scrollable(content),
+            self.view_position_summary_bar(&positions, &theme),
+        ]
+        .spacing(0)
+        .width(Fill)
+        .height(Fill)
+        .into()
     }
 }
 

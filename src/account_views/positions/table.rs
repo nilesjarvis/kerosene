@@ -8,6 +8,7 @@ use iced::widget::Column;
 mod close_cell;
 mod position_row;
 mod sort;
+mod summary;
 
 impl TradingTerminal {
     pub(super) fn view_position_rows<'a>(

@@ -64,7 +64,10 @@ impl TradingTerminal {
         row_data
     }
 
-    fn position_row_data<'a>(&self, ap: &'a account::AssetPosition) -> PositionRowData<'a> {
+    pub(in crate::account_views::positions::table) fn position_row_data<'a>(
+        &self,
+        ap: &'a account::AssetPosition,
+    ) -> PositionRowData<'a> {
         let pos = &ap.position;
         let szi = parse_position_row_number(&pos.szi);
         let entry_px = parse_position_row_number(&pos.entry_px);
