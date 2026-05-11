@@ -1,9 +1,0 @@
-<svg width="800" height="800" viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">Kerosene profile image</title>
-  <desc id="desc">A flat orange profile image with a simple black Kerosene K mark.</desc>
-
-  <rect width="800" height="800" fill="#FF5A00"/>
-  <rect x="230" y="150" width="112" height="500" fill="#050505"/>
-  <polygon points="342,378 566,150 704,150 444,414" fill="#050505"/>
-  <polygon points="342,414 704,650 558,650 342,510" fill="#050505"/>
-</svg>

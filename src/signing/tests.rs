@@ -175,6 +175,7 @@ fn exchange_response_resting_status_reports_oid_without_error() {
     assert_eq!(response.order_oid(), Some(42));
     assert!(!response.is_error());
     assert!(!response.is_fully_filled());
+    assert!(!response.is_ambiguous_order_result());
 }
 
 #[test]
@@ -191,6 +192,7 @@ fn exchange_response_filled_status_reports_fill_and_completion() {
     assert_eq!(response.order_oid(), Some(77));
     assert!(!response.is_error());
     assert!(response.is_fully_filled());
+    assert!(!response.is_ambiguous_order_result());
 }
 
 #[test]
@@ -206,6 +208,7 @@ fn exchange_response_error_status_drives_error_transition() {
     assert_eq!(response.order_oid(), None);
     assert!(response.is_error());
     assert!(!response.is_fully_filled());
+    assert!(!response.is_ambiguous_order_result());
 }
 
 #[test]
@@ -279,6 +282,34 @@ fn exchange_response_multiple_filled_statuses_are_all_required_for_completion() 
 
     assert!(all_filled.is_fully_filled());
     assert!(!mixed.is_fully_filled());
+}
+
+#[test]
+fn exchange_response_ambiguous_ok_body_requires_reconciliation() {
+    let malformed: ExchangeResponse = serde_json::from_value(serde_json::json!({
+        "status": "ok",
+        "response": {
+            "type": "order",
+            "data": {
+                "statuses": "schema-shifted"
+            }
+        }
+    }))
+    .expect("malformed ok-shaped response should preserve the raw body");
+
+    assert_eq!(malformed.summary(), "No response body");
+    assert!(!malformed.is_error());
+    assert!(malformed.is_ambiguous_order_result());
+
+    let missing_resting_oid = exchange_response(serde_json::json!({
+        "resting": {}
+    }));
+    assert!(!missing_resting_oid.is_error());
+    assert!(missing_resting_oid.is_ambiguous_order_result());
+
+    let empty_statuses = exchange_response_with_statuses(Vec::new());
+    assert!(!empty_statuses.is_error());
+    assert!(empty_statuses.is_ambiguous_order_result());
 }
 
 #[test]

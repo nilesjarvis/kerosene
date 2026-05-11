@@ -571,6 +571,31 @@ impl TradingTerminal {
                             ),
                             true,
                         ));
+                    } else if response.is_ambiguous_order_result() {
+                        if let Some(child) = twap
+                            .child_orders
+                            .iter_mut()
+                            .find(|child| child.index == pending.index)
+                        {
+                            child.status = TwapChildStatus::StatusUnknown;
+                        }
+                        twap.status = TwapStatus::Error;
+                        twap.push_event(
+                            TwapEventKind::Error,
+                            format!(
+                                "Slice {} returned ambiguous order status: {summary_text}; refreshing account data",
+                                pending.index
+                            ),
+                            true,
+                        );
+                        status_update = Some((
+                            format!(
+                                "TWAP slice {} status unknown; refreshing account data",
+                                pending.index
+                            ),
+                            true,
+                        ));
+                        refresh_policy = TwapAccountRefresh::Immediate;
                     } else {
                         if let Some(child) = twap
                             .child_orders
@@ -1091,6 +1116,7 @@ fn twap_place_result_refresh_policy(
 ) -> TwapAccountRefresh {
     match result {
         Err(_) => TwapAccountRefresh::Immediate,
+        Ok(response) if response.is_ambiguous_order_result() => TwapAccountRefresh::Immediate,
         Ok(response) if response.is_error() => TwapAccountRefresh::None,
         Ok(_) => TwapAccountRefresh::OnTerminal,
     }
@@ -1141,6 +1167,22 @@ mod tests {
         assert_eq!(
             twap_place_result_refresh_policy(&filled),
             TwapAccountRefresh::OnTerminal
+        );
+
+        let ambiguous: Result<ExchangeResponse, String> =
+            Ok(serde_json::from_value(serde_json::json!({
+                "status": "ok",
+                "response": {
+                    "type": "order",
+                    "data": {
+                        "statuses": "schema-shifted"
+                    }
+                }
+            }))
+            .expect("ambiguous exchange response should deserialize"));
+        assert_eq!(
+            twap_place_result_refresh_policy(&ambiguous),
+            TwapAccountRefresh::Immediate
         );
 
         assert!(!TwapAccountRefresh::OnTerminal.should_refresh(false));
