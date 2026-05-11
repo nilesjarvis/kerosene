@@ -32,6 +32,12 @@ Kerosene is a GPU-accelerated desktop trading terminal for [Hyperliquid](https:/
 
 More screenshots, including alternate themes and focused feature views, are available in [assets/screenshots](assets/screenshots/).
 
+## Documentation
+
+Feature-specific guides live in [`docs/`](docs/):
+
+- [Chase Orders](docs/advanced-orders/chase-orders.md) — high-level behavior, user expectations, limits, and technical lifecycle details for Kerosene's client-side Chase order automation.
+
 ## Features
 
 **Market Data**
