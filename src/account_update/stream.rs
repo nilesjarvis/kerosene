@@ -260,6 +260,7 @@ impl TradingTerminal {
         }
         if fills_changed {
             self.sync_all_chart_trade_markers();
+            self.reconcile_twap_fills_from_account();
         }
         let chase_task = if orders_changed {
             self.handle_chase_order_disappearance()
@@ -313,7 +314,10 @@ impl TradingTerminal {
                             "Chase stopped: invalid remaining size from open orders".into(),
                             true,
                         ));
-                        remove_ids.push(chase_id);
+                        remove_ids.push((
+                            chase_id,
+                            "Chase stopped: invalid remaining size from open orders".to_string(),
+                        ));
                     }
                 }
                 None => {
@@ -331,8 +335,8 @@ impl TradingTerminal {
                 }
             }
         }
-        for chase_id in remove_ids {
-            self.remove_chase_order(chase_id);
+        for (chase_id, summary) in remove_ids {
+            self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
         if refresh_for_missing_order {
             return self.refresh_account_data();
@@ -378,7 +382,11 @@ impl TradingTerminal {
                                 "Chase stopped: invalid remaining size from account refresh".into(),
                                 true,
                             ));
-                            remove_ids.push(chase_id);
+                            remove_ids.push((
+                                chase_id,
+                                "Chase stopped: invalid remaining size from account refresh"
+                                    .to_string(),
+                            ));
                         } else if chase.stop_requested {
                             stop_after_refresh = chase
                                 .stop_reason
@@ -395,8 +403,8 @@ impl TradingTerminal {
                 None if open_orders_complete => {
                     let status = chase_fill_summary(&fills, oid)
                         .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
-                    self.order_status = Some((status, false));
-                    remove_ids.push(chase_id);
+                    self.order_status = Some((status.clone(), false));
+                    remove_ids.push((chase_id, status));
                 }
                 None => {
                     self.order_status = Some((
@@ -407,8 +415,8 @@ impl TradingTerminal {
             }
         }
 
-        for chase_id in remove_ids {
-            self.remove_chase_order(chase_id);
+        for (chase_id, summary) in remove_ids {
+            self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
         Task::batch(tasks)
     }

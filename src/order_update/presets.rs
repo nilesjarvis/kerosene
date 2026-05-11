@@ -52,13 +52,17 @@ impl TradingTerminal {
             if self.preset_is_usd {
                 match kind {
                     OrderKind::Market => update_preset(&mut self.order_presets.market_usd),
-                    OrderKind::Limit => update_preset(&mut self.order_presets.limit_usd),
+                    OrderKind::Limit | OrderKind::LimitIoc => {
+                        update_preset(&mut self.order_presets.limit_usd)
+                    }
                     OrderKind::Chase => update_preset(&mut self.order_presets.chase_usd),
                 }
             } else {
                 match kind {
                     OrderKind::Market => update_preset(&mut self.order_presets.market_coin),
-                    OrderKind::Limit => update_preset(&mut self.order_presets.limit_coin),
+                    OrderKind::Limit | OrderKind::LimitIoc => {
+                        update_preset(&mut self.order_presets.limit_coin)
+                    }
                     OrderKind::Chase => update_preset(&mut self.order_presets.chase_coin),
                 }
             }

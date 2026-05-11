@@ -112,6 +112,7 @@ impl Default for KeroseneConfig {
             journal_entries: HashMap::new(),
             journal_entries_by_account: HashMap::new(),
             order_presets: OrderPresetsConfig::default(),
+            advanced_order_history: Vec::new(),
             preset_is_usd: true,
             hotkeys: Vec::new(),
         }

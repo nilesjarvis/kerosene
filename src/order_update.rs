@@ -59,7 +59,36 @@ impl TradingTerminal {
             Message::StartChase(is_buy) => return self.start_chase(is_buy),
             Message::StopChase => return self.stop_chase(),
             Message::StopChaseById(chase_id) => return self.stop_chase_by_id(chase_id),
-            Message::StopAllChases => return self.stop_all_chases(),
+            Message::StopAllAdvancedOrders => {
+                let chase_task = self.stop_all_chases();
+                let twap_task = self.stop_all_twaps();
+                return Task::batch([chase_task, twap_task]);
+            }
+            Message::TwapDurationChanged(value) => self.handle_twap_duration_changed(value),
+            Message::TwapSlicesChanged(value) => self.handle_twap_slices_changed(value),
+            Message::TwapMinPriceChanged(value) => self.handle_twap_min_price_changed(value),
+            Message::TwapMaxPriceChanged(value) => self.handle_twap_max_price_changed(value),
+            Message::TwapRandomizeToggled(value) => self.handle_twap_randomize_toggled(value),
+            Message::StartTwap(is_buy) => return self.start_twap(is_buy),
+            Message::StopTwap(twap_id) => return self.stop_twap(twap_id),
+            Message::TwapTick => return self.handle_twap_tick(),
+            Message::TwapBookUpdate {
+                twap_id,
+                coin,
+                book,
+            } => return self.handle_twap_book_update(twap_id, coin, book),
+            Message::TwapSliceResult { twap_id, result } => {
+                return self.handle_twap_slice_result(twap_id, *result);
+            }
+            Message::TwapUnexpectedCancelResult {
+                twap_id,
+                oid,
+                result,
+            } => return self.handle_twap_unexpected_cancel_result(twap_id, oid, *result),
+            Message::OpenTwapDetails(twap_id) => return self.open_twap_details(twap_id),
+            Message::OpenAdvancedOrderHistory(entry_id) => {
+                return self.open_advanced_order_history(entry_id);
+            }
             Message::ChaseInitialBookLoaded { chase_id, result } => {
                 return self.handle_chase_initial_book_loaded(chase_id, *result);
             }

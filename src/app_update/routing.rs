@@ -111,7 +111,20 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::StartChase(_)
         | Message::StopChase
         | Message::StopChaseById(_)
-        | Message::StopAllChases
+        | Message::StopAllAdvancedOrders
+        | Message::TwapDurationChanged(_)
+        | Message::TwapSlicesChanged(_)
+        | Message::TwapMinPriceChanged(_)
+        | Message::TwapMaxPriceChanged(_)
+        | Message::TwapRandomizeToggled(_)
+        | Message::StartTwap(_)
+        | Message::StopTwap(_)
+        | Message::TwapTick
+        | Message::TwapBookUpdate { .. }
+        | Message::TwapSliceResult { .. }
+        | Message::TwapUnexpectedCancelResult { .. }
+        | Message::OpenTwapDetails(_)
+        | Message::OpenAdvancedOrderHistory(_)
         | Message::ChaseInitialBookLoaded { .. }
         | Message::ChaseBookUpdate { .. }
         | Message::ChaseRepriceTick

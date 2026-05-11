@@ -37,6 +37,7 @@ More screenshots, including alternate themes and focused feature views, are avai
 Feature-specific guides live in [`docs/`](docs/):
 
 - [Chase Orders](docs/advanced-orders/chase-orders.md) — high-level behavior, user expectations, limits, and technical lifecycle details for Kerosene's client-side Chase order automation.
+- [TWAP Orders](docs/advanced-orders/twap-orders.md) — user behavior, safety rails, slice execution, persistence, and technical lifecycle details for Kerosene's client-side TWAP order automation.
 
 ## Features
 
@@ -55,6 +56,7 @@ Feature-specific guides live in [`docs/`](docs/):
 - Right-click or use the chart order-line close button to cancel orders
 - One-click midpoint price fill for limit orders
 - Chase orders: client-side limit orders that reprice at the best bid/ask until filled, with partial-fill tracking
+- TWAP orders: client-side scheduled IOC slices with hard price ranges, slice logs, and persisted completed-order history
 - Close-position menu for 25%, 50%, or 100% via market or limit order
 - Nuke button to close all positions at market
 

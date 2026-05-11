@@ -5,6 +5,7 @@ pub(crate) mod pricing;
 mod quick_order;
 mod submit;
 mod symbols;
+mod twap;
 
 use zeroize::Zeroizing;
 

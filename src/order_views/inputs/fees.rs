@@ -27,7 +27,9 @@ impl TradingTerminal {
         }
 
         let fee_price = match self.order_kind {
-            OrderKind::Limit | OrderKind::Chase => self.order_price.parse::<f64>().ok(),
+            OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc => {
+                self.order_price.parse::<f64>().ok()
+            }
             OrderKind::Market => self.resolve_mid_for_symbol(&self.active_symbol),
         };
         let fee_qty = self

@@ -142,6 +142,7 @@ impl TradingTerminal {
             OrderKind::Market => "Market",
             OrderKind::Limit => "Limit",
             OrderKind::Chase => "Chase",
+            OrderKind::LimitIoc => "Limit IOC",
         }
         .to_string()
     }

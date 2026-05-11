@@ -233,7 +233,31 @@ pub(crate) enum Message {
     StartChase(bool), // true = buy, false = sell
     StopChase,
     StopChaseById(u64),
-    StopAllChases,
+    StopAllAdvancedOrders,
+    TwapDurationChanged(String),
+    TwapSlicesChanged(String),
+    TwapMinPriceChanged(String),
+    TwapMaxPriceChanged(String),
+    TwapRandomizeToggled(bool),
+    StartTwap(bool), // true = buy, false = sell
+    StopTwap(u64),
+    TwapTick,
+    TwapBookUpdate {
+        twap_id: u64,
+        coin: String,
+        book: OrderBook,
+    },
+    TwapSliceResult {
+        twap_id: u64,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
+    TwapUnexpectedCancelResult {
+        twap_id: u64,
+        oid: u64,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
+    OpenTwapDetails(u64),
+    OpenAdvancedOrderHistory(String),
     ChaseInitialBookLoaded {
         chase_id: u64,
         result: Box<Result<OrderBook, String>>,

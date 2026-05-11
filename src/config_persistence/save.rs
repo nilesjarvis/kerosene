@@ -205,6 +205,7 @@ impl TradingTerminal {
             journal_entries,
             journal_entries_by_account,
             order_presets: layout_snapshot.order_presets,
+            advanced_order_history: self.advanced_order_history.iter().cloned().collect(),
             preset_is_usd: layout_snapshot.preset_is_usd,
             hotkeys: self.hotkeys.clone(),
         }

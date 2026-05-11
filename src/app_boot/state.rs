@@ -1,4 +1,5 @@
 use crate::account_state::PositionsSortColumn;
+use crate::advanced_order_history::prune_advanced_order_history;
 use crate::app_state::TradingTerminal;
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart_state::{ChartId, ChartInstance};
@@ -45,6 +46,8 @@ impl TradingTerminal {
             .cloned()
             .collect();
         let live_watchlists = Self::boot_live_watchlists(cfg, &muted_tickers);
+        let mut advanced_order_history = VecDeque::from(cfg.advanced_order_history.clone());
+        prune_advanced_order_history(&mut advanced_order_history);
 
         let mut state = Self {
             saved_layouts: cfg.saved_layouts.clone(),
@@ -170,7 +173,13 @@ impl TradingTerminal {
             chase_orders: BTreeMap::new(),
             selected_chase_id: None,
             next_chase_id: 1,
-            last_chase_exchange_request_at: None,
+            twap_orders: BTreeMap::new(),
+            selected_twap_id: None,
+            next_twap_id: 1,
+            twap_form: crate::twap_state::TwapOrderForm::default(),
+            advanced_order_history,
+            advanced_order_history_windows: HashMap::new(),
+            last_advanced_exchange_request_at: None,
             hide_pnl: cfg.hide_pnl,
             live_watchlists,
             favourite_symbols,

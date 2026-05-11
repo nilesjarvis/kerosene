@@ -6,6 +6,7 @@ use super::panes::{ChartConfig, OrderBookConfig, SpaghettiChartConfig};
 use super::secrets::EncryptedSecretsConfig;
 use super::themes::{CustomThemeConfig, default_custom_themes, default_theme};
 use super::wallets::{AddressBookEntryConfig, WalletTrackerConfig};
+use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -157,6 +158,10 @@ pub struct KeroseneConfig {
     /// User-configured quick-order presets.
     #[serde(default)]
     pub order_presets: OrderPresetsConfig,
+    /// Completed/stopped advanced order history. Live advanced orders are not
+    /// persisted or resumed after restart.
+    #[serde(default)]
+    pub advanced_order_history: Vec<AdvancedOrderHistoryEntry>,
     /// Whether presets are currently displaying USD or COIN.
     #[serde(default = "default_true")]
     pub preset_is_usd: bool,

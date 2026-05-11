@@ -2,6 +2,7 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::{ChaseOrder, float_to_wire, round_price};
+use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 
 use iced::Task;
 
@@ -59,11 +60,10 @@ impl TradingTerminal {
         {
             return Task::none();
         }
-        if self.chase_orders.len() >= Self::MAX_ACTIVE_CHASE_ORDERS {
+        if self.active_advanced_order_count() >= MAX_ACTIVE_ADVANCED_ORDERS {
             self.order_status = Some((
                 format!(
-                    "Cannot start chase: maximum of {} active chase orders reached",
-                    Self::MAX_ACTIVE_CHASE_ORDERS
+                    "Cannot start chase: maximum of {MAX_ACTIVE_ADVANCED_ORDERS} active advanced orders reached"
                 ),
                 true,
             ));
@@ -96,6 +96,8 @@ impl TradingTerminal {
             return Task::none();
         }
         let chase_id = self.next_chase_id();
+        let started_at = std::time::Instant::now();
+        let started_at_ms = Self::now_ms();
 
         self.chase_orders.insert(
             chase_id,
@@ -105,6 +107,7 @@ impl TradingTerminal {
                 account_address,
                 agent_key: key.into(),
                 is_buy,
+                target_size: sz,
                 remaining_size: sz,
                 asset,
                 sz_decimals,
@@ -114,7 +117,8 @@ impl TradingTerminal {
                 current_price: rounded_px,
                 current_price_wire: float_to_wire(rounded_px),
                 initial_price: rounded_px,
-                started_at: std::time::Instant::now(),
+                started_at,
+                started_at_ms,
                 reprice_count: 0,
                 pending_op: None,
                 last_reprice_at: None,

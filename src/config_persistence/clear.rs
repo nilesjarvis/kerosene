@@ -44,7 +44,10 @@ impl TradingTerminal {
         self.account_error = None;
         self.chase_orders.clear();
         self.selected_chase_id = None;
-        self.last_chase_exchange_request_at = None;
+        self.twap_orders.clear();
+        self.selected_twap_id = None;
+        self.twap_form = crate::twap_state::TwapOrderForm::default();
+        self.last_advanced_exchange_request_at = None;
         self.pending_order_action = None;
 
         self.hydromancer_api_key.zeroize();

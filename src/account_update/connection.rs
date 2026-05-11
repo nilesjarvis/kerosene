@@ -44,6 +44,17 @@ impl TradingTerminal {
         let stop_chase_task = Task::batch(stop_chase_ids.into_iter().map(|id| {
             self.stop_chase_by_id_with_reason(id, "Chase stopped: wallet address changed", false)
         }));
+        let stop_twap_ids: Vec<u64> = self
+            .twap_orders
+            .iter()
+            .filter_map(|(id, twap)| {
+                (!twap.stop_requested && twap.account_address.as_str() != addr.as_str())
+                    .then_some(*id)
+            })
+            .collect();
+        for id in stop_twap_ids {
+            let _ = self.stop_twap_with_reason(id, "TWAP stopped: wallet address changed", false);
+        }
         if self.active_account_is_ghost() {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
@@ -95,6 +106,14 @@ impl TradingTerminal {
         let stop_chase_task = Task::batch(stop_chase_ids.into_iter().map(|id| {
             self.stop_chase_by_id_with_reason(id, "Chase stopped: wallet disconnected", false)
         }));
+        let stop_twap_ids: Vec<u64> = self
+            .twap_orders
+            .iter()
+            .filter_map(|(id, twap)| (!twap.stop_requested).then_some(*id))
+            .collect();
+        for id in stop_twap_ids {
+            let _ = self.stop_twap_with_reason(id, "TWAP stopped: wallet disconnected", false);
+        }
         self.connected_address = None;
         self.account_data = None;
         self.account_loading = false;
@@ -138,6 +157,7 @@ impl TradingTerminal {
                 self.account_error = None;
                 self.sync_all_chart_overlays();
                 let chase_task = self.reconcile_chase_after_account_refresh();
+                self.reconcile_twap_fills_from_account();
 
                 let income_pane_open = self
                     .panes
@@ -164,14 +184,23 @@ impl TradingTerminal {
         if !self.account_loading
             && let Some(addr) = &self.connected_address
         {
-            let addr = addr.clone();
-            let requested_addr = addr.clone();
-            self.account_loading = true;
-            self.account_error = None;
-            return Task::perform(fetch_account_data(addr), move |r| {
-                Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
-            });
+            return self.force_refresh_account_data_for_reconciliation(addr.clone());
         }
         Task::none()
+    }
+
+    pub(crate) fn force_refresh_account_data_for_reconciliation(
+        &mut self,
+        addr: String,
+    ) -> Task<Message> {
+        if self.connected_address.as_deref() != Some(addr.as_str()) {
+            return Task::none();
+        }
+        let requested_addr = addr.clone();
+        self.account_loading = true;
+        self.account_error = None;
+        Task::perform(fetch_account_data(addr), move |r| {
+            Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
+        })
     }
 }

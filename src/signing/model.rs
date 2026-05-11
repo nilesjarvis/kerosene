@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::time::Duration;
 use zeroize::Zeroizing;
@@ -11,6 +11,7 @@ pub enum OrderKind {
     Market,
     Limit,
     Chase,
+    LimitIoc,
 }
 
 /// Maximum number of consecutive cancel failures before the chase is
@@ -47,6 +48,7 @@ pub struct ChaseOrder {
     /// a live chase with the wrong trading identity.
     pub agent_key: Zeroizing<String>,
     pub is_buy: bool,
+    pub target_size: f64,
     pub remaining_size: f64,
     pub asset: u32,
     pub sz_decimals: u32,
@@ -62,6 +64,9 @@ pub struct ChaseOrder {
     pub initial_price: f64,
     /// Time when the chase started or was adopted.
     pub started_at: std::time::Instant,
+    /// Wall-clock start time for history snapshots. Live chase state is not
+    /// persisted or resumed across restarts.
+    pub started_at_ms: u64,
     /// Number of completed cancel/place replacement cycles.
     pub reprice_count: u32,
     /// The exchange request currently in flight, if any.
@@ -136,6 +141,7 @@ impl std::fmt::Debug for ChaseOrder {
             .field("account_address", &self.account_address)
             .field("agent_key", &"<redacted>")
             .field("is_buy", &self.is_buy)
+            .field("target_size", &self.target_size)
             .field("remaining_size", &self.remaining_size)
             .field("asset", &self.asset)
             .field("sz_decimals", &self.sz_decimals)
@@ -146,6 +152,7 @@ impl std::fmt::Debug for ChaseOrder {
             .field("current_price_wire", &self.current_price_wire)
             .field("initial_price", &self.initial_price)
             .field("started_at", &self.started_at)
+            .field("started_at_ms", &self.started_at_ms)
             .field("reprice_count", &self.reprice_count)
             .field("pending_op", &self.pending_op)
             .field("last_reprice_at", &self.last_reprice_at)
@@ -163,10 +170,11 @@ impl std::fmt::Debug for ChaseOrder {
 }
 
 /// Response from the exchange API.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ExchangeResponse {
     pub status: String,
     pub response: Option<ExchangeResponseInner>,
+    raw_response: Option<Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -181,10 +189,43 @@ pub struct ExchangeResponseData {
     pub statuses: Vec<Value>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ExchangeResponseWire {
+    status: String,
+    response: Option<Value>,
+}
+
+impl<'de> Deserialize<'de> for ExchangeResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ExchangeResponseWire::deserialize(deserializer)?;
+        let mut response = None;
+        let mut raw_response = None;
+
+        if let Some(raw) = wire.response {
+            match serde_json::from_value::<ExchangeResponseInner>(raw.clone()) {
+                Ok(inner) => response = Some(inner),
+                Err(_) => raw_response = Some(raw),
+            }
+        }
+
+        Ok(Self {
+            status: wire.status,
+            response,
+            raw_response,
+        })
+    }
+}
+
 impl ExchangeResponse {
     /// Extract a human-readable summary from the response.
     pub fn summary(&self) -> String {
         if self.status != "ok" {
+            if let Some(raw) = &self.raw_response {
+                return format!("Error: {}", raw_exchange_response_summary(raw));
+            }
             return format!("Error: status={}", self.status);
         }
         let Some(inner) = &self.response else {
@@ -252,6 +293,44 @@ impl ExchangeResponse {
         }
         false
     }
+
+    /// Hyperliquid reports this for IOC orders that were marketable from the
+    /// client's last book snapshot but found no resting liquidity at match time.
+    pub fn is_ioc_no_match(&self) -> bool {
+        self.error_messages().iter().any(|message| {
+            message
+                .to_ascii_lowercase()
+                .contains("could not immediately match against any resting orders")
+        })
+    }
+
+    fn error_messages(&self) -> Vec<String> {
+        let mut messages = Vec::new();
+        if self.status != "ok" {
+            messages.push(self.status.clone());
+        }
+        if let Some(raw) = &self.raw_response {
+            messages.push(raw_exchange_response_summary(raw));
+        }
+        if let Some(inner) = &self.response
+            && let Some(data) = &inner.data
+        {
+            messages.extend(data.statuses.iter().filter_map(|status| {
+                status
+                    .get("error")
+                    .and_then(|error| error.as_str())
+                    .map(ToString::to_string)
+            }));
+        }
+        messages
+    }
+}
+
+fn raw_exchange_response_summary(value: &Value) -> String {
+    value
+        .as_str()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| value.to_string())
 }
 
 fn status_summary(st: &Value) -> String {

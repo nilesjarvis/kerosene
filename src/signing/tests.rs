@@ -74,7 +74,7 @@ fn build_order_action_serializes_limit_payload_for_exchange() {
 }
 
 #[test]
-fn build_order_action_uses_ioc_for_market_and_gtc_for_chase() {
+fn build_order_action_uses_ioc_for_market_and_limit_ioc_and_gtc_for_chase() {
     let market = build_order_action(
         1,
         false,
@@ -82,6 +82,14 @@ fn build_order_action_uses_ioc_for_market_and_gtc_for_chase() {
         "2".to_string(),
         OrderKind::Market,
         true,
+    );
+    let limit_ioc = build_order_action(
+        1,
+        true,
+        "101".to_string(),
+        "2".to_string(),
+        OrderKind::LimitIoc,
+        false,
     );
     let chase = build_order_action(
         1,
@@ -93,10 +101,13 @@ fn build_order_action_uses_ioc_for_market_and_gtc_for_chase() {
     );
 
     let market_json = serde_json::to_value(market).expect("market action should serialize");
+    let limit_ioc_json =
+        serde_json::to_value(limit_ioc).expect("limit IOC action should serialize");
     let chase_json = serde_json::to_value(chase).expect("chase action should serialize");
 
     assert_eq!(market_json["orders"][0]["t"]["limit"]["tif"], "Ioc");
     assert_eq!(market_json["orders"][0]["r"], true);
+    assert_eq!(limit_ioc_json["orders"][0]["t"]["limit"]["tif"], "Ioc");
     assert_eq!(chase_json["orders"][0]["t"]["limit"]["tif"], "Gtc");
 }
 
@@ -198,6 +209,21 @@ fn exchange_response_error_status_drives_error_transition() {
 }
 
 #[test]
+fn exchange_response_identifies_ioc_no_match_error() {
+    let response = exchange_response(serde_json::json!({
+        "error": "Order could not immediately match against any resting orders"
+    }));
+
+    assert!(response.is_error());
+    assert!(response.is_ioc_no_match());
+
+    let other = exchange_response(serde_json::json!({
+        "error": "Order must have minimum value of $10"
+    }));
+    assert!(!other.is_ioc_no_match());
+}
+
+#[test]
 fn exchange_response_later_error_status_drives_error_transition() {
     let response = exchange_response_with_statuses(vec![
         serde_json::json!({
@@ -266,6 +292,22 @@ fn exchange_response_success_string_reports_cancelled() {
 }
 
 #[test]
+fn exchange_response_error_string_body_reports_exchange_error() {
+    let response: ExchangeResponse = serde_json::from_value(serde_json::json!({
+        "status": "err",
+        "response": "Failed to deserialize the JSON body into the target type"
+    }))
+    .expect("error response string should deserialize");
+
+    assert_eq!(
+        response.summary(),
+        "Error: Failed to deserialize the JSON body into the target type"
+    );
+    assert!(response.is_error());
+    assert_eq!(response.order_oid(), None);
+}
+
+#[test]
 fn chase_order_debug_redacts_agent_key() {
     let chase = ChaseOrder {
         id: 1,
@@ -273,6 +315,7 @@ fn chase_order_debug_redacts_agent_key() {
         account_address: "0xabc0000000000000000000000000000000000000".to_string(),
         agent_key: "super-secret-agent-key".to_string().into(),
         is_buy: true,
+        target_size: 1.0,
         remaining_size: 1.0,
         asset: 0,
         sz_decimals: 5,
@@ -283,6 +326,7 @@ fn chase_order_debug_redacts_agent_key() {
         current_price_wire: "100".to_string(),
         initial_price: 100.0,
         started_at: std::time::Instant::now(),
+        started_at_ms: 1_000,
         reprice_count: 0,
         pending_op: None,
         last_reprice_at: None,
@@ -308,6 +352,7 @@ fn chase_price_moves_only_toward_fill() {
         account_address: "0xabc0000000000000000000000000000000000000".to_string(),
         agent_key: "agent-key".to_string().into(),
         is_buy: true,
+        target_size: 1.0,
         remaining_size: 1.0,
         asset: 0,
         sz_decimals: 5,
@@ -318,6 +363,7 @@ fn chase_price_moves_only_toward_fill() {
         current_price_wire: "100".to_string(),
         initial_price: 100.0,
         started_at: std::time::Instant::now(),
+        started_at_ms: 1_000,
         reprice_count: 0,
         pending_op: None,
         last_reprice_at: None,

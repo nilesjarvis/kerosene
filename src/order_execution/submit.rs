@@ -59,7 +59,7 @@ impl TradingTerminal {
         }
 
         let price = match self.order_kind {
-            OrderKind::Limit | OrderKind::Chase => {
+            OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc => {
                 let px = match parse_positive_amount(&self.order_price) {
                     Some(price) => price,
                     None => {

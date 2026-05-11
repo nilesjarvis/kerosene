@@ -6,13 +6,12 @@ use crate::signing::{
     ChaseOrder, ChasePendingOp, MAX_CHASE_DRIFT_FRACTION, MAX_CHASE_DURATION, MAX_CHASE_REPRICES,
     OrderKind, cancel_order, float_to_wire, modify_order, place_order,
 };
+use crate::twap_state::ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL;
 use iced::Task;
 use std::time::{Duration, Instant};
 
 #[cfg(test)]
 mod tests;
-
-const MIN_CHASE_GLOBAL_EXCHANGE_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StopChaseAction {
@@ -242,8 +241,8 @@ impl TradingTerminal {
     }
 
     fn can_send_chase_exchange_request(&self, now: Instant) -> bool {
-        self.last_chase_exchange_request_at.is_none_or(|last| {
-            now.saturating_duration_since(last) >= MIN_CHASE_GLOBAL_EXCHANGE_INTERVAL
+        self.last_advanced_exchange_request_at.is_none_or(|last| {
+            now.saturating_duration_since(last) >= ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL
         })
     }
 
@@ -417,7 +416,7 @@ impl TradingTerminal {
         chase.last_reprice_at = Some(now);
         chase.pending_best_price = None;
         chase.reprice_count = chase.reprice_count.saturating_add(1);
-        self.last_chase_exchange_request_at = Some(now);
+        self.last_advanced_exchange_request_at = Some(now);
 
         Task::perform(
             modify_order(
@@ -507,7 +506,7 @@ impl TradingTerminal {
         chase.pending_op = Some(ChasePendingOp::Place);
         chase.oid_confirmed = false;
         chase.missing_open_order_refresh_requested = false;
-        self.last_chase_exchange_request_at = Some(now);
+        self.last_advanced_exchange_request_at = Some(now);
 
         Task::perform(
             place_order(

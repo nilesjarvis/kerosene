@@ -1,4 +1,5 @@
 mod chase;
+mod twap;
 
 use crate::app_state::TradingTerminal;
 use crate::helpers::{buy_button, sell_button};
@@ -92,7 +93,8 @@ impl TradingTerminal {
             }
         }
         let form = form.push(row![buy_btn, sell_btn].spacing(8));
-        self.push_chase_controls(form, can_trade)
+        let form = self.push_chase_controls(form, can_trade);
+        self.push_twap_controls(form, can_trade)
     }
 }
 

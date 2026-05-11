@@ -2,6 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
+use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, container, row, text};
 use iced::{Color, Element, Fill, Theme, color};
@@ -39,7 +40,7 @@ impl TradingTerminal {
                 chase.coin.as_str(),
                 chase.remaining_size,
                 price,
-                self.chase_orders.len()
+                self.active_advanced_order_count()
             ))
             .size(11)
             .color(theme.palette().primary);
@@ -71,7 +72,7 @@ impl TradingTerminal {
             form = form.push(chase_info).push(stop_btn);
         }
 
-        if can_trade && self.chase_orders.len() < Self::MAX_ACTIVE_CHASE_ORDERS {
+        if can_trade && self.active_advanced_order_count() < MAX_ACTIVE_ADVANCED_ORDERS {
             let chase_buy = chase_start_button(
                 format!("CHASE BUY {}", self.active_symbol_display.to_uppercase()),
                 true,
@@ -86,8 +87,8 @@ impl TradingTerminal {
         } else if can_trade {
             form.push(
                 text(format!(
-                    "Maximum of {} active chase orders reached",
-                    Self::MAX_ACTIVE_CHASE_ORDERS
+                    "Maximum of {} active advanced orders reached",
+                    MAX_ACTIVE_ADVANCED_ORDERS
                 ))
                 .size(10)
                 .color(theme.palette().danger),

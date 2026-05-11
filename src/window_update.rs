@@ -36,6 +36,12 @@ impl TradingTerminal {
                     self.journal.window_id = None;
                     self.journal.open = false;
                 }
+                for twap in self.twap_orders.values_mut() {
+                    if twap.window_id == Some(id) {
+                        twap.window_id = None;
+                    }
+                }
+                self.advanced_order_history_windows.remove(&id);
             }
             Message::WindowResized(id, size) => {
                 if Some(id) == self.wallet_tracker.window_id {

@@ -1,5 +1,6 @@
 use crate::account::AccountData;
 use crate::account_state::PositionsSortColumn;
+use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart_state::{ChartId, ChartInstance};
@@ -17,6 +18,7 @@ use crate::settings_state::SettingsTab;
 use crate::signing::{ChaseOrder, OrderKind};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
 use crate::timeframe::Timeframe;
+use crate::twap_state::{TwapOrder, TwapOrderForm};
 use crate::wallet_state::{AddressBookEntry, WalletDetailsWindowState, WalletTrackerState};
 use crate::{config, journal, ws};
 use iced::widget::pane_grid;
@@ -161,7 +163,13 @@ pub(crate) struct TradingTerminal {
     pub(crate) chase_orders: BTreeMap<u64, ChaseOrder>,
     pub(crate) selected_chase_id: Option<u64>,
     pub(crate) next_chase_id: u64,
-    pub(crate) last_chase_exchange_request_at: Option<std::time::Instant>,
+    pub(crate) twap_orders: BTreeMap<u64, TwapOrder>,
+    pub(crate) selected_twap_id: Option<u64>,
+    pub(crate) next_twap_id: u64,
+    pub(crate) twap_form: TwapOrderForm,
+    pub(crate) advanced_order_history: VecDeque<AdvancedOrderHistoryEntry>,
+    pub(crate) advanced_order_history_windows: HashMap<window::Id, String>,
+    pub(crate) last_advanced_exchange_request_at: Option<std::time::Instant>,
     // Hide dollar PnL values (trader focus mode)
     pub(crate) hide_pnl: bool,
     // Favourite symbol keys (displayed at top of symbol search)

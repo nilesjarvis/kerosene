@@ -28,6 +28,7 @@ impl TradingTerminal {
         self.push_spaghetti_market_subscriptions(subs);
         self.push_order_book_subscriptions(subs);
         self.push_chase_market_subscriptions(subs);
+        self.push_twap_market_subscriptions(subs);
     }
 
     fn push_chart_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
@@ -158,6 +159,36 @@ impl TradingTerminal {
                     coin,
                     book,
                 }),
+            );
+        }
+    }
+
+    fn push_twap_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
+        if self.twap_orders.values().any(|twap| {
+            !twap.status.is_terminal() && !twap.stop_requested && twap.pending_op.is_none()
+        }) {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::TwapTick),
+            );
+        }
+
+        for twap in self.twap_orders.values() {
+            if twap.coin.is_empty()
+                || twap.status.is_terminal()
+                || twap.stop_requested
+                || self.is_ticker_muted(&twap.coin)
+                || self.is_outcome_coin(&twap.coin)
+            {
+                continue;
+            }
+            let sigfigs = self.chase_book_fetch_sigfigs(&twap.coin);
+            subs.push(
+                Subscription::run_with((twap.id, twap.coin.clone(), sigfigs), ws_book_stream_keyed)
+                    .map(|(twap_id, coin, book)| Message::TwapBookUpdate {
+                        twap_id,
+                        coin,
+                        book,
+                    }),
             );
         }
     }

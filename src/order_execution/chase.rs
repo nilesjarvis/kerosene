@@ -4,6 +4,7 @@ use crate::helpers;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
 use crate::signing::ChaseOrder;
+use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::Task;
 
 mod lifecycle;
@@ -13,8 +14,6 @@ mod lifecycle;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) const MAX_ACTIVE_CHASE_ORDERS: usize = 8;
-
     pub(crate) fn selected_chase_id(&self) -> Option<u64> {
         self.selected_chase_id
             .filter(|id| self.chase_orders.contains_key(id))
@@ -27,7 +26,24 @@ impl TradingTerminal {
     }
 
     pub(crate) fn remove_chase_order(&mut self, chase_id: u64) {
-        self.chase_orders.remove(&chase_id);
+        self.remove_chase_order_with_summary(chase_id, None);
+    }
+
+    pub(crate) fn remove_chase_order_with_summary(
+        &mut self,
+        chase_id: u64,
+        summary: Option<String>,
+    ) {
+        if let Some(chase) = self.chase_orders.remove(&chase_id) {
+            let summary = summary.unwrap_or_else(|| {
+                chase
+                    .stop_reason
+                    .as_ref()
+                    .map(|(reason, _)| reason.clone())
+                    .unwrap_or_else(|| "Chase completed or no longer open".to_string())
+            });
+            self.archive_chase_order(&chase, summary);
+        }
         if self.selected_chase_id == Some(chase_id) {
             self.selected_chase_id = self.chase_orders.keys().next_back().copied();
         }
@@ -42,11 +58,10 @@ impl TradingTerminal {
 
     pub(crate) fn start_chase(&mut self, is_buy: bool) -> Task<Message> {
         let _theme = self.theme();
-        if self.chase_orders.len() >= Self::MAX_ACTIVE_CHASE_ORDERS {
+        if self.active_advanced_order_count() >= MAX_ACTIVE_ADVANCED_ORDERS {
             self.order_status = Some((
                 format!(
-                    "Cannot start chase: maximum of {} active chase orders reached",
-                    Self::MAX_ACTIVE_CHASE_ORDERS
+                    "Cannot start chase: maximum of {MAX_ACTIVE_ADVANCED_ORDERS} active advanced orders reached"
                 ),
                 true,
             ));
@@ -99,6 +114,8 @@ impl TradingTerminal {
         let asset = sym.asset_index;
         let sz_decimals = sym.sz_decimals;
         let is_spot = sym.market_type == MarketType::Spot;
+        let started_at = std::time::Instant::now();
+        let started_at_ms = Self::now_ms();
         let reduce_only = if is_spot {
             false
         } else {
@@ -114,6 +131,7 @@ impl TradingTerminal {
                 account_address,
                 agent_key: key.clone().into(),
                 is_buy,
+                target_size: qty,
                 remaining_size: qty,
                 asset,
                 sz_decimals,
@@ -123,7 +141,8 @@ impl TradingTerminal {
                 current_price: 0.0,
                 current_price_wire: String::new(),
                 initial_price: 0.0,
-                started_at: std::time::Instant::now(),
+                started_at,
+                started_at_ms,
                 reprice_count: 0,
                 pending_op: None,
                 last_reprice_at: None,

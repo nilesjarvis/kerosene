@@ -1,10 +1,12 @@
 mod actions;
 mod advanced;
+mod advanced_history_details;
 mod header;
 mod inputs;
 mod presets;
 mod quick_order;
 mod status;
+mod twap_details;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
