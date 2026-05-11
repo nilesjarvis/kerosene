@@ -78,6 +78,33 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn summary_delete_account_button(&self) -> Element<'_, Message> {
+        if !self.active_account_is_ghost() && self.accounts.get(self.active_account_index).is_some()
+        {
+            button(text("Delete Account").size(10).center())
+                .on_press(Message::DeleteSavedAccount(self.active_account_index))
+                .padding([2, 8])
+                .style(|theme: &Theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => theme.extended_palette().background.strong.color,
+                        _ => theme.extended_palette().background.weak.color,
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: theme.palette().danger,
+                        border: iced::Border {
+                            radius: 3.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                })
+                .into()
+        } else {
+            Space::new().width(0).into()
+        }
+    }
+
     pub(crate) fn summary_secret_status(&self) -> Option<Element<'_, Message>> {
         let theme = self.theme();
         self.secret_store_status.as_ref().map(|(status, is_error)| {

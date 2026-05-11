@@ -65,6 +65,7 @@ pub(crate) enum Message {
     AddAccount,
     GhostWallet(String),
     ForgetGhostAccount(usize),
+    DeleteSavedAccount(usize),
     SaveCredentials,
     PaneResized(pane_grid::ResizeEvent),
     PaneDragged(pane_grid::DragEvent),

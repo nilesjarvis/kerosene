@@ -272,6 +272,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddAccount
         | Message::GhostWallet(_)
         | Message::ForgetGhostAccount(_)
+        | Message::DeleteSavedAccount(_)
         | Message::SaveCredentials
         | Message::ConnectWallet
         | Message::DisconnectWallet
