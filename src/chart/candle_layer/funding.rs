@@ -1,15 +1,47 @@
 use super::CandleLayerContext;
 use crate::chart::model::{
     CandlestickChart, FUNDING_MODE_BUTTON_HEIGHT, FUNDING_MODE_BUTTON_WIDTH, FUNDING_MODE_BUTTON_X,
-    FUNDING_MODE_BUTTON_Y_OFFSET, FUNDING_RATE_ANNUALIZATION_FACTOR,
+    FUNDING_MODE_BUTTON_Y_OFFSET, FUNDING_PLOT_BOTTOM_PADDING, FUNDING_PLOT_TOP_PADDING,
+    FUNDING_RATE_ANNUALIZATION_FACTOR,
 };
 use iced::alignment;
 use iced::widget::canvas;
-use iced::{Color, Point, Size};
+use iced::{Color, Point, Rectangle, Size};
 
 // ---------------------------------------------------------------------------
 // Funding Rate Panel Rendering
 // ---------------------------------------------------------------------------
+
+const FUNDING_RANGE_PADDING: f64 = 1.12;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(in crate::chart) struct FundingDisplayRange {
+    lo: f64,
+    hi: f64,
+}
+
+impl FundingDisplayRange {
+    pub(in crate::chart) fn span(self) -> f64 {
+        self.hi - self.lo
+    }
+
+    pub(in crate::chart) fn rate_to_y(self, rate: f64, plot_top: f32, plot_bottom: f32) -> f32 {
+        let plot_h = plot_bottom - plot_top;
+        if plot_h <= 0.0 || self.span() <= 0.0 {
+            return (plot_top + plot_bottom) * 0.5;
+        }
+        (plot_top as f64 + ((self.hi - rate) / self.span()) * f64::from(plot_h)) as f32
+    }
+
+    pub(in crate::chart) fn y_to_rate(self, y: f32, plot_top: f32, plot_bottom: f32) -> f64 {
+        let plot_h = plot_bottom - plot_top;
+        if plot_h <= 0.0 || self.span() <= 0.0 {
+            return (self.hi + self.lo) * 0.5;
+        }
+        let ratio = f64::from(y - plot_top) / f64::from(plot_h);
+        self.hi - ratio * self.span()
+    }
+}
 
 impl CandlestickChart {
     pub(super) fn draw_funding_panel<IdxToCx, PriceToY>(
@@ -45,38 +77,12 @@ impl CandlestickChart {
                 })
                 .with_width(1.0),
         );
-        for offset in [-8.0_f32, 0.0, 8.0] {
-            frame.fill_rectangle(
-                Point::new(ctx.chart_w * 0.5 + offset - 2.5, panel_y + 2.0),
-                Size::new(5.0, 1.0),
-                Color {
-                    a: 0.28,
-                    ..ctx.theme.palette().text
-                },
-            );
-        }
-        self.draw_funding_mode_button(ctx, frame, panel_y);
-
-        let plot_top = panel_y + 24.0;
-        let plot_bottom = panel_y + ctx.funding_panel_h - 8.0;
+        let plot_top = panel_y + FUNDING_PLOT_TOP_PADDING;
+        let plot_bottom = panel_y + ctx.funding_panel_h - FUNDING_PLOT_BOTTOM_PADDING;
         if plot_bottom <= plot_top {
+            self.draw_funding_panel_chrome(ctx, frame, panel_y);
             return;
         }
-
-        let baseline_y = (plot_top + plot_bottom) * 0.5;
-        let baseline = canvas::Path::line(
-            Point::new(0.0, baseline_y),
-            Point::new(ctx.chart_w, baseline_y),
-        );
-        frame.stroke(
-            &baseline,
-            canvas::Stroke::default()
-                .with_color(Color {
-                    a: 0.10,
-                    ..ctx.theme.palette().text
-                })
-                .with_width(1.0),
-        );
 
         let visible: Vec<_> = self
             .funding_rates
@@ -93,6 +99,7 @@ impl CandlestickChart {
             } else {
                 self.draw_funding_message(ctx, frame, panel_y, "No funding in view", false);
             }
+            self.draw_funding_panel_chrome(ctx, frame, panel_y);
             return;
         }
 
@@ -102,35 +109,105 @@ impl CandlestickChart {
             .fold(0.0_f64, f64::max);
         if max_abs <= 0.0 {
             self.draw_funding_message(ctx, frame, panel_y, "Funding flat", false);
+            self.draw_funding_panel_chrome(ctx, frame, panel_y);
             return;
         }
 
-        let scaled_max = (max_abs * 1.12 * ctx.state.funding_y_scale).max(f64::EPSILON);
-        let half_h = (plot_bottom - plot_top) * 0.5;
-        let bar_w = (ctx.step * 0.34).clamp(1.0, 4.0);
-        let stride = (visible.len() / 2_000).max(1);
-
-        for (x, point) in visible.iter().step_by(stride).copied() {
-            let display_rate = self.display_funding_rate(point.rate);
-            let offset = (display_rate / scaled_max) as f32 * half_h;
-            let y = (baseline_y - offset).clamp(plot_top, plot_bottom);
-            let top = y.min(baseline_y);
-            let height = (baseline_y - y).abs().max(1.0);
-            let color = if display_rate >= 0.0 {
-                ctx.candle_bull_color
-            } else {
-                ctx.candle_bear_color
-            };
-            frame.fill_rectangle(
-                Point::new(x - bar_w * 0.5, top),
-                Size::new(bar_w, height),
-                Color { a: 0.78, ..color },
+        let Some(display_range) = self.funding_display_range_from_max_abs(max_abs, ctx.state)
+        else {
+            self.draw_funding_message(ctx, frame, panel_y, "Funding flat", false);
+            self.draw_funding_panel_chrome(ctx, frame, panel_y);
+            return;
+        };
+        let baseline_y = display_range.rate_to_y(0.0, plot_top, plot_bottom);
+        if baseline_y >= plot_top && baseline_y <= plot_bottom {
+            let baseline = canvas::Path::line(
+                Point::new(0.0, baseline_y),
+                Point::new(ctx.chart_w, baseline_y),
+            );
+            frame.stroke(
+                &baseline,
+                canvas::Stroke::default()
+                    .with_color(Color {
+                        a: 0.10,
+                        ..ctx.theme.palette().text
+                    })
+                    .with_width(1.0),
             );
         }
 
-        self.draw_funding_axis_label(ctx, frame, plot_top, scaled_max);
-        self.draw_funding_axis_label(ctx, frame, baseline_y, 0.0);
-        self.draw_funding_axis_label(ctx, frame, plot_bottom, -scaled_max);
+        let bar_w = (ctx.step * 0.34).clamp(1.0, 4.0);
+        let stride = (visible.len() / 2_000).max(1);
+
+        frame.with_clip(
+            Rectangle {
+                x: 0.0,
+                y: plot_top,
+                width: ctx.chart_w,
+                height: plot_bottom - plot_top,
+            },
+            |frame| {
+                for (x, point) in visible.iter().step_by(stride).copied() {
+                    let display_rate = self.display_funding_rate(point.rate);
+                    let y = display_range.rate_to_y(display_rate, plot_top, plot_bottom);
+                    let top = y.min(baseline_y);
+                    let height = (baseline_y - y).abs().max(1.0);
+                    let color = if display_rate >= 0.0 {
+                        ctx.candle_bull_color
+                    } else {
+                        ctx.candle_bear_color
+                    };
+                    frame.fill_rectangle(
+                        Point::new(x - bar_w * 0.5, top),
+                        Size::new(bar_w, height),
+                        Color { a: 0.78, ..color },
+                    );
+                }
+            },
+        );
+
+        self.draw_funding_axis_label(ctx, frame, plot_top, display_range.hi);
+        if baseline_y >= plot_top + 8.0 && baseline_y <= plot_bottom - 8.0 {
+            self.draw_funding_axis_label(ctx, frame, baseline_y, 0.0);
+        }
+        self.draw_funding_axis_label(ctx, frame, plot_bottom, display_range.lo);
+        self.draw_funding_panel_chrome(ctx, frame, panel_y);
+    }
+
+    pub(in crate::chart) fn funding_display_range(
+        &self,
+        state: &crate::chart::ChartState,
+        chart_w: f32,
+        step: f32,
+    ) -> Option<FundingDisplayRange> {
+        let max_abs = self
+            .funding_rates
+            .iter()
+            .filter_map(|point| {
+                let x = self.timestamp_to_x(point.time_ms, state, chart_w)?;
+                (x >= -step && x <= chart_w + step)
+                    .then_some(self.display_funding_rate(point.rate).abs())
+            })
+            .fold(0.0_f64, f64::max);
+        self.funding_display_range_from_max_abs(max_abs, state)
+    }
+
+    fn funding_display_range_from_max_abs(
+        &self,
+        max_abs: f64,
+        state: &crate::chart::ChartState,
+    ) -> Option<FundingDisplayRange> {
+        if max_abs <= 0.0 || !max_abs.is_finite() {
+            return None;
+        }
+
+        let half_range =
+            (max_abs * FUNDING_RANGE_PADDING * state.funding_y_scale).max(f64::EPSILON);
+        let center = self.display_funding_rate(state.funding_y_offset);
+        Some(FundingDisplayRange {
+            lo: center - half_range,
+            hi: center + half_range,
+        })
     }
 
     fn draw_funding_mode_button<IdxToCx, PriceToY>(
@@ -186,6 +263,28 @@ impl CandlestickChart {
             font: iced::Font::MONOSPACE,
             ..canvas::Text::default()
         });
+    }
+
+    fn draw_funding_panel_chrome<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+        frame: &mut canvas::Frame,
+        panel_y: f32,
+    ) where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        for offset in [-8.0_f32, 0.0, 8.0] {
+            frame.fill_rectangle(
+                Point::new(ctx.chart_w * 0.5 + offset - 2.5, panel_y + 2.0),
+                Size::new(5.0, 1.0),
+                Color {
+                    a: 0.28,
+                    ..ctx.theme.palette().text
+                },
+            );
+        }
+        self.draw_funding_mode_button(ctx, frame, panel_y);
     }
 
     fn draw_funding_status<IdxToCx, PriceToY>(
@@ -278,5 +377,80 @@ pub(in crate::chart) fn format_funding_rate_percent(rate: f64, annualized: bool)
         format!("{:+.2}%", rate * 100.0)
     } else {
         format!("{:+.5}%", rate * 100.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::Candle;
+    use crate::chart::model::DEFAULT_FUNDING_PANEL_HEIGHT;
+    use crate::chart::state::ChartState;
+    use crate::hydromancer_api::FundingRatePoint;
+
+    fn candle(open_time: u64) -> Candle {
+        Candle {
+            open_time,
+            close_time: open_time + 59_999,
+            open: 1.0,
+            high: 1.0,
+            low: 1.0,
+            close: 1.0,
+            volume: 1.0,
+        }
+    }
+
+    fn chart_with_funding() -> CandlestickChart {
+        let mut chart = CandlestickChart::new(1);
+        chart.set_candles(vec![candle(1_000), candle(61_000), candle(121_000)]);
+        chart.set_funding_history(vec![FundingRatePoint {
+            time_ms: 61_000,
+            rate: 0.01,
+        }]);
+        chart
+    }
+
+    #[test]
+    fn zoomed_funding_range_maps_values_beyond_plot_without_clamping() {
+        let chart = chart_with_funding();
+        let state = ChartState {
+            funding_y_scale: 0.5,
+            ..ChartState::default()
+        };
+
+        let range = chart
+            .funding_display_range(&state, 400.0, 12.0)
+            .expect("funding range");
+        let y = range.rate_to_y(0.01, 24.0, 80.0);
+
+        assert!(
+            y < 24.0,
+            "zoomed funding point should map above the plot, got {y}"
+        );
+    }
+
+    #[test]
+    fn funding_range_uses_offset_as_visible_center() {
+        let chart = chart_with_funding();
+        let state = ChartState {
+            funding_y_offset: 0.002,
+            ..ChartState::default()
+        };
+
+        let range = chart
+            .funding_display_range(&state, 400.0, 12.0)
+            .expect("funding range");
+
+        assert!(((range.hi + range.lo) * 0.5 - 0.002).abs() < 1e-12);
+    }
+
+    #[test]
+    fn default_funding_plot_uses_space_behind_mode_button() {
+        let button_bottom = FUNDING_MODE_BUTTON_Y_OFFSET + FUNDING_MODE_BUTTON_HEIGHT;
+        let plot_h =
+            DEFAULT_FUNDING_PANEL_HEIGHT - FUNDING_PLOT_TOP_PADDING - FUNDING_PLOT_BOTTOM_PADDING;
+
+        assert!(FUNDING_PLOT_TOP_PADDING < button_bottom);
+        assert!(plot_h >= 40.0, "default funding plot height was {plot_h}");
     }
 }

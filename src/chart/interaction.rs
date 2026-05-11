@@ -25,7 +25,7 @@ impl CandlestickChart {
     ) -> Option<canvas::Action<Message>> {
         let pos = cursor.position_in(bounds);
         let chart_w = bounds.width - PRICE_AXIS_WIDTH;
-        let (chart_h, _) = self.chart_area_heights(bounds.height);
+        let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
         let needs_redraw_for_cursor = state.cursor_position != pos;
         state.cursor_position = pos;
 
@@ -55,9 +55,14 @@ impl CandlestickChart {
                 let pos = pos?;
                 self.handle_left_press(state, pos, chart_w, chart_h, bounds.height)
             }
-            iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                self.handle_cursor_moved(state, pos, chart_w, chart_h, needs_redraw_for_cursor)
-            }
+            iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => self.handle_cursor_moved(
+                state,
+                pos,
+                chart_w,
+                chart_h,
+                funding_panel_h,
+                needs_redraw_for_cursor,
+            ),
             iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
                 self.handle_left_release(state, bounds)
             }

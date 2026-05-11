@@ -29,6 +29,7 @@ impl CandlestickChart {
         match state.drag {
             Some(DragKind::PanX) => mouse::Interaction::Grabbing,
             Some(DragKind::PanY) => mouse::Interaction::ResizingVertically,
+            Some(DragKind::PanFundingY) => mouse::Interaction::ResizingVertically,
             Some(DragKind::ResizeFundingPanel) => mouse::Interaction::ResizingVertically,
             Some(DragKind::MoveOrder { .. }) => mouse::Interaction::Grabbing,
             None => {

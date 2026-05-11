@@ -1,6 +1,9 @@
 use super::super::state::DragKind;
 use super::super::{
     CANDLE_GAP_RATIO, CandlestickChart, ChartState, PAN_SPEED, VOLUME_REGION_RATIO,
+    model::{
+        FUNDING_PLOT_BOTTOM_PADDING, FUNDING_PLOT_TOP_PADDING, FUNDING_RATE_ANNUALIZATION_FACTOR,
+    },
 };
 use crate::message::Message;
 use iced::widget::canvas;
@@ -17,6 +20,7 @@ impl CandlestickChart {
         pos: Option<Point>,
         chart_w: f32,
         chart_h: f32,
+        funding_panel_h: f32,
         needs_redraw_for_cursor: bool,
     ) -> Option<canvas::Action<Message>> {
         if let (Some(kind), Some(start), Some(pos)) = (state.drag, state.drag_start, pos) {
@@ -39,6 +43,24 @@ impl CandlestickChart {
                     let price_per_px = visible_range / price_h as f64;
                     state.y_offset = state.drag_start_y_offset + (dy as f64) * price_per_px;
                     self.candle_cache.clear();
+                }
+                DragKind::PanFundingY => {
+                    let plot_top = chart_h + FUNDING_PLOT_TOP_PADDING;
+                    let plot_bottom = chart_h + funding_panel_h - FUNDING_PLOT_BOTTOM_PADDING;
+                    let step = state.candle_width * (1.0 + CANDLE_GAP_RATIO);
+                    if plot_bottom > plot_top
+                        && let Some(range) = self.funding_display_range(state, chart_w, step)
+                    {
+                        let display_delta = range.y_to_rate(start.y, plot_top, plot_bottom)
+                            - range.y_to_rate(pos.y, plot_top, plot_bottom);
+                        let raw_delta = if self.funding_annualized {
+                            display_delta / FUNDING_RATE_ANNUALIZATION_FACTOR
+                        } else {
+                            display_delta
+                        };
+                        state.funding_y_offset = state.drag_start_y_offset + raw_delta;
+                        self.candle_cache.clear();
+                    }
                 }
                 DragKind::MoveOrder { .. } => {
                     if let Some((price_hi, price_range, price_h)) =

@@ -78,6 +78,7 @@ impl CandlestickChart {
             return self.handle_drawing_tool_press(state, pos, chart_w, chart_h, tool);
         }
 
+        let (_, funding_panel_h) = self.chart_area_heights(bounds_height);
         if pos.x >= chart_w && pos.y < chart_h {
             state.drag = Some(DragKind::PanY);
             state.drag_start = Some(pos);
@@ -88,6 +89,10 @@ impl CandlestickChart {
                 state.y_scale = 1.0;
                 state.drag_start_y_offset = 0.0;
             }
+        } else if funding_panel_h > 0.0 && pos.y >= chart_h && pos.y < chart_h + funding_panel_h {
+            state.drag = Some(DragKind::PanFundingY);
+            state.drag_start = Some(pos);
+            state.drag_start_y_offset = state.funding_y_offset;
         } else if pos.x < chart_w && pos.y < chart_h {
             state.drag = Some(DragKind::PanX);
             state.drag_start = Some(pos);
@@ -141,6 +146,7 @@ impl CandlestickChart {
             && pos.y < chart_h + funding_panel_h
         {
             state.funding_y_scale = 1.0;
+            state.funding_y_offset = 0.0;
             self.candle_cache.clear();
             return Some(canvas::Action::request_redraw());
         }

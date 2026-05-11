@@ -11,6 +11,8 @@ pub(super) enum DragKind {
     PanX,
     /// Dragging on the price axis -- scales / pans the Y axis.
     PanY,
+    /// Dragging on the funding panel -- pans the funding Y axis.
+    PanFundingY,
     /// Dragging the top edge of the funding sub-panel.
     ResizeFundingPanel,
     /// Dragging an order line to a new price.
@@ -27,6 +29,7 @@ pub struct ChartState {
     pub(super) y_offset: f64,
     pub(super) y_scale: f64,
     pub(super) funding_y_scale: f64,
+    pub(super) funding_y_offset: f64,
     pub(super) drag: Option<DragKind>,
     pub(super) drag_start: Option<Point>,
     pub(super) drag_start_scroll: f32,
@@ -58,6 +61,7 @@ impl Default for ChartState {
             y_offset: 0.0,
             y_scale: 1.0,
             funding_y_scale: 1.0,
+            funding_y_offset: 0.0,
             drag: None,
             drag_start: None,
             drag_start_scroll: 0.0,
@@ -82,6 +86,7 @@ impl ChartState {
         self.y_offset = 0.0;
         self.y_scale = 1.0;
         self.funding_y_scale = 1.0;
+        self.funding_y_offset = 0.0;
         self.drag = None;
         self.drag_start = None;
         self.drag_start_scroll = 0.0;
@@ -93,5 +98,25 @@ impl ChartState {
         self.pending_anchor = None;
         self.range_anchor_price = None;
         self.reset_epoch_seen = reset_epoch;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChartState;
+
+    #[test]
+    fn reset_view_clears_funding_axis_transform() {
+        let mut state = ChartState {
+            funding_y_scale: 0.25,
+            funding_y_offset: 0.001,
+            ..ChartState::default()
+        };
+
+        state.reset_view(42);
+
+        assert_eq!(state.funding_y_scale, 1.0);
+        assert_eq!(state.funding_y_offset, 0.0);
+        assert_eq!(state.reset_epoch_seen, 42);
     }
 }
