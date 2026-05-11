@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 // ---------------------------------------------------------------------------
 
 const TRADE_MARKER_RADIUS: f32 = 3.2;
+const TRADE_MARKER_EDGE_PADDING: f32 = 1.0;
+const TRADE_MARKER_MIN_PRICE_HEIGHT: f32 = (TRADE_MARKER_RADIUS + TRADE_MARKER_EDGE_PADDING) * 2.0;
 const TRADE_MARKER_OVERFLOW_RADIUS: f32 = 4.4;
 const TRADE_MARKER_CANDLE_GAP: f32 = 8.0;
 const TRADE_MARKER_STACK_GAP: f32 = 7.0;
@@ -94,7 +96,7 @@ impl CandlestickChart {
             ctx.first_vis,
             ctx.last_vis,
         );
-        if groups.is_empty() || ctx.price_h <= TRADE_MARKER_RADIUS * 2.0 {
+        if groups.is_empty() || ctx.price_h < TRADE_MARKER_MIN_PRICE_HEIGHT {
             return;
         }
 
@@ -249,6 +251,8 @@ where
         return None;
     }
 
+    let (marker_min_y, marker_max_y) = trade_marker_clamp_bounds(ctx.price_h)?;
+
     let candle = ctx.candles.get(group.candle_idx)?;
     let base_y = trade_marker_anchor_y(candle, group.is_buy, ctx.price_to_y)?;
 
@@ -278,10 +282,8 @@ where
         radius: TRADE_MARKER_RADIUS,
     }; TRADE_MARKER_MAX_STACK];
     for (stack_idx, dot) in dots.iter_mut().enumerate().take(dot_count) {
-        let y = (base_y + stack_direction * stack_idx as f32 * TRADE_MARKER_STACK_GAP).clamp(
-            TRADE_MARKER_RADIUS + 1.0,
-            ctx.price_h - TRADE_MARKER_RADIUS - 1.0,
-        );
+        let y = (base_y + stack_direction * stack_idx as f32 * TRADE_MARKER_STACK_GAP)
+            .clamp(marker_min_y, marker_max_y);
         *dot = TradeMarkerDot {
             center: Point::new(x, y),
             radius: trade_marker_dot_radius(group.count, dot_count, stack_idx),
@@ -289,6 +291,13 @@ where
     }
 
     Some(TradeMarkerGroupLayout { dots, dot_count })
+}
+
+fn trade_marker_clamp_bounds(price_h: f32) -> Option<(f32, f32)> {
+    (price_h >= TRADE_MARKER_MIN_PRICE_HEIGHT).then_some((
+        TRADE_MARKER_RADIUS + TRADE_MARKER_EDGE_PADDING,
+        price_h - TRADE_MARKER_RADIUS - TRADE_MARKER_EDGE_PADDING,
+    ))
 }
 
 fn trade_marker_dot_radius(group_count: usize, dot_count: usize, stack_idx: usize) -> f32 {
@@ -508,6 +517,15 @@ mod tests {
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].candle_idx, 1);
         assert_eq!(groups[0].count, 1);
+    }
+
+    #[test]
+    fn marker_clamp_bounds_reject_tiny_price_areas() {
+        assert!(trade_marker_clamp_bounds(TRADE_MARKER_MIN_PRICE_HEIGHT - 0.1).is_none());
+
+        let (min_y, max_y) =
+            trade_marker_clamp_bounds(TRADE_MARKER_MIN_PRICE_HEIGHT).expect("valid bounds");
+        assert!(min_y <= max_y);
     }
 
     #[test]
