@@ -25,21 +25,43 @@ impl FundingDisplayRange {
         self.hi - self.lo
     }
 
+    fn finite_span(self) -> Option<f64> {
+        let span = self.span();
+        (self.lo.is_finite() && self.hi.is_finite() && span.is_finite() && span > 0.0)
+            .then_some(span)
+    }
+
     pub(in crate::chart) fn rate_to_y(self, rate: f64, plot_top: f32, plot_bottom: f32) -> f32 {
         let plot_h = plot_bottom - plot_top;
-        if plot_h <= 0.0 || self.span() <= 0.0 {
+        let Some(span) = self.finite_span() else {
+            return (plot_top + plot_bottom) * 0.5;
+        };
+        if plot_h <= 0.0 || !rate.is_finite() {
             return (plot_top + plot_bottom) * 0.5;
         }
-        (plot_top as f64 + ((self.hi - rate) / self.span()) * f64::from(plot_h)) as f32
+        let y = plot_top as f64 + ((self.hi - rate) / span) * f64::from(plot_h);
+        if y.is_finite() {
+            y as f32
+        } else {
+            (plot_top + plot_bottom) * 0.5
+        }
     }
 
     pub(in crate::chart) fn y_to_rate(self, y: f32, plot_top: f32, plot_bottom: f32) -> f64 {
         let plot_h = plot_bottom - plot_top;
-        if plot_h <= 0.0 || self.span() <= 0.0 {
+        let Some(span) = self.finite_span() else {
+            return 0.0;
+        };
+        if plot_h <= 0.0 || !y.is_finite() {
             return (self.hi + self.lo) * 0.5;
         }
         let ratio = f64::from(y - plot_top) / f64::from(plot_h);
-        self.hi - ratio * self.span()
+        let rate = self.hi - ratio * span;
+        if rate.is_finite() {
+            rate
+        } else {
+            (self.hi + self.lo) * 0.5
+        }
     }
 }
 
@@ -201,13 +223,24 @@ impl CandlestickChart {
             return None;
         }
 
-        let half_range =
-            (max_abs * FUNDING_RANGE_PADDING * state.funding_y_scale).max(f64::EPSILON);
+        if state.funding_y_scale <= 0.0 || !state.funding_y_scale.is_finite() {
+            return None;
+        }
+
+        let half_range = max_abs * FUNDING_RANGE_PADDING * state.funding_y_scale;
+        if half_range <= 0.0 || !half_range.is_finite() {
+            return None;
+        }
+        let half_range = half_range.max(f64::EPSILON);
         let center = self.display_funding_rate(state.funding_y_offset);
-        Some(FundingDisplayRange {
-            lo: center - half_range,
-            hi: center + half_range,
-        })
+        let lo = center - half_range;
+        let hi = center + half_range;
+        let range = FundingDisplayRange { lo, hi };
+        if center.is_finite() && range.finite_span().is_some() {
+            Some(range)
+        } else {
+            None
+        }
     }
 
     fn draw_funding_mode_button<IdxToCx, PriceToY>(
@@ -442,6 +475,27 @@ mod tests {
             .expect("funding range");
 
         assert!(((range.hi + range.lo) * 0.5 - 0.002).abs() < 1e-12);
+    }
+
+    #[test]
+    fn oversized_funding_range_is_rejected() {
+        let chart = chart_with_funding();
+        let state = ChartState::default();
+
+        let range = chart.funding_display_range_from_max_abs(1.7e308, &state);
+
+        assert!(range.is_none());
+    }
+
+    #[test]
+    fn invalid_funding_range_falls_back_to_finite_coordinates() {
+        let range = FundingDisplayRange {
+            lo: f64::NEG_INFINITY,
+            hi: f64::INFINITY,
+        };
+
+        assert_eq!(range.rate_to_y(0.0, 24.0, 80.0), 52.0);
+        assert_eq!(range.y_to_rate(52.0, 24.0, 80.0), 0.0);
     }
 
     #[test]
