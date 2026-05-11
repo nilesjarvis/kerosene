@@ -1,4 +1,5 @@
 use crate::api::ExchangeSymbol;
+use crate::helpers::compare_symbol_keys_for_same_ticker;
 use std::cmp::Ordering;
 
 #[cfg(test)]
@@ -62,6 +63,9 @@ pub(super) fn compare_chart_editor_symbols(
         (Some(ai), Some(bi)) => ai.cmp(&bi),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        (None, None) => a.ticker.cmp(&b.ticker).then_with(|| a.key.cmp(&b.key)),
+        (None, None) => a
+            .ticker
+            .cmp(&b.ticker)
+            .then_with(|| compare_symbol_keys_for_same_ticker(&a.key, &b.key)),
     }
 }

@@ -76,3 +76,27 @@ fn filtered_indices_cache_sorts_by_volume_when_contexts_are_available() {
     assert_eq!(indices, vec![1, 0]);
     assert_eq!(favourite_count, 0);
 }
+
+#[test]
+fn filtered_indices_prefer_primary_known_hip3_dex_for_duplicate_tickers() {
+    let symbols = vec![
+        symbol("flx:CRCL", "CRCL", MarketType::Perp),
+        symbol("xyz:CRCL", "CRCL", MarketType::Perp),
+    ];
+    let favourites = Vec::new();
+    let contexts = HashMap::new();
+
+    let (indices, favourite_count) = filtered_symbol_search_indices(SymbolSearchResultsInput {
+        symbols: &symbols,
+        query: "crcl",
+        sort_mode: SymbolSearchSortMode::Relevance,
+        market_filter: SymbolSearchMarketFilter::Hip3,
+        hip3_dex_filter: None,
+        favourite_symbols: &favourites,
+        contexts: &contexts,
+        is_muted: |_| false,
+    });
+
+    assert_eq!(indices, vec![1, 0]);
+    assert_eq!(favourite_count, 0);
+}

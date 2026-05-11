@@ -1,6 +1,7 @@
 use super::markets::{symbol_search_exchange_rank, symbol_search_matches_market_filter};
 use super::volume::symbol_search_volume;
 use crate::api::{ExchangeSymbol, WatchlistContext};
+use crate::helpers::compare_symbol_keys_for_same_ticker;
 use crate::market_state::{SymbolSearchMarketFilter, SymbolSearchSortMode};
 
 use std::collections::HashMap;
@@ -61,9 +62,10 @@ where
         let fallback = || symbol_search_fallback_order(a, b, &query);
         match input.sort_mode {
             SymbolSearchSortMode::Relevance => fallback(),
-            SymbolSearchSortMode::Alphabetical => {
-                a.ticker.cmp(&b.ticker).then_with(|| a.key.cmp(&b.key))
-            }
+            SymbolSearchSortMode::Alphabetical => a
+                .ticker
+                .cmp(&b.ticker)
+                .then_with(|| compare_symbol_keys_for_same_ticker(&a.key, &b.key)),
             SymbolSearchSortMode::Exchange => symbol_search_exchange_rank(a)
                 .cmp(&symbol_search_exchange_rank(b))
                 .then_with(fallback),
@@ -119,7 +121,9 @@ fn symbol_search_fallback_order(
     if score_order != std::cmp::Ordering::Equal {
         score_order
     } else {
-        a.ticker.cmp(&b.ticker).then_with(|| a.key.cmp(&b.key))
+        a.ticker
+            .cmp(&b.ticker)
+            .then_with(|| compare_symbol_keys_for_same_ticker(&a.key, &b.key))
     }
 }
 

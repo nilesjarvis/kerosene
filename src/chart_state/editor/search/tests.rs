@@ -74,3 +74,18 @@ fn compare_prefers_score_then_favourites_then_symbol_order() {
         Ordering::Less
     );
 }
+
+#[test]
+fn compare_prefers_primary_known_hip3_dex_for_duplicate_tickers() {
+    let flx_crcl = symbol("flx:CRCL", "CRCL", "stocks", None, &[]);
+    let xyz_crcl = symbol("xyz:CRCL", "CRCL", "stocks", Some("CRCL"), &[]);
+
+    assert_eq!(
+        compare_chart_editor_symbols(&xyz_crcl, &flx_crcl, "crcl", &[]),
+        Ordering::Less
+    );
+    assert_eq!(
+        compare_chart_editor_symbols(&flx_crcl, &xyz_crcl, "crcl", &[]),
+        Ordering::Greater
+    );
+}

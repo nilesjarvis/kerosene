@@ -81,13 +81,20 @@ impl TradingTerminal {
             title = title.push(icon).push(Space::new().width(6.0));
         }
 
-        title
-            .push(
-                text(&instance.symbol_display)
-                    .size(14)
-                    .color(theme.palette().text),
-            )
-            .align_y(iced::Alignment::Center)
-            .into()
+        title = title.push(
+            text(&instance.symbol_display)
+                .size(14)
+                .color(theme.palette().text),
+        );
+
+        if let Some(dex) = helpers::hip3_dex(&instance.symbol) {
+            title = title.push(Space::new().width(4.0)).push(
+                text(format!("({dex})"))
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text),
+            );
+        }
+
+        title.align_y(iced::Alignment::Center).into()
     }
 }

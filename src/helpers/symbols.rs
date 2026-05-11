@@ -1,6 +1,10 @@
+use std::cmp::Ordering;
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets/"]
 struct Assets;
+
+const HIP3_DEX_ORDER: &[&str] = &["xyz", "flx", "vntl", "hyna", "km", "abcd", "cash", "para"];
 
 pub fn category_color(category: &str, theme: &iced::Theme) -> iced::Color {
     let palette = theme.palette();
@@ -52,5 +56,60 @@ pub fn symbol_icon<'a>(
         Some(svg_widget)
     } else {
         None
+    }
+}
+
+pub fn hip3_dex(symbol: &str) -> Option<&str> {
+    let (dex, asset) = symbol.split_once(':')?;
+    (!dex.is_empty() && !asset.is_empty()).then_some(dex)
+}
+
+pub fn compare_symbol_keys_for_same_ticker(a_key: &str, b_key: &str) -> Ordering {
+    match (hip3_dex(a_key), hip3_dex(b_key)) {
+        (Some(a_dex), Some(b_dex)) => hip3_dex_rank(a_dex)
+            .cmp(&hip3_dex_rank(b_dex))
+            .then_with(|| a_key.cmp(b_key)),
+        _ => a_key.cmp(b_key),
+    }
+}
+
+fn hip3_dex_rank(dex: &str) -> (usize, &str) {
+    (
+        HIP3_DEX_ORDER
+            .iter()
+            .position(|known| *known == dex)
+            .unwrap_or(usize::MAX),
+        dex,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compare_symbol_keys_for_same_ticker, hip3_dex};
+    use std::cmp::Ordering;
+
+    #[test]
+    fn hip3_dex_extracts_only_prefixed_perp_symbols() {
+        assert_eq!(hip3_dex("xyz:CRCL"), Some("xyz"));
+        assert_eq!(hip3_dex("BTC"), None);
+        assert_eq!(hip3_dex("@107"), None);
+        assert_eq!(hip3_dex(":CRCL"), None);
+        assert_eq!(hip3_dex("xyz:"), None);
+    }
+
+    #[test]
+    fn duplicate_hip3_tickers_use_known_dex_order() {
+        assert_eq!(
+            compare_symbol_keys_for_same_ticker("xyz:CRCL", "flx:CRCL"),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_symbol_keys_for_same_ticker("unknown:CRCL", "xyz:CRCL"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_symbol_keys_for_same_ticker("BTC", "ETH"),
+            Ordering::Less
+        );
     }
 }
