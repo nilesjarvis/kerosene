@@ -1,13 +1,17 @@
 mod widgets;
 
-use self::widgets::{format_bytes_human, status_tooltip, unlock_credentials_button};
+use self::widgets::{
+    format_bytes_human, status_group_separator, status_tooltip, unlock_credentials_button,
+    ws_status_badge,
+};
 
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
 use crate::ws;
 
-use iced::widget::{Row, row, text};
+use iced::widget::{Row, Space, row, text};
+use iced::{Color, Fill};
 
 // ---------------------------------------------------------------------------
 // Status Connectivity Row
@@ -28,9 +32,13 @@ impl TradingTerminal {
         } else {
             ("WS OFFLINE", theme.palette().danger)
         };
+        let version_color = Color {
+            a: 0.42,
+            ..theme.extended_palette().background.strong.text
+        };
 
         let mut bottom_row = row![
-            text(ws_label).size(10).color(ws_color),
+            ws_status_badge(ws_label, ws_color, ws_live, self.spinner_phase),
             helpers::vertical_spacer(),
             text(format!("{} open conn", ws_stats.open_connections))
                 .size(10)
@@ -67,8 +75,12 @@ impl TradingTerminal {
             ))
             .size(10)
             .color(theme.palette().primary),
+            status_group_separator(),
+            self.status_clock_row(),
+            Space::new().width(Fill),
         ]
         .spacing(8)
+        .width(Fill)
         .align_y(iced::Alignment::Center);
 
         if self.encrypted_credentials_locked() {
@@ -76,6 +88,12 @@ impl TradingTerminal {
                 .push(helpers::vertical_spacer())
                 .push(unlock_credentials_button());
         }
+
+        bottom_row = bottom_row.push(
+            text(format!("v{}-alpha", env!("CARGO_PKG_VERSION")))
+                .size(10)
+                .color(version_color),
+        );
 
         bottom_row
     }

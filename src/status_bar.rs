@@ -24,20 +24,19 @@ impl TradingTerminal {
             snap: true,
         });
 
-        let content =
-            container(column![self.status_clock_row(), self.status_connectivity_row()].spacing(2))
-                .width(Fill)
-                .padding([4, 8])
-                .style(|theme: &Theme| container_style::Style {
-                    background: Some(
-                        Color {
-                            a: 0.96,
-                            ..theme.extended_palette().background.strong.color
-                        }
-                        .into(),
-                    ),
-                    ..Default::default()
-                });
+        let content = container(self.status_connectivity_row())
+            .width(Fill)
+            .padding([4, 8])
+            .style(|theme: &Theme| container_style::Style {
+                background: Some(
+                    Color {
+                        a: 0.96,
+                        ..theme.extended_palette().background.strong.color
+                    }
+                    .into(),
+                ),
+                ..Default::default()
+            });
 
         container(column![separator, content]).width(Fill).into()
     }
