@@ -265,7 +265,12 @@ fn format_optional_signed_usd(total: OptionalTotal, hide_pnl: bool) -> String {
 
 fn format_optional_total_pnl(total: OptionalTotal, percent: Option<f64>, hide_pnl: bool) -> String {
     match total.value() {
-        Some(_) if hide_pnl => "$*** (***)".to_string(),
+        Some(_) if hide_pnl => {
+            let percent = percent
+                .map(format_signed_percent)
+                .unwrap_or_else(|| "--%".to_string());
+            format!("$*** ({percent})")
+        }
         Some(value) => {
             let percent = percent
                 .map(format_signed_percent)
@@ -413,8 +418,9 @@ mod tests {
         );
         assert_eq!(
             format_optional_total_pnl(total, Some(1.25), true),
-            "$*** (***)"
+            "$*** (+1.25%)"
         );
+        assert_eq!(format_optional_total_pnl(total, None, true), "$*** (--%)");
     }
 
     #[test]
