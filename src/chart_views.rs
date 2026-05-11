@@ -131,6 +131,10 @@ impl TradingTerminal {
             } else {
                 stack![chart_canvas].width(Fill).height(Fill).into()
             };
+            let chart_area = container(chart_area)
+                .id(Self::chart_screenshot_canvas_id(chart_id))
+                .width(Fill)
+                .height(Fill);
 
             let content = column![header, toolbar, chart_area].spacing(4);
 

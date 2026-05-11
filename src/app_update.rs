@@ -26,6 +26,7 @@ impl TradingTerminal {
             UpdateRoute::PortfolioIncome => self.update_portfolio_income(message),
             UpdateRoute::Annotations => self.update_annotations(message),
             UpdateRoute::Chart => self.update_chart(message),
+            UpdateRoute::ChartScreenshot => self.update_chart_screenshot(message),
             UpdateRoute::Account => self.update_account(message),
             UpdateRoute::Feed => self.update_feed(message),
             UpdateRoute::Hyperdash => self.update_hyperdash(message),

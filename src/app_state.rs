@@ -3,6 +3,7 @@ use crate::account_state::PositionsSortColumn;
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
+use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::hyperdash_api::LiquidationHeatmap;
 use crate::market_state::{
@@ -198,6 +199,8 @@ pub(crate) struct TradingTerminal {
     // Multi-window IDs
     pub(crate) main_window_id: Option<window::Id>,
     pub(crate) settings_window_id: Option<window::Id>,
+    pub(crate) chart_screenshot_window_id: Option<window::Id>,
+    pub(crate) chart_screenshot: Option<ChartScreenshotState>,
     pub(crate) main_window_size: Option<iced::Size>,
     pub(crate) main_window_pos: Option<iced::Point>,
     pub(crate) wallet_tracker: WalletTrackerState,

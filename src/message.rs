@@ -5,6 +5,7 @@ use crate::annotations::{Annotation, AnnotationId, DrawingTool};
 use crate::api::{self, Candle, ExchangeSymbol, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
+use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{CandleFetchRequest, ChartId, FundingFetchRequest};
 use crate::config;
 use crate::hydromancer_api::FundingRatePoint;
@@ -25,6 +26,7 @@ use crate::ws::WsUserData;
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
@@ -316,6 +318,14 @@ pub(crate) enum Message {
     ChartCloseEditor(ChartId),
     ChartEditorSearchChanged(ChartId, String),
     ChartEditorSubmit(ChartId),
+    OpenChartScreenshot(ChartId),
+    ChartScreenshotBoundsResolved(ChartId, Option<iced::Rectangle>),
+    ChartScreenshotCaptured(ChartId, Result<ChartScreenshotState, String>),
+    CopyChartScreenshot,
+    ChartScreenshotCopied(Result<(), String>),
+    SaveChartScreenshot,
+    ChartScreenshotSaved(Result<Option<PathBuf>, String>),
+    CloseChartScreenshotWindow,
     // Hotkeys related messages
     KeyboardEvent(iced::keyboard::Event, iced::event::Status),
     AddChart(pane_grid::Pane),

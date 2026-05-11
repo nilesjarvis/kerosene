@@ -206,6 +206,8 @@ impl TradingTerminal {
             tracked_trade_alerts_enabled: cfg.tracked_trade_alerts_enabled,
             main_window_id: None,
             settings_window_id: None,
+            chart_screenshot_window_id: None,
+            chart_screenshot: None,
             main_window_size: cfg
                 .main_window_width
                 .zip(cfg.main_window_height)

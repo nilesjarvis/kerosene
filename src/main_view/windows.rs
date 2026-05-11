@@ -30,6 +30,9 @@ impl TradingTerminal {
         if Some(window_id) == self.settings_window_id {
             return self.view_settings();
         }
+        if Some(window_id) == self.chart_screenshot_window_id {
+            return self.view_chart_screenshot_window();
+        }
         self.view_main()
     }
 
@@ -61,6 +64,8 @@ impl TradingTerminal {
             "Kerosene Trading Journal".to_string()
         } else if Some(window_id) == self.settings_window_id {
             "Kerosene Settings".to_string()
+        } else if Some(window_id) == self.chart_screenshot_window_id {
+            "Kerosene Chart Screenshot".to_string()
         } else {
             "Kerosene Trading Terminal".to_string()
         }

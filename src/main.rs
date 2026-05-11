@@ -20,6 +20,7 @@ mod calendar_state;
 mod calendar_update;
 mod calendar_views;
 mod chart;
+mod chart_screenshot;
 mod chart_state;
 mod chart_update;
 mod chart_views;

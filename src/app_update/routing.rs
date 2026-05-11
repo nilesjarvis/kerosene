@@ -10,6 +10,7 @@ pub(super) enum UpdateRoute {
     Annotations,
     Calendar,
     Chart,
+    ChartScreenshot,
     Chrome,
     Feed,
     Hyperdash,
@@ -203,6 +204,15 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WindowOpened(_)
         | Message::WindowClosed(_)
         | Message::WindowResized(_, _) => UpdateRoute::Window,
+
+        Message::OpenChartScreenshot(_)
+        | Message::ChartScreenshotBoundsResolved(_, _)
+        | Message::ChartScreenshotCaptured(_, _)
+        | Message::CopyChartScreenshot
+        | Message::ChartScreenshotCopied(_)
+        | Message::SaveChartScreenshot
+        | Message::ChartScreenshotSaved(_)
+        | Message::CloseChartScreenshotWindow => UpdateRoute::ChartScreenshot,
 
         Message::JournalFillsLoaded { .. }
         | Message::JournalEditStart(_, _)
