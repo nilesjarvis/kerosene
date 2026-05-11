@@ -57,6 +57,7 @@ fn chase_order() -> ChaseOrder {
         reprice_count: 0,
         pending_op: None,
         last_reprice_at: None,
+        pending_best_price: None,
         stop_requested: false,
         stop_reason: None,
         cancel_retries: 0,

@@ -1,6 +1,7 @@
+use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
-use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
+use crate::order_execution::PendingOrderAction;
 use crate::signing::{
     ChaseOrder, ChasePendingOp, MAX_CHASE_DRIFT_FRACTION, MAX_CHASE_DURATION, MAX_CHASE_REPRICES,
     OrderKind, cancel_order, float_to_wire, modify_order, place_order,
@@ -10,6 +11,8 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 mod tests;
+
+const MIN_CHASE_GLOBAL_EXCHANGE_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StopChaseAction {
@@ -121,19 +124,34 @@ impl TradingTerminal {
     }
 
     pub(crate) fn stop_chase(&mut self) -> Task<Message> {
-        self.stop_chase_with_reason("Chase stopped", false)
+        let Some(chase_id) = self.selected_chase_id() else {
+            return Task::none();
+        };
+        self.stop_chase_by_id_with_reason(chase_id, "Chase stopped", false)
     }
 
-    pub(crate) fn stop_chase_with_reason(
+    pub(crate) fn stop_chase_by_id(&mut self, chase_id: u64) -> Task<Message> {
+        self.stop_chase_by_id_with_reason(chase_id, "Chase stopped", false)
+    }
+
+    pub(crate) fn stop_chase_by_id_with_reason(
         &mut self,
+        chase_id: u64,
         reason: impl Into<String>,
         is_error: bool,
     ) -> Task<Message> {
         let _theme = self.theme();
-        self.pending_order_action = None;
-        let Some(chase) = self.active_chase.as_mut() else {
+        let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
+        let clear_startup_pending = matches!(
+            self.pending_order_action,
+            Some(PendingOrderAction::ChaseBuy | PendingOrderAction::ChaseSell)
+        ) && chase.current_oid.is_none()
+            && chase.pending_op.is_none();
+        if clear_startup_pending {
+            self.pending_order_action = None;
+        }
 
         let reason = reason.into();
         match plan_stop_chase_with_reason(chase, reason.clone(), is_error) {
@@ -148,7 +166,7 @@ impl TradingTerminal {
                         "Chase stopped: original agent key is unavailable".into(),
                         true,
                     ));
-                    self.active_chase = None;
+                    self.remove_chase_order(chase_id);
                     return Task::none();
                 }
                 self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
@@ -180,82 +198,180 @@ impl TradingTerminal {
             }
             StopChaseAction::Clear => {
                 self.order_status = Some((reason, is_error));
-                self.active_chase = None;
+                self.remove_chase_order(chase_id);
                 Task::none()
             }
         }
     }
 
-    fn stop_chase_for_limit(&mut self, reason: ChaseLimitReason) -> Task<Message> {
-        self.stop_chase_with_reason(format!("Chase stopped: {}", reason.status_detail()), true)
+    pub(crate) fn stop_all_chases(&mut self) -> Task<Message> {
+        let ids: Vec<u64> = self.chase_orders.keys().copied().collect();
+        Task::batch(
+            ids.into_iter()
+                .map(|id| self.stop_chase_by_id_with_reason(id, "Chase stopped", false)),
+        )
+    }
+
+    fn stop_chase_for_limit(&mut self, chase_id: u64, reason: ChaseLimitReason) -> Task<Message> {
+        self.stop_chase_by_id_with_reason(
+            chase_id,
+            format!("Chase stopped: {}", reason.status_detail()),
+            true,
+        )
     }
 
     pub(crate) fn stop_chase_if_limits_reached(&mut self, now: Instant) -> Task<Message> {
-        let Some(chase) = self.active_chase.as_ref() else {
-            return Task::none();
-        };
-        if chase.stop_requested {
-            return Task::none();
-        }
-        let Some(reason) = chase_reprice_limit_reason(chase, chase.current_price, now) else {
-            return Task::none();
-        };
-        self.stop_chase_for_limit(reason)
+        let stops: Vec<_> = self
+            .chase_orders
+            .iter()
+            .filter_map(|(id, chase)| {
+                if chase.stop_requested
+                    || !chase.current_price.is_finite()
+                    || chase.current_price <= 0.0
+                {
+                    return None;
+                }
+                chase_reprice_limit_reason(chase, chase.current_price, now)
+                    .map(|reason| (*id, reason))
+            })
+            .collect();
+        let tasks = stops
+            .into_iter()
+            .map(|(id, reason)| self.stop_chase_for_limit(id, reason));
+        Task::batch(tasks)
     }
 
-    /// Return the active order book's best bid/ask, falling back to a fixed
-    /// book for the same coin when no active book is available.
-    pub(crate) fn best_chase_price(&self, coin: &str, is_buy: bool) -> Option<f64> {
-        let price_from_book = |book: &OrderBookInstance| {
-            if is_buy {
-                book.book.bids.first().map(|level| level.px)
-            } else {
-                book.book.asks.first().map(|level| level.px)
-            }
-        };
+    fn can_send_chase_exchange_request(&self, now: Instant) -> bool {
+        self.last_chase_exchange_request_at.is_none_or(|last| {
+            now.saturating_duration_since(last) >= MIN_CHASE_GLOBAL_EXCHANGE_INTERVAL
+        })
+    }
 
-        let valid_price = |price: &f64| price.is_finite() && *price > 0.0;
-        if self.active_symbol == coin
-            && let Some(price) = self
-                .order_books
-                .values()
-                .filter(|book| book.mode == OrderBookSymbolMode::Active)
-                .filter_map(price_from_book)
-                .find(valid_price)
+    fn set_chase_pending_best_price(&mut self, chase_id: u64, best: f64) {
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id)
+            && best.is_finite()
+            && best > 0.0
         {
-            return Some(price);
+            chase.pending_best_price = Some(best);
         }
-
-        self.order_books
-            .values()
-            .filter(
-                |book| matches!(&book.mode, OrderBookSymbolMode::Fixed(symbol) if symbol == coin),
-            )
-            .filter_map(price_from_book)
-            .find(valid_price)
     }
 
-    pub(crate) fn chase_reprice_to_best_price(&mut self, best: f64) -> Task<Message> {
+    fn best_chase_price_from_book(book: &OrderBook, is_buy: bool) -> Option<f64> {
+        let price = if is_buy {
+            book.bids.first().map(|level| level.px)
+        } else {
+            book.asks.first().map(|level| level.px)
+        };
+        price.filter(|price| price.is_finite() && *price > 0.0)
+    }
+
+    pub(crate) fn handle_chase_initial_book_loaded(
+        &mut self,
+        chase_id: u64,
+        result: Result<OrderBook, String>,
+    ) -> Task<Message> {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
+            return Task::none();
+        };
+        let is_buy = chase.is_buy;
+        match result {
+            Ok(book) => {
+                let Some(best) = Self::best_chase_price_from_book(&book, is_buy) else {
+                    self.order_status = Some(("Chase stopped: no book data to place".into(), true));
+                    self.pending_order_action = None;
+                    self.remove_chase_order(chase_id);
+                    return Task::none();
+                };
+                self.chase_place_at_best(chase_id, best)
+            }
+            Err(error) => {
+                self.order_status =
+                    Some((format!("Chase stopped: book load failed: {error}"), true));
+                self.pending_order_action = None;
+                self.remove_chase_order(chase_id);
+                Task::none()
+            }
+        }
+    }
+
+    pub(crate) fn handle_chase_book_update(
+        &mut self,
+        chase_id: u64,
+        coin: String,
+        book: OrderBook,
+    ) -> Task<Message> {
+        let Some(chase) = self.chase_orders.get(&chase_id) else {
+            return Task::none();
+        };
+        if chase.coin != coin || self.is_ticker_muted(&coin) {
+            return Task::none();
+        }
+        let Some(best) = Self::best_chase_price_from_book(&book, chase.is_buy) else {
+            return Task::none();
+        };
+        self.chase_reprice_to_best_price(chase_id, best)
+    }
+
+    pub(crate) fn handle_chase_reprice_tick(&mut self) -> Task<Message> {
+        let now = Instant::now();
+        if !self.can_send_chase_exchange_request(now) {
+            return Task::none();
+        }
+        let next = self.chase_orders.iter().find_map(|(id, chase)| {
+            let best = chase.pending_best_price?;
+            if chase.stop_requested || chase.has_pending_op() {
+                return None;
+            }
+            if chase.current_oid.is_none() || chase.can_reprice_now(now) {
+                Some((*id, best))
+            } else {
+                None
+            }
+        });
+        let Some((chase_id, best)) = next else {
+            return Task::none();
+        };
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+            chase.pending_best_price = None;
+        }
+        if self
+            .chase_orders
+            .get(&chase_id)
+            .is_some_and(|chase| chase.current_oid.is_none())
+        {
+            return self.chase_place_at_best(chase_id, best);
+        }
+        self.chase_reprice_to_best_price(chase_id, best)
+    }
+
+    pub(crate) fn chase_reprice_to_best_price(
+        &mut self,
+        chase_id: u64,
+        best: f64,
+    ) -> Task<Message> {
         let _theme = self.theme();
-        if let Some(chase) = self.active_chase.as_ref()
+        if let Some(chase) = self.chase_orders.get(&chase_id)
             && !chase_account_matches(chase, self.connected_address.as_deref())
         {
-            return self
-                .stop_chase_with_reason("Chase stopped: account changed before reprice", true);
+            return self.stop_chase_by_id_with_reason(
+                chase_id,
+                "Chase stopped: account changed before reprice",
+                true,
+            );
         }
 
         let now = Instant::now();
-        let Some(chase_snapshot) = self.active_chase.as_ref() else {
+        let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
         if chase_snapshot.stop_requested || chase_snapshot.has_pending_op() {
             return Task::none();
         }
-        if !chase_snapshot.can_reprice_now(now) {
+        if chase_snapshot.current_oid.is_none() {
             return Task::none();
         }
         let Some((rounded_best, price_wire)) = chase_snapshot.rounded_price(best) else {
-            return self.stop_chase_for_limit(ChaseLimitReason::InvalidPrice);
+            return self.stop_chase_for_limit(chase_id, ChaseLimitReason::InvalidPrice);
         };
         if price_wire == chase_snapshot.current_price_wire {
             return Task::none();
@@ -263,11 +379,15 @@ impl TradingTerminal {
         if !chase_snapshot.price_moves_toward_fill(rounded_best) {
             return Task::none();
         }
+        if !chase_snapshot.can_reprice_now(now) || !self.can_send_chase_exchange_request(now) {
+            self.set_chase_pending_best_price(chase_id, best);
+            return Task::none();
+        }
         if let Some(reason) = chase_reprice_limit_reason(chase_snapshot, rounded_best, now) {
-            return self.stop_chase_for_limit(reason);
+            return self.stop_chase_for_limit(chase_id, reason);
         }
 
-        let Some(chase) = &mut self.active_chase else {
+        let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
         let Some(oid) = chase.current_oid else {
@@ -275,7 +395,7 @@ impl TradingTerminal {
         };
         if !chase.remaining_size.is_finite() || chase.remaining_size <= 0.0 {
             self.order_status = Some(("Chase stopped: invalid remaining size".to_string(), true));
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
             return Task::none();
         }
         let key = chase.agent_key.trim().to_string();
@@ -284,7 +404,7 @@ impl TradingTerminal {
                 "Chase stopped: original agent key is unavailable".into(),
                 true,
             ));
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
             return Task::none();
         }
 
@@ -295,7 +415,9 @@ impl TradingTerminal {
         let reduce_only = chase.reduce_only;
         chase.pending_op = Some(ChasePendingOp::Modify { oid });
         chase.last_reprice_at = Some(now);
+        chase.pending_best_price = None;
         chase.reprice_count = chase.reprice_count.saturating_add(1);
+        self.last_chase_exchange_request_at = Some(now);
 
         Task::perform(
             modify_order(
@@ -318,43 +440,47 @@ impl TradingTerminal {
     }
 
     /// Place a new chase limit order at the current best bid/ask.
-    pub(crate) fn chase_place_at_best(&mut self) -> Task<Message> {
+    pub(crate) fn chase_place_at_best(&mut self, chase_id: u64, best: f64) -> Task<Message> {
         let _theme = self.theme();
-        let Some(chase_snapshot) = self.active_chase.as_ref() else {
+        let now = Instant::now();
+        let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
+        if chase_snapshot.stop_requested || chase_snapshot.has_pending_op() {
+            return Task::none();
+        }
         if !chase_account_matches(chase_snapshot, self.connected_address.as_deref()) {
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
             self.order_status = Some((
                 "Chase stopped: account changed before initial placement".into(),
                 true,
             ));
             return Task::none();
         }
-        let Some(best) = self.best_chase_price(&chase_snapshot.coin, chase_snapshot.is_buy) else {
-            self.order_status = Some(("Chase: no book data to place".into(), true));
-            self.active_chase = None;
-            return Task::none();
-        };
         let Some((rounded_best, price_wire)) = chase_snapshot.rounded_price(best) else {
             self.order_status = Some(("Chase stopped: invalid chase price".into(), true));
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
             return Task::none();
         };
-        if let Some(reason) =
-            chase_reprice_limit_reason(chase_snapshot, rounded_best, Instant::now())
+        if chase_snapshot.initial_price.is_finite()
+            && chase_snapshot.initial_price > 0.0
+            && let Some(reason) = chase_reprice_limit_reason(chase_snapshot, rounded_best, now)
         {
             self.order_status = Some((format!("Chase stopped: {}", reason.status_detail()), true));
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
+            return Task::none();
+        }
+        if !self.can_send_chase_exchange_request(now) {
+            self.set_chase_pending_best_price(chase_id, best);
             return Task::none();
         }
 
-        let Some(chase) = &mut self.active_chase else {
+        let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
         if !chase.remaining_size.is_finite() || chase.remaining_size <= 0.0 {
             self.order_status = Some(("Chase stopped: invalid remaining size".to_string(), true));
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
             return Task::none();
         }
         let key = chase.agent_key.trim().to_string();
@@ -363,7 +489,7 @@ impl TradingTerminal {
                 "Chase stopped: original agent key is unavailable".into(),
                 true,
             ));
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
             return Task::none();
         }
 
@@ -374,10 +500,14 @@ impl TradingTerminal {
         let reduce_only = chase.reduce_only;
         chase.current_price = rounded_best;
         chase.current_price_wire = price_wire.clone();
+        if !chase.initial_price.is_finite() || chase.initial_price <= 0.0 {
+            chase.initial_price = rounded_best;
+        }
         chase.current_oid = None;
         chase.pending_op = Some(ChasePendingOp::Place);
         chase.oid_confirmed = false;
         chase.missing_open_order_refresh_requested = false;
+        self.last_chase_exchange_request_at = Some(now);
 
         Task::perform(
             place_order(

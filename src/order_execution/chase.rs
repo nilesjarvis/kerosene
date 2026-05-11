@@ -1,8 +1,9 @@
-use crate::api::MarketType;
+use crate::api::{MarketType, fetch_order_book};
 use crate::app_state::TradingTerminal;
+use crate::helpers;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
-use crate::signing::{ChaseOrder, float_to_wire, round_price};
+use crate::signing::ChaseOrder;
 use iced::Task;
 
 mod lifecycle;
@@ -12,11 +13,47 @@ mod lifecycle;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    pub(crate) const MAX_ACTIVE_CHASE_ORDERS: usize = 8;
+
+    pub(crate) fn selected_chase_id(&self) -> Option<u64> {
+        self.selected_chase_id
+            .filter(|id| self.chase_orders.contains_key(id))
+            .or_else(|| self.chase_orders.keys().next_back().copied())
+    }
+
+    pub(crate) fn selected_chase(&self) -> Option<&ChaseOrder> {
+        let id = self.selected_chase_id()?;
+        self.chase_orders.get(&id)
+    }
+
+    pub(crate) fn remove_chase_order(&mut self, chase_id: u64) {
+        self.chase_orders.remove(&chase_id);
+        if self.selected_chase_id == Some(chase_id) {
+            self.selected_chase_id = self.chase_orders.keys().next_back().copied();
+        }
+    }
+
+    pub(crate) fn chase_book_fetch_sigfigs(&self, symbol: &str) -> (Option<u8>, Option<u8>) {
+        let mid = self.resolve_mid_for_symbol(symbol);
+        let tick = mid.map(helpers::default_tick_for_price).unwrap_or(0.01);
+        mid.map(|mid| helpers::compute_sigfigs(tick, mid))
+            .unwrap_or((None, None))
+    }
+
     pub(crate) fn start_chase(&mut self, is_buy: bool) -> Task<Message> {
         let _theme = self.theme();
-        if self.active_chase.is_some() {
-            self.order_status =
-                Some(("Stop the active chase before starting another".into(), true));
+        if self.chase_orders.len() >= Self::MAX_ACTIVE_CHASE_ORDERS {
+            self.order_status = Some((
+                format!(
+                    "Cannot start chase: maximum of {} active chase orders reached",
+                    Self::MAX_ACTIVE_CHASE_ORDERS
+                ),
+                true,
+            ));
+            return Task::none();
+        }
+        if self.pending_order_action.is_some() {
+            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
             return Task::none();
         }
 
@@ -59,12 +96,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let best_px = self.best_chase_price(&self.active_symbol, is_buy);
-        let Some(best) = best_px else {
-            self.order_status = Some(("No order book data to chase".into(), true));
-            return Task::none();
-        };
-
         let asset = sym.asset_index;
         let sz_decimals = sym.sz_decimals;
         let is_spot = sym.market_type == MarketType::Spot;
@@ -73,48 +104,60 @@ impl TradingTerminal {
         } else {
             self.order_reduce_only
         };
-        let rounded_best = round_price(best, sz_decimals, is_spot);
-        if !rounded_best.is_finite() || rounded_best <= 0.0 {
-            self.order_status = Some(("Invalid chase price".into(), true));
-            return Task::none();
-        }
-        let price_wire = float_to_wire(rounded_best);
         let chase_id = self.next_chase_id();
 
-        self.active_chase = Some(ChaseOrder {
-            id: chase_id,
-            coin: self.active_symbol.clone(),
-            account_address,
-            agent_key: key.clone().into(),
-            is_buy,
-            remaining_size: qty,
-            asset,
-            sz_decimals,
-            is_spot,
-            reduce_only,
-            current_oid: None,
-            current_price: rounded_best,
-            current_price_wire: price_wire,
-            initial_price: rounded_best,
-            started_at: std::time::Instant::now(),
-            reprice_count: 0,
-            pending_op: None,
-            last_reprice_at: None,
-            stop_requested: false,
-            stop_reason: None,
-            cancel_retries: 0,
-            oid_confirmed: false,
-            missing_open_order_refresh_requested: false,
-        });
+        self.chase_orders.insert(
+            chase_id,
+            ChaseOrder {
+                id: chase_id,
+                coin: self.active_symbol.clone(),
+                account_address,
+                agent_key: key.clone().into(),
+                is_buy,
+                remaining_size: qty,
+                asset,
+                sz_decimals,
+                is_spot,
+                reduce_only,
+                current_oid: None,
+                current_price: 0.0,
+                current_price_wire: String::new(),
+                initial_price: 0.0,
+                started_at: std::time::Instant::now(),
+                reprice_count: 0,
+                pending_op: None,
+                last_reprice_at: None,
+                pending_best_price: None,
+                stop_requested: false,
+                stop_reason: None,
+                cancel_retries: 0,
+                oid_confirmed: false,
+                missing_open_order_refresh_requested: false,
+            },
+        );
+        self.selected_chase_id = Some(chase_id);
 
         let side_str = if is_buy { "BUY" } else { "SELL" };
-        self.order_status = Some((format!("Chase {side_str} {qty} @ best ({best})..."), false));
+        self.order_status = Some((
+            format!(
+                "Chase {side_str} {qty} {}: loading book...",
+                self.active_symbol_display
+            ),
+            false,
+        ));
         self.pending_order_action = Some(if is_buy {
             PendingOrderAction::ChaseBuy
         } else {
             PendingOrderAction::ChaseSell
         });
 
-        self.chase_place_at_best()
+        let symbol = self.active_symbol.clone();
+        let sigfigs = self.chase_book_fetch_sigfigs(&symbol);
+        Task::perform(fetch_order_book(symbol, sigfigs), move |result| {
+            Message::ChaseInitialBookLoaded {
+                chase_id,
+                result: Box::new(result),
+            }
+        })
     }
 }

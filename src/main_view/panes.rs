@@ -25,6 +25,7 @@ impl TradingTerminal {
             PaneKind::Income => self.view_income(),
             PaneKind::BottomTabs { active_tab } => self.view_bottom_tabs(*active_tab),
             PaneKind::OrderEntry => self.view_order_entry(),
+            PaneKind::AdvancedOrders => self.view_advanced_orders(),
             PaneKind::SpaghettiChart(id) => self.view_spaghetti_chart(*id, pane),
             PaneKind::Settings => self.view_settings_deprecated(),
             PaneKind::Calendar => self.view_calendar(),

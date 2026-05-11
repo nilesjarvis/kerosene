@@ -52,12 +52,19 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if let Some(chase) = &self.active_chase {
-            if chase.current_oid == Some(oid) {
-                return Task::none();
-            }
+        if self
+            .chase_orders
+            .values()
+            .any(|chase| chase.current_oid == Some(oid))
+        {
+            return Task::none();
+        }
+        if self.chase_orders.len() >= Self::MAX_ACTIVE_CHASE_ORDERS {
             self.order_status = Some((
-                "Stop the active chase before chasing another order".into(),
+                format!(
+                    "Cannot start chase: maximum of {} active chase orders reached",
+                    Self::MAX_ACTIVE_CHASE_ORDERS
+                ),
                 true,
             ));
             return Task::none();
@@ -90,37 +97,38 @@ impl TradingTerminal {
         }
         let chase_id = self.next_chase_id();
 
-        self.active_chase = Some(ChaseOrder {
-            id: chase_id,
-            coin: coin.clone(),
-            account_address,
-            agent_key: key.into(),
-            is_buy,
-            remaining_size: sz,
-            asset,
-            sz_decimals,
-            is_spot,
-            reduce_only,
-            current_oid: Some(oid),
-            current_price: rounded_px,
-            current_price_wire: float_to_wire(rounded_px),
-            initial_price: rounded_px,
-            started_at: std::time::Instant::now(),
-            reprice_count: 0,
-            pending_op: None,
-            last_reprice_at: None,
-            stop_requested: false,
-            stop_reason: None,
-            cancel_retries: 0,
-            oid_confirmed: true,
-            missing_open_order_refresh_requested: false,
-        });
+        self.chase_orders.insert(
+            chase_id,
+            ChaseOrder {
+                id: chase_id,
+                coin: coin.clone(),
+                account_address,
+                agent_key: key.into(),
+                is_buy,
+                remaining_size: sz,
+                asset,
+                sz_decimals,
+                is_spot,
+                reduce_only,
+                current_oid: Some(oid),
+                current_price: rounded_px,
+                current_price_wire: float_to_wire(rounded_px),
+                initial_price: rounded_px,
+                started_at: std::time::Instant::now(),
+                reprice_count: 0,
+                pending_op: None,
+                last_reprice_at: None,
+                pending_best_price: None,
+                stop_requested: false,
+                stop_reason: None,
+                cancel_retries: 0,
+                oid_confirmed: true,
+                missing_open_order_refresh_requested: false,
+            },
+        );
+        self.selected_chase_id = Some(chase_id);
 
         self.order_status = Some((format!("Chasing resting order {oid}..."), false));
-        if self.active_symbol != coin {
-            self.switch_active_symbol_internal(coin)
-        } else {
-            Task::none()
-        }
+        Task::none()
     }
 }

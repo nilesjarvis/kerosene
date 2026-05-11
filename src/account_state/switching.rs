@@ -57,11 +57,16 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let stop_chase_task = if self.active_chase.is_some() {
-            self.stop_chase_with_reason("Chase stopped: account changed", false)
-        } else {
-            Task::none()
-        };
+        let stop_chase_task = Task::batch(
+            self.chase_orders
+                .keys()
+                .copied()
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|id| {
+                    self.stop_chase_by_id_with_reason(id, "Chase stopped: account changed", false)
+                }),
+        );
 
         let is_ghost = self.ghost_account_secret_ids.contains(&profile.secret_id);
         self.active_account_index = index;

@@ -44,15 +44,6 @@ impl TradingTerminal {
                     });
 
                     if let Some((sym, display)) = chart_sym {
-                        let chase_task = if self.active_chase.is_some() {
-                            self.stop_chase_with_reason(
-                                "Chase stopped: focused chart changed the active symbol",
-                                false,
-                            )
-                        } else {
-                            Task::none()
-                        };
-
                         self.active_symbol = sym;
                         self.active_symbol_display = display;
                         for inst in self.order_books.values_mut() {
@@ -88,7 +79,7 @@ impl TradingTerminal {
                                     )
                                 }),
                         );
-                        return Task::batch([chase_task, book_task]);
+                        return book_task;
                     }
                 }
             }

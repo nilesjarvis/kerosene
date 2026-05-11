@@ -56,6 +56,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddTradingJournal
         | Message::AddCalendarPane
         | Message::AddLiquidationsPane
+        | Message::AddAdvancedOrdersPane
         | Message::AddTrackedTradesPane
         | Message::AddOutcomesPane => UpdateRoute::Panes,
 
@@ -109,6 +110,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::NukeResult(_)
         | Message::StartChase(_)
         | Message::StopChase
+        | Message::StopChaseById(_)
+        | Message::StopAllChases
+        | Message::ChaseInitialBookLoaded { .. }
+        | Message::ChaseBookUpdate { .. }
+        | Message::ChaseRepriceTick
         | Message::ChasePlaceResult { .. }
         | Message::ChaseModifyResult { .. }
         | Message::ChaseCancelResult { .. }

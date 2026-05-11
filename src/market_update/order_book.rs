@@ -11,7 +11,7 @@ mod panes;
 mod ws_updates;
 
 use asset_ctx::record_asset_context_spread;
-use ws_updates::{best_chase_price, chase_should_reprice, order_book_tracks_coin};
+use ws_updates::order_book_tracks_coin;
 
 impl TradingTerminal {
     pub(crate) fn update_order_book_market(&mut self, message: Message) -> Task<Message> {
@@ -44,21 +44,6 @@ impl TradingTerminal {
                     inst.book_error = None;
                 }
 
-                let Some(chase) = &self.active_chase else {
-                    return Task::none();
-                };
-                let best = best_chase_price(&book, chase.is_buy);
-
-                if chase_should_reprice(
-                    chase,
-                    &self.active_symbol,
-                    &coin,
-                    best,
-                    std::time::Instant::now(),
-                ) && let Some(best) = best
-                {
-                    return self.chase_reprice_to_best_price(best);
-                }
                 Task::none()
             }
             Message::SetBookTickSize(id, tick) => {

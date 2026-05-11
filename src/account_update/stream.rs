@@ -272,33 +272,55 @@ impl TradingTerminal {
 
     fn handle_chase_order_disappearance(&mut self) -> Task<Message> {
         let mut refresh_for_missing_order = false;
-        if let Some(chase) = &mut self.active_chase
-            && let Some(oid) = chase.current_oid
-            && !chase.has_pending_op()
-        {
-            let order_sz = self
-                .account_data
-                .as_ref()
-                .and_then(|data| data.open_orders.iter().find(|order| order.oid == oid));
-            match order_sz {
-                Some(order) => {
-                    if apply_open_order_to_chase(
-                        chase,
-                        order,
-                        ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
+        let open_orders = self
+            .account_data
+            .as_ref()
+            .map(|data| data.open_orders.clone())
+            .unwrap_or_default();
+        let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
+        let mut remove_ids = Vec::new();
+
+        for chase_id in chase_ids {
+            let Some((oid, confirmed, refresh_requested, has_pending)) =
+                self.chase_orders.get(&chase_id).map(|chase| {
+                    (
+                        chase.current_oid,
+                        chase.oid_confirmed,
+                        chase.missing_open_order_refresh_requested,
+                        chase.has_pending_op(),
                     )
-                    .is_err()
+                })
+            else {
+                continue;
+            };
+            let Some(oid) = oid else {
+                continue;
+            };
+            if has_pending {
+                continue;
+            }
+            match open_orders.iter().find(|order| order.oid == oid) {
+                Some(order) => {
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id)
+                        && apply_open_order_to_chase(
+                            chase,
+                            order,
+                            ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
+                        )
+                        .is_err()
                     {
                         self.order_status = Some((
                             "Chase stopped: invalid remaining size from open orders".into(),
                             true,
                         ));
-                        self.active_chase = None;
+                        remove_ids.push(chase_id);
                     }
                 }
                 None => {
-                    if chase.oid_confirmed && !chase.missing_open_order_refresh_requested {
-                        chase.missing_open_order_refresh_requested = true;
+                    if confirmed && !refresh_requested {
+                        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                            chase.missing_open_order_refresh_requested = true;
+                        }
                         self.order_status = Some((
                             "Chase checking order status: open-orders stream no longer shows the order"
                                 .into(),
@@ -309,6 +331,9 @@ impl TradingTerminal {
                 }
             }
         }
+        for chase_id in remove_ids {
+            self.remove_chase_order(chase_id);
+        }
         if refresh_for_missing_order {
             return self.refresh_account_data();
         }
@@ -316,60 +341,75 @@ impl TradingTerminal {
     }
 
     pub(crate) fn reconcile_chase_after_account_refresh(&mut self) -> Task<Message> {
-        let Some(chase) = &mut self.active_chase else {
-            return Task::none();
-        };
-        if self.connected_address.as_deref() != Some(chase.account_address.as_str()) {
-            return Task::none();
-        }
-        if !chase.missing_open_order_refresh_requested || chase.has_pending_op() {
-            return Task::none();
-        }
-        let Some(oid) = chase.current_oid else {
-            return Task::none();
-        };
-
         let Some(data) = self.account_data.as_ref() else {
             return Task::none();
         };
-        let order = data.open_orders.iter().find(|order| order.oid == oid);
-        let mut stop_after_refresh = None;
-        match order {
-            Some(order) => {
-                if apply_open_order_to_chase(chase, order, ChaseOpenOrderPriceSync::Trust).is_err()
-                {
+        let open_orders = data.open_orders.clone();
+        let fills = data.fills.clone();
+        let open_orders_complete = data.completeness.open_orders_complete;
+        let connected_address = self.connected_address.clone();
+        let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
+        let mut tasks = Vec::new();
+        let mut remove_ids = Vec::new();
+
+        for chase_id in chase_ids {
+            let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
+                continue;
+            };
+            if connected_address.as_deref() != Some(chase_snapshot.account_address.as_str())
+                || !chase_snapshot.missing_open_order_refresh_requested
+                || chase_snapshot.has_pending_op()
+            {
+                continue;
+            }
+            let Some(oid) = chase_snapshot.current_oid else {
+                continue;
+            };
+
+            let order = open_orders.iter().find(|order| order.oid == oid);
+            match order {
+                Some(order) => {
+                    let mut stop_after_refresh = None;
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                        if apply_open_order_to_chase(chase, order, ChaseOpenOrderPriceSync::Trust)
+                            .is_err()
+                        {
+                            self.order_status = Some((
+                                "Chase stopped: invalid remaining size from account refresh".into(),
+                                true,
+                            ));
+                            remove_ids.push(chase_id);
+                        } else if chase.stop_requested {
+                            stop_after_refresh = chase
+                                .stop_reason
+                                .clone()
+                                .or_else(|| Some(("Chase stopped".to_string(), false)));
+                        } else {
+                            self.order_status = Some((format!("Chasing (oid {oid})..."), false));
+                        }
+                    }
+                    if let Some((reason, is_error)) = stop_after_refresh {
+                        tasks.push(self.stop_chase_by_id_with_reason(chase_id, reason, is_error));
+                    }
+                }
+                None if open_orders_complete => {
+                    let status = chase_fill_summary(&fills, oid)
+                        .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
+                    self.order_status = Some((status, false));
+                    remove_ids.push(chase_id);
+                }
+                None => {
                     self.order_status = Some((
-                        "Chase stopped: invalid remaining size from account refresh".into(),
+                        "Chase status uncertain: open orders refresh was incomplete".into(),
                         true,
                     ));
-                    self.active_chase = None;
-                } else if chase.stop_requested {
-                    stop_after_refresh = chase
-                        .stop_reason
-                        .clone()
-                        .or_else(|| Some(("Chase stopped".to_string(), false)));
-                } else {
-                    self.order_status = Some((format!("Chasing (oid {oid})..."), false));
                 }
-            }
-            None if data.completeness.open_orders_complete => {
-                let status = chase_fill_summary(&data.fills, oid)
-                    .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
-                self.order_status = Some((status, false));
-                self.active_chase = None;
-            }
-            None => {
-                self.order_status = Some((
-                    "Chase status uncertain: open orders refresh was incomplete".into(),
-                    true,
-                ));
             }
         }
 
-        if let Some((reason, is_error)) = stop_after_refresh {
-            self.stop_chase_with_reason(reason, is_error)
-        } else {
-            Task::none()
+        for chase_id in remove_ids {
+            self.remove_chase_order(chase_id);
         }
+        Task::batch(tasks)
     }
 }

@@ -167,8 +167,10 @@ impl TradingTerminal {
                 })
                 .collect(),
             show_hidden_positions: false,
-            active_chase: None,
+            chase_orders: BTreeMap::new(),
+            selected_chase_id: None,
             next_chase_id: 1,
+            last_chase_exchange_request_at: None,
             hide_pnl: cfg.hide_pnl,
             live_watchlists,
             favourite_symbols,

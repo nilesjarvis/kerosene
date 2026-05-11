@@ -27,6 +27,7 @@ impl TradingTerminal {
         self.push_chart_market_subscriptions(subs);
         self.push_spaghetti_market_subscriptions(subs);
         self.push_order_book_subscriptions(subs);
+        self.push_chase_market_subscriptions(subs);
     }
 
     fn push_chart_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
@@ -122,6 +123,42 @@ impl TradingTerminal {
                         .map(|(id, _symbol, ctx)| Message::OrderBookWsAssetCtxUpdate(id, ctx)),
                 );
             }
+        }
+    }
+
+    fn push_chase_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
+        if self
+            .chase_orders
+            .values()
+            .any(|chase| chase.pending_best_price.is_some())
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(250))
+                    .map(|_| Message::ChaseRepriceTick),
+            );
+        }
+
+        for chase in self.chase_orders.values() {
+            if chase.coin.is_empty()
+                || chase.current_oid.is_none()
+                || chase.stop_requested
+                || self.is_ticker_muted(&chase.coin)
+                || self.is_outcome_coin(&chase.coin)
+            {
+                continue;
+            }
+            let sigfigs = self.chase_book_fetch_sigfigs(&chase.coin);
+            subs.push(
+                Subscription::run_with(
+                    (chase.id, chase.coin.clone(), sigfigs),
+                    ws_book_stream_keyed,
+                )
+                .map(|(chase_id, coin, book)| Message::ChaseBookUpdate {
+                    chase_id,
+                    coin,
+                    book,
+                }),
+            );
         }
     }
 }

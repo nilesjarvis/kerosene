@@ -15,6 +15,7 @@ pub(crate) enum PaneKind {
     Income,
     BottomTabs { active_tab: BottomTab },
     OrderEntry,
+    AdvancedOrders,
     SpaghettiChart(SpaghettiChartId),
     Settings,
     Calendar,

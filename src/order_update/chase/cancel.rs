@@ -30,14 +30,10 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
-        if self
-            .active_chase
-            .as_ref()
-            .is_none_or(|chase| chase.id != chase_id)
-        {
+        if !self.chase_orders.contains_key(&chase_id) {
             return self.refresh_after_chase_result(should_refresh);
         }
-        if !self.active_chase.as_ref().is_some_and(|chase| {
+        if !self.chase_orders.get(&chase_id).is_some_and(|chase| {
             matches!(chase.pending_op, Some(ChasePendingOp::Cancel { oid: pending_oid }) if pending_oid == oid)
         }) {
             return self.refresh_after_chase_result(should_refresh);
@@ -49,14 +45,14 @@ impl TradingTerminal {
                     let summary = resp.summary();
                     if chase_terminal_cancel_error(&summary) {
                         return self.check_chase_order_status(
+                            chase_id,
                             oid,
                             "Chase checking order status: order was filled or cancelled before the cancel settled",
                         );
                     }
-                    self.handle_chase_cancel_error(summary, false);
+                    self.handle_chase_cancel_error(chase_id, summary, false);
                 } else {
-                    self.pending_order_action = None;
-                    let stop_status = self.active_chase.as_ref().and_then(|chase| {
+                    let stop_status = self.chase_orders.get(&chase_id).and_then(|chase| {
                         chase
                             .stop_reason
                             .clone()
@@ -65,21 +61,26 @@ impl TradingTerminal {
                     if let Some((message, is_error)) = stop_status {
                         self.order_status = Some((message, is_error));
                     }
-                    self.active_chase = None;
+                    self.remove_chase_order(chase_id);
                     return self.refresh_after_chase_result(true);
                 }
             }
             Err(e) => {
-                return self.handle_chase_uncertain_cancel_result(oid, e);
+                return self.handle_chase_uncertain_cancel_result(chase_id, oid, e);
             }
         }
 
         self.refresh_after_chase_result(should_refresh)
     }
 
-    fn handle_chase_uncertain_cancel_result(&mut self, oid: u64, message: String) -> Task<Message> {
+    fn handle_chase_uncertain_cancel_result(
+        &mut self,
+        chase_id: u64,
+        oid: u64,
+        message: String,
+    ) -> Task<Message> {
         let mut retry_count = 0;
-        if let Some(chase) = &mut self.active_chase {
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.cancel_retries += 1;
             retry_count = chase.cancel_retries;
             if retry_count >= signing::MAX_CHASE_CANCEL_RETRIES {
@@ -90,12 +91,13 @@ impl TradingTerminal {
                     ),
                     true,
                 ));
-                self.active_chase = None;
+                self.remove_chase_order(chase_id);
                 return self.refresh_account_data();
             }
         }
 
         self.check_chase_order_status(
+            chase_id,
             oid,
             format!(
                 "Chase checking order status: cancel response was not confirmed (attempt {retry_count}/{}: {message})",
@@ -104,8 +106,13 @@ impl TradingTerminal {
         )
     }
 
-    fn handle_chase_cancel_error(&mut self, message: String, include_last_on_stop: bool) {
-        if let Some(chase) = &mut self.active_chase {
+    fn handle_chase_cancel_error(
+        &mut self,
+        chase_id: u64,
+        message: String,
+        include_last_on_stop: bool,
+    ) {
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.cancel_retries += 1;
             chase.pending_op = None;
             if chase.cancel_retries >= signing::MAX_CHASE_CANCEL_RETRIES {
@@ -121,7 +128,7 @@ impl TradingTerminal {
                     ),
                     true,
                 ));
-                self.active_chase = None;
+                self.remove_chase_order(chase_id);
             } else {
                 self.order_status = Some((
                     format!(

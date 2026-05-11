@@ -89,12 +89,6 @@ impl TradingTerminal {
                 if let Some(valid_key) = resolved_key
                     && valid_key != self.active_symbol
                 {
-                    if self.active_chase.is_some() {
-                        tasks.push(self.stop_chase_with_reason(
-                            "Chase stopped: active symbol was normalized",
-                            false,
-                        ));
-                    }
                     tasks.push(self.switch_active_symbol_internal(valid_key));
                 }
 
@@ -154,13 +148,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let chase_cancel_task = if self.active_chase.is_some() {
-            self.stop_chase_with_reason("Chase stopped: active symbol changed", false)
-        } else {
-            Task::none()
-        };
-
-        let switch_task = self.switch_active_symbol_internal(key);
-        Task::batch([chase_cancel_task, switch_task])
+        self.switch_active_symbol_internal(key)
     }
 }

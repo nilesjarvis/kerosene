@@ -8,12 +8,17 @@ use crate::message::Message;
 use iced::Task;
 
 impl TradingTerminal {
-    fn check_chase_order_status(&mut self, oid: u64, status: impl Into<String>) -> Task<Message> {
+    fn check_chase_order_status(
+        &mut self,
+        chase_id: u64,
+        oid: u64,
+        status: impl Into<String>,
+    ) -> Task<Message> {
         let status = status.into();
-        let can_refresh_chase_account = self.active_chase.as_ref().is_some_and(|chase| {
+        let can_refresh_chase_account = self.chase_orders.get(&chase_id).is_some_and(|chase| {
             self.connected_address.as_deref() == Some(chase.account_address.as_str())
         });
-        if let Some(chase) = &mut self.active_chase {
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.current_oid = Some(oid);
             chase.pending_op = None;
             chase.missing_open_order_refresh_requested = true;
@@ -26,7 +31,7 @@ impl TradingTerminal {
                 format!("{status}; reconnect to verify the previous account's open orders"),
                 true,
             ));
-            self.active_chase = None;
+            self.remove_chase_order(chase_id);
             Task::none()
         }
     }

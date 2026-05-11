@@ -57,6 +57,7 @@ pub(crate) enum Message {
     LiveWatchlistColumnToggled(LiveWatchlistId, config::LiveWatchlistColumn, bool),
     AddLiveWatchlistPane,
     AddOrderBookPane,
+    AddAdvancedOrdersPane,
     PositionsSortChanged(PositionsSortColumn),
 
     ToggleAccountPicker,
@@ -231,6 +232,18 @@ pub(crate) enum Message {
     NukeResult(Box<Result<ExchangeResponse, String>>),
     StartChase(bool), // true = buy, false = sell
     StopChase,
+    StopChaseById(u64),
+    StopAllChases,
+    ChaseInitialBookLoaded {
+        chase_id: u64,
+        result: Box<Result<OrderBook, String>>,
+    },
+    ChaseBookUpdate {
+        chase_id: u64,
+        coin: String,
+        book: OrderBook,
+    },
+    ChaseRepriceTick,
     ChasePlaceResult {
         chase_id: u64,
         result: Box<Result<ExchangeResponse, String>>,

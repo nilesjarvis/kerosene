@@ -69,6 +69,9 @@ pub struct ChaseOrder {
     /// Time of the most recent reprice request, or a future cooldown anchor
     /// after a rate-limit response.
     pub last_reprice_at: Option<std::time::Instant>,
+    /// Latest chase book price observed while a global/per-order throttle
+    /// prevented an immediate modify request.
+    pub pending_best_price: Option<f64>,
     /// True after the user has requested a stop while a place/cancel request is
     /// still unresolved. The chase keeps its captured key/account context until
     /// the in-flight request lands so a late resting order can be cancelled.
@@ -146,6 +149,7 @@ impl std::fmt::Debug for ChaseOrder {
             .field("reprice_count", &self.reprice_count)
             .field("pending_op", &self.pending_op)
             .field("last_reprice_at", &self.last_reprice_at)
+            .field("pending_best_price", &self.pending_best_price)
             .field("stop_requested", &self.stop_requested)
             .field("stop_reason", &self.stop_reason)
             .field("cancel_retries", &self.cancel_retries)

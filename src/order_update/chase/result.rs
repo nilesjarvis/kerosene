@@ -45,16 +45,12 @@ impl TradingTerminal {
     ) -> Task<Message> {
         self.pending_order_action = None;
         let should_refresh = result_requires_account_refresh(&result);
-        if self
-            .active_chase
-            .as_ref()
-            .is_none_or(|chase| chase.id != chase_id)
-        {
+        if !self.chase_orders.contains_key(&chase_id) {
             return self.refresh_after_chase_result(should_refresh);
         }
         if !self
-            .active_chase
-            .as_ref()
+            .chase_orders
+            .get(&chase_id)
             .is_some_and(|chase| matches!(chase.pending_op, Some(ChasePendingOp::Place)))
         {
             return self.refresh_after_chase_result(should_refresh);
@@ -65,17 +61,17 @@ impl TradingTerminal {
                 if resp.is_error() {
                     self.order_status =
                         Some((format!("Chase place failed: {}", resp.summary()), true));
-                    self.active_chase = None;
+                    self.remove_chase_order(chase_id);
                 } else if resp.is_fully_filled() {
                     self.order_status = Some((resp.summary(), false));
-                    self.active_chase = None;
+                    self.remove_chase_order(chase_id);
                 } else {
                     let stop_cancel_request = self
-                        .active_chase
-                        .as_ref()
+                        .chase_orders
+                        .get(&chase_id)
                         .and_then(|chase| stopped_chase_cancel_request(chase, &resp));
                     if let Some(request) = stop_cancel_request {
-                        if let Some(chase) = &mut self.active_chase {
+                        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                             chase.current_oid = Some(request.oid);
                             chase.pending_op = Some(ChasePendingOp::Cancel { oid: request.oid });
                             chase.oid_confirmed = false;
@@ -101,7 +97,7 @@ impl TradingTerminal {
                     }
 
                     if let Some(oid) = resp.order_oid() {
-                        if let Some(chase) = &mut self.active_chase {
+                        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                             chase.current_oid = Some(oid);
                             chase.pending_op = None;
                             chase.oid_confirmed = false;
@@ -111,7 +107,7 @@ impl TradingTerminal {
                         self.order_status = Some((format!("Chasing (oid {oid})..."), false));
                     } else {
                         self.order_status = Some((resp.summary(), false));
-                        self.active_chase = None;
+                        self.remove_chase_order(chase_id);
                     }
                 }
             }
@@ -122,7 +118,7 @@ impl TradingTerminal {
                     ),
                     true,
                 ));
-                self.active_chase = None;
+                self.remove_chase_order(chase_id);
                 return self.refresh_account_data();
             }
         }

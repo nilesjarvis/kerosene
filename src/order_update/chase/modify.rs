@@ -35,14 +35,10 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
         let mut refresh_after_result = should_refresh;
-        if self
-            .active_chase
-            .as_ref()
-            .is_none_or(|chase| chase.id != chase_id)
-        {
+        if !self.chase_orders.contains_key(&chase_id) {
             return self.refresh_after_chase_result(should_refresh);
         }
-        if !self.active_chase.as_ref().is_some_and(|chase| {
+        if !self.chase_orders.get(&chase_id).is_some_and(|chase| {
             matches!(chase.pending_op, Some(ChasePendingOp::Modify { oid: pending_oid }) if pending_oid == oid)
         }) {
             return self.refresh_after_chase_result(should_refresh);
@@ -55,7 +51,7 @@ impl TradingTerminal {
                     let mut stop_after_modify = false;
                     let mut terminal_modify_error = false;
                     let mut rate_limited = false;
-                    if let Some(chase) = &mut self.active_chase {
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         chase.pending_op = None;
                         stop_after_modify = chase.stop_requested;
                         if chase_terminal_modify_error(&summary) {
@@ -65,11 +61,13 @@ impl TradingTerminal {
                         } else if chase_rate_limit_error(&summary) {
                             chase.last_reprice_at =
                                 Some(Instant::now() + CHASE_RATE_LIMIT_COOLDOWN);
+                            chase.pending_best_price = Some(requested_price);
                             rate_limited = true;
                         }
                     }
                     if terminal_modify_error {
                         return self.check_chase_order_status(
+                            chase_id,
                             oid,
                             "Chase checking order status: order was filled or cancelled before the modify settled",
                         );
@@ -84,30 +82,30 @@ impl TradingTerminal {
                         ));
                         if stop_after_modify {
                             let (reason, is_error) = self
-                                .active_chase
-                                .as_ref()
+                                .chase_orders
+                                .get(&chase_id)
                                 .and_then(|chase| chase.stop_reason.clone())
                                 .unwrap_or_else(|| ("Chase stopped".to_string(), false));
-                            return self.stop_chase_with_reason(reason, is_error);
+                            return self.stop_chase_by_id_with_reason(chase_id, reason, is_error);
                         }
                         return Task::none();
                     }
                     self.order_status = Some((format!("Chase modify failed: {summary}"), true));
                     if stop_after_modify {
                         let (reason, is_error) = self
-                            .active_chase
-                            .as_ref()
+                            .chase_orders
+                            .get(&chase_id)
                             .and_then(|chase| chase.stop_reason.clone())
                             .unwrap_or_else(|| ("Chase stopped".to_string(), false));
-                        return self.stop_chase_with_reason(reason, is_error);
+                        return self.stop_chase_by_id_with_reason(chase_id, reason, is_error);
                     }
                 } else if resp.is_fully_filled() {
                     self.order_status = Some((resp.summary(), false));
-                    self.active_chase = None;
+                    self.remove_chase_order(chase_id);
                 } else {
                     refresh_after_result = false;
                     let mut stop_after_modify = false;
-                    if let Some(chase) = &mut self.active_chase {
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         let current_oid = resp.order_oid().unwrap_or(oid);
                         chase.current_oid = Some(current_oid);
                         chase.current_price = requested_price;
@@ -122,32 +120,33 @@ impl TradingTerminal {
                     }
                     if stop_after_modify {
                         let (reason, is_error) = self
-                            .active_chase
-                            .as_ref()
+                            .chase_orders
+                            .get(&chase_id)
                             .and_then(|chase| chase.stop_reason.clone())
                             .unwrap_or_else(|| ("Chase stopped".to_string(), false));
-                        return self.stop_chase_with_reason(reason, is_error);
+                        return self.stop_chase_by_id_with_reason(chase_id, reason, is_error);
                     }
                 }
             }
             Err(e) => {
                 let mut stop_after_modify = false;
                 let mut rate_limited = false;
-                if let Some(chase) = &mut self.active_chase {
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.pending_op = None;
                     stop_after_modify = chase.stop_requested;
                     if chase_rate_limit_error(&e) {
                         chase.last_reprice_at = Some(Instant::now() + CHASE_RATE_LIMIT_COOLDOWN);
+                        chase.pending_best_price = Some(requested_price);
                         rate_limited = true;
                     }
                 }
                 if stop_after_modify {
                     let (reason, is_error) = self
-                        .active_chase
-                        .as_ref()
+                        .chase_orders
+                        .get(&chase_id)
                         .and_then(|chase| chase.stop_reason.clone())
                         .unwrap_or_else(|| ("Chase stopped".to_string(), false));
-                    return self.stop_chase_with_reason(reason, is_error);
+                    return self.stop_chase_by_id_with_reason(chase_id, reason, is_error);
                 }
                 if rate_limited {
                     self.order_status = Some((
@@ -160,6 +159,7 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 return self.check_chase_order_status(
+                    chase_id,
                     oid,
                     format!("Chase checking order status: modify response was not confirmed ({e})"),
                 );

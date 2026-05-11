@@ -33,13 +33,17 @@ impl TradingTerminal {
         };
 
         self.wallet_address_input = addr.clone();
-        let stop_chase_task = if self.active_chase.as_ref().is_some_and(|chase| {
-            !chase.stop_requested && chase.account_address.as_str() != addr.as_str()
-        }) {
-            self.stop_chase_with_reason("Chase stopped: wallet address changed", false)
-        } else {
-            Task::none()
-        };
+        let stop_chase_ids: Vec<u64> = self
+            .chase_orders
+            .iter()
+            .filter_map(|(id, chase)| {
+                (!chase.stop_requested && chase.account_address.as_str() != addr.as_str())
+                    .then_some(*id)
+            })
+            .collect();
+        let stop_chase_task = Task::batch(stop_chase_ids.into_iter().map(|id| {
+            self.stop_chase_by_id_with_reason(id, "Chase stopped: wallet address changed", false)
+        }));
         if self.active_account_is_ghost() {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
@@ -83,15 +87,14 @@ impl TradingTerminal {
     }
 
     pub(super) fn disconnect_wallet(&mut self) -> Task<Message> {
-        let stop_chase_task = if self
-            .active_chase
-            .as_ref()
-            .is_some_and(|chase| !chase.stop_requested)
-        {
-            self.stop_chase_with_reason("Chase stopped: wallet disconnected", false)
-        } else {
-            Task::none()
-        };
+        let stop_chase_ids: Vec<u64> = self
+            .chase_orders
+            .iter()
+            .filter_map(|(id, chase)| (!chase.stop_requested).then_some(*id))
+            .collect();
+        let stop_chase_task = Task::batch(stop_chase_ids.into_iter().map(|id| {
+            self.stop_chase_by_id_with_reason(id, "Chase stopped: wallet disconnected", false)
+        }));
         self.connected_address = None;
         self.account_data = None;
         self.account_loading = false;

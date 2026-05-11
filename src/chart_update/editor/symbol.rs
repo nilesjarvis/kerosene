@@ -47,14 +47,8 @@ impl TradingTerminal {
                 Self::clear_funding_display(instance);
             }
 
-            let chase_cancel_task = if self.active_chase.is_some() {
-                self.stop_chase_with_reason("Chase stopped: primary chart symbol changed", false)
-            } else {
-                Task::none()
-            };
-
             let switch_task = self.switch_active_symbol_internal(key);
-            return Task::batch([chase_cancel_task, switch_task]);
+            return switch_task;
         }
 
         let mut tf = Timeframe::H1;

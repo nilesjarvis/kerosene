@@ -99,6 +99,15 @@ impl TradingTerminal {
                     |kind| matches!(kind, PaneKind::Liquidations),
                 );
             }
+            Message::AddAdvancedOrdersPane => {
+                self.add_widget_menu_open = false;
+                self.add_or_focus_singleton_pane(
+                    self.add_widget_axis(),
+                    PaneKind::AdvancedOrders,
+                    "Advanced Orders",
+                    |kind| matches!(kind, PaneKind::AdvancedOrders),
+                );
+            }
             Message::AddTrackedTradesPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(

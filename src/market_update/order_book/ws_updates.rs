@@ -1,6 +1,9 @@
+#[cfg(test)]
 use crate::api::OrderBook;
 use crate::market_state::OrderBookSymbolMode;
+#[cfg(test)]
 use crate::signing::ChaseOrder;
+#[cfg(test)]
 use std::time::Instant;
 
 #[cfg(test)]
@@ -21,6 +24,7 @@ pub(super) fn order_book_tracks_coin(
     }
 }
 
+#[cfg(test)]
 pub(super) fn best_chase_price(book: &OrderBook, is_buy: bool) -> Option<f64> {
     let price = if is_buy {
         book.bids.first().map(|level| level.px)
@@ -30,6 +34,7 @@ pub(super) fn best_chase_price(book: &OrderBook, is_buy: bool) -> Option<f64> {
     price.filter(|px| px.is_finite() && *px > 0.0)
 }
 
+#[cfg(test)]
 pub(super) fn chase_should_reprice(
     chase: &ChaseOrder,
     active_symbol: &str,

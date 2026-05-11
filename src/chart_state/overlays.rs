@@ -55,14 +55,14 @@ impl TradingTerminal {
             }
             return;
         }
-        let chase_overlay = self
-            .active_chase
-            .as_ref()
+        let chase_overlays: Vec<OrderOverlay> = self
+            .chase_orders
+            .values()
             .filter(|chase| {
                 chase.coin == symbol
                     && self.connected_address.as_deref() == Some(chase.account_address.as_str())
             })
-            .and_then(|chase| {
+            .filter_map(|chase| {
                 Some(OrderOverlay {
                     coin: chase.coin.clone(),
                     limit_px: chase.current_price,
@@ -76,7 +76,8 @@ impl TradingTerminal {
                     && order.limit_px > 0.0
                     && order.sz.is_finite()
                     && order.sz > 0.0
-            });
+            })
+            .collect();
         let mut order_overlays: Vec<OrderOverlay> = self
             .account_data
             .as_ref()
@@ -98,7 +99,7 @@ impl TradingTerminal {
                     .collect()
             })
             .unwrap_or_default();
-        if let Some(chase_order) = chase_overlay {
+        for chase_order in chase_overlays {
             if let Some(existing) = order_overlays
                 .iter_mut()
                 .find(|order| order.oid == chase_order.oid)

@@ -21,15 +21,14 @@ impl TradingTerminal {
                 self.muted_ticker_status = Some((format!("Muted {ticker}"), false));
                 self.push_toast(format!("Muted {ticker} across Kerosene"), false);
 
-                let stop_chase_task = if self
-                    .active_chase
-                    .as_ref()
-                    .is_some_and(|chase| self.is_ticker_muted(&chase.coin))
-                {
-                    self.stop_chase_with_reason("Chase stopped: ticker was muted", false)
-                } else {
-                    Task::none()
-                };
+                let muted_chase_ids: Vec<u64> = self
+                    .chase_orders
+                    .iter()
+                    .filter_map(|(id, chase)| self.is_ticker_muted(&chase.coin).then_some(*id))
+                    .collect();
+                let stop_chase_task = Task::batch(muted_chase_ids.into_iter().map(|id| {
+                    self.stop_chase_by_id_with_reason(id, "Chase stopped: ticker was muted", false)
+                }));
                 let scrub_task = self.scrub_muted_ticker_state();
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();
