@@ -91,6 +91,28 @@ fn legacy_config_without_market_slippage_uses_default() {
 }
 
 #[test]
+fn hide_pnl_round_trips_and_legacy_defaults_visible() {
+    let config = KeroseneConfig {
+        hide_pnl: true,
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert!(decoded.hide_pnl);
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    legacy
+        .as_object_mut()
+        .expect("config should serialize to object")
+        .remove("hide_pnl");
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert!(!decoded_legacy.hide_pnl);
+}
+
+#[test]
 fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     let config = KeroseneConfig {
         charts: vec![ChartConfig {

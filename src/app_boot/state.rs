@@ -155,7 +155,7 @@ impl TradingTerminal {
             positions_sort_column: PositionsSortColumn::Value,
             positions_sort_direction: config::SortDirection::Descending,
             active_chase: None,
-            hide_pnl: false,
+            hide_pnl: cfg.hide_pnl,
             live_watchlists,
             favourite_symbols,
             muted_tickers,

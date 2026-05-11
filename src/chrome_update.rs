@@ -111,6 +111,7 @@ impl TradingTerminal {
             }
             Message::ToggleHidePnl => {
                 self.hide_pnl = !self.hide_pnl;
+                self.persist_config();
             }
             _ => {}
         }

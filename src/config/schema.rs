@@ -114,6 +114,9 @@ pub struct KeroseneConfig {
     /// Hourly positive-interest alerts enabled.
     #[serde(default)]
     pub income_alerts_enabled: bool,
+    /// Hide dollar-denominated PnL values in account views.
+    #[serde(default)]
+    pub hide_pnl: bool,
     #[serde(default)]
     pub liquidation_alerts_enabled: bool,
     #[serde(default = "default_liquidation_alert_threshold")]

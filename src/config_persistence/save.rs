@@ -185,6 +185,7 @@ impl TradingTerminal {
             sound_enabled: layout_snapshot.sound_enabled,
             desktop_notifications: layout_snapshot.desktop_notifications,
             income_alerts_enabled: layout_snapshot.income_alerts_enabled,
+            hide_pnl: self.hide_pnl,
             liquidation_alerts_enabled: layout_snapshot.liquidation_alerts_enabled,
             liquidation_alert_threshold: layout_snapshot.liquidation_alert_threshold,
             market_slippage_pct: layout_snapshot.market_slippage_pct,

@@ -88,6 +88,7 @@ impl Default for KeroseneConfig {
             sound_enabled: false,
             desktop_notifications: false,
             income_alerts_enabled: false,
+            hide_pnl: false,
             liquidation_alerts_enabled: false,
             liquidation_alert_threshold: default_liquidation_alert_threshold(),
             market_slippage_pct: default_market_slippage_pct(),
