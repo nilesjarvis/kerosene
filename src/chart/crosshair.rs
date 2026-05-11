@@ -8,6 +8,9 @@ use iced::{Color, Point, Theme, alignment};
 mod measurement;
 mod range;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Crosshair Overlay
 // ---------------------------------------------------------------------------
@@ -69,6 +72,20 @@ impl CandlestickChart {
             return;
         }
 
+        if let Some(idx) = self.x_to_candle_index(pos.x, ctx.state, ctx.chart_w) {
+            let volume = self.candles[idx].volume;
+            ctx.frame.fill_text(canvas::Text {
+                content: format!("Vol: {}", format_volume_compact(volume)),
+                position: Point::new(6.0, ctx.price_h + 2.0),
+                color: ctx.theme.palette().text,
+                size: iced::Pixels(11.0),
+                align_x: alignment::Horizontal::Left.into(),
+                align_y: alignment::Vertical::Top,
+                font: iced::Font::MONOSPACE,
+                ..canvas::Text::default()
+            });
+        }
+
         if pos.y > ctx.price_h || ctx.price_range <= 0.0 {
             return;
         }
@@ -103,5 +120,22 @@ impl CandlestickChart {
             |rect| self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step),
             ctx.price_to_y,
         );
+    }
+}
+
+pub(super) fn format_volume_compact(volume: f64) -> String {
+    if !volume.is_finite() || volume <= 0.0 {
+        return "0".to_string();
+    }
+    if volume >= 1_000_000_000.0 {
+        format!("{:.2}B", volume / 1_000_000_000.0)
+    } else if volume >= 1_000_000.0 {
+        format!("{:.2}M", volume / 1_000_000.0)
+    } else if volume >= 1_000.0 {
+        format!("{:.1}K", volume / 1_000.0)
+    } else if volume >= 1.0 {
+        format!("{volume:.2}")
+    } else {
+        format!("{volume:.4}")
     }
 }
