@@ -1,19 +1,25 @@
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartId;
+use crate::chart::{ChartState, PRICE_AXIS_WIDTH};
+use crate::chart_state::{ChartId, ChartInstance};
 use crate::message::Message;
 use arboard::{Clipboard, ImageData};
 use chrono::{DateTime, Local};
+use iced::advanced::graphics::geometry::Renderer as GeometryRenderer;
+use iced::advanced::renderer::Headless;
 use iced::advanced::widget::{Id, Operation, operation::Outcome};
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::svg::Handle as SvgHandle;
 use iced::widget::{button, column, container, image as image_widget, row, svg, text, tooltip};
-use iced::{Color, ContentFit, Element, Fill, Length, Rectangle, Size, Task, Theme, window};
+use iced::{
+    Color, ContentFit, Element, Fill, Font, Length, Pixels, Rectangle, Size, Task, Theme, mouse,
+    window,
+};
 use image::codecs::png::PngEncoder;
-use image::imageops::FilterType;
-use image::{ColorType, ImageBuffer, ImageEncoder, Rgba};
+use image::{ColorType, ImageEncoder};
 use std::borrow::Cow;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 const CAMERA_ICON_SVG: &[u8] = br#"
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -38,8 +44,8 @@ pub(crate) struct ChartScreenshotState {
     pub(crate) timeframe: String,
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) rgba: Vec<u8>,
-    pub(crate) png: Vec<u8>,
+    pub(crate) rgba: Arc<[u8]>,
+    pub(crate) png: Arc<[u8]>,
     pub(crate) preview_handle: ImageHandle,
     pub(crate) captured_at: DateTime<Local>,
     pub(crate) default_filename: String,
@@ -93,6 +99,17 @@ impl Operation<Option<Rectangle>> for FindWidgetBounds {
     }
 }
 
+struct ChartScreenshotRenderRequest {
+    symbol: String,
+    timeframe: String,
+    chart: crate::chart::CandlestickChart,
+    viewport: Option<crate::chart::ChartViewport>,
+    label_style: ChartScreenshotLabelStyle,
+    background_color: Color,
+    logical_bounds: Rectangle,
+    theme: Theme,
+}
+
 // ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
@@ -101,30 +118,10 @@ impl TradingTerminal {
     pub(crate) fn update_chart_screenshot(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenChartScreenshot(chart_id) => {
-                if self
-                    .charts
-                    .get(&chart_id)
-                    .is_none_or(|instance| instance.chart.candles.is_empty())
-                {
-                    self.push_toast(
-                        "Chart screenshot unavailable: no visible candles".to_string(),
-                        true,
-                    );
-                    return Task::none();
+                if self.chart_screenshot_capture_in_progress {
+                    self.push_toast("Chart screenshot already in progress".to_string(), false);
+                    return self.open_or_focus_chart_screenshot_window(Task::none());
                 }
-
-                let target = Self::chart_screenshot_canvas_id(chart_id);
-                return iced::advanced::widget::operate(FindWidgetBounds::new(target))
-                    .map(move |bounds| Message::ChartScreenshotBoundsResolved(chart_id, bounds));
-            }
-            Message::ChartScreenshotBoundsResolved(chart_id, Some(bounds)) => {
-                let Some(main_window_id) = self.main_window_id else {
-                    self.push_toast(
-                        "Chart screenshot unavailable: main window not ready".to_string(),
-                        true,
-                    );
-                    return Task::none();
-                };
 
                 let Some(instance) = self.charts.get(&chart_id) else {
                     self.push_toast(
@@ -134,48 +131,77 @@ impl TradingTerminal {
                     return Task::none();
                 };
 
-                let symbol = instance.symbol_display.clone();
-                let timeframe = instance.interval.label().to_string();
-                let label_style = chart_screenshot_label_style(&self.theme());
+                if instance.chart.candles.is_empty() {
+                    self.push_toast(
+                        "Chart screenshot unavailable: no visible candles".to_string(),
+                        true,
+                    );
+                    return Task::none();
+                }
 
-                return window::screenshot(main_window_id).map(move |screenshot| {
-                    Message::ChartScreenshotCaptured(
-                        chart_id,
-                        build_chart_screenshot(
-                            symbol.clone(),
-                            timeframe.clone(),
-                            label_style,
-                            bounds,
-                            screenshot,
-                        ),
-                    )
+                self.chart_screenshot_next_request_id =
+                    self.chart_screenshot_next_request_id.saturating_add(1);
+                let request_id = self.chart_screenshot_next_request_id;
+                self.chart_screenshot_pending_request_id = Some(request_id);
+                self.chart_screenshot_capture_in_progress = true;
+                self.chart_screenshot_error = None;
+                self.chart_screenshot = None;
+
+                let target = Self::chart_screenshot_canvas_id(chart_id);
+                let bounds_task = iced::advanced::widget::operate(FindWidgetBounds::new(target))
+                    .map(move |bounds| {
+                        Message::ChartScreenshotBoundsResolved(request_id, chart_id, bounds)
+                    });
+                return self.open_or_focus_chart_screenshot_window(bounds_task);
+            }
+            Message::ChartScreenshotBoundsResolved(request_id, chart_id, Some(bounds)) => {
+                if self.chart_screenshot_pending_request_id != Some(request_id) {
+                    return Task::none();
+                }
+
+                let Some(instance) = self.charts.get(&chart_id) else {
+                    self.finish_chart_screenshot_error(
+                        request_id,
+                        "Chart screenshot unavailable: chart not found".to_string(),
+                    );
+                    return Task::none();
+                };
+
+                let request = self.chart_screenshot_render_request(instance, bounds);
+
+                return Task::perform(render_chart_screenshot(request), move |result| {
+                    Message::ChartScreenshotCaptured(request_id, chart_id, result)
                 });
             }
-            Message::ChartScreenshotBoundsResolved(_, None) => {
-                self.push_toast(
+            Message::ChartScreenshotBoundsResolved(request_id, _, None) => {
+                self.finish_chart_screenshot_error(
+                    request_id,
                     "Chart screenshot unavailable: chart area was not visible".to_string(),
-                    true,
                 );
             }
-            Message::ChartScreenshotCaptured(_chart_id, result) => match result {
-                Ok(state) => {
-                    self.chart_screenshot = Some(state);
-                    if let Some(id) = self.chart_screenshot_window_id {
-                        return window::gain_focus(id);
-                    }
+            Message::ChartScreenshotCaptured(request_id, _chart_id, result) => {
+                if self.chart_screenshot_pending_request_id != Some(request_id) {
+                    return Task::none();
+                }
 
-                    let settings = window::Settings {
-                        size: Size::new(720.0, 560.0),
-                        ..window::Settings::default()
-                    };
-                    let (id, task) = window::open(settings);
-                    self.chart_screenshot_window_id = Some(id);
-                    return task.map(Message::WindowOpened);
+                self.chart_screenshot_pending_request_id = None;
+                self.chart_screenshot_capture_in_progress = false;
+                match result {
+                    Ok(state) => {
+                        self.chart_screenshot = Some(state);
+                        self.chart_screenshot_error = None;
+                        if let Some(id) = self.chart_screenshot_window_id {
+                            return window::gain_focus(id);
+                        }
+
+                        return self.open_or_focus_chart_screenshot_window(Task::none());
+                    }
+                    Err(err) => {
+                        self.chart_screenshot_error = Some(err.clone());
+                        self.push_toast(format!("Chart screenshot failed: {err}"), true);
+                    }
                 }
-                Err(err) => {
-                    self.push_toast(format!("Chart screenshot failed: {err}"), true);
-                }
-            },
+            }
             Message::CopyChartScreenshot => {
                 let Some(state) = self.chart_screenshot.clone() else {
                     self.push_toast("No chart screenshot to copy".to_string(), true);
@@ -219,6 +245,50 @@ impl TradingTerminal {
 
         Task::none()
     }
+
+    fn open_or_focus_chart_screenshot_window(&mut self, task: Task<Message>) -> Task<Message> {
+        if let Some(id) = self.chart_screenshot_window_id {
+            return Task::batch([window::gain_focus(id), task]);
+        }
+
+        let settings = window::Settings {
+            size: Size::new(720.0, 560.0),
+            ..window::Settings::default()
+        };
+        let (id, open_task) = window::open(settings);
+        self.chart_screenshot_window_id = Some(id);
+
+        Task::batch([open_task.map(Message::WindowOpened), task])
+    }
+
+    fn finish_chart_screenshot_error(&mut self, request_id: u64, err: String) {
+        if self.chart_screenshot_pending_request_id != Some(request_id) {
+            return;
+        }
+
+        self.chart_screenshot_pending_request_id = None;
+        self.chart_screenshot_capture_in_progress = false;
+        self.chart_screenshot_error = Some(err.clone());
+        self.push_toast(err, true);
+    }
+
+    fn chart_screenshot_render_request(
+        &self,
+        instance: &ChartInstance,
+        logical_bounds: Rectangle,
+    ) -> ChartScreenshotRenderRequest {
+        let theme = self.theme();
+        ChartScreenshotRenderRequest {
+            symbol: instance.symbol_display.clone(),
+            timeframe: instance.interval.label().to_string(),
+            chart: instance.chart.snapshot_for_export(),
+            viewport: instance.heatmap_viewport,
+            label_style: chart_screenshot_label_style(&theme),
+            background_color: theme.extended_palette().background.base.color,
+            logical_bounds,
+            theme,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,11 +298,40 @@ impl TradingTerminal {
 impl TradingTerminal {
     pub(crate) fn view_chart_screenshot_window(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        let Some(state) = &self.chart_screenshot else {
+        if self.chart_screenshot_capture_in_progress {
             let content = column![
-                text("No chart screenshot available")
+                text("Capturing chart...")
                     .size(14)
                     .color(theme.palette().text),
+                text("Preparing high-resolution image")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text),
+                chart_screenshot_button("Close", Message::CloseChartScreenshotWindow),
+            ]
+            .spacing(10)
+            .align_x(iced::Alignment::Center);
+
+            return container(content)
+                .width(Fill)
+                .height(Fill)
+                .center(Fill)
+                .padding(16)
+                .into();
+        }
+
+        let Some(state) = &self.chart_screenshot else {
+            let message = self
+                .chart_screenshot_error
+                .as_deref()
+                .unwrap_or("No chart screenshot available");
+            let content = column![
+                text(message)
+                    .size(14)
+                    .color(if self.chart_screenshot_error.is_some() {
+                        theme.palette().danger
+                    } else {
+                        theme.palette().text
+                    }),
                 chart_screenshot_button("Close", Message::CloseChartScreenshotWindow),
             ]
             .spacing(12)
@@ -379,62 +478,74 @@ fn chart_screenshot_button(label: &'static str, msg: Message) -> Element<'static
 // Image Processing
 // ---------------------------------------------------------------------------
 
-fn build_chart_screenshot(
-    symbol: String,
-    timeframe: String,
-    label_style: ChartScreenshotLabelStyle,
-    logical_bounds: Rectangle,
-    screenshot: window::Screenshot,
+async fn render_chart_screenshot(
+    request: ChartScreenshotRenderRequest,
 ) -> Result<ChartScreenshotState, String> {
-    let region = physical_crop_region(logical_bounds, screenshot.size, screenshot.scale_factor)?;
-    let cropped = screenshot
-        .crop(region)
-        .map_err(|err| format!("crop failed: {err}"))?;
-    let (width, height, mut rgba) = upscale_chart_screenshot(
-        cropped.size.width,
-        cropped.size.height,
-        cropped.rgba.as_ref().to_vec(),
-    )?;
-    draw_ticker_label(&mut rgba, width, height, &symbol, &timeframe, label_style);
+    let (width, height) = chart_screenshot_export_size(request.logical_bounds)?;
+    let mut renderer = <iced::Renderer as Headless>::new(Font::DEFAULT, Pixels(16.0), None)
+        .await
+        .ok_or_else(|| "offscreen chart renderer unavailable".to_string())?;
+
+    let bounds = Rectangle {
+        x: 0.0,
+        y: 0.0,
+        width: width as f32,
+        height: height as f32,
+    };
+    let chart_w = (bounds.width - PRICE_AXIS_WIDTH).max(1.0);
+    let state = ChartState::for_export_viewport(&request.chart, request.viewport, chart_w);
+
+    let layers = request.chart.draw_with_state(
+        &state,
+        &renderer,
+        &request.theme,
+        bounds,
+        mouse::Cursor::Unavailable,
+    );
+    for layer in layers {
+        renderer.draw_geometry(layer);
+    }
+
+    let mut rgba = renderer.screenshot(Size::new(width, height), 1.0, request.background_color);
+    draw_ticker_label(
+        &mut rgba,
+        width,
+        height,
+        &request.symbol,
+        &request.timeframe,
+        request.label_style,
+    );
     let png = encode_png_rgba(width, height, &rgba)?;
     let preview_handle = ImageHandle::from_rgba(width, height, rgba.clone());
     let captured_at = Local::now();
-    let default_filename = chart_screenshot_filename(&symbol, &timeframe, captured_at);
+    let default_filename =
+        chart_screenshot_filename(&request.symbol, &request.timeframe, captured_at);
 
     Ok(ChartScreenshotState {
-        symbol,
-        timeframe,
+        symbol: request.symbol,
+        timeframe: request.timeframe,
         width,
         height,
-        rgba,
-        png,
+        rgba: Arc::from(rgba),
+        png: Arc::from(png),
         preview_handle,
         captured_at,
         default_filename,
     })
 }
 
-fn upscale_chart_screenshot(
-    width: u32,
-    height: u32,
-    rgba: Vec<u8>,
-) -> Result<(u32, u32, Vec<u8>), String> {
-    let expected_len = width as usize * height as usize * 4;
-    if rgba.len() != expected_len {
-        return Err("captured image buffer had an unexpected size".to_string());
+fn chart_screenshot_export_size(logical_bounds: Rectangle) -> Result<(u32, u32), String> {
+    if !logical_bounds.width.is_finite()
+        || !logical_bounds.height.is_finite()
+        || logical_bounds.width <= 0.0
+        || logical_bounds.height <= 0.0
+    {
+        return Err("invalid chart bounds".to_string());
     }
 
-    let Some((target_width, target_height)) = chart_screenshot_export_dimensions(width, height)
-    else {
-        return Ok((width, height, rgba));
-    };
-
-    let source = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_vec(width, height, rgba)
-        .ok_or_else(|| "captured image buffer had an unexpected size".to_string())?;
-    let resized =
-        image::imageops::resize(&source, target_width, target_height, FilterType::Lanczos3);
-
-    Ok((target_width, target_height, resized.into_raw()))
+    let width = logical_bounds.width.round().max(1.0) as u32;
+    let height = logical_bounds.height.round().max(1.0) as u32;
+    Ok(chart_screenshot_export_dimensions(width, height).unwrap_or((width, height)))
 }
 
 fn chart_screenshot_export_dimensions(width: u32, height: u32) -> Option<(u32, u32)> {
@@ -465,42 +576,6 @@ fn chart_screenshot_export_dimensions(width: u32, height: u32) -> Option<(u32, u
     } else {
         Some((target_width, target_height))
     }
-}
-
-fn physical_crop_region(
-    logical_bounds: Rectangle,
-    screenshot_size: Size<u32>,
-    scale_factor: f32,
-) -> Result<Rectangle<u32>, String> {
-    if !logical_bounds.width.is_finite()
-        || !logical_bounds.height.is_finite()
-        || !logical_bounds.x.is_finite()
-        || !logical_bounds.y.is_finite()
-        || !scale_factor.is_finite()
-        || scale_factor <= 0.0
-    {
-        return Err("invalid chart bounds".to_string());
-    }
-
-    let left = (logical_bounds.x * scale_factor).floor().max(0.0);
-    let top = (logical_bounds.y * scale_factor).floor().max(0.0);
-    let right = ((logical_bounds.x + logical_bounds.width) * scale_factor)
-        .ceil()
-        .min(screenshot_size.width as f32);
-    let bottom = ((logical_bounds.y + logical_bounds.height) * scale_factor)
-        .ceil()
-        .min(screenshot_size.height as f32);
-
-    if right <= left || bottom <= top {
-        return Err("chart area was outside the screenshot".to_string());
-    }
-
-    Ok(Rectangle {
-        x: left as u32,
-        y: top as u32,
-        width: (right - left) as u32,
-        height: (bottom - top) as u32,
-    })
 }
 
 fn encode_png_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
@@ -940,7 +1015,7 @@ fn copy_chart_screenshot_to_clipboard(state: ChartScreenshotState) -> Result<(),
         .set_image(ImageData {
             width: state.width as usize,
             height: state.height as usize,
-            bytes: Cow::Owned(state.rgba),
+            bytes: Cow::Owned(state.rgba.as_ref().to_vec()),
         })
         .map_err(|err| err.to_string())
 }
@@ -956,7 +1031,7 @@ async fn save_chart_screenshot_png(state: ChartScreenshotState) -> Result<Option
         return Ok(None);
     };
 
-    std::fs::write(path.path(), state.png).map_err(|err| err.to_string())?;
+    std::fs::write(path.path(), state.png.as_ref()).map_err(|err| err.to_string())?;
     Ok(Some(path.path().to_path_buf()))
 }
 
@@ -996,43 +1071,6 @@ fn sanitize_filename_part(value: &str) -> String {
 mod tests {
     use super::*;
     use chrono::TimeZone;
-
-    #[test]
-    fn physical_crop_region_scales_and_clamps_logical_bounds() {
-        let region = physical_crop_region(
-            Rectangle {
-                x: 10.25,
-                y: 5.5,
-                width: 100.25,
-                height: 50.25,
-            },
-            Size::new(220, 120),
-            2.0,
-        )
-        .expect("crop region");
-
-        assert_eq!(region.x, 20);
-        assert_eq!(region.y, 11);
-        assert_eq!(region.width, 200);
-        assert_eq!(region.height, 101);
-    }
-
-    #[test]
-    fn physical_crop_region_rejects_invalid_values() {
-        let err = physical_crop_region(
-            Rectangle {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 20.0,
-            },
-            Size::new(100, 100),
-            1.0,
-        )
-        .expect_err("zero-width crop should fail");
-
-        assert!(err.contains("outside") || err.contains("invalid"));
-    }
 
     #[test]
     fn encode_png_rgba_rejects_wrong_buffer_size() {
@@ -1075,19 +1113,29 @@ mod tests {
     }
 
     #[test]
-    fn upscale_chart_screenshot_resizes_rgba_buffer() {
-        let rgba = vec![255; 320 * 180 * 4];
-        let (width, height, upscaled) =
-            upscale_chart_screenshot(320, 180, rgba).expect("upscaled screenshot");
+    fn chart_screenshot_export_size_uses_logical_bounds() {
+        let size = chart_screenshot_export_size(Rectangle {
+            x: 10.0,
+            y: 20.0,
+            width: 500.2,
+            height: 300.4,
+        })
+        .expect("export size");
 
-        assert_eq!((width, height), (1280, 720));
-        assert_eq!(upscaled.len(), 1280 * 720 * 4);
+        assert_eq!(size, (1280, 768));
     }
 
     #[test]
-    fn upscale_chart_screenshot_rejects_wrong_buffer_size() {
-        let err = upscale_chart_screenshot(10, 10, vec![0; 4]).expect_err("wrong size");
-        assert!(err.contains("unexpected size"));
+    fn chart_screenshot_export_size_rejects_invalid_bounds() {
+        let err = chart_screenshot_export_size(Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 20.0,
+        })
+        .expect_err("invalid bounds");
+
+        assert!(err.contains("invalid chart bounds"));
     }
 
     #[test]

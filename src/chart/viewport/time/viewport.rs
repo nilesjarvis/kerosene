@@ -35,6 +35,14 @@ impl CandlestickChart {
             end_time_ms,
             price_lo: price_hi - price_range,
             price_hi,
+            chart_width: chart_w,
+            candle_width: state.candle_width,
+            scroll_offset: state.scroll_offset,
+            y_auto: state.y_auto,
+            y_scale: state.y_scale,
+            y_offset: state.y_offset,
+            funding_y_scale: state.funding_y_scale,
+            funding_y_offset: state.funding_y_offset,
         })
     }
 

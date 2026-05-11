@@ -17,20 +17,8 @@ use iced::{Rectangle, Renderer, Theme};
 // Canvas Program
 // ---------------------------------------------------------------------------
 
-impl canvas::Program<Message> for CandlestickChart {
-    type State = ChartState;
-
-    fn update(
-        &self,
-        state: &mut ChartState,
-        event: &iced::Event,
-        bounds: Rectangle,
-        cursor: mouse::Cursor,
-    ) -> Option<canvas::Action<Message>> {
-        self.update_interaction(state, event, bounds, cursor)
-    }
-
-    fn draw(
+impl CandlestickChart {
+    pub(crate) fn draw_with_state(
         &self,
         state: &ChartState,
         renderer: &Renderer,
@@ -176,6 +164,31 @@ impl canvas::Program<Message> for CandlestickChart {
         let overlay_geo = overlay_frame.into_geometry();
 
         vec![candles_geo, overlay_geo]
+    }
+}
+
+impl canvas::Program<Message> for CandlestickChart {
+    type State = ChartState;
+
+    fn update(
+        &self,
+        state: &mut ChartState,
+        event: &iced::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<canvas::Action<Message>> {
+        self.update_interaction(state, event, bounds, cursor)
+    }
+
+    fn draw(
+        &self,
+        state: &ChartState,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        self.draw_with_state(state, renderer, theme, bounds, cursor)
     }
 
     fn mouse_interaction(

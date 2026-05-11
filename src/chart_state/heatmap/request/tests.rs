@@ -107,6 +107,14 @@ fn request_planner_uses_viewport_price_range_when_available() {
         end_time_ms: 2_000,
         price_lo: 50.0,
         price_hi: 150.0,
+        chart_width: 0.0,
+        candle_width: 0.0,
+        scroll_offset: 0.0,
+        y_auto: true,
+        y_scale: 1.0,
+        y_offset: 0.0,
+        funding_y_scale: 1.0,
+        funding_y_offset: 0.0,
     });
 
     let request = plan_heatmap_fetch_request(ctx).unwrap().unwrap();

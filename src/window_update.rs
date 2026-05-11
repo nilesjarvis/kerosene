@@ -29,6 +29,9 @@ impl TradingTerminal {
                 if Some(id) == self.chart_screenshot_window_id {
                     self.chart_screenshot_window_id = None;
                     self.chart_screenshot = None;
+                    self.chart_screenshot_error = None;
+                    self.chart_screenshot_capture_in_progress = false;
+                    self.chart_screenshot_pending_request_id = None;
                 }
                 if Some(id) == self.wallet_tracker.window_id {
                     self.wallet_tracker.window_id = None;

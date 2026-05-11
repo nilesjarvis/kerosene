@@ -206,8 +206,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WindowResized(_, _) => UpdateRoute::Window,
 
         Message::OpenChartScreenshot(_)
-        | Message::ChartScreenshotBoundsResolved(_, _)
-        | Message::ChartScreenshotCaptured(_, _)
+        | Message::ChartScreenshotBoundsResolved(_, _, _)
+        | Message::ChartScreenshotCaptured(_, _, _)
         | Message::CopyChartScreenshot
         | Message::ChartScreenshotCopied(_)
         | Message::SaveChartScreenshot

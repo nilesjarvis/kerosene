@@ -88,6 +88,14 @@ pub struct ChartViewport {
     pub end_time_ms: u64,
     pub price_lo: f64,
     pub price_hi: f64,
+    pub chart_width: f32,
+    pub candle_width: f32,
+    pub scroll_offset: f32,
+    pub y_auto: bool,
+    pub y_scale: f64,
+    pub y_offset: f64,
+    pub funding_y_scale: f64,
+    pub funding_y_offset: f64,
 }
 
 /// Lightweight position info passed to the chart for overlay rendering.

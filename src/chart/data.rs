@@ -47,6 +47,36 @@ impl CandlestickChart {
         }
     }
 
+    pub(crate) fn snapshot_for_export(&self) -> Self {
+        Self {
+            id: self.id,
+            candles: self.candles.clone(),
+            status: self.status.clone(),
+            candle_cache: canvas::Cache::new(),
+            reset_epoch: self.reset_epoch,
+            active_position: self.active_position.clone(),
+            active_orders: self.active_orders.clone(),
+            trade_markers: self.trade_markers.clone(),
+            show_trade_markers: self.show_trade_markers,
+            annotations: self.annotations.clone(),
+            active_tool: None,
+            liquidation_buckets: self.liquidation_buckets.clone(),
+            heatmap_rects: self.heatmap_rects.clone(),
+            heatmap_max_usd: self.heatmap_max_usd,
+            funding_rates: self.funding_rates.clone(),
+            funding_status: self.funding_status.clone(),
+            funding_panel_height: self.funding_panel_height,
+            funding_annualized: self.funding_annualized,
+            macro_indicators: self.macro_indicators.clone(),
+            daily_candles: self.daily_candles.clone(),
+            weekly_candles: self.weekly_candles.clone(),
+            monthly_candles: self.monthly_candles.clone(),
+            inverted: self.inverted,
+            chart_bull_color: self.chart_bull_color,
+            chart_bear_color: self.chart_bear_color,
+        }
+    }
+
     pub fn request_view_reset(&mut self) {
         self.reset_epoch = self.reset_epoch.saturating_add(1);
         self.candle_cache.clear();
