@@ -58,7 +58,7 @@ impl TradingTerminal {
         }
 
         let stop_chase_task = if self.active_chase.is_some() {
-            self.stop_chase()
+            self.stop_chase_with_reason("Chase stopped: account changed", false)
         } else {
             Task::none()
         };

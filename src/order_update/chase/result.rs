@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::signing::{ChaseOrder, ExchangeResponse, cancel_order};
+use crate::signing::{ChaseOrder, ChasePendingOp, ExchangeResponse, cancel_order};
 
 use iced::Task;
 use zeroize::Zeroizing;
@@ -12,6 +12,7 @@ mod tests;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StoppedChaseCancelRequest {
+    pub(super) chase_id: u64,
     pub(super) agent_key: Zeroizing<String>,
     pub(super) asset: u32,
     pub(super) oid: u64,
@@ -29,6 +30,7 @@ pub(super) fn stopped_chase_cancel_request(
         return None;
     }
     Some(StoppedChaseCancelRequest {
+        chase_id: chase.id,
         agent_key: agent_key.to_string().into(),
         asset: chase.asset,
         oid: response.order_oid()?,
@@ -38,81 +40,96 @@ pub(super) fn stopped_chase_cancel_request(
 impl TradingTerminal {
     pub(crate) fn handle_chase_place_result(
         &mut self,
+        chase_id: u64,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         self.pending_order_action = None;
         let should_refresh = result_requires_account_refresh(&result);
+        if self
+            .active_chase
+            .as_ref()
+            .is_none_or(|chase| chase.id != chase_id)
+        {
+            return self.refresh_after_chase_result(should_refresh);
+        }
+        if !self
+            .active_chase
+            .as_ref()
+            .is_some_and(|chase| matches!(chase.pending_op, Some(ChasePendingOp::Place)))
+        {
+            return self.refresh_after_chase_result(should_refresh);
+        }
+
         match result {
             Ok(resp) => {
-                let stop_cancel_request = self
-                    .active_chase
-                    .as_ref()
-                    .and_then(|chase| stopped_chase_cancel_request(chase, &resp));
-                if let Some(request) = stop_cancel_request {
-                    if let Some(chase) = &mut self.active_chase {
-                        chase.current_oid = Some(request.oid);
-                        chase.cancel_in_flight = true;
-                        chase.oid_confirmed = false;
-                    }
-                    self.order_status = Some((
-                        format!("Chase stopping: cancelling placed order {}", request.oid),
-                        false,
-                    ));
-                    let cancel_task = Task::perform(
-                        cancel_order(request.agent_key, request.asset, request.oid),
-                        |r| Message::ChaseCancelResult(Box::new(r)),
-                    );
-                    return if should_refresh {
-                        Task::batch([self.refresh_account_data(), cancel_task])
-                    } else {
-                        cancel_task
-                    };
-                }
-
                 if resp.is_error() {
-                    self.order_status = Some((resp.summary(), true));
+                    self.order_status =
+                        Some((format!("Chase place failed: {}", resp.summary()), true));
                     self.active_chase = None;
                 } else if resp.is_fully_filled() {
                     self.order_status = Some((resp.summary(), false));
                     self.active_chase = None;
-                } else if let Some(oid) = resp.order_oid() {
-                    if let Some(chase) = &mut self.active_chase {
-                        if chase.stop_requested {
-                            self.order_status = Some((
-                                format!(
-                                    "Chase stopped but could not cancel placed order {oid}: original agent key is unavailable"
-                                ),
-                                true,
-                            ));
-                            self.active_chase = None;
-                            return if should_refresh {
-                                self.refresh_account_data()
-                            } else {
-                                Task::none()
-                            };
+                } else {
+                    let stop_cancel_request = self
+                        .active_chase
+                        .as_ref()
+                        .and_then(|chase| stopped_chase_cancel_request(chase, &resp));
+                    if let Some(request) = stop_cancel_request {
+                        if let Some(chase) = &mut self.active_chase {
+                            chase.current_oid = Some(request.oid);
+                            chase.pending_op = Some(ChasePendingOp::Cancel { oid: request.oid });
+                            chase.oid_confirmed = false;
+                            chase.missing_open_order_refresh_requested = false;
                         }
-                        chase.current_oid = Some(oid);
-                        chase.cancel_in_flight = false;
-                        chase.oid_confirmed = false;
+                        self.order_status = Some((
+                            format!("Chase stopping: cancelling placed order {}", request.oid),
+                            false,
+                        ));
+                        let cancel_task = Task::perform(
+                            cancel_order(request.agent_key, request.asset, request.oid),
+                            move |r| Message::ChaseCancelResult {
+                                chase_id: request.chase_id,
+                                oid: request.oid,
+                                result: Box::new(r),
+                            },
+                        );
+                        return if should_refresh {
+                            Task::batch([self.refresh_account_data(), cancel_task])
+                        } else {
+                            cancel_task
+                        };
+                    }
+
+                    if let Some(oid) = resp.order_oid() {
+                        if let Some(chase) = &mut self.active_chase {
+                            chase.current_oid = Some(oid);
+                            chase.pending_op = None;
+                            chase.oid_confirmed = false;
+                            chase.cancel_retries = 0;
+                            chase.missing_open_order_refresh_requested = false;
+                        }
                         self.order_status = Some((format!("Chasing (oid {oid})..."), false));
                     } else {
-                        self.order_status = Some((
-                            format!(
-                                "Chase order placed after chase ended; check open orders (oid {oid})"
-                            ),
-                            true,
-                        ));
+                        self.order_status = Some((resp.summary(), false));
+                        self.active_chase = None;
                     }
-                } else {
-                    self.order_status = Some((resp.summary(), false));
-                    self.active_chase = None;
                 }
             }
             Err(e) => {
-                self.order_status = Some((e, true));
+                self.order_status = Some((
+                    format!(
+                        "Chase placement status unknown: response was not confirmed ({e}); refreshing account data"
+                    ),
+                    true,
+                ));
                 self.active_chase = None;
+                return self.refresh_account_data();
             }
         }
+        self.refresh_after_chase_result(should_refresh)
+    }
+
+    pub(super) fn refresh_after_chase_result(&mut self, should_refresh: bool) -> Task<Message> {
         if should_refresh {
             self.refresh_account_data()
         } else {

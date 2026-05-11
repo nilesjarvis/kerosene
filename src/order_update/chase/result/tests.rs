@@ -5,6 +5,7 @@ use std::time::Instant;
 fn chase() -> ChaseOrder {
     let started_at = Instant::now();
     ChaseOrder {
+        id: 1,
         coin: "BTC".to_string(),
         account_address: "0xabc0000000000000000000000000000000000000".to_string(),
         agent_key: "agent-key".to_string().into(),
@@ -12,16 +13,21 @@ fn chase() -> ChaseOrder {
         remaining_size: 1.0,
         asset: 7,
         sz_decimals: 3,
+        is_spot: false,
         reduce_only: false,
         current_oid: None,
         current_price: 100.0,
+        current_price_wire: "100".to_string(),
         initial_price: 100.0,
         started_at,
         reprice_count: 0,
-        cancel_in_flight: false,
+        pending_op: None,
+        last_reprice_at: None,
         stop_requested: false,
+        stop_reason: None,
         cancel_retries: 0,
         oid_confirmed: false,
+        missing_open_order_refresh_requested: false,
     }
 }
 
@@ -51,6 +57,7 @@ fn stopped_chase_place_result_requests_cancel_for_late_resting_order() {
     assert_eq!(
         stopped_chase_cancel_request(&chase, &response),
         Some(StoppedChaseCancelRequest {
+            chase_id: 1,
             agent_key: "agent-key".to_string().into(),
             asset: 7,
             oid: 9001

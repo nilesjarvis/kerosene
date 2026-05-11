@@ -58,8 +58,29 @@ impl TradingTerminal {
             Message::NukeResult(result) => return self.handle_nuke_result(*result),
             Message::StartChase(is_buy) => return self.start_chase(is_buy),
             Message::StopChase => return self.stop_chase(),
-            Message::ChasePlaceResult(result) => return self.handle_chase_place_result(*result),
-            Message::ChaseCancelResult(result) => return self.handle_chase_cancel_result(*result),
+            Message::ChasePlaceResult { chase_id, result } => {
+                return self.handle_chase_place_result(chase_id, *result);
+            }
+            Message::ChaseModifyResult {
+                chase_id,
+                oid,
+                requested_price,
+                requested_price_wire,
+                result,
+            } => {
+                return self.handle_chase_modify_result(
+                    chase_id,
+                    oid,
+                    requested_price,
+                    requested_price_wire,
+                    *result,
+                );
+            }
+            Message::ChaseCancelResult {
+                chase_id,
+                oid,
+                result,
+            } => return self.handle_chase_cancel_result(chase_id, oid, *result),
             Message::OpenQuickOrder(chart_id, price, click_x, click_y, chart_w, chart_h) => {
                 return self
                     .handle_open_quick_order(chart_id, price, click_x, click_y, chart_w, chart_h);
@@ -82,7 +103,17 @@ impl TradingTerminal {
                 is_buy,
                 sz,
                 limit_px,
-            } => return self.handle_chase_resting_order(coin, oid, is_buy, sz, limit_px),
+                reduce_only,
+            } => {
+                return self.handle_chase_resting_order(
+                    coin,
+                    oid,
+                    is_buy,
+                    sz,
+                    limit_px,
+                    reduce_only,
+                );
+            }
             _ => {}
         }
 

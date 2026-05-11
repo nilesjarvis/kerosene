@@ -109,8 +109,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::NukeResult(_)
         | Message::StartChase(_)
         | Message::StopChase
-        | Message::ChasePlaceResult(_)
-        | Message::ChaseCancelResult(_)
+        | Message::ChasePlaceResult { .. }
+        | Message::ChaseModifyResult { .. }
+        | Message::ChaseCancelResult { .. }
         | Message::OpenQuickOrder(_, _, _, _, _, _)
         | Message::QuickOrderQtyChanged(_, _)
         | Message::QuickOrderToggleType(_)

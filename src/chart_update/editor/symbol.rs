@@ -48,7 +48,7 @@ impl TradingTerminal {
             }
 
             let chase_cancel_task = if self.active_chase.is_some() {
-                self.stop_chase()
+                self.stop_chase_with_reason("Chase stopped: primary chart symbol changed", false)
             } else {
                 Task::none()
             };

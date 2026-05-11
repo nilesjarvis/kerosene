@@ -45,7 +45,10 @@ impl TradingTerminal {
 
                     if let Some((sym, display)) = chart_sym {
                         let chase_task = if self.active_chase.is_some() {
-                            self.stop_chase()
+                            self.stop_chase_with_reason(
+                                "Chase stopped: focused chart changed the active symbol",
+                                false,
+                            )
                         } else {
                             Task::none()
                         };

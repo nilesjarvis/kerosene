@@ -1,4 +1,4 @@
-use super::OpenOrder;
+use super::{OpenOrder, UserFill};
 
 fn open_order_value(extra: serde_json::Value) -> serde_json::Value {
     let mut order = serde_json::json!({
@@ -36,4 +36,39 @@ fn open_order_marks_reduce_only_metadata_unknown_when_absent() {
         .expect("open order should deserialize");
 
     assert_eq!(order.reduce_only, None);
+}
+
+#[test]
+fn user_fill_preserves_optional_order_id_metadata() {
+    let fill: UserFill = serde_json::from_value(serde_json::json!({
+        "coin": "BTC",
+        "px": "100",
+        "sz": "0.1",
+        "side": "B",
+        "time": 1_u64,
+        "oid": 42_u64,
+        "dir": "Open Long",
+        "closedPnl": "0",
+        "fee": "0.01"
+    }))
+    .expect("fill should deserialize");
+
+    assert_eq!(fill.oid, Some(42));
+}
+
+#[test]
+fn user_fill_accepts_missing_order_id_metadata() {
+    let fill: UserFill = serde_json::from_value(serde_json::json!({
+        "coin": "BTC",
+        "px": "100",
+        "sz": "0.1",
+        "side": "B",
+        "time": 1_u64,
+        "dir": "Open Long",
+        "closedPnl": "0",
+        "fee": "0.01"
+    }))
+    .expect("fill should deserialize");
+
+    assert_eq!(fill.oid, None);
 }

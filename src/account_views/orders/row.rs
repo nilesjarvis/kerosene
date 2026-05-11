@@ -68,6 +68,7 @@ impl TradingTerminal {
                     is_buy,
                     sz,
                     limit_px,
+                    reduce_only: order.reduce_only,
                 })
                 .padding([1, 6])
                 .style(|theme: &Theme, _status| button::Style {

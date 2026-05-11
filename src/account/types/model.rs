@@ -120,6 +120,8 @@ pub struct UserFill {
     pub sz: String,
     pub side: String, // "A" or "B"
     pub time: u64,
+    #[serde(default)]
+    pub oid: Option<u64>,
     pub dir: String, // "Open Long", "Close Short", etc.
     pub closed_pnl: String,
     pub fee: String,

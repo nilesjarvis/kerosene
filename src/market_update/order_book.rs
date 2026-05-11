@@ -47,14 +47,17 @@ impl TradingTerminal {
                 let Some(chase) = &self.active_chase else {
                     return Task::none();
                 };
-                let best = self
-                    .order_books
-                    .values()
-                    .find(|book| book.mode == OrderBookSymbolMode::Active)
-                    .and_then(|active_book| best_chase_price(&active_book.book, chase.is_buy));
+                let best = best_chase_price(&book, chase.is_buy);
 
-                if chase_should_reprice(chase, &self.active_symbol, &coin, best) {
-                    return self.chase_cancel_and_reprice();
+                if chase_should_reprice(
+                    chase,
+                    &self.active_symbol,
+                    &coin,
+                    best,
+                    std::time::Instant::now(),
+                ) && let Some(best) = best
+                {
+                    return self.chase_reprice_to_best_price(best);
                 }
                 Task::none()
             }

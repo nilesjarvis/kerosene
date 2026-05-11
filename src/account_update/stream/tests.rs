@@ -1,5 +1,7 @@
 use super::*;
 use crate::account::{OpenOrder, UserFill};
+use crate::signing::ChaseOrder;
+use std::time::Instant;
 
 fn open_order(oid: u64, reduce_only: Option<bool>) -> OpenOrder {
     OpenOrder {
@@ -20,9 +22,46 @@ fn fill(time: u64) -> UserFill {
         sz: "0.1".to_string(),
         side: "B".to_string(),
         time,
+        oid: None,
         dir: "Open Long".to_string(),
         closed_pnl: "0".to_string(),
         fee: "0.01".to_string(),
+    }
+}
+
+fn fill_with_oid(time: u64, oid: u64, px: &str, sz: &str) -> UserFill {
+    let mut fill = fill(time);
+    fill.oid = Some(oid);
+    fill.px = px.to_string();
+    fill.sz = sz.to_string();
+    fill
+}
+
+fn chase_order() -> ChaseOrder {
+    ChaseOrder {
+        id: 1,
+        coin: "BTC".to_string(),
+        account_address: "0xabc0000000000000000000000000000000000000".to_string(),
+        agent_key: "agent-key".to_string().into(),
+        is_buy: true,
+        remaining_size: 1.0,
+        asset: 0,
+        sz_decimals: 5,
+        is_spot: false,
+        reduce_only: false,
+        current_oid: Some(42),
+        current_price: 100.0,
+        current_price_wire: "100".to_string(),
+        initial_price: 100.0,
+        started_at: Instant::now(),
+        reprice_count: 0,
+        pending_op: None,
+        last_reprice_at: None,
+        stop_requested: false,
+        stop_reason: None,
+        cancel_retries: 0,
+        oid_confirmed: false,
+        missing_open_order_refresh_requested: true,
     }
 }
 
@@ -54,6 +93,84 @@ fn websocket_open_order_keeps_explicit_reduce_only_metadata() {
     preserve_open_order_reduce_only(&mut incoming, &existing);
 
     assert_eq!(incoming.reduce_only, Some(false));
+}
+
+#[test]
+fn hip3_open_order_stream_symbols_are_normalized() {
+    let mut orders = vec![open_order(42, Some(false)), open_order(43, Some(false))];
+    orders[1].coin = "flx:ETH".to_string();
+
+    normalize_dex_open_order_coins("flx", &mut orders);
+
+    assert_eq!(orders[0].coin, "flx:BTC");
+    assert_eq!(orders[1].coin, "flx:ETH");
+}
+
+#[test]
+fn main_dex_open_order_stream_symbols_stay_unprefixed() {
+    let mut orders = vec![open_order(42, Some(false))];
+
+    normalize_dex_open_order_coins("", &mut orders);
+
+    assert_eq!(orders[0].coin, "BTC");
+}
+
+#[test]
+fn open_order_sync_updates_chase_size_price_and_confirmation() {
+    let mut chase = chase_order();
+    let mut order = open_order(42, Some(false));
+    order.sz = "0.25".to_string();
+    order.limit_px = "101.5".to_string();
+
+    assert_eq!(
+        apply_open_order_to_chase(&mut chase, &order, ChaseOpenOrderPriceSync::Trust),
+        Ok(())
+    );
+
+    assert_eq!(chase.remaining_size, 0.25);
+    assert_eq!(chase.current_price, 101.5);
+    assert_eq!(chase.current_price_wire, "101.5");
+    assert!(chase.oid_confirmed);
+    assert!(!chase.missing_open_order_refresh_requested);
+}
+
+#[test]
+fn open_order_sync_rejects_invalid_remaining_size() {
+    let mut chase = chase_order();
+    let mut order = open_order(42, Some(false));
+    order.sz = "0".to_string();
+
+    assert_eq!(
+        apply_open_order_to_chase(&mut chase, &order, ChaseOpenOrderPriceSync::Trust),
+        Err(())
+    );
+    assert_eq!(chase.remaining_size, 1.0);
+}
+
+#[test]
+fn open_order_sync_preserves_expected_price_until_modify_confirmation_catches_up() {
+    let mut chase = chase_order();
+    chase.current_price = 101.0;
+    chase.current_price_wire = "101".to_string();
+    chase.oid_confirmed = false;
+
+    let mut stale_order = open_order(42, Some(false));
+    stale_order.sz = "0.25".to_string();
+    stale_order.limit_px = "100".to_string();
+
+    assert_eq!(
+        apply_open_order_to_chase(
+            &mut chase,
+            &stale_order,
+            ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
+        ),
+        Ok(())
+    );
+
+    assert_eq!(chase.remaining_size, 0.25);
+    assert_eq!(chase.current_price, 101.0);
+    assert_eq!(chase.current_price_wire, "101");
+    assert!(chase.oid_confirmed);
 }
 
 #[test]
@@ -137,5 +254,32 @@ fn live_fill_update_prepends_history_and_returns_toasts() {
             "Filled SELL 0.1 BTC @ $100".to_string(),
             "Filled BUY 0.1 BTC @ $100".to_string(),
         ]
+    );
+}
+
+#[test]
+fn chase_fill_summary_reports_weighted_fill_for_matching_oid() {
+    assert_eq!(
+        chase_fill_summary(
+            &[
+                fill_with_oid(1, 42, "100", "0.1"),
+                fill_with_oid(2, 42, "110", "0.2"),
+                fill_with_oid(3, 43, "1", "9"),
+            ],
+            42,
+        ),
+        Some("Chase filled: BUY 0.3 BTC @ $106.66666667 (oid 42)".to_string())
+    );
+}
+
+#[test]
+fn chase_fill_summary_ignores_unmatched_or_unparseable_fills() {
+    assert_eq!(
+        chase_fill_summary(&[fill_with_oid(1, 43, "100", "1")], 42),
+        None
+    );
+    assert_eq!(
+        chase_fill_summary(&[fill_with_oid(1, 42, "bad", "1")], 42),
+        Some("Chase filled (oid 42)".to_string())
     );
 }

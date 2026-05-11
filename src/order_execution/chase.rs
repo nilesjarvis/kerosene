@@ -2,7 +2,7 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
-use crate::signing::{ChaseOrder, OrderKind, float_to_wire, place_order, round_price};
+use crate::signing::{ChaseOrder, float_to_wire, round_price};
 use iced::Task;
 
 mod lifecycle;
@@ -14,13 +14,11 @@ mod lifecycle;
 impl TradingTerminal {
     pub(crate) fn start_chase(&mut self, is_buy: bool) -> Task<Message> {
         let _theme = self.theme();
-        // Properly stop any existing chase (cancels the resting order on the
-        // exchange) before starting a new one.
-        let stop_task = if self.active_chase.is_some() {
-            self.stop_chase()
-        } else {
-            Task::none()
-        };
+        if self.active_chase.is_some() {
+            self.order_status =
+                Some(("Stop the active chase before starting another".into(), true));
+            return Task::none();
+        }
 
         let key = self.wallet_key_input.trim().to_string();
         if key.is_empty() || self.connected_address.is_none() {
@@ -75,9 +73,16 @@ impl TradingTerminal {
         } else {
             self.order_reduce_only
         };
-        let price = float_to_wire(round_price(best, sz_decimals, is_spot));
+        let rounded_best = round_price(best, sz_decimals, is_spot);
+        if !rounded_best.is_finite() || rounded_best <= 0.0 {
+            self.order_status = Some(("Invalid chase price".into(), true));
+            return Task::none();
+        }
+        let price_wire = float_to_wire(rounded_best);
+        let chase_id = self.next_chase_id();
 
         self.active_chase = Some(ChaseOrder {
+            id: chase_id,
             coin: self.active_symbol.clone(),
             account_address,
             agent_key: key.clone().into(),
@@ -85,16 +90,21 @@ impl TradingTerminal {
             remaining_size: qty,
             asset,
             sz_decimals,
+            is_spot,
             reduce_only,
             current_oid: None,
-            current_price: best,
-            initial_price: best,
+            current_price: rounded_best,
+            current_price_wire: price_wire,
+            initial_price: rounded_best,
             started_at: std::time::Instant::now(),
             reprice_count: 0,
-            cancel_in_flight: false,
+            pending_op: None,
+            last_reprice_at: None,
             stop_requested: false,
+            stop_reason: None,
             cancel_retries: 0,
             oid_confirmed: false,
+            missing_open_order_refresh_requested: false,
         });
 
         let side_str = if is_buy { "BUY" } else { "SELL" };
@@ -105,19 +115,6 @@ impl TradingTerminal {
             PendingOrderAction::ChaseSell
         });
 
-        let size = float_to_wire(qty);
-        let place_task = Task::perform(
-            place_order(
-                key.into(),
-                asset,
-                is_buy,
-                price,
-                size,
-                OrderKind::Limit,
-                reduce_only,
-            ),
-            |r| Message::ChasePlaceResult(Box::new(r)),
-        );
-        Task::batch([stop_task, place_task])
+        self.chase_place_at_best()
     }
 }

@@ -26,7 +26,7 @@ impl TradingTerminal {
                     .as_ref()
                     .is_some_and(|chase| self.is_ticker_muted(&chase.coin))
                 {
-                    self.stop_chase()
+                    self.stop_chase_with_reason("Chase stopped: ticker was muted", false)
                 } else {
                     Task::none()
                 };

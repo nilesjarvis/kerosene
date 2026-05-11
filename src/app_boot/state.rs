@@ -168,6 +168,7 @@ impl TradingTerminal {
                 .collect(),
             show_hidden_positions: false,
             active_chase: None,
+            next_chase_id: 1,
             hide_pnl: cfg.hide_pnl,
             live_watchlists,
             favourite_symbols,

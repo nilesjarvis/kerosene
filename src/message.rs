@@ -231,14 +231,29 @@ pub(crate) enum Message {
     NukeResult(Box<Result<ExchangeResponse, String>>),
     StartChase(bool), // true = buy, false = sell
     StopChase,
-    ChasePlaceResult(Box<Result<ExchangeResponse, String>>),
-    ChaseCancelResult(Box<Result<ExchangeResponse, String>>),
+    ChasePlaceResult {
+        chase_id: u64,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
+    ChaseModifyResult {
+        chase_id: u64,
+        oid: u64,
+        requested_price: f64,
+        requested_price_wire: String,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
+    ChaseCancelResult {
+        chase_id: u64,
+        oid: u64,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
     ChaseRestingOrder {
         coin: String,
         oid: u64,
         is_buy: bool,
         sz: f64,
         limit_px: f64,
+        reduce_only: Option<bool>,
     },
     // Per-chart messages (keyed by ChartId)
     ChartSwitchTimeframe(ChartId, Timeframe),

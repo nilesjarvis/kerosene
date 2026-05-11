@@ -158,6 +158,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) show_hidden_positions: bool,
     // Client-side chase order (at most one active at a time)
     pub(crate) active_chase: Option<ChaseOrder>,
+    pub(crate) next_chase_id: u64,
     // Hide dollar PnL values (trader focus mode)
     pub(crate) hide_pnl: bool,
     // Favourite symbol keys (displayed at top of symbol search)

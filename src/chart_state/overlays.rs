@@ -55,7 +55,29 @@ impl TradingTerminal {
             }
             return;
         }
-        let order_overlays = self
+        let chase_overlay = self
+            .active_chase
+            .as_ref()
+            .filter(|chase| {
+                chase.coin == symbol
+                    && self.connected_address.as_deref() == Some(chase.account_address.as_str())
+            })
+            .and_then(|chase| {
+                Some(OrderOverlay {
+                    coin: chase.coin.clone(),
+                    limit_px: chase.current_price,
+                    sz: chase.remaining_size,
+                    is_buy: chase.is_buy,
+                    oid: chase.current_oid?,
+                })
+            })
+            .filter(|order| {
+                order.limit_px.is_finite()
+                    && order.limit_px > 0.0
+                    && order.sz.is_finite()
+                    && order.sz > 0.0
+            });
+        let mut order_overlays: Vec<OrderOverlay> = self
             .account_data
             .as_ref()
             .map(|data| {
@@ -76,6 +98,16 @@ impl TradingTerminal {
                     .collect()
             })
             .unwrap_or_default();
+        if let Some(chase_order) = chase_overlay {
+            if let Some(existing) = order_overlays
+                .iter_mut()
+                .find(|order| order.oid == chase_order.oid)
+            {
+                *existing = chase_order;
+            } else {
+                order_overlays.push(chase_order);
+            }
+        }
         if let Some(inst) = self.charts.get_mut(&chart_id) {
             inst.chart.active_orders = order_overlays;
         }
@@ -176,6 +208,7 @@ mod tests {
             sz: sz.to_string(),
             side: side.to_string(),
             time,
+            oid: None,
             dir: "Open Long".to_string(),
             closed_pnl: "0".to_string(),
             fee: "0".to_string(),
