@@ -91,6 +91,8 @@ pub(crate) struct ChartInstance {
     pub(crate) macro_indicators: config::MacroIndicatorsConfig,
     /// Toggle state for the macro indicators dropdown menu.
     pub(crate) macro_menu_open: bool,
+    /// Whether the header open-interest metric is shown as USD notional for this chart.
+    pub(crate) open_interest_as_notional: bool,
 }
 
 impl ChartInstance {
@@ -127,6 +129,7 @@ impl ChartInstance {
             funding_last_attempt_ms: None,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
+            open_interest_as_notional: false,
         }
     }
 
@@ -163,6 +166,7 @@ impl ChartInstance {
             funding_last_attempt_ms: None,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
+            open_interest_as_notional: false,
         }
     }
 }

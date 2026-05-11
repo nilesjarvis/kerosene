@@ -57,7 +57,14 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center);
 
         if let Some(ctx) = &instance.asset_ctx {
-            header_row = push_asset_context_columns(header_row, &theme, ctx);
+            header_row = push_asset_context_columns(
+                header_row,
+                &theme,
+                chart_id,
+                ctx,
+                last.close,
+                instance.open_interest_as_notional,
+            );
         }
 
         header_row = header_row.push(Space::new().width(Fill));

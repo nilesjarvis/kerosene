@@ -90,6 +90,9 @@ pub struct ChartConfig {
     /// Active macro timeframe moving averages
     #[serde(default)]
     pub macro_indicators: MacroIndicatorsConfig,
+    /// Whether open interest is displayed as USD notional instead of coin amount.
+    #[serde(default)]
+    pub open_interest_as_notional: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

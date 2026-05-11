@@ -257,6 +257,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartFundingPanelHeightChanged(_, _, _)
         | Message::ToggleFundingRateDisplayMode(_)
         | Message::FundingRefreshTick
+        | Message::ToggleOpenInterestNotional(_)
         | Message::ChartSymbolSelected(_, _)
         | Message::ToggleChartInvert(_)
         | Message::ToggleChartTradeMarkers(_)

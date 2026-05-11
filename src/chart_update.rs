@@ -85,6 +85,12 @@ impl TradingTerminal {
                     instance.chart.toggle_funding_rate_display_mode();
                 }
             }
+            Message::ToggleOpenInterestNotional(id) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.open_interest_as_notional = !instance.open_interest_as_notional;
+                    self.persist_config();
+                }
+            }
             Message::FundingRefreshTick => return self.refresh_due_funding_charts(),
             _ => {}
         }

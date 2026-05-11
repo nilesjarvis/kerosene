@@ -31,6 +31,7 @@ impl TradingTerminal {
                 show_trade_markers: inst.chart.show_trade_markers,
                 funding_panel_height: inst.chart.funding_panel_height_config(),
                 macro_indicators: inst.macro_indicators.clone(),
+                open_interest_as_notional: inst.open_interest_as_notional,
             })
             .collect()
     }

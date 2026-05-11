@@ -254,6 +254,7 @@ pub(crate) enum Message {
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
     ToggleFundingRateDisplayMode(ChartId),
     FundingRefreshTick,
+    ToggleOpenInterestNotional(ChartId),
     ChartSymbolSelected(ChartId, String),
     ToggleChartInvert(ChartId),
     ToggleChartTradeMarkers(ChartId),
