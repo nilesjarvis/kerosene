@@ -219,6 +219,8 @@ pub(crate) enum Message {
     },
     CancelResult(Box<Result<ExchangeResponse, String>>),
     ToggleCloseMenu(String),
+    ToggleHiddenPosition(String),
+    ToggleShowHiddenPositions,
     ClosePosition {
         coin: String,
         fraction: f64,

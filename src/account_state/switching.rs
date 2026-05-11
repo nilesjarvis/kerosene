@@ -70,6 +70,7 @@ impl TradingTerminal {
         self.wallet_address_input = profile.wallet_address.clone();
         self.close_menu_coin = None;
         self.nuke_confirmation = None;
+        self.show_hidden_positions = false;
         for inst in self.charts.values_mut() {
             inst.quick_order = None;
         }

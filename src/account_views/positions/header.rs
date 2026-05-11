@@ -4,14 +4,16 @@ use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::message::Message;
 
-use iced::widget::{button, container, row, text};
-use iced::{Element, Fill, Theme, color};
+use super::POSITION_ACTION_WIDTH;
+use iced::widget::{button, container, row, text, tooltip};
+use iced::{Color, Element, Fill, Theme, color};
 
 impl TradingTerminal {
     pub(super) fn view_positions_header<'a>(
         &'a self,
         can_close: bool,
         positions: &[&account::AssetPosition],
+        hidden_count: usize,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let has_positions = can_close
@@ -25,6 +27,50 @@ impl TradingTerminal {
                     .is_some_and(|szi| szi.abs() > 1e-12)
                     && !self.is_outcome_coin(&ap.position.coin)
             });
+
+        let hidden_toggle: Element<'a, Message> = if hidden_count > 0 {
+            let label = if self.show_hidden_positions {
+                format!("\u{25C9}{hidden_count}")
+            } else {
+                format!("\u{2298}{hidden_count}")
+            };
+            let tip = if self.show_hidden_positions {
+                "Hide hidden positions"
+            } else {
+                "Show hidden positions"
+            };
+            tooltip(
+                button(text(label).size(10).center())
+                    .on_press(Message::ToggleShowHiddenPositions)
+                    .padding([2, 5])
+                    .style(|theme: &Theme, status| {
+                        let bg = match status {
+                            button::Status::Hovered => {
+                                theme.extended_palette().background.weak.color
+                            }
+                            _ => Color::TRANSPARENT,
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: theme.extended_palette().background.weak.text,
+                            border: iced::Border {
+                                radius: 3.0.into(),
+                                width: 1.0,
+                                color: Color {
+                                    a: 0.32,
+                                    ..theme.extended_palette().background.weak.text
+                                },
+                            },
+                            ..Default::default()
+                        }
+                    }),
+                text(tip).size(10),
+                tooltip::Position::Top,
+            )
+            .into()
+        } else {
+            text("").size(12).into()
+        };
 
         let nuke_cell: Element<'a, Message> = if has_positions {
             let nuke_armed = self.nuke_confirmation.is_some();
@@ -57,6 +103,10 @@ impl TradingTerminal {
         } else {
             text("").size(12).into()
         };
+        let action_cell: Element<'a, Message> = row![hidden_toggle, nuke_cell]
+            .spacing(4)
+            .align_y(iced::Alignment::Center)
+            .into();
 
         let sort_btn = |label: &'static str, col: PositionsSortColumn| {
             let mut row_content = row![
@@ -100,7 +150,7 @@ impl TradingTerminal {
                 sort_btn("Funding", PositionsSortColumn::Funding),
                 sort_btn("Total PnL", PositionsSortColumn::TotalPnl),
                 sort_btn("Lev", PositionsSortColumn::Leverage),
-                container(nuke_cell).width(120),
+                container(action_cell).width(POSITION_ACTION_WIDTH),
             ]
             .spacing(4)
             .align_y(iced::Alignment::Center),

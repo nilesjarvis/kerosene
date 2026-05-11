@@ -84,7 +84,7 @@ impl TradingTerminal {
                     return Task::none();
                 }
             };
-            if !self.is_ticker_muted(&coin) {
+            if !self.is_ticker_muted(&coin) && !self.position_is_hidden(&coin) {
                 active.push((ap, szi));
             }
         }

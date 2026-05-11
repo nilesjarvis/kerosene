@@ -80,6 +80,8 @@ impl TradingTerminal {
         self.desktop_notifications = defaults.desktop_notifications;
         self.income_alerts_enabled = defaults.income_alerts_enabled;
         self.hide_pnl = defaults.hide_pnl;
+        self.hidden_positions_by_account.clear();
+        self.show_hidden_positions = false;
         self.liquidation_alerts_enabled = defaults.liquidation_alerts_enabled;
         self.liquidation_alert_threshold = defaults.liquidation_alert_threshold;
         self.liquidation_alert_input = defaults.liquidation_alert_threshold.to_string();

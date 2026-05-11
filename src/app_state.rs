@@ -154,6 +154,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) nuke_confirmation: Option<std::time::Instant>,
     pub(crate) positions_sort_column: PositionsSortColumn,
     pub(crate) positions_sort_direction: config::SortDirection,
+    pub(crate) hidden_positions_by_account: HashMap<String, HashSet<String>>,
+    pub(crate) show_hidden_positions: bool,
     // Client-side chase order (at most one active at a time)
     pub(crate) active_chase: Option<ChaseOrder>,
     // Hide dollar PnL values (trader focus mode)

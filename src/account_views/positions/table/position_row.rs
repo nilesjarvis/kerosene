@@ -2,6 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{self, format_price, format_usd};
 use crate::message::Message;
 
+use super::super::POSITION_ACTION_WIDTH;
 use super::sort::PositionRowData;
 use iced::widget::{Space, button, container, row, text};
 use iced::{Element, Fill, Theme, color};
@@ -85,7 +86,8 @@ impl TradingTerminal {
             });
 
         let row_can_close = can_close && data.szi.is_some_and(|szi| szi.abs() > 1e-12);
-        let close_cell = self.view_position_close_cell(&pos.coin, row_can_close, theme);
+        let is_hidden = self.position_is_hidden(&pos.coin);
+        let close_cell = self.view_position_close_cell(&pos.coin, row_can_close, is_hidden, theme);
         let (val_display, upnl_display, fund_display, total_display) = if self.hide_pnl {
             (
                 data.position_value
@@ -156,7 +158,7 @@ impl TradingTerminal {
                 .font(iced::Font::MONOSPACE)
                 .color(theme.extended_palette().background.weak.text)
                 .width(Fill),
-            container(close_cell).width(120),
+            container(close_cell).width(POSITION_ACTION_WIDTH),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center);

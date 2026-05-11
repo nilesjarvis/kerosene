@@ -154,6 +154,19 @@ impl TradingTerminal {
             nuke_confirmation: None,
             positions_sort_column: PositionsSortColumn::Value,
             positions_sort_direction: config::SortDirection::Descending,
+            hidden_positions_by_account: cfg
+                .hidden_positions_by_account
+                .iter()
+                .filter_map(|(account, coins)| {
+                    let hidden: HashSet<String> = coins
+                        .iter()
+                        .filter(|coin| !coin.trim().is_empty())
+                        .cloned()
+                        .collect();
+                    (!hidden.is_empty()).then_some((account.clone(), hidden))
+                })
+                .collect(),
+            show_hidden_positions: false,
             active_chase: None,
             hide_pnl: cfg.hide_pnl,
             live_watchlists,

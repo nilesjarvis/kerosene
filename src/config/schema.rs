@@ -117,6 +117,9 @@ pub struct KeroseneConfig {
     /// Hide dollar-denominated PnL values in account views.
     #[serde(default)]
     pub hide_pnl: bool,
+    /// Account-scoped position symbols hidden from the positions widget.
+    #[serde(default)]
+    pub hidden_positions_by_account: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub liquidation_alerts_enabled: bool,
     #[serde(default = "default_liquidation_alert_threshold")]

@@ -11,6 +11,8 @@ impl TradingTerminal {
     pub(crate) fn update_account(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::PositionsSortChanged(col) => self.update_positions_sort(col),
+            Message::ToggleHiddenPosition(coin) => self.toggle_hidden_position(coin),
+            Message::ToggleShowHiddenPositions => self.toggle_show_hidden_positions(),
             Message::WalletKeyInputChanged(value) => self.update_wallet_key_input(value),
             Message::WalletAddressInputChanged(value) => self.update_wallet_address_input(value),
             Message::AccountLabelChanged(value) => self.update_account_label(value),

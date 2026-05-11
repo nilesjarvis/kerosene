@@ -3,6 +3,7 @@ use super::super::{
     AccountProfile, ChartConfig, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig,
     MacroIndicatorsConfig, PaneKindConfig, PaneLayoutConfig, default_market_slippage_pct,
 };
+use std::collections::HashMap;
 
 #[test]
 fn legacy_journal_entries_deserialize_without_account_scope() {
@@ -110,6 +111,34 @@ fn hide_pnl_round_trips_and_legacy_defaults_visible() {
     let decoded_legacy: KeroseneConfig =
         serde_json::from_value(legacy).expect("legacy config should deserialize");
     assert!(!decoded_legacy.hide_pnl);
+}
+
+#[test]
+fn hidden_positions_round_trip_and_legacy_defaults_empty() {
+    let config = KeroseneConfig {
+        hidden_positions_by_account: HashMap::from([(
+            "acct-a".to_string(),
+            vec!["BTC".to_string(), "xyz:CRCL".to_string()],
+        )]),
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert_eq!(
+        decoded.hidden_positions_by_account.get("acct-a"),
+        Some(&vec!["BTC".to_string(), "xyz:CRCL".to_string()])
+    );
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    legacy
+        .as_object_mut()
+        .expect("config should serialize to object")
+        .remove("hidden_positions_by_account");
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert!(decoded_legacy.hidden_positions_by_account.is_empty());
 }
 
 #[test]

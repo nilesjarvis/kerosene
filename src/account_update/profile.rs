@@ -20,6 +20,39 @@ impl TradingTerminal {
         Task::none()
     }
 
+    pub(super) fn toggle_hidden_position(&mut self, coin: String) -> Task<Message> {
+        let Some(account_key) = self.active_journal_account_key() else {
+            return Task::none();
+        };
+
+        let now_empty = {
+            let hidden = self
+                .hidden_positions_by_account
+                .entry(account_key.clone())
+                .or_default();
+            if !hidden.insert(coin.clone()) {
+                hidden.remove(&coin);
+            }
+            hidden.is_empty()
+        };
+        if now_empty {
+            self.hidden_positions_by_account.remove(&account_key);
+            self.show_hidden_positions = false;
+        }
+        if self.close_menu_coin.as_deref() == Some(coin.as_str()) {
+            self.close_menu_coin = None;
+        }
+        if !self.ghost_account_secret_ids.contains(&account_key) {
+            self.persist_config();
+        }
+        Task::none()
+    }
+
+    pub(super) fn toggle_show_hidden_positions(&mut self) -> Task<Message> {
+        self.show_hidden_positions = !self.show_hidden_positions;
+        Task::none()
+    }
+
     pub(super) fn update_wallet_key_input(&mut self, value: String) -> Task<Message> {
         if self.active_account_is_ghost() {
             self.wallet_key_input.zeroize();

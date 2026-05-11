@@ -145,6 +145,8 @@ impl TradingTerminal {
         let layout_snapshot = self.saved_layout_snapshot("current".to_string());
         let persisted_accounts = self.persisted_accounts_snapshot();
         let active_account_index = self.persisted_active_account_index(&persisted_accounts);
+        let hidden_positions_by_account =
+            self.persisted_hidden_positions_by_account(&persisted_accounts);
         let journal_entries_by_account = self.persisted_journal_entries_by_account();
         let journal_entries = match self.journal.active_account_key.as_ref() {
             Some(key) if self.ghost_account_secret_ids.contains(key) => HashMap::new(),
@@ -186,6 +188,7 @@ impl TradingTerminal {
             desktop_notifications: layout_snapshot.desktop_notifications,
             income_alerts_enabled: layout_snapshot.income_alerts_enabled,
             hide_pnl: self.hide_pnl,
+            hidden_positions_by_account,
             liquidation_alerts_enabled: layout_snapshot.liquidation_alerts_enabled,
             liquidation_alert_threshold: layout_snapshot.liquidation_alert_threshold,
             market_slippage_pct: layout_snapshot.market_slippage_pct,

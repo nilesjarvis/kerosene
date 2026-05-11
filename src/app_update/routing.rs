@@ -268,6 +268,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddChart(_) => UpdateRoute::Chart,
 
         Message::PositionsSortChanged(_)
+        | Message::ToggleHiddenPosition(_)
+        | Message::ToggleShowHiddenPositions
         | Message::WalletKeyInputChanged(_)
         | Message::WalletAddressInputChanged(_)
         | Message::AccountLabelChanged(_)
@@ -319,6 +321,10 @@ mod tests {
             UpdateRoute::Chrome
         );
         assert_eq!(message_route(&Message::ToggleHidePnl), UpdateRoute::Chrome);
+        assert_eq!(
+            message_route(&Message::ToggleHiddenPosition("BTC".to_string())),
+            UpdateRoute::Account
+        );
         assert_eq!(
             message_route(&Message::DismissOrderStatus),
             UpdateRoute::Order

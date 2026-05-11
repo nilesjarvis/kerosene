@@ -55,6 +55,28 @@ impl TradingTerminal {
         )
     }
 
+    pub(crate) fn persisted_hidden_positions_by_account(
+        &self,
+        persisted_accounts: &[AccountProfile],
+    ) -> HashMap<String, Vec<String>> {
+        let persisted_ids: HashSet<&str> = persisted_accounts
+            .iter()
+            .map(|profile| profile.secret_id.as_str())
+            .collect();
+
+        self.hidden_positions_by_account
+            .iter()
+            .filter(|(account_key, hidden)| {
+                persisted_ids.contains(account_key.as_str()) && !hidden.is_empty()
+            })
+            .map(|(account_key, hidden)| {
+                let mut coins: Vec<String> = hidden.iter().cloned().collect();
+                coins.sort();
+                (account_key.clone(), coins)
+            })
+            .collect()
+    }
+
     pub(crate) fn active_journal_account_key(&self) -> Option<String> {
         self.accounts
             .get(self.active_account_index)

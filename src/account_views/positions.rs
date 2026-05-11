@@ -8,13 +8,15 @@ use crate::message::Message;
 use iced::widget::{column, container, rule, scrollable, text};
 use iced::{Element, Fill};
 
+pub(super) const POSITION_ACTION_WIDTH: f32 = 152.0;
+
 impl TradingTerminal {
     pub(crate) fn view_positions(&self) -> Element<'_, Message> {
         let theme = self.theme();
         let can_close =
             self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
 
-        let positions: Vec<&account::AssetPosition> = self
+        let all_positions: Vec<&account::AssetPosition> = self
             .account_data
             .as_ref()
             .map(|d| {
@@ -25,16 +27,26 @@ impl TradingTerminal {
                     .collect()
             })
             .unwrap_or_default();
+        let hidden_count = all_positions
+            .iter()
+            .filter(|ap| self.position_is_hidden(&ap.position.coin))
+            .count();
+        let positions: Vec<&account::AssetPosition> = all_positions
+            .into_iter()
+            .filter(|ap| self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
+            .collect();
         let warning = self.account_data.as_ref().and_then(|data| {
             data.completeness
                 .section_warning(AccountDataSection::Positions)
         });
 
-        let header = self.view_positions_header(can_close, &positions, &theme);
+        let header = self.view_positions_header(can_close, &positions, hidden_count, &theme);
 
         if positions.is_empty() {
             let msg = if let Some(warning) = warning {
                 warning
+            } else if hidden_count > 0 {
+                "All open positions are hidden".to_string()
             } else if self.connected_address.is_some() {
                 "No open positions".to_string()
             } else {
@@ -68,6 +80,13 @@ impl TradingTerminal {
         .width(Fill)
         .height(Fill)
         .into()
+    }
+
+    pub(crate) fn position_is_hidden(&self, coin: &str) -> bool {
+        self.accounts
+            .get(self.active_account_index)
+            .and_then(|profile| self.hidden_positions_by_account.get(&profile.secret_id))
+            .is_some_and(|hidden| hidden.contains(coin))
     }
 }
 

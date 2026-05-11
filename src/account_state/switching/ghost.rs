@@ -68,8 +68,10 @@ impl TradingTerminal {
         let was_active = self.active_account_index == index;
         if was_active {
             self.journal.switch_active_account(None);
+            self.show_hidden_positions = false;
         }
         self.journal.account_states.remove(&secret_id);
+        self.hidden_positions_by_account.remove(&secret_id);
         self.accounts.remove(index);
         self.ghost_account_secret_ids.remove(&secret_id);
 
