@@ -19,6 +19,7 @@ impl TradingTerminal {
             | Message::AddCalendarPane
             | Message::AddLiquidationsPane
             | Message::AddTrackedTradesPane
+            | Message::AddAdvancedOrdersPane
             | Message::AddOutcomesPane => self.add_widget_pane(message),
             _ => Task::none(),
         }

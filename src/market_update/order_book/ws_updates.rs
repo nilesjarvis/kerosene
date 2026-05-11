@@ -1,6 +1,10 @@
+#[cfg(test)]
 use crate::api::OrderBook;
 use crate::market_state::OrderBookSymbolMode;
+#[cfg(test)]
 use crate::signing::ChaseOrder;
+#[cfg(test)]
+use std::time::Instant;
 
 #[cfg(test)]
 mod tests;
@@ -8,8 +12,6 @@ mod tests;
 // ---------------------------------------------------------------------------
 // WebSocket Book Update Decisions
 // ---------------------------------------------------------------------------
-
-const CHASE_PRICE_EPSILON: f64 = 1e-12;
 
 pub(super) fn order_book_tracks_coin(
     mode: &OrderBookSymbolMode,
@@ -22,6 +24,7 @@ pub(super) fn order_book_tracks_coin(
     }
 }
 
+#[cfg(test)]
 pub(super) fn best_chase_price(book: &OrderBook, is_buy: bool) -> Option<f64> {
     let price = if is_buy {
         book.bids.first().map(|level| level.px)
@@ -31,15 +34,23 @@ pub(super) fn best_chase_price(book: &OrderBook, is_buy: bool) -> Option<f64> {
     price.filter(|px| px.is_finite() && *px > 0.0)
 }
 
+#[cfg(test)]
 pub(super) fn chase_should_reprice(
     chase: &ChaseOrder,
     active_symbol: &str,
     coin: &str,
     best_px: Option<f64>,
+    now: Instant,
 ) -> bool {
     chase.coin == coin
         && active_symbol == coin
-        && !chase.cancel_in_flight
+        && chase.current_oid.is_some()
+        && !chase.has_pending_op()
         && !chase.stop_requested
-        && best_px.is_some_and(|px| (px - chase.current_price).abs() > CHASE_PRICE_EPSILON)
+        && chase.can_reprice_now(now)
+        && best_px
+            .and_then(|px| chase.rounded_price(px))
+            .is_some_and(|(rounded_px, wire)| {
+                wire != chase.current_price_wire && chase.price_moves_toward_fill(rounded_px)
+            })
 }

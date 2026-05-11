@@ -44,6 +44,7 @@ pub enum PaneKindConfig {
         active_tab: BottomTabConfig,
     },
     OrderEntry,
+    AdvancedOrders,
     SpaghettiChart {
         spaghetti_id: u64,
     },
@@ -68,6 +69,7 @@ enum KnownPaneKindConfig {
     Income,
     BottomTabs { active_tab: BottomTabConfig },
     OrderEntry,
+    AdvancedOrders,
     SpaghettiChart { spaghetti_id: u64 },
     Settings,
     Calendar,
@@ -96,6 +98,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::Income => Self::Income,
             KnownPaneKindConfig::BottomTabs { active_tab } => Self::BottomTabs { active_tab },
             KnownPaneKindConfig::OrderEntry => Self::OrderEntry,
+            KnownPaneKindConfig::AdvancedOrders => Self::AdvancedOrders,
             KnownPaneKindConfig::SpaghettiChart { spaghetti_id } => {
                 Self::SpaghettiChart { spaghetti_id }
             }

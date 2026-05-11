@@ -33,6 +33,17 @@ impl TradingTerminal {
         };
 
         self.wallet_address_input = addr.clone();
+        let stop_chase_ids: Vec<u64> = self
+            .chase_orders
+            .iter()
+            .filter_map(|(id, chase)| {
+                (!chase.stop_requested && chase.account_address.as_str() != addr.as_str())
+                    .then_some(*id)
+            })
+            .collect();
+        let stop_chase_task = Task::batch(stop_chase_ids.into_iter().map(|id| {
+            self.stop_chase_by_id_with_reason(id, "Chase stopped: wallet address changed", false)
+        }));
         if self.active_account_is_ghost() {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
@@ -64,6 +75,7 @@ impl TradingTerminal {
             Message::AccountDataLoaded(account_addr.clone(), Box::new(r))
         });
         let mut tasks = vec![account_task];
+        tasks.push(stop_chase_task);
         self.portfolio.loading = true;
         let portfolio_addr = addr.clone();
         tasks.push(Task::perform(fetch_portfolio_history(addr), move |r| {
@@ -75,6 +87,14 @@ impl TradingTerminal {
     }
 
     pub(super) fn disconnect_wallet(&mut self) -> Task<Message> {
+        let stop_chase_ids: Vec<u64> = self
+            .chase_orders
+            .iter()
+            .filter_map(|(id, chase)| (!chase.stop_requested).then_some(*id))
+            .collect();
+        let stop_chase_task = Task::batch(stop_chase_ids.into_iter().map(|id| {
+            self.stop_chase_by_id_with_reason(id, "Chase stopped: wallet disconnected", false)
+        }));
         self.connected_address = None;
         self.account_data = None;
         self.account_loading = false;
@@ -98,7 +118,7 @@ impl TradingTerminal {
             self.journal.error = Some("Connect an account before loading the journal.".to_string());
         }
         self.persist_config();
-        Task::none()
+        stop_chase_task
     }
 
     pub(super) fn apply_account_data_loaded(
@@ -117,6 +137,7 @@ impl TradingTerminal {
                 self.account_data = Some(data);
                 self.account_error = None;
                 self.sync_all_chart_overlays();
+                let chase_task = self.reconcile_chase_after_account_refresh();
 
                 let income_pane_open = self
                     .panes
@@ -125,10 +146,12 @@ impl TradingTerminal {
 
                 if is_pm && income_pane_open {
                     self.income.loading = true;
-                    return Task::perform(fetch_income_data(address.clone()), move |r| {
+                    let income_task = Task::perform(fetch_income_data(address.clone()), move |r| {
                         Message::IncomeLoaded(address.clone(), Box::new(r))
                     });
+                    return Task::batch([chase_task, income_task]);
                 }
+                return chase_task;
             }
             Err(e) => {
                 self.account_error = Some(e);

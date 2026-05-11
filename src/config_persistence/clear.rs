@@ -42,7 +42,9 @@ impl TradingTerminal {
         self.account_data = None;
         self.account_loading = false;
         self.account_error = None;
-        self.active_chase = None;
+        self.chase_orders.clear();
+        self.selected_chase_id = None;
+        self.last_chase_exchange_request_at = None;
         self.pending_order_action = None;
 
         self.hydromancer_api_key.zeroize();

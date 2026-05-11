@@ -80,15 +80,16 @@ impl TradingTerminal {
                 self.symbols_loading = false;
 
                 let key = self.active_symbol.clone();
-                let sym = resolve_exchange_symbol(&self.exchange_symbols, &key);
+                let resolved_key = resolve_exchange_symbol(&self.exchange_symbols, &key)
+                    .map(|symbol| symbol.key.clone());
 
                 let mut tasks = Vec::new();
                 tasks.extend(self.mids_bootstrap_tasks());
 
-                if let Some(valid_sym) = sym
-                    && valid_sym.key != self.active_symbol
+                if let Some(valid_key) = resolved_key
+                    && valid_key != self.active_symbol
                 {
-                    tasks.push(self.switch_active_symbol_internal(valid_sym.key.clone()));
+                    tasks.push(self.switch_active_symbol_internal(valid_key));
                 }
 
                 for (id, inst) in self.charts.iter_mut() {
@@ -147,13 +148,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let chase_cancel_task = if self.active_chase.is_some() {
-            self.stop_chase()
-        } else {
-            Task::none()
-        };
-
-        let switch_task = self.switch_active_symbol_internal(key);
-        Task::batch([chase_cancel_task, switch_task])
+        self.switch_active_symbol_internal(key)
     }
 }

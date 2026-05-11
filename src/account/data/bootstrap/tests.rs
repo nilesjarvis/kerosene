@@ -1,5 +1,17 @@
 use super::*;
 
+fn open_order(coin: &str) -> OpenOrder {
+    OpenOrder {
+        coin: coin.to_string(),
+        side: "B".to_string(),
+        limit_px: "10".to_string(),
+        sz: "1".to_string(),
+        oid: 1,
+        timestamp: 1,
+        reduce_only: Some(false),
+    }
+}
+
 #[test]
 fn fee_rate_parse_failure_marks_fees_incomplete() {
     let mut completeness = AccountDataCompleteness::default();
@@ -31,4 +43,14 @@ fn fee_rate_parse_success_keeps_fees_complete() {
 
     assert!(rates.rate_for(false, false).is_some());
     assert_eq!(completeness.section_warning(AccountDataSection::Fees), None);
+}
+
+#[test]
+fn hip3_bootstrap_open_order_symbols_are_normalized() {
+    let mut orders = vec![open_order("BTC"), open_order("flx:ETH")];
+
+    normalize_dex_open_order_coins("flx", &mut orders);
+
+    assert_eq!(orders[0].coin, "flx:BTC");
+    assert_eq!(orders[1].coin, "flx:ETH");
 }

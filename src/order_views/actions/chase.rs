@@ -23,13 +23,23 @@ impl TradingTerminal {
         if pending_chase_buy || pending_chase_sell {
             let chase_buy = self.pending_chase_control(true, pending_chase_buy);
             let chase_sell = self.pending_chase_control(false, pending_chase_sell);
-            form.push(row![chase_buy, chase_sell].spacing(8))
-        } else if let Some(chase) = &self.active_chase {
+            return form.push(row![chase_buy, chase_sell].spacing(8));
+        }
+
+        let mut form = form;
+        if let Some(chase) = self.selected_chase() {
             let side_str = if chase.is_buy { "BUY" } else { "SELL" };
-            let chase_info = text(format!(
-                "Chasing {side_str} {:.4} @ {}",
-                chase.remaining_size,
+            let price = if chase.current_price.is_finite() && chase.current_price > 0.0 {
                 format_price(chase.current_price)
+            } else {
+                "loading".to_string()
+            };
+            let chase_info = text(format!(
+                "Chasing {side_str} {} {:.4} @ {} ({} active)",
+                chase.coin.as_str(),
+                chase.remaining_size,
+                price,
+                self.chase_orders.len()
             ))
             .size(11)
             .color(theme.palette().primary);
@@ -58,8 +68,10 @@ impl TradingTerminal {
                     ..Default::default()
                 }
             });
-            form.push(chase_info).push(stop_btn)
-        } else if can_trade {
+            form = form.push(chase_info).push(stop_btn);
+        }
+
+        if can_trade && self.chase_orders.len() < Self::MAX_ACTIVE_CHASE_ORDERS {
             let chase_buy = chase_start_button(
                 format!("CHASE BUY {}", self.active_symbol_display.to_uppercase()),
                 true,
@@ -71,6 +83,15 @@ impl TradingTerminal {
                 theme.palette().danger,
             );
             form.push(row![chase_buy, chase_sell].spacing(8))
+        } else if can_trade {
+            form.push(
+                text(format!(
+                    "Maximum of {} active chase orders reached",
+                    Self::MAX_ACTIVE_CHASE_ORDERS
+                ))
+                .size(10)
+                .color(theme.palette().danger),
+            )
         } else {
             form
         }

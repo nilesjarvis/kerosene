@@ -268,6 +268,7 @@ fn exchange_response_success_string_reports_cancelled() {
 #[test]
 fn chase_order_debug_redacts_agent_key() {
     let chase = ChaseOrder {
+        id: 1,
         coin: "BTC".to_string(),
         account_address: "0xabc0000000000000000000000000000000000000".to_string(),
         agent_key: "super-secret-agent-key".to_string().into(),
@@ -275,20 +276,63 @@ fn chase_order_debug_redacts_agent_key() {
         remaining_size: 1.0,
         asset: 0,
         sz_decimals: 5,
+        is_spot: false,
         reduce_only: false,
         current_oid: Some(42),
         current_price: 100.0,
+        current_price_wire: "100".to_string(),
         initial_price: 100.0,
         started_at: std::time::Instant::now(),
         reprice_count: 0,
-        cancel_in_flight: false,
+        pending_op: None,
+        last_reprice_at: None,
+        pending_best_price: None,
         stop_requested: false,
+        stop_reason: None,
         cancel_retries: 0,
         oid_confirmed: true,
+        missing_open_order_refresh_requested: false,
     };
 
     let rendered = format!("{chase:?}");
 
     assert!(!rendered.contains("super-secret-agent-key"));
     assert!(rendered.contains("<redacted>"));
+}
+
+#[test]
+fn chase_price_moves_only_toward_fill() {
+    let mut chase = ChaseOrder {
+        id: 1,
+        coin: "BTC".to_string(),
+        account_address: "0xabc0000000000000000000000000000000000000".to_string(),
+        agent_key: "agent-key".to_string().into(),
+        is_buy: true,
+        remaining_size: 1.0,
+        asset: 0,
+        sz_decimals: 5,
+        is_spot: false,
+        reduce_only: false,
+        current_oid: Some(42),
+        current_price: 100.0,
+        current_price_wire: "100".to_string(),
+        initial_price: 100.0,
+        started_at: std::time::Instant::now(),
+        reprice_count: 0,
+        pending_op: None,
+        last_reprice_at: None,
+        pending_best_price: None,
+        stop_requested: false,
+        stop_reason: None,
+        cancel_retries: 0,
+        oid_confirmed: true,
+        missing_open_order_refresh_requested: false,
+    };
+
+    assert!(chase.price_moves_toward_fill(100.1));
+    assert!(!chase.price_moves_toward_fill(99.9));
+
+    chase.is_buy = false;
+    assert!(chase.price_moves_toward_fill(99.9));
+    assert!(!chase.price_moves_toward_fill(100.1));
 }

@@ -40,6 +40,7 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
             active_tab: bottom_tab_to_config(*active_tab),
         },
         PaneKind::OrderEntry => PaneKindConfig::OrderEntry,
+        PaneKind::AdvancedOrders => PaneKindConfig::AdvancedOrders,
         PaneKind::Settings => PaneKindConfig::Settings,
         PaneKind::SpaghettiChart(id) => PaneKindConfig::SpaghettiChart { spaghetti_id: *id },
         PaneKind::Calendar => PaneKindConfig::Calendar,
@@ -64,6 +65,7 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
             active_tab: bottom_tab_from_config(*active_tab),
         }),
         PaneKindConfig::OrderEntry => Some(PaneKind::OrderEntry),
+        PaneKindConfig::AdvancedOrders => Some(PaneKind::AdvancedOrders),
         PaneKindConfig::SpaghettiChart { spaghetti_id } => {
             Some(PaneKind::SpaghettiChart(*spaghetti_id))
         }

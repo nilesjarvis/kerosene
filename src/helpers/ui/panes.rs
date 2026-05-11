@@ -17,6 +17,7 @@ pub fn pane_title(kind: &PaneKind) -> String {
         PaneKind::Income => "Income".to_string(),
         PaneKind::BottomTabs { .. } => "Positions / History".to_string(),
         PaneKind::OrderEntry => "Order Entry".to_string(),
+        PaneKind::AdvancedOrders => "Advanced Orders".to_string(),
         PaneKind::SpaghettiChart(_) => "Comparison Chart".to_string(),
         PaneKind::Settings => "Theme & Settings".to_string(),
         PaneKind::Calendar => "Economic Calendar".to_string(),

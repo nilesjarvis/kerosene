@@ -156,8 +156,12 @@ pub(crate) struct TradingTerminal {
     pub(crate) positions_sort_direction: config::SortDirection,
     pub(crate) hidden_positions_by_account: HashMap<String, HashSet<String>>,
     pub(crate) show_hidden_positions: bool,
-    // Client-side chase order (at most one active at a time)
-    pub(crate) active_chase: Option<ChaseOrder>,
+    // Client-side chase orders. Chases run at account scope and do not depend
+    // on a visible chart/order-book widget after they are started.
+    pub(crate) chase_orders: BTreeMap<u64, ChaseOrder>,
+    pub(crate) selected_chase_id: Option<u64>,
+    pub(crate) next_chase_id: u64,
+    pub(crate) last_chase_exchange_request_at: Option<std::time::Instant>,
     // Hide dollar PnL values (trader focus mode)
     pub(crate) hide_pnl: bool,
     // Favourite symbol keys (displayed at top of symbol search)

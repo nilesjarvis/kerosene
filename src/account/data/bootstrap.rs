@@ -2,6 +2,7 @@ use super::super::http::{best_effort_response_vec, post_info_json_with_retries};
 use super::super::{
     AccountData, AccountDataCompleteness, AccountDataSection, ClearinghouseState, FundingEntry,
     HIP3_DEXES, OpenOrder, SpotClearinghouseState, UserFeeRates, UserFill,
+    normalize_dex_open_order_coins,
 };
 use super::fees::user_fee_rates_from_value;
 use super::merge::{merge_hip3_open_orders, merge_hip3_positions};
@@ -232,11 +233,14 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
     }
 
     let mut hip3_order_sets = Vec::new();
-    for resp in hip3_ord_results {
+    for (dex, resp) in HIP3_DEXES.iter().zip(hip3_ord_results) {
         match resp {
             Ok(response) if response.status().is_success() => {
                 match response.json::<Vec<OpenOrder>>().await {
-                    Ok(orders) => hip3_order_sets.push(orders),
+                    Ok(mut orders) => {
+                        normalize_dex_open_order_coins(dex, &mut orders);
+                        hip3_order_sets.push(orders);
+                    }
                     Err(e) => completeness.mark_incomplete(
                         AccountDataSection::OpenOrders,
                         format!("HIP-3 frontendOpenOrders parse failed: {e}"),
