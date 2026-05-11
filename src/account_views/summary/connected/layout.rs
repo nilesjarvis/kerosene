@@ -39,6 +39,7 @@ impl TradingTerminal {
             self.summary_add_account_button(),
             self.summary_account_label_input(),
             self.summary_forget_ghost_button(),
+            self.summary_delete_account_button(),
             vertical_spacer(),
             row![label_value("Account", account_label), copy_btn]
                 .spacing(6)

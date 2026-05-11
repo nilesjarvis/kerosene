@@ -1,4 +1,5 @@
 mod ghost;
+mod saved_delete;
 
 use crate::app_state::TradingTerminal;
 use crate::config::AccountProfile;

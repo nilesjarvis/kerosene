@@ -19,6 +19,7 @@ impl TradingTerminal {
             Message::AddAccount => self.add_account_from_picker(),
             Message::GhostWallet(address) => self.add_ghost_wallet_from_picker(address),
             Message::ForgetGhostAccount(index) => self.forget_ghost_account_from_picker(index),
+            Message::DeleteSavedAccount(index) => self.delete_saved_account_task(index),
             Message::SaveCredentials => self.save_active_account_credentials(),
             Message::ConnectWallet => self.connect_wallet(),
             Message::DisconnectWallet => self.disconnect_wallet(),
