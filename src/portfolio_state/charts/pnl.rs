@@ -14,6 +14,13 @@ use iced::{Rectangle, Renderer, Theme};
 
 pub(crate) struct PortfolioPnlChart {
     pub(crate) points: Vec<(u64, f64)>,
+    pub(crate) value_mode: PnlValueDisplayMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PnlValueDisplayMode {
+    Usd,
+    Percent,
 }
 
 impl canvas::Program<Message> for PortfolioPnlChart {
@@ -27,6 +34,13 @@ impl canvas::Program<Message> for PortfolioPnlChart {
         bounds: Rectangle,
         cursor: iced::mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        draw_portfolio_pnl_chart(&self.points, renderer, theme, bounds, cursor)
+        draw_portfolio_pnl_chart(
+            &self.points,
+            self.value_mode,
+            renderer,
+            theme,
+            bounds,
+            cursor,
+        )
     }
 }

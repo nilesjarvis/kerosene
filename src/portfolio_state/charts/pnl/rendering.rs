@@ -1,8 +1,11 @@
 use crate::account_metrics::format_signed_usd_value;
 
-use super::series::{
-    PNL_TOOLTIP_HEIGHT, PNL_TOOLTIP_WIDTH, nearest_pnl_point, pnl_tooltip_origin,
-    prepare_pnl_chart_layout,
+use super::{
+    PnlValueDisplayMode,
+    series::{
+        PNL_TOOLTIP_HEIGHT, PNL_TOOLTIP_WIDTH, nearest_pnl_point, pnl_tooltip_origin,
+        prepare_pnl_chart_layout,
+    },
 };
 use chrono::{DateTime, Utc};
 use iced::widget::canvas;
@@ -10,6 +13,7 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 
 pub(super) fn draw_portfolio_pnl_chart(
     points: &[(u64, f64)],
+    value_mode: PnlValueDisplayMode,
     renderer: &Renderer,
     theme: &Theme,
     bounds: Rectangle,
@@ -101,7 +105,12 @@ pub(super) fn draw_portfolio_pnl_chart(
             .and_then(DateTime::<Utc>::from_timestamp_millis)
             .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
             .unwrap_or_else(|| "UTC time unavailable".to_string());
-        let pnl_label = format!("PnL {}", format_signed_usd_value(nearest.pnl));
+        let pnl_label = match value_mode {
+            PnlValueDisplayMode::Usd => format!("PnL {}", format_signed_usd_value(nearest.pnl)),
+            PnlValueDisplayMode::Percent => {
+                format!("Performance {}", format_signed_percent_value(nearest.pnl))
+            }
+        };
         let label = format!("{}\n{}", ts_label, pnl_label);
 
         let pad = 6.0;
@@ -126,4 +135,13 @@ pub(super) fn draw_portfolio_pnl_chart(
     }
 
     vec![frame.into_geometry()]
+}
+
+fn format_signed_percent_value(value: f64) -> String {
+    let display_value = if value.abs() < 0.005 { 0.0 } else { value };
+    if display_value > 0.0 {
+        format!("+{display_value:.2}%")
+    } else {
+        format!("{display_value:.2}%")
+    }
 }

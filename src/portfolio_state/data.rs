@@ -3,7 +3,10 @@ mod history;
 use crate::account_analytics::PortfolioBucket;
 use crate::app_state::TradingTerminal;
 
-use self::history::{apply_cutoff_with_baseline, compute_daily_pnl_rows_from_cumulative};
+use self::history::{
+    apply_cutoff_with_baseline, compute_daily_percent_rows_from_cumulative,
+    compute_daily_pnl_rows_from_cumulative, compute_percent_performance_series,
+};
 use super::{PortfolioScope, PortfolioWindow};
 
 // ---------------------------------------------------------------------------
@@ -73,6 +76,25 @@ impl TradingTerminal {
             .portfolio_window_bucket()
             .map(|b| b.pnl_history.clone())
             .unwrap_or_default();
+        self.apply_selected_portfolio_window(points)
+    }
+
+    pub(crate) fn selected_portfolio_account_value_points(&self) -> Vec<(u64, f64)> {
+        let _theme = self.theme();
+        let points = self
+            .portfolio_window_bucket()
+            .map(|b| b.account_value_history.clone())
+            .unwrap_or_default();
+        self.apply_selected_portfolio_window(points)
+    }
+
+    pub(crate) fn selected_portfolio_performance_points(&self) -> Vec<(u64, f64)> {
+        let pnl_points = self.selected_portfolio_points();
+        let account_value_points = self.selected_portfolio_account_value_points();
+        compute_percent_performance_series(&pnl_points, &account_value_points)
+    }
+
+    fn apply_selected_portfolio_window(&self, points: Vec<(u64, f64)>) -> Vec<(u64, f64)> {
         if points.is_empty() {
             return points;
         }
@@ -94,5 +116,13 @@ impl TradingTerminal {
         max_days: usize,
     ) -> Vec<(String, f64)> {
         compute_daily_pnl_rows_from_cumulative(points, max_days)
+    }
+
+    pub(crate) fn compute_daily_percent_rows_from_cumulative(
+        pnl_points: &[(u64, f64)],
+        account_value_points: &[(u64, f64)],
+        max_days: usize,
+    ) -> Vec<(String, f64)> {
+        compute_daily_percent_rows_from_cumulative(pnl_points, account_value_points, max_days)
     }
 }
