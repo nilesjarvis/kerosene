@@ -54,8 +54,13 @@ pub(in crate::market_update::order_book) fn order_book_needs_precision_refresh(
     selected_tick: f64,
     source_tick: Option<f64>,
     pending_sigfigs: Option<(Option<u8>, Option<u8>)>,
+    book_loading: bool,
     mid: Option<f64>,
 ) -> bool {
+    if book_loading {
+        return false;
+    }
+
     let Some(mid) = mid.and_then(positive_finite) else {
         return false;
     };
@@ -293,6 +298,7 @@ impl TradingTerminal {
                     inst.tick_size,
                     inst.book_source_tick_size(),
                     inst.pending_book_sigfigs(),
+                    inst.book_loading,
                     self.resolve_mid_for_symbol(&symbol),
                 )
                 .then_some(id)
