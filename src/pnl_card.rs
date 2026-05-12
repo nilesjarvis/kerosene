@@ -18,6 +18,8 @@ use iced::{Alignment, Color, Degrees, Element, Fill, Font, Length, Size, Task, T
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+const PNL_CARD_MIN_TEXT_CONTRAST: f32 = 4.5;
+
 // ---------------------------------------------------------------------------
 // PnL Card State
 // ---------------------------------------------------------------------------
@@ -311,32 +313,25 @@ impl TradingTerminal {
         let card_palette = pnl_card_palette(theme, pnl_color);
         let text_color = card_palette.text;
         let weak_text = card_palette.weak_text;
-        let percent = state
-            .percent_mode
-            .select(metrics.asset_move_pct, metrics.leveraged_pct);
-        let primary_value = pnl_card_primary_value(state.display_mode, percent, metrics.upnl);
-        let secondary_value = pnl_card_secondary_value(state.display_mode, percent, metrics.upnl);
-        let entry_display = privacy_price_display(&metrics.entry_display, state.obscure_prices);
-        let exit_display = privacy_price_display(&metrics.exit_display, state.obscure_prices);
-        let context = pnl_card_context_display(state, &metrics);
-        let ticker = metrics.ticker;
-        let leverage_display = metrics.leverage_display;
+        let render_text = pnl_card_render_text(state, &metrics);
+        let ticker = render_text.ticker;
+        let leverage_display = render_text.leverage_display;
 
         let mut value_stack = Column::new()
             .spacing(4)
             .push(
-                text(primary_value)
+                text(render_text.primary_value)
                     .size(38)
                     .font(Font::MONOSPACE)
                     .color(text_color),
             )
             .push(
-                text(state.percent_mode.label())
+                text(render_text.percent_mode_label)
                     .size(11)
                     .font(Font::MONOSPACE)
                     .color(weak_text),
             );
-        if let Some(secondary) = secondary_value {
+        if let Some(secondary) = render_text.secondary_value {
             value_stack = value_stack.push(
                 text(secondary)
                     .size(18)
@@ -349,11 +344,11 @@ impl TradingTerminal {
             column![
                 row![
                     card_metric("Lev", leverage_display, weak_text, text_color),
-                    card_metric("Entry", entry_display, weak_text, text_color),
-                    card_metric("Exit", exit_display, weak_text, text_color),
+                    card_metric("Entry", render_text.entry_display, weak_text, text_color),
+                    card_metric("Exit", render_text.exit_display, weak_text, text_color),
                 ]
                 .spacing(10),
-                text(context)
+                text(render_text.context)
                     .size(11)
                     .font(Font::MONOSPACE)
                     .color(weak_text),
@@ -609,6 +604,18 @@ struct PnlCardMetrics {
     leveraged_pct: Option<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PnlCardRenderText {
+    ticker: String,
+    leverage_display: String,
+    primary_value: String,
+    percent_mode_label: &'static str,
+    secondary_value: Option<String>,
+    entry_display: String,
+    exit_display: String,
+    context: String,
+}
+
 impl TradingTerminal {
     fn position_pnl_card_metrics(&self, coin: &str) -> Option<PnlCardMetrics> {
         let data = self.account_data.as_ref()?;
@@ -758,27 +765,17 @@ fn render_pnl_card_image(
     let card_palette = pnl_card_palette(theme, pnl_color);
     let text_rgba = color_to_rgba(card_palette.text, 255);
     let weak_rgba = color_to_rgba(card_palette.weak_text, 232);
-    let percent = state
-        .percent_mode
-        .select(metrics.asset_move_pct, metrics.leveraged_pct);
-    let primary_value = export_text(&pnl_card_primary_value(
-        state.display_mode,
-        percent,
-        metrics.upnl,
-    ));
-    let secondary_value = pnl_card_secondary_value(state.display_mode, percent, metrics.upnl)
-        .map(|value| export_text(&value));
-    let entry_display = export_text(&privacy_price_display(
-        &metrics.entry_display,
-        state.obscure_prices,
-    ));
-    let exit_display = export_text(&privacy_price_display(
-        &metrics.exit_display,
-        state.obscure_prices,
-    ));
-    let ticker = export_text(&metrics.ticker);
-    let context = export_text(&pnl_card_context_display(state, &metrics));
-    let leverage_display = export_text(&metrics.leverage_display);
+    let render_text = pnl_card_render_text(state, &metrics);
+    let primary_value = export_text(&render_text.primary_value);
+    let secondary_value = render_text
+        .secondary_value
+        .as_ref()
+        .map(|value| export_text(value));
+    let entry_display = export_text(&render_text.entry_display);
+    let exit_display = export_text(&render_text.exit_display);
+    let ticker = export_text(&render_text.ticker);
+    let context = export_text(&render_text.context);
+    let leverage_display = export_text(&render_text.leverage_display);
 
     draw_pnl_card_export_border(&mut rgba, WIDTH, HEIGHT, pnl_color, theme);
 
@@ -1166,6 +1163,23 @@ impl PnlCardPercentMode {
     }
 }
 
+fn pnl_card_render_text(state: &PnlCardWindowState, metrics: &PnlCardMetrics) -> PnlCardRenderText {
+    let percent = state
+        .percent_mode
+        .select(metrics.asset_move_pct, metrics.leveraged_pct);
+
+    PnlCardRenderText {
+        ticker: metrics.ticker.clone(),
+        leverage_display: metrics.leverage_display.clone(),
+        primary_value: pnl_card_primary_value(state.display_mode, percent, metrics.upnl),
+        percent_mode_label: state.percent_mode.label(),
+        secondary_value: pnl_card_secondary_value(state.display_mode, percent, metrics.upnl),
+        entry_display: privacy_price_display(&metrics.entry_display, state.obscure_prices),
+        exit_display: privacy_price_display(&metrics.exit_display, state.obscure_prices),
+        context: pnl_card_context_display(state, metrics),
+    }
+}
+
 fn pnl_card_context_display(state: &PnlCardWindowState, metrics: &PnlCardMetrics) -> String {
     if state.show_position_size {
         metrics.context.clone()
@@ -1353,17 +1367,17 @@ struct PnlCardPalette {
 fn pnl_card_palette(theme: &Theme, pnl_color: Color) -> PnlCardPalette {
     let palette = theme.palette();
     let extended = theme.extended_palette();
-    let start = mix_color(pnl_color, palette.primary, 0.26);
-    let mid = mix_color(
+    let raw_start = mix_color(pnl_color, palette.primary, 0.26);
+    let raw_mid = mix_color(
         extended.background.base.color,
         mix_color(pnl_color, palette.primary, 0.34),
         0.42,
     );
-    let end = mix_color(extended.background.weak.color, palette.background, 0.52);
+    let raw_end = mix_color(extended.background.weak.color, palette.background, 0.52);
+    let ([start, mid, end], text) = readable_card_surfaces([raw_start, raw_mid, raw_end]);
     let border_start = mix_color(palette.primary, Color::WHITE, 0.08);
     let border_mid = mix_color(pnl_color, palette.primary, 0.20);
     let border_end = mix_color(extended.background.strong.color, pnl_color, 0.24);
-    let text = text_color_for_card_surfaces(&[start, mid, end]);
     let weak_text = Color { a: 0.84, ..text };
 
     PnlCardPalette {
@@ -1376,6 +1390,52 @@ fn pnl_card_palette(theme: &Theme, pnl_color: Color) -> PnlCardPalette {
         text,
         weak_text,
     }
+}
+
+fn readable_card_surfaces(surfaces: [Color; 3]) -> ([Color; 3], Color) {
+    let light = Color::WHITE;
+    let dark = Color::from_rgb(0.04, 0.04, 0.04);
+    let light_surfaces = surfaces.map(|surface| surface_with_min_contrast(surface, light));
+    let dark_surfaces = surfaces.map(|surface| surface_with_min_contrast(surface, dark));
+    let light_adjustment = contrast_adjustment_score(&surfaces, &light_surfaces);
+    let dark_adjustment = contrast_adjustment_score(&surfaces, &dark_surfaces);
+
+    if dark_adjustment < light_adjustment {
+        (dark_surfaces, dark)
+    } else {
+        (light_surfaces, light)
+    }
+}
+
+fn surface_with_min_contrast(surface: Color, text: Color) -> Color {
+    if contrast_ratio(text, surface) >= PNL_CARD_MIN_TEXT_CONTRAST {
+        return surface;
+    }
+
+    let target = if relative_luminance(text) > 0.5 {
+        Color::BLACK
+    } else {
+        Color::WHITE
+    };
+
+    for step in 1..=64 {
+        let candidate = mix_color(surface, target, step as f32 / 64.0);
+        if contrast_ratio(text, candidate) >= PNL_CARD_MIN_TEXT_CONTRAST {
+            return candidate;
+        }
+    }
+
+    target
+}
+
+fn contrast_adjustment_score(original: &[Color; 3], adjusted: &[Color; 3]) -> f32 {
+    original
+        .iter()
+        .zip(adjusted.iter())
+        .map(|(left, right)| {
+            (left.r - right.r).abs() + (left.g - right.g).abs() + (left.b - right.b).abs()
+        })
+        .sum()
 }
 
 fn pnl_card_detail_band_style(theme: &Theme, pnl_color: Color) -> container_style::Style {
@@ -1462,19 +1522,7 @@ fn pnl_card_inner_style(theme: &Theme, pnl_color: Color) -> container_style::Sty
     }
 }
 
-fn text_color_for_card_surfaces(surfaces: &[Color]) -> Color {
-    let light = Color::WHITE;
-    let dark = Color::from_rgb(0.04, 0.04, 0.04);
-    let light_contrast = minimum_contrast_ratio(light, surfaces);
-    let dark_contrast = minimum_contrast_ratio(dark, surfaces);
-
-    if dark_contrast > light_contrast {
-        dark
-    } else {
-        light
-    }
-}
-
+#[cfg(test)]
 fn minimum_contrast_ratio(text: Color, surfaces: &[Color]) -> f32 {
     surfaces
         .iter()
@@ -1506,6 +1554,90 @@ fn relative_luminance(color: Color) -> f32 {
 mod tests {
     use super::*;
 
+    fn sample_metrics() -> PnlCardMetrics {
+        PnlCardMetrics {
+            ticker: "BTC".to_string(),
+            leverage_display: "20x".to_string(),
+            entry_display: "82,543.2".to_string(),
+            exit_display: "84,612.8".to_string(),
+            context: "Short 0.52 BTC".to_string(),
+            private_context: Some("Short position".to_string()),
+            upnl: 1076.19,
+            asset_move_pct: Some(2.51),
+            leveraged_pct: Some(50.14),
+        }
+    }
+
+    #[test]
+    fn pnl_card_window_defaults_are_privacy_first() {
+        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+
+        assert_eq!(state.target, PnlCardTarget::Position("BTC".to_string()));
+        assert_eq!(state.display_mode, PnlCardDisplayMode::Both);
+        assert_eq!(state.percent_mode, PnlCardPercentMode::Leveraged);
+        assert!(state.obscure_prices);
+        assert!(!state.show_position_size);
+    }
+
+    #[test]
+    fn render_text_default_card_uses_leveraged_percent_usd_and_private_context() {
+        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let render_text = pnl_card_render_text(&state, &sample_metrics());
+
+        assert_eq!(render_text.ticker, "BTC");
+        assert_eq!(render_text.leverage_display, "20x");
+        assert_eq!(render_text.primary_value, "+50.14%");
+        assert_eq!(render_text.percent_mode_label, "By leverage");
+        assert_eq!(render_text.secondary_value, Some("+$1,076.19".to_string()));
+        assert_eq!(render_text.entry_display, "82,5xx");
+        assert_eq!(render_text.exit_display, "84,6xx");
+        assert_eq!(render_text.context, "Short position");
+    }
+
+    #[test]
+    fn render_text_can_show_asset_move_only_with_exact_prices_and_position_size() {
+        let mut state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        state.display_mode = PnlCardDisplayMode::PercentOnly;
+        state.percent_mode = PnlCardPercentMode::AssetMove;
+        state.obscure_prices = false;
+        state.show_position_size = true;
+
+        let render_text = pnl_card_render_text(&state, &sample_metrics());
+
+        assert_eq!(render_text.primary_value, "+2.51%");
+        assert_eq!(render_text.percent_mode_label, "Asset move");
+        assert_eq!(render_text.secondary_value, None);
+        assert_eq!(render_text.entry_display, "82,543.2");
+        assert_eq!(render_text.exit_display, "84,612.8");
+        assert_eq!(render_text.context, "Short 0.52 BTC");
+    }
+
+    #[test]
+    fn render_text_can_show_usd_only_without_secondary_value() {
+        let mut state = PnlCardWindowState::new(PnlCardTarget::Position("ETH".to_string()));
+        let mut metrics = sample_metrics();
+        state.display_mode = PnlCardDisplayMode::UsdOnly;
+        metrics.upnl = -42.5;
+
+        let render_text = pnl_card_render_text(&state, &metrics);
+
+        assert_eq!(render_text.primary_value, "-$42.50");
+        assert_eq!(render_text.secondary_value, None);
+    }
+
+    #[test]
+    fn render_text_preserves_usd_when_percent_basis_is_missing() {
+        let state = PnlCardWindowState::new(PnlCardTarget::Summary);
+        let mut metrics = sample_metrics();
+        metrics.asset_move_pct = None;
+        metrics.leveraged_pct = None;
+
+        let render_text = pnl_card_render_text(&state, &metrics);
+
+        assert_eq!(render_text.primary_value, "--%");
+        assert_eq!(render_text.secondary_value, Some("+$1,076.19".to_string()));
+    }
+
     #[test]
     fn position_asset_move_is_side_adjusted() {
         assert_eq!(position_asset_move_pct(2.0, 100.0, 110.0), Some(10.0));
@@ -1518,6 +1650,18 @@ mod tests {
         assert_eq!(mark_from_wire_upnl(2.0, 100.0, Some(20.0)), Some(110.0));
         assert_eq!(mark_from_wire_upnl(-2.0, 100.0, Some(20.0)), Some(90.0));
         assert_eq!(mark_from_wire_upnl(0.0, 100.0, Some(20.0)), None);
+    }
+
+    #[test]
+    fn pct_from_basis_rejects_zero_basis() {
+        assert_eq!(pct_from_basis(50.0, 1_000.0), Some(5.0));
+        assert_eq!(pct_from_basis(50.0, 0.0), None);
+    }
+
+    #[test]
+    fn privacy_price_display_can_be_disabled() {
+        assert_eq!(privacy_price_display("82,543.2", true), "82,5xx");
+        assert_eq!(privacy_price_display("82,543.2", false), "82,543.2");
     }
 
     #[test]
@@ -1547,22 +1691,105 @@ mod tests {
     #[test]
     fn pnl_card_context_hides_position_size_by_default() {
         let mut state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
-        let metrics = PnlCardMetrics {
-            ticker: "BTC".to_string(),
-            leverage_display: "20x".to_string(),
-            entry_display: "82,543.2".to_string(),
-            exit_display: "84,612.8".to_string(),
-            context: "Short 0.52 BTC".to_string(),
-            private_context: Some("Short position".to_string()),
-            upnl: 1076.19,
-            asset_move_pct: Some(2.51),
-            leveraged_pct: Some(50.14),
-        };
+        let metrics = sample_metrics();
 
         assert_eq!(pnl_card_context_display(&state, &metrics), "Short position");
 
         state.show_position_size = true;
 
         assert_eq!(pnl_card_context_display(&state, &metrics), "Short 0.52 BTC");
+    }
+
+    #[test]
+    fn summary_context_is_not_replaced_by_position_privacy_text() {
+        let state = PnlCardWindowState::new(PnlCardTarget::Summary);
+        let mut metrics = sample_metrics();
+        metrics.context = "3 open positions".to_string();
+        metrics.private_context = None;
+
+        assert_eq!(
+            pnl_card_context_display(&state, &metrics),
+            "3 open positions"
+        );
+    }
+
+    #[test]
+    fn export_text_keeps_card_glyphs_and_sanitizes_unsupported_characters() {
+        assert_eq!(
+            export_text("BTC +50.14% / $1,076.19"),
+            "BTC +50.14% / $1,076.19"
+        );
+        assert_eq!(export_text("xyz:BTC→USD"), "XYZ:BTC-USD");
+    }
+
+    #[test]
+    fn filename_sanitizes_asset_ticker() {
+        let filename = pnl_card_filename("xyz:BTC/USD");
+
+        assert!(filename.starts_with("kerosene-xyz-btc-usd-pnl-card-"));
+        assert!(filename.ends_with(".png"));
+    }
+
+    #[test]
+    fn render_pnl_card_image_produces_expected_png_payload() {
+        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let image = render_pnl_card_image(
+            &state,
+            sample_metrics(),
+            Color::from_rgb8(0x50, 0xfa, 0x7b),
+            &Theme::Dark,
+        )
+        .expect("pnl card image renders");
+
+        assert_eq!(image.width, 1200);
+        assert_eq!(image.height, 675);
+        assert_eq!(image.rgba.len(), 1200 * 675 * 4);
+        assert!(image.png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(image.default_filename.starts_with("kerosene-btc-pnl-card-"));
+        assert!(image.default_filename.ends_with(".png"));
+    }
+
+    #[test]
+    fn positive_and_negative_exports_use_distinct_gradients() {
+        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let positive = render_pnl_card_image(
+            &state,
+            sample_metrics(),
+            Color::from_rgb8(0x50, 0xfa, 0x7b),
+            &Theme::Dark,
+        )
+        .expect("positive pnl card renders");
+        let negative = render_pnl_card_image(
+            &state,
+            sample_metrics(),
+            Color::from_rgb8(0xff, 0x55, 0x55),
+            &Theme::Dark,
+        )
+        .expect("negative pnl card renders");
+
+        assert_ne!(&positive.rgba[0..64], &negative.rgba[0..64]);
+    }
+
+    #[test]
+    fn card_palette_keeps_text_readable_across_builtin_themes() {
+        let pnl_colors = [
+            Color::from_rgb8(0x50, 0xfa, 0x7b),
+            Color::from_rgb8(0xff, 0x55, 0x55),
+        ];
+
+        for theme in Theme::ALL {
+            for pnl_color in pnl_colors {
+                let palette = pnl_card_palette(theme, pnl_color);
+                let min_contrast = minimum_contrast_ratio(
+                    palette.text,
+                    &[palette.start, palette.mid, palette.end],
+                );
+
+                assert!(
+                    min_contrast >= 4.5,
+                    "theme {theme:?} contrast {min_contrast:.2} is too low"
+                );
+            }
+        }
     }
 }

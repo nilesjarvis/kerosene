@@ -353,9 +353,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 
     #[test]
     fn routes_messages_with_known_overlap_to_existing_update_modules() {
+        let window_id = iced::window::Id::unique();
+
         assert_eq!(message_route(&Message::Tick), UpdateRoute::Calendar);
         assert_eq!(
             message_route(&Message::CalendarImpactFilterChanged(
@@ -366,6 +369,50 @@ mod tests {
         assert_eq!(message_route(&Message::ToggleHidePnl), UpdateRoute::Chrome);
         assert_eq!(
             message_route(&Message::ToggleHiddenPosition("BTC".to_string())),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::OpenPnlCard(PnlCardTarget::Position(
+                "BTC".to_string(),
+            ))),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::SetPnlCardDisplayMode(
+                window_id,
+                PnlCardDisplayMode::Both,
+            )),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::SetPnlCardPercentMode(
+                window_id,
+                PnlCardPercentMode::Leveraged,
+            )),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::TogglePnlCardPricePrivacy(window_id, true)),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::TogglePnlCardPositionSize(window_id, true)),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::CopyPnlCard(window_id)),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::PnlCardCopied(Ok(()))),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::SavePnlCard(window_id)),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::PnlCardSaved(Ok(None))),
             UpdateRoute::Account
         );
         assert_eq!(
