@@ -8,6 +8,7 @@ mod live_watchlist;
 mod order_presets;
 mod panes;
 mod schema;
+mod screenshot;
 mod secrets;
 mod themes;
 mod wallets;
@@ -36,6 +37,7 @@ pub use schema::{
     default_order_kind, default_symbol, default_tick_size, default_timeframe, new_secret_id,
     normalize_market_slippage_pct,
 };
+pub use screenshot::ChartScreenshotSettingsConfig;
 pub use secrets::{
     EncryptedSecretsConfig, SecretPayload, clear_global_secrets, clear_profile_secrets,
     decrypt_secrets, encrypt_secrets, store_global_hydromancer_secret,

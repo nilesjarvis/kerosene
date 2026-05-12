@@ -214,6 +214,8 @@ impl TradingTerminal {
             chart_screenshot_capture_in_progress: false,
             chart_screenshot_next_request_id: 0,
             chart_screenshot_pending_request_id: None,
+            chart_screenshot_settings: cfg.chart_screenshot_settings.clone(),
+            chart_screenshot_menu_open: None,
             main_window_size: cfg
                 .main_window_width
                 .zip(cfg.main_window_height)

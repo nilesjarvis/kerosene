@@ -42,8 +42,28 @@ impl CandlestickChart {
         IdxToCx: Fn(usize) -> f32,
     {
         self.draw_current_price_line(ctx);
-        self.draw_active_position_lines(ctx);
-        self.draw_active_order_lines(ctx);
+        if self.should_draw_position_and_order_overlays() {
+            self.draw_active_position_lines(ctx);
+            self.draw_active_order_lines(ctx);
+        }
         self.draw_trade_markers(ctx);
+    }
+
+    fn should_draw_position_and_order_overlays(&self) -> bool {
+        !self.hide_positions_and_orders
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn position_and_order_overlay_render_guard_follows_privacy_flag() {
+        let mut chart = CandlestickChart::new(1);
+        assert!(chart.should_draw_position_and_order_overlays());
+
+        chart.hide_positions_and_orders = true;
+        assert!(!chart.should_draw_position_and_order_overlays());
     }
 }

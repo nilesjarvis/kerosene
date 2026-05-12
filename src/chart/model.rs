@@ -80,6 +80,10 @@ pub struct CandlestickChart {
     pub chart_bull_color: Option<Color>,
     /// Optional theme override for bearish candle visuals.
     pub chart_bear_color: Option<Color>,
+    /// Whether position entry and liquidation labels should be redacted while rendering.
+    pub(crate) obscure_position_prices: bool,
+    /// Whether active position/liquidation and order overlays should be hidden while rendering.
+    pub(crate) hide_positions_and_orders: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

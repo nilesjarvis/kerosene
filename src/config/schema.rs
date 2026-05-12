@@ -3,6 +3,7 @@ use super::layouts::{PaneLayoutConfig, SavedLayout};
 use super::live_watchlist::LiveWatchlistConfig;
 use super::order_presets::OrderPresetsConfig;
 use super::panes::{ChartConfig, OrderBookConfig, SpaghettiChartConfig};
+use super::screenshot::ChartScreenshotSettingsConfig;
 use super::secrets::EncryptedSecretsConfig;
 use super::themes::{CustomThemeConfig, default_custom_themes, default_theme};
 use super::wallets::{AddressBookEntryConfig, WalletTrackerConfig};
@@ -80,6 +81,9 @@ pub struct KeroseneConfig {
     /// Selected sort mode for the global symbol search.
     #[serde(default = "default_symbol_search_sort_mode")]
     pub symbol_search_sort_mode: String,
+    /// Global settings used for chart screenshots.
+    #[serde(default)]
+    pub chart_screenshot_settings: ChartScreenshotSettingsConfig,
     /// Pane layout split ratios (top-to-bottom, left-to-right order).
     /// The 5 ratios correspond to the splits in the pane tree:
     /// [account_bar, main_vs_bottom, chart_vs_right, orderbook_vs_watchlist, tabs_vs_entry]

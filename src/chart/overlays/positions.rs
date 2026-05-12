@@ -45,7 +45,7 @@ impl CandlestickChart {
                     ctx.frame,
                     ctx.chart_w,
                     entry_y,
-                    format_price(pos_overlay.entry_px),
+                    position_entry_badge_label(pos_overlay.entry_px, self.obscure_position_prices),
                     pos_color_solid,
                     AxisBadgeStyle {
                         char_width: 6.5,
@@ -101,7 +101,7 @@ impl CandlestickChart {
                         ctx.frame,
                         ctx.chart_w,
                         liq_y,
-                        format!("Liq {}", format_price(liq_px)),
+                        position_liquidation_badge_label(liq_px, self.obscure_position_prices),
                         liq_color,
                         AxisBadgeStyle {
                             char_width: 6.2,
@@ -114,5 +114,41 @@ impl CandlestickChart {
                 }
             }
         }
+    }
+}
+
+fn position_entry_badge_label(entry_px: f64, obscure: bool) -> String {
+    if obscure {
+        "ENTRY".to_string()
+    } else {
+        format_price(entry_px)
+    }
+}
+
+fn position_liquidation_badge_label(liq_px: f64, obscure: bool) -> String {
+    if obscure {
+        "LIQ".to_string()
+    } else {
+        format!("Liq {}", format_price(liq_px))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn position_price_labels_redact_when_obscured() {
+        assert_eq!(position_entry_badge_label(12345.67, true), "ENTRY");
+        assert_eq!(position_liquidation_badge_label(9800.0, true), "LIQ");
+    }
+
+    #[test]
+    fn position_price_labels_show_prices_when_not_obscured() {
+        assert_eq!(position_entry_badge_label(12345.67, false), "12,345.7");
+        assert_eq!(
+            position_liquidation_badge_label(9800.0, false),
+            "Liq 9,800.0"
+        );
     }
 }

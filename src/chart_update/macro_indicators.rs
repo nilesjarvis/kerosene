@@ -8,8 +8,15 @@ impl TradingTerminal {
     pub(super) fn update_chart_macro_indicators(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ToggleMacroMenu(id) => {
+                let opening = self
+                    .charts
+                    .get(&id)
+                    .is_some_and(|inst| !inst.macro_menu_open);
+                if opening {
+                    self.close_chart_header_menus();
+                }
                 if let Some(inst) = self.charts.get_mut(&id) {
-                    inst.macro_menu_open = !inst.macro_menu_open;
+                    inst.macro_menu_open = opening;
                 }
             }
             Message::ToggleMacroIndicator(id, key) => {

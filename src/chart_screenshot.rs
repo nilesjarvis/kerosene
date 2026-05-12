@@ -7,12 +7,16 @@ use chrono::{DateTime, Local};
 use iced::advanced::graphics::geometry::Renderer as GeometryRenderer;
 use iced::advanced::renderer::Headless;
 use iced::advanced::widget::{Id, Operation, operation::Outcome};
+use iced::widget::container as container_style;
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::svg::Handle as SvgHandle;
-use iced::widget::{button, column, container, image as image_widget, row, svg, text, tooltip};
+use iced::widget::{
+    button, checkbox, column, container, image as image_widget, row, rule, scrollable, stack, svg,
+    text, tooltip,
+};
 use iced::{
-    Color, ContentFit, Element, Fill, Font, Length, Pixels, Rectangle, Size, Task, Theme, mouse,
-    window,
+    Alignment, Color, ContentFit, Element, Fill, Font, Length, Pixels, Rectangle, Size, Task,
+    Theme, mouse, window,
 };
 use image::codecs::png::PngEncoder;
 use image::{ColorType, ImageEncoder};
@@ -26,6 +30,13 @@ const CAMERA_ICON_SVG: &[u8] = br#"
      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M14.5 4l1.6 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.9l1.6-2h5z"/>
   <circle cx="12" cy="13" r="4"/>
+</svg>
+"#;
+
+const CHEVRON_DOWN_ICON_SVG: &[u8] = br#"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="m6 9 6 6 6-6"/>
 </svg>
 "#;
 
@@ -117,7 +128,28 @@ struct ChartScreenshotRenderRequest {
 impl TradingTerminal {
     pub(crate) fn update_chart_screenshot(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::ToggleChartScreenshotMenu(chart_id) => {
+                if self.chart_screenshot_menu_open == Some(chart_id) {
+                    self.chart_screenshot_menu_open = None;
+                } else {
+                    self.close_chart_header_menus();
+                    self.chart_screenshot_menu_open = Some(chart_id);
+                }
+            }
+            Message::ToggleChartScreenshotObscurePositionEntry(obscure) => {
+                if self.chart_screenshot_settings.obscure_position_entry != obscure {
+                    self.chart_screenshot_settings.obscure_position_entry = obscure;
+                    self.persist_config();
+                }
+            }
+            Message::ToggleChartScreenshotHidePositionsAndOrders(hide) => {
+                if self.chart_screenshot_settings.hide_positions_and_orders != hide {
+                    self.chart_screenshot_settings.hide_positions_and_orders = hide;
+                    self.persist_config();
+                }
+            }
             Message::OpenChartScreenshot(chart_id) => {
+                self.chart_screenshot_menu_open = None;
                 if self.chart_screenshot_capture_in_progress {
                     self.push_toast("Chart screenshot already in progress".to_string(), false);
                     return self.open_or_focus_chart_screenshot_window(Task::none());
@@ -278,10 +310,12 @@ impl TradingTerminal {
         logical_bounds: Rectangle,
     ) -> ChartScreenshotRenderRequest {
         let theme = self.theme();
+        let chart = chart_for_screenshot_export(instance, &self.chart_screenshot_settings);
+
         ChartScreenshotRenderRequest {
             symbol: instance.symbol_display.clone(),
             timeframe: instance.interval.label().to_string(),
-            chart: instance.chart.snapshot_for_export(),
+            chart,
             viewport: instance.heatmap_viewport,
             label_style: chart_screenshot_label_style(&theme),
             background_color: theme.extended_palette().background.base.color,
@@ -289,6 +323,28 @@ impl TradingTerminal {
             theme,
         }
     }
+
+    pub(crate) fn close_chart_header_menus(&mut self) {
+        for inst in self.charts.values_mut() {
+            inst.macro_menu_open = false;
+        }
+        for inst in self.spaghetti_charts.values_mut() {
+            inst.style_menu_open = false;
+        }
+        self.add_widget_menu_open = false;
+        self.account_picker_open = false;
+        self.chart_screenshot_menu_open = None;
+    }
+}
+
+fn chart_for_screenshot_export(
+    instance: &ChartInstance,
+    settings: &crate::config::ChartScreenshotSettingsConfig,
+) -> crate::chart::CandlestickChart {
+    let mut chart = instance.chart.snapshot_for_export();
+    chart.obscure_position_prices = settings.obscure_position_entry;
+    chart.hide_positions_and_orders = settings.hide_positions_and_orders;
+    chart
 }
 
 // ---------------------------------------------------------------------------
@@ -409,40 +465,98 @@ impl TradingTerminal {
     pub(crate) fn view_chart_screenshot_button(
         &self,
         chart_id: ChartId,
-        theme: &Theme,
     ) -> Element<'static, Message> {
-        let icon = svg(SvgHandle::from_memory(CAMERA_ICON_SVG))
-            .width(Length::Fixed(14.0))
-            .height(Length::Fixed(14.0))
-            .style(|theme: &Theme, _status| svg::Style {
-                color: Some(theme.palette().text),
+        let capture = tooltip(
+            chart_screenshot_icon_button(
+                chart_screenshot_svg_icon(CAMERA_ICON_SVG, 14.0),
+                Message::OpenChartScreenshot(chart_id),
+                false,
+                [3, 6],
+            ),
+            text("Capture chart").size(10).font(iced::Font::MONOSPACE),
+            tooltip::Position::Top,
+        );
+
+        let settings = tooltip(
+            chart_screenshot_icon_button(
+                chart_screenshot_svg_icon(CHEVRON_DOWN_ICON_SVG, 12.0),
+                Message::ToggleChartScreenshotMenu(chart_id),
+                self.chart_screenshot_menu_open == Some(chart_id),
+                [3, 3],
+            ),
+            text("Screenshot settings")
+                .size(10)
+                .font(iced::Font::MONOSPACE),
+            tooltip::Position::Top,
+        );
+
+        row![capture, settings]
+            .spacing(1)
+            .align_y(Alignment::Center)
+            .into()
+    }
+
+    pub(crate) fn view_chart_screenshot_menu(&self, _chart_id: ChartId) -> Element<'_, Message> {
+        let menu_col = column![
+            text("Screenshot")
+                .size(10)
+                .font(Font::MONOSPACE)
+                .color(Color::from_rgb8(0x88, 0x88, 0x88)),
+            screenshot_menu_separator(),
+            checkbox(self.chart_screenshot_settings.obscure_position_entry)
+                .label("Obscure position entry")
+                .on_toggle(Message::ToggleChartScreenshotObscurePositionEntry)
+                .size(10)
+                .spacing(4)
+                .text_size(10)
+                .font(Font::MONOSPACE)
+                .width(Fill),
+            checkbox(self.chart_screenshot_settings.hide_positions_and_orders)
+                .label("Hide positions/orders")
+                .on_toggle(Message::ToggleChartScreenshotHidePositionsAndOrders)
+                .size(10)
+                .spacing(4)
+                .text_size(10)
+                .font(Font::MONOSPACE)
+                .width(Fill),
+        ]
+        .spacing(5)
+        .padding(6)
+        .width(Fill);
+
+        let menu_card = container(scrollable(menu_col).height(Length::Shrink))
+            .width(220.0)
+            .max_height(116.0)
+            .style(|theme: &Theme| container_style::Style {
+                background: Some(theme.extended_palette().background.strong.color.into()),
+                border: iced::Border {
+                    color: theme.extended_palette().background.weak.color,
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
             });
 
-        tooltip(
-            button(icon)
-                .on_press(Message::OpenChartScreenshot(chart_id))
-                .padding([3, 6])
-                .style(|theme: &Theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => theme.extended_palette().background.strong.color,
-                        _ => iced::Color::TRANSPARENT,
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: theme.palette().text,
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
-            text("Capture chart")
-                .size(10)
-                .font(iced::Font::MONOSPACE)
-                .color(theme.palette().text),
-            tooltip::Position::Top,
-        )
+        let bg_overlay = button("")
+            .width(Fill)
+            .height(Fill)
+            .on_press(Message::CloseAllMenus)
+            .style(|_theme: &Theme, _status| button::Style {
+                background: Some(Color::TRANSPARENT.into()),
+                ..Default::default()
+            });
+
+        stack![
+            bg_overlay,
+            container(menu_card)
+                .width(Fill)
+                .height(Fill)
+                .padding([32, 20])
+                .align_x(Alignment::End)
+                .align_y(Alignment::Start)
+        ]
+        .width(Fill)
+        .height(Fill)
         .into()
     }
 
@@ -470,6 +584,58 @@ fn chart_screenshot_button(label: &'static str, msg: Message) -> Element<'static
                 },
                 ..Default::default()
             }
+        })
+        .into()
+}
+
+fn chart_screenshot_svg_icon(svg_bytes: &'static [u8], size: f32) -> Element<'static, Message> {
+    svg(SvgHandle::from_memory(svg_bytes))
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .style(|theme: &Theme, _status| svg::Style {
+            color: Some(theme.palette().text),
+        })
+        .into()
+}
+
+fn chart_screenshot_icon_button(
+    icon: Element<'static, Message>,
+    msg: Message,
+    active: bool,
+    padding: [u16; 2],
+) -> Element<'static, Message> {
+    button(icon)
+        .on_press(msg)
+        .padding(padding)
+        .style(move |theme: &Theme, status| {
+            let bg = match status {
+                button::Status::Hovered => theme.extended_palette().background.strong.color,
+                _ if active => theme.extended_palette().background.weak.color,
+                _ => Color::TRANSPARENT,
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: theme.palette().text,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
+fn screenshot_menu_separator() -> Element<'static, Message> {
+    rule::horizontal(1)
+        .style(|theme: &Theme| rule::Style {
+            color: Color {
+                a: 0.16,
+                ..theme.extended_palette().background.weak.text
+            },
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
         })
         .into()
 }
@@ -578,7 +744,7 @@ fn chart_screenshot_export_dimensions(width: u32, height: u32) -> Option<(u32, u
     }
 }
 
-fn encode_png_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn encode_png_rgba(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
     let expected_len = width as usize * height as usize * 4;
     if rgba.len() != expected_len {
         return Err("captured image buffer had an unexpected size".to_string());
@@ -611,7 +777,7 @@ fn chart_screenshot_label_style(theme: &Theme) -> ChartScreenshotLabelStyle {
     }
 }
 
-fn color_to_rgba(color: Color, alpha: u8) -> [u8; 4] {
+pub(crate) fn color_to_rgba(color: Color, alpha: u8) -> [u8; 4] {
     [
         color_to_u8(color.r),
         color_to_u8(color.g),
@@ -708,20 +874,20 @@ fn draw_ticker_label(
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Rect {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+pub(crate) struct Rect {
+    pub(crate) x: u32,
+    pub(crate) y: u32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct PixelPoint {
-    x: u32,
-    y: u32,
+pub(crate) struct PixelPoint {
+    pub(crate) x: u32,
+    pub(crate) y: u32,
 }
 
-fn fill_rect(rgba: &mut [u8], width: u32, height: u32, rect: Rect, color: [u8; 4]) {
+pub(crate) fn fill_rect(rgba: &mut [u8], width: u32, height: u32, rect: Rect, color: [u8; 4]) {
     let max_x = rect.x.saturating_add(rect.width).min(width);
     let max_y = rect.y.saturating_add(rect.height).min(height);
     for y in rect.y..max_y {
@@ -731,7 +897,7 @@ fn fill_rect(rgba: &mut [u8], width: u32, height: u32, rect: Rect, color: [u8; 4
     }
 }
 
-fn stroke_rect(rgba: &mut [u8], width: u32, height: u32, rect: Rect, color: [u8; 4]) {
+pub(crate) fn stroke_rect(rgba: &mut [u8], width: u32, height: u32, rect: Rect, color: [u8; 4]) {
     if rect.width == 0 || rect.height == 0 {
         return;
     }
@@ -756,7 +922,7 @@ fn stroke_rect(rgba: &mut [u8], width: u32, height: u32, rect: Rect, color: [u8;
     }
 }
 
-fn draw_bitmap_text(
+pub(crate) fn draw_bitmap_text(
     rgba: &mut [u8],
     width: u32,
     height: u32,
@@ -796,7 +962,7 @@ fn draw_bitmap_text(
 const BITMAP_GLYPH_WIDTH: u32 = 5;
 const BITMAP_GLYPH_HEIGHT: u32 = 7;
 
-fn bitmap_text_width(text: &str, scale: u32) -> u32 {
+pub(crate) fn bitmap_text_width(text: &str, scale: u32) -> u32 {
     let count = text.chars().count() as u32;
     if count == 0 {
         0
@@ -858,7 +1024,19 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
 fn is_bitmap_glyph_supported(ch: char) -> bool {
     matches!(
         ch,
-        'A'..='Z' | '0'..='9' | '/' | ':' | '-' | '_' | '.' | ' '
+        'A'..='Z'
+            | '0'..='9'
+            | '/'
+            | ':'
+            | '-'
+            | '_'
+            | '.'
+            | ','
+            | '+'
+            | '$'
+            | '%'
+            | '*'
+            | ' '
     )
 }
 
@@ -993,6 +1171,21 @@ fn bitmap_glyph(ch: char) -> [u32; 7] {
         ':' => [
             0b00000, 0b00100, 0b00100, 0b00000, 0b00100, 0b00100, 0b00000,
         ],
+        ',' => [
+            0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00100, 0b01000,
+        ],
+        '+' => [
+            0b00000, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0b00000,
+        ],
+        '$' => [
+            0b00100, 0b01111, 0b10100, 0b01110, 0b00101, 0b11110, 0b00100,
+        ],
+        '%' => [
+            0b11001, 0b11010, 0b00010, 0b00100, 0b01000, 0b01011, 0b10011,
+        ],
+        '*' => [
+            0b00000, 0b10101, 0b01110, 0b11111, 0b01110, 0b10101, 0b00000,
+        ],
         '-' => [
             0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000,
         ],
@@ -1070,7 +1263,39 @@ fn sanitize_filename_part(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chart::{OrderOverlay, PositionOverlay};
+    use crate::timeframe::Timeframe;
     use chrono::TimeZone;
+
+    #[test]
+    fn screenshot_export_chart_applies_privacy_settings_without_mutating_live_chart() {
+        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        instance.chart.active_position = Some(PositionOverlay {
+            entry_px: 100_000.0,
+            szi: 1.0,
+            liquidation_px: Some(80_000.0),
+        });
+        instance.chart.active_orders.push(OrderOverlay {
+            coin: "BTC".to_string(),
+            limit_px: 101_000.0,
+            sz: 0.25,
+            is_buy: true,
+            oid: 42,
+        });
+        let settings = crate::config::ChartScreenshotSettingsConfig {
+            obscure_position_entry: true,
+            hide_positions_and_orders: true,
+        };
+
+        let export_chart = chart_for_screenshot_export(&instance, &settings);
+
+        assert!(export_chart.obscure_position_prices);
+        assert!(export_chart.hide_positions_and_orders);
+        assert!(export_chart.active_position.is_some());
+        assert_eq!(export_chart.active_orders.len(), 1);
+        assert!(!instance.chart.obscure_position_prices);
+        assert!(!instance.chart.hide_positions_and_orders);
+    }
 
     #[test]
     fn encode_png_rgba_rejects_wrong_buffer_size() {

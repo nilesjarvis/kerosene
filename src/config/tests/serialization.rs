@@ -1,7 +1,8 @@
 use super::super::secrets;
 use super::super::{
-    AccountProfile, ChartConfig, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig,
-    MacroIndicatorsConfig, PaneKindConfig, PaneLayoutConfig, default_market_slippage_pct,
+    AccountProfile, ChartConfig, ChartScreenshotSettingsConfig, CredentialStorageMode,
+    EncryptedSecretsConfig, KeroseneConfig, MacroIndicatorsConfig, PaneKindConfig,
+    PaneLayoutConfig, default_market_slippage_pct,
 };
 use crate::advanced_order_history::{AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind};
 use std::collections::HashMap;
@@ -112,6 +113,41 @@ fn symbol_search_sort_mode_round_trips_and_legacy_defaults_relevance() {
     let decoded_legacy: KeroseneConfig =
         serde_json::from_value(legacy).expect("legacy config should deserialize");
     assert_eq!(decoded_legacy.symbol_search_sort_mode, "relevance");
+}
+
+#[test]
+fn chart_screenshot_settings_round_trip_and_legacy_defaults_visible() {
+    let config = KeroseneConfig {
+        chart_screenshot_settings: ChartScreenshotSettingsConfig {
+            obscure_position_entry: true,
+            hide_positions_and_orders: true,
+        },
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert!(decoded.chart_screenshot_settings.obscure_position_entry);
+    assert!(decoded.chart_screenshot_settings.hide_positions_and_orders);
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    legacy
+        .as_object_mut()
+        .expect("config should serialize to object")
+        .remove("chart_screenshot_settings");
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert!(
+        !decoded_legacy
+            .chart_screenshot_settings
+            .obscure_position_entry
+    );
+    assert!(
+        !decoded_legacy
+            .chart_screenshot_settings
+            .hide_positions_and_orders
+    );
 }
 
 #[test]

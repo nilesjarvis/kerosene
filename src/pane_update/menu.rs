@@ -14,20 +14,14 @@ impl TradingTerminal {
                 }
             }
             Message::CloseAllMenus => {
-                for inst in self.charts.values_mut() {
-                    inst.macro_menu_open = false;
-                }
-                for inst in self.spaghetti_charts.values_mut() {
-                    inst.style_menu_open = false;
-                }
-                self.add_widget_menu_open = false;
-                self.account_picker_open = false;
+                self.close_chart_header_menus();
             }
             Message::ToggleAddWidgetMenu => {
-                self.add_widget_menu_open = !self.add_widget_menu_open;
-                if self.add_widget_menu_open {
-                    self.account_picker_open = false;
+                let opening = !self.add_widget_menu_open;
+                if opening {
+                    self.close_chart_header_menus();
                 }
+                self.add_widget_menu_open = opening;
             }
             Message::SetAddWidgetPlacement(placement) => {
                 self.add_widget_placement = placement;

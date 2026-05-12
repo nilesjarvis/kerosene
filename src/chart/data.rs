@@ -44,6 +44,8 @@ impl CandlestickChart {
             inverted: false,
             chart_bull_color: None,
             chart_bear_color: None,
+            obscure_position_prices: false,
+            hide_positions_and_orders: false,
         }
     }
 
@@ -74,6 +76,8 @@ impl CandlestickChart {
             inverted: self.inverted,
             chart_bull_color: self.chart_bull_color,
             chart_bear_color: self.chart_bear_color,
+            obscure_position_prices: self.obscure_position_prices,
+            hide_positions_and_orders: self.hide_positions_and_orders,
         }
     }
 

@@ -7,8 +7,15 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(super) fn toggle_spaghetti_style_menu(&mut self, id: SpaghettiChartId) -> Task<Message> {
+        let opening = self
+            .spaghetti_charts
+            .get(&id)
+            .is_some_and(|inst| !inst.style_menu_open);
+        if opening {
+            self.close_chart_header_menus();
+        }
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
-            inst.style_menu_open = !inst.style_menu_open;
+            inst.style_menu_open = opening;
         }
         Task::none()
     }

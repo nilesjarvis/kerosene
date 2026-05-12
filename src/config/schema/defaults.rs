@@ -81,6 +81,7 @@ impl Default for KeroseneConfig {
             reduce_only: false,
             book_tick_size: default_tick_size(),
             symbol_search_sort_mode: default_symbol_search_sort_mode(),
+            chart_screenshot_settings: Default::default(),
             layout_ratios: default_layout_ratios(),
             pane_layout: None,
             charts: Vec::new(),

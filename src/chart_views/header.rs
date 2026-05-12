@@ -73,7 +73,7 @@ impl TradingTerminal {
 
         header_row = header_row
             .push(Space::new().width(Fill))
-            .push(self.view_chart_screenshot_button(chart_id, &theme));
+            .push(self.view_chart_screenshot_button(chart_id));
 
         header_row.into()
     }

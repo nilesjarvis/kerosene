@@ -94,10 +94,11 @@ impl TradingTerminal {
     }
 
     pub(super) fn toggle_account_picker(&mut self) -> Task<Message> {
-        self.account_picker_open = !self.account_picker_open;
-        if self.account_picker_open {
-            self.add_widget_menu_open = false;
+        let opening = !self.account_picker_open;
+        if opening {
+            self.close_chart_header_menus();
         }
+        self.account_picker_open = opening;
         Task::none()
     }
 

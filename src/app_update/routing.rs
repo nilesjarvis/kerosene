@@ -205,7 +205,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WindowClosed(_)
         | Message::WindowResized(_, _) => UpdateRoute::Window,
 
-        Message::OpenChartScreenshot(_)
+        Message::ToggleChartScreenshotMenu(_)
+        | Message::ToggleChartScreenshotObscurePositionEntry(_)
+        | Message::ToggleChartScreenshotHidePositionsAndOrders(_)
+        | Message::OpenChartScreenshot(_)
         | Message::ChartScreenshotBoundsResolved(_, _, _)
         | Message::ChartScreenshotCaptured(_, _, _)
         | Message::CopyChartScreenshot
@@ -383,6 +386,14 @@ mod tests {
         assert_eq!(
             message_route(&Message::RefreshHeatmap),
             UpdateRoute::Hyperdash
+        );
+        assert_eq!(
+            message_route(&Message::ToggleChartScreenshotObscurePositionEntry(true)),
+            UpdateRoute::ChartScreenshot
+        );
+        assert_eq!(
+            message_route(&Message::ToggleChartScreenshotHidePositionsAndOrders(true)),
+            UpdateRoute::ChartScreenshot
         );
     }
 }

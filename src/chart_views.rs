@@ -143,6 +143,9 @@ impl TradingTerminal {
             if instance.macro_menu_open {
                 chart_layers.push(self.view_macro_indicator_menu(chart_id, instance));
             }
+            if self.chart_screenshot_menu_open == Some(chart_id) {
+                chart_layers.push(self.view_chart_screenshot_menu(chart_id));
+            }
 
             container(stack(chart_layers))
                 .width(Fill)

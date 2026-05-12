@@ -205,6 +205,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_screenshot_capture_in_progress: bool,
     pub(crate) chart_screenshot_next_request_id: u64,
     pub(crate) chart_screenshot_pending_request_id: Option<u64>,
+    pub(crate) chart_screenshot_settings: config::ChartScreenshotSettingsConfig,
+    pub(crate) chart_screenshot_menu_open: Option<ChartId>,
     pub(crate) main_window_size: Option<iced::Size>,
     pub(crate) main_window_pos: Option<iced::Point>,
     pub(crate) wallet_tracker: WalletTrackerState,
