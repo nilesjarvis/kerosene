@@ -39,7 +39,7 @@ impl TradingTerminal {
                 if let Some(inst) = self.order_books.get_mut(&id)
                     && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
                 {
-                    inst.book = book.clone();
+                    inst.set_book(book.clone());
                     inst.book_loading = false;
                     inst.book_error = None;
                 }
@@ -66,7 +66,7 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 if let Some(inst) = self.order_books.get_mut(&id) {
-                    inst.tick_size = tick;
+                    inst.set_tick_size(tick);
                     inst.book_loading = true;
                     inst.book_error = None;
 
@@ -115,13 +115,13 @@ impl TradingTerminal {
                 if let Some(inst) = self.order_books.get_mut(&id) {
                     inst.mode = mode.clone();
                     inst.settings_open = false;
-                    inst.book = OrderBook::empty();
+                    inst.set_book(OrderBook::empty());
                     inst.asset_ctx = None;
                     inst.spread_history.clear();
                     inst.book_loading = true;
                     inst.book_error = None;
 
-                    inst.tick_size = mid.map(helpers::default_tick_for_price).unwrap_or(0.01);
+                    inst.set_tick_size(mid.map(helpers::default_tick_for_price).unwrap_or(0.01));
 
                     self.persist_config();
                     return self.order_book_fetch_task_for_id(id);

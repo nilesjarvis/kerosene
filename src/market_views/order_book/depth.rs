@@ -2,7 +2,7 @@ mod dom;
 mod spread;
 
 use crate::app_state::TradingTerminal;
-use crate::helpers::{aggregate_levels, book_row, tick_decimals};
+use crate::helpers::{book_row, tick_decimals};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::{Column, column, container, scrollable};
@@ -22,32 +22,22 @@ impl TradingTerminal {
         let max_levels = 100;
         let decimals = tick_decimals(tick);
 
-        let agg_asks = aggregate_levels(&inst.book.asks, tick, false);
-        let agg_bids = aggregate_levels(&inst.book.bids, tick, true);
+        let depth = inst.aggregated_depth(tick);
 
-        let ask_display: Vec<&(f64, f64)> = agg_asks.iter().take(max_levels).collect();
-        let mut ask_cum = 0.0;
-        let ask_rows: Vec<(f64, f64, f64)> = ask_display
+        // Asks come out of the cache in ascending price (inside-out); the
+        // display wants worst-at-top, best-at-bottom above the spread line.
+        let ask_rows: Vec<(f64, f64, f64)> = depth
+            .asks
             .iter()
-            .map(|(px, sz)| {
-                ask_cum += sz;
-                (*px, *sz, ask_cum)
-            })
+            .take(max_levels)
+            .copied()
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect();
         let max_ask_cum = ask_rows.last().map(|(_, _, cum)| *cum).unwrap_or(1.0);
 
-        let mut bid_cum = 0.0;
-        let bid_rows: Vec<(f64, f64, f64)> = agg_bids
-            .iter()
-            .take(max_levels)
-            .map(|(px, sz)| {
-                bid_cum += sz;
-                (*px, *sz, bid_cum)
-            })
-            .collect();
+        let bid_rows: Vec<(f64, f64, f64)> = depth.bids.iter().take(max_levels).copied().collect();
         let max_bid_cum = bid_rows.last().map(|(_, _, cum)| *cum).unwrap_or(1.0);
 
         let max_cum = max_ask_cum.max(max_bid_cum).max(1.0);

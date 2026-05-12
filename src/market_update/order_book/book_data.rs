@@ -61,7 +61,7 @@ impl TradingTerminal {
             inst.book_loading = false;
             match result {
                 Ok(book) => {
-                    inst.book = book;
+                    inst.set_book(book);
                     inst.book_error = None;
                     let mid = inst.book.mid_price();
 
@@ -71,7 +71,7 @@ impl TradingTerminal {
                         .any(|&opt| (opt - inst.tick_size).abs() / opt.max(1e-12) < 0.01);
 
                     if !is_valid_tick {
-                        inst.tick_size = helpers::default_tick_for_price(mid);
+                        inst.set_tick_size(helpers::default_tick_for_price(mid));
                     }
 
                     return self.center_order_book(id);
