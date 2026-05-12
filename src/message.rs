@@ -34,6 +34,10 @@ pub(crate) enum Message {
     SaveLayout(String),
     LoadLayout(config::SavedLayout),
     DeleteLayout(String),
+    UpdateActiveLayout,
+    LayoutRenameToggled(usize),
+    LayoutRenameChanged(String),
+    LayoutRenameSubmitted(usize),
     ExportLayout(config::SavedLayout),
     ImportLayout,
     LayoutImported(Result<config::SavedLayout, String>),
@@ -94,6 +98,7 @@ pub(crate) enum Message {
     ToggleFavourite(String),
     // Add widget menu
     ToggleAddWidgetMenu,
+    ToggleLayoutMenu,
     ToggleMacroMenu(ChartId),
     ToggleMacroIndicator(ChartId, String),
     CloseAllMenus,

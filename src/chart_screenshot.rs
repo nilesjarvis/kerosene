@@ -332,6 +332,9 @@ impl TradingTerminal {
             inst.style_menu_open = false;
         }
         self.add_widget_menu_open = false;
+        self.layout_menu_open = false;
+        self.layout_rename_index = None;
+        self.layout_rename_input.clear();
         self.account_picker_open = false;
         self.account_picker_rename_index = None;
         self.chart_screenshot_menu_open = None;

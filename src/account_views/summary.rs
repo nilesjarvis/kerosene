@@ -1,6 +1,7 @@
 mod connected;
 mod controls;
 mod disconnected;
+mod layout_switcher;
 mod menus;
 
 use crate::app_state::TradingTerminal;

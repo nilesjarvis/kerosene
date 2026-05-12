@@ -75,6 +75,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) next_spaghetti_id: SpaghettiChartId,
     // Add-widget menu state
     pub(crate) add_widget_menu_open: bool,
+    pub(crate) layout_menu_open: bool,
+    pub(crate) layout_rename_index: Option<usize>,
+    pub(crate) layout_rename_input: String,
     pub(crate) add_widget_placement: AddWidgetPlacement,
     pub(crate) account_picker_open: bool,
     pub(crate) account_picker_rename_index: Option<usize>,

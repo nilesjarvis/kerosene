@@ -12,6 +12,10 @@ impl TradingTerminal {
             | Message::SaveLayout(_)
             | Message::LoadLayout(_)
             | Message::DeleteLayout(_)
+            | Message::UpdateActiveLayout
+            | Message::LayoutRenameToggled(_)
+            | Message::LayoutRenameChanged(_)
+            | Message::LayoutRenameSubmitted(_)
             | Message::ExportLayout(_)
             | Message::ImportLayout
             | Message::LayoutExported(_)

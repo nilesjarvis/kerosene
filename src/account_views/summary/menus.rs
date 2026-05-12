@@ -31,6 +31,11 @@ impl TradingTerminal {
                 alignment: MenuAlignment::Start,
                 content: opaque(self.view_account_picker_dropdown()),
             })
+        } else if self.layout_menu_open {
+            Some(AnchoredMenuLayer {
+                alignment: MenuAlignment::End,
+                content: opaque(self.view_layout_switcher_dropdown()),
+            })
         } else if self.add_widget_menu_open {
             Some(AnchoredMenuLayer {
                 alignment: MenuAlignment::End,

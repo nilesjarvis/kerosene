@@ -21,18 +21,53 @@ impl TradingTerminal {
                 self.layout_input.clear();
                 self.persist_config();
             }
+            Message::UpdateActiveLayout => {
+                let Some(name) = self
+                    .active_layout_name
+                    .as_deref()
+                    .and_then(normalized_layout_name)
+                else {
+                    self.push_toast("Select a saved layout before updating".to_string(), true);
+                    return Task::none();
+                };
+                self.update_saved_layout_snapshot(name);
+                self.layout_rename_index = None;
+                self.layout_rename_input.clear();
+                self.persist_config();
+            }
             Message::LoadLayout(layout) => {
+                self.close_chart_header_menus();
                 self.active_layout_name = Some(layout.name.clone());
                 let task = self.apply_layout(layout);
                 self.persist_config();
                 return task;
             }
             Message::DeleteLayout(name) => {
+                let removed_index = self
+                    .saved_layouts
+                    .iter()
+                    .position(|layout| layout.name == name);
                 self.saved_layouts.retain(|layout| layout.name != name);
                 if self.active_layout_name.as_deref() == Some(name.as_str()) {
                     self.active_layout_name = None;
                 }
+                self.reconcile_layout_rename_after_delete(removed_index);
                 self.persist_config();
+            }
+            Message::LayoutRenameToggled(index) => {
+                if self.layout_rename_index == Some(index) {
+                    self.layout_rename_index = None;
+                    self.layout_rename_input.clear();
+                } else if let Some(layout) = self.saved_layouts.get(index) {
+                    self.layout_rename_index = Some(index);
+                    self.layout_rename_input = layout.name.clone();
+                }
+            }
+            Message::LayoutRenameChanged(value) => {
+                self.layout_rename_input = value;
+            }
+            Message::LayoutRenameSubmitted(index) => {
+                self.rename_saved_layout(index);
             }
             Message::ExportLayout(layout) => {
                 return Task::perform(
@@ -119,5 +154,84 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    fn update_saved_layout_snapshot(&mut self, name: String) {
+        let new_layout = self.saved_layout_snapshot(name.clone());
+        if let Some(pos) = self
+            .saved_layouts
+            .iter()
+            .position(|layout| layout.name == name)
+        {
+            self.saved_layouts[pos] = new_layout;
+        } else {
+            self.saved_layouts.push(new_layout);
+        }
+        self.active_layout_name = Some(name);
+    }
+
+    fn reconcile_layout_rename_after_delete(&mut self, removed_index: Option<usize>) {
+        let Some(removed_index) = removed_index else {
+            return;
+        };
+        match self.layout_rename_index {
+            Some(index) if index == removed_index => {
+                self.layout_rename_index = None;
+                self.layout_rename_input.clear();
+            }
+            Some(index) if index > removed_index => {
+                self.layout_rename_index = Some(index - 1);
+            }
+            _ => {}
+        }
+    }
+
+    fn rename_saved_layout(&mut self, index: usize) {
+        let Some(new_name) = normalized_layout_name(&self.layout_rename_input) else {
+            self.push_toast("Layout name cannot be empty".to_string(), true);
+            return;
+        };
+        let Some(layout) = self.saved_layouts.get(index) else {
+            self.layout_rename_index = None;
+            self.layout_rename_input.clear();
+            return;
+        };
+        let old_name = layout.name.clone();
+        if self
+            .saved_layouts
+            .iter()
+            .enumerate()
+            .any(|(pos, layout)| pos != index && layout.name == new_name)
+        {
+            self.push_toast(format!("Layout '{}' already exists", new_name), true);
+            return;
+        }
+
+        self.saved_layouts[index].name = new_name.clone();
+        if self.active_layout_name.as_deref() == Some(old_name.as_str()) {
+            self.active_layout_name = Some(new_name);
+        }
+        self.layout_rename_index = None;
+        self.layout_rename_input.clear();
+        self.persist_config();
+    }
+}
+
+fn normalized_layout_name(name: &str) -> Option<String> {
+    let trimmed = name.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalized_layout_name;
+
+    #[test]
+    fn normalized_layout_name_trims_and_rejects_empty_names() {
+        assert_eq!(
+            normalized_layout_name("  Trading  "),
+            Some("Trading".to_string())
+        );
+        assert_eq!(normalized_layout_name("   "), None);
     }
 }

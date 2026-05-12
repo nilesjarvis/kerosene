@@ -76,6 +76,7 @@ impl TradingTerminal {
             connect_btn,
             save_credentials_btn,
             Space::new().width(Fill),
+            self.summary_layouts_button(),
             self.summary_widgets_button(),
             self.summary_settings_button()
         ]

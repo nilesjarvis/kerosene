@@ -10,6 +10,9 @@ impl TradingTerminal {
         match message {
             Message::OpenSettingsWindow => {
                 self.add_widget_menu_open = false;
+                self.layout_menu_open = false;
+                self.layout_rename_index = None;
+                self.layout_rename_input.clear();
                 self.account_picker_open = false;
                 self.account_picker_rename_index = None;
                 if let Some(id) = self.settings_window_id {

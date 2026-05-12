@@ -11,6 +11,9 @@ impl TradingTerminal {
         self.saved_layouts.clear();
         self.active_layout_name = None;
         self.layout_input.clear();
+        self.layout_menu_open = false;
+        self.layout_rename_index = None;
+        self.layout_rename_input.clear();
         self.hotkeys.clear();
         self.recording_hotkey_for = None;
         self.secret_storage_mode = config::CredentialStorageMode::default();

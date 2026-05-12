@@ -12,6 +12,7 @@ impl TradingTerminal {
             Message::SwitchBottomTab(_)
             | Message::CloseAllMenus
             | Message::ToggleAddWidgetMenu
+            | Message::ToggleLayoutMenu
             | Message::SetAddWidgetPlacement(_) => self.update_pane_menu(message),
             Message::AddTradingJournal => self.add_trading_journal_window(),
             Message::AddPortfolioPane

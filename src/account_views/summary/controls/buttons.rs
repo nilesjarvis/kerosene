@@ -27,6 +27,27 @@ impl TradingTerminal {
         .into()
     }
 
+    pub(crate) fn summary_layouts_button(&self) -> Element<'_, Message> {
+        let arrow = if self.layout_menu_open { "^" } else { "v" };
+        button(
+            row![
+                text(self.layout_switcher_button_label())
+                    .size(10)
+                    .width(Length::Fixed(78.0)),
+                text(arrow)
+                    .size(10)
+                    .width(Length::Fixed(8.0))
+                    .align_x(iced::alignment::Horizontal::Center),
+            ]
+            .spacing(4)
+            .align_y(iced::Alignment::Center),
+        )
+        .on_press(Message::ToggleLayoutMenu)
+        .padding([4, 8])
+        .style(summary_primary_action_style)
+        .into()
+    }
+
     pub(crate) fn summary_settings_button(&self) -> Element<'_, Message> {
         button(text("\u{2699}").size(12).center())
             .on_press(Message::OpenSettingsWindow)

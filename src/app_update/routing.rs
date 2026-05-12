@@ -34,6 +34,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SaveLayout(_)
         | Message::LoadLayout(_)
         | Message::DeleteLayout(_)
+        | Message::UpdateActiveLayout
+        | Message::LayoutRenameToggled(_)
+        | Message::LayoutRenameChanged(_)
+        | Message::LayoutRenameSubmitted(_)
         | Message::ExportLayout(_)
         | Message::ImportLayout
         | Message::ExportWalletLabels
@@ -51,6 +55,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::SwitchBottomTab(_)
         | Message::CloseAllMenus
         | Message::ToggleAddWidgetMenu
+        | Message::ToggleLayoutMenu
         | Message::SetAddWidgetPlacement(_)
         | Message::AddPortfolioPane
         | Message::AddIncomePane
@@ -367,6 +372,26 @@ mod tests {
             UpdateRoute::Chrome
         );
         assert_eq!(message_route(&Message::ToggleHidePnl), UpdateRoute::Chrome);
+        assert_eq!(
+            message_route(&Message::ToggleLayoutMenu),
+            UpdateRoute::Panes
+        );
+        assert_eq!(
+            message_route(&Message::UpdateActiveLayout),
+            UpdateRoute::Layout
+        );
+        assert_eq!(
+            message_route(&Message::LayoutRenameToggled(0)),
+            UpdateRoute::Layout
+        );
+        assert_eq!(
+            message_route(&Message::LayoutRenameChanged("Main".to_string())),
+            UpdateRoute::Layout
+        );
+        assert_eq!(
+            message_route(&Message::LayoutRenameSubmitted(0)),
+            UpdateRoute::Layout
+        );
         assert_eq!(
             message_route(&Message::ToggleHiddenPosition("BTC".to_string())),
             UpdateRoute::Account

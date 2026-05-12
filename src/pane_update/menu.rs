@@ -23,6 +23,13 @@ impl TradingTerminal {
                 }
                 self.add_widget_menu_open = opening;
             }
+            Message::ToggleLayoutMenu => {
+                let opening = !self.layout_menu_open;
+                if opening {
+                    self.close_chart_header_menus();
+                }
+                self.layout_menu_open = opening;
+            }
             Message::SetAddWidgetPlacement(placement) => {
                 self.add_widget_placement = placement;
             }

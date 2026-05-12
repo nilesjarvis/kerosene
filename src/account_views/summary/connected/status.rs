@@ -68,6 +68,7 @@ impl TradingTerminal {
             vertical_spacer(),
             status_widget,
             vertical_spacer(),
+            self.summary_layouts_button(),
             self.summary_widgets_button(),
             self.summary_settings_button(),
             self.summary_disconnect_button(),
