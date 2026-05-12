@@ -69,5 +69,11 @@ keyring = { version = "3", features = ["apple-native"] }
 keyring = { version = "3", features = ["windows-native"] }
 windows-sys = { version = "0.61", features = ["Win32_Media_Audio"] }
 
+[dev-dependencies]
+# Generative property-based testing for math-heavy helpers (book bucketing,
+# tick math, sigfig negotiation). Only pulled in for `cargo test`; release
+# builds are unaffected.
+proptest = { version = "1", default-features = false, features = ["std"] }
+
 [build-dependencies]
 winresource = { version = "0.1", default-features = false }
