@@ -2,16 +2,20 @@ use crate::api::{OrderBook, parse_ws_book};
 use crate::ws::{SubscriptionGuard, WsCommand, get_manager};
 
 use futures::SinkExt as _;
+use std::pin::Pin;
 use tokio::sync::broadcast;
+
+type BookSigfigs = (Option<u8>, Option<u8>);
+type BookStream = Pin<Box<dyn futures::Stream<Item = (String, OrderBook)> + Send>>;
+type KeyedBookStream =
+    Pin<Box<dyn futures::Stream<Item = (u64, String, BookSigfigs, OrderBook)> + Send>>;
 
 // ---------------------------------------------------------------------------
 // Order Book Streams
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::ptr_arg)]
-fn ws_book_stream(
-    args: &(String, (Option<u8>, Option<u8>)),
-) -> std::pin::Pin<Box<dyn futures::Stream<Item = (String, OrderBook)> + Send>> {
+fn ws_book_stream(args: &(String, BookSigfigs)) -> BookStream {
     let coin = args.0.clone();
     let sigfigs = args.1;
 
@@ -77,12 +81,11 @@ fn ws_book_stream(
     }))
 }
 
-pub fn ws_book_stream_keyed(
-    params: &(u64, String, (Option<u8>, Option<u8>)),
-) -> std::pin::Pin<Box<dyn futures::Stream<Item = (u64, String, OrderBook)> + Send>> {
+pub fn ws_book_stream_keyed(params: &(u64, String, BookSigfigs)) -> KeyedBookStream {
     let book_id = params.0;
+    let sigfigs = params.2;
     let inner = ws_book_stream(&(params.1.clone(), params.2));
     Box::pin(futures::StreamExt::map(inner, move |(coin, book)| {
-        (book_id, coin, book)
+        (book_id, coin, sigfigs, book)
     }))
 }

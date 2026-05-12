@@ -44,9 +44,9 @@ fn is_order_book_market_message(message: &Message) -> bool {
     matches!(
         message,
         Message::AddOrderBookPane
-            | Message::BookLoaded(_, _)
+            | Message::BookLoaded { .. }
             | Message::OrderBookWsAssetCtxUpdate(_, _)
-            | Message::WsBookUpdate(_, _, _)
+            | Message::WsBookUpdate { .. }
             | Message::SetBookTickSize(_, _)
             | Message::ToggleOrderBookSettings(_)
             | Message::ToggleOrderBookSpreadChart(_)

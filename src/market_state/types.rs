@@ -1,7 +1,7 @@
 use crate::account::AssetContext;
 use crate::api::{BookLevel, OrderBook};
 use crate::config;
-use crate::helpers::aggregate_levels;
+use crate::helpers::{aggregate_levels, tick_sizes_match};
 
 use std::cell::{Ref, RefCell};
 use std::collections::VecDeque;
@@ -163,6 +163,7 @@ pub struct OrderBookInstance {
     pub show_spread_chart: bool,
     pub spread_history: VecDeque<(Instant, f64)>,
     pub spread_chart_height: f32,
+    book_source_tick_size: Option<f64>,
     book_revision: u64,
     aggregated: RefCell<AggregatedDepth>,
 }
@@ -194,6 +195,7 @@ impl OrderBookInstance {
             show_spread_chart: false,
             spread_history: VecDeque::new(),
             spread_chart_height: 60.0,
+            book_source_tick_size: None,
             book_revision: 0,
             aggregated: RefCell::new(AggregatedDepth::default()),
         }
@@ -202,12 +204,48 @@ impl OrderBookInstance {
     /// Replace the in-memory book snapshot. Bumps the revision counter so any
     /// cached aggregation is invalidated on the next read.
     pub fn set_book(&mut self, book: OrderBook) {
+        self.set_book_with_source(book, None);
+    }
+
+    pub fn set_book_with_source(&mut self, book: OrderBook, source_tick_size: Option<f64>) {
         self.book = book;
+        self.book_source_tick_size = source_tick_size;
         self.book_revision = self.book_revision.wrapping_add(1);
+    }
+
+    pub fn apply_book_update_preserving_scope(
+        &mut self,
+        incoming: OrderBook,
+        incoming_source_tick_size: Option<f64>,
+    ) {
+        if self.should_merge_finer_book(incoming_source_tick_size) {
+            self.book = merge_books_preserving_scope(&self.book, &incoming);
+            self.book_revision = self.book_revision.wrapping_add(1);
+        } else {
+            self.set_book_with_source(incoming, incoming_source_tick_size);
+        }
     }
 
     pub fn set_tick_size(&mut self, tick: f64) {
         self.tick_size = tick;
+    }
+
+    pub fn can_render_book_at_tick(&self, tick: f64) -> bool {
+        self.book_source_tick_size
+            .is_none_or(|source_tick| source_tick <= tick || tick_sizes_match(source_tick, tick))
+    }
+
+    fn should_merge_finer_book(&self, incoming_source_tick_size: Option<f64>) -> bool {
+        let Some(current_source_tick) = self.book_source_tick_size else {
+            return false;
+        };
+        let Some(incoming_source_tick) = incoming_source_tick_size else {
+            return false;
+        };
+
+        incoming_source_tick < current_source_tick
+            && self.can_render_book_at_tick(self.tick_size)
+            && (!self.book.bids.is_empty() || !self.book.asks.is_empty())
     }
 
     /// Cached aggregation of the current book at `tick`, with cumulative depth
@@ -227,6 +265,51 @@ impl OrderBookInstance {
         }
         self.aggregated.borrow()
     }
+}
+
+fn merge_books_preserving_scope(current: &OrderBook, incoming: &OrderBook) -> OrderBook {
+    OrderBook {
+        bids: merge_book_side_preserving_scope(&current.bids, &incoming.bids, true),
+        asks: merge_book_side_preserving_scope(&current.asks, &incoming.asks, false),
+    }
+}
+
+fn merge_book_side_preserving_scope(
+    current: &[BookLevel],
+    incoming: &[BookLevel],
+    is_bid: bool,
+) -> Vec<BookLevel> {
+    if incoming.is_empty() {
+        return current.to_vec();
+    }
+    if current.is_empty() {
+        return incoming.to_vec();
+    }
+
+    let min_incoming = incoming
+        .iter()
+        .map(|level| level.px)
+        .fold(f64::INFINITY, f64::min);
+    let max_incoming = incoming
+        .iter()
+        .map(|level| level.px)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let mut merged = Vec::with_capacity(current.len() + incoming.len());
+    merged.extend(incoming.iter().cloned());
+    merged.extend(
+        current
+            .iter()
+            .filter(|level| level.px < min_incoming || level.px > max_incoming)
+            .cloned(),
+    );
+
+    if is_bid {
+        merged.sort_by(|a, b| b.px.partial_cmp(&a.px).unwrap_or(std::cmp::Ordering::Equal));
+    } else {
+        merged.sort_by(|a, b| a.px.partial_cmp(&b.px).unwrap_or(std::cmp::Ordering::Equal));
+    }
+    merged
 }
 
 pub fn aggregate_with_cumulative(
@@ -353,5 +436,96 @@ mod tests {
         assert_ne!(fine_tick_bits, coarse_tick_bits);
         assert_eq!(fine_levels, 2);
         assert_eq!(coarse_levels, 1);
+    }
+
+    #[test]
+    fn order_book_source_precision_blocks_fake_finer_rendering() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 5.0);
+        inst.set_book_with_source(
+            OrderBook {
+                bids: vec![lvl(100.0, 1.0)],
+                asks: vec![lvl(105.0, 1.0)],
+            },
+            Some(5.0),
+        );
+
+        assert!(inst.can_render_book_at_tick(5.0));
+        assert!(inst.can_render_book_at_tick(10.0));
+        assert!(!inst.can_render_book_at_tick(1.0));
+    }
+
+    #[test]
+    fn unknown_source_precision_is_renderable() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 1.0);
+        inst.set_book(OrderBook {
+            bids: vec![lvl(100.0, 1.0)],
+            asks: vec![lvl(101.0, 1.0)],
+        });
+
+        assert!(inst.can_render_book_at_tick(0.1));
+    }
+
+    #[test]
+    fn finer_live_update_preserves_coarse_snapshot_scope() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 5.0);
+        inst.set_book_with_source(
+            OrderBook {
+                bids: vec![lvl(100.0, 10.0), lvl(95.0, 20.0), lvl(90.0, 30.0)],
+                asks: vec![lvl(105.0, 10.0), lvl(110.0, 20.0), lvl(115.0, 30.0)],
+            },
+            Some(5.0),
+        );
+
+        inst.apply_book_update_preserving_scope(
+            OrderBook {
+                bids: vec![lvl(100.0, 1.0), lvl(99.0, 2.0)],
+                asks: vec![lvl(101.0, 1.0), lvl(102.0, 2.0)],
+            },
+            Some(1.0),
+        );
+
+        assert_eq!(
+            inst.book
+                .bids
+                .iter()
+                .map(|level| level.px)
+                .collect::<Vec<_>>(),
+            vec![100.0, 99.0, 95.0, 90.0]
+        );
+        assert_eq!(
+            inst.book
+                .asks
+                .iter()
+                .map(|level| level.px)
+                .collect::<Vec<_>>(),
+            vec![101.0, 102.0, 105.0, 110.0, 115.0]
+        );
+        assert_eq!(inst.book.bids[0].sz, 1.0);
+        assert_eq!(inst.book.asks[0].sz, 1.0);
+    }
+
+    #[test]
+    fn same_precision_update_replaces_snapshot() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 5.0);
+        inst.set_book_with_source(
+            OrderBook {
+                bids: vec![lvl(100.0, 10.0), lvl(95.0, 20.0)],
+                asks: vec![lvl(105.0, 10.0), lvl(110.0, 20.0)],
+            },
+            Some(5.0),
+        );
+
+        inst.apply_book_update_preserving_scope(
+            OrderBook {
+                bids: vec![lvl(100.0, 1.0)],
+                asks: vec![lvl(105.0, 1.0)],
+            },
+            Some(5.0),
+        );
+
+        assert_eq!(inst.book.bids.len(), 1);
+        assert_eq!(inst.book.asks.len(), 1);
+        assert_eq!(inst.book.bids[0].sz, 1.0);
+        assert_eq!(inst.book.asks[0].sz, 1.0);
     }
 }

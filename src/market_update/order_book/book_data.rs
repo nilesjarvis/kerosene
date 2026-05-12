@@ -8,10 +8,11 @@ use iced::Task;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(in crate::market_update::order_book) struct OrderBookFetchPlan {
     pub(in crate::market_update::order_book) id: OrderBookId,
     pub(in crate::market_update::order_book) symbol: String,
+    pub(in crate::market_update::order_book) tick_size: f64,
     pub(in crate::market_update::order_book) sigfigs: (Option<u8>, Option<u8>),
 }
 
@@ -40,6 +41,7 @@ pub(in crate::market_update::order_book) fn plan_order_book_fetch(
     Some(OrderBookFetchPlan {
         id,
         symbol,
+        tick_size,
         sigfigs,
     })
 }
@@ -49,19 +51,61 @@ fn positive_finite(value: f64) -> Option<f64> {
 }
 
 impl TradingTerminal {
+    pub(crate) fn order_book_symbol_for_mode(&self, mode: &OrderBookSymbolMode) -> String {
+        match mode {
+            OrderBookSymbolMode::Active => self.active_symbol.clone(),
+            OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
+        }
+    }
+
+    pub(crate) fn canonical_l2_book_sigfigs(&self, symbol: &str) -> (Option<u8>, Option<u8>) {
+        let Some(mid) = self
+            .order_books
+            .values()
+            .filter(|book| self.order_book_symbol_for_mode(&book.mode) == symbol)
+            .filter_map(|book| positive_finite(book.book.mid_price()))
+            .next()
+            .or_else(|| {
+                self.resolve_mid_for_symbol(symbol)
+                    .and_then(positive_finite)
+            })
+        else {
+            return (None, None);
+        };
+
+        helpers::compute_sigfigs(helpers::default_tick_for_price(mid), mid)
+    }
+
     pub(in crate::market_update::order_book) fn apply_order_book_loaded(
         &mut self,
         id: OrderBookId,
+        coin: String,
+        tick_size: f64,
+        sigfigs: (Option<u8>, Option<u8>),
         result: Result<OrderBook, String>,
     ) -> Task<Message> {
         if self.order_book_instance_is_muted(id) {
+            return Task::none();
+        }
+        let tracks_coin = self.order_books.get(&id).is_some_and(|inst| {
+            super::ws_updates::order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
+        });
+        if !tracks_coin {
+            return Task::none();
+        }
+        let tick_still_current = self
+            .order_books
+            .get(&id)
+            .is_some_and(|inst| helpers::tick_sizes_match(inst.tick_size, tick_size));
+        if !tick_still_current {
             return Task::none();
         }
         if let Some(inst) = self.order_books.get_mut(&id) {
             inst.book_loading = false;
             match result {
                 Ok(book) => {
-                    inst.set_book(book);
+                    let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
+                    inst.set_book_with_source(book, source_tick);
                     inst.book_error = None;
                     let mid = inst.book.mid_price();
 
@@ -101,10 +145,7 @@ impl TradingTerminal {
 
     pub(crate) fn order_book_fetch_task_for_id(&mut self, id: OrderBookId) -> Task<Message> {
         let Some((mode, tick_size, book_mid, symbol)) = self.order_books.get(&id).map(|inst| {
-            let symbol = match &inst.mode {
-                OrderBookSymbolMode::Active => self.active_symbol.clone(),
-                OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
-            };
+            let symbol = self.order_book_symbol_for_mode(&inst.mode);
             (
                 inst.mode.clone(),
                 inst.tick_size,
@@ -143,9 +184,16 @@ impl TradingTerminal {
             inst.book_error = None;
         }
 
-        Task::perform(fetch_order_book(plan.symbol, plan.sigfigs), move |result| {
-            Message::BookLoaded(plan.id, result)
-        })
+        Task::perform(
+            fetch_order_book(plan.symbol.clone(), plan.sigfigs),
+            move |result| Message::BookLoaded {
+                id: plan.id,
+                coin: plan.symbol,
+                tick_size: plan.tick_size,
+                sigfigs: plan.sigfigs,
+                result,
+            },
+        )
     }
 
     pub(crate) fn order_book_fetch_tasks_for_all(&mut self) -> Task<Message> {

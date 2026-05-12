@@ -166,9 +166,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolSearchHip3DexFilterChanged(_)
         | Message::SymbolSearchContextsLoaded(_, _)
         | Message::SymbolSelected(_)
-        | Message::BookLoaded(_, _)
+        | Message::BookLoaded { .. }
         | Message::OrderBookWsAssetCtxUpdate(_, _)
-        | Message::WsBookUpdate(_, _, _)
+        | Message::WsBookUpdate { .. }
         | Message::SetBookTickSize(_, _)
         | Message::ToggleOrderBookSettings(_)
         | Message::ToggleOrderBookSpreadChart(_)

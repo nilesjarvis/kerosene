@@ -16,7 +16,23 @@ fn tick_helpers_fallback_for_invalid_prices_or_ticks() {
     assert_eq!(default_tick_for_price(f64::INFINITY), 0.01);
     assert_eq!(compute_sigfigs(f64::NAN, 100.0), (None, None));
     assert_eq!(compute_sigfigs(0.01, f64::NAN), (None, None));
+    assert_eq!(sigfig_server_tick((None, None), 100.0), None);
+    assert_eq!(sigfig_server_tick((Some(5), None), f64::NAN), None);
     assert_eq!(format_tick(f64::NAN), "-");
+}
+
+#[test]
+fn sigfig_server_tick_reconstructs_exchange_precision() {
+    assert_eq!(sigfig_server_tick((Some(5), None), 80_000.0), Some(1.0));
+    assert_eq!(sigfig_server_tick((Some(5), Some(5)), 80_000.0), Some(5.0));
+    assert_eq!(sigfig_server_tick((Some(4), None), 80_000.0), Some(10.0));
+}
+
+#[test]
+fn tick_size_matching_allows_tiny_float_drift_only() {
+    assert!(tick_sizes_match(1.0, 1.004));
+    assert!(!tick_sizes_match(1.0, 1.02));
+    assert!(!tick_sizes_match(0.0, 1.0));
 }
 
 proptest! {

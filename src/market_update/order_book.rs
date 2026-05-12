@@ -17,7 +17,13 @@ impl TradingTerminal {
     pub(crate) fn update_order_book_market(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::AddOrderBookPane => self.add_order_book_pane(),
-            Message::BookLoaded(id, result) => self.apply_order_book_loaded(id, result),
+            Message::BookLoaded {
+                id,
+                coin,
+                tick_size,
+                sigfigs,
+                result,
+            } => self.apply_order_book_loaded(id, coin, tick_size, sigfigs, result),
             Message::OrderBookWsAssetCtxUpdate(id, ctx) => {
                 if self.order_book_instance_is_muted(id) {
                     return Task::none();
@@ -32,14 +38,23 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
-            Message::WsBookUpdate(id, coin, book) => {
+            Message::WsBookUpdate {
+                id,
+                coin,
+                sigfigs,
+                book,
+            } => {
                 if self.is_ticker_muted(&coin) {
                     return Task::none();
                 }
+                if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
+                    return Task::none();
+                }
+                let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
                 if let Some(inst) = self.order_books.get_mut(&id)
                     && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
                 {
-                    inst.set_book(book.clone());
+                    inst.apply_book_update_preserving_scope(book.clone(), source_tick);
                     inst.book_loading = false;
                     inst.book_error = None;
                 }
@@ -66,12 +81,30 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 if let Some(inst) = self.order_books.get_mut(&id) {
+                    if helpers::tick_sizes_match(inst.tick_size, tick) {
+                        return Task::none();
+                    }
+                    let old_tick = inst.tick_size;
+                    let denomination_increased = tick > old_tick;
+                    let should_fetch = inst.book.bids.is_empty()
+                        || inst.book.asks.is_empty()
+                        || denomination_increased
+                        || !inst.can_render_book_at_tick(tick)
+                        || inst.book_error.is_some();
                     inst.set_tick_size(tick);
-                    inst.book_loading = true;
-                    inst.book_error = None;
+                    inst.book_loading = should_fetch;
+                    if should_fetch {
+                        inst.book_error = None;
+                    }
 
                     self.persist_config();
-                    return self.order_book_fetch_task_for_id(id);
+                    if should_fetch {
+                        return Task::batch([
+                            self.center_order_book(id),
+                            self.order_book_fetch_task_for_id(id),
+                        ]);
+                    }
+                    return self.center_order_book(id);
                 }
                 Task::none()
             }

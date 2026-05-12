@@ -58,8 +58,11 @@ impl TradingTerminal {
             OrderBookDisplayMode::DepthList => Self::view_order_book_header(),
             OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_header(),
         };
+        let waiting_for_selected_precision = !inst.can_render_book_at_tick(tick);
 
-        if inst.book.bids.is_empty() && inst.book.asks.is_empty() {
+        if waiting_for_selected_precision
+            || (inst.book.bids.is_empty() && inst.book.asks.is_empty())
+        {
             let loading_row: Element<'_, Message> = if let Some(error) = &inst.book_error {
                 column![
                     text("Order book unavailable")
@@ -74,18 +77,26 @@ impl TradingTerminal {
             } else if inst.book_loading {
                 row![
                     self.view_spinner(18),
-                    text("Loading order book...")
-                        .size(12)
-                        .color(theme.extended_palette().background.weak.text),
+                    text(if waiting_for_selected_precision {
+                        "Loading selected denomination..."
+                    } else {
+                        "Loading order book..."
+                    })
+                    .size(12)
+                    .color(theme.extended_palette().background.weak.text),
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center)
                 .into()
             } else {
-                text("No order book data")
-                    .size(12)
-                    .color(theme.extended_palette().background.weak.text)
-                    .into()
+                text(if waiting_for_selected_precision {
+                    "Waiting for selected denomination"
+                } else {
+                    "No order book data"
+                })
+                .size(12)
+                .color(theme.extended_palette().background.weak.text)
+                .into()
             };
             let content =
                 column![tick_buttons, header, rule::horizontal(1), loading_row].spacing(4);

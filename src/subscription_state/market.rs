@@ -1,6 +1,5 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
-use crate::helpers;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -112,11 +111,15 @@ impl TradingTerminal {
                 && !self.is_ticker_muted(&symbol)
                 && !self.is_outcome_coin(&symbol)
             {
-                let mid = ob.book.mid_price();
-                let sigfigs = helpers::compute_sigfigs(ob.tick_size, mid);
+                let sigfigs = self.canonical_l2_book_sigfigs(&symbol);
                 subs.push(
                     Subscription::run_with((ob.id, symbol.clone(), sigfigs), ws_book_stream_keyed)
-                        .map(|(id, coin, book)| Message::WsBookUpdate(id, coin, book)),
+                        .map(|(id, coin, sigfigs, book)| Message::WsBookUpdate {
+                            id,
+                            coin,
+                            sigfigs,
+                            book,
+                        }),
                 );
 
                 subs.push(
@@ -148,17 +151,19 @@ impl TradingTerminal {
             {
                 continue;
             }
-            let sigfigs = self.chase_book_fetch_sigfigs(&chase.coin);
+            let sigfigs = self.canonical_l2_book_sigfigs(&chase.coin);
             subs.push(
                 Subscription::run_with(
                     (chase.id, chase.coin.clone(), sigfigs),
                     ws_book_stream_keyed,
                 )
-                .map(|(chase_id, coin, book)| Message::ChaseBookUpdate {
-                    chase_id,
-                    coin,
-                    book,
-                }),
+                .map(
+                    |(chase_id, coin, _sigfigs, book)| Message::ChaseBookUpdate {
+                        chase_id,
+                        coin,
+                        book,
+                    },
+                ),
             );
         }
     }
@@ -181,10 +186,10 @@ impl TradingTerminal {
             {
                 continue;
             }
-            let sigfigs = self.chase_book_fetch_sigfigs(&twap.coin);
+            let sigfigs = self.canonical_l2_book_sigfigs(&twap.coin);
             subs.push(
                 Subscription::run_with((twap.id, twap.coin.clone(), sigfigs), ws_book_stream_keyed)
-                    .map(|(twap_id, coin, book)| Message::TwapBookUpdate {
+                    .map(|(twap_id, coin, _sigfigs, book)| Message::TwapBookUpdate {
                         twap_id,
                         coin,
                         book,

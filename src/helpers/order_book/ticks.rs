@@ -62,6 +62,22 @@ pub fn compute_sigfigs(tick_size: f64, mid_price: f64) -> (Option<u8>, Option<u8
     (best_n, best_m)
 }
 
+pub fn sigfig_server_tick(sigfigs: (Option<u8>, Option<u8>), mid_price: f64) -> Option<f64> {
+    let n = sigfigs.0?;
+    if !mid_price.is_finite() || mid_price <= 0.0 {
+        return None;
+    }
+
+    let mantissa = sigfigs.1.unwrap_or(1) as f64;
+    let exponent = mid_price.log10().floor() as i32 - n as i32 + 1;
+    let tick = mantissa * 10f64.powi(exponent);
+    valid_book_tick_size(tick).then_some(tick)
+}
+
+pub fn tick_sizes_match(a: f64, b: f64) -> bool {
+    valid_book_tick_size(a) && valid_book_tick_size(b) && (a - b).abs() / a.max(b).max(1e-12) < 0.01
+}
+
 /// Format a tick size for display in the selector buttons.
 pub fn format_tick(tick: f64) -> String {
     if !valid_book_tick_size(tick) {

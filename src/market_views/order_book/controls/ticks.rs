@@ -55,7 +55,7 @@ impl TradingTerminal {
                                 },
                                 border: iced::Border {
                                     radius: 2.0.into(),
-                                    width: if is_active { 1.0 } else { 0.0 },
+                                    width: 1.0,
                                     color: if is_active {
                                         Color {
                                             a: 0.4,

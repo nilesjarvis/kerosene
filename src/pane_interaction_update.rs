@@ -1,6 +1,5 @@
-use crate::api::{OrderBook, fetch_order_book};
+use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
-use crate::helpers;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -56,22 +55,14 @@ impl TradingTerminal {
                                 inst.book_loading = true;
                             }
                         }
-                        let sym = self.active_symbol.clone();
                         let book_task = Task::batch(
                             self.order_books
                                 .values()
                                 .filter(|book| book.mode == OrderBookSymbolMode::Active)
-                                .map(|book| {
-                                    let id = book.id;
-                                    let sigfigs = helpers::compute_sigfigs(
-                                        book.tick_size,
-                                        book.book.mid_price(),
-                                    );
-                                    Task::perform(
-                                        fetch_order_book(sym.clone(), sigfigs),
-                                        move |res| Message::BookLoaded(id, res),
-                                    )
-                                }),
+                                .map(|book| book.id)
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .map(|id| self.order_book_fetch_task_for_id(id)),
                         );
                         return book_task;
                     }
