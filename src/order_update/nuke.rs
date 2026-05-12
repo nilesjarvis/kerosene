@@ -12,11 +12,56 @@ impl TradingTerminal {
         let now = Instant::now();
         let armed = nuke_confirmation_is_armed(self.nuke_confirmation, now);
         if !armed {
+            // Plan at arm time so the confirmation message surfaces what
+            // will actually close (and what won't) — an emergency-flatten
+            // control should never let the user confirm in the dark.
+            let plan = match self.plan_nuke_positions() {
+                Ok(plan) => plan,
+                Err(e) => {
+                    self.order_status = Some((e, true));
+                    return Task::none();
+                }
+            };
+
+            if plan.is_empty() {
+                self.order_status = Some(("No positions to close".into(), true));
+                return Task::none();
+            }
+            if plan.ready.is_empty() {
+                // Nothing routable — refuse to arm so the user sees the
+                // problem (degraded mid feed, missing symbol metadata, ...)
+                // rather than confirming a no-op.
+                self.order_status = Some((
+                    format!(
+                        "Cannot NUKE: {} position{} unresolvable: {}",
+                        plan.skipped.len(),
+                        if plan.skipped.len() == 1 { "" } else { "s" },
+                        plan.format_skip_list()
+                    ),
+                    true,
+                ));
+                return Task::none();
+            }
+
             self.nuke_confirmation = Some(now);
-            self.order_status = Some((
-                "NUKE armed: press NUKE again within 5 seconds to close all positions".to_string(),
-                true,
-            ));
+            let ready_count = plan.ready.len();
+            let ready_list = plan.format_ready_list();
+            let message = if plan.skipped.is_empty() {
+                format!(
+                    "NUKE armed: will close {} position{} ({}). Press NUKE again within 5 seconds.",
+                    ready_count,
+                    if ready_count == 1 { "" } else { "s" },
+                    ready_list
+                )
+            } else {
+                format!(
+                    "NUKE armed: will close {} ({}); SKIPPING {}. Press NUKE again within 5 seconds to fire partial nuke.",
+                    ready_count,
+                    ready_list,
+                    plan.format_skip_list()
+                )
+            };
+            self.order_status = Some((message, true));
             return Task::none();
         }
         self.nuke_confirmation = None;
