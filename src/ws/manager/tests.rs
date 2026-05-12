@@ -1,9 +1,8 @@
 use super::*;
+use std::time::Duration;
 
 #[test]
 fn stale_read_remaining_decreases_then_saturates_at_zero() {
-    use std::time::Duration;
-
     let window = Duration::from_secs(WS_READ_STALE_AFTER_SECS);
     assert_eq!(stale_read_remaining(Duration::from_secs(0)), window);
     assert_eq!(
@@ -28,33 +27,63 @@ fn stale_window_exceeds_ping_interval() {
 }
 
 #[test]
-fn reconnect_delay_doubles_until_capped() {
-    assert_eq!(next_reconnect_delay_secs(0), WS_RECONNECT_BASE_DELAY_SECS);
-    assert_eq!(next_reconnect_delay_secs(1), 2);
-    assert_eq!(next_reconnect_delay_secs(32), WS_RECONNECT_MAX_DELAY_SECS);
+fn default_policy_holds_known_exchange_constants() {
+    assert_eq!(EXCHANGE_WS_RECONNECT_POLICY.base_delay_secs, 1);
+    assert_eq!(EXCHANGE_WS_RECONNECT_POLICY.max_delay_secs, 60);
+    assert_eq!(EXCHANGE_WS_RECONNECT_POLICY.reset_after_secs, 30);
+}
+
+#[test]
+fn next_delay_doubles_until_capped() {
+    let policy = EXCHANGE_WS_RECONNECT_POLICY;
+    assert_eq!(policy.next_delay(0), policy.base_delay_secs);
+    assert_eq!(policy.next_delay(1), 2);
+    assert_eq!(policy.next_delay(32), policy.max_delay_secs);
     assert_eq!(
-        next_reconnect_delay_secs(WS_RECONNECT_MAX_DELAY_SECS),
-        WS_RECONNECT_MAX_DELAY_SECS
+        policy.next_delay(policy.max_delay_secs),
+        policy.max_delay_secs
     );
 }
 
 #[test]
-fn reconnect_delay_resets_after_stable_connection() {
-    let stable_for = std::time::Duration::from_secs(WS_RECONNECT_RESET_AFTER_SECS);
-    let (delay, next) = reconnect_delay_after_disconnect(16, stable_for);
+fn after_disconnect_resets_when_connection_was_stable() {
+    let policy = EXCHANGE_WS_RECONNECT_POLICY;
+    let stable_for = Duration::from_secs(policy.reset_after_secs);
 
-    assert_eq!(delay, WS_RECONNECT_BASE_DELAY_SECS);
-    assert_eq!(
-        next,
-        next_reconnect_delay_secs(WS_RECONNECT_BASE_DELAY_SECS)
-    );
+    let (delay, next) = policy.after_disconnect(16, stable_for);
+
+    assert_eq!(delay, policy.base_delay_secs);
+    assert_eq!(next, policy.next_delay(policy.base_delay_secs));
 }
 
 #[test]
-fn reconnect_delay_keeps_backing_off_after_quick_disconnect() {
-    let quick_disconnect = std::time::Duration::from_secs(1);
-    let (delay, next) = reconnect_delay_after_disconnect(8, quick_disconnect);
+fn after_disconnect_keeps_backing_off_after_quick_failure() {
+    let policy = EXCHANGE_WS_RECONNECT_POLICY;
+    let quick = Duration::from_secs(1);
+
+    let (delay, next) = policy.after_disconnect(8, quick);
 
     assert_eq!(delay, 8);
     assert_eq!(next, 16);
+}
+
+#[test]
+fn policy_math_works_with_arbitrary_values() {
+    // Tight policy: 1..=10s window, resets if connection survived 5s.
+    let tight = ReconnectPolicy {
+        base_delay_secs: 1,
+        max_delay_secs: 10,
+        reset_after_secs: 5,
+    };
+
+    assert_eq!(tight.next_delay(0), 1);
+    assert_eq!(tight.next_delay(4), 8);
+    assert_eq!(tight.next_delay(8), 10);
+    assert_eq!(tight.next_delay(50), 10);
+
+    let (delay, _) = tight.after_disconnect(8, Duration::from_secs(10));
+    assert_eq!(delay, 1, "stable connection should reset to base");
+
+    let (delay, _) = tight.after_disconnect(8, Duration::from_secs(1));
+    assert_eq!(delay, 8, "unstable connection should hold backoff");
 }
