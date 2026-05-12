@@ -21,9 +21,6 @@ mod subscriptions;
 #[cfg(test)]
 mod tests;
 
-const WS_RECONNECT_BASE_DELAY_SECS: u64 = 1;
-const WS_RECONNECT_MAX_DELAY_SECS: u64 = 60;
-const WS_RECONNECT_RESET_AFTER_SECS: u64 = 30;
 // Force a reconnect if no frame (data or pong) has arrived for this long.
 // The manager pings every 30s, so 45s = "missed at least one heartbeat round-trip"
 // and is the recovery path for half-open sockets left behind by VPN/NAT rebinds,
@@ -34,22 +31,46 @@ fn stale_read_remaining(last_rx_elapsed: Duration) -> Duration {
     Duration::from_secs(WS_READ_STALE_AFTER_SECS).saturating_sub(last_rx_elapsed)
 }
 
-fn next_reconnect_delay_secs(current_secs: u64) -> u64 {
-    if current_secs < WS_RECONNECT_BASE_DELAY_SECS {
-        return WS_RECONNECT_BASE_DELAY_SECS;
-    }
-    current_secs
-        .saturating_mul(2)
-        .min(WS_RECONNECT_MAX_DELAY_SECS)
+const EXCHANGE_WS_RECONNECT_POLICY: ReconnectPolicy = ReconnectPolicy {
+    base_delay_secs: 1,
+    max_delay_secs: 60,
+    reset_after_secs: 30,
+};
+
+/// Exponential-backoff parameters for a WebSocket reconnect loop. Lives as a
+/// value so the policy math can be unit-tested with arbitrary values and so
+/// per-feed policies don't have to drift apart as parallel module-level
+/// constants.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ReconnectPolicy {
+    pub(crate) base_delay_secs: u64,
+    pub(crate) max_delay_secs: u64,
+    pub(crate) reset_after_secs: u64,
 }
 
-fn reconnect_delay_after_disconnect(current_secs: u64, connected_for: Duration) -> (u64, u64) {
-    let delay_secs = if connected_for >= Duration::from_secs(WS_RECONNECT_RESET_AFTER_SECS) {
-        WS_RECONNECT_BASE_DELAY_SECS
-    } else {
-        current_secs.clamp(WS_RECONNECT_BASE_DELAY_SECS, WS_RECONNECT_MAX_DELAY_SECS)
-    };
-    (delay_secs, next_reconnect_delay_secs(delay_secs))
+impl ReconnectPolicy {
+    pub(crate) fn next_delay(&self, current_secs: u64) -> u64 {
+        if current_secs < self.base_delay_secs {
+            return self.base_delay_secs;
+        }
+        current_secs.saturating_mul(2).min(self.max_delay_secs)
+    }
+
+    /// Compute the next sleep, plus the delay to start from on the iteration
+    /// after that. Resets to `base_delay_secs` when the just-closed
+    /// connection stayed up long enough to count as healthy.
+    pub(crate) fn after_disconnect(
+        &self,
+        current_secs: u64,
+        connected_for: Duration,
+    ) -> (u64, u64) {
+        let delay_secs = if connected_for >= Duration::from_secs(self.reset_after_secs) {
+            self.base_delay_secs
+        } else {
+            current_secs.clamp(self.base_delay_secs, self.max_delay_secs)
+        };
+        (delay_secs, self.next_delay(delay_secs))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -130,14 +151,15 @@ async fn ws_manager_task(
     use futures::future::{Either, select};
     use tokio_tungstenite::tungstenite::Message as WsMsg;
 
-    let mut reconnect_delay_secs = WS_RECONNECT_BASE_DELAY_SECS;
+    let policy = EXCHANGE_WS_RECONNECT_POLICY;
+    let mut reconnect_delay_secs = policy.base_delay_secs;
 
     loop {
         let ws_stream = match tokio_tungstenite::connect_async(WS_URL).await {
             Ok((ws, _)) => ws,
             Err(_) => {
                 tokio::time::sleep(Duration::from_secs(reconnect_delay_secs)).await;
-                reconnect_delay_secs = next_reconnect_delay_secs(reconnect_delay_secs);
+                reconnect_delay_secs = policy.next_delay(reconnect_delay_secs);
                 continue;
             }
         };
@@ -216,7 +238,7 @@ async fn ws_manager_task(
 
         telemetry_on_disconnect();
         let (delay_secs, next_delay_secs) =
-            reconnect_delay_after_disconnect(reconnect_delay_secs, connected_at.elapsed());
+            policy.after_disconnect(reconnect_delay_secs, connected_at.elapsed());
         tokio::time::sleep(Duration::from_secs(delay_secs)).await;
         reconnect_delay_secs = next_delay_secs;
     }
