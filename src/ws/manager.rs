@@ -19,6 +19,8 @@ mod frames;
 mod subscriptions;
 
 #[cfg(test)]
+mod integration_tests;
+#[cfg(test)]
 mod tests;
 
 const WS_RECONNECT_BASE_DELAY_SECS: u64 = 1;
@@ -115,13 +117,14 @@ pub(crate) fn get_manager() -> (
             }
         });
 
-        tokio::spawn(ws_manager_task(cmd_rx, msg_tx));
+        tokio::spawn(ws_manager_task(WS_URL.to_string(), cmd_rx, msg_tx));
         WsManager { cmd_tx, msg_rx }
     });
     (mgr.cmd_tx.clone(), mgr.msg_rx.resubscribe())
 }
 
-async fn ws_manager_task(
+pub(super) async fn ws_manager_task(
+    ws_url: String,
     mut cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
     msg_tx: broadcast::Sender<WsRoutedMessage>,
 ) {
@@ -133,7 +136,7 @@ async fn ws_manager_task(
     let mut reconnect_delay_secs = WS_RECONNECT_BASE_DELAY_SECS;
 
     loop {
-        let ws_stream = match tokio_tungstenite::connect_async(WS_URL).await {
+        let ws_stream = match tokio_tungstenite::connect_async(&ws_url).await {
             Ok((ws, _)) => ws,
             Err(_) => {
                 tokio::time::sleep(Duration::from_secs(reconnect_delay_secs)).await;

@@ -69,5 +69,11 @@ keyring = { version = "3", features = ["apple-native"] }
 keyring = { version = "3", features = ["windows-native"] }
 windows-sys = { version = "0.61", features = ["Win32_Media_Audio"] }
 
+[dev-dependencies]
+# Tokio's macros + multi-thread runtime are only needed by tests that drive
+# the WebSocket manager against a localhost mock server. The release build
+# keeps the minimal `time`-only feature set.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "sync"] }
+
 [build-dependencies]
 winresource = { version = "0.1", default-features = false }
