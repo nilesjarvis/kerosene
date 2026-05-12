@@ -1797,30 +1797,30 @@ fn twap_cancel_child_task(
         );
     }
 
-    if let Some(oid) = oid {
-        return Task::perform(cancel_order(key.into(), asset, oid), move |result| {
-            Message::TwapUnexpectedCancelResult {
+    if let Some(cloid) = cloid {
+        let request_cloid = cloid.clone();
+        return Task::perform(
+            cancel_order_by_cloid(key.into(), asset, request_cloid),
+            move |result| Message::TwapUnexpectedCancelResult {
                 twap_id,
-                oid: Some(oid),
-                cloid: cloid.clone(),
+                oid: None,
+                cloid: Some(cloid.clone()),
                 result: Box::new(result),
-            }
-        });
+            },
+        );
     }
 
-    let Some(cloid) = cloid else {
+    let Some(oid) = oid else {
         return Task::none();
     };
-    let request_cloid = cloid.clone();
-    Task::perform(
-        cancel_order_by_cloid(key.into(), asset, request_cloid),
-        move |result| Message::TwapUnexpectedCancelResult {
+    Task::perform(cancel_order(key.into(), asset, oid), move |result| {
+        Message::TwapUnexpectedCancelResult {
             twap_id,
-            oid: None,
-            cloid: Some(cloid.clone()),
+            oid: Some(oid),
+            cloid: None,
             result: Box::new(result),
-        },
-    )
+        }
+    })
 }
 
 fn twap_place_result_refresh_policy(

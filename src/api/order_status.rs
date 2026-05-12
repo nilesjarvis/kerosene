@@ -92,10 +92,24 @@ pub(crate) async fn fetch_order_status_by_cloid(
         .json()
         .await
         .map_err(|e| format!("orderStatus parse failed: {e}"))?;
-    parse_order_status(&raw)
+    parse_order_status_for_cloid(&raw, &cloid)
 }
 
 pub(crate) fn parse_order_status(raw: &Value) -> Result<OrderStatusResult, String> {
+    parse_order_status_inner(raw, None)
+}
+
+fn parse_order_status_for_cloid(
+    raw: &Value,
+    expected_cloid: &str,
+) -> Result<OrderStatusResult, String> {
+    parse_order_status_inner(raw, Some(expected_cloid))
+}
+
+fn parse_order_status_inner(
+    raw: &Value,
+    expected_cloid: Option<&str>,
+) -> Result<OrderStatusResult, String> {
     if let Some(error) = raw.get("error").and_then(Value::as_str) {
         return Err(format!("orderStatus error: {error}"));
     }
@@ -117,6 +131,14 @@ pub(crate) fn parse_order_status(raw: &Value) -> Result<OrderStatusResult, Strin
             .and_then(|value| value.get("cloid"))
             .and_then(Value::as_str)
             .map(ToString::to_string);
+        if let Some(expected_cloid) = expected_cloid
+            && cloid.as_deref() != Some(expected_cloid)
+        {
+            return Err(format!(
+                "orderStatus response cloid mismatch for {expected_cloid}: got {}",
+                cloid.as_deref().unwrap_or("missing cloid")
+            ));
+        }
         return Ok(OrderStatusResult {
             raw_summary: format_order_status_summary(&status, oid, cloid.as_deref()),
             status,
@@ -149,7 +171,7 @@ fn format_order_status_summary(status: &str, oid: Option<u64>, cloid: Option<&st
 
 #[cfg(test)]
 mod tests {
-    use super::parse_order_status;
+    use super::{parse_order_status, parse_order_status_for_cloid};
 
     #[test]
     fn parses_order_status_by_cloid_response() {
@@ -181,5 +203,44 @@ mod tests {
         .expect("missing status should parse");
 
         assert!(parsed.is_missing());
+    }
+
+    #[test]
+    fn rejects_mismatched_order_status_cloid() {
+        let error = parse_order_status_for_cloid(
+            &serde_json::json!({
+                "status": "order",
+                "order": {
+                    "status": "open",
+                    "order": {
+                        "oid": 42_u64,
+                        "cloid": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    }
+                }
+            }),
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .expect_err("mismatched cloid should be rejected");
+
+        assert!(error.contains("cloid mismatch"));
+    }
+
+    #[test]
+    fn rejects_order_status_without_expected_cloid() {
+        let error = parse_order_status_for_cloid(
+            &serde_json::json!({
+                "status": "order",
+                "order": {
+                    "status": "open",
+                    "order": {
+                        "oid": 42_u64
+                    }
+                }
+            }),
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .expect_err("missing cloid should be rejected");
+
+        assert!(error.contains("missing cloid"));
     }
 }
