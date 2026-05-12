@@ -17,10 +17,11 @@ pub(crate) enum PriceFlashDirection {
     Down,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct PriceFlash {
     pub(crate) started_at_ms: u64,
     pub(crate) direction: PriceFlashDirection,
+    pub(crate) previous_close: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +212,7 @@ impl ChartInstance {
         self.last_price_flash = Some(PriceFlash {
             started_at_ms: now_ms,
             direction,
+            previous_close,
         });
     }
 
@@ -255,6 +257,7 @@ mod tests {
             Some(PriceFlash {
                 started_at_ms: 42,
                 direction: PriceFlashDirection::Up,
+                previous_close: 100.0,
             })
         );
 
@@ -264,6 +267,7 @@ mod tests {
             Some(PriceFlash {
                 started_at_ms: 84,
                 direction: PriceFlashDirection::Down,
+                previous_close: 101.0,
             })
         );
     }

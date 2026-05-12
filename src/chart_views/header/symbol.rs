@@ -1,9 +1,11 @@
 use crate::app_state::TradingTerminal;
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{ChartId, ChartInstance, PriceFlash};
 use crate::helpers;
 use crate::message::Message;
-use iced::widget::{Space, button, column, row, text};
-use iced::{Color, Element, Theme};
+use iced::widget::{Row, Space, button, column, row, text};
+use iced::{Alignment, Color, Element, Theme};
+
+use super::{chart_header_changed_text, chart_header_price_flash_color};
 
 impl TradingTerminal {
     pub(super) fn view_chart_placeholder_header<'a>(
@@ -37,15 +39,13 @@ impl TradingTerminal {
         chart_id: ChartId,
         instance: &'a ChartInstance,
         last_close: f64,
-        price_color: Color,
+        price_flash: Option<PriceFlash>,
+        now_ms: u64,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let sym_col = column![
             self.view_chart_symbol_title(instance, theme),
-            text(helpers::format_price(last_close))
-                .size(16)
-                .font(iced::Font::MONOSPACE)
-                .color(price_color),
+            chart_header_price_text(last_close, price_flash, now_ms, theme),
         ]
         .spacing(2);
 
@@ -97,4 +97,42 @@ impl TradingTerminal {
 
         title.align_y(iced::Alignment::Center).into()
     }
+}
+
+fn chart_header_price_text(
+    last_close: f64,
+    price_flash: Option<PriceFlash>,
+    now_ms: u64,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    let current = helpers::format_price(last_close);
+    let base_color = theme.palette().text;
+    let Some(flash_color) = chart_header_price_flash_color(price_flash, now_ms, theme) else {
+        return chart_header_price_segment(current, base_color).into();
+    };
+    let Some(flash) = price_flash else {
+        return chart_header_price_segment(current, base_color).into();
+    };
+    let previous = helpers::format_price(flash.previous_close);
+    let Some(parts) = chart_header_changed_text(&previous, &current) else {
+        return chart_header_price_segment(current, base_color).into();
+    };
+
+    let mut row = Row::new().spacing(0).align_y(Alignment::Center);
+    if !parts.before.is_empty() {
+        row = row.push(chart_header_price_segment(parts.before, base_color));
+    }
+    row = row.push(chart_header_price_segment(parts.changed, flash_color));
+    if !parts.after.is_empty() {
+        row = row.push(chart_header_price_segment(parts.after, base_color));
+    }
+
+    row.into()
+}
+
+fn chart_header_price_segment(content: String, color: Color) -> iced::widget::Text<'static> {
+    text(content)
+        .size(16)
+        .font(iced::Font::MONOSPACE)
+        .color(color)
 }

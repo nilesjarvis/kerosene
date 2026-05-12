@@ -37,17 +37,20 @@ impl TradingTerminal {
         } else {
             0.0
         };
-        let number_color =
-            chart_header_price_flash_color(instance.last_price_flash, Self::now_ms(), &theme)
-                .unwrap_or(theme.palette().text);
-
-        let sym_btn =
-            self.view_chart_symbol_button(chart_id, instance, last.close, number_color, &theme);
+        let now_ms = Self::now_ms();
+        let sym_btn = self.view_chart_symbol_button(
+            chart_id,
+            instance,
+            last.close,
+            instance.last_price_flash,
+            now_ms,
+            &theme,
+        );
 
         let chg_val = text(format!("{change:+.2} ({change_pct:+.2}%)"))
             .size(12)
             .font(iced::Font::MONOSPACE)
-            .color(number_color);
+            .color(theme.palette().text);
         let col_chg = column![
             text("24h Chg")
                 .size(9)
@@ -79,7 +82,7 @@ impl TradingTerminal {
     }
 }
 
-fn chart_header_price_flash_color(
+pub(super) fn chart_header_price_flash_color(
     flash: Option<PriceFlash>,
     now_ms: u64,
     theme: &Theme,
@@ -103,4 +106,83 @@ fn chart_header_price_flash_color(
         base.b + (target.b - base.b) * factor,
         1.0,
     ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ChartHeaderChangedText {
+    pub(super) before: String,
+    pub(super) changed: String,
+    pub(super) after: String,
+}
+
+pub(super) fn chart_header_changed_text(
+    previous: &str,
+    current: &str,
+) -> Option<ChartHeaderChangedText> {
+    if previous == current {
+        return None;
+    }
+
+    let previous_chars = previous.chars().collect::<Vec<_>>();
+    let current_chars = current.chars().collect::<Vec<_>>();
+
+    let prefix_len = previous_chars
+        .iter()
+        .zip(current_chars.iter())
+        .take_while(|(previous, current)| previous == current)
+        .count();
+
+    let max_suffix_len = previous_chars
+        .len()
+        .min(current_chars.len())
+        .saturating_sub(prefix_len);
+    let suffix_len = previous_chars
+        .iter()
+        .rev()
+        .zip(current_chars.iter().rev())
+        .take(max_suffix_len)
+        .take_while(|(previous, current)| previous == current)
+        .count();
+
+    let changed_end = current_chars.len().saturating_sub(suffix_len);
+    let changed = current_chars[prefix_len..changed_end]
+        .iter()
+        .collect::<String>();
+    if changed.is_empty() {
+        return None;
+    }
+
+    Some(ChartHeaderChangedText {
+        before: current_chars[..prefix_len].iter().collect(),
+        changed,
+        after: current_chars[changed_end..].iter().collect(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chart_header_changed_text;
+
+    #[test]
+    fn changed_text_highlights_only_changed_decimal_digit() {
+        let parts = chart_header_changed_text("82,543.2", "82,543.3").expect("changed text");
+
+        assert_eq!(parts.before, "82,543.");
+        assert_eq!(parts.changed, "3");
+        assert_eq!(parts.after, "");
+    }
+
+    #[test]
+    fn changed_text_keeps_shared_suffix_when_middle_digits_change() {
+        let parts = chart_header_changed_text("82,543.2", "82,613.2").expect("changed text");
+
+        assert_eq!(parts.before, "82,");
+        assert_eq!(parts.changed, "61");
+        assert_eq!(parts.after, "3.2");
+    }
+
+    #[test]
+    fn changed_text_ignores_equal_formatted_prices() {
+        assert_eq!(chart_header_changed_text("82,543.2", "82,543.2"), None);
+    }
 }
