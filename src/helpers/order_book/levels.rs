@@ -2,6 +2,9 @@ use crate::api::BookLevel;
 
 use std::collections::BTreeMap;
 
+#[cfg(test)]
+mod tests;
+
 /// Aggregate raw book levels into buckets at the given tick size.
 pub fn aggregate_levels(levels: &[BookLevel], tick: f64, is_bid: bool) -> Vec<(f64, f64)> {
     let mut buckets: BTreeMap<i64, f64> = BTreeMap::new();
