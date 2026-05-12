@@ -134,7 +134,6 @@ impl TradingTerminal {
             .push(Space::new().width(Fill))
             .push(self.summary_hide_pnl_button())
             .push(self.summary_sound_button())
-            .push(self.summary_test_sound_button())
             .push(self.summary_notifications_button())
             .push(self.summary_widgets_button())
             .push(self.summary_settings_button())

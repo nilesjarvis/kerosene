@@ -102,9 +102,6 @@ impl TradingTerminal {
                 self.sound_enabled = !self.sound_enabled;
                 self.persist_config();
             }
-            Message::TestSound => {
-                sound::play_fill();
-            }
             Message::ToggleDesktopNotifications => {
                 self.desktop_notifications = !self.desktop_notifications;
                 self.persist_config();

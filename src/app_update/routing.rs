@@ -81,7 +81,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CalendarImpactFilterChanged(_)
         | Message::CalendarWindowFilterChanged(_)
         | Message::ToggleSound
-        | Message::TestSound
         | Message::ToggleDesktopNotifications => UpdateRoute::Chrome,
 
         Message::OrderPriceChanged(_)

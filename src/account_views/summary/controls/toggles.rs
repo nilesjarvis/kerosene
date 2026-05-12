@@ -74,28 +74,6 @@ impl TradingTerminal {
         .into()
     }
 
-    pub(crate) fn summary_test_sound_button(&self) -> Element<'_, Message> {
-        button(text("Test Sound").size(10).center())
-            .on_press(Message::TestSound)
-            .padding([2, 6])
-            .style(|theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ => theme.extended_palette().background.weak.color,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().text,
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            })
-            .into()
-    }
-
     pub(crate) fn summary_notifications_button(&self) -> Element<'_, Message> {
         let notifications_enabled = self.desktop_notifications;
         button(

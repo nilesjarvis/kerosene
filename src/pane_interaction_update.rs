@@ -78,7 +78,9 @@ impl TradingTerminal {
                 }
             }
             Message::ClosePane(pane) => {
-                if self.panes.iter().count() > 1
+                let can_close_pane = self.panes.get(pane).is_some_and(PaneKind::can_be_closed);
+                if can_close_pane
+                    && self.panes.iter().count() > 1
                     && let Some((closed_kind, sibling)) = self.panes.close(pane)
                 {
                     self.focus = Some(sibling);

@@ -23,3 +23,21 @@ pub(crate) enum PaneKind {
     TrackedTrades,
     Outcomes,
 }
+
+impl PaneKind {
+    pub(crate) fn can_be_closed(&self) -> bool {
+        !matches!(self, Self::AccountSummary)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn account_summary_is_not_closeable() {
+        assert!(!PaneKind::AccountSummary.can_be_closed());
+        assert!(PaneKind::Chart(0).can_be_closed());
+        assert!(PaneKind::OrderEntry.can_be_closed());
+    }
+}

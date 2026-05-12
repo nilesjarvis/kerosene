@@ -13,7 +13,7 @@ impl TradingTerminal {
 
         let pane_grid_widget = pane_grid(&self.panes, |pane, kind, _is_maximized| {
             let content = self.view_pane_content(pane, kind, chart_count);
-            let close_btn = pane_close_button(pane, pane_count);
+            let close_btn = pane_close_button(pane, pane_count, kind.can_be_closed());
             let controls_row = if matches!(kind, PaneKind::Chart(_)) {
                 row![self.view_chart_add_button(pane), close_btn]
             } else {
@@ -101,8 +101,12 @@ fn subtle_pane_title_color(theme: &Theme) -> iced::Color {
     color
 }
 
-fn pane_close_button(pane: pane_grid::Pane, pane_count: usize) -> button::Button<'static, Message> {
-    if pane_count > 1 {
+fn pane_close_button(
+    pane: pane_grid::Pane,
+    pane_count: usize,
+    can_close_pane: bool,
+) -> button::Button<'static, Message> {
+    if pane_count > 1 && can_close_pane {
         button(text("x").size(10).center())
             .on_press(Message::ClosePane(pane))
             .padding([2, 5])

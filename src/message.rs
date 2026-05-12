@@ -212,7 +212,6 @@ pub(crate) enum Message {
     StatusBarTick,
     ConfigSaved(Result<(), String>),
     ToggleSound,
-    TestSound,
     ToggleDesktopNotifications,
     PlaceBuy,
     PlaceSell,
