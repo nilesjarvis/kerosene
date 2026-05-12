@@ -164,6 +164,7 @@ pub struct OrderBookInstance {
     pub spread_history: VecDeque<(Instant, f64)>,
     pub spread_chart_height: f32,
     book_source_tick_size: Option<f64>,
+    pending_book_sigfigs: Option<(Option<u8>, Option<u8>)>,
     book_revision: u64,
     aggregated: RefCell<AggregatedDepth>,
 }
@@ -196,6 +197,7 @@ impl OrderBookInstance {
             spread_history: VecDeque::new(),
             spread_chart_height: 60.0,
             book_source_tick_size: None,
+            pending_book_sigfigs: None,
             book_revision: 0,
             aggregated: RefCell::new(AggregatedDepth::default()),
         }
@@ -211,6 +213,28 @@ impl OrderBookInstance {
         self.book = book;
         self.book_source_tick_size = source_tick_size;
         self.book_revision = self.book_revision.wrapping_add(1);
+    }
+
+    pub fn book_source_tick_size(&self) -> Option<f64> {
+        self.book_source_tick_size
+    }
+
+    pub fn pending_book_sigfigs(&self) -> Option<(Option<u8>, Option<u8>)> {
+        self.pending_book_sigfigs
+    }
+
+    pub fn mark_book_request(&mut self, sigfigs: (Option<u8>, Option<u8>)) {
+        self.pending_book_sigfigs = Some(sigfigs);
+    }
+
+    pub fn clear_matching_book_request(&mut self, sigfigs: (Option<u8>, Option<u8>)) {
+        if self.pending_book_sigfigs == Some(sigfigs) {
+            self.pending_book_sigfigs = None;
+        }
+    }
+
+    pub fn clear_book_request(&mut self) {
+        self.pending_book_sigfigs = None;
     }
 
     pub fn apply_book_update_preserving_scope(

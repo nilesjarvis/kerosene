@@ -62,12 +62,12 @@ impl TradingTerminal {
         &mut self,
         address: Option<String>,
         data: WsUserData,
-    ) {
+    ) -> Task<Message> {
         let Some(address) = address.as_deref().and_then(Self::normalize_wallet_address) else {
             if let WsUserData::AllMids(mids) = data {
-                self.handle_mids_update(mids);
+                return self.handle_mids_update(mids);
             }
-            return;
+            return Task::none();
         };
 
         let now_ms = Self::now_ms();
@@ -155,9 +155,10 @@ impl TradingTerminal {
                 }
             }
             WsUserData::AllMids(mids) => {
-                self.handle_mids_update(mids);
+                return self.handle_mids_update(mids);
             }
             WsUserData::Fills { .. } => {}
         }
+        Task::none()
     }
 }

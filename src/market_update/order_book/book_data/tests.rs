@@ -77,3 +77,81 @@ fn order_book_fetch_plan_skips_empty_or_muted_symbols() {
         .is_none()
     );
 }
+
+#[test]
+fn precision_refresh_waits_until_mid_is_known() {
+    assert!(!order_book_needs_precision_refresh(50.0, None, None, None));
+}
+
+#[test]
+fn precision_refresh_requests_saved_coarse_tick_after_mid_arrives() {
+    assert!(order_book_needs_precision_refresh(
+        50.0,
+        None,
+        None,
+        Some(80_000.0)
+    ));
+}
+
+#[test]
+fn precision_refresh_skips_expected_request_already_in_flight() {
+    let mid = 80_000.0;
+    let expected = helpers::compute_sigfigs(50.0, mid);
+
+    assert!(!order_book_needs_precision_refresh(
+        50.0,
+        None,
+        Some(expected),
+        Some(mid)
+    ));
+}
+
+#[test]
+fn precision_refresh_skips_matching_source_depth() {
+    let mid = 80_000.0;
+    let expected_source = helpers::sigfig_server_tick(helpers::compute_sigfigs(50.0, mid), mid);
+
+    assert!(!order_book_needs_precision_refresh(
+        50.0,
+        expected_source,
+        None,
+        Some(mid)
+    ));
+}
+
+#[test]
+fn precision_refresh_does_not_refetch_default_tick() {
+    assert!(!order_book_needs_precision_refresh(
+        helpers::default_tick_for_price(80_000.0),
+        None,
+        None,
+        Some(80_000.0)
+    ));
+}
+
+#[test]
+fn stale_precision_response_is_rejected_after_mid_is_known() {
+    let mid = 80_000.0;
+
+    assert!(!order_book_response_matches_expected_precision(
+        50.0,
+        (None, None),
+        Some(mid)
+    ));
+    assert!(order_book_response_matches_expected_precision(
+        50.0,
+        helpers::compute_sigfigs(50.0, mid),
+        Some(mid)
+    ));
+}
+
+#[test]
+fn stale_precision_response_guard_allows_default_tick() {
+    let mid = 80_000.0;
+
+    assert!(order_book_response_matches_expected_precision(
+        helpers::default_tick_for_price(mid),
+        (None, None),
+        Some(mid)
+    ));
+}

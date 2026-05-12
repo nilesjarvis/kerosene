@@ -38,7 +38,7 @@ impl TradingTerminal {
                 }
             }
             Message::WalletDetailsWsUpdate(source_address, data) => {
-                self.apply_wallet_details_ws_update(source_address, *data);
+                return self.apply_wallet_details_ws_update(source_address, *data);
             }
             _ => {}
         }

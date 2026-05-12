@@ -16,7 +16,7 @@ use iced::Task;
 use std::collections::HashMap;
 
 impl TradingTerminal {
-    pub(crate) fn handle_mids_update(&mut self, mids: HashMap<String, f64>) {
+    pub(crate) fn handle_mids_update(&mut self, mids: HashMap<String, f64>) -> Task<Message> {
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
         let is_muted = |symbol: &str| {
@@ -38,6 +38,7 @@ impl TradingTerminal {
             self.refresh_order_price_for_symbol(&active_symbol);
         }
         self.refresh_live_watchlist_row_caches();
+        self.order_book_precision_refresh_task()
     }
 
     pub(crate) fn fetch_mids_task_for_dex(dex: &str) -> Task<Message> {

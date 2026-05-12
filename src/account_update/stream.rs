@@ -162,12 +162,12 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let wallet_details_update = ws_data.clone();
         if source_address.as_deref() != self.connected_address.as_deref() {
-            self.apply_wallet_details_ws_update(source_address, ws_data);
-            return Task::none();
+            return self.apply_wallet_details_ws_update(source_address, ws_data);
         }
 
         let mut orders_changed = false;
         let mut fills_changed = false;
+        let mut mids_task = Task::none();
         let mut fill_toast_msgs: Vec<String> = Vec::new();
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
@@ -221,13 +221,13 @@ impl TradingTerminal {
                         .collect();
                 }
                 WsUserData::AllMids(mids) => {
-                    self.handle_mids_update(mids);
+                    mids_task = self.handle_mids_update(mids);
                 }
             }
         } else {
             match ws_data {
                 WsUserData::AllMids(mids) => {
-                    self.handle_mids_update(mids);
+                    mids_task = self.handle_mids_update(mids);
                 }
                 _ => {
                     if should_repair_account_from_ws(
@@ -240,13 +240,14 @@ impl TradingTerminal {
                         let requested_addr = addr.clone();
                         self.account_loading = true;
                         self.account_error = None;
-                        self.apply_wallet_details_ws_update(
+                        let wallet_task = self.apply_wallet_details_ws_update(
                             source_address.clone(),
                             wallet_details_update,
                         );
-                        return Task::perform(fetch_account_data(addr), move |r| {
+                        let account_task = Task::perform(fetch_account_data(addr), move |r| {
                             Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
                         });
+                        return Task::batch([wallet_task, account_task]);
                     }
                 }
             }
@@ -267,8 +268,12 @@ impl TradingTerminal {
         } else {
             Task::none()
         };
-        self.apply_wallet_details_ws_update(source_address, wallet_details_update);
-        chase_task
+        let wallet_task = if matches!(wallet_details_update, WsUserData::AllMids(_)) {
+            Task::none()
+        } else {
+            self.apply_wallet_details_ws_update(source_address, wallet_details_update)
+        };
+        Task::batch([chase_task, mids_task, wallet_task])
     }
 
     fn handle_chase_order_disappearance(&mut self) -> Task<Message> {

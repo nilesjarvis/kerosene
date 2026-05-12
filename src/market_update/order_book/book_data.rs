@@ -50,6 +50,53 @@ fn positive_finite(value: f64) -> Option<f64> {
     (value.is_finite() && value > 0.0).then_some(value)
 }
 
+pub(in crate::market_update::order_book) fn order_book_needs_precision_refresh(
+    selected_tick: f64,
+    source_tick: Option<f64>,
+    pending_sigfigs: Option<(Option<u8>, Option<u8>)>,
+    mid: Option<f64>,
+) -> bool {
+    let Some(mid) = mid.and_then(positive_finite) else {
+        return false;
+    };
+    if !saved_tick_requires_aggregated_fetch(selected_tick, mid) {
+        return false;
+    }
+
+    let expected_sigfigs = helpers::compute_sigfigs(selected_tick, mid);
+    if pending_sigfigs == Some(expected_sigfigs) {
+        return false;
+    }
+
+    let Some(expected_source_tick) = helpers::sigfig_server_tick(expected_sigfigs, mid) else {
+        return false;
+    };
+    !source_tick.is_some_and(|actual| helpers::tick_sizes_match(actual, expected_source_tick))
+}
+
+fn saved_tick_requires_aggregated_fetch(selected_tick: f64, mid: f64) -> bool {
+    if !helpers::valid_book_tick_size(selected_tick) {
+        return false;
+    }
+    let default_tick = helpers::default_tick_for_price(mid);
+    selected_tick > default_tick && !helpers::tick_sizes_match(selected_tick, default_tick)
+}
+
+fn order_book_response_matches_expected_precision(
+    tick_size: f64,
+    sigfigs: (Option<u8>, Option<u8>),
+    mid: Option<f64>,
+) -> bool {
+    let Some(mid) = mid.and_then(positive_finite) else {
+        return true;
+    };
+    if !saved_tick_requires_aggregated_fetch(tick_size, mid) {
+        return true;
+    }
+
+    sigfigs == helpers::compute_sigfigs(tick_size, mid)
+}
+
 impl TradingTerminal {
     pub(crate) fn order_book_symbol_for_mode(&self, mode: &OrderBookSymbolMode) -> String {
         match mode {
@@ -100,7 +147,18 @@ impl TradingTerminal {
         if !tick_still_current {
             return Task::none();
         }
+        if !order_book_response_matches_expected_precision(
+            tick_size,
+            sigfigs,
+            self.resolve_mid_for_symbol(&coin),
+        ) {
+            if let Some(inst) = self.order_books.get_mut(&id) {
+                inst.clear_matching_book_request(sigfigs);
+            }
+            return self.order_book_fetch_task_for_id(id);
+        }
         if let Some(inst) = self.order_books.get_mut(&id) {
+            inst.clear_matching_book_request(sigfigs);
             inst.book_loading = false;
             match result {
                 Ok(book) => {
@@ -159,6 +217,7 @@ impl TradingTerminal {
         if let Some(reason) = self.order_book_unavailable_reason(&symbol) {
             if let Some(inst) = self.order_books.get_mut(&id) {
                 inst.book_loading = false;
+                inst.clear_book_request();
                 inst.book_error = Some(reason);
             }
             return Task::none();
@@ -175,13 +234,21 @@ impl TradingTerminal {
         ) else {
             if let Some(inst) = self.order_books.get_mut(&id) {
                 inst.book_loading = false;
+                inst.clear_book_request();
             }
             return Task::none();
         };
 
+        if self.order_books.get(&id).is_some_and(|inst| {
+            inst.book_loading && inst.pending_book_sigfigs() == Some(plan.sigfigs)
+        }) {
+            return Task::none();
+        }
+
         if let Some(inst) = self.order_books.get_mut(&id) {
             inst.book_loading = true;
             inst.book_error = None;
+            inst.mark_book_request(plan.sigfigs);
         }
 
         Task::perform(
@@ -202,6 +269,35 @@ impl TradingTerminal {
             ids.into_iter()
                 .map(|id| self.order_book_fetch_task_for_id(id)),
         )
+    }
+
+    pub(crate) fn order_book_precision_refresh_task(&mut self) -> Task<Message> {
+        let ids = self.order_book_precision_refresh_ids();
+        Task::batch(
+            ids.into_iter()
+                .map(|id| self.order_book_fetch_task_for_id(id)),
+        )
+    }
+
+    pub(crate) fn order_book_precision_refresh_ids(&self) -> Vec<OrderBookId> {
+        self.order_books
+            .iter()
+            .filter_map(|(&id, inst)| {
+                let symbol = self.order_book_symbol_for_mode(&inst.mode);
+                if inst.book_error.is_some()
+                    || self.order_book_unavailable_reason(&symbol).is_some()
+                {
+                    return None;
+                }
+                order_book_needs_precision_refresh(
+                    inst.tick_size,
+                    inst.book_source_tick_size(),
+                    inst.pending_book_sigfigs(),
+                    self.resolve_mid_for_symbol(&symbol),
+                )
+                .then_some(id)
+            })
+            .collect()
     }
 
     pub(crate) fn order_book_unavailable_reason(&self, symbol: &str) -> Option<String> {

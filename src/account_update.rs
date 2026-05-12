@@ -49,10 +49,7 @@ impl TradingTerminal {
                 self.apply_account_data_loaded(address, *result)
             }
             Message::RefreshAccountData => self.refresh_account_data(),
-            Message::AllMidsBootstrapLoaded(_dex, Ok(mids)) => {
-                self.handle_mids_update(mids);
-                Task::none()
-            }
+            Message::AllMidsBootstrapLoaded(_dex, Ok(mids)) => self.handle_mids_update(mids),
             Message::WsUserDataUpdate(source_address, ws_data) => {
                 self.apply_ws_user_data_update(source_address, *ws_data)
             }
