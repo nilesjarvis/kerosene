@@ -140,4 +140,21 @@ impl CoalescedSender {
         }
         count
     }
+
+    /// Emit every queued entry before the manager drops or replaces the active
+    /// socket. This prevents a disconnect inside the coalescing window from
+    /// losing the latest book snapshot.
+    pub(super) fn flush_all(&mut self) -> usize {
+        let now = Instant::now();
+        let pending = std::mem::take(&mut self.pending);
+        let count = pending.len();
+        for (key, entry) in pending {
+            let _ = self.inner.send(WsRoutedMessage {
+                channel: key.channel.clone(),
+                data: entry.data,
+            });
+            self.last_emitted.insert(key, now);
+        }
+        count
+    }
 }
