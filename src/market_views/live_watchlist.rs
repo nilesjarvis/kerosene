@@ -50,12 +50,6 @@ impl TradingTerminal {
             } else {
                 theme.extended_palette().background.weak.text
             }));
-        } else if self.live_watchlist_contexts_loading || self.live_watchlist_history_loading {
-            content = content.push(
-                text("Refreshing market context")
-                    .size(10)
-                    .color(theme.extended_palette().background.weak.text),
-            );
         }
         let content = content
             .push(rule::horizontal(1))
