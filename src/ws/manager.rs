@@ -14,9 +14,12 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 
+mod coalescer;
 mod commands;
 mod frames;
 mod subscriptions;
+
+use self::coalescer::CoalescedSender;
 
 #[cfg(test)]
 mod tests;
@@ -126,6 +129,7 @@ async fn ws_manager_task(
     msg_tx: broadcast::Sender<WsRoutedMessage>,
 ) {
     let mut active_subs = ActiveWsSubscriptions::default();
+    let mut coalescer = CoalescedSender::new(msg_tx);
     use futures::StreamExt as _;
     use futures::future::{Either, select};
     use tokio_tungstenite::tungstenite::Message as WsMsg;
@@ -162,12 +166,31 @@ async fn ws_manager_task(
             let read_fut = Box::pin(read.next());
             let stale_in = stale_read_remaining(last_rx_at.elapsed());
 
-            match tokio::time::timeout(stale_in, select(cmd_fut, read_fut)).await {
+            // Two competing deadlines drive the inner select: the read
+            // watchdog (force reconnect after `WS_READ_STALE_AFTER_SECS` of
+            // silence) and the coalescer flush (release pending l2Book
+            // frames). Whichever expires first wakes the loop; we then
+            // dispatch on which deadline was the cause.
+            let coalesce_in = coalescer.next_due();
+            let watchdog_wins = match coalesce_in {
+                Some(c) => stale_in <= c,
+                None => true,
+            };
+            let deadline = match coalesce_in {
+                Some(c) => stale_in.min(c),
+                None => stale_in,
+            };
+
+            match tokio::time::timeout(deadline, select(cmd_fut, read_fut)).await {
                 Err(_) => {
-                    // No frame received within the stale window. Force a
-                    // reconnect to recover from half-open sockets that a
-                    // VPN/NAT rebind has silently abandoned.
-                    disconnected = true;
+                    if watchdog_wins {
+                        // No frame received within the stale window. Force a
+                        // reconnect to recover from half-open sockets that a
+                        // VPN/NAT rebind has silently abandoned.
+                        disconnected = true;
+                    } else {
+                        coalescer.flush_due();
+                    }
                 }
                 Ok(Either::Left((Some(cmd), _))) => {
                     let action = handle_ws_command(&mut active_subs, cmd);
@@ -196,10 +219,7 @@ async fn ws_manager_task(
                                 telemetry_update_ws_latency_from_ping_start();
                             }
                             WsTextFrame::Data { channel, data } => {
-                                let _ = msg_tx.send(WsRoutedMessage {
-                                    channel,
-                                    data: Arc::new(data),
-                                });
+                                coalescer.submit(channel, Arc::new(data));
                             }
                             WsTextFrame::Ignored => {}
                         }
