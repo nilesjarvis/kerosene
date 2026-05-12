@@ -1,4 +1,6 @@
-use super::actions::{build_cancel_action, build_modify_action, build_order_action};
+use super::actions::{
+    HyperliquidL1Action, build_cancel_action, build_modify_action, build_order_action,
+};
 use super::crypto::action_hash_bytes;
 use super::{ChaseOrder, ExchangeResponse, OrderKind};
 
@@ -336,6 +338,103 @@ fn exchange_response_error_string_body_reports_exchange_error() {
     );
     assert!(response.is_error());
     assert_eq!(response.order_oid(), None);
+}
+
+#[test]
+fn action_enum_order_constructor_round_trips_through_existing_builder() {
+    let direct = build_order_action(
+        7,
+        true,
+        "123.45".to_string(),
+        "0.25".to_string(),
+        OrderKind::Limit,
+        false,
+    );
+    let via_enum = HyperliquidL1Action::order(
+        7,
+        true,
+        "123.45".to_string(),
+        "0.25".to_string(),
+        OrderKind::Limit,
+        false,
+    );
+
+    let direct_json = serde_json::to_value(&direct).expect("direct");
+    let via_enum_json = serde_json::to_value(&via_enum).expect("enum");
+    assert_eq!(direct_json, via_enum_json);
+
+    let direct_msgpack = rmp_serde::to_vec_named(&direct).expect("direct msgpack");
+    let via_enum_msgpack = rmp_serde::to_vec_named(&via_enum).expect("enum msgpack");
+    assert_eq!(
+        direct_msgpack, via_enum_msgpack,
+        "wire bytes must match — the action hash depends on them"
+    );
+}
+
+#[test]
+fn action_enum_cancel_constructor_matches_direct_builder() {
+    let direct = build_cancel_action(3, 9001);
+    let via_enum = HyperliquidL1Action::cancel(3, 9001);
+
+    assert_eq!(
+        rmp_serde::to_vec_named(&direct).expect("direct msgpack"),
+        rmp_serde::to_vec_named(&via_enum).expect("enum msgpack"),
+    );
+}
+
+#[test]
+fn action_enum_modify_constructor_matches_direct_builder() {
+    let direct = build_modify_action(
+        9001,
+        3,
+        true,
+        "123.45".to_string(),
+        "0.25".to_string(),
+        false,
+    );
+    let via_enum = HyperliquidL1Action::modify(
+        9001,
+        3,
+        true,
+        "123.45".to_string(),
+        "0.25".to_string(),
+        false,
+    );
+
+    assert_eq!(
+        rmp_serde::to_vec_named(&direct).expect("direct msgpack"),
+        rmp_serde::to_vec_named(&via_enum).expect("enum msgpack"),
+    );
+}
+
+#[test]
+fn action_enum_batch_cancel_emits_multi_entry_cancel_action() {
+    let action = HyperliquidL1Action::batch_cancel([(3, 1), (3, 2), (5, 99)]);
+    let json = serde_json::to_value(&action).expect("batch cancel json");
+
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "type": "cancel",
+            "cancels": [
+                { "a": 3, "o": 1 },
+                { "a": 3, "o": 2 },
+                { "a": 5, "o": 99 },
+            ],
+        })
+    );
+}
+
+#[test]
+fn action_enum_batch_cancel_single_entry_matches_cancel_order_wire_shape() {
+    let single = HyperliquidL1Action::cancel(3, 9001);
+    let batched = HyperliquidL1Action::batch_cancel([(3, 9001)]);
+
+    assert_eq!(
+        rmp_serde::to_vec_named(&single).expect("single msgpack"),
+        rmp_serde::to_vec_named(&batched).expect("batched msgpack"),
+        "1-entry batch_cancel and cancel_order produce identical wire bytes",
+    );
 }
 
 #[test]
