@@ -37,6 +37,12 @@ impl TradingTerminal {
                     instance.heatmap_viewport = None;
                 }
             }
+            Message::ChartPriceFlashTick => {
+                let now_ms = Self::now_ms();
+                for instance in self.charts.values_mut() {
+                    instance.clear_expired_last_price_flash(now_ms);
+                }
+            }
             Message::ChartWsAssetCtxUpdate(id, symbol, ctx) => {
                 if self.is_ticker_muted(&symbol) {
                     return Task::none();

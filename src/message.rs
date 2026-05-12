@@ -305,6 +305,7 @@ pub(crate) enum Message {
     ),
     MacroCandlesLoaded(ChartId, String, Timeframe, Result<Vec<Candle>, String>),
     ChartWsCandleUpdate(ChartId, String, String, Candle),
+    ChartPriceFlashTick,
     ChartWsAssetCtxUpdate(ChartId, String, AssetContext),
     ChartViewportChanged(ChartId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),

@@ -37,7 +37,7 @@ impl TradingTerminal {
         chart_id: ChartId,
         instance: &'a ChartInstance,
         last_close: f64,
-        change_color: Color,
+        price_color: Color,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let sym_col = column![
@@ -45,7 +45,7 @@ impl TradingTerminal {
             text(helpers::format_price(last_close))
                 .size(16)
                 .font(iced::Font::MONOSPACE)
-                .color(change_color),
+                .color(price_color),
         ]
         .spacing(2);
 

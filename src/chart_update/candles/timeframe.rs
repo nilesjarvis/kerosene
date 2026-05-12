@@ -52,6 +52,7 @@ impl TradingTerminal {
             instance.heatmap_viewport = None;
             instance.heatmap_status = None;
             instance.heatmap_fetching = false;
+            instance.last_price_flash = None;
             Self::clear_heatmap_display(instance);
             Self::clear_liquidation_display(instance);
             Self::clear_funding_display(instance);

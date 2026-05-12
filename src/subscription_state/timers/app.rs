@@ -27,6 +27,18 @@ impl TradingTerminal {
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::StatusBarTick),
         );
 
+        let now_ms = Self::now_ms();
+        if self
+            .charts
+            .values()
+            .any(|instance| instance.last_price_flash_is_active(now_ms))
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(80))
+                    .map(|_| Message::ChartPriceFlashTick),
+            );
+        }
+
         subs.push(
             iced::time::every(std::time::Duration::from_secs(60 * 15)).map(|_| Message::Tick),
         );

@@ -1,4 +1,4 @@
-use crate::api::Candle;
+use crate::api::{Candle, is_valid_candle};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
 use crate::message::Message;
@@ -21,7 +21,13 @@ impl TradingTerminal {
             && instance.symbol == symbol
             && instance.interval.api_str() == interval
         {
+            let previous_close = instance.chart.candles.last().map(|candle| candle.close);
+            let next_close = candle.close;
+            let should_flash = is_valid_candle(&candle);
             instance.chart.push_candle(candle);
+            if should_flash {
+                instance.track_last_price_update(previous_close, next_close, Self::now_ms());
+            }
             refresh_funding = instance.macro_indicators.show_funding_rate;
         }
         if refresh_funding {

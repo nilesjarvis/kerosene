@@ -109,6 +109,7 @@ impl TradingTerminal {
                         inst.chart.candle_cache.clear();
                         inst.asset_ctx = None;
                         inst.candle_fetch_error = None;
+                        inst.last_price_flash = None;
                         let request = Self::build_candle_fetch_request(
                             *id,
                             &valid.key,
