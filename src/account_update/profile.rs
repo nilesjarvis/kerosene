@@ -82,9 +82,9 @@ impl TradingTerminal {
         Task::none()
     }
 
-    pub(super) fn update_account_label(&mut self, value: String) -> Task<Message> {
-        let is_ghost = self.active_account_is_ghost();
-        if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
+    fn update_account_label_at_index(&mut self, index: usize, value: String) -> Task<Message> {
+        let is_ghost = self.account_index_is_ghost(index);
+        if let Some(profile) = self.accounts.get_mut(index) {
             profile.name = value;
             if !is_ghost {
                 self.persist_config();
@@ -97,6 +97,8 @@ impl TradingTerminal {
         let opening = !self.account_picker_open;
         if opening {
             self.close_chart_header_menus();
+        } else {
+            self.account_picker_rename_index = None;
         }
         self.account_picker_open = opening;
         Task::none()
@@ -104,11 +106,35 @@ impl TradingTerminal {
 
     pub(super) fn select_account_from_picker(&mut self, index: usize) -> Task<Message> {
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         self.switch_account_task(index)
+    }
+
+    pub(super) fn toggle_account_picker_rename(&mut self, index: usize) -> Task<Message> {
+        if self.accounts.get(index).is_none() || self.account_picker_rename_index == Some(index) {
+            self.account_picker_rename_index = None;
+        } else {
+            self.account_picker_rename_index = Some(index);
+        }
+        Task::none()
+    }
+
+    pub(super) fn update_account_picker_label(
+        &mut self,
+        index: usize,
+        value: String,
+    ) -> Task<Message> {
+        if self.accounts.get(index).is_none() {
+            self.account_picker_rename_index = None;
+            return Task::none();
+        }
+        self.account_picker_rename_index = Some(index);
+        self.update_account_label_at_index(index, value)
     }
 
     pub(super) fn add_account_from_picker(&mut self) -> Task<Message> {
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         if self.pending_order_action.is_some() {
             self.push_toast(
                 "Wait for the pending order request before adding an account".to_string(),
@@ -132,11 +158,13 @@ impl TradingTerminal {
 
     pub(super) fn add_ghost_wallet_from_picker(&mut self, address: String) -> Task<Message> {
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         self.ghost_wallet_task(address)
     }
 
     pub(super) fn forget_ghost_account_from_picker(&mut self, index: usize) -> Task<Message> {
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         self.forget_ghost_account_task(index)
     }
 

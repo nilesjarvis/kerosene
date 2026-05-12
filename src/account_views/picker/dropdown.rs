@@ -38,9 +38,13 @@ impl TradingTerminal {
             }
         }
 
+        menu = menu
+            .push(rule::horizontal(1))
+            .push(sections::add_account_button());
+
         container(scrollable(menu).height(iced::Length::Shrink))
             .padding(6)
-            .width(300)
+            .width(360)
             .max_height(360.0)
             .style(|theme: &Theme| container_style::Style {
                 background: Some(theme.extended_palette().background.base.color.into()),

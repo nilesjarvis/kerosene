@@ -6,6 +6,7 @@ impl TradingTerminal {
     pub(super) fn add_trading_journal_window(&mut self) -> Task<Message> {
         self.add_widget_menu_open = false;
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         if let Some(id) = self.journal.window_id {
             return Task::batch([
                 window::gain_focus(id),

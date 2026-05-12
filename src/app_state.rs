@@ -77,6 +77,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) add_widget_menu_open: bool,
     pub(crate) add_widget_placement: AddWidgetPlacement,
     pub(crate) account_picker_open: bool,
+    pub(crate) account_picker_rename_index: Option<usize>,
     // Calendar state
     pub(crate) calendar_events: Vec<api::CalendarEvent>,
     pub(crate) calendar_error: Option<String>,

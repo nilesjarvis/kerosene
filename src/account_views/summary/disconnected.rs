@@ -68,16 +68,9 @@ impl TradingTerminal {
                 }
             });
 
-        let account_row = row![
-            self.summary_account_picker(),
-            self.summary_add_account_button(),
-            self.summary_account_label_input(),
-            self.summary_forget_ghost_button(),
-            self.summary_delete_account_button(),
-            addr_input
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center);
+        let account_row = row![self.summary_account_picker(), addr_input]
+            .spacing(8)
+            .align_y(iced::Alignment::Center);
         let action_row = row![
             key_input,
             connect_btn,

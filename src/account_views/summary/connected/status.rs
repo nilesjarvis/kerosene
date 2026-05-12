@@ -40,9 +40,6 @@ impl TradingTerminal {
         let status_widget: Element<'_, Message> = if self.account_loading {
             row![
                 self.summary_account_picker(),
-                self.summary_add_account_button(),
-                self.summary_forget_ghost_button(),
-                self.summary_delete_account_button(),
                 vertical_spacer(),
                 self.view_spinner(16),
                 text(account_status_text)
@@ -56,9 +53,6 @@ impl TradingTerminal {
         } else {
             row![
                 self.summary_account_picker(),
-                self.summary_add_account_button(),
-                self.summary_forget_ghost_button(),
-                self.summary_delete_account_button(),
                 vertical_spacer(),
                 text(account_status_text)
                     .size(11)

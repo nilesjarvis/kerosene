@@ -22,6 +22,7 @@ impl TradingTerminal {
         self.show_unlock_credentials_popup = false;
         self.config_save_due_at = None;
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         self.add_widget_menu_open = false;
         self.add_widget_placement = AddWidgetPlacement::Below;
 

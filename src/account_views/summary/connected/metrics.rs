@@ -13,6 +13,7 @@ pub(in crate::account_views::summary::connected) struct ConnectedSummaryValues {
     pub(in crate::account_views::summary::connected) available: Option<f64>,
     pub(in crate::account_views::summary::connected) available_value: String,
     pub(in crate::account_views::summary::connected) live_notional: String,
+    pub(in crate::account_views::summary::connected) effective_leverage_value: String,
     pub(in crate::account_views::summary::connected) margin_used: Option<f64>,
     pub(in crate::account_views::summary::connected) margin_used_value: String,
     pub(in crate::account_views::summary::connected) portfolio_margin_ratio: Option<f64>,
@@ -100,6 +101,7 @@ impl TradingTerminal {
         };
         let margin_used =
             parse_summary_number(&data.clearinghouse.margin_summary.total_margin_used);
+        let effective_leverage = effective_leverage(live_ntl, total_value);
         let portfolio_margin_ratio = data
             .spot
             .portfolio_margin_ratio
@@ -111,6 +113,7 @@ impl TradingTerminal {
             available,
             available_value: summary_number_string(available),
             live_notional: summary_number_string(live_ntl),
+            effective_leverage_value: leverage_string(effective_leverage),
             margin_used,
             margin_used_value: summary_number_string(margin_used),
             portfolio_margin_ratio,
@@ -150,6 +153,20 @@ fn position_notional_value(
     match (live_mid, parse_summary_number(szi_raw)) {
         (Some(mid), Some(szi)) => Some(szi.abs() * mid),
         _ => parse_summary_number(wire_value_raw).map(f64::abs),
+    }
+}
+
+fn effective_leverage(notional: Option<f64>, account_value: Option<f64>) -> Option<f64> {
+    match (notional, account_value) {
+        (Some(notional), Some(account_value))
+            if notional.abs() <= f64::EPSILON && account_value.abs() <= f64::EPSILON =>
+        {
+            Some(0.0)
+        }
+        (Some(notional), Some(account_value)) if account_value > 0.0 => {
+            Some((notional.abs() / account_value).max(0.0))
+        }
+        _ => None,
     }
 }
 
@@ -197,5 +214,11 @@ fn summary_number_string(value: Option<f64>) -> String {
 fn summary_percent_string(value: Option<f64>) -> String {
     value
         .map(|value| format!("{:.2}%", value * 100.0))
+        .unwrap_or_else(|| "Invalid data".to_string())
+}
+
+fn leverage_string(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{value:.2}x"))
         .unwrap_or_else(|| "Invalid data".to_string())
 }

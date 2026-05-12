@@ -86,6 +86,7 @@ impl TradingTerminal {
             add_widget_menu_open: false,
             add_widget_placement: AddWidgetPlacement::Below,
             account_picker_open: false,
+            account_picker_rename_index: None,
             calendar_events: Vec::new(),
             calendar_error: None,
             calendar_last_fetch: None,

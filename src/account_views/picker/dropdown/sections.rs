@@ -1,6 +1,6 @@
 use crate::message::Message;
 
-use iced::widget::{container, text};
+use iced::widget::{button, container, text};
 use iced::{Element, Fill, Theme};
 
 pub(super) fn dropdown_title(theme: &Theme) -> Element<'static, Message> {
@@ -31,4 +31,27 @@ pub(super) fn empty_saved_profiles(theme: &Theme) -> Element<'static, Message> {
     .padding([5, 8])
     .width(Fill)
     .into()
+}
+
+pub(super) fn add_account_button() -> Element<'static, Message> {
+    button(text("+ Account").size(11).center().width(Fill))
+        .on_press(Message::AddAccount)
+        .padding([6, 8])
+        .width(Fill)
+        .style(|theme: &Theme, status| {
+            let bg = match status {
+                button::Status::Hovered => theme.extended_palette().background.strong.color,
+                _ => theme.extended_palette().background.weak.color,
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: theme.palette().primary,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        })
+        .into()
 }

@@ -65,7 +65,8 @@ pub(crate) enum Message {
 
     ToggleAccountPicker,
     AccountPickerSelected(usize),
-    AccountLabelChanged(String),
+    AccountPickerRenameToggled(usize),
+    AccountPickerLabelChanged(usize, String),
     AddAccount,
     GhostWallet(String),
     ForgetGhostAccount(usize),

@@ -333,6 +333,7 @@ impl TradingTerminal {
         }
         self.add_widget_menu_open = false;
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         self.chart_screenshot_menu_open = None;
     }
 }

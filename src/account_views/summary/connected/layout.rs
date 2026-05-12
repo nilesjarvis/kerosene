@@ -36,10 +36,6 @@ impl TradingTerminal {
 
         row![
             self.summary_account_picker(),
-            self.summary_add_account_button(),
-            self.summary_account_label_input(),
-            self.summary_forget_ghost_button(),
-            self.summary_delete_account_button(),
             vertical_spacer(),
             row![label_value("Account", account_label), copy_btn]
                 .spacing(6)
@@ -86,6 +82,11 @@ impl TradingTerminal {
                 ))
                 .push(vertical_spacer())
                 .push(label_value(
+                    "Eff Lev",
+                    &summary_values.effective_leverage_value,
+                ))
+                .push(vertical_spacer())
+                .push(label_value(
                     "Margin Used",
                     self.mask_connected_summary_usd(&summary_values.margin_used_value),
                 ))
@@ -111,6 +112,11 @@ impl TradingTerminal {
                 .push(label_value(
                     "Notional Pos",
                     self.mask_connected_summary_usd(&summary_values.live_notional),
+                ))
+                .push(vertical_spacer())
+                .push(label_value(
+                    "Eff Lev",
+                    &summary_values.effective_leverage_value,
                 ))
                 .push(vertical_spacer())
                 .push(label_value(

@@ -27,6 +27,9 @@ impl TradingTerminal {
     }
 
     pub(crate) fn delete_saved_account_task(&mut self, index: usize) -> Task<Message> {
+        self.account_picker_open = false;
+        self.account_picker_rename_index = None;
+
         if self.pending_order_action.is_some() {
             self.push_toast(
                 "Wait for the pending order request before deleting an account".to_string(),

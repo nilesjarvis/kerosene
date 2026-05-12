@@ -315,9 +315,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PnlCardSaved(_)
         | Message::WalletKeyInputChanged(_)
         | Message::WalletAddressInputChanged(_)
-        | Message::AccountLabelChanged(_)
         | Message::ToggleAccountPicker
         | Message::AccountPickerSelected(_)
+        | Message::AccountPickerRenameToggled(_)
+        | Message::AccountPickerLabelChanged(_, _)
         | Message::AddAccount
         | Message::GhostWallet(_)
         | Message::ForgetGhostAccount(_)
@@ -413,6 +414,14 @@ mod tests {
         );
         assert_eq!(
             message_route(&Message::PnlCardSaved(Ok(None))),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::AccountPickerRenameToggled(0)),
+            UpdateRoute::Account
+        );
+        assert_eq!(
+            message_route(&Message::AccountPickerLabelChanged(0, "Main".to_string())),
             UpdateRoute::Account
         );
         assert_eq!(

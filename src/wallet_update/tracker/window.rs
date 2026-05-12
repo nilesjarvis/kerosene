@@ -6,6 +6,7 @@ impl TradingTerminal {
     pub(super) fn open_wallet_tracker_window(&mut self) -> Task<Message> {
         self.add_widget_menu_open = false;
         self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         if let Some(id) = self.wallet_tracker.window_id {
             return window::gain_focus(id);
         }

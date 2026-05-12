@@ -32,9 +32,12 @@ impl TradingTerminal {
             Message::PnlCardSaved(result) => self.handle_pnl_card_saved(result),
             Message::WalletKeyInputChanged(value) => self.update_wallet_key_input(value),
             Message::WalletAddressInputChanged(value) => self.update_wallet_address_input(value),
-            Message::AccountLabelChanged(value) => self.update_account_label(value),
             Message::ToggleAccountPicker => self.toggle_account_picker(),
             Message::AccountPickerSelected(index) => self.select_account_from_picker(index),
+            Message::AccountPickerRenameToggled(index) => self.toggle_account_picker_rename(index),
+            Message::AccountPickerLabelChanged(index, value) => {
+                self.update_account_picker_label(index, value)
+            }
             Message::AddAccount => self.add_account_from_picker(),
             Message::GhostWallet(address) => self.add_ghost_wallet_from_picker(address),
             Message::ForgetGhostAccount(index) => self.forget_ghost_account_from_picker(index),

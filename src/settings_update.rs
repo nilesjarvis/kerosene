@@ -11,6 +11,7 @@ impl TradingTerminal {
             Message::OpenSettingsWindow => {
                 self.add_widget_menu_open = false;
                 self.account_picker_open = false;
+                self.account_picker_rename_index = None;
                 if let Some(id) = self.settings_window_id {
                     return window::gain_focus(id);
                 }
