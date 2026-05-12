@@ -74,6 +74,10 @@ windows-sys = { version = "0.61", features = ["Win32_Media_Audio"] }
 # tick math, sigfig negotiation). Only pulled in for `cargo test`; release
 # builds are unaffected.
 proptest = { version = "1", default-features = false, features = ["std"] }
+# Tokio's macros + multi-thread runtime are only needed by tests that drive
+# the WebSocket manager against a localhost mock server. Production code does
+# not directly require these extra features.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "sync"] }
 
 [build-dependencies]
 winresource = { version = "0.1", default-features = false }

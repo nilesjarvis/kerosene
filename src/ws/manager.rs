@@ -22,6 +22,8 @@ mod subscriptions;
 use self::coalescer::CoalescedSender;
 
 #[cfg(test)]
+mod integration_tests;
+#[cfg(test)]
 mod tests;
 
 // Force a reconnect if no frame (data or pong) has arrived for this long.
@@ -143,13 +145,14 @@ pub(crate) fn get_manager() -> (
             }
         });
 
-        tokio::spawn(ws_manager_task(cmd_rx, msg_tx));
+        tokio::spawn(ws_manager_task(WS_URL.to_string(), cmd_rx, msg_tx));
         WsManager { cmd_tx, msg_rx }
     });
     (mgr.cmd_tx.clone(), mgr.msg_rx.resubscribe())
 }
 
-async fn ws_manager_task(
+pub(super) async fn ws_manager_task(
+    ws_url: String,
     mut cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
     msg_tx: broadcast::Sender<WsRoutedMessage>,
 ) {
@@ -163,7 +166,7 @@ async fn ws_manager_task(
     let mut reconnect_delay_secs = policy.base_delay_secs;
 
     loop {
-        let ws_stream = match tokio_tungstenite::connect_async(WS_URL).await {
+        let ws_stream = match tokio_tungstenite::connect_async(&ws_url).await {
             Ok((ws, _)) => ws,
             Err(_) => {
                 tokio::time::sleep(Duration::from_secs(reconnect_delay_secs)).await;
