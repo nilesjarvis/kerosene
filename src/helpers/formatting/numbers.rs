@@ -16,18 +16,31 @@ pub fn format_usd(s: &str) -> String {
 
 /// Format a non-negative float with 2 decimal places and comma thousands separators.
 pub fn format_with_commas(v: f64) -> String {
-    let whole = v.trunc() as u64;
-    let frac = ((v.fract() * 100.0).round() as u64) % 100;
-    let whole_str = whole.to_string();
-    let mut result = String::with_capacity(whole_str.len() + whole_str.len() / 3 + 3);
-    for (i, ch) in whole_str.chars().rev().enumerate() {
+    format_grouped_decimal(v, 2)
+}
+
+fn format_grouped_decimal(value: f64, decimals: usize) -> String {
+    let sign = if value < 0.0 { "-" } else { "" };
+    let formatted = format!("{:.*}", decimals, value.abs());
+    let (whole, fraction) = formatted
+        .split_once('.')
+        .map_or((formatted.as_str(), ""), |(whole, fraction)| {
+            (whole, fraction)
+        });
+
+    let mut grouped = String::with_capacity(whole.len() + whole.len() / 3);
+    for (i, ch) in whole.chars().rev().enumerate() {
         if i > 0 && i % 3 == 0 {
-            result.push(',');
+            grouped.push(',');
         }
-        result.push(ch);
+        grouped.push(ch);
     }
-    let reversed: String = result.chars().rev().collect();
-    format!("{reversed}.{frac:02}")
+    let whole_grouped: String = grouped.chars().rev().collect();
+    if decimals == 0 {
+        format!("{sign}{whole_grouped}")
+    } else {
+        format!("{sign}{whole_grouped}.{fraction}")
+    }
 }
 
 pub fn format_size(size: f64) -> String {
@@ -46,10 +59,28 @@ pub fn format_size(size: f64) -> String {
 
 pub fn format_price(price: f64) -> String {
     if price.abs() >= 1000.0 {
-        format!("{price:.1}")
+        format_grouped_decimal(price, 1)
     } else if price.abs() >= 1.0 {
         format!("{price:.2}")
     } else {
         format!("{price:.4}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn price_formatter_groups_large_prices() {
+        assert_eq!(format_price(1_234.56), "1,234.6");
+        assert_eq!(format_price(100_000.0), "100,000.0");
+        assert_eq!(format_price(-12_345.67), "-12,345.7");
+    }
+
+    #[test]
+    fn price_formatter_keeps_existing_precision_bands_below_thousand() {
+        assert_eq!(format_price(999.99), "999.99");
+        assert_eq!(format_price(0.123456), "0.1235");
     }
 }

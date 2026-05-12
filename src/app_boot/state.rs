@@ -99,7 +99,9 @@ impl TradingTerminal {
             exchange_symbols: Vec::new(),
             symbols_loading: true,
             symbol_search_query: String::new(),
-            symbol_search_sort_mode: SymbolSearchSortMode::default(),
+            symbol_search_sort_mode: SymbolSearchSortMode::from_config_str(
+                &cfg.symbol_search_sort_mode,
+            ),
             symbol_search_market_filter: SymbolSearchMarketFilter::default(),
             symbol_search_hip3_dex_filter: None,
             symbol_search_result_indices: Vec::new(),

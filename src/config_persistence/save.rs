@@ -168,6 +168,7 @@ impl TradingTerminal {
             active_timeframe: layout_snapshot.active_timeframe,
             order_kind: layout_snapshot.order_kind,
             reduce_only: layout_snapshot.reduce_only,
+            symbol_search_sort_mode: self.symbol_search_sort_mode.config_value().to_string(),
             accounts: persisted_accounts,
             active_account_index,
             agent_key: String::new().into(),

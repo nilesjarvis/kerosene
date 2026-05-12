@@ -16,10 +16,8 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let display = sym.display_name.as_deref().unwrap_or(&sym.ticker);
         let is_selected = sym.key == active_sym;
-        let prefix = sym.key.split(':').next().unwrap_or("");
-        let cat_badge = text(sym.category.to_uppercase())
-            .size(9)
-            .color(category_color(&sym.category, theme));
+        let exchange_label = sym.key.split(':').next().unwrap_or("");
+        let category_label = sym.category.to_uppercase();
 
         let star_key = sym.key.clone();
         let star_btn = button(text(if is_fav { "\u{2605}" } else { "\u{2606}" }).size(12))
@@ -42,12 +40,26 @@ impl TradingTerminal {
             });
 
         let key = sym.key.clone();
-        let mut coin_content = row![];
+        let mut identity = row![];
         if let Some(icon) = helpers::symbol_icon(&sym.key, 14, theme.palette().text) {
-            coin_content = coin_content.push(icon).push(Space::new().width(4.0));
+            identity = identity.push(icon).push(Space::new().width(4.0));
         }
-        coin_content =
-            coin_content.push(text(display).size(12).width(iced::Length::FillPortion(3)));
+        identity = identity
+            .push(text(display).size(12).width(Fill))
+            .width(Fill)
+            .align_y(iced::Alignment::Center);
+
+        let mut coin_content = row![
+            identity,
+            text(exchange_label)
+                .size(9)
+                .color(color!(0x666666))
+                .width(iced::Length::Fixed(54.0)),
+            text(category_label)
+                .size(9)
+                .color(category_color(&sym.category, theme))
+                .width(iced::Length::Fixed(66.0)),
+        ];
 
         if self.symbol_search_sort_mode == SymbolSearchSortMode::Volume24h {
             let volume_label = self
@@ -58,13 +70,11 @@ impl TradingTerminal {
                 text(volume_label)
                     .size(10)
                     .color(theme.extended_palette().background.weak.text)
-                    .width(iced::Length::Fixed(64.0)),
+                    .font(iced::Font::MONOSPACE)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .width(iced::Length::Fixed(74.0)),
             );
         }
-
-        coin_content = coin_content
-            .push(text(prefix).size(9).color(color!(0x666666)))
-            .push(cat_badge);
 
         coin_content = coin_content.spacing(6).align_y(iced::Alignment::Center);
 

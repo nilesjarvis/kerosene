@@ -21,8 +21,9 @@ pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
 use defaults::default_true;
 pub use defaults::{
     DEFAULT_MARKET_SLIPPAGE_PCT, default_layout_ratios, default_liquidation_alert_threshold,
-    default_market_slippage_pct, default_order_kind, default_symbol, default_tick_size,
-    default_timeframe, new_secret_id, normalize_market_slippage_pct,
+    default_market_slippage_pct, default_order_kind, default_symbol,
+    default_symbol_search_sort_mode, default_tick_size, default_timeframe, new_secret_id,
+    normalize_market_slippage_pct,
 };
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,9 @@ pub struct KeroseneConfig {
     /// Order book tick size.
     #[serde(default = "default_tick_size")]
     pub book_tick_size: f64,
+    /// Selected sort mode for the global symbol search.
+    #[serde(default = "default_symbol_search_sort_mode")]
+    pub symbol_search_sort_mode: String,
     /// Pane layout split ratios (top-to-bottom, left-to-right order).
     /// The 5 ratios correspond to the splits in the pane tree:
     /// [account_bar, main_vs_bottom, chart_vs_right, orderbook_vs_watchlist, tabs_vs_entry]

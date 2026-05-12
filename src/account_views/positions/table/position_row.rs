@@ -24,12 +24,9 @@ impl TradingTerminal {
 
         let mark_str = data
             .mark_px
-            .map(|mid| format!("{mid:.4}"))
+            .map(format_price)
             .unwrap_or_else(|| "\u{2014}".to_string());
-        let entry_str = data
-            .entry_px
-            .map(|_| pos.entry_px.clone())
-            .unwrap_or_else(|| "Invalid".to_string());
+        let entry_str = format_position_entry_price(data.entry_px, &pos.entry_px);
         let size_str = data
             .szi
             .map(|szi| self.display_size_for_symbol(&pos.coin, szi.abs()))
@@ -186,5 +183,82 @@ impl TradingTerminal {
                 }
             })
             .into()
+    }
+}
+
+fn format_position_entry_price(entry_px: Option<f64>, raw: &str) -> String {
+    let Some(entry_px) = entry_px else {
+        return "Invalid".to_string();
+    };
+    if entry_px.abs() < 1_000.0 {
+        return raw.to_string();
+    }
+
+    format_large_wire_price(raw).unwrap_or_else(|| format_price(entry_px))
+}
+
+fn format_large_wire_price(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let (sign, unsigned) = trimmed
+        .strip_prefix('-')
+        .map(|value| ("-", value))
+        .or_else(|| trimmed.strip_prefix('+').map(|value| ("+", value)))
+        .unwrap_or(("", trimmed));
+    let (whole, fraction) = unsigned
+        .split_once('.')
+        .map_or((unsigned, None), |(whole, fraction)| {
+            (whole, Some(fraction))
+        });
+    if whole.is_empty() || !whole.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    if let Some(fraction) = fraction
+        && !fraction.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return None;
+    }
+
+    let mut grouped = String::with_capacity(whole.len() + whole.len() / 3);
+    for (i, ch) in whole.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(ch);
+    }
+    let whole_grouped: String = grouped.chars().rev().collect();
+
+    Some(match fraction {
+        Some(fraction) => format!("{sign}{whole_grouped}.{fraction}"),
+        None => format!("{sign}{whole_grouped}"),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn position_entry_price_groups_large_wire_values() {
+        assert_eq!(
+            format_position_entry_price(Some(12345.678), "12345.678"),
+            "12,345.678"
+        );
+        assert_eq!(
+            format_position_entry_price(Some(100000.0), "100000"),
+            "100,000"
+        );
+    }
+
+    #[test]
+    fn position_entry_price_preserves_small_wire_values() {
+        assert_eq!(
+            format_position_entry_price(Some(0.00001234), "0.00001234"),
+            "0.00001234"
+        );
+        assert_eq!(format_position_entry_price(None, "100000"), "Invalid");
     }
 }

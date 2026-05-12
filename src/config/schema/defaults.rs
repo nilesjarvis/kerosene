@@ -29,6 +29,10 @@ pub fn default_tick_size() -> f64 {
     0.01
 }
 
+pub fn default_symbol_search_sort_mode() -> String {
+    "relevance".to_string()
+}
+
 pub fn default_layout_ratios() -> Vec<f32> {
     vec![0.06, 0.70, 0.50, 0.55, 0.65]
 }
@@ -76,6 +80,7 @@ impl Default for KeroseneConfig {
             order_kind: default_order_kind(),
             reduce_only: false,
             book_tick_size: default_tick_size(),
+            symbol_search_sort_mode: default_symbol_search_sort_mode(),
             layout_ratios: default_layout_ratios(),
             pane_layout: None,
             charts: Vec::new(),

@@ -21,6 +21,24 @@ impl SymbolSearchSortMode {
         Self::Alphabetical,
         Self::Exchange,
     ];
+
+    pub(crate) fn from_config_str(value: &str) -> Self {
+        match value {
+            "24h_volume" => Self::Volume24h,
+            "alphabetical" => Self::Alphabetical,
+            "exchange" => Self::Exchange,
+            _ => Self::Relevance,
+        }
+    }
+
+    pub(crate) fn config_value(self) -> &'static str {
+        match self {
+            Self::Relevance => "relevance",
+            Self::Volume24h => "24h_volume",
+            Self::Alphabetical => "alphabetical",
+            Self::Exchange => "exchange",
+        }
+    }
 }
 
 impl std::fmt::Display for SymbolSearchSortMode {
@@ -31,6 +49,25 @@ impl std::fmt::Display for SymbolSearchSortMode {
             Self::Alphabetical => write!(f, "A-Z"),
             Self::Exchange => write!(f, "Exchange"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn symbol_search_sort_mode_config_values_round_trip() {
+        for mode in SymbolSearchSortMode::ALL {
+            assert_eq!(
+                SymbolSearchSortMode::from_config_str(mode.config_value()),
+                mode
+            );
+        }
+        assert_eq!(
+            SymbolSearchSortMode::from_config_str("unknown"),
+            SymbolSearchSortMode::Relevance
+        );
     }
 }
 

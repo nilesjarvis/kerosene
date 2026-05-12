@@ -25,6 +25,7 @@ impl TradingTerminal {
             Message::SymbolSearchSortChanged(sort_mode) => {
                 self.symbol_search_sort_mode = sort_mode;
                 self.refresh_symbol_search_results();
+                self.persist_config();
                 self.request_symbol_search_context_refresh(false)
             }
             Message::SymbolSearchMarketFilterChanged(filter) => {

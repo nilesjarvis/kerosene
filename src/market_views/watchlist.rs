@@ -74,9 +74,22 @@ impl TradingTerminal {
             header_content = header_content.push(text(status).size(11).color(status_color));
         }
 
+        let rows_scroll = scrollable(container(rows).width(Fill).padding(iced::Padding {
+            top: 0.0,
+            right: 15.0,
+            bottom: 0.0,
+            left: 0.0,
+        }))
+        .direction(iced::widget::scrollable::Direction::Vertical(
+            iced::widget::scrollable::Scrollbar::new()
+                .width(4)
+                .margin(0)
+                .scroller_width(4),
+        ));
+
         let content = header_content
             .push(rule::horizontal(1))
-            .push(scrollable(rows))
+            .push(rows_scroll)
             .spacing(4);
 
         container(content).width(Fill).height(Fill).into()

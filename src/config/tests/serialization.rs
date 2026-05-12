@@ -93,6 +93,28 @@ fn legacy_config_without_market_slippage_uses_default() {
 }
 
 #[test]
+fn symbol_search_sort_mode_round_trips_and_legacy_defaults_relevance() {
+    let config = KeroseneConfig {
+        symbol_search_sort_mode: "24h_volume".to_string(),
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert_eq!(decoded.symbol_search_sort_mode, "24h_volume");
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    legacy
+        .as_object_mut()
+        .expect("config should serialize to object")
+        .remove("symbol_search_sort_mode");
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert_eq!(decoded_legacy.symbol_search_sort_mode, "relevance");
+}
+
+#[test]
 fn hide_pnl_round_trips_and_legacy_defaults_visible() {
     let config = KeroseneConfig {
         hide_pnl: true,
