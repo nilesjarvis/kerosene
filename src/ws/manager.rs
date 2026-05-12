@@ -14,9 +14,12 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 
+mod coalescer;
 mod commands;
 mod frames;
 mod subscriptions;
+
+use self::coalescer::CoalescedSender;
 
 #[cfg(test)]
 mod tests;
@@ -32,6 +35,10 @@ const WS_READ_STALE_AFTER_SECS: u64 = 45;
 
 fn stale_read_remaining(last_rx_elapsed: Duration) -> Duration {
     Duration::from_secs(WS_READ_STALE_AFTER_SECS).saturating_sub(last_rx_elapsed)
+}
+
+fn read_loop_timeout(stale_in: Duration, coalesce_due: Option<Duration>) -> Duration {
+    coalesce_due.map_or(stale_in, |due| due.min(stale_in))
 }
 
 fn next_reconnect_delay_secs(current_secs: u64) -> u64 {
@@ -126,6 +133,7 @@ async fn ws_manager_task(
     msg_tx: broadcast::Sender<WsRoutedMessage>,
 ) {
     let mut active_subs = ActiveWsSubscriptions::default();
+    let mut coalescer = CoalescedSender::new(msg_tx);
     use futures::StreamExt as _;
     use futures::future::{Either, select};
     use tokio_tungstenite::tungstenite::Message as WsMsg;
@@ -161,13 +169,18 @@ async fn ws_manager_task(
             let cmd_fut = Box::pin(cmd_rx.recv());
             let read_fut = Box::pin(read.next());
             let stale_in = stale_read_remaining(last_rx_at.elapsed());
+            let timeout_in = read_loop_timeout(stale_in, coalescer.next_due());
 
-            match tokio::time::timeout(stale_in, select(cmd_fut, read_fut)).await {
+            match tokio::time::timeout(timeout_in, select(cmd_fut, read_fut)).await {
                 Err(_) => {
+                    coalescer.flush_due();
+
                     // No frame received within the stale window. Force a
                     // reconnect to recover from half-open sockets that a
                     // VPN/NAT rebind has silently abandoned.
-                    disconnected = true;
+                    if stale_read_remaining(last_rx_at.elapsed()).is_zero() {
+                        disconnected = true;
+                    }
                 }
                 Ok(Either::Left((Some(cmd), _))) => {
                     let action = handle_ws_command(&mut active_subs, cmd);
@@ -196,10 +209,7 @@ async fn ws_manager_task(
                                 telemetry_update_ws_latency_from_ping_start();
                             }
                             WsTextFrame::Data { channel, data } => {
-                                let _ = msg_tx.send(WsRoutedMessage {
-                                    channel,
-                                    data: Arc::new(data),
-                                });
+                                coalescer.submit(channel, Arc::new(data));
                             }
                             WsTextFrame::Ignored => {}
                         }
@@ -214,6 +224,7 @@ async fn ws_manager_task(
             }
         }
 
+        coalescer.flush_all();
         telemetry_on_disconnect();
         let (delay_secs, next_delay_secs) =
             reconnect_delay_after_disconnect(reconnect_delay_secs, connected_at.elapsed());
