@@ -48,7 +48,7 @@ impl TradingTerminal {
                     self.active_symbol_display = display;
                     for inst in self.order_books.values_mut() {
                         if inst.mode == OrderBookSymbolMode::Active {
-                            inst.book = OrderBook::empty();
+                            inst.set_book(OrderBook::empty());
                         }
                     }
                     self.sync_all_chart_overlays();

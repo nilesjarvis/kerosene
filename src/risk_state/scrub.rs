@@ -98,7 +98,7 @@ impl TradingTerminal {
             };
             if is_muted(&symbol) {
                 order_book.mode = OrderBookSymbolMode::Active;
-                order_book.book = OrderBook::empty();
+                order_book.set_book(OrderBook::empty());
                 order_book.asset_ctx = None;
                 order_book.spread_history.clear();
                 order_book.book_loading = false;

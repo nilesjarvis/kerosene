@@ -48,7 +48,7 @@ impl TradingTerminal {
         }
         for inst in self.order_books.values_mut() {
             if inst.mode == OrderBookSymbolMode::Active {
-                inst.book = OrderBook::empty();
+                inst.set_book(OrderBook::empty());
                 inst.asset_ctx = None;
                 inst.spread_history.clear();
                 inst.book_loading = true;
