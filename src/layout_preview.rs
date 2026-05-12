@@ -10,6 +10,8 @@ const PREVIEW_GAP: f32 = 2.0;
 const PORTION_SCALE: f32 = 1000.0;
 const MIN_SPLIT_RATIO: f32 = 0.08;
 const MAX_SPLIT_RATIO: f32 = 0.92;
+const MAX_PREVIEW_DEPTH: usize = 5;
+const MAX_PREVIEW_NODES: usize = 31;
 
 // ---------------------------------------------------------------------------
 // Saved Layout Preview
@@ -31,7 +33,10 @@ pub(crate) fn saved_layout_preview(
     };
 
     let preview = match layout {
-        Some(layout) => layout_preview_node(layout, block_color, block_border),
+        Some(layout) => {
+            let mut budget = PreviewBudget::new(MAX_PREVIEW_DEPTH, MAX_PREVIEW_NODES);
+            layout_preview_node(layout, block_color, block_border, 0, &mut budget)
+        }
         None => layout_preview_leaf(block_color, block_border),
     };
 
@@ -51,17 +56,25 @@ pub(crate) fn saved_layout_preview(
         .into()
 }
 
+/// Builds a compact preview and summarizes any subtree beyond the preview budget.
 fn layout_preview_node(
     layout: &PaneLayoutConfig,
     block_color: Color,
     block_border: Color,
+    depth: usize,
+    budget: &mut PreviewBudget,
 ) -> Element<'static, Message> {
+    if !budget.take_node() || depth >= budget.max_depth {
+        return layout_preview_leaf(block_color, block_border);
+    }
+
     match layout {
         PaneLayoutConfig::Leaf(_) => layout_preview_leaf(block_color, block_border),
         PaneLayoutConfig::Split { axis, ratio, a, b } => {
             let (a_portion, b_portion) = split_portions(*ratio);
-            let a = layout_preview_node(a, block_color, block_border);
-            let b = layout_preview_node(b, block_color, block_border);
+            let next_depth = depth + 1;
+            let a = layout_preview_node(a, block_color, block_border, next_depth, budget);
+            let b = layout_preview_node(b, block_color, block_border, next_depth, budget);
 
             match axis {
                 AxisConfig::Horizontal => column![
@@ -90,6 +103,29 @@ fn layout_preview_node(
                 .into(),
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PreviewBudget {
+    max_depth: usize,
+    remaining_nodes: usize,
+}
+
+impl PreviewBudget {
+    fn new(max_depth: usize, max_nodes: usize) -> Self {
+        Self {
+            max_depth,
+            remaining_nodes: max_nodes,
+        }
+    }
+
+    fn take_node(&mut self) -> bool {
+        let Some(remaining_nodes) = self.remaining_nodes.checked_sub(1) else {
+            return false;
+        };
+        self.remaining_nodes = remaining_nodes;
+        true
     }
 }
 
@@ -138,5 +174,14 @@ mod tests {
         assert_eq!(split_portions(0.0), (80, 920));
         assert_eq!(split_portions(1.0), (920, 80));
         assert_eq!(split_portions(f32::NAN), (500, 500));
+    }
+
+    #[test]
+    fn preview_budget_stops_after_max_nodes() {
+        let mut budget = PreviewBudget::new(MAX_PREVIEW_DEPTH, 2);
+
+        assert!(budget.take_node());
+        assert!(budget.take_node());
+        assert!(!budget.take_node());
     }
 }
