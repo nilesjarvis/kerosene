@@ -33,6 +33,9 @@ impl TradingTerminal {
         if Some(window_id) == self.chart_screenshot_window_id {
             return self.view_chart_screenshot_window();
         }
+        if self.pnl_card_windows.contains_key(&window_id) {
+            return self.view_pnl_card_window(window_id);
+        }
         self.view_main()
     }
 
@@ -66,6 +69,15 @@ impl TradingTerminal {
             "Kerosene Settings".to_string()
         } else if Some(window_id) == self.chart_screenshot_window_id {
             "Kerosene Chart Screenshot".to_string()
+        } else if let Some(state) = self.pnl_card_windows.get(&window_id) {
+            match &state.target {
+                crate::pnl_card::PnlCardTarget::Position(coin) => {
+                    format!("Kerosene PnL Card - {coin}")
+                }
+                crate::pnl_card::PnlCardTarget::Summary => {
+                    "Kerosene PnL Card - Summary".to_string()
+                }
+            }
         } else {
             "Kerosene Trading Terminal".to_string()
         }

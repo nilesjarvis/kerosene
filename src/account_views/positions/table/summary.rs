@@ -2,6 +2,7 @@ use crate::account;
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_usd;
 use crate::message::Message;
+use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
 
 use iced::widget::{container, row, text};
 use iced::{Alignment, Color, Element, Fill, Font, Theme};
@@ -55,7 +56,7 @@ impl TradingTerminal {
                     .map(|value| self.direction_color(theme, value))
                     .unwrap_or(weak_text),
             ),
-            summary_cell(
+            summary_cell_with_action(
                 "uPnL",
                 format_optional_signed_usd(totals.upnl, self.hide_pnl),
                 weak_text,
@@ -64,6 +65,10 @@ impl TradingTerminal {
                     .value()
                     .map(|value| self.direction_color(theme, value))
                     .unwrap_or(weak_text),
+                totals
+                    .upnl
+                    .value()
+                    .map(|_| Message::OpenPnlCard(PnlCardTarget::Summary)),
             ),
             summary_cell(
                 "Total PnL",
@@ -232,6 +237,29 @@ fn summary_cell(
                 .size(11)
                 .font(Font::MONOSPACE)
                 .color(value_color),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .into()
+}
+
+fn summary_cell_with_action(
+    label: &'static str,
+    value: String,
+    label_color: Color,
+    value_color: Color,
+    action: Option<Message>,
+) -> Element<'static, Message> {
+    container(
+        row![
+            text(label).size(10).color(label_color),
+            text(value)
+                .size(11)
+                .font(Font::MONOSPACE)
+                .color(value_color),
+            pnl_card_icon_button(action, "Open summary PnL card"),
         ]
         .spacing(4)
         .align_y(Alignment::Center),

@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::{self, format_price, format_usd};
 use crate::message::Message;
+use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
 
 use super::super::POSITION_ACTION_WIDTH;
 use super::sort::PositionRowData;
@@ -115,6 +116,21 @@ impl TradingTerminal {
             )
         };
 
+        let upnl_cell = row![
+            text(upnl_display)
+                .size(12)
+                .font(iced::Font::MONOSPACE)
+                .color(pnl_color),
+            pnl_card_icon_button(
+                Some(Message::OpenPnlCard(PnlCardTarget::Position(
+                    pos.coin.clone()
+                ))),
+                "Open PnL card",
+            ),
+        ]
+        .spacing(3)
+        .align_y(iced::Alignment::Center);
+
         let row_content = row![
             container(symbol_btn).width(Fill),
             text(side).size(12).color(side_color).width(Fill),
@@ -135,11 +151,7 @@ impl TradingTerminal {
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .width(Fill),
-            text(upnl_display)
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(pnl_color)
-                .width(Fill),
+            container(upnl_cell).width(Fill),
             text(fund_display)
                 .size(12)
                 .font(iced::Font::MONOSPACE)

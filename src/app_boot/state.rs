@@ -209,6 +209,7 @@ impl TradingTerminal {
             main_window_id: None,
             settings_window_id: None,
             chart_screenshot_window_id: None,
+            pnl_card_windows: HashMap::new(),
             chart_screenshot: None,
             chart_screenshot_error: None,
             chart_screenshot_capture_in_progress: false,

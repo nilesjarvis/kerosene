@@ -14,6 +14,7 @@ use crate::notification_state::Toast;
 use crate::order_execution::{PendingMoveOrderContext, PendingOrderAction};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
+use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
 use crate::settings_state::SettingsTab;
 use crate::signing::{ChaseOrder, OrderKind};
@@ -200,6 +201,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) main_window_id: Option<window::Id>,
     pub(crate) settings_window_id: Option<window::Id>,
     pub(crate) chart_screenshot_window_id: Option<window::Id>,
+    pub(crate) pnl_card_windows: HashMap<window::Id, PnlCardWindowState>,
     pub(crate) chart_screenshot: Option<ChartScreenshotState>,
     pub(crate) chart_screenshot_error: Option<String>,
     pub(crate) chart_screenshot_capture_in_progress: bool,

@@ -16,6 +16,7 @@ use crate::market_state::{
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::pane_management::AddWidgetPlacement;
+use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PortfolioScope, PortfolioWindow};
 use crate::settings_state::SettingsTab;
 use crate::signing::{ExchangeResponse, OrderKind};
@@ -224,6 +225,15 @@ pub(crate) enum Message {
     ToggleCloseMenu(String),
     ToggleHiddenPosition(String),
     ToggleShowHiddenPositions,
+    OpenPnlCard(PnlCardTarget),
+    SetPnlCardDisplayMode(window::Id, PnlCardDisplayMode),
+    SetPnlCardPercentMode(window::Id, PnlCardPercentMode),
+    TogglePnlCardPricePrivacy(window::Id, bool),
+    TogglePnlCardPositionSize(window::Id, bool),
+    CopyPnlCard(window::Id),
+    PnlCardCopied(Result<(), String>),
+    SavePnlCard(window::Id),
+    PnlCardSaved(Result<Option<PathBuf>, String>),
     ClosePosition {
         coin: String,
         fraction: f64,
