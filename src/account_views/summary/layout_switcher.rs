@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::layout_preview::saved_layout_preview;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, container, row, rule, scrollable, text, text_input};
@@ -15,7 +16,7 @@ const RENAME_ICON: &str = "✎";
 
 impl TradingTerminal {
     pub(crate) fn layout_switcher_button_label(&self) -> String {
-        layout_switcher_label(self.active_layout_name.as_deref(), BUTTON_LABEL_CHARS)
+        layout_switcher_button_label(self.active_layout_name.as_deref(), BUTTON_LABEL_CHARS)
     }
 
     pub(crate) fn view_layout_switcher_dropdown(&self) -> Element<'_, Message> {
@@ -112,12 +113,14 @@ impl TradingTerminal {
 
         let marker = if is_active { ">" } else { "" };
         let label = layout_switcher_label(Some(layout.name.as_str()), ROW_LABEL_CHARS);
+        let preview = saved_layout_preview(layout.pane_layout.as_ref(), theme, is_active);
         let load_button: Element<'_, Message> = button(
             row![
                 text(marker)
                     .size(11)
                     .color(theme.palette().primary)
                     .width(Length::Fixed(12.0)),
+                preview,
                 text(label).size(12).color(theme.palette().text).width(Fill),
             ]
             .spacing(6)
@@ -245,6 +248,13 @@ fn layout_switcher_label(name: Option<&str>, max_chars: usize) -> String {
     truncate_label(label, max_chars)
 }
 
+fn layout_switcher_button_label(name: Option<&str>, max_chars: usize) -> String {
+    let Some(label) = name.map(str::trim).filter(|name| !name.is_empty()) else {
+        return "Layout".to_string();
+    };
+    format!("Layout: {}", truncate_label(label, max_chars))
+}
+
 fn truncate_label(value: &str, max_chars: usize) -> String {
     let char_count = value.chars().count();
     if char_count <= max_chars {
@@ -272,6 +282,15 @@ mod tests {
         assert_eq!(
             layout_switcher_label(Some("Very Long Trading Layout"), 14),
             "Very Long T..."
+        );
+    }
+
+    #[test]
+    fn layout_switcher_button_label_identifies_the_dropdown() {
+        assert_eq!(layout_switcher_button_label(None, 14), "Layout");
+        assert_eq!(
+            layout_switcher_button_label(Some("Scalp"), 14),
+            "Layout: Scalp"
         );
     }
 }

@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::layout_preview::saved_layout_preview;
 use crate::message::Message;
 use iced::widget::{Column, button, column, row, rule, text, text_input};
 use iced::{Element, Fill, Theme};
@@ -20,8 +21,10 @@ impl TradingTerminal {
                         } else {
                             current_theme.palette().text
                         }),
+                    saved_layout_preview(layout.pane_layout.as_ref(), &current_theme, is_active),
                     text(name.clone()).size(12).width(Fill),
                 ]
+                .spacing(8)
                 .align_y(iced::Alignment::Center),
             )
             .width(Fill)

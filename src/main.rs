@@ -39,6 +39,7 @@ mod journal;
 mod journal_update;
 mod journal_views;
 mod layout_persistence;
+mod layout_preview;
 mod layout_update;
 mod loading_views;
 mod main_view;

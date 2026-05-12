@@ -33,7 +33,7 @@ impl TradingTerminal {
             row![
                 text(self.layout_switcher_button_label())
                     .size(10)
-                    .width(Length::Fixed(78.0)),
+                    .width(Length::Fixed(110.0)),
                 text(arrow)
                     .size(10)
                     .width(Length::Fixed(8.0))
