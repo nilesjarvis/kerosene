@@ -17,6 +17,10 @@ impl CandlestickChart {
         PriceToY: Fn(f64) -> f32,
         IdxToCx: Fn(usize) -> f32,
     {
+        if !should_draw_position_price_overlays(self.obscure_position_prices) {
+            return;
+        }
+
         if let Some(pos_overlay) = &self.active_position
             && ctx.price_range > 0.0
         {
@@ -117,6 +121,10 @@ impl CandlestickChart {
     }
 }
 
+fn should_draw_position_price_overlays(obscure: bool) -> bool {
+    !obscure
+}
+
 fn position_entry_badge_label(entry_px: f64, obscure: bool) -> String {
     if obscure {
         "ENTRY".to_string()
@@ -136,6 +144,12 @@ fn position_liquidation_badge_label(liq_px: f64, obscure: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn position_price_overlays_hide_when_obscured() {
+        assert!(!should_draw_position_price_overlays(true));
+        assert!(should_draw_position_price_overlays(false));
+    }
 
     #[test]
     fn position_price_labels_redact_when_obscured() {
