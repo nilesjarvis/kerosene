@@ -7,6 +7,17 @@ use zeroize::Zeroizing;
 
 const EXCHANGE_URL: &str = "https://api.hyperliquid.xyz/exchange";
 
+#[derive(Debug, Clone)]
+pub struct PlaceOrderRequest {
+    pub asset: u32,
+    pub is_buy: bool,
+    pub price: String,
+    pub size: String,
+    pub order_kind: OrderKind,
+    pub reduce_only: bool,
+    pub cloid: Option<String>,
+}
+
 fn exchange_nonce_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -74,6 +85,23 @@ pub async fn place_order(
     sign_and_post(private_key, &action, None).await
 }
 
+/// Place an order with a Hyperliquid client order id.
+pub async fn place_order_with_cloid(
+    private_key: Zeroizing<String>,
+    request: PlaceOrderRequest,
+) -> Result<ExchangeResponse, String> {
+    let action = HyperliquidL1Action::order_with_cloid(
+        request.asset,
+        request.is_buy,
+        request.price,
+        request.size,
+        request.order_kind,
+        request.reduce_only,
+        request.cloid,
+    );
+    sign_and_post(private_key, &action, None).await
+}
+
 /// Cancel an order on the exchange.
 pub async fn cancel_order(
     private_key: Zeroizing<String>,
@@ -81,6 +109,16 @@ pub async fn cancel_order(
     oid: u64,
 ) -> Result<ExchangeResponse, String> {
     let action = HyperliquidL1Action::cancel(asset, oid);
+    sign_and_post(private_key, &action, None).await
+}
+
+/// Cancel an order by Hyperliquid client order id.
+pub async fn cancel_order_by_cloid(
+    private_key: Zeroizing<String>,
+    asset: u32,
+    cloid: String,
+) -> Result<ExchangeResponse, String> {
+    let action = HyperliquidL1Action::cancel_by_cloid(asset, cloid);
     sign_and_post(private_key, &action, None).await
 }
 

@@ -152,6 +152,7 @@ fn history_children<'a>(entry: &AdvancedOrderHistoryEntry, theme: &Theme) -> Ele
             text("Size").size(10).color(weak).width(Fill),
             text("Limit").size(10).color(weak).width(Fill),
             text("Fill").size(10).color(weak).width(Fill),
+            text("ID").size(10).color(weak).width(Fill),
             text("Status").size(10).color(weak).width(Fill),
         ]
         .spacing(8),
@@ -188,11 +189,32 @@ fn history_child_row<'a>(child: &AdvancedOrderHistoryChild, theme: &Theme) -> El
         text(format_size(child.planned_size)).size(11).width(Fill),
         text(format_price(child.limit_price)).size(11).width(Fill),
         text(fill).size(11).width(Fill),
+        text(history_child_id(child))
+            .size(10)
+            .color(weak)
+            .width(Fill),
         text(child.status.clone()).size(11).color(weak).width(Fill),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
     .into()
+}
+
+fn history_child_id(child: &AdvancedOrderHistoryChild) -> String {
+    match (child.oid, child.cloid.as_deref()) {
+        (Some(oid), Some(cloid)) => format!("#{oid} {}", short_id(cloid)),
+        (Some(oid), None) => format!("#{oid}"),
+        (None, Some(cloid)) => short_id(cloid),
+        (None, None) => "-".to_string(),
+    }
+}
+
+fn short_id(value: &str) -> String {
+    if value.len() <= 10 {
+        value.to_string()
+    } else {
+        format!("{}...", &value[..10])
+    }
 }
 
 fn history_logs<'a>(entry: &AdvancedOrderHistoryEntry, theme: &Theme) -> Element<'a, Message> {

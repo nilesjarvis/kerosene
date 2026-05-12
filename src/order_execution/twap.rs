@@ -1,16 +1,22 @@
 use crate::api::MarketType;
+use crate::api::fetch_order_status_by_cloid;
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::message::Message;
-use crate::signing::{OrderKind, cancel_order, float_to_wire, place_order, round_price};
+use crate::signing::{
+    OrderKind, PlaceOrderRequest, cancel_order, cancel_order_by_cloid, float_to_wire,
+    place_order_with_cloid, round_price,
+};
 use crate::twap_state::{
     ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL, MAX_ACTIVE_ADVANCED_ORDERS,
-    MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_BOOK_STALE_AFTER, TwapBookSnapshot, TwapChildOrder,
-    TwapChildStatus, TwapEventKind, TwapOrder, TwapPendingOp, TwapPendingSlice, TwapStatus,
+    MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_BOOK_STALE_AFTER, TWAP_MAX_RETRY_ATTEMPTS,
+    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES, TwapBookSnapshot, TwapChildOrder, TwapChildStatus,
+    TwapEventKind, TwapOrder, TwapPauseReason, TwapPendingOp, TwapPendingSlice, TwapStatus,
     parse_twap_duration_minutes, parse_twap_slice_count, quantize_twap_slice_size,
-    twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate, twap_limit_price_for_slice,
-    twap_min_quantized_child_notional, twap_order_notional_meets_minimum, twap_required_slice_rate,
-    twap_response_fill_summary, twap_target_size_from_quantity, validate_twap_interval,
+    twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate, twap_child_cloid,
+    twap_limit_price_for_slice, twap_min_quantized_child_notional,
+    twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
+    twap_target_size_from_quantity, validate_twap_interval,
 };
 use iced::{Size, Task, window};
 use std::time::Instant;
@@ -391,7 +397,16 @@ impl TradingTerminal {
             book,
             updated_at: Instant::now(),
         });
-        if twap.status == TwapStatus::WaitingForMarket {
+        if twap.status == TwapStatus::Paused
+            && twap.pause_reason == Some(TwapPauseReason::StaleMarketData)
+        {
+            twap.clear_pause();
+            twap.push_event(
+                TwapEventKind::Reconciled,
+                "TWAP resumed: market data is fresh".to_string(),
+                false,
+            );
+        } else if twap.status == TwapStatus::WaitingForMarket {
             twap.status = TwapStatus::Running;
         }
         Task::none()
@@ -399,12 +414,23 @@ impl TradingTerminal {
 
     pub(crate) fn handle_twap_tick(&mut self) -> Task<Message> {
         let now = Instant::now();
+        if let Some(twap_id) = self
+            .twap_orders
+            .iter()
+            .find(|(_, twap)| {
+                !twap.status.is_terminal() && twap.pending_op.is_none() && now >= twap.ends_at
+            })
+            .map(|(id, _)| *id)
+        {
+            self.expire_twap_if_deadline_passed(twap_id, now);
+            return Task::none();
+        }
         let Some(twap_id) = self
             .twap_orders
             .iter()
-            .filter(|(_, twap)| twap.can_schedule() && twap.next_slice_due <= now)
+            .filter(|(_, twap)| twap.can_schedule_at(now))
+            .min_by_key(|(id, twap)| (twap.next_slice_due, *id))
             .map(|(id, _)| *id)
-            .next()
         else {
             return Task::none();
         };
@@ -421,8 +447,8 @@ impl TradingTerminal {
         let pending = self
             .twap_orders
             .get(&twap_id)
-            .and_then(|twap| match twap.pending_op {
-                Some(TwapPendingOp::Place(slice)) => Some(slice),
+            .and_then(|twap| match &twap.pending_op {
+                Some(TwapPendingOp::Place(slice)) => Some(slice.clone()),
                 _ => None,
             });
         let Some(pending) = pending else {
@@ -431,6 +457,8 @@ impl TradingTerminal {
 
         let mut status_update = None;
         let mut cancel_unexpected = None;
+        let mut status_check_cloid = None;
+        let mut finish_attempt = true;
         if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
             twap.pending_op = None;
             match result {
@@ -448,6 +476,7 @@ impl TradingTerminal {
                         child.exchange_summary = summary_text.clone();
                         child.filled_size = child.filled_size.max(fill_summary.filled_size);
                         child.avg_price = fill_summary.avg_price.or(child.avg_price);
+                        child.cloid = Some(pending.cloid.clone());
                     }
 
                     if response.is_ioc_no_match() {
@@ -470,23 +499,123 @@ impl TradingTerminal {
                             format!("TWAP slice {} did not fill; continuing", pending.index),
                             false,
                         ));
+                        twap.retry_slice = None;
                     } else if response.is_error() {
-                        if let Some(child) = twap
-                            .child_orders
-                            .iter_mut()
-                            .find(|child| child.index == pending.index)
-                        {
-                            child.status = TwapChildStatus::Rejected;
+                        match classify_twap_exchange_error(&summary_text) {
+                            TwapExchangeErrorAction::Retry(reason) => {
+                                finish_attempt = false;
+                                refresh_policy = TwapAccountRefresh::None;
+                                let retry_count = pending.retry_count.saturating_add(1);
+                                if retry_count > TWAP_MAX_RETRY_ATTEMPTS {
+                                    if let Some(child) = twap
+                                        .child_orders
+                                        .iter_mut()
+                                        .find(|child| child.index == pending.index)
+                                    {
+                                        child.status = TwapChildStatus::Rejected;
+                                        child.retry_count = retry_count;
+                                    }
+                                    twap.status = TwapStatus::Error;
+                                    twap.push_event(
+                                        TwapEventKind::Error,
+                                        format!(
+                                            "Slice {} stopped after {} retry attempts: {summary_text}",
+                                            pending.index, TWAP_MAX_RETRY_ATTEMPTS
+                                        ),
+                                        true,
+                                    );
+                                    status_update = Some((
+                                        format!(
+                                            "TWAP slice {} stopped after retry budget: {summary_text}",
+                                            pending.index
+                                        ),
+                                        true,
+                                    ));
+                                } else {
+                                    let mut retry_slice = pending.clone();
+                                    retry_slice.retry_count = retry_count;
+                                    twap.retry_slice = Some(retry_slice);
+                                    if let Some(child) = twap
+                                        .child_orders
+                                        .iter_mut()
+                                        .find(|child| child.index == pending.index)
+                                    {
+                                        child.status = TwapChildStatus::Retrying;
+                                        child.retry_count = retry_count;
+                                        child.exchange_summary = summary_text.clone();
+                                    }
+                                    let delay = TwapOrder::retry_delay(retry_count);
+                                    twap.pause(
+                                        reason,
+                                        Some(now + delay),
+                                        format!(
+                                            "Slice {} paused: {}; retry {}/{} in about {}s",
+                                            pending.index,
+                                            reason.label(),
+                                            retry_count,
+                                            TWAP_MAX_RETRY_ATTEMPTS,
+                                            delay.as_secs()
+                                        ),
+                                        true,
+                                    );
+                                    status_update = Some((
+                                        format!(
+                                            "TWAP paused: {}; retry {}/{} in about {}s",
+                                            reason.label(),
+                                            retry_count,
+                                            TWAP_MAX_RETRY_ATTEMPTS,
+                                            delay.as_secs()
+                                        ),
+                                        true,
+                                    ));
+                                }
+                            }
+                            TwapExchangeErrorAction::Terminal => {
+                                finish_attempt = false;
+                                if let Some(child) = twap
+                                    .child_orders
+                                    .iter_mut()
+                                    .find(|child| child.index == pending.index)
+                                {
+                                    child.status = TwapChildStatus::Rejected;
+                                }
+                                twap.status = TwapStatus::Error;
+                                twap.push_event(
+                                    TwapEventKind::Rejected,
+                                    format!("Slice {} rejected: {summary_text}", pending.index),
+                                    true,
+                                );
+                                status_update = Some((
+                                    format!(
+                                        "TWAP stopped: slice {} rejected: {summary_text}",
+                                        pending.index
+                                    ),
+                                    true,
+                                ));
+                            }
+                            TwapExchangeErrorAction::ConsumeSlice => {
+                                if let Some(child) = twap
+                                    .child_orders
+                                    .iter_mut()
+                                    .find(|child| child.index == pending.index)
+                                {
+                                    child.status = TwapChildStatus::Rejected;
+                                }
+                                twap.push_event(
+                                    TwapEventKind::Rejected,
+                                    format!("Slice {} rejected: {summary_text}", pending.index),
+                                    true,
+                                );
+                                status_update = Some((
+                                    format!(
+                                        "TWAP slice {} rejected: {summary_text}",
+                                        pending.index
+                                    ),
+                                    true,
+                                ));
+                                twap.retry_slice = None;
+                            }
                         }
-                        twap.push_event(
-                            TwapEventKind::Rejected,
-                            format!("Slice {} rejected: {summary_text}", pending.index),
-                            true,
-                        );
-                        status_update = Some((
-                            format!("TWAP slice {} rejected: {summary_text}", pending.index),
-                            true,
-                        ));
                     } else if fill_summary.filled_size > 0.0 {
                         let filled_size = fill_summary.filled_size;
                         if let Some(child) = twap
@@ -520,19 +649,22 @@ impl TradingTerminal {
                             ),
                             false,
                         ));
+                        twap.retry_slice = None;
                     } else if response.is_fully_filled() {
+                        finish_attempt = false;
                         if let Some(child) = twap
                             .child_orders
                             .iter_mut()
                             .find(|child| child.index == pending.index)
                         {
-                            child.status = TwapChildStatus::StatusUnknown;
+                            child.status = TwapChildStatus::AwaitingReconciliation;
                         }
-                        twap.status = TwapStatus::Error;
-                        twap.push_event(
-                            TwapEventKind::Error,
+                        twap.status_check_cloid = Some(pending.cloid.clone());
+                        twap.pause(
+                            TwapPauseReason::StatusUnknown,
+                            None,
                             format!(
-                                "Slice {} reported filled but fill size was unavailable; refreshing account data",
+                                "Slice {} reported filled but fill size was unavailable; checking status",
                                 pending.index
                             ),
                             true,
@@ -545,6 +677,7 @@ impl TradingTerminal {
                             true,
                         ));
                         refresh_policy = TwapAccountRefresh::Immediate;
+                        status_check_cloid = Some(pending.cloid.clone());
                     } else if let Some(oid) = oid {
                         if let Some(child) = twap
                             .child_orders
@@ -553,17 +686,25 @@ impl TradingTerminal {
                         {
                             child.status = TwapChildStatus::UnexpectedResting;
                         }
-                        twap.pending_op = Some(TwapPendingOp::CancelUnexpectedResting { oid });
-                        twap.push_event(
-                            TwapEventKind::Error,
+                        twap.pending_op = Some(TwapPendingOp::CancelUnexpectedResting {
+                            oid: Some(oid),
+                            cloid: Some(pending.cloid.clone()),
+                        });
+                        twap.pause(
+                            TwapPauseReason::UnexpectedResting,
+                            None,
                             format!(
                                 "Slice {} unexpectedly rested as oid {oid}; cancelling",
                                 pending.index
                             ),
                             true,
                         );
-                        cancel_unexpected =
-                            Some((twap.agent_key.trim().to_string(), twap.asset, oid));
+                        cancel_unexpected = Some((
+                            twap.agent_key.trim().to_string(),
+                            twap.asset,
+                            Some(oid),
+                            Some(pending.cloid.clone()),
+                        ));
                         status_update = Some((
                             format!(
                                 "TWAP slice {} unexpectedly rested; cancelling",
@@ -571,7 +712,9 @@ impl TradingTerminal {
                             ),
                             true,
                         ));
+                        finish_attempt = false;
                     } else if response.is_ambiguous_order_result() {
+                        finish_attempt = false;
                         if let Some(child) = twap
                             .child_orders
                             .iter_mut()
@@ -579,11 +722,12 @@ impl TradingTerminal {
                         {
                             child.status = TwapChildStatus::StatusUnknown;
                         }
-                        twap.status = TwapStatus::Error;
-                        twap.push_event(
-                            TwapEventKind::Error,
+                        twap.status_check_cloid = Some(pending.cloid.clone());
+                        twap.pause(
+                            TwapPauseReason::StatusUnknown,
+                            None,
                             format!(
-                                "Slice {} returned ambiguous order status: {summary_text}; refreshing account data",
+                                "Slice {} returned ambiguous order status: {summary_text}; checking status",
                                 pending.index
                             ),
                             true,
@@ -596,6 +740,7 @@ impl TradingTerminal {
                             true,
                         ));
                         refresh_policy = TwapAccountRefresh::Immediate;
+                        status_check_cloid = Some(pending.cloid.clone());
                     } else {
                         if let Some(child) = twap
                             .child_orders
@@ -616,9 +761,11 @@ impl TradingTerminal {
                             format!("TWAP slice {} completed without fill", pending.index),
                             false,
                         ));
+                        twap.retry_slice = None;
                     }
                 }
                 Err(error) => {
+                    finish_attempt = false;
                     if let Some(child) = twap
                         .child_orders
                         .iter_mut()
@@ -626,17 +773,24 @@ impl TradingTerminal {
                     {
                         child.status = TwapChildStatus::StatusUnknown;
                         child.exchange_summary = error.clone();
+                        child.cloid = Some(pending.cloid.clone());
                     }
-                    twap.status = TwapStatus::Error;
-                    twap.push_event(
-                        TwapEventKind::Error,
-                        format!("Slice {} status unknown: {error}", pending.index),
+                    twap.status_check_cloid = Some(pending.cloid.clone());
+                    twap.pause(
+                        TwapPauseReason::StatusUnknown,
+                        None,
+                        format!(
+                            "Slice {} status unknown after transport error: {error}; checking status",
+                            pending.index
+                        ),
                         true,
                     );
                     status_update = Some((
                         format!("TWAP slice {} status unknown: {error}", pending.index),
                         true,
                     ));
+                    refresh_policy = TwapAccountRefresh::Immediate;
+                    status_check_cloid = Some(pending.cloid.clone());
                 }
             }
         }
@@ -645,7 +799,7 @@ impl TradingTerminal {
             self.order_status = Some(status);
         }
 
-        if let Some((key, asset, oid)) = cancel_unexpected {
+        if let Some((key, asset, oid, cloid)) = cancel_unexpected {
             if key.is_empty() {
                 if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
                     twap.status = TwapStatus::Error;
@@ -662,13 +816,7 @@ impl TradingTerminal {
                 ));
                 return self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id);
             }
-            let cancel_task = Task::perform(cancel_order(key.into(), asset, oid), move |result| {
-                Message::TwapUnexpectedCancelResult {
-                    twap_id,
-                    oid,
-                    result: Box::new(result),
-                }
-            });
+            let cancel_task = twap_cancel_child_task(twap_id, key, asset, oid, cloid);
             return if self.twap_refresh_policy_needs_refresh(refresh_policy, twap_id) {
                 Task::batch([self.refresh_account_data(), cancel_task])
             } else {
@@ -676,7 +824,18 @@ impl TradingTerminal {
             };
         }
 
-        self.finish_twap_attempt(twap_id, now);
+        if let Some(cloid) = status_check_cloid {
+            let status_task = self.check_twap_child_status(twap_id, cloid);
+            return if self.twap_refresh_policy_needs_refresh(refresh_policy, twap_id) {
+                Task::batch([self.refresh_account_data(), status_task])
+            } else {
+                status_task
+            };
+        }
+
+        if finish_attempt {
+            self.finish_twap_attempt(twap_id, now);
+        }
         self.archive_twap_if_terminal(twap_id);
         self.refresh_after_twap_result(refresh_policy, twap_id)
     }
@@ -684,59 +843,333 @@ impl TradingTerminal {
     pub(crate) fn handle_twap_unexpected_cancel_result(
         &mut self,
         twap_id: u64,
-        oid: u64,
+        oid: Option<u64>,
+        cloid: Option<String>,
         result: Result<crate::signing::ExchangeResponse, String>,
     ) -> Task<Message> {
         let now = Instant::now();
+        let mut retry_cancel = None;
+        let mut finish_attempt = true;
         if let Some(twap) = self.twap_orders.get_mut(&twap_id)
             && matches!(
-                twap.pending_op,
-                Some(TwapPendingOp::CancelUnexpectedResting { oid: pending_oid })
-                    if pending_oid == oid
+                &twap.pending_op,
+                Some(TwapPendingOp::CancelUnexpectedResting {
+                    oid: pending_oid,
+                    cloid: pending_cloid,
+                }) if twap_cancel_target_matches(
+                    *pending_oid,
+                    pending_cloid.as_deref(),
+                    oid,
+                    cloid.as_deref(),
+                )
             )
         {
-            twap.pending_op = None;
+            let exchange_summary = match &result {
+                Ok(response) => response.summary(),
+                Err(error) => error.clone(),
+            };
             for child in &mut twap.child_orders {
-                if child.oid == Some(oid) {
-                    child.status = TwapChildStatus::UnexpectedRestingCancelled;
-                    child.exchange_summary = match &result {
-                        Ok(response) => response.summary(),
-                        Err(error) => error.clone(),
-                    };
+                if twap_child_matches_cancel_target(child, oid, cloid.as_deref()) {
+                    child.exchange_summary = exchange_summary.clone();
                 }
             }
             match result {
                 Ok(response) if !response.is_error() => {
+                    twap.pending_op = None;
+                    twap.cancel_retries = 0;
+                    for child in &mut twap.child_orders {
+                        if twap_child_matches_cancel_target(child, oid, cloid.as_deref()) {
+                            child.status = TwapChildStatus::UnexpectedRestingCancelled;
+                        }
+                    }
+                    twap.clear_pause();
                     twap.push_event(
-                        TwapEventKind::Stopped,
-                        format!("Canceled unexpected resting child oid {oid}"),
+                        TwapEventKind::Reconciled,
+                        format!(
+                            "Canceled unexpected resting child {}",
+                            twap_cancel_label(oid, cloid.as_deref())
+                        ),
                         false,
                     );
                 }
                 Ok(response) => {
-                    twap.status = TwapStatus::Error;
-                    twap.push_event(
-                        TwapEventKind::Error,
-                        format!(
-                            "Failed to cancel unexpected resting child oid {oid}: {}",
-                            response.summary()
-                        ),
-                        true,
-                    );
+                    let summary = response.summary();
+                    if twap_terminal_cancel_error(&summary) {
+                        twap.pending_op = None;
+                        twap.cancel_retries = 0;
+                        for child in &mut twap.child_orders {
+                            if twap_child_matches_cancel_target(child, oid, cloid.as_deref()) {
+                                child.status = TwapChildStatus::UnexpectedRestingCancelled;
+                            }
+                        }
+                        twap.clear_pause();
+                        twap.push_event(
+                            TwapEventKind::Reconciled,
+                            format!(
+                                "Unexpected resting child {} is no longer open: {summary}",
+                                twap_cancel_label(oid, cloid.as_deref())
+                            ),
+                            true,
+                        );
+                    } else {
+                        finish_attempt = false;
+                        twap.cancel_retries = twap.cancel_retries.saturating_add(1);
+                        if twap.cancel_retries >= TWAP_MAX_UNEXPECTED_CANCEL_RETRIES {
+                            twap.pending_op = None;
+                            twap.status = TwapStatus::Error;
+                            twap.push_event(
+                                TwapEventKind::Error,
+                                format!(
+                                    "Failed to cancel unexpected resting child {} after {} attempts: {summary}",
+                                    twap_cancel_label(oid, cloid.as_deref()),
+                                    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES
+                                ),
+                                true,
+                            );
+                        } else {
+                            let delay = TwapOrder::retry_delay(twap.cancel_retries);
+                            twap.pause(
+                                TwapPauseReason::UnexpectedResting,
+                                Some(now + delay),
+                                format!(
+                                    "Cancel retry {}/{} for unexpected resting child {} in about {}s",
+                                    twap.cancel_retries,
+                                    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
+                                    twap_cancel_label(oid, cloid.as_deref()),
+                                    delay.as_secs()
+                                ),
+                                true,
+                            );
+                            retry_cancel = Some((
+                                twap.agent_key.trim().to_string(),
+                                twap.asset,
+                                oid,
+                                cloid.clone(),
+                            ));
+                        }
+                    }
                 }
                 Err(error) => {
-                    twap.status = TwapStatus::Error;
-                    twap.push_event(
-                        TwapEventKind::Error,
-                        format!("Cancel status unknown for unexpected child oid {oid}: {error}"),
-                        true,
-                    );
+                    finish_attempt = false;
+                    twap.cancel_retries = twap.cancel_retries.saturating_add(1);
+                    if twap.cancel_retries >= TWAP_MAX_UNEXPECTED_CANCEL_RETRIES {
+                        twap.pending_op = None;
+                        twap.status = TwapStatus::Error;
+                        twap.push_event(
+                            TwapEventKind::Error,
+                            format!(
+                                "Cancel status unknown for unexpected child {} after {} attempts: {error}",
+                                twap_cancel_label(oid, cloid.as_deref()),
+                                TWAP_MAX_UNEXPECTED_CANCEL_RETRIES
+                            ),
+                            true,
+                        );
+                    } else {
+                        let delay = TwapOrder::retry_delay(twap.cancel_retries);
+                        twap.pause(
+                            TwapPauseReason::UnexpectedResting,
+                            Some(now + delay),
+                            format!(
+                                "Cancel status unknown for unexpected child {}; retry {}/{} in about {}s",
+                                twap_cancel_label(oid, cloid.as_deref()),
+                                twap.cancel_retries,
+                                TWAP_MAX_UNEXPECTED_CANCEL_RETRIES,
+                                delay.as_secs()
+                            ),
+                            true,
+                        );
+                        retry_cancel = Some((
+                            twap.agent_key.trim().to_string(),
+                            twap.asset,
+                            oid,
+                            cloid.clone(),
+                        ));
+                    }
                 }
             }
         }
-        self.finish_twap_attempt(twap_id, now);
+
+        if let Some((key, asset, oid, cloid)) = retry_cancel {
+            return twap_cancel_child_task(twap_id, key, asset, oid, cloid);
+        }
+        if finish_attempt {
+            self.finish_twap_attempt(twap_id, now);
+        }
         self.archive_twap_if_terminal(twap_id);
         self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id)
+    }
+
+    pub(crate) fn handle_twap_order_status_result(
+        &mut self,
+        twap_id: u64,
+        cloid: String,
+        result: Result<crate::api::OrderStatusResult, String>,
+    ) -> Task<Message> {
+        let now = Instant::now();
+        let mut cancel_unexpected = None;
+        let mut refresh = false;
+        let mut retry_status_check = None;
+        let mut finish_attempt = false;
+
+        if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
+            if twap.status_check_cloid.as_deref() != Some(cloid.as_str()) {
+                return Task::none();
+            }
+
+            match result {
+                Ok(status) if status.is_missing() || status.is_no_fill_terminal() => {
+                    twap.status_check_cloid = None;
+                    twap.status_check_retries = 0;
+                    twap.retry_slice = None;
+                    for child in &mut twap.child_orders {
+                        if child.cloid.as_deref() == Some(cloid.as_str()) {
+                            child.oid = status.oid.or(child.oid);
+                            child.status = if status.is_missing() {
+                                TwapChildStatus::NoFill
+                            } else {
+                                TwapChildStatus::Rejected
+                            };
+                            child.exchange_summary = status.raw_summary.clone();
+                        }
+                    }
+                    twap.clear_pause();
+                    twap.push_event(
+                        TwapEventKind::Reconciled,
+                        format!("Slice status reconciled: {}", status.raw_summary),
+                        status.is_no_fill_terminal(),
+                    );
+                    self.order_status = Some((
+                        format!("TWAP status reconciled: {}", status.raw_summary),
+                        false,
+                    ));
+                    finish_attempt = true;
+                }
+                Ok(status) if status.is_open() => {
+                    twap.status_check_cloid = None;
+                    twap.status_check_retries = 0;
+                    for child in &mut twap.child_orders {
+                        if child.cloid.as_deref() == Some(cloid.as_str()) {
+                            child.oid = status.oid.or(child.oid);
+                            child.status = TwapChildStatus::UnexpectedResting;
+                            child.exchange_summary = status.raw_summary.clone();
+                        }
+                    }
+                    twap.pending_op = Some(TwapPendingOp::CancelUnexpectedResting {
+                        oid: status.oid,
+                        cloid: Some(cloid.clone()),
+                    });
+                    twap.pause(
+                        TwapPauseReason::UnexpectedResting,
+                        None,
+                        format!("Slice unexpectedly open after status check; cancelling {cloid}"),
+                        true,
+                    );
+                    cancel_unexpected = Some((
+                        twap.agent_key.trim().to_string(),
+                        twap.asset,
+                        status.oid,
+                        Some(cloid.clone()),
+                    ));
+                }
+                Ok(status) if status.is_filled() => {
+                    for child in &mut twap.child_orders {
+                        if child.cloid.as_deref() == Some(cloid.as_str()) {
+                            child.oid = status.oid.or(child.oid);
+                            child.status = TwapChildStatus::AwaitingReconciliation;
+                            child.exchange_summary = status.raw_summary.clone();
+                        }
+                    }
+                    twap.push_event(
+                        TwapEventKind::Reconciled,
+                        format!(
+                            "Slice {} is filled on exchange; refreshing account fills",
+                            cloid
+                        ),
+                        false,
+                    );
+                    self.order_status = Some((
+                        "TWAP child filled on exchange; refreshing account fills".to_string(),
+                        false,
+                    ));
+                    refresh = true;
+                }
+                Ok(status) => {
+                    twap.status_check_retries = twap.status_check_retries.saturating_add(1);
+                    if twap.status_check_retries >= TWAP_MAX_RETRY_ATTEMPTS {
+                        twap.status_check_cloid = None;
+                        twap.status = TwapStatus::Error;
+                        twap.push_event(
+                            TwapEventKind::Error,
+                            format!(
+                                "Could not reconcile slice {cloid} after status '{}'",
+                                status.status
+                            ),
+                            true,
+                        );
+                    } else {
+                        let delay = TwapOrder::retry_delay(twap.status_check_retries);
+                        twap.pause(
+                            TwapPauseReason::StatusUnknown,
+                            Some(now + delay),
+                            format!(
+                                "Slice status still unclear ({}); retry {}/{} in about {}s",
+                                status.status,
+                                twap.status_check_retries,
+                                TWAP_MAX_RETRY_ATTEMPTS,
+                                delay.as_secs()
+                            ),
+                            true,
+                        );
+                        retry_status_check = Some((cloid.clone(), delay));
+                    }
+                }
+                Err(error) => {
+                    twap.status_check_retries = twap.status_check_retries.saturating_add(1);
+                    if twap.status_check_retries >= TWAP_MAX_RETRY_ATTEMPTS {
+                        twap.status_check_cloid = None;
+                        twap.status = TwapStatus::Error;
+                        twap.push_event(
+                            TwapEventKind::Error,
+                            format!(
+                                "Could not check slice status after {} attempts: {error}",
+                                TWAP_MAX_RETRY_ATTEMPTS
+                            ),
+                            true,
+                        );
+                    } else {
+                        let delay = TwapOrder::retry_delay(twap.status_check_retries);
+                        twap.pause(
+                            TwapPauseReason::NetworkError,
+                            Some(now + delay),
+                            format!(
+                                "Slice status check failed; retry {}/{} in about {}s: {error}",
+                                twap.status_check_retries,
+                                TWAP_MAX_RETRY_ATTEMPTS,
+                                delay.as_secs()
+                            ),
+                            true,
+                        );
+                        retry_status_check = Some((cloid.clone(), delay));
+                    }
+                }
+            }
+        }
+
+        if let Some((key, asset, oid, cloid)) = cancel_unexpected {
+            return twap_cancel_child_task(twap_id, key, asset, oid, cloid);
+        }
+        if let Some((cloid, delay)) = retry_status_check {
+            return self.check_twap_child_status_after(twap_id, cloid, delay);
+        }
+        if finish_attempt {
+            self.finish_twap_attempt(twap_id, now);
+        }
+        self.archive_twap_if_terminal(twap_id);
+        if refresh {
+            self.refresh_account_data()
+        } else {
+            Task::none()
+        }
     }
 
     pub(crate) fn reconcile_twap_fills_from_account(&mut self) {
@@ -753,6 +1186,14 @@ impl TradingTerminal {
             let before_status = twap.status;
             twap.reconcile_fills(&fills);
             if twap.filled_size > before {
+                if before_status == TwapStatus::Paused && !twap.has_status_unknown_child() {
+                    twap.status_check_cloid = None;
+                    twap.push_event(
+                        TwapEventKind::Reconciled,
+                        "TWAP resumed after account fill reconciliation".to_string(),
+                        false,
+                    );
+                }
                 twap.push_event(
                     TwapEventKind::Filled,
                     format!(
@@ -819,20 +1260,26 @@ impl TradingTerminal {
                 })
             })
         else {
-            if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
+            if let Some(twap) = self.twap_orders.get_mut(&twap_id)
+                && twap.status != TwapStatus::Paused
+            {
                 twap.status = TwapStatus::WaitingForMarket;
             }
             return Task::none();
         };
 
         if now.saturating_duration_since(book_updated_at) > TWAP_BOOK_STALE_AFTER {
-            self.record_twap_skip(
-                twap_id,
-                now,
-                TwapEventKind::SkippedStaleBook,
-                "TWAP slice skipped: market data is stale".to_string(),
-                true,
-            );
+            if let Some(twap) = self.twap_orders.get_mut(&twap_id)
+                && twap.pause_reason != Some(TwapPauseReason::StaleMarketData)
+            {
+                twap.pause(
+                    TwapPauseReason::StaleMarketData,
+                    None,
+                    "TWAP paused: market data is stale".to_string(),
+                    true,
+                );
+                self.order_status = Some(("TWAP paused: market data is stale".to_string(), true));
+            }
             return Task::none();
         }
 
@@ -840,7 +1287,13 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let planned_size = {
+        let retry_slice = self
+            .twap_orders
+            .get(&twap_id)
+            .and_then(|twap| twap.retry_slice.clone());
+        let planned_size = if let Some(slice) = &retry_slice {
+            slice.planned_size
+        } else {
             let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
                 return Task::none();
             };
@@ -867,18 +1320,24 @@ impl TradingTerminal {
         let Some(raw_limit_price) =
             twap_limit_price_for_slice(&book, is_buy, planned_size, min_price, max_price)
         else {
-            self.record_twap_skip(
-                twap_id,
-                now,
-                TwapEventKind::SkippedRange,
-                format!(
-                    "TWAP slice skipped: book cannot fill {} inside {}-{}",
-                    float_to_wire(planned_size),
-                    format_price(min_price),
-                    format_price(max_price)
-                ),
-                false,
+            let message = format!(
+                "TWAP slice skipped: book cannot fill {} inside {}-{}",
+                float_to_wire(planned_size),
+                format_price(min_price),
+                format_price(max_price)
             );
+            if let Some(slice) = &retry_slice {
+                self.record_twap_retry_skip(
+                    twap_id,
+                    now,
+                    slice.index,
+                    TwapEventKind::SkippedRange,
+                    message,
+                    false,
+                );
+            } else {
+                self.record_twap_skip(twap_id, now, TwapEventKind::SkippedRange, message, false);
+            }
             return Task::none();
         };
         let Some(limit_price) = twap_ioc_limit_price(
@@ -889,27 +1348,40 @@ impl TradingTerminal {
             min_price,
             max_price,
         ) else {
-            self.record_twap_skip(
-                twap_id,
-                now,
-                TwapEventKind::SkippedRange,
+            let message =
                 "TWAP slice skipped: rounded IOC price would no longer cross inside range"
-                    .to_string(),
-                false,
-            );
+                    .to_string();
+            if let Some(slice) = &retry_slice {
+                self.record_twap_retry_skip(
+                    twap_id,
+                    now,
+                    slice.index,
+                    TwapEventKind::SkippedRange,
+                    message,
+                    false,
+                );
+            } else {
+                self.record_twap_skip(twap_id, now, TwapEventKind::SkippedRange, message, false);
+            }
             return Task::none();
         };
         if !twap_order_notional_meets_minimum(planned_size, limit_price) {
-            self.record_twap_skip(
-                twap_id,
-                now,
-                TwapEventKind::SkippedMinimum,
-                format!(
-                    "TWAP slice skipped: child notional ${:.2} is below Hyperliquid's ${MIN_EXCHANGE_ORDER_NOTIONAL_USD:.0} minimum",
-                    planned_size * limit_price
-                ),
-                true,
+            let message = format!(
+                "TWAP slice skipped: child notional ${:.2} is below Hyperliquid's ${MIN_EXCHANGE_ORDER_NOTIONAL_USD:.0} minimum",
+                planned_size * limit_price
             );
+            if let Some(slice) = &retry_slice {
+                self.record_twap_retry_skip(
+                    twap_id,
+                    now,
+                    slice.index,
+                    TwapEventKind::SkippedMinimum,
+                    message,
+                    true,
+                );
+            } else {
+                self.record_twap_skip(twap_id, now, TwapEventKind::SkippedMinimum, message, true);
+            }
             return Task::none();
         }
 
@@ -925,50 +1397,96 @@ impl TradingTerminal {
             );
         }
 
-        let slice_index = twap.slices_attempted.saturating_add(1);
-        twap.slices_attempted = slice_index;
-        twap.slices_sent = twap.slices_sent.saturating_add(1);
-        twap.pending_op = Some(TwapPendingOp::Place(TwapPendingSlice {
-            index: slice_index,
-            planned_size,
-            limit_price,
-        }));
-        twap.status = TwapStatus::Running;
-        twap.child_orders.push(TwapChildOrder {
-            index: slice_index,
-            requested_at: now,
-            planned_size,
-            limit_price,
-            oid: None,
-            status: TwapChildStatus::Pending,
-            exchange_summary: "Placing".to_string(),
-            filled_size: 0.0,
-            avg_price: None,
-            fee: 0.0,
-        });
-        twap.push_event(
-            TwapEventKind::Placed,
-            format!(
-                "Slice {slice_index} placing {} @ {}",
-                float_to_wire(planned_size),
-                format_price(limit_price)
-            ),
-            false,
-        );
+        let pending_slice = if let Some(mut slice) = retry_slice {
+            slice.limit_price = limit_price;
+            twap.retry_slice = None;
+            twap.pending_op = Some(TwapPendingOp::Place(slice.clone()));
+            twap.status = TwapStatus::Running;
+            twap.pause_reason = None;
+            twap.paused_until = None;
+            if let Some(child) = twap
+                .child_orders
+                .iter_mut()
+                .find(|child| child.index == slice.index)
+            {
+                child.status = TwapChildStatus::Pending;
+                child.limit_price = limit_price;
+                child.retry_count = slice.retry_count;
+                child.exchange_summary = format!("Retry {}", slice.retry_count);
+            }
+            twap.push_event(
+                TwapEventKind::Retrying,
+                format!(
+                    "Slice {} retry {} placing {} @ {}",
+                    slice.index,
+                    slice.retry_count,
+                    float_to_wire(planned_size),
+                    format_price(limit_price)
+                ),
+                false,
+            );
+            slice
+        } else {
+            let slice_index = twap.slices_attempted.saturating_add(1);
+            let cloid = twap_child_cloid(
+                &twap.account_address,
+                twap.id,
+                twap.started_at_ms,
+                slice_index,
+            );
+            twap.slices_attempted = slice_index;
+            twap.slices_sent = twap.slices_sent.saturating_add(1);
+            let slice = TwapPendingSlice {
+                index: slice_index,
+                planned_size,
+                limit_price,
+                cloid: cloid.clone(),
+                retry_count: 0,
+            };
+            twap.pending_op = Some(TwapPendingOp::Place(slice.clone()));
+            twap.status = TwapStatus::Running;
+            twap.child_orders.push(TwapChildOrder {
+                index: slice_index,
+                requested_at: now,
+                planned_size,
+                limit_price,
+                oid: None,
+                cloid: Some(cloid),
+                status: TwapChildStatus::Pending,
+                exchange_summary: "Placing".to_string(),
+                filled_size: 0.0,
+                avg_price: None,
+                fee: 0.0,
+                retry_count: 0,
+            });
+            twap.push_event(
+                TwapEventKind::Placed,
+                format!(
+                    "Slice {slice_index} placing {} @ {}",
+                    float_to_wire(planned_size),
+                    format_price(limit_price)
+                ),
+                false,
+            );
+            slice
+        };
 
         let asset = twap.asset;
         let reduce_only = twap.reduce_only;
         self.last_advanced_exchange_request_at = Some(now);
 
         Task::perform(
-            place_order(
+            place_order_with_cloid(
                 key.into(),
-                asset,
-                is_buy,
-                float_to_wire(limit_price),
-                float_to_wire(planned_size),
-                OrderKind::LimitIoc,
-                reduce_only,
+                PlaceOrderRequest {
+                    asset,
+                    is_buy,
+                    price: float_to_wire(limit_price),
+                    size: float_to_wire(planned_size),
+                    order_kind: OrderKind::LimitIoc,
+                    reduce_only,
+                    cloid: Some(pending_slice.cloid),
+                },
             ),
             move |result| Message::TwapSliceResult {
                 twap_id,
@@ -987,6 +1505,31 @@ impl TradingTerminal {
     ) {
         if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
             twap.slices_attempted = twap.slices_attempted.saturating_add(1);
+            twap.push_event(kind, message.clone(), is_error);
+            self.order_status = Some((message, is_error));
+            twap.schedule_after_attempt(now);
+        }
+    }
+
+    fn record_twap_retry_skip(
+        &mut self,
+        twap_id: u64,
+        now: Instant,
+        slice_index: u32,
+        kind: TwapEventKind,
+        message: String,
+        is_error: bool,
+    ) {
+        if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
+            twap.retry_slice = None;
+            if let Some(child) = twap
+                .child_orders
+                .iter_mut()
+                .find(|child| child.index == slice_index)
+            {
+                child.status = TwapChildStatus::NoFill;
+                child.exchange_summary = message.clone();
+            }
             twap.push_event(kind, message.clone(), is_error);
             self.order_status = Some((message, is_error));
             twap.schedule_after_attempt(now);
@@ -1053,6 +1596,44 @@ impl TradingTerminal {
         }
     }
 
+    fn check_twap_child_status(&mut self, twap_id: u64, cloid: String) -> Task<Message> {
+        let Some(address) = self.connected_address.clone() else {
+            return Task::none();
+        };
+        let request_cloid = cloid.clone();
+        Task::perform(
+            fetch_order_status_by_cloid(address, request_cloid),
+            move |result| Message::TwapOrderStatusLoaded {
+                twap_id,
+                cloid: cloid.clone(),
+                result: Box::new(result),
+            },
+        )
+    }
+
+    fn check_twap_child_status_after(
+        &mut self,
+        twap_id: u64,
+        cloid: String,
+        delay: std::time::Duration,
+    ) -> Task<Message> {
+        let Some(address) = self.connected_address.clone() else {
+            return Task::none();
+        };
+        let request_cloid = cloid.clone();
+        Task::perform(
+            async move {
+                tokio::time::sleep(delay).await;
+                fetch_order_status_by_cloid(address, request_cloid).await
+            },
+            move |result| Message::TwapOrderStatusLoaded {
+                twap_id,
+                cloid: cloid.clone(),
+                result: Box::new(result),
+            },
+        )
+    }
+
     fn twap_refresh_policy_needs_refresh(&self, policy: TwapAccountRefresh, twap_id: u64) -> bool {
         let twap_is_terminal = self
             .twap_orders
@@ -1111,6 +1692,137 @@ fn parse_positive_price(value: &str) -> Option<f64> {
     (parsed.is_finite() && parsed > 0.0).then_some(parsed)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TwapExchangeErrorAction {
+    Retry(TwapPauseReason),
+    Terminal,
+    ConsumeSlice,
+}
+
+fn classify_twap_exchange_error(summary: &str) -> TwapExchangeErrorAction {
+    let summary = summary.to_ascii_lowercase();
+    if summary.contains("rate limit")
+        || summary.contains("ratelimit")
+        || summary.contains("too many requests")
+        || summary.contains("429")
+        || summary.contains("temporarily")
+        || summary.contains("unavailable")
+        || summary.contains("overloaded")
+        || summary.contains("try again")
+    {
+        return TwapExchangeErrorAction::Retry(TwapPauseReason::RateLimited);
+    }
+
+    if summary.contains("signature")
+        || summary.contains("agent")
+        || summary.contains("unauthorized")
+        || summary.contains("not approved")
+        || summary.contains("minimum")
+        || summary.contains("min trade")
+        || summary.contains("notional")
+        || summary.contains("tick")
+        || summary.contains("insufficient")
+        || summary.contains("margin")
+        || summary.contains("balance")
+        || summary.contains("reduce only")
+        || summary.contains("reduce-only")
+        || summary.contains("open interest")
+        || summary.contains("oracle")
+        || summary.contains("delist")
+        || summary.contains("max position")
+    {
+        return TwapExchangeErrorAction::Terminal;
+    }
+
+    TwapExchangeErrorAction::ConsumeSlice
+}
+
+fn twap_terminal_cancel_error(summary: &str) -> bool {
+    let summary = summary.to_ascii_lowercase();
+    summary.contains("filled")
+        || summary.contains("canceled")
+        || summary.contains("cancelled")
+        || summary.contains("cancled")
+        || summary.contains("never placed")
+        || summary.contains("not found")
+        || summary.contains("does not exist")
+        || summary.contains("no open order")
+        || summary.contains("no longer open")
+}
+
+fn twap_cancel_target_matches(
+    pending_oid: Option<u64>,
+    pending_cloid: Option<&str>,
+    oid: Option<u64>,
+    cloid: Option<&str>,
+) -> bool {
+    oid.is_some() && pending_oid == oid
+        || cloid.is_some() && pending_cloid == cloid
+        || pending_oid.is_none() && oid.is_none() && pending_cloid == cloid
+}
+
+fn twap_child_matches_cancel_target(
+    child: &TwapChildOrder,
+    oid: Option<u64>,
+    cloid: Option<&str>,
+) -> bool {
+    oid.is_some() && child.oid == oid || cloid.is_some() && child.cloid.as_deref() == cloid
+}
+
+fn twap_cancel_label(oid: Option<u64>, cloid: Option<&str>) -> String {
+    match (oid, cloid) {
+        (Some(oid), Some(cloid)) => format!("oid {oid} / {cloid}"),
+        (Some(oid), None) => format!("oid {oid}"),
+        (None, Some(cloid)) => cloid.to_string(),
+        (None, None) => "unknown child".to_string(),
+    }
+}
+
+fn twap_cancel_child_task(
+    twap_id: u64,
+    key: String,
+    asset: u32,
+    oid: Option<u64>,
+    cloid: Option<String>,
+) -> Task<Message> {
+    if key.trim().is_empty() {
+        return Task::perform(
+            async { Err("original agent key unavailable".to_string()) },
+            move |result| Message::TwapUnexpectedCancelResult {
+                twap_id,
+                oid,
+                cloid: cloid.clone(),
+                result: Box::new(result),
+            },
+        );
+    }
+
+    if let Some(oid) = oid {
+        return Task::perform(cancel_order(key.into(), asset, oid), move |result| {
+            Message::TwapUnexpectedCancelResult {
+                twap_id,
+                oid: Some(oid),
+                cloid: cloid.clone(),
+                result: Box::new(result),
+            }
+        });
+    }
+
+    let Some(cloid) = cloid else {
+        return Task::none();
+    };
+    let request_cloid = cloid.clone();
+    Task::perform(
+        cancel_order_by_cloid(key.into(), asset, request_cloid),
+        move |result| Message::TwapUnexpectedCancelResult {
+            twap_id,
+            oid: None,
+            cloid: Some(cloid.clone()),
+            result: Box::new(result),
+        },
+    )
+}
+
 fn twap_place_result_refresh_policy(
     result: &Result<crate::signing::ExchangeResponse, String>,
 ) -> TwapAccountRefresh {
@@ -1124,8 +1836,12 @@ fn twap_place_result_refresh_policy(
 
 #[cfg(test)]
 mod tests {
-    use super::{TwapAccountRefresh, twap_ioc_limit_price, twap_place_result_refresh_policy};
+    use super::{
+        TwapAccountRefresh, TwapExchangeErrorAction, classify_twap_exchange_error,
+        twap_cancel_target_matches, twap_ioc_limit_price, twap_place_result_refresh_policy,
+    };
     use crate::signing::ExchangeResponse;
+    use crate::twap_state::TwapPauseReason;
 
     fn exchange_response(status: serde_json::Value) -> ExchangeResponse {
         serde_json::from_value(serde_json::json!({
@@ -1208,5 +1924,43 @@ mod tests {
             twap_ioc_limit_price(100.1, true, 3, false, 99.0, 100.0),
             None
         );
+    }
+
+    #[test]
+    fn twap_exchange_error_classification_separates_retryable_and_terminal_errors() {
+        assert_eq!(
+            classify_twap_exchange_error("Error: 429 Too Many Requests"),
+            TwapExchangeErrorAction::Retry(TwapPauseReason::RateLimited)
+        );
+        assert_eq!(
+            classify_twap_exchange_error("Error: Order must have minimum value of $10"),
+            TwapExchangeErrorAction::Terminal
+        );
+        assert_eq!(
+            classify_twap_exchange_error("Error: Order could not immediately match"),
+            TwapExchangeErrorAction::ConsumeSlice
+        );
+    }
+
+    #[test]
+    fn twap_cancel_target_matches_by_oid_or_cloid() {
+        assert!(twap_cancel_target_matches(
+            Some(42),
+            Some("0xabc"),
+            Some(42),
+            None
+        ));
+        assert!(twap_cancel_target_matches(
+            None,
+            Some("0xabc"),
+            None,
+            Some("0xabc")
+        ));
+        assert!(!twap_cancel_target_matches(
+            Some(42),
+            Some("0xabc"),
+            Some(43),
+            Some("0xdef")
+        ));
     }
 }

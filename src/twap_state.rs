@@ -2,6 +2,7 @@ use crate::account::UserFill;
 use crate::api::OrderBook;
 use crate::signing::ExchangeResponse;
 use iced::window;
+use sha3::{Digest, Keccak256};
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
@@ -20,6 +21,10 @@ pub(crate) const TWAP_BOOK_STALE_AFTER: Duration = Duration::from_secs(2);
 pub(crate) const ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL: Duration = Duration::from_millis(250);
 pub(crate) const MIN_EXCHANGE_ORDER_NOTIONAL_USD: f64 = 10.0;
 pub(crate) const TWAP_MAX_AGGREGATE_SLICE_RATE: f64 = 1.0;
+pub(crate) const TWAP_RETRY_BASE_DELAY: Duration = Duration::from_secs(2);
+pub(crate) const TWAP_RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
+pub(crate) const TWAP_MAX_RETRY_ATTEMPTS: u32 = 5;
+pub(crate) const TWAP_MAX_UNEXPECTED_CANCEL_RETRIES: u32 = 5;
 
 const TWAP_RANDOM_JITTER: f64 = 0.20;
 const TWAP_EVENT_LIMIT: usize = 200;
@@ -49,6 +54,7 @@ impl Default for TwapOrderForm {
 pub(crate) enum TwapStatus {
     Running,
     WaitingForMarket,
+    Paused,
     Stopping,
     Stopped,
     Completed,
@@ -61,6 +67,7 @@ impl TwapStatus {
         match self {
             Self::Running => "Running",
             Self::WaitingForMarket => "Waiting",
+            Self::Paused => "Paused",
             Self::Stopping => "Stopping",
             Self::Stopped => "Stopped",
             Self::Completed => "Done",
@@ -78,13 +85,36 @@ impl TwapStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TwapPauseReason {
+    StaleMarketData,
+    RateLimited,
+    NetworkError,
+    StatusUnknown,
+    UnexpectedResting,
+}
+
+impl TwapPauseReason {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::StaleMarketData => "Stale market data",
+            Self::RateLimited => "Rate limited",
+            Self::NetworkError => "Network error",
+            Self::StatusUnknown => "Checking status",
+            Self::UnexpectedResting => "Canceling child",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TwapChildStatus {
     Pending,
+    Retrying,
     Filled,
     NoFill,
     Rejected,
     UnexpectedResting,
     UnexpectedRestingCancelled,
+    AwaitingReconciliation,
     StatusUnknown,
 }
 
@@ -92,11 +122,13 @@ impl TwapChildStatus {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Pending => "Pending",
+            Self::Retrying => "Retrying",
             Self::Filled => "Filled",
             Self::NoFill => "No fill",
             Self::Rejected => "Rejected",
             Self::UnexpectedResting => "Resting",
             Self::UnexpectedRestingCancelled => "Canceled",
+            Self::AwaitingReconciliation => "Reconciling",
             Self::StatusUnknown => "Unknown",
         }
     }
@@ -109,7 +141,9 @@ pub(crate) enum TwapEventKind {
     Filled,
     SkippedRange,
     SkippedMinimum,
-    SkippedStaleBook,
+    Paused,
+    Retrying,
+    Reconciled,
     Rejected,
     Stopped,
     Completed,
@@ -124,17 +158,22 @@ pub(crate) struct TwapEvent {
     pub(crate) is_error: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TwapPendingSlice {
     pub(crate) index: u32,
     pub(crate) planned_size: f64,
     pub(crate) limit_price: f64,
+    pub(crate) cloid: String,
+    pub(crate) retry_count: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TwapPendingOp {
     Place(TwapPendingSlice),
-    CancelUnexpectedResting { oid: u64 },
+    CancelUnexpectedResting {
+        oid: Option<u64>,
+        cloid: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -150,11 +189,13 @@ pub(crate) struct TwapChildOrder {
     pub(crate) planned_size: f64,
     pub(crate) limit_price: f64,
     pub(crate) oid: Option<u64>,
+    pub(crate) cloid: Option<String>,
     pub(crate) status: TwapChildStatus,
     pub(crate) exchange_summary: String,
     pub(crate) filled_size: f64,
     pub(crate) avg_price: Option<f64>,
     pub(crate) fee: f64,
+    pub(crate) retry_count: u32,
 }
 
 #[derive(Clone)]
@@ -187,6 +228,12 @@ pub(crate) struct TwapOrder {
     pub(crate) pending_op: Option<TwapPendingOp>,
     pub(crate) latest_book: Option<TwapBookSnapshot>,
     pub(crate) status: TwapStatus,
+    pub(crate) pause_reason: Option<TwapPauseReason>,
+    pub(crate) paused_until: Option<Instant>,
+    pub(crate) retry_slice: Option<TwapPendingSlice>,
+    pub(crate) status_check_cloid: Option<String>,
+    pub(crate) status_check_retries: u32,
+    pub(crate) cancel_retries: u32,
     pub(crate) stop_requested: bool,
     pub(crate) stop_reason: Option<(String, bool)>,
     pub(crate) child_orders: Vec<TwapChildOrder>,
@@ -245,6 +292,12 @@ impl TwapOrder {
             pending_op: None,
             latest_book: None,
             status: TwapStatus::WaitingForMarket,
+            pause_reason: None,
+            paused_until: None,
+            retry_slice: None,
+            status_check_cloid: None,
+            status_check_retries: 0,
+            cancel_retries: 0,
             stop_requested: false,
             stop_reason: None,
             child_orders: Vec::new(),
@@ -261,6 +314,55 @@ impl TwapOrder {
 
     pub(crate) fn can_schedule(&self) -> bool {
         !self.status.is_terminal() && !self.stop_requested && self.pending_op.is_none()
+    }
+
+    pub(crate) fn can_schedule_at(&self, now: Instant) -> bool {
+        self.can_schedule()
+            && self.status_check_cloid.is_none()
+            && self.next_slice_due <= now
+            && self.paused_until.is_none_or(|until| until <= now)
+    }
+
+    pub(crate) fn pause(
+        &mut self,
+        reason: TwapPauseReason,
+        paused_until: Option<Instant>,
+        message: String,
+        is_error: bool,
+    ) {
+        self.status = TwapStatus::Paused;
+        self.pause_reason = Some(reason);
+        self.paused_until = paused_until;
+        if let Some(until) = paused_until {
+            self.next_slice_due = until;
+        }
+        self.push_event(TwapEventKind::Paused, message, is_error);
+    }
+
+    pub(crate) fn clear_pause(&mut self) {
+        self.pause_reason = None;
+        self.paused_until = None;
+        self.status_check_retries = 0;
+        if !self.status.is_terminal() && !self.stop_requested && self.pending_op.is_none() {
+            self.status = TwapStatus::WaitingForMarket;
+        }
+    }
+
+    pub(crate) fn retry_delay(retry_count: u32) -> Duration {
+        let exponent = retry_count.saturating_sub(1).min(8);
+        let multiplier = 1_u32.checked_shl(exponent).unwrap_or(u32::MAX);
+        TWAP_RETRY_BASE_DELAY
+            .saturating_mul(multiplier)
+            .min(TWAP_RETRY_MAX_DELAY)
+    }
+
+    pub(crate) fn has_status_unknown_child(&self) -> bool {
+        self.child_orders.iter().any(|child| {
+            matches!(
+                child.status,
+                TwapChildStatus::StatusUnknown | TwapChildStatus::AwaitingReconciliation
+            )
+        })
     }
 
     pub(crate) fn progress_fraction(&self) -> f64 {
@@ -311,6 +413,7 @@ impl TwapOrder {
 
     pub(crate) fn schedule_after_attempt(&mut self, now: Instant) {
         if self.remaining_size <= 0.0 {
+            self.clear_pause();
             self.status = TwapStatus::Completed;
             self.push_event(
                 TwapEventKind::Completed,
@@ -321,6 +424,7 @@ impl TwapOrder {
         }
         let remaining_slots = self.slice_count.saturating_sub(self.slices_attempted);
         if remaining_slots == 0 {
+            self.clear_pause();
             self.status = if self.filled_size > 0.0 {
                 TwapStatus::CompletedPartial
             } else {
@@ -354,6 +458,7 @@ impl TwapOrder {
         let max_delay = remaining_time.saturating_sub(future_min);
         let delay = clamp_duration(delay, TWAP_MIN_INTERVAL.min(remaining_time), max_delay);
         self.next_slice_due = now + delay;
+        self.clear_pause();
         self.status = TwapStatus::WaitingForMarket;
     }
 
@@ -365,15 +470,13 @@ impl TwapOrder {
         self.remaining_size = (self.target_size - self.filled_size).max(0.0);
         if self.remaining_size <= f64::EPSILON {
             self.remaining_size = 0.0;
+            self.clear_pause();
             self.status = TwapStatus::Completed;
         }
     }
 
     pub(crate) fn reconcile_fills(&mut self, fills: &[UserFill]) {
-        let had_status_unknown = self
-            .child_orders
-            .iter()
-            .any(|child| child.status == TwapChildStatus::StatusUnknown);
+        let had_status_unknown = self.has_status_unknown_child();
 
         for child in &mut self.child_orders {
             let Some(oid) = child.oid else {
@@ -402,13 +505,19 @@ impl TwapOrder {
         if self.remaining_size <= f64::EPSILON
             && (matches!(
                 self.status,
-                TwapStatus::Running | TwapStatus::WaitingForMarket | TwapStatus::CompletedPartial
+                TwapStatus::Running
+                    | TwapStatus::WaitingForMarket
+                    | TwapStatus::Paused
+                    | TwapStatus::CompletedPartial
             ) || (had_status_unknown && self.status == TwapStatus::Error))
         {
             self.remaining_size = 0.0;
+            self.clear_pause();
             self.status = TwapStatus::Completed;
         } else if had_status_unknown && self.status == TwapStatus::Error && self.filled_size > 0.0 {
             self.status = TwapStatus::CompletedPartial;
+        } else if self.status == TwapStatus::Paused && !self.has_status_unknown_child() {
+            self.clear_pause();
         }
     }
 }
@@ -438,9 +547,37 @@ impl std::fmt::Debug for TwapOrder {
             .field("slices_attempted", &self.slices_attempted)
             .field("slices_sent", &self.slices_sent)
             .field("status", &self.status)
+            .field("pause_reason", &self.pause_reason)
+            .field("paused_until", &self.paused_until)
+            .field("retry_slice", &self.retry_slice)
+            .field("status_check_cloid", &self.status_check_cloid)
+            .field("status_check_retries", &self.status_check_retries)
+            .field("cancel_retries", &self.cancel_retries)
             .field("stop_requested", &self.stop_requested)
             .finish()
     }
+}
+
+pub(crate) fn twap_child_cloid(
+    account_address: &str,
+    twap_id: u64,
+    started_at_ms: u64,
+    slice_index: u32,
+) -> String {
+    let mut hasher = Keccak256::new();
+    hasher.update(account_address.as_bytes());
+    hasher.update(twap_id.to_be_bytes());
+    hasher.update(started_at_ms.to_be_bytes());
+    hasher.update(slice_index.to_be_bytes());
+    let hash = hasher.finalize();
+
+    let mut cloid = String::with_capacity(34);
+    cloid.push_str("0x");
+    for byte in hash.iter().take(16) {
+        use std::fmt::Write;
+        let _ = write!(cloid, "{byte:02x}");
+    }
+    cloid
 }
 
 pub(crate) fn parse_twap_duration_minutes(value: &str) -> Option<Duration> {
@@ -724,11 +861,12 @@ fn fill_summary_for_oid(fills: &[UserFill], oid: u64) -> Option<FillSummary> {
 mod tests {
     use super::{
         MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE, TwapChildOrder,
-        TwapChildStatus, TwapOrder, TwapStatus, parse_twap_duration_minutes,
+        TwapChildStatus, TwapOrder, TwapPauseReason, TwapStatus, parse_twap_duration_minutes,
         parse_twap_slice_count, quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
-        twap_aggregate_slice_rate, twap_limit_price_for_slice, twap_min_quantized_child_notional,
-        twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
-        twap_target_size_from_quantity, validate_twap_interval,
+        twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
+        twap_min_quantized_child_notional, twap_order_notional_meets_minimum,
+        twap_required_slice_rate, twap_response_fill_summary, twap_target_size_from_quantity,
+        validate_twap_interval,
     };
     use crate::account::UserFill;
     use crate::api::{BookLevel, OrderBook};
@@ -948,6 +1086,63 @@ mod tests {
     }
 
     #[test]
+    fn twap_child_cloid_is_stable_128_bit_hex() {
+        let first = twap_child_cloid("0xabc", 7, 1_000, 3);
+        let second = twap_child_cloid("0xabc", 7, 1_000, 3);
+        let different = twap_child_cloid("0xabc", 7, 1_000, 4);
+
+        assert_eq!(first, second);
+        assert_ne!(first, different);
+        assert_eq!(first.len(), 34);
+        assert!(first.starts_with("0x"));
+        assert!(first[2..].chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn paused_status_check_blocks_scheduling_until_reconciled() {
+        let now = Instant::now();
+        let mut twap = TwapOrder::new(
+            1,
+            "BTC".to_string(),
+            "BTC".to_string(),
+            "0xabc".to_string(),
+            "key".to_string().into(),
+            true,
+            1.0,
+            0,
+            3,
+            false,
+            false,
+            90.0,
+            110.0,
+            false,
+            Duration::from_secs(60),
+            2,
+            now,
+            1_000,
+        );
+        twap.pause(
+            TwapPauseReason::StatusUnknown,
+            Some(now),
+            "checking".to_string(),
+            true,
+        );
+        twap.status_check_cloid = Some(twap_child_cloid("0xabc", 1, 1_000, 1));
+
+        assert!(!twap.can_schedule_at(now));
+
+        twap.status_check_cloid = None;
+        assert!(twap.can_schedule_at(now));
+    }
+
+    #[test]
+    fn retry_delay_exponentially_backs_off_and_caps() {
+        assert_eq!(TwapOrder::retry_delay(1), Duration::from_secs(2));
+        assert_eq!(TwapOrder::retry_delay(2), Duration::from_secs(4));
+        assert_eq!(TwapOrder::retry_delay(10), Duration::from_secs(60));
+    }
+
+    #[test]
     fn twap_fill_summary_does_not_invent_missing_fill_size() {
         let response: ExchangeResponse = serde_json::from_value(serde_json::json!({
             "status": "ok",
@@ -1002,11 +1197,13 @@ mod tests {
             planned_size: 1.0,
             limit_price: 100.0,
             oid: Some(42),
+            cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
             status: TwapChildStatus::StatusUnknown,
             exchange_summary: "status unknown".to_string(),
             filled_size: 0.0,
             avg_price: None,
             fee: 0.0,
+            retry_count: 0,
         });
 
         partial.reconcile_fills(&[user_fill(42, "1.0", "100")]);

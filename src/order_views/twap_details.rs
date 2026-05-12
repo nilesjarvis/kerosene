@@ -122,6 +122,13 @@ fn twap_summary<'a>(twap: &TwapOrder, theme: &Theme) -> Element<'a, Message> {
             ),
         ]
         .spacing(8),
+        row![
+            metric("Status", twap.status.label().to_string(), weak),
+            metric("Pause", twap_pause_text(twap), weak),
+            metric("Next Retry", twap_next_retry_text(twap), weak),
+            metric("Status Check", twap_status_check_text(twap), weak),
+        ]
+        .spacing(8),
     ]
     .spacing(6)
     .into()
@@ -135,6 +142,7 @@ fn twap_child_orders<'a>(twap: &TwapOrder, theme: &Theme) -> Element<'a, Message
             text("Size").size(10).color(weak).width(Fill),
             text("Limit").size(10).color(weak).width(Fill),
             text("Fill").size(10).color(weak).width(Fill),
+            text("ID").size(10).color(weak).width(Fill),
             text("Status").size(10).color(weak).width(Fill),
         ]
         .spacing(8),
@@ -179,6 +187,7 @@ fn child_row<'a>(
         text(format_size(child.planned_size)).size(11).width(Fill),
         text(format_price(child.limit_price)).size(11).width(Fill),
         text(fill).size(11).width(Fill),
+        text(child_id_text(child)).size(10).color(weak).width(Fill),
         text(child.status.label()).size(11).color(weak).width(Fill),
     ]
     .spacing(8)
@@ -239,6 +248,9 @@ fn twap_notes<'a>(theme: &Theme) -> Element<'a, Message> {
         text("A slice is skipped when the current book cannot fill the full planned size inside the configured min/max range.")
             .size(11)
             .color(weak),
+        text("Stale market data, rate limits, and unknown child status pause the TWAP instead of silently burning future slices.")
+            .size(11)
+            .color(weak),
         text("Closing or switching charts does not affect the TWAP. Disconnecting or changing wallets stops future slices.")
             .size(11)
             .color(weak),
@@ -248,6 +260,50 @@ fn twap_notes<'a>(theme: &Theme) -> Element<'a, Message> {
     ]
     .spacing(5)
     .into()
+}
+
+fn twap_pause_text(twap: &TwapOrder) -> String {
+    twap.pause_reason
+        .map(|reason| reason.label().to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn twap_next_retry_text(twap: &TwapOrder) -> String {
+    let Some(until) = twap.paused_until else {
+        return "-".to_string();
+    };
+    let seconds = until
+        .saturating_duration_since(std::time::Instant::now())
+        .as_secs();
+    if seconds == 0 {
+        "Now".to_string()
+    } else {
+        format!("{seconds}s")
+    }
+}
+
+fn twap_status_check_text(twap: &TwapOrder) -> String {
+    twap.status_check_cloid
+        .as_deref()
+        .map(|cloid| format!("{} ({})", short_id(cloid), twap.status_check_retries))
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn child_id_text(child: &TwapChildOrder) -> String {
+    match (child.oid, child.cloid.as_deref()) {
+        (Some(oid), Some(cloid)) => format!("#{oid} {}", short_id(cloid)),
+        (Some(oid), None) => format!("#{oid}"),
+        (None, Some(cloid)) => short_id(cloid),
+        (None, None) => "-".to_string(),
+    }
+}
+
+fn short_id(value: &str) -> String {
+    if value.len() <= 10 {
+        value.to_string()
+    } else {
+        format!("{}...", &value[..10])
+    }
 }
 
 fn section_title<'a>(label: &'static str, theme: &Theme) -> iced::widget::Text<'a> {

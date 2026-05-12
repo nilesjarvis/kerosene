@@ -128,6 +128,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TwapBookUpdate { .. }
         | Message::TwapSliceResult { .. }
         | Message::TwapUnexpectedCancelResult { .. }
+        | Message::TwapOrderStatusLoaded { .. }
         | Message::OpenTwapDetails(_)
         | Message::OpenAdvancedOrderHistory(_)
         | Message::ChaseInitialBookLoaded { .. }

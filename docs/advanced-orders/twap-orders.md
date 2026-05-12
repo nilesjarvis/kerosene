@@ -2,7 +2,7 @@
 
 TWAP orders are Kerosene's client-side execution helper for splitting one target order into smaller, scheduled IOC slices. They are designed for traders who want to reduce timing impact, keep execution inside an explicit price range, and monitor long-running advanced orders without keeping a chart or order-book widget focused on the same symbol.
 
-> **Risk notice:** TWAP orders are automation running from your local Kerosene instance. They are not a native Hyperliquid order type. If Kerosene is closed, disconnected, rate-limited, or unable to sign/place/cancel, future slices stop because no server-side TWAP exists. Completed/stopped/error history is persisted, but live TWAP orders are not resumed after restart.
+> **Risk notice:** TWAP orders are automation running from your local Kerosene instance. They are not a native Hyperliquid order type. If Kerosene is closed, no server-side TWAP continues running. If Kerosene is connected but market data, rate limits, or exchange status become uncertain, Kerosene pauses, retries, and reconciles before sending more slices. Completed/stopped/error history is persisted, but live TWAP orders are not resumed after restart.
 
 ## When to use a TWAP order
 
@@ -43,12 +43,12 @@ Active TWAP orders appear in the Advanced Orders pane. Each row shows:
 - Filled size and target size.
 - Sent slices and total configured slices.
 - Price range.
-- Status: `Waiting`, `Running`, `Stopping`, `Done`, `Partial`, `Stopped`, or `Error`.
+- Status: `Waiting`, `Running`, `Paused`, `Stopping`, `Done`, `Partial`, `Stopped`, or `Error`.
 - A spinning gear while the order is active.
 - `Info` for the detail window.
 - `Stop` when the TWAP is still active.
 
-The details window shows summary metrics, child slices, event logs, and operating notes.
+The details window shows summary metrics, pause/retry state, child slices, cloids/order ids, event logs, and operating notes.
 
 ### Historical records
 
@@ -97,7 +97,7 @@ The exchange can return:
 
 This happens when the local book showed matchable liquidity, but that liquidity disappeared before the IOC reached the exchange. Kerosene treats this as an ordinary no-fill slice event and continues the TWAP schedule. It is not treated as a terminal error.
 
-The TWAP book snapshot must be fresh. Current TWAP slices reject book data older than `2s` to reduce stale-book races.
+The TWAP book snapshot must be fresh. Current TWAP slices reject book data older than `2s` to reduce stale-book races. Stale market data pauses the TWAP instead of consuming a slice; execution resumes when fresh book data arrives or the deadline ends the TWAP.
 
 ### Sizing and minimum notional
 
@@ -132,7 +132,15 @@ Current schedule limits:
 - Maximum aggregate TWAP slice rate: `1 slice/sec`.
 - Minimum global interval between advanced-order exchange requests: `250ms`.
 
-The aggregate slice-rate cap prevents multiple active TWAPs from scheduling more slices than the local executor can process cleanly.
+The aggregate slice-rate cap prevents multiple active TWAPs from scheduling more slices than the local executor can process cleanly. When several TWAPs are due, Kerosene services the earliest due slice first.
+
+### Pauses, retries, and reconciliation
+
+Each child order receives a Hyperliquid client order id (`cloid`). Kerosene uses this cloid to check order status after ambiguous placement results and to cancel an unexpected resting child when no exchange order id is available.
+
+Retryable failures such as rate limits pause the TWAP with bounded exponential backoff. Terminal failures such as invalid signatures, insufficient margin, reduce-only rejection, invalid tick/notional, or disabled assets stop the TWAP in `Error`.
+
+Ambiguous placement or transport results pause the TWAP and query order status by cloid before another slice can be sent. This avoids accidental double execution.
 
 ## Technical model
 
@@ -188,12 +196,12 @@ Slice execution:
 
 `handle_twap_slice_result` handles the exchange response:
 
-- Exchange transport failure: mark child `Unknown`, put TWAP in `Error`, and force account reconciliation.
+- Exchange transport failure: mark child `Unknown`, pause the TWAP, query order status by cloid, and force account reconciliation.
 - Explicit IOC no-match: mark child `No fill`, log a non-error event, and continue later.
-- Exchange error: mark child `Rejected`; non-terminal unless the response means status is unknown.
+- Exchange error: classify as retryable, terminal, or ordinary rejected/no-fill before deciding whether to retry, stop, or consume the slice.
 - Filled response with parseable size: mark child filled, update `filled_size` and `remaining_size`.
 - Filled response without parseable size: mark status unknown, stop the TWAP in `Error`, and force reconciliation.
-- Unexpected resting order id: mark child `Resting`, send cancel, and reconcile afterward.
+- Unexpected resting order id or cloid: mark child `Resting`, send cancel, retry uncertain cancels up to a bounded limit, and reconcile afterward.
 - No fill/no oid: mark child `No fill` and continue the schedule.
 
 Successful non-terminal slices do not trigger a full account refresh every time. Account refresh is reserved for terminal completion or ambiguous/unknown outcomes, reducing API pressure.
@@ -207,7 +215,7 @@ Important behavior:
 - Unknown child status can be repaired by later account fills.
 - If an unknown child proves partially filled, the TWAP becomes `CompletedPartial`.
 - If account fills prove the target is complete, the TWAP becomes `Completed`.
-- Ambiguous exchange outcomes stop future slices until reconciliation, avoiding accidental over-execution.
+- Ambiguous exchange outcomes pause future slices until reconciliation, avoiding accidental over-execution.
 
 ### Stopping
 

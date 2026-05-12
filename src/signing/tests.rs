@@ -1,5 +1,6 @@
 use super::actions::{
-    HyperliquidL1Action, build_cancel_action, build_modify_action, build_order_action,
+    HyperliquidL1Action, build_cancel_action, build_cancel_by_cloid_action, build_modify_action,
+    build_order_action, build_order_action_with_cloid,
 };
 use super::crypto::action_hash_bytes;
 use super::{ChaseOrder, ExchangeResponse, OrderKind};
@@ -76,6 +77,23 @@ fn build_order_action_serializes_limit_payload_for_exchange() {
 }
 
 #[test]
+fn build_order_action_can_include_client_order_id() {
+    let action = build_order_action_with_cloid(
+        7,
+        true,
+        "123.45".to_string(),
+        "0.25".to_string(),
+        OrderKind::LimitIoc,
+        false,
+        Some("0x1234567890abcdef1234567890abcdef".to_string()),
+    );
+    let json = serde_json::to_value(action).expect("order action should serialize");
+
+    assert_eq!(json["orders"][0]["c"], "0x1234567890abcdef1234567890abcdef");
+    assert_eq!(json["orders"][0]["t"]["limit"]["tif"], "Ioc");
+}
+
+#[test]
 fn build_order_action_uses_ioc_for_market_and_limit_ioc_and_gtc_for_chase() {
     let market = build_order_action(
         1,
@@ -125,6 +143,23 @@ fn build_cancel_action_serializes_exchange_payload() {
             "cancels": [{
                 "a": 3,
                 "o": 9001
+            }]
+        })
+    );
+}
+
+#[test]
+fn build_cancel_by_cloid_action_serializes_exchange_payload() {
+    let action = build_cancel_by_cloid_action(3, "0x1234567890abcdef1234567890abcdef".to_string());
+    let json = serde_json::to_value(action).expect("cancel by cloid action should serialize");
+
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "type": "cancelByCloid",
+            "cancels": [{
+                "asset": 3,
+                "cloid": "0x1234567890abcdef1234567890abcdef"
             }]
         })
     );

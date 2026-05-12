@@ -270,8 +270,14 @@ pub(crate) enum Message {
     },
     TwapUnexpectedCancelResult {
         twap_id: u64,
-        oid: u64,
+        oid: Option<u64>,
+        cloid: Option<String>,
         result: Box<Result<ExchangeResponse, String>>,
+    },
+    TwapOrderStatusLoaded {
+        twap_id: u64,
+        cloid: String,
+        result: Box<Result<api::OrderStatusResult, String>>,
     },
     OpenTwapDetails(u64),
     OpenAdvancedOrderHistory(String),

@@ -17,6 +17,7 @@ use serde::Serialize;
 pub(super) enum HyperliquidL1Action {
     Order(OrderAction),
     Cancel(CancelAction),
+    CancelByCloid(CancelByCloidAction),
     Modify(ModifyAction),
 }
 
@@ -39,8 +40,32 @@ impl HyperliquidL1Action {
         ))
     }
 
+    pub(super) fn order_with_cloid(
+        asset: u32,
+        is_buy: bool,
+        price: String,
+        size: String,
+        order_kind: OrderKind,
+        reduce_only: bool,
+        cloid: Option<String>,
+    ) -> Self {
+        Self::Order(build_order_action_with_cloid(
+            asset,
+            is_buy,
+            price,
+            size,
+            order_kind,
+            reduce_only,
+            cloid,
+        ))
+    }
+
     pub(super) fn cancel(asset: u32, oid: u64) -> Self {
         Self::Cancel(build_cancel_action(asset, oid))
+    }
+
+    pub(super) fn cancel_by_cloid(asset: u32, cloid: String) -> Self {
+        Self::CancelByCloid(build_cancel_by_cloid_action(asset, cloid))
     }
 
     pub(super) fn modify(
@@ -88,6 +113,8 @@ struct OrderWire {
     s: String,
     r: bool,
     t: OrderTypeWire,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -124,6 +151,21 @@ pub(super) struct CancelAction {
     cancels: Vec<CancelWire>,
 }
 
+/// Cancel-by-cloid wire: fields in docs order: asset, cloid
+#[derive(Debug, Clone, Serialize)]
+struct CancelByCloidWire {
+    asset: u32,
+    cloid: String,
+}
+
+/// Cancel-by-cloid action: fields in docs order: type, cancels
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct CancelByCloidAction {
+    #[serde(rename = "type")]
+    action_type: String,
+    cancels: Vec<CancelByCloidWire>,
+}
+
 /// Modify wire: fields in Python SDK order: oid, order
 #[derive(Debug, Clone, Serialize)]
 struct ModifyWire {
@@ -153,6 +195,7 @@ fn build_order_wire(
     size: String,
     order_kind: OrderKind,
     reduce_only: bool,
+    cloid: Option<String>,
 ) -> OrderWire {
     OrderWire {
         a: asset,
@@ -165,6 +208,7 @@ fn build_order_wire(
                 tif: order_tif(order_kind).to_string(),
             },
         },
+        c: cloid,
     }
 }
 
@@ -176,6 +220,18 @@ pub(super) fn build_order_action(
     order_kind: OrderKind,
     reduce_only: bool,
 ) -> OrderAction {
+    build_order_action_with_cloid(asset, is_buy, price, size, order_kind, reduce_only, None)
+}
+
+pub(super) fn build_order_action_with_cloid(
+    asset: u32,
+    is_buy: bool,
+    price: String,
+    size: String,
+    order_kind: OrderKind,
+    reduce_only: bool,
+    cloid: Option<String>,
+) -> OrderAction {
     OrderAction {
         action_type: "order".to_string(),
         orders: vec![build_order_wire(
@@ -185,6 +241,7 @@ pub(super) fn build_order_action(
             size,
             order_kind,
             reduce_only,
+            cloid,
         )],
         grouping: "na".to_string(),
     }
@@ -194,6 +251,13 @@ pub(super) fn build_cancel_action(asset: u32, oid: u64) -> CancelAction {
     CancelAction {
         action_type: "cancel".to_string(),
         cancels: vec![CancelWire { a: asset, o: oid }],
+    }
+}
+
+pub(super) fn build_cancel_by_cloid_action(asset: u32, cloid: String) -> CancelByCloidAction {
+    CancelByCloidAction {
+        action_type: "cancelByCloid".to_string(),
+        cancels: vec![CancelByCloidWire { asset, cloid }],
     }
 }
 
@@ -209,7 +273,15 @@ pub(super) fn build_modify_action(
         action_type: "batchModify".to_string(),
         modifies: vec![ModifyWire {
             oid,
-            order: build_order_wire(asset, is_buy, price, size, OrderKind::Limit, reduce_only),
+            order: build_order_wire(
+                asset,
+                is_buy,
+                price,
+                size,
+                OrderKind::Limit,
+                reduce_only,
+                None,
+            ),
         }],
     }
 }

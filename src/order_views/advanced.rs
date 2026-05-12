@@ -167,9 +167,10 @@ fn twap_order_row(
     let weak_text = theme.extended_palette().background.weak.text;
     let status_color = match twap.status {
         TwapStatus::Error | TwapStatus::CompletedPartial => theme.palette().danger,
-        TwapStatus::Running | TwapStatus::WaitingForMarket | TwapStatus::Stopping => {
-            theme.palette().primary
-        }
+        TwapStatus::Running
+        | TwapStatus::WaitingForMarket
+        | TwapStatus::Paused
+        | TwapStatus::Stopping => theme.palette().primary,
         TwapStatus::Stopped | TwapStatus::Completed => weak_text,
     };
     let progress = format!(
@@ -186,6 +187,7 @@ fn twap_order_row(
         "{} of {} slices | {range}",
         twap.slices_sent, twap.slice_count
     );
+    let status = twap_status_text(twap);
     let stop_cell = if twap.status.is_terminal() {
         details_button(twap.id)
     } else {
@@ -202,7 +204,7 @@ fn twap_order_row(
             text(twap.coin.clone()).size(12).width(Fill),
             text(progress).size(11),
             text(meta).size(10).color(weak_text),
-            text(twap.status.label()).size(10).color(status_color),
+            text(status).size(10).color(status_color),
             stop_cell
         ]
         .spacing(6)
@@ -220,6 +222,13 @@ fn twap_order_row(
         ..Default::default()
     })
     .into()
+}
+
+fn twap_status_text(twap: &TwapOrder) -> String {
+    if let Some(reason) = twap.pause_reason {
+        return format!("Paused: {}", reason.label());
+    }
+    twap.status.label().to_string()
 }
 
 fn history_order_row(

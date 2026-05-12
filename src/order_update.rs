@@ -83,8 +83,14 @@ impl TradingTerminal {
             Message::TwapUnexpectedCancelResult {
                 twap_id,
                 oid,
+                cloid,
                 result,
-            } => return self.handle_twap_unexpected_cancel_result(twap_id, oid, *result),
+            } => return self.handle_twap_unexpected_cancel_result(twap_id, oid, cloid, *result),
+            Message::TwapOrderStatusLoaded {
+                twap_id,
+                cloid,
+                result,
+            } => return self.handle_twap_order_status_result(twap_id, cloid, *result),
             Message::OpenTwapDetails(twap_id) => return self.open_twap_details(twap_id),
             Message::OpenAdvancedOrderHistory(entry_id) => {
                 return self.open_advanced_order_history(entry_id);

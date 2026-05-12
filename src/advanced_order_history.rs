@@ -63,6 +63,8 @@ pub(crate) struct AdvancedOrderHistoryChild {
     #[serde(default)]
     pub(crate) oid: Option<u64>,
     #[serde(default)]
+    pub(crate) cloid: Option<String>,
+    #[serde(default)]
     pub(crate) status: String,
     #[serde(default)]
     pub(crate) exchange_summary: String,
@@ -158,6 +160,7 @@ impl AdvancedOrderHistoryEntry {
                     .filter(|value| value.is_finite() && *value > 0.0),
                 fee: finite_or_zero(child.fee),
                 oid: child.oid,
+                cloid: child.cloid.clone(),
                 status: child.status.label().to_string(),
                 exchange_summary: child.exchange_summary.clone(),
             })
@@ -303,7 +306,10 @@ pub(crate) fn prune_advanced_order_history(history: &mut VecDeque<AdvancedOrderH
 
 fn twap_history_status(status: TwapStatus) -> &'static str {
     match status {
-        TwapStatus::Running | TwapStatus::WaitingForMarket | TwapStatus::Stopping => "Interrupted",
+        TwapStatus::Running
+        | TwapStatus::WaitingForMarket
+        | TwapStatus::Paused
+        | TwapStatus::Stopping => "Interrupted",
         TwapStatus::Stopped => "Stopped",
         TwapStatus::Completed => "Completed",
         TwapStatus::CompletedPartial => "Partial",
