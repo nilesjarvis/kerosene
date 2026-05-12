@@ -8,8 +8,9 @@ use super::super::super::{telemetry_on_connect, telemetry_on_disconnect};
 use super::super::HYDROMANCER_RECONNECT_DELAY_SECS;
 use super::{
     HYDROMANCER_MAX_CONNECT_RETRY_SECS, HYDROMANCER_READ_TIMEOUT_SECS, HydromancerCommand,
-    HydromancerRoutedMessage,
+    HydromancerRoutedMessage, hydromancer_read_remaining,
 };
+use std::time::Instant;
 use tokio::sync::{broadcast, mpsc};
 
 mod frames;
@@ -64,11 +65,12 @@ pub(super) async fn hydromancer_manager_task(
         telemetry_on_connect();
         let (mut write, mut read) = ws_stream.split();
         let mut disconnected = false;
+        let mut last_rx_at = Instant::now();
 
         while !disconnected {
             let cmd_fut = Box::pin(cmd_rx.recv());
             let read_fut = Box::pin(tokio::time::timeout(
-                std::time::Duration::from_secs(HYDROMANCER_READ_TIMEOUT_SECS),
+                hydromancer_read_remaining(last_rx_at.elapsed()),
                 read.next(),
             ));
 
@@ -82,6 +84,7 @@ pub(super) async fn hydromancer_manager_task(
                     disconnected = true;
                 }
                 Either::Right((Ok(Some(Ok(msg))), _)) => {
+                    last_rx_at = Instant::now();
                     disconnected = handle_hydromancer_ws_message(
                         msg,
                         &active_subs,

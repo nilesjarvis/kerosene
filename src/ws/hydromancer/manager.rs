@@ -1,14 +1,26 @@
 mod task;
 
+#[cfg(test)]
+mod tests;
+
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
 use self::task::hydromancer_manager_task;
 
 const HYDROMANCER_READ_TIMEOUT_SECS: u64 = 95;
 const HYDROMANCER_MAX_CONNECT_RETRY_SECS: u64 = 30;
+
+/// Remaining time before forcing a hydromancer reconnect because no inbound
+/// frames have arrived. Anchored to an absolute `last_rx_at` instant so the
+/// deadline cannot be silently reset by command traffic landing on the
+/// manager's `select` — that reset was the root cause of #13.
+pub(super) fn hydromancer_read_remaining(last_rx_elapsed: Duration) -> Duration {
+    Duration::from_secs(HYDROMANCER_READ_TIMEOUT_SECS).saturating_sub(last_rx_elapsed)
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct HydromancerRoutedMessage {
