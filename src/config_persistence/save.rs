@@ -12,6 +12,11 @@ enum ConfigSaveCompletionAction {
     None,
     SavePending,
     Exit,
+    /// User asked to close, but the final save returned Err. Stay open
+    /// so the failure isn't swallowed silently — the recorded error
+    /// status (set by `record_config_save_result`) is already visible
+    /// in the UI and the user can retry or accept the loss explicitly.
+    BlockExitOnError,
 }
 
 fn config_save_is_due(due_at: Option<Instant>, now: Instant) -> bool {
@@ -25,11 +30,19 @@ fn config_save_should_start(due_at: Option<Instant>, in_flight: bool, now: Insta
 fn config_save_completion_action(
     exit_requested: bool,
     has_pending_save: bool,
+    save_succeeded: bool,
 ) -> ConfigSaveCompletionAction {
-    match (exit_requested, has_pending_save) {
-        (true, true) => ConfigSaveCompletionAction::SavePending,
-        (true, false) => ConfigSaveCompletionAction::Exit,
-        (false, _) => ConfigSaveCompletionAction::None,
+    match (exit_requested, has_pending_save, save_succeeded) {
+        // A debounced save is still due — run it before deciding to exit.
+        (true, true, _) => ConfigSaveCompletionAction::SavePending,
+        // Exit requested + nothing else pending + last save succeeded → exit.
+        (true, false, true) => ConfigSaveCompletionAction::Exit,
+        // Exit requested + nothing else pending + last save FAILED → block.
+        // Persistence carries account layout, muted tickers, hotkeys,
+        // order presets, etc.; silently exiting after a failed save would
+        // lose those changes without a recovery opportunity.
+        (true, false, false) => ConfigSaveCompletionAction::BlockExitOnError,
+        (false, _, _) => ConfigSaveCompletionAction::None,
     }
 }
 
@@ -85,11 +98,13 @@ impl TradingTerminal {
         result: Result<(), String>,
     ) -> Task<Message> {
         self.config_save_in_flight = false;
+        let save_succeeded = result.is_ok();
         self.record_config_save_result(result);
 
         match config_save_completion_action(
             self.config_save_exit_requested,
             self.config_save_due_at.is_some(),
+            save_succeeded,
         ) {
             ConfigSaveCompletionAction::SavePending => {
                 self.config_save_due_at = None;
@@ -98,6 +113,19 @@ impl TradingTerminal {
             ConfigSaveCompletionAction::Exit => {
                 self.config_save_exit_requested = false;
                 iced::exit()
+            }
+            ConfigSaveCompletionAction::BlockExitOnError => {
+                // Clear the exit-requested flag so a subsequent close
+                // attempt re-enters this path freshly (and may succeed if
+                // the user fixed the underlying problem — disk full, perms,
+                // etc.). The error text is already visible via
+                // `secret_store_status` from `record_config_save_result`.
+                self.config_save_exit_requested = false;
+                self.push_toast(
+                    "Config save failed; close again to retry or discard.".to_string(),
+                    true,
+                );
+                Task::none()
             }
             ConfigSaveCompletionAction::None => Task::none(),
         }
