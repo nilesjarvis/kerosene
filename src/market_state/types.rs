@@ -167,6 +167,7 @@ pub struct OrderBookInstance {
     pending_book_sigfigs: Option<(Option<u8>, Option<u8>)>,
     book_revision: u64,
     aggregated: RefCell<AggregatedDepth>,
+    dom_ladder: RefCell<super::dom_ladder::DomLadderCache>,
 }
 
 /// Cached `(price, size, cum_size)` levels for the depth view, keyed by the
@@ -200,6 +201,7 @@ impl OrderBookInstance {
             pending_book_sigfigs: None,
             book_revision: 0,
             aggregated: RefCell::new(AggregatedDepth::default()),
+            dom_ladder: RefCell::new(super::dom_ladder::DomLadderCache::default()),
         }
     }
 
@@ -288,6 +290,34 @@ impl OrderBookInstance {
             cache.tick_bits = tick.to_bits();
         }
         self.aggregated.borrow()
+    }
+
+    /// Cached DOM-ladder rows for the current book at `tick` with
+    /// `side_rows` per side. Recomputed only when the book revision,
+    /// tick size, or row count differs from the cached entry. Cuts the
+    /// DOM view's per-paint work from full aggregation + map allocation
+    /// + row vector build down to a borrow.
+    pub fn dom_ladder_rows(
+        &self,
+        tick: f64,
+        side_rows: usize,
+    ) -> Ref<'_, super::dom_ladder::DomLadderRows> {
+        let key = super::dom_ladder::DomLadderCacheKey {
+            book_revision: self.book_revision,
+            tick_bits: tick.to_bits(),
+            side_rows,
+        };
+        let needs_refresh = {
+            let cache = self.dom_ladder.borrow();
+            !cache.populated || cache.key != key
+        };
+        if needs_refresh {
+            let mut cache = self.dom_ladder.borrow_mut();
+            cache.rows = super::dom_ladder::build_dom_ladder_rows(&self.book, tick, side_rows);
+            cache.key = key;
+            cache.populated = true;
+        }
+        Ref::map(self.dom_ladder.borrow(), |cache| &cache.rows)
     }
 }
 

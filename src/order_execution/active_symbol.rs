@@ -86,6 +86,7 @@ impl TradingTerminal {
                 instance.symbol = valid_key.clone();
                 instance.symbol_display = display;
                 instance.chart.request_view_reset();
+                instance.chart.clear_macro_candles();
                 instance.heatmap_last_fetch = None;
                 instance.heatmap_viewport = None;
                 instance.heatmap_status = None;

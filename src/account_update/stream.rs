@@ -160,10 +160,30 @@ impl TradingTerminal {
         source_address: Option<String>,
         ws_data: WsUserData,
     ) -> Task<Message> {
-        let wallet_details_update = ws_data.clone();
         if source_address.as_deref() != self.connected_address.as_deref() {
             return self.apply_wallet_details_ws_update(source_address, ws_data);
         }
+
+        // Broadcast fanout fell behind — at least `skipped` order / fill /
+        // position updates were dropped before this consumer caught up.
+        // Local state is now potentially stale relative to the exchange;
+        // force a full account refresh rather than risk firing chase or
+        // TWAP logic off a state snapshot that's missing fills. Use the
+        // shared force-refresh path so trading handlers see `account_loading`
+        // immediately and fail closed until the replacement snapshot arrives.
+        if let WsUserData::Lagged { skipped } = &ws_data {
+            let toast = format!(
+                "WS user-data stream lagged ({} update{} dropped); refreshing account...",
+                skipped,
+                if *skipped == 1 { "" } else { "s" }
+            );
+            self.push_toast(toast, true);
+            if let Some(addr) = self.connected_address.clone() {
+                return self.force_refresh_account_data_for_reconciliation(addr);
+            }
+            return Task::none();
+        }
+        let wallet_details_update = ws_data.clone();
 
         let mut orders_changed = false;
         let mut fills_changed = false;
@@ -181,6 +201,7 @@ impl TradingTerminal {
                     all_positions,
                     position_details: _,
                 } => {
+                    data.fetched_at_ms = Self::now_ms();
                     data.clearinghouse.margin_summary = main_state.margin_summary;
                     data.clearinghouse.withdrawable = main_state.withdrawable;
                     data.clearinghouse.cross_margin_summary = main_state.cross_margin_summary;
@@ -223,6 +244,9 @@ impl TradingTerminal {
                 WsUserData::AllMids(mids) => {
                     mids_task = self.handle_mids_update(mids);
                 }
+                // Lagged is handled by the early-return at the top of the
+                // method; this arm exists only for match exhaustiveness.
+                WsUserData::Lagged { .. } => {}
             }
         } else {
             match ws_data {

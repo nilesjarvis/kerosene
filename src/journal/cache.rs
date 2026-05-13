@@ -1,5 +1,9 @@
 use super::normalize_fills;
 use crate::api::UserFill;
+use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static JOURNAL_CACHE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 // ---------------------------------------------------------------------------
 // Journal Cache Persistence
@@ -32,25 +36,76 @@ pub fn save_cache(address: &str, fills: &[UserFill]) -> Result<(), String> {
 
     let json = serde_json::to_string(&normalized)
         .map_err(|e| format!("Failed to serialize cache: {e}"))?;
-    let temp_path = path.with_extension("json.tmp");
-    std::fs::write(&temp_path, &json)
-        .map_err(|e| format!("Failed to write temporary cache file: {e}"))?;
+    let temp_path = unique_temp_cache_path(&path);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&temp_path)
+        .map_err(|e| format!("Failed to create temporary cache file: {e}"))?;
+    if let Err(e) = file.write_all(json.as_bytes()) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!("Failed to write temporary cache file: {e}"));
+    }
+    let _ = file.sync_all();
+    drop(file);
 
-    match std::fs::rename(&temp_path, &path) {
-        Ok(()) => {}
-        Err(rename_err) => {
-            if path.exists() {
-                std::fs::remove_file(&path)
-                    .map_err(|e| format!("Failed to replace cache file: {e}"))?;
-                std::fs::rename(&temp_path, &path)
-                    .map_err(|e| format!("Failed to move cache file into place: {e}"))?;
-            } else {
-                return Err(format!(
-                    "Failed to move cache file into place: {rename_err}"
-                ));
-            }
-        }
+    // On Unix `rename` atomically replaces the destination. Do not delete the
+    // existing cache on failure: a failed save should leave the last good cache
+    // available for recovery.
+    if let Err(rename_err) = std::fs::rename(&temp_path, &path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!(
+            "Failed to move cache file into place; previous cache left untouched: {rename_err}"
+        ));
+    }
+
+    if let Some(parent) = path.parent()
+        && let Ok(dir) = std::fs::File::open(parent)
+    {
+        let _ = dir.sync_all();
     }
 
     Ok(())
+}
+
+fn unique_temp_cache_path(path: &std::path::Path) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let counter = JOURNAL_CACHE_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    path.with_extension(format!(
+        "json.tmp.{}.{}.{}",
+        std::process::id(),
+        nanos,
+        counter
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unique_temp_cache_path;
+    use std::collections::HashSet;
+    use std::path::Path;
+
+    #[test]
+    fn journal_cache_temp_paths_are_unique_and_adjacent() {
+        let target = Path::new("/tmp/kerosene-test/journal_cache_0xabc.json");
+        let mut seen = HashSet::new();
+        for _ in 0..64 {
+            let temp = unique_temp_cache_path(target);
+            assert_eq!(temp.parent(), target.parent());
+            assert!(
+                temp.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("journal_cache_0xabc.json.tmp."))
+            );
+            assert!(seen.insert(temp));
+        }
+    }
 }

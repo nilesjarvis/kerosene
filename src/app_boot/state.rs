@@ -155,6 +155,7 @@ impl TradingTerminal {
             connected_address: None,
             account_data: None,
             account_loading: boot_account.has_wallet,
+            account_reconciliation_required: false,
             account_error: None,
             all_mids: HashMap::new(),
             all_mids_updated_at_ms: HashMap::new(),

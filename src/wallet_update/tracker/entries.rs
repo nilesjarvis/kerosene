@@ -32,7 +32,7 @@ impl TradingTerminal {
                 self.wallet_tracker.rows.insert(
                     addr.clone(),
                     WalletTrackerRow {
-                        loading: true,
+                        loading: false,
                         ..Default::default()
                     },
                 );

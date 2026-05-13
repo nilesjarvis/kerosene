@@ -1269,6 +1269,20 @@ impl TradingTerminal {
                 true,
             );
         }
+        // Defense in depth against the mute risk control. The mute handler
+        // already stops matching TWAPs (see
+        // `update_muted_ticker_preferences`), but this catches:
+        //   (a) a mute that was applied between the schedule tick and this
+        //       execute call;
+        //   (b) any future code path that adds a TWAP without going through
+        //       the mute eviction pass.
+        // Without it, a freshly-muted symbol could fire one more slice off
+        // its cached `latest_book` before the stop landed.
+        if let Some(twap) = self.twap_orders.get(&twap_id)
+            && self.is_ticker_muted(&twap.coin)
+        {
+            return self.stop_twap_with_reason(twap_id, "TWAP stopped: ticker was muted", false);
+        }
 
         let Some((book, book_updated_at, is_buy, min_price, max_price, sz_decimals, is_spot)) =
             self.twap_orders.get(&twap_id).and_then(|twap| {
@@ -1668,9 +1682,11 @@ impl TradingTerminal {
     }
 
     fn can_send_advanced_exchange_request(&self, now: Instant) -> bool {
-        self.last_advanced_exchange_request_at.is_none_or(|last| {
-            now.saturating_duration_since(last) >= ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL
-        })
+        !self.account_loading
+            && !self.account_reconciliation_required
+            && self.last_advanced_exchange_request_at.is_none_or(|last| {
+                now.saturating_duration_since(last) >= ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL
+            })
     }
 
     fn effective_twap_price_range(
@@ -1965,6 +1981,7 @@ mod tests {
             funding_history: Vec::new(),
             fee_rates: UserFeeRates::default(),
             completeness: AccountDataCompleteness::default(),
+            fetched_at_ms: TradingTerminal::now_ms(),
         }
     }
 
@@ -2096,6 +2113,22 @@ mod tests {
             twap_ioc_limit_price(100.1, true, 3, false, 99.0, 100.0),
             None
         );
+    }
+
+    #[test]
+    fn advanced_exchange_requests_pause_while_account_reconciliation_is_loading() {
+        let now = Instant::now();
+        let mut terminal = TradingTerminal::boot().0;
+        assert!(terminal.can_send_advanced_exchange_request(now));
+
+        terminal.account_loading = true;
+
+        assert!(!terminal.can_send_advanced_exchange_request(now));
+
+        terminal.account_loading = false;
+        terminal.account_reconciliation_required = true;
+
+        assert!(!terminal.can_send_advanced_exchange_request(now));
     }
 
     #[test]

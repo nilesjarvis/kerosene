@@ -3,9 +3,11 @@ use super::crypto::sign_l1_action;
 use super::model::{ExchangeResponse, OrderKind};
 
 use serde_json::Value;
+use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
 
 const EXCHANGE_URL: &str = "https://api.hyperliquid.xyz/exchange";
+static LAST_EXCHANGE_NONCE_MS: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 pub struct PlaceOrderRequest {
@@ -18,11 +20,30 @@ pub struct PlaceOrderRequest {
     pub cloid: Option<String>,
 }
 
-fn exchange_nonce_ms() -> u64 {
+fn current_time_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+fn allocate_exchange_nonce_from(last_nonce_ms: &AtomicU64, now_ms: u64) -> u64 {
+    let mut last = last_nonce_ms.load(Ordering::Relaxed);
+    loop {
+        let next = now_ms.max(last.saturating_add(1));
+        match last_nonce_ms.compare_exchange_weak(last, next, Ordering::SeqCst, Ordering::Relaxed) {
+            Ok(_) => return next,
+            Err(observed) => last = observed,
+        }
+    }
+}
+
+fn allocate_exchange_nonce(now_ms: u64) -> u64 {
+    allocate_exchange_nonce_from(&LAST_EXCHANGE_NONCE_MS, now_ms)
+}
+
+fn exchange_nonce_ms() -> u64 {
+    allocate_exchange_nonce(current_time_ms())
 }
 
 /// Single signing entry point for every L1 action. Builds the canonical
@@ -150,4 +171,33 @@ pub(super) async fn batch_cancel(
 ) -> Result<ExchangeResponse, String> {
     let action = HyperliquidL1Action::batch_cancel(cancels);
     sign_and_post(private_key, &action, None).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allocate_exchange_nonce_from;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn exchange_nonce_allocator_is_monotonic_inside_same_millisecond() {
+        let last_nonce = AtomicU64::new(0);
+
+        let first = allocate_exchange_nonce_from(&last_nonce, 1_700_000_000_000);
+        let second = allocate_exchange_nonce_from(&last_nonce, 1_700_000_000_000);
+        let third = allocate_exchange_nonce_from(&last_nonce, 1_700_000_000_000);
+
+        assert_eq!(first, 1_700_000_000_000);
+        assert_eq!(second, first + 1);
+        assert_eq!(third, second + 1);
+    }
+
+    #[test]
+    fn exchange_nonce_allocator_never_moves_backwards_when_clock_regresses() {
+        let last_nonce = AtomicU64::new(5_000);
+
+        let nonce = allocate_exchange_nonce_from(&last_nonce, 4_000);
+
+        assert_eq!(nonce, 5_001);
+        assert_eq!(last_nonce.load(Ordering::SeqCst), 5_001);
+    }
 }

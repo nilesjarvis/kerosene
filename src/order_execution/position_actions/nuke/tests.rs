@@ -3,7 +3,12 @@ use super::{
     build_nuke_position_order, classify_nuke_position, parse_nuke_position_size,
     plan_nuke_positions_from_inputs,
 };
+use crate::account::{
+    AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
+    SpotClearinghouseState, UserFeeRates,
+};
 use crate::api::MarketType;
+use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::order_execution::pricing::DEFAULT_MARKET_SLIPPAGE_PCT;
 
 const DEFAULT_MARKET_SLIPPAGE: f64 = DEFAULT_MARKET_SLIPPAGE_PCT / 100.0;
@@ -30,6 +35,55 @@ fn nuke_input(
         sym,
         mid,
     }
+}
+
+fn stale_account_data() -> AccountData {
+    AccountData {
+        clearinghouse: ClearinghouseState {
+            margin_summary: MarginSummary {
+                account_value: "0".to_string(),
+                total_ntl_pos: "0".to_string(),
+                total_margin_used: "0".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "0".to_string(),
+            asset_positions: Vec::new(),
+        },
+        spot: SpotClearinghouseState {
+            balances: Vec::new(),
+            portfolio_margin_enabled: false,
+            portfolio_margin_ratio: None,
+            token_to_available_after_maintenance: None,
+        },
+        open_orders: Vec::new(),
+        fills: Vec::new(),
+        funding_history: Vec::new(),
+        fee_rates: UserFeeRates::default(),
+        completeness: AccountDataCompleteness::default(),
+        fetched_at_ms: 1,
+    }
+}
+
+fn terminal_with_stale_account() -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.wallet_key_input = sensitive_string("agent-key");
+    terminal.account_data = Some(stale_account_data());
+    terminal
+}
+
+#[test]
+fn execute_nuke_refuses_stale_account_snapshot_and_requests_refresh() {
+    let mut terminal = terminal_with_stale_account();
+
+    let _task = terminal.execute_nuke_positions();
+
+    let (message, is_error) = terminal.order_status.as_ref().expect("status");
+    assert!(*is_error);
+    assert!(message.contains("Account data is stale"));
+    assert!(message.contains("refresh before NUKE"));
+    assert!(terminal.account_loading);
 }
 
 #[test]

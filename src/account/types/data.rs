@@ -40,9 +40,22 @@ pub struct AccountData {
     /// User's personalized fee rates.
     pub fee_rates: UserFeeRates,
     pub completeness: AccountDataCompleteness,
+    /// Wall-clock time (milliseconds since UNIX epoch) when this snapshot was fetched.
+    pub fetched_at_ms: u64,
 }
 
 impl AccountData {
+    pub const POSITION_ACTION_MAX_AGE_MS: u64 = 15_000;
+
+    pub fn position_action_snapshot_age_ms(&self, now_ms: u64) -> Option<u64> {
+        now_ms.checked_sub(self.fetched_at_ms)
+    }
+
+    pub fn is_fresh_for_position_action(&self, now_ms: u64) -> bool {
+        self.position_action_snapshot_age_ms(now_ms)
+            .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
+    }
+
     /// Whether this account has portfolio margin enabled.
     pub fn is_portfolio_margin(&self) -> bool {
         self.spot.portfolio_margin_enabled

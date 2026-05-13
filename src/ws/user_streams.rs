@@ -52,8 +52,19 @@ pub fn ws_user_data_stream(
                         return;
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    continue;
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    // Falling behind the 10k-frame broadcast buffer means
+                    // we lost order/fill/position updates. Trading code
+                    // must NOT silently continue from an unknown state —
+                    // surface the lag so the downstream handler can force
+                    // a full account refresh.
+                    if output
+                        .send((addr.clone(), WsUserData::Lagged { skipped }))
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
                 }
                 Err(_) => {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;

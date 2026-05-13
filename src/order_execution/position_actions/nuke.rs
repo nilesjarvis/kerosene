@@ -248,6 +248,33 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        if self.account_loading {
+            self.order_status = Some((
+                "Account refresh in progress; wait for fresh account data before NUKE".into(),
+                true,
+            ));
+            return Task::none();
+        }
+        let Some(account_data) = self.account_data.as_ref() else {
+            self.order_status = Some((
+                "No account data available; refresh before NUKE".into(),
+                true,
+            ));
+            return Task::none();
+        };
+        let now_ms = Self::now_ms();
+        if !account_data.is_fresh_for_position_action(now_ms) {
+            let age_label = account_data
+                .position_action_snapshot_age_ms(now_ms)
+                .map(|age| format!("{}s old", age.div_ceil(1000)))
+                .unwrap_or_else(|| "from the future".to_string());
+            self.order_status = Some((
+                format!("Account data is stale ({age_label}); refresh before NUKE"),
+                true,
+            ));
+            return self.refresh_account_data();
+        }
+
         let plan = match self.plan_nuke_positions() {
             Ok(plan) => plan,
             Err(e) => {

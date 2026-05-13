@@ -1,5 +1,8 @@
 use super::*;
-use crate::account::{OpenOrder, UserFill};
+use crate::account::{
+    AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
+    SpotClearinghouseState, UserFill,
+};
 use crate::signing::ChaseOrder;
 use std::time::Instant;
 
@@ -66,6 +69,88 @@ fn chase_order() -> ChaseOrder {
         oid_confirmed: false,
         missing_open_order_refresh_requested: true,
     }
+}
+
+fn account_data_with_timestamp(fetched_at_ms: u64) -> AccountData {
+    AccountData {
+        clearinghouse: ClearinghouseState {
+            margin_summary: MarginSummary {
+                account_value: "0".to_string(),
+                total_ntl_pos: "0".to_string(),
+                total_margin_used: "0".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "0".to_string(),
+            asset_positions: Vec::new(),
+        },
+        spot: SpotClearinghouseState {
+            balances: Vec::new(),
+            portfolio_margin_enabled: false,
+            portfolio_margin_ratio: None,
+            token_to_available_after_maintenance: None,
+        },
+        open_orders: Vec::new(),
+        fills: Vec::new(),
+        funding_history: Vec::new(),
+        fee_rates: Default::default(),
+        completeness: AccountDataCompleteness::default(),
+        fetched_at_ms,
+    }
+}
+
+#[test]
+fn lagged_connected_user_stream_marks_account_loading_immediately() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+
+    let _task = terminal.apply_ws_user_data_update(
+        terminal.connected_address.clone(),
+        WsUserData::Lagged { skipped: 3 },
+    );
+
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    assert_eq!(terminal.account_error, None);
+}
+
+#[test]
+fn non_position_ws_updates_do_not_refresh_position_snapshot_timestamp() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: vec![open_order(42, Some(false))],
+        },
+    );
+
+    assert_eq!(
+        terminal
+            .account_data
+            .as_ref()
+            .map(|data| data.fetched_at_ms),
+        Some(1_000)
+    );
+}
+
+#[test]
+fn lagged_non_connected_user_stream_does_not_mark_main_account_loading() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some("0xdef0000000000000000000000000000000000000".to_string()),
+        WsUserData::Lagged { skipped: 3 },
+    );
+
+    assert!(!terminal.account_loading);
 }
 
 #[test]

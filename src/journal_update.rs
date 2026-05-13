@@ -25,6 +25,19 @@ impl TradingTerminal {
                         let fetched_count = page.fills.len();
                         let added = journal::merge_fills(&mut self.journal.raw_fills, page.fills);
 
+                        if let Some(next_request) = page.next_request {
+                            let request_account_key = account_key.clone();
+                            let request_address = address.clone();
+                            return Task::perform(
+                                api::fetch_user_fills(address, next_request),
+                                move |result| Message::JournalFillsLoaded {
+                                    account_key: request_account_key.clone(),
+                                    address: request_address.clone(),
+                                    result,
+                                },
+                            );
+                        }
+
                         let aggregation = journal::aggregate_trades_with_diagnostics(
                             self.journal.raw_fills.clone(),
                         );
@@ -39,19 +52,6 @@ impl TradingTerminal {
                             && let Err(e) = journal::save_cache(&address, &self.journal.raw_fills)
                         {
                             warnings.push(format!("Could not save journal cache: {}", e));
-                        }
-
-                        if let Some(next_request) = page.next_request {
-                            let request_account_key = account_key.clone();
-                            let request_address = address.clone();
-                            return Task::perform(
-                                api::fetch_user_fills(address, next_request),
-                                move |result| Message::JournalFillsLoaded {
-                                    account_key: request_account_key.clone(),
-                                    address: request_address.clone(),
-                                    result,
-                                },
-                            );
                         }
 
                         self.journal.loading = false;

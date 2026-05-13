@@ -54,15 +54,39 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let pos = self
-            .account_data
-            .as_ref()
-            .and_then(|d| {
-                d.clearinghouse
-                    .asset_positions
-                    .iter()
-                    .find(|ap| ap.position.coin == coin)
-            })
+        if self.account_loading {
+            self.order_status = Some((
+                "Account refresh in progress; wait for fresh account data before closing".into(),
+                true,
+            ));
+            return Task::none();
+        }
+
+        let Some(account_data) = self.account_data.as_ref() else {
+            self.order_status = Some((
+                "No account data available; refresh before closing".into(),
+                true,
+            ));
+            return Task::none();
+        };
+        let now_ms = Self::now_ms();
+        if !account_data.is_fresh_for_position_action(now_ms) {
+            let age_label = account_data
+                .position_action_snapshot_age_ms(now_ms)
+                .map(|age| format!("{}s old", age.div_ceil(1000)))
+                .unwrap_or_else(|| "from the future".to_string());
+            self.order_status = Some((
+                format!("Account data is stale ({age_label}); refresh before closing positions"),
+                true,
+            ));
+            return self.refresh_account_data();
+        }
+
+        let pos = account_data
+            .clearinghouse
+            .asset_positions
+            .iter()
+            .find(|ap| ap.position.coin == coin)
             .map(|ap| &ap.position);
         let Some(pos) = pos else {
             self.order_status = Some((format!("No position found for {coin}"), true));

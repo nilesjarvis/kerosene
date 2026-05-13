@@ -233,6 +233,13 @@ impl CandlestickChart {
         self.candle_cache.clear();
     }
 
+    pub(crate) fn clear_macro_candles(&mut self) {
+        self.daily_candles.clear();
+        self.weekly_candles.clear();
+        self.monthly_candles.clear();
+        self.candle_cache.clear();
+    }
+
     pub(crate) fn set_funding_history(&mut self, points: Vec<FundingRatePoint>) {
         self.funding_rates = normalized_funding_rates(points);
         self.funding_status = Some((

@@ -61,6 +61,7 @@ fn account_data_with_order(order: OpenOrder) -> AccountData {
         funding_history: Vec::new(),
         fee_rates: UserFeeRates::default(),
         completeness: AccountDataCompleteness::default(),
+        fetched_at_ms: 1,
     }
 }
 

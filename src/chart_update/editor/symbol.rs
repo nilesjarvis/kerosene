@@ -84,6 +84,7 @@ impl TradingTerminal {
             instance.symbol = key.clone();
             instance.symbol_display = display;
             instance.chart.request_view_reset();
+            instance.chart.clear_macro_candles();
 
             if let Some(candles) = cached_candles {
                 cached_last_time = candles.last().map(|c| c.open_time);

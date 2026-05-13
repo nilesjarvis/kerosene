@@ -2,6 +2,7 @@ use super::{
     ChaseLimitReason, StopChaseAction, chase_account_matches, chase_reprice_limit_reason,
     plan_stop_chase,
 };
+use crate::app_state::TradingTerminal;
 use crate::signing::{
     ChaseOrder, ChasePendingOp, MAX_CHASE_DRIFT_FRACTION, MAX_CHASE_DURATION, MAX_CHASE_REPRICES,
 };
@@ -113,6 +114,22 @@ fn chase_context_rejects_changed_or_disconnected_account() {
         Some("0xdef0000000000000000000000000000000000000")
     ));
     assert!(!chase_account_matches(&chase(), None));
+}
+
+#[test]
+fn chase_exchange_requests_pause_while_account_reconciliation_is_loading() {
+    let now = Instant::now();
+    let mut terminal = TradingTerminal::boot().0;
+    assert!(terminal.can_send_chase_exchange_request(now));
+
+    terminal.account_loading = true;
+
+    assert!(!terminal.can_send_chase_exchange_request(now));
+
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = true;
+
+    assert!(!terminal.can_send_chase_exchange_request(now));
 }
 
 #[test]

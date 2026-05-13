@@ -241,9 +241,11 @@ impl TradingTerminal {
     }
 
     fn can_send_chase_exchange_request(&self, now: Instant) -> bool {
-        self.last_advanced_exchange_request_at.is_none_or(|last| {
-            now.saturating_duration_since(last) >= ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL
-        })
+        !self.account_loading
+            && !self.account_reconciliation_required
+            && self.last_advanced_exchange_request_at.is_none_or(|last| {
+                now.saturating_duration_since(last) >= ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL
+            })
     }
 
     fn set_chase_pending_best_price(&mut self, chase_id: u64, best: f64) {

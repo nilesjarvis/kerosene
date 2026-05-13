@@ -151,6 +151,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) connected_address: Option<String>,
     pub(crate) account_data: Option<AccountData>,
     pub(crate) account_loading: bool,
+    pub(crate) account_reconciliation_required: bool,
     pub(crate) account_error: Option<String>,
     // Real-time mid prices for all coins (updated via allMids WS stream)
     pub(crate) all_mids: HashMap<String, f64>,

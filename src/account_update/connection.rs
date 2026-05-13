@@ -14,6 +14,7 @@ impl TradingTerminal {
                 self.connected_address = None;
                 self.account_data = None;
                 self.account_loading = false;
+                self.account_reconciliation_required = false;
                 self.account_error = Some("Invalid wallet address".to_string());
                 self.portfolio.loading = false;
                 self.portfolio.data = None;
@@ -69,6 +70,7 @@ impl TradingTerminal {
         self.connected_address = Some(addr.clone());
         self.account_data = None;
         self.account_loading = true;
+        self.account_reconciliation_required = false;
         self.account_error = None;
         self.portfolio.data = None;
         self.portfolio.last_error = None;
@@ -117,6 +119,7 @@ impl TradingTerminal {
         self.connected_address = None;
         self.account_data = None;
         self.account_loading = false;
+        self.account_reconciliation_required = false;
         self.account_error = None;
         self.wallet_key_input.zeroize();
         self.wallet_address_input.clear();
@@ -151,6 +154,7 @@ impl TradingTerminal {
         self.account_loading = false;
         match result {
             Ok(data) => {
+                self.account_reconciliation_required = false;
                 let data = self.filter_account_data_for_muted_tickers(data);
                 let is_pm = data.is_portfolio_margin();
                 self.account_data = Some(data);
@@ -198,6 +202,7 @@ impl TradingTerminal {
         }
         let requested_addr = addr.clone();
         self.account_loading = true;
+        self.account_reconciliation_required = true;
         self.account_error = None;
         Task::perform(fetch_account_data(addr), move |r| {
             Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
