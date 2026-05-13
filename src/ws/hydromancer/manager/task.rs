@@ -42,6 +42,7 @@ pub(super) async fn hydromancer_manager_task(
                     active_subs.subscribe(topic, payload);
                 }
                 Some(HydromancerCommand::Unsubscribe { .. } | HydromancerCommand::Reconnect) => {}
+                Some(HydromancerCommand::Shutdown) => return,
                 None => return,
             }
         }
@@ -75,6 +76,12 @@ pub(super) async fn hydromancer_manager_task(
             ));
 
             match select(cmd_fut, read_fut).await {
+                Either::Left((Some(HydromancerCommand::Shutdown), _)) => {
+                    // Rotation / clear path: stop the task so the owned
+                    // `api_key` String is dropped instead of resident for
+                    // the process lifetime.
+                    return;
+                }
                 Either::Left((Some(cmd), _)) => {
                     disconnected =
                         handle_hydromancer_command(cmd, &mut active_subs, &session, &mut write)

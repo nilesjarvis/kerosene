@@ -52,6 +52,10 @@ where
             }
         },
         HydromancerCommand::Reconnect => true,
+        // Shutdown is intercepted by the inner select arm in `task.rs`
+        // before this dispatcher is called — but having the variant here
+        // keeps the match exhaustive without a wildcard.
+        HydromancerCommand::Shutdown => true,
     }
 }
 

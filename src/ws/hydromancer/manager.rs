@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
+use zeroize::Zeroize;
 
 use self::task::hydromancer_manager_task;
 
@@ -30,9 +31,18 @@ pub(super) struct HydromancerRoutedMessage {
 
 #[derive(Debug)]
 pub(super) enum HydromancerCommand {
-    Subscribe { topic: String, payload: Value },
-    Unsubscribe { topic: String },
+    Subscribe {
+        topic: String,
+        payload: Value,
+    },
+    Unsubscribe {
+        topic: String,
+    },
     Reconnect,
+    /// Tear down the manager task entirely. Sent during API-key rotation
+    /// so the previous key's task exits, dropping its owned `api_key`
+    /// String instead of waiting indefinitely on `cmd_rx.recv()`.
+    Shutdown,
 }
 
 struct HydromancerManager {
@@ -107,5 +117,37 @@ pub fn reconnect_hydromancer(api_key: &str) {
     };
     if let Some(manager) = managers.get(api_key.trim()) {
         let _ = manager.cmd_tx.send(HydromancerCommand::Reconnect);
+    }
+}
+
+/// Tear down the Hydromancer manager for `api_key` if one exists. Sends
+/// `Shutdown` to the task (so its owned `api_key` String drops) and
+/// removes the registry entry. Best-effort zeroizes the registry's
+/// owned key bytes on the way out so the rotated secret doesn't linger
+/// in the heap.
+///
+/// Intended for API-key rotation / clearing flows — every consumer that
+/// re-subscribes after rotation will pick up the new key through
+/// `get_hydromancer_manager`, which spawns a fresh task.
+pub fn evict_hydromancer_manager(api_key: &str) {
+    let trimmed = api_key.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    let Some(managers) = HYDROMANCER_MANAGERS.get() else {
+        return;
+    };
+    let Ok(mut managers) = managers.lock() else {
+        return;
+    };
+    if let Some((mut key, manager)) = managers.remove_entry(trimmed) {
+        // Best-effort shutdown signal. If the channel is already closed
+        // the task is gone anyway.
+        let _ = manager.cmd_tx.send(HydromancerCommand::Shutdown);
+        // Scrub the in-map key string before drop. The newly-orphaned
+        // task still owns its own copy in `api_key`; that copy drops
+        // (and the allocator reclaims its heap) when the task returns
+        // after observing the Shutdown command.
+        key.zeroize();
     }
 }
