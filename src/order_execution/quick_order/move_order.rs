@@ -14,7 +14,7 @@ fn moved_order_price_wire(
     original_price: f64,
     sz_decimals: u32,
     is_spot: bool,
-) -> Option<String> {
+) -> Option<(f64, String)> {
     if !new_price.is_finite() {
         return None;
     }
@@ -23,12 +23,16 @@ fn moved_order_price_wire(
     }
 
     let rounded = round_price(new_price, sz_decimals, is_spot);
+    if !rounded.is_finite() || rounded <= 0.0 {
+        return None;
+    }
+
     let rounded_original = round_price(original_price, sz_decimals, is_spot);
     if (rounded - rounded_original).abs() < 1e-12 {
         return None;
     }
 
-    Some(float_to_wire(rounded))
+    Some((rounded, float_to_wire(rounded)))
 }
 
 fn moved_order_size_wire(size: &str) -> Option<String> {
@@ -120,7 +124,7 @@ impl TradingTerminal {
         };
 
         let is_spot = sym.market_type == MarketType::Spot;
-        let Some(new_price_str) =
+        let Some((rounded_price, new_price_str)) =
             moved_order_price_wire(new_price, original_px, sz_decimals, is_spot)
         else {
             if !original_px.is_finite() || original_px <= 0.0 {
@@ -129,6 +133,10 @@ impl TradingTerminal {
             }
             return Task::none();
         };
+        if let Err(e) = self.validate_order_price_band(&coin, rounded_price) {
+            self.order_status = Some((e, true));
+            return Task::none();
+        }
 
         self.order_status = Some((
             format!("Moving {} order to ${}...", coin, new_price_str),
