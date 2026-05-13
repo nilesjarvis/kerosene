@@ -4,10 +4,13 @@ use crate::helpers;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
 use crate::signing::ChaseOrder;
-use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
+use crate::twap_state::{MAX_ACTIVE_ADVANCED_ORDERS, twap_target_size_from_quantity};
 use iced::Task;
 
 mod lifecycle;
+
+#[cfg(test)]
+mod tests;
 
 // ---------------------------------------------------------------------------
 // Chase Order Helpers
@@ -86,7 +89,7 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let qty: f64 = match self.order_quantity.parse::<f64>() {
+        let raw_qty: f64 = match self.order_quantity.parse::<f64>() {
             Ok(v) if v.is_finite() && v > 0.0 => v,
             _ => {
                 self.order_status = Some(("Invalid quantity".into(), true));
@@ -103,13 +106,32 @@ impl TradingTerminal {
             return Task::none();
         };
         if sym.market_type == MarketType::Outcome {
-            if let Err(e) = self.validate_outcome_contract_size(qty) {
+            if let Err(e) = self.validate_outcome_contract_size(raw_qty) {
                 self.order_status = Some((e, true));
             } else {
                 self.outcome_read_only_status("chase trading");
             }
             return Task::none();
         }
+
+        let reference_price = self
+            .order_quantity_is_usd
+            .then(|| self.resolve_mid_for_symbol(&self.active_symbol))
+            .flatten();
+        let Some(qty) =
+            twap_target_size_from_quantity(raw_qty, reference_price, self.order_quantity_is_usd)
+        else {
+            let message = if self.order_quantity_is_usd {
+                format!(
+                    "Cannot start USD Chase: no fresh mid price for {}. Wait for market data or enter size in coin units.",
+                    self.active_symbol
+                )
+            } else {
+                "Invalid quantity".to_string()
+            };
+            self.order_status = Some((message, true));
+            return Task::none();
+        };
 
         let asset = sym.asset_index;
         let sz_decimals = sym.sz_decimals;
