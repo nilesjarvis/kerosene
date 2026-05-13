@@ -160,6 +160,27 @@ impl TradingTerminal {
         source_address: Option<String>,
         ws_data: WsUserData,
     ) -> Task<Message> {
+        // Broadcast fanout fell behind — at least `skipped` order / fill /
+        // position updates were dropped before this consumer caught up.
+        // Local state is now potentially stale relative to the exchange;
+        // force a full account refresh rather than risk firing chase or
+        // TWAP logic off a state snapshot that's missing fills.
+        if let WsUserData::Lagged { skipped } = &ws_data {
+            let toast = format!(
+                "WS user-data stream lagged ({} update{} dropped); refreshing account...",
+                skipped,
+                if *skipped == 1 { "" } else { "s" }
+            );
+            self.push_toast(toast, true);
+            if let Some(addr) = self.connected_address.clone() {
+                let requested_addr = addr.clone();
+                let account_task = Task::perform(fetch_account_data(addr), move |r| {
+                    Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
+                });
+                return account_task;
+            }
+            return Task::none();
+        }
         let wallet_details_update = ws_data.clone();
         if source_address.as_deref() != self.connected_address.as_deref() {
             return self.apply_wallet_details_ws_update(source_address, ws_data);
@@ -223,6 +244,9 @@ impl TradingTerminal {
                 WsUserData::AllMids(mids) => {
                     mids_task = self.handle_mids_update(mids);
                 }
+                // Lagged is handled by the early-return at the top of the
+                // method; this arm exists only for match exhaustiveness.
+                WsUserData::Lagged { .. } => {}
             }
         } else {
             match ws_data {

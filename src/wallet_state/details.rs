@@ -158,6 +158,11 @@ impl TradingTerminal {
                 return self.handle_mids_update(mids);
             }
             WsUserData::Fills { .. } => {}
+            // Wallet-detail windows track other users' state for read-only
+            // viewing; broadcast lag is handled by the main account path
+            // in `apply_ws_user_data_update`. The downstream wallet-detail
+            // refresh ticks on its own cadence and will catch up.
+            WsUserData::Lagged { .. } => {}
         }
         Task::none()
     }
