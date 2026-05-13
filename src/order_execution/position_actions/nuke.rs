@@ -11,10 +11,10 @@ mod tests;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NukePositionOrder {
-    asset: u32,
-    is_buy: bool,
-    price: String,
-    size: String,
+    pub(crate) asset: u32,
+    pub(crate) is_buy: bool,
+    pub(crate) price: String,
+    pub(crate) size: String,
 }
 
 /// Reason an active visible position could not be turned into a closing
@@ -52,6 +52,15 @@ pub(crate) struct NukeSymbolInfo {
     pub(crate) asset_index: u32,
     pub(crate) sz_decimals: u32,
     pub(crate) market_type: MarketType,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NukePositionInput {
+    pub(crate) coin: String,
+    pub(crate) raw_size: String,
+    pub(crate) is_visible: bool,
+    pub(crate) sym: Option<NukeSymbolInfo>,
+    pub(crate) mid: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,6 +167,39 @@ fn parse_nuke_position_size(coin: &str, raw_size: &str) -> Result<Option<f64>, S
     }
 }
 
+fn plan_nuke_positions_from_inputs(
+    inputs: impl IntoIterator<Item = NukePositionInput>,
+    slippage: f64,
+) -> Result<NukePlan, String> {
+    let mut plan = NukePlan::default();
+
+    for input in inputs {
+        let NukePositionInput {
+            coin,
+            raw_size,
+            is_visible,
+            sym,
+            mid,
+        } = input;
+
+        if !is_visible {
+            continue;
+        }
+
+        let szi = match parse_nuke_position_size(&coin, &raw_size)? {
+            Some(szi) => szi,
+            None => continue, // zero or near-zero — no exposure
+        };
+
+        match classify_nuke_position(szi, sym, mid, slippage) {
+            NukePositionClassification::Order(order) => plan.ready.push((coin, order)),
+            NukePositionClassification::Skip(reason) => plan.skipped.push((coin, reason)),
+        }
+    }
+
+    Ok(plan)
+}
+
 impl TradingTerminal {
     /// Plan a NUKE: classify every active visible non-muted position into
     /// `(coin, order)` for submission or `(coin, reason)` for skip.
@@ -172,23 +214,9 @@ impl TradingTerminal {
             .unwrap_or_default();
 
         let slippage = self.market_slippage_fraction();
-        let mut plan = NukePlan::default();
-
-        for ap in positions {
-            let coin = ap.position.coin.clone();
-            let szi = match parse_nuke_position_size(&coin, &ap.position.szi)? {
-                Some(szi) => szi,
-                None => continue, // zero or near-zero — no exposure
-            };
-
-            // Apply visibility filter (mute + hidden). Audit framing: NUKE
-            // closes "active visible non-muted" positions; muted/hidden
-            // entries are intentionally absent from the count so the user
-            // count matches the table they see.
-            if self.is_ticker_muted(&coin) || self.position_is_hidden(&coin) {
-                continue;
-            }
-
+        let inputs = positions.into_iter().map(|ap| {
+            let coin = ap.position.coin;
+            let is_visible = !self.is_ticker_muted(&coin) && !self.position_is_hidden(&coin);
             let sym = self
                 .exchange_symbols
                 .iter()
@@ -200,13 +228,16 @@ impl TradingTerminal {
                 });
             let mid = self.resolve_mid_for_symbol(&coin);
 
-            match classify_nuke_position(szi, sym, mid, slippage) {
-                NukePositionClassification::Order(order) => plan.ready.push((coin, order)),
-                NukePositionClassification::Skip(reason) => plan.skipped.push((coin, reason)),
+            NukePositionInput {
+                coin,
+                raw_size: ap.position.szi,
+                is_visible,
+                sym,
+                mid,
             }
-        }
+        });
 
-        Ok(plan)
+        plan_nuke_positions_from_inputs(inputs, slippage)
     }
 
     pub(crate) fn execute_nuke_positions(&mut self) -> Task<Message> {

@@ -7,6 +7,11 @@ mod submit;
 mod symbols;
 mod twap;
 
+pub(crate) use position_actions::NukePlan;
+
+#[cfg(test)]
+pub(crate) use position_actions::{NukePositionOrder, NukeSkipReason};
+
 use zeroize::Zeroizing;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
