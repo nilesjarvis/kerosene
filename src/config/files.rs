@@ -7,6 +7,8 @@ mod storage;
 
 pub use paths::journal_cache_path;
 pub(super) use paths::{backup_config_path, config_path};
+#[cfg(test)]
+pub(super) use persistence::write_with_restricted_permissions;
 pub(super) use persistence::{load_config_from_path, save_config_to_path};
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,82 @@
 use crate::config::{KeroseneConfig, push_config_warning};
+use std::io::Write;
 use std::path::Path;
 
 use super::paths::{backup_config_path, temp_config_path};
+
+/// Create `path` with `contents` and owner-only permissions.
+///
+/// The file is opened with exclusive creation so callers never truncate or
+/// rewrite a pre-existing world-readable file while sensitive config bytes are
+/// being written. On Unix the mode is applied at creation time, before the
+/// first byte is written; on non-Unix platforms this falls back to the previous
+/// behaviour (`fs::write` using default permissions) because Windows ACL
+/// hardening is a separate problem.
+pub(in crate::config) fn write_with_restricted_permissions(
+    path: &Path,
+    contents: &[u8],
+) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|e| format!("create {} failed: {e}", path.display()))?;
+        file.write_all(contents)
+            .map_err(|e| format!("write {} failed: {e}", path.display()))?;
+        file.sync_all()
+            .map_err(|e| format!("sync {} failed: {e}", path.display()))?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents).map_err(|e| format!("write {} failed: {e}", path.display()))
+    }
+}
+
+#[cfg(unix)]
+fn set_restricted_permissions(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("set permissions {} failed: {e}", path.display()))
+}
+
+fn replace_with_restricted_permissions(path: &Path, contents: &[u8]) -> Result<(), String> {
+    let temp_path = temp_config_path(path);
+    write_with_restricted_permissions(&temp_path, contents)?;
+
+    match std::fs::rename(&temp_path, path) {
+        Ok(()) => {}
+        Err(rename_error) if path.exists() => {
+            std::fs::remove_file(path).map_err(|e| {
+                format!(
+                    "replace {} failed: {rename_error}; remove existing failed: {e}",
+                    path.display()
+                )
+            })?;
+            std::fs::rename(&temp_path, path).map_err(|e| {
+                format!(
+                    "replace {} failed after removing existing file: {e}",
+                    path.display()
+                )
+            })?;
+        }
+        Err(e) => {
+            return Err(format!(
+                "rename restricted temp config to {} failed: {e}",
+                path.display()
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    set_restricted_permissions(path)?;
+
+    Ok(())
+}
 
 fn read_config_from_path(path: &Path) -> Result<Option<KeroseneConfig>, String> {
     let contents = match std::fs::read_to_string(path) {
@@ -47,31 +122,13 @@ pub(in crate::config) fn save_config_to_path(
     let json = serde_json::to_string_pretty(config)
         .map_err(|e| format!("serialize config failed: {e}"))?;
     let temp_path = temp_config_path(path);
-    if temp_path.exists() {
-        std::fs::remove_file(&temp_path).map_err(|e| {
-            format!(
-                "remove stale temp config {} failed: {e}",
-                temp_path.display()
-            )
-        })?;
-    }
-
-    std::fs::write(&temp_path, json.as_bytes())
-        .map_err(|e| format!("write temp config {} failed: {e}", temp_path.display()))?;
-
-    if let Ok(file) = std::fs::File::open(&temp_path) {
-        let _ = file.sync_all();
-    }
+    write_with_restricted_permissions(&temp_path, json.as_bytes())?;
 
     if matches!(read_config_from_path(path), Ok(Some(_))) {
         let backup_path = backup_config_path(path);
-        std::fs::copy(path, &backup_path).map_err(|e| {
-            format!(
-                "backup config {} to {} failed: {e}",
-                path.display(),
-                backup_path.display()
-            )
-        })?;
+        let backup_contents = std::fs::read(path)
+            .map_err(|e| format!("read config {} for backup failed: {e}", path.display()))?;
+        replace_with_restricted_permissions(&backup_path, &backup_contents)?;
     }
 
     match std::fs::rename(&temp_path, path) {
@@ -98,12 +155,11 @@ pub(in crate::config) fn save_config_to_path(
         }
     }
 
+    // The rename above carries the temp file's 0o600 onto `path`, so this
+    // is belt-and-braces in case the prior on-disk config had looser
+    // permissions for some reason.
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| format!("set config permissions {} failed: {e}", path.display()))?;
-    }
+    set_restricted_permissions(path)?;
 
     Ok(())
 }
