@@ -10,10 +10,10 @@ fn moved_order_price_returns_none_when_rounded_price_is_unchanged() {
 }
 
 #[test]
-fn moved_order_price_returns_wire_price_when_rounded_price_changes() {
+fn moved_order_price_returns_rounded_pair_when_price_changes() {
     assert_eq!(
         moved_order_price_wire(101.0, 100.0, 2, false),
-        Some("101".to_string())
+        Some((101.0, "101".to_string()))
     );
 }
 

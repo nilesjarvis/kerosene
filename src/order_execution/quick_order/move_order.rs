@@ -9,12 +9,18 @@ use iced::Task;
 #[cfg(test)]
 mod tests;
 
+/// Round the drag-target price to the symbol's tick grid and emit the
+/// exact `(f64, wire)` pair. Returning the `f64` lets callers feed it to
+/// the same price-band validator the quick-order path uses — drag-to-move
+/// is just as marketable as a fresh limit, and a misclick or stale drag
+/// coordinate can otherwise produce a `modify_order` at an arbitrary
+/// price.
 fn moved_order_price_wire(
     new_price: f64,
     original_price: f64,
     sz_decimals: u32,
     is_spot: bool,
-) -> Option<String> {
+) -> Option<(f64, String)> {
     if !new_price.is_finite() {
         return None;
     }
@@ -28,7 +34,7 @@ fn moved_order_price_wire(
         return None;
     }
 
-    Some(float_to_wire(rounded))
+    Some((rounded, float_to_wire(rounded)))
 }
 
 fn moved_order_size_wire(size: &str) -> Option<String> {
@@ -120,7 +126,7 @@ impl TradingTerminal {
         };
 
         let is_spot = sym.market_type == MarketType::Spot;
-        let Some(new_price_str) =
+        let Some((rounded_price, new_price_str)) =
             moved_order_price_wire(new_price, original_px, sz_decimals, is_spot)
         else {
             if !original_px.is_finite() || original_px <= 0.0 {
@@ -129,6 +135,15 @@ impl TradingTerminal {
             }
             return Task::none();
         };
+
+        // Fail closed if the drag target is far outside the mid — drag
+        // events from a stale viewport or a misclick can otherwise land
+        // a modify at an extreme price (immediate fill if marketable).
+        // Mirrors the validator used by quick-order place/market.
+        if let Err(error) = self.validate_order_price_band(&coin, rounded_price) {
+            self.order_status = Some((error, true));
+            return Task::none();
+        }
 
         self.order_status = Some((
             format!("Moving {} order to ${}...", coin, new_price_str),
