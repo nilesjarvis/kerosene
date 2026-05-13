@@ -29,12 +29,30 @@ impl TradingTerminal {
                 let stop_chase_task = Task::batch(muted_chase_ids.into_iter().map(|id| {
                     self.stop_chase_by_id_with_reason(id, "Chase stopped: ticker was muted", false)
                 }));
+                // Mute is a risk control — it must stop EVERY automated
+                // order manager on the symbol, not just chases. Active
+                // TWAPs would otherwise keep firing IOC slices off their
+                // cached `latest_book` until the cache went stale or
+                // another stopping condition hit; that's a real bypass of
+                // the user's fail-closed intent.
+                let muted_twap_ids: Vec<u64> = self
+                    .twap_orders
+                    .iter()
+                    .filter_map(|(id, twap)| {
+                        (!twap.status.is_terminal() && self.is_ticker_muted(&twap.coin))
+                            .then_some(*id)
+                    })
+                    .collect();
+                let stop_twap_task = Task::batch(muted_twap_ids.into_iter().map(|id| {
+                    self.stop_twap_with_reason(id, "TWAP stopped: ticker was muted", false)
+                }));
                 let scrub_task = self.scrub_muted_ticker_state();
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();
                 self.persist_config();
                 return Task::batch([
                     stop_chase_task,
+                    stop_twap_task,
                     scrub_task,
                     self.request_symbol_search_context_refresh(true),
                     self.request_live_watchlist_refresh(true),

@@ -1244,6 +1244,20 @@ impl TradingTerminal {
                 true,
             );
         }
+        // Defense in depth against the mute risk control. The mute handler
+        // already stops matching TWAPs (see
+        // `update_muted_ticker_preferences`), but this catches:
+        //   (a) a mute that was applied between the schedule tick and this
+        //       execute call;
+        //   (b) any future code path that adds a TWAP without going through
+        //       the mute eviction pass.
+        // Without it, a freshly-muted symbol could fire one more slice off
+        // its cached `latest_book` before the stop landed.
+        if let Some(twap) = self.twap_orders.get(&twap_id)
+            && self.is_ticker_muted(&twap.coin)
+        {
+            return self.stop_twap_with_reason(twap_id, "TWAP stopped: ticker was muted", false);
+        }
 
         let Some((book, book_updated_at, is_buy, min_price, max_price, sz_decimals, is_spot)) =
             self.twap_orders.get(&twap_id).and_then(|twap| {
