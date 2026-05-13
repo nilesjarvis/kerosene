@@ -136,17 +136,17 @@ impl TradingTerminal {
                     self.chart_screenshot_menu_open = Some(chart_id);
                 }
             }
-            Message::ToggleChartScreenshotObscurePositionEntry(obscure) => {
-                if self.chart_screenshot_settings.obscure_position_entry != obscure {
-                    self.chart_screenshot_settings.obscure_position_entry = obscure;
-                    self.persist_config();
-                }
+            Message::ToggleChartScreenshotObscurePositionEntry(obscure)
+                if self.chart_screenshot_settings.obscure_position_entry != obscure =>
+            {
+                self.chart_screenshot_settings.obscure_position_entry = obscure;
+                self.persist_config();
             }
-            Message::ToggleChartScreenshotHidePositionsAndOrders(hide) => {
-                if self.chart_screenshot_settings.hide_positions_and_orders != hide {
-                    self.chart_screenshot_settings.hide_positions_and_orders = hide;
-                    self.persist_config();
-                }
+            Message::ToggleChartScreenshotHidePositionsAndOrders(hide)
+                if self.chart_screenshot_settings.hide_positions_and_orders != hide =>
+            {
+                self.chart_screenshot_settings.hide_positions_and_orders = hide;
+                self.persist_config();
             }
             Message::OpenChartScreenshot(chart_id) => {
                 self.chart_screenshot_menu_open = None;
