@@ -102,8 +102,23 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
         );
     }
 
-    let (ch_resp, spot_resp, orders_resp, fills_resp, funding_resp) =
-        futures::future::join5(ch_fut, spot_fut, orders_fut, fills_fut, funding_fut).await;
+    // Fire every independent request together so the runtime polls them
+    // concurrently. The earlier two-wave layout (main `join5`, then a 50ms
+    // sleep, then HIP-3 + fees in a second join) was effectively
+    // serializing: `reqwest::send()` returns a lazy future that doesn't
+    // hit the network until polled, so the comments claiming HIP-3 and
+    // userFees "fire in parallel" did not match runtime behavior. Now all
+    // 22 (5 main + 1 fees + 8×2 HIP-3) requests are polled in the same
+    // wave.
+    let main_fut = futures::future::join5(ch_fut, spot_fut, orders_fut, fills_fut, funding_fut);
+    let hip3_ch_join = futures::future::join_all(hip3_ch_futs);
+    let hip3_ord_join = futures::future::join_all(hip3_ord_futs);
+    let (
+        (ch_resp, spot_resp, orders_resp, fills_resp, funding_resp),
+        hip3_ch_results,
+        hip3_ord_results,
+        fees_resp,
+    ) = futures::future::join4(main_fut, hip3_ch_join, hip3_ord_join, fees_fut).await;
 
     let ch_raw = ch_resp?;
     let clearinghouse: ClearinghouseState =
@@ -161,16 +176,6 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
             Vec::new()
         }
     };
-
-    // Give Hyperliquid a brief moment to breathe before firing 13 more requests.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    let (hip3_ch_results, hip3_ord_results, fees_resp) = futures::future::join3(
-        futures::future::join_all(hip3_ch_futs),
-        futures::future::join_all(hip3_ord_futs),
-        fees_fut,
-    )
-    .await;
 
     // Fee rates are best-effort; parse from raw Value because this response
     // contains mixed-type fields that can trip up strict typed deserialization.
