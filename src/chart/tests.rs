@@ -3,7 +3,8 @@ use crate::annotations::{Annotation, AnnotationKind, DEFAULT_LEVEL_COLOR};
 use crate::api::Candle;
 use crate::chart::state::DragKind;
 use crate::hydromancer_api::FundingRatePoint;
-use iced::Point;
+use crate::message::Message;
+use iced::{Point, Rectangle};
 
 fn candle_at(open_time: u64, close: f64) -> Candle {
     Candle {
@@ -95,6 +96,125 @@ fn empty_incremental_funding_update_preserves_existing_points() {
 
     assert_eq!(chart.funding_rates.len(), 1);
     assert_eq!(chart.funding_rates[0].rate, 0.01);
+}
+
+#[test]
+fn quick_order_open_left_click_in_chart_area_closes_card_without_panning() {
+    let mut chart = CandlestickChart::new(1);
+    chart.quick_order_open = true;
+    let mut state = ChartState::default();
+
+    let action = chart
+        .handle_left_press(&mut state, Point::new(120.0, 80.0), 400.0, 240.0, 260.0)
+        .expect("left click should close an open quick-order card");
+    let (message, _, status) = action.into_inner();
+
+    match message.expect("close quick-order message") {
+        Message::CloseQuickOrder(id) => assert_eq!(id, chart.id),
+        other => panic!("expected CloseQuickOrder, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(state.drag.is_none());
+}
+
+#[test]
+fn quick_order_open_right_click_in_chart_area_publishes_replacement_open_message() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);
+    chart.quick_order_open = true;
+    let mut state = ChartState::default();
+
+    let action = chart
+        .handle_right_press(
+            &mut state,
+            Rectangle::new(Point::ORIGIN, iced::Size::new(420.0, 260.0)),
+            Point::new(120.0, 80.0),
+            400.0,
+            240.0,
+        )
+        .expect("right click should publish replacement quick-order open message");
+    let (message, _, status) = action.into_inner();
+
+    match message.expect("open quick-order message") {
+        Message::OpenQuickOrder(id, price, click_x, click_y, chart_w, chart_h) => {
+            assert_eq!(id, chart.id);
+            assert!(price.is_finite() && price > 0.0);
+            assert_eq!(click_x, 120.0);
+            assert_eq!(click_y, 80.0);
+            assert_eq!(chart_w, 400.0);
+            assert_eq!(chart_h, 240.0);
+        }
+        other => panic!("expected OpenQuickOrder, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+}
+
+#[test]
+fn quick_order_open_right_click_on_order_line_still_replaces_card_not_cancel_order() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);
+    chart.quick_order_open = true;
+    chart.active_orders.push(OrderOverlay {
+        coin: "BTC".to_string(),
+        limit_px: 105.0,
+        sz: 1.0,
+        is_buy: true,
+        oid: 42,
+    });
+    let mut state = ChartState::default();
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, 400.0, 240.0)
+        .expect("visible price params");
+    let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
+
+    let action = chart
+        .handle_right_press(
+            &mut state,
+            Rectangle::new(Point::ORIGIN, iced::Size::new(420.0, 260.0)),
+            Point::new(120.0, order_y),
+            400.0,
+            240.0,
+        )
+        .expect("right click should replace quick-order even on an order line");
+    let (message, _, status) = action.into_inner();
+
+    match message.expect("open quick-order message") {
+        Message::OpenQuickOrder(id, price, click_x, click_y, chart_w, chart_h) => {
+            assert_eq!(id, chart.id);
+            assert!(price.is_finite() && price > 0.0);
+            assert_eq!(click_x, 120.0);
+            assert_eq!(click_y, order_y);
+            assert_eq!(chart_w, 400.0);
+            assert_eq!(chart_h, 240.0);
+        }
+        other => panic!("expected OpenQuickOrder, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+}
+
+#[test]
+fn quick_order_open_right_click_replaces_even_if_range_anchor_is_set() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);
+    chart.quick_order_open = true;
+    let mut state = ChartState {
+        range_anchor_price: Some(101.0),
+        ..ChartState::default()
+    };
+
+    let action = chart
+        .handle_right_press(
+            &mut state,
+            Rectangle::new(Point::ORIGIN, iced::Size::new(420.0, 260.0)),
+            Point::new(120.0, 80.0),
+            400.0,
+            240.0,
+        )
+        .expect("right click should replace quick-order instead of clearing range anchor");
+    let (message, _, _) = action.into_inner();
+
+    assert!(matches!(message, Some(Message::OpenQuickOrder(..))));
+    assert_eq!(state.range_anchor_price, Some(101.0));
 }
 
 #[test]

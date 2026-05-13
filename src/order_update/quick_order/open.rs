@@ -89,7 +89,7 @@ impl TradingTerminal {
         }
 
         if let Some(instance) = self.charts.get_mut(&chart_id) {
-            instance.quick_order = Some(QuickOrderForm {
+            instance.set_quick_order(QuickOrderForm {
                 price,
                 quantity: String::new(),
                 is_limit: true,

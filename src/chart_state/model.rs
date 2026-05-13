@@ -151,6 +151,22 @@ impl ChartInstance {
         }
     }
 
+    pub(crate) fn set_quick_order(&mut self, form: QuickOrderForm) {
+        self.quick_order = Some(form);
+        self.chart.quick_order_open = true;
+    }
+
+    pub(crate) fn clear_quick_order(&mut self) {
+        self.quick_order = None;
+        self.chart.quick_order_open = false;
+    }
+
+    pub(crate) fn take_quick_order(&mut self) -> Option<QuickOrderForm> {
+        let form = self.quick_order.take();
+        self.chart.quick_order_open = false;
+        form
+    }
+
     /// Create a new chart with the editor open and no symbol selected.
     pub(crate) fn new_empty(id: ChartId) -> Self {
         Self {

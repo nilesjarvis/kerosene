@@ -80,6 +80,10 @@ pub struct CandlestickChart {
     pub chart_bull_color: Option<Color>,
     /// Optional theme override for bearish candle visuals.
     pub chart_bear_color: Option<Color>,
+    /// Whether the quick-order card is open over this chart. When true, left-clicks
+    /// inside the chart canvas close the card while right-clicks still publish a
+    /// replacement quick-order at the clicked price.
+    pub(crate) quick_order_open: bool,
     /// Whether position entry and liquidation labels should be redacted while rendering.
     pub(crate) obscure_position_prices: bool,
     /// Whether active position/liquidation and order overlays should be hidden while rendering.

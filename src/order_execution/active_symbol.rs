@@ -119,7 +119,7 @@ impl TradingTerminal {
 
         self.sync_all_chart_overlays();
         for inst in self.charts.values_mut() {
-            inst.quick_order = None;
+            inst.clear_quick_order();
         }
         self.persist_config();
 

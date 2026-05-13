@@ -67,7 +67,7 @@ impl TradingTerminal {
         let form = self
             .charts
             .get_mut(&chart_id)
-            .and_then(|inst| inst.quick_order.take());
+            .and_then(|inst| inst.take_quick_order());
         let Some(form) = form else {
             return Task::none();
         };
@@ -77,7 +77,7 @@ impl TradingTerminal {
             None => {
                 self.order_status = Some(("Invalid quantity".into(), true));
                 if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.quick_order = Some(form);
+                    instance.set_quick_order(form);
                 }
                 return Task::none();
             }
@@ -91,7 +91,7 @@ impl TradingTerminal {
         if self.is_ticker_muted(&chart_symbol) {
             self.order_status = Some(("Chart ticker is muted in Settings > Risk".into(), true));
             if let Some(instance) = self.charts.get_mut(&chart_id) {
-                instance.quick_order = Some(form);
+                instance.set_quick_order(form);
             }
             return Task::none();
         }
@@ -103,7 +103,7 @@ impl TradingTerminal {
         if sym.market_type == MarketType::Outcome {
             self.outcome_read_only_status("trading");
             if let Some(instance) = self.charts.get_mut(&chart_id) {
-                instance.quick_order = Some(form);
+                instance.set_quick_order(form);
             }
             return Task::none();
         }
@@ -118,14 +118,14 @@ impl TradingTerminal {
             else {
                 self.order_status = Some(("Invalid price".into(), true));
                 if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.quick_order = Some(form);
+                    instance.set_quick_order(form);
                 }
                 return Task::none();
             };
             if let Err(e) = self.validate_order_price_band(&chart_symbol, rounded) {
                 self.order_status = Some((e, true));
                 if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.quick_order = Some(form);
+                    instance.set_quick_order(form);
                 }
                 return Task::none();
             }
@@ -141,7 +141,7 @@ impl TradingTerminal {
                     true,
                 ));
                 if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.quick_order = Some(form);
+                    instance.set_quick_order(form);
                 }
                 return Task::none();
             };
@@ -154,14 +154,14 @@ impl TradingTerminal {
             ) else {
                 self.order_status = Some(("Invalid market price".into(), true));
                 if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.quick_order = Some(form);
+                    instance.set_quick_order(form);
                 }
                 return Task::none();
             };
             if let Err(e) = self.validate_order_price_band(&chart_symbol, rounded) {
                 self.order_status = Some((e, true));
                 if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.quick_order = Some(form);
+                    instance.set_quick_order(form);
                 }
                 return Task::none();
             }

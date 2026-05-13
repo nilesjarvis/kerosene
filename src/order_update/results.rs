@@ -54,7 +54,7 @@ impl TradingTerminal {
 
     pub(crate) fn clear_transient_order_ui(&mut self) {
         for instance in self.charts.values_mut() {
-            instance.quick_order = None;
+            instance.clear_quick_order();
             instance.editor_open = false;
             instance.editor_search_query.clear();
             instance.editor_keyboard_selected = false;

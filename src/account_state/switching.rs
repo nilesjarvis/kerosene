@@ -77,7 +77,7 @@ impl TradingTerminal {
         self.nuke_confirmation = None;
         self.show_hidden_positions = false;
         for inst in self.charts.values_mut() {
-            inst.quick_order = None;
+            inst.clear_quick_order();
         }
         if is_ghost {
             self.wallet_key_input.zeroize();

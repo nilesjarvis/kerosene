@@ -9,7 +9,7 @@ use iced::{Point, Rectangle};
 // ---------------------------------------------------------------------------
 
 impl CandlestickChart {
-    pub(super) fn handle_left_press(
+    pub(in crate::chart) fn handle_left_press(
         &self,
         state: &mut ChartState,
         pos: Point,
@@ -37,6 +37,12 @@ impl CandlestickChart {
         }
 
         if pos.x < chart_w && pos.y < chart_h {
+            if self.quick_order_open {
+                return Some(
+                    canvas::Action::publish(Message::CloseQuickOrder(self.id)).and_capture(),
+                );
+            }
+
             if state.range_anchor_price.is_some() {
                 state.range_anchor_price = None;
                 return Some(canvas::Action::request_redraw());
@@ -101,7 +107,7 @@ impl CandlestickChart {
         None
     }
 
-    pub(super) fn handle_right_press(
+    pub(in crate::chart) fn handle_right_press(
         &self,
         state: &mut ChartState,
         bounds: Rectangle,
@@ -109,6 +115,22 @@ impl CandlestickChart {
         chart_w: f32,
         chart_h: f32,
     ) -> Option<canvas::Action<Message>> {
+        if self.quick_order_open
+            && pos.x < chart_w
+            && pos.y < chart_h
+            && let Some((price_hi, price_range, price_h)) =
+                self.visible_price_params(state, chart_w, chart_h)
+        {
+            let clamped_y = pos.y.clamp(0.0, price_h);
+            let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
+            return Some(
+                canvas::Action::publish(Message::OpenQuickOrder(
+                    self.id, price, pos.x, pos.y, chart_w, chart_h,
+                ))
+                .and_capture(),
+            );
+        }
+
         if pos.x < chart_w && pos.y < chart_h && state.range_anchor_price.is_some() {
             state.range_anchor_price = None;
             return Some(canvas::Action::request_redraw());

@@ -7,8 +7,8 @@ use crate::helpers::format_price;
 use crate::message::Message;
 use crate::order_execution::QuickOrderForm;
 use iced::widget::container as container_style;
-use iced::widget::{Space, button, column, container, row, stack, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{Space, column, container, row, stack, text};
+use iced::{Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
 // Chart Quick Order Overlay
@@ -81,17 +81,7 @@ impl TradingTerminal {
 
         let canvas_el: Element<'_, Message> = chart_canvas.width(Fill).height(Fill).into();
 
-        let dismiss_backdrop: Element<'_, Message> = button(text(""))
-            .on_press(Message::CloseQuickOrder(chart_id))
-            .width(Fill)
-            .height(Fill)
-            .style(|_theme: &Theme, _status| button::Style {
-                background: Some(Color::TRANSPARENT.into()),
-                ..Default::default()
-            })
-            .into();
-
-        stack![canvas_el, dismiss_backdrop, positioned_card]
+        stack![canvas_el, positioned_card]
             .width(Fill)
             .height(Fill)
             .into()

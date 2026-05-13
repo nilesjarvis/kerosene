@@ -35,7 +35,7 @@ impl TradingTerminal {
 
     pub(crate) fn handle_close_quick_order(&mut self, id: ChartId) {
         if let Some(instance) = self.charts.get_mut(&id) {
-            instance.quick_order = None;
+            instance.clear_quick_order();
         }
     }
 
