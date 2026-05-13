@@ -4,12 +4,14 @@ use std::path::Path;
 
 use super::paths::{backup_config_path, temp_config_path};
 
-/// Write `contents` to `path`, creating the file with mode 0o600 on Unix so
-/// the byte stream is never observable to other local users — not even in
-/// the window between `create` and a follow-up `set_permissions` call.
-/// On non-Unix platforms this falls back to the previous behaviour
-/// (`fs::write` using the default permissions); Windows ACL hardening is a
-/// separate problem.
+/// Create `path` with `contents` and owner-only permissions.
+///
+/// The file is opened with exclusive creation so callers never truncate or
+/// rewrite a pre-existing world-readable file while sensitive config bytes are
+/// being written. On Unix the mode is applied at creation time, before the
+/// first byte is written; on non-Unix platforms this falls back to the previous
+/// behaviour (`fs::write` using default permissions) because Windows ACL
+/// hardening is a separate problem.
 pub(in crate::config) fn write_with_restricted_permissions(
     path: &Path,
     contents: &[u8],
@@ -19,11 +21,10 @@ pub(in crate::config) fn write_with_restricted_permissions(
         use std::os::unix::fs::OpenOptionsExt;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(path)
-            .map_err(|e| format!("open {} failed: {e}", path.display()))?;
+            .map_err(|e| format!("create {} failed: {e}", path.display()))?;
         file.write_all(contents)
             .map_err(|e| format!("write {} failed: {e}", path.display()))?;
         file.sync_all()
@@ -41,6 +42,40 @@ fn set_restricted_permissions(path: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .map_err(|e| format!("set permissions {} failed: {e}", path.display()))
+}
+
+fn replace_with_restricted_permissions(path: &Path, contents: &[u8]) -> Result<(), String> {
+    let temp_path = temp_config_path(path);
+    write_with_restricted_permissions(&temp_path, contents)?;
+
+    match std::fs::rename(&temp_path, path) {
+        Ok(()) => {}
+        Err(rename_error) if path.exists() => {
+            std::fs::remove_file(path).map_err(|e| {
+                format!(
+                    "replace {} failed: {rename_error}; remove existing failed: {e}",
+                    path.display()
+                )
+            })?;
+            std::fs::rename(&temp_path, path).map_err(|e| {
+                format!(
+                    "replace {} failed after removing existing file: {e}",
+                    path.display()
+                )
+            })?;
+        }
+        Err(e) => {
+            return Err(format!(
+                "rename restricted temp config to {} failed: {e}",
+                path.display()
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    set_restricted_permissions(path)?;
+
+    Ok(())
 }
 
 fn read_config_from_path(path: &Path) -> Result<Option<KeroseneConfig>, String> {
@@ -87,31 +122,13 @@ pub(in crate::config) fn save_config_to_path(
     let json = serde_json::to_string_pretty(config)
         .map_err(|e| format!("serialize config failed: {e}"))?;
     let temp_path = temp_config_path(path);
-    if temp_path.exists() {
-        std::fs::remove_file(&temp_path).map_err(|e| {
-            format!(
-                "remove stale temp config {} failed: {e}",
-                temp_path.display()
-            )
-        })?;
-    }
-
     write_with_restricted_permissions(&temp_path, json.as_bytes())?;
 
     if matches!(read_config_from_path(path), Ok(Some(_))) {
         let backup_path = backup_config_path(path);
-        std::fs::copy(path, &backup_path).map_err(|e| {
-            format!(
-                "backup config {} to {} failed: {e}",
-                path.display(),
-                backup_path.display()
-            )
-        })?;
-        // `fs::copy` carries the source mode on most Unix backends, but
-        // chmod explicitly so a permissive prior config (if one ever
-        // existed on disk) doesn't bleed into the new backup.
-        #[cfg(unix)]
-        set_restricted_permissions(&backup_path)?;
+        let backup_contents = std::fs::read(path)
+            .map_err(|e| format!("read config {} for backup failed: {e}", path.display()))?;
+        replace_with_restricted_permissions(&backup_path, &backup_contents)?;
     }
 
     match std::fs::rename(&temp_path, path) {

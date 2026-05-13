@@ -157,43 +157,82 @@ fn write_with_restricted_permissions_creates_file_with_owner_only_mode() {
 
 #[cfg(unix)]
 #[test]
-fn write_with_restricted_permissions_overwrites_a_world_readable_file_to_owner_only_mode() {
+fn write_with_restricted_permissions_refuses_existing_world_readable_file() {
     use std::os::unix::fs::PermissionsExt;
 
-    let path = unique_test_config_path("restricted-overwrite");
+    let path = unique_test_config_path("restricted-existing");
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).expect("create test dir");
     }
 
-    // Plant a world-readable file at the path to simulate a stale temp
-    // left over from a previous crash with a permissive umask.
     std::fs::write(&path, b"old-leaky-contents").expect("seed file");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("loosen perms");
 
-    write_with_restricted_permissions(&path, b"new-secret-payload")
-        .expect("restricted overwrite should succeed");
+    let err = write_with_restricted_permissions(&path, b"new-secret-payload")
+        .expect_err("restricted writer should not rewrite existing files");
+    assert!(
+        err.contains("create") || err.contains("exists"),
+        "unexpected error: {err}"
+    );
 
     let mode = std::fs::metadata(&path)
         .expect("written file should exist")
         .permissions()
         .mode();
-    // OpenOptions.mode() only applies on create. The current implementation
-    // does not chmod when truncating an existing file, so this test pins
-    // that behavior — if a future change starts re-chmodding, update the
-    // assertion. The pre-write `remove_file` in save_config_to_path makes
-    // this not a real-world hazard because the temp path is always created
-    // fresh; the loosen-then-overwrite case only matters if someone calls
-    // write_with_restricted_permissions on an existing path directly.
-    if mode & 0o077 != 0 {
-        eprintln!(
-            "note: write_with_restricted_permissions did not tighten an existing file's mode \
-             (got {:o}). callers must pre-remove the path; save_config_to_path already does.",
-            mode & 0o777
-        );
-    }
-    // Regardless, the bytes were replaced.
+    assert_eq!(mode & 0o777, 0o644);
     let read_back = std::fs::read(&path).expect("read back");
-    assert_eq!(read_back, b"new-secret-payload");
+    assert_eq!(read_back, b"old-leaky-contents");
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::remove_dir_all(parent);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn save_config_replaces_existing_loose_backup_without_reusing_its_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = unique_test_config_path("loose-backup-replacement");
+    let backup_path = backup_config_path(&path);
+    let mut config = KeroseneConfig {
+        address_book: vec![AddressBookEntryConfig {
+            address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_string(),
+            label: "Initial Primary".to_string(),
+            color: None,
+            tags: vec![],
+        }],
+        ..Default::default()
+    };
+
+    save_config_to_path(&path, &config).expect("initial save should succeed");
+    std::fs::write(&backup_path, b"old world-readable backup").expect("seed loose backup");
+    std::fs::set_permissions(&backup_path, std::fs::Permissions::from_mode(0o644))
+        .expect("loosen backup perms");
+
+    config.address_book[0].label = "Updated Primary".to_string();
+    save_config_to_path(&path, &config).expect("second save should replace backup safely");
+
+    let backup_mode = std::fs::symlink_metadata(&backup_path)
+        .expect("backup should exist")
+        .permissions()
+        .mode();
+    assert_eq!(
+        backup_mode & 0o777,
+        0o600,
+        "backup config mode: expected 0o600, got {:o}",
+        backup_mode & 0o777
+    );
+
+    let backup = load_config_from_path(&backup_path)
+        .expect("backup should parse")
+        .expect("backup should exist");
+    assert_eq!(backup.address_book[0].label, "Initial Primary");
+
+    let primary = load_config_from_path(&path)
+        .expect("primary should parse")
+        .expect("primary should exist");
+    assert_eq!(primary.address_book[0].label, "Updated Primary");
 
     if let Some(parent) = path.parent() {
         let _ = std::fs::remove_dir_all(parent);
