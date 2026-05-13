@@ -95,7 +95,8 @@ pub(crate) async fn fetch_order_status_by_cloid(
     parse_order_status_for_cloid(&raw, &cloid)
 }
 
-pub(crate) fn parse_order_status(raw: &Value) -> Result<OrderStatusResult, String> {
+#[cfg(test)]
+fn parse_order_status(raw: &Value) -> Result<OrderStatusResult, String> {
     parse_order_status_inner(raw, None)
 }
 
