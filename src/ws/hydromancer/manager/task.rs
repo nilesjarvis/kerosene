@@ -10,8 +10,9 @@ use super::{
     HYDROMANCER_MAX_CONNECT_RETRY_SECS, HYDROMANCER_READ_TIMEOUT_SECS, HydromancerCommand,
     HydromancerRoutedMessage, hydromancer_read_remaining,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
+use zeroize::Zeroizing;
 
 mod frames;
 mod messages;
@@ -23,11 +24,83 @@ mod subscriptions;
 // Hydromancer Manager Task
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HydromancerTaskControlFlow {
+    Continue,
+    Shutdown,
+}
+
+fn handle_preconnect_hydromancer_command(
+    cmd: HydromancerCommand,
+    active_subs: &mut ActiveHydromancerSubscriptions,
+) -> HydromancerTaskControlFlow {
+    match cmd {
+        HydromancerCommand::Subscribe { topic, payload } => {
+            active_subs.subscribe(topic, payload);
+            HydromancerTaskControlFlow::Continue
+        }
+        HydromancerCommand::Unsubscribe { topic } => {
+            active_subs.unsubscribe(topic);
+            HydromancerTaskControlFlow::Continue
+        }
+        HydromancerCommand::Reconnect => HydromancerTaskControlFlow::Continue,
+        HydromancerCommand::Shutdown => HydromancerTaskControlFlow::Shutdown,
+    }
+}
+
+fn drain_pending_hydromancer_shutdown(
+    cmd_rx: &mut mpsc::UnboundedReceiver<HydromancerCommand>,
+    active_subs: &mut ActiveHydromancerSubscriptions,
+) -> HydromancerTaskControlFlow {
+    while let Ok(cmd) = cmd_rx.try_recv() {
+        if handle_preconnect_hydromancer_command(cmd, active_subs)
+            == HydromancerTaskControlFlow::Shutdown
+        {
+            return HydromancerTaskControlFlow::Shutdown;
+        }
+    }
+    HydromancerTaskControlFlow::Continue
+}
+
+async fn hydromancer_sleep_or_shutdown(
+    cmd_rx: &mut mpsc::UnboundedReceiver<HydromancerCommand>,
+    active_subs: &mut ActiveHydromancerSubscriptions,
+    duration: Duration,
+) -> HydromancerTaskControlFlow {
+    let mut sleep_fut = Box::pin(tokio::time::sleep(duration));
+
+    loop {
+        let cmd_fut = Box::pin(cmd_rx.recv());
+        match futures::future::select(cmd_fut, sleep_fut).await {
+            futures::future::Either::Left((cmd, remaining_sleep)) => {
+                sleep_fut = remaining_sleep;
+                match cmd {
+                    Some(cmd) => {
+                        if handle_preconnect_hydromancer_command(cmd, active_subs)
+                            == HydromancerTaskControlFlow::Shutdown
+                        {
+                            return HydromancerTaskControlFlow::Shutdown;
+                        }
+                        if active_subs.is_empty() {
+                            return HydromancerTaskControlFlow::Continue;
+                        }
+                    }
+                    None => return HydromancerTaskControlFlow::Shutdown,
+                }
+            }
+            futures::future::Either::Right((_, _)) => {
+                return HydromancerTaskControlFlow::Continue;
+            }
+        }
+    }
+}
+
 pub(super) async fn hydromancer_manager_task(
     api_key: String,
     mut cmd_rx: mpsc::UnboundedReceiver<HydromancerCommand>,
     msg_tx: broadcast::Sender<HydromancerRoutedMessage>,
 ) {
+    let api_key = Zeroizing::new(api_key);
     let mut active_subs = ActiveHydromancerSubscriptions::default();
     let mut retry_delay = 1;
     let mut session = HydromancerSessionState::default();
@@ -35,16 +108,30 @@ pub(super) async fn hydromancer_manager_task(
     use futures::StreamExt as _;
     use futures::future::{Either, select};
 
-    loop {
+    'manager: loop {
         while active_subs.is_empty() {
             match cmd_rx.recv().await {
-                Some(HydromancerCommand::Subscribe { topic, payload }) => {
-                    active_subs.subscribe(topic, payload);
+                Some(cmd) => {
+                    if handle_preconnect_hydromancer_command(cmd, &mut active_subs)
+                        == HydromancerTaskControlFlow::Shutdown
+                    {
+                        return;
+                    }
                 }
-                Some(HydromancerCommand::Unsubscribe { .. } | HydromancerCommand::Reconnect) => {}
-                Some(HydromancerCommand::Shutdown) => return,
                 None => return,
             }
+        }
+
+        // A Shutdown can be queued by key rotation while this task is between
+        // reconnect sleeps and the next connect attempt. Drain it before
+        // constructing another old-key URL.
+        if drain_pending_hydromancer_shutdown(&mut cmd_rx, &mut active_subs)
+            == HydromancerTaskControlFlow::Shutdown
+        {
+            return;
+        }
+        if active_subs.is_empty() {
+            continue;
         }
 
         session.begin_connection();
@@ -52,13 +139,49 @@ pub(super) async fn hydromancer_manager_task(
 
         let url = hydromancer_connect_url(&api_key, session.session_id(), session.last_cursor());
 
-        let ws_stream = match tokio_tungstenite::connect_async(&url).await {
+        let connect_fut = Box::pin(tokio_tungstenite::connect_async(&url));
+        let cmd_fut = Box::pin(cmd_rx.recv());
+        let connect_result = match select(connect_fut, cmd_fut).await {
+            Either::Left((connect_result, pending_cmd)) => {
+                drop(pending_cmd);
+                connect_result
+            }
+            Either::Right((cmd, pending_connect)) => {
+                // A rotation/clear command must be able to cancel an in-flight
+                // connect attempt before the old key establishes another
+                // socket. Other commands are folded into subscription state and
+                // the outer loop starts a fresh connect attempt if still needed.
+                drop(pending_connect);
+                match cmd {
+                    Some(cmd) => {
+                        if handle_preconnect_hydromancer_command(cmd, &mut active_subs)
+                            == HydromancerTaskControlFlow::Shutdown
+                        {
+                            return;
+                        }
+                        continue 'manager;
+                    }
+                    None => return,
+                }
+            }
+        };
+
+        let ws_stream = match connect_result {
             Ok((ws, _)) => ws,
             Err(e) => {
                 let _ = broadcast_hydromancer_reconnecting(&msg_tx, e.to_string(), retry_delay);
-                tokio::time::sleep(std::time::Duration::from_secs(retry_delay)).await;
+                if hydromancer_sleep_or_shutdown(
+                    &mut cmd_rx,
+                    &mut active_subs,
+                    Duration::from_secs(retry_delay),
+                )
+                .await
+                    == HydromancerTaskControlFlow::Shutdown
+                {
+                    return;
+                }
                 retry_delay = (retry_delay * 2).min(HYDROMANCER_MAX_CONNECT_RETRY_SECS);
-                continue;
+                continue 'manager;
             }
         };
 
@@ -129,9 +252,86 @@ pub(super) async fn hydromancer_manager_task(
         }
 
         telemetry_on_disconnect();
-        tokio::time::sleep(std::time::Duration::from_secs(
-            HYDROMANCER_RECONNECT_DELAY_SECS,
-        ))
-        .await;
+        if hydromancer_sleep_or_shutdown(
+            &mut cmd_rx,
+            &mut active_subs,
+            Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
+        )
+        .await
+            == HydromancerTaskControlFlow::Shutdown
+        {
+            return;
+        }
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn subscribe_cmd(topic: &str) -> HydromancerCommand {
+        HydromancerCommand::Subscribe {
+            topic: topic.to_string(),
+            payload: json!({ "type": "subscribe", "channel": topic }),
+        }
+    }
+
+    #[test]
+    fn drain_pending_shutdown_handles_queued_rotation_before_reconnect() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut active_subs = ActiveHydromancerSubscriptions::default();
+
+        tx.send(subscribe_cmd("liquidations")).unwrap();
+        tx.send(HydromancerCommand::Shutdown).unwrap();
+
+        assert_eq!(
+            drain_pending_hydromancer_shutdown(&mut rx, &mut active_subs),
+            HydromancerTaskControlFlow::Shutdown
+        );
+    }
+
+    #[tokio::test]
+    async fn reconnect_sleep_exits_promptly_on_shutdown() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut active_subs = ActiveHydromancerSubscriptions::default();
+        active_subs.subscribe(
+            "liquidations".to_string(),
+            json!({ "channel": "liquidations" }),
+        );
+        tx.send(HydromancerCommand::Shutdown).unwrap();
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            hydromancer_sleep_or_shutdown(&mut rx, &mut active_subs, Duration::from_secs(60)),
+        )
+        .await
+        .expect("shutdown should interrupt the retry sleep");
+
+        assert_eq!(result, HydromancerTaskControlFlow::Shutdown);
+    }
+
+    #[tokio::test]
+    async fn reconnect_sleep_processes_unsubscribe_before_retrying_old_key() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut active_subs = ActiveHydromancerSubscriptions::default();
+        active_subs.subscribe(
+            "liquidations".to_string(),
+            json!({ "channel": "liquidations" }),
+        );
+        tx.send(HydromancerCommand::Unsubscribe {
+            topic: "liquidations".to_string(),
+        })
+        .unwrap();
+
+        let result = tokio::time::timeout(
+            Duration::from_millis(50),
+            hydromancer_sleep_or_shutdown(&mut rx, &mut active_subs, Duration::from_secs(60)),
+        )
+        .await
+        .expect("unsubscribe should interrupt the retry sleep");
+
+        assert_eq!(result, HydromancerTaskControlFlow::Continue);
+        assert!(active_subs.is_empty());
     }
 }
