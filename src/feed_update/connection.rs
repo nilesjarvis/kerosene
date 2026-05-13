@@ -12,8 +12,17 @@ impl TradingTerminal {
                 self.hydromancer_key_input = value.into();
             }
             Message::SaveHydromancerKey => {
+                // Capture the previous trimmed key BEFORE zeroizing the
+                // in-memory state so we can evict its process-wide manager.
+                // Without this, the spawned task keeps its owned `api_key`
+                // String alive for the lifetime of the app even though
+                // the user explicitly rotated/cleared the credential.
+                let previous_key = self.hydromancer_api_key.trim().to_string();
                 self.hydromancer_api_key.zeroize();
                 self.hydromancer_api_key = self.hydromancer_key_input.trim().to_string().into();
+                if !previous_key.is_empty() && previous_key != self.hydromancer_api_key.trim() {
+                    ws::evict_hydromancer_manager(&previous_key);
+                }
                 self.liquidations_last_rx_ms = None;
                 self.liquidations_reconnect_nonce =
                     self.liquidations_reconnect_nonce.wrapping_add(1);

@@ -5,7 +5,7 @@ mod recent;
 mod tracked_trades;
 
 pub use liquidations::ws_hydromancer_liquidations;
-pub use manager::reconnect_hydromancer;
+pub use manager::{evict_hydromancer_manager, reconnect_hydromancer};
 pub use tracked_trades::ws_hydromancer_tracked_trades;
 
 const HYDROMANCER_RECONNECT_DELAY_SECS: u64 = 2;
