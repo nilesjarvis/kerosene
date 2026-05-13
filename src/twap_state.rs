@@ -25,6 +25,14 @@ pub(crate) const TWAP_RETRY_BASE_DELAY: Duration = Duration::from_secs(2);
 pub(crate) const TWAP_RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
 pub(crate) const TWAP_MAX_RETRY_ATTEMPTS: u32 = 5;
 pub(crate) const TWAP_MAX_UNEXPECTED_CANCEL_RETRIES: u32 = 5;
+/// Bounded time to wait for an `account.fills` sync to surface a child the
+/// exchange has reported as `filled`. The exchange's `orderStatus` is
+/// authoritative for "did this child fill", but `account.fills` is what
+/// advances `filled_size` and lets the next slice schedule. If the fills
+/// sync never catches up — degraded indexer, network drop, etc. — without
+/// this timeout the TWAP would sit paused forever with `status_check_cloid`
+/// set, blocking `can_schedule_at`.
+pub(crate) const TWAP_RECONCILIATION_TIMEOUT: Duration = Duration::from_secs(60);
 
 const TWAP_RANDOM_JITTER: f64 = 0.20;
 const TWAP_EVENT_LIMIT: usize = 200;
@@ -233,6 +241,12 @@ pub(crate) struct TwapOrder {
     pub(crate) retry_slice: Option<TwapPendingSlice>,
     pub(crate) status_check_cloid: Option<String>,
     pub(crate) status_check_retries: u32,
+    /// Deadline by which `account.fills` must observe a child the exchange
+    /// already reported as `filled`. `None` when the TWAP is not awaiting
+    /// reconciliation. Set when entering `AwaitingReconciliation`, cleared
+    /// when fills sync catches up — or when the timeout fires and the TWAP
+    /// transitions to terminal error.
+    pub(crate) reconciliation_deadline: Option<Instant>,
     pub(crate) cancel_retries: u32,
     pub(crate) stop_requested: bool,
     pub(crate) stop_reason: Option<(String, bool)>,
@@ -297,6 +311,7 @@ impl TwapOrder {
             retry_slice: None,
             status_check_cloid: None,
             status_check_retries: 0,
+            reconciliation_deadline: None,
             cancel_retries: 0,
             stop_requested: false,
             stop_reason: None,
@@ -346,6 +361,12 @@ impl TwapOrder {
         if !self.status.is_terminal() && !self.stop_requested && self.pending_op.is_none() {
             self.status = TwapStatus::WaitingForMarket;
         }
+    }
+
+    /// Pure predicate so the timeout policy can be unit-tested against
+    /// arbitrary deadlines without constructing a full TwapOrder.
+    pub(crate) fn reconciliation_timed_out(deadline: Option<Instant>, now: Instant) -> bool {
+        deadline.is_some_and(|d| now >= d)
     }
 
     pub(crate) fn retry_delay(retry_count: u32) -> Duration {
@@ -552,6 +573,7 @@ impl std::fmt::Debug for TwapOrder {
             .field("retry_slice", &self.retry_slice)
             .field("status_check_cloid", &self.status_check_cloid)
             .field("status_check_retries", &self.status_check_retries)
+            .field("reconciliation_deadline", &self.reconciliation_deadline)
             .field("cancel_retries", &self.cancel_retries)
             .field("stop_requested", &self.stop_requested)
             .finish()
@@ -860,13 +882,13 @@ fn fill_summary_for_oid(fills: &[UserFill], oid: u64) -> Option<FillSummary> {
 #[cfg(test)]
 mod tests {
     use super::{
-        MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE, TwapChildOrder,
-        TwapChildStatus, TwapOrder, TwapPauseReason, TwapStatus, parse_twap_duration_minutes,
-        parse_twap_slice_count, quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
-        twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
-        twap_min_quantized_child_notional, twap_order_notional_meets_minimum,
-        twap_required_slice_rate, twap_response_fill_summary, twap_target_size_from_quantity,
-        validate_twap_interval,
+        MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE,
+        TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapPauseReason,
+        TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count, quantize_twap_slice_size,
+        twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate, twap_child_cloid,
+        twap_limit_price_for_slice, twap_min_quantized_child_notional,
+        twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
+        twap_target_size_from_quantity, validate_twap_interval,
     };
     use crate::account::UserFill;
     use crate::api::{BookLevel, OrderBook};
@@ -1140,6 +1162,47 @@ mod tests {
         assert_eq!(TwapOrder::retry_delay(1), Duration::from_secs(2));
         assert_eq!(TwapOrder::retry_delay(2), Duration::from_secs(4));
         assert_eq!(TwapOrder::retry_delay(10), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn reconciliation_timed_out_predicate_handles_none_and_boundary() {
+        let now = Instant::now();
+
+        // No deadline armed — never timed out.
+        assert!(!TwapOrder::reconciliation_timed_out(None, now));
+
+        // Deadline in the future — not yet timed out.
+        assert!(!TwapOrder::reconciliation_timed_out(
+            Some(now + Duration::from_millis(1)),
+            now
+        ));
+
+        // Deadline exactly at `now` — counts as timed out so the watchdog
+        // fires on the first reconcile after expiry rather than one tick
+        // later.
+        assert!(TwapOrder::reconciliation_timed_out(Some(now), now));
+
+        // Deadline in the past — timed out.
+        assert!(TwapOrder::reconciliation_timed_out(
+            Some(now - Duration::from_secs(1)),
+            now
+        ));
+    }
+
+    #[test]
+    fn reconciliation_timeout_is_long_enough_to_absorb_typical_indexer_lag() {
+        // The exchange's `account.fills` endpoint has been observed to lag
+        // a few seconds behind `orderStatus` under normal conditions. The
+        // timeout must be loose enough that healthy operation doesn't
+        // trip the watchdog. 60s is a generous floor — anything shorter
+        // would frequently false-positive during minor indexer hiccups.
+        const MIN_HEALTHY_TIMEOUT: Duration = Duration::from_secs(30);
+        const _: () = {
+            // const-evaluated comparison so a future tightening of the
+            // constant fails to compile rather than silently producing
+            // flaky terminal errors in production.
+            assert!(TWAP_RECONCILIATION_TIMEOUT.as_secs() >= MIN_HEALTHY_TIMEOUT.as_secs());
+        };
     }
 
     #[test]

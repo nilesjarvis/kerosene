@@ -10,11 +10,11 @@ use crate::signing::{
 use crate::twap_state::{
     ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL, MAX_ACTIVE_ADVANCED_ORDERS,
     MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_BOOK_STALE_AFTER, TWAP_MAX_RETRY_ATTEMPTS,
-    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES, TwapBookSnapshot, TwapChildOrder, TwapChildStatus,
-    TwapEventKind, TwapOrder, TwapPauseReason, TwapPendingOp, TwapPendingSlice, TwapStatus,
-    parse_twap_duration_minutes, parse_twap_slice_count, quantize_twap_slice_size,
-    twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate, twap_child_cloid,
-    twap_limit_price_for_slice, twap_min_quantized_child_notional,
+    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES, TWAP_RECONCILIATION_TIMEOUT, TwapBookSnapshot,
+    TwapChildOrder, TwapChildStatus, TwapEventKind, TwapOrder, TwapPauseReason, TwapPendingOp,
+    TwapPendingSlice, TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count,
+    quantize_twap_slice_size, twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate,
+    twap_child_cloid, twap_limit_price_for_slice, twap_min_quantized_child_notional,
     twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
     twap_target_size_from_quantity, validate_twap_interval,
 };
@@ -1079,6 +1079,7 @@ impl TradingTerminal {
                             child.exchange_summary = status.raw_summary.clone();
                         }
                     }
+                    twap.reconciliation_deadline = Some(now + TWAP_RECONCILIATION_TIMEOUT);
                     twap.push_event(
                         TwapEventKind::Reconciled,
                         format!(
@@ -1176,6 +1177,7 @@ impl TradingTerminal {
         let Some(data) = self.account_data.as_ref() else {
             return;
         };
+        let now = Instant::now();
         let fills = data.fills.clone();
         let mut archive_ids = Vec::new();
         for twap in self.twap_orders.values_mut() {
@@ -1188,6 +1190,7 @@ impl TradingTerminal {
             if twap.filled_size > before {
                 if before_status == TwapStatus::Paused && !twap.has_status_unknown_child() {
                     twap.status_check_cloid = None;
+                    twap.reconciliation_deadline = None;
                     twap.push_event(
                         TwapEventKind::Reconciled,
                         "TWAP resumed after account fill reconciliation".to_string(),
@@ -1202,6 +1205,28 @@ impl TradingTerminal {
                         float_to_wire(twap.target_size)
                     ),
                     false,
+                );
+            } else if TwapOrder::reconciliation_timed_out(twap.reconciliation_deadline, now)
+                && twap.has_status_unknown_child()
+            {
+                // The exchange reported a child as filled, but `account.fills`
+                // never echoed it within TWAP_RECONCILIATION_TIMEOUT. Tear
+                // the TWAP down with a clear, actionable error rather than
+                // leave it paused indefinitely with `status_check_cloid` set
+                // (which would block every future slice via `can_schedule_at`).
+                let pending_cloid = twap.status_check_cloid.clone().unwrap_or_default();
+                twap.status_check_cloid = None;
+                twap.reconciliation_deadline = None;
+                twap.status = TwapStatus::Error;
+                twap.push_event(
+                    TwapEventKind::Error,
+                    format!(
+                        "Could not reconcile slice {pending_cloid} via account fills within {}s; \
+                         exchange reported fill but account fills did not catch up. Check the \
+                         exchange before manually resuming.",
+                        TWAP_RECONCILIATION_TIMEOUT.as_secs()
+                    ),
+                    true,
                 );
             }
             if twap.status.is_terminal()
@@ -1840,8 +1865,18 @@ mod tests {
         TwapAccountRefresh, TwapExchangeErrorAction, classify_twap_exchange_error,
         twap_cancel_target_matches, twap_ioc_limit_price, twap_place_result_refresh_policy,
     };
+    use crate::account::{
+        AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
+        SpotClearinghouseState, UserFeeRates,
+    };
+    use crate::api::OrderStatusResult;
+    use crate::app_state::TradingTerminal;
     use crate::signing::ExchangeResponse;
-    use crate::twap_state::TwapPauseReason;
+    use crate::twap_state::{
+        TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapPauseReason,
+        TwapStatus,
+    };
+    use std::time::{Duration, Instant};
 
     fn exchange_response(status: serde_json::Value) -> ExchangeResponse {
         serde_json::from_value(serde_json::json!({
@@ -1854,6 +1889,143 @@ mod tests {
             }
         }))
         .expect("test exchange response should deserialize")
+    }
+
+    fn filled_status(cloid: &str, oid: u64) -> OrderStatusResult {
+        OrderStatusResult {
+            status: "filled".to_string(),
+            oid: Some(oid),
+            cloid: Some(cloid.to_string()),
+            raw_summary: format!("filled oid={oid} cloid={cloid}"),
+        }
+    }
+
+    fn test_twap(id: u64, cloid: &str, now: Instant) -> TwapOrder {
+        let mut twap = TwapOrder::new(
+            id,
+            "BTC".to_string(),
+            "BTC".to_string(),
+            "0xabc".to_string(),
+            "test-agent-key".to_string().into(),
+            true,
+            1.0,
+            0,
+            3,
+            false,
+            false,
+            90.0,
+            110.0,
+            false,
+            Duration::from_secs(300),
+            2,
+            now,
+            1_000,
+        );
+        twap.status = TwapStatus::Paused;
+        twap.pause_reason = Some(TwapPauseReason::StatusUnknown);
+        twap.status_check_cloid = Some(cloid.to_string());
+        twap.child_orders.push(TwapChildOrder {
+            index: 1,
+            requested_at: now,
+            planned_size: 0.5,
+            limit_price: 100.0,
+            oid: None,
+            cloid: Some(cloid.to_string()),
+            status: TwapChildStatus::StatusUnknown,
+            exchange_summary: "status unknown".to_string(),
+            filled_size: 0.0,
+            avg_price: None,
+            fee: 0.0,
+            retry_count: 0,
+        });
+        twap
+    }
+
+    fn empty_account_data() -> AccountData {
+        AccountData {
+            clearinghouse: ClearinghouseState {
+                margin_summary: MarginSummary {
+                    account_value: "0".to_string(),
+                    total_ntl_pos: "0".to_string(),
+                    total_margin_used: "0".to_string(),
+                },
+                cross_margin_summary: None,
+                cross_maintenance_margin_used: None,
+                withdrawable: "0".to_string(),
+                asset_positions: Vec::new(),
+            },
+            spot: SpotClearinghouseState {
+                balances: Vec::new(),
+                portfolio_margin_enabled: false,
+                portfolio_margin_ratio: None,
+                token_to_available_after_maintenance: None,
+            },
+            open_orders: Vec::new(),
+            fills: Vec::new(),
+            funding_history: Vec::new(),
+            fee_rates: UserFeeRates::default(),
+            completeness: AccountDataCompleteness::default(),
+        }
+    }
+
+    #[test]
+    fn filled_status_check_arms_reconciliation_deadline() {
+        let now = Instant::now();
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal.twap_orders.insert(1, test_twap(1, cloid, now));
+
+        let _task = terminal.handle_twap_order_status_result(
+            1,
+            cloid.to_string(),
+            Ok(filled_status(cloid, 42)),
+        );
+
+        let twap = terminal
+            .twap_orders
+            .get(&1)
+            .expect("twap should remain active");
+        assert_eq!(twap.status_check_cloid.as_deref(), Some(cloid));
+        assert_eq!(
+            twap.child_orders[0].status,
+            TwapChildStatus::AwaitingReconciliation
+        );
+        let deadline = twap
+            .reconciliation_deadline
+            .expect("exchange-filled child must arm reconciliation watchdog");
+        assert!(deadline > now);
+        assert!(deadline <= Instant::now() + TWAP_RECONCILIATION_TIMEOUT);
+    }
+
+    #[test]
+    fn reconciliation_timeout_fails_closed_when_account_fills_never_catch_up() {
+        let now = Instant::now();
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal.account_data = Some(empty_account_data());
+        let mut twap = test_twap(1, cloid, now);
+        twap.child_orders[0].status = TwapChildStatus::AwaitingReconciliation;
+        twap.status_check_cloid = Some(cloid.to_string());
+        twap.reconciliation_deadline = Some(now);
+        terminal.twap_orders.insert(1, twap);
+
+        terminal.reconcile_twap_fills_from_account();
+
+        let twap = terminal
+            .twap_orders
+            .get(&1)
+            .expect("timed-out twap should remain inspectable");
+        assert_eq!(twap.status, TwapStatus::Error);
+        assert_eq!(twap.status_check_cloid, None);
+        assert_eq!(twap.reconciliation_deadline, None);
+        assert!(
+            twap.events
+                .iter()
+                .any(|event| event.is_error && event.message.contains("Could not reconcile slice")),
+            "timeout should leave an actionable error event"
+        );
     }
 
     #[test]
