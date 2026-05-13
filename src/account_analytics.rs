@@ -1,3 +1,4 @@
+mod http;
 mod income;
 mod model;
 mod portfolio;

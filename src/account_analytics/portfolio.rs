@@ -1,3 +1,4 @@
+use super::http::post_info_json;
 use super::model::{PortfolioBucket, PortfolioHistory};
 use crate::api::{API_URL, CLIENT};
 
@@ -5,18 +6,21 @@ use serde_json::Value;
 
 /// Fetch user portfolio history buckets from the `portfolio` info endpoint.
 pub async fn fetch_portfolio_history(address: String) -> Result<PortfolioHistory, String> {
-    let response = CLIENT
-        .clone()
-        .post(API_URL)
-        .json(&serde_json::json!({"type": "portfolio", "user": address}))
-        .send()
-        .await
-        .map_err(|e| format!("portfolio request failed: {e}"))?;
+    fetch_portfolio_history_from_url(CLIENT.clone(), API_URL, address).await
+}
 
-    let raw: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("portfolio parse failed: {e}"))?;
+async fn fetch_portfolio_history_from_url(
+    client: reqwest::Client,
+    url: &str,
+    address: String,
+) -> Result<PortfolioHistory, String> {
+    let raw: Value = post_info_json(
+        &client,
+        url,
+        "portfolio",
+        serde_json::json!({"type": "portfolio", "user": address}),
+    )
+    .await?;
 
     if let Some(obj) = raw.as_object()
         && let Some(err) = obj.get("error").and_then(|v| v.as_str())
@@ -134,7 +138,48 @@ fn value_as_f64(value: &Value) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_history_points, parse_portfolio_bucket};
+    use super::{fetch_portfolio_history_from_url, parse_history_points, parse_portfolio_bucket};
+
+    async fn one_shot_info_server(status_line: &str, body: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let status_line = status_line.to_string();
+        let body = body.to_string();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept");
+            let mut buf = [0_u8; 4096];
+            let _ = socket.read(&mut buf).await.expect("read request");
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\ncontent-type: text/plain\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write response");
+        });
+
+        let result = fetch_portfolio_history_from_url(
+            reqwest::Client::new(),
+            &format!("http://{addr}/info"),
+            "0xabc".to_string(),
+        )
+        .await;
+        server.await.expect("server task");
+        result.expect_err("non-success response should fail")
+    }
+
+    #[tokio::test]
+    async fn portfolio_fetch_reports_http_status_before_json_parse() {
+        let err = one_shot_info_server("429 Too Many Requests", "rate limited").await;
+
+        assert!(err.contains("portfolio request failed with HTTP 429 Too Many Requests"));
+        assert!(err.contains("rate limited"));
+        assert!(!err.contains("parse failed"));
+    }
 
     #[test]
     fn history_points_skip_malformed_numeric_values() {
