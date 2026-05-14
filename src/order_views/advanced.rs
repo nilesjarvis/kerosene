@@ -260,8 +260,7 @@ fn history_order_row(
     } else {
         "saved".to_string()
     };
-    let display_summary = hide_order_oid_references(&entry.summary);
-    let summary = compact_summary(&display_summary);
+    let summary = compact_history_summary(&entry.summary);
 
     container(
         row![
@@ -316,12 +315,57 @@ fn chase_status(chase: &ChaseOrder) -> &'static str {
     }
 }
 
+const SUMMARY_DISPLAY_LIMIT: usize = 140;
+const SUMMARY_SCAN_LIMIT: usize = SUMMARY_DISPLAY_LIMIT * 4;
+
 fn compact_summary(summary: &str) -> String {
-    const LIMIT: usize = 140;
-    if summary.chars().count() <= LIMIT {
+    if summary.chars().count() <= SUMMARY_DISPLAY_LIMIT {
         return summary.to_string();
     }
-    summary.chars().take(LIMIT).collect::<String>() + "..."
+    summary
+        .chars()
+        .take(SUMMARY_DISPLAY_LIMIT)
+        .collect::<String>()
+        + "..."
+}
+
+fn compact_history_summary(summary: &str) -> String {
+    let mut limited = summary
+        .chars()
+        .take(SUMMARY_SCAN_LIMIT + 1)
+        .collect::<String>();
+    let source_truncated = limited.chars().count() > SUMMARY_SCAN_LIMIT;
+    if source_truncated {
+        limited.pop();
+        trim_trailing_open_oid_reference(&mut limited);
+    }
+
+    let display_summary = hide_order_oid_references(&limited);
+    if !source_truncated {
+        return compact_summary(&display_summary);
+    }
+
+    let mut summary = display_summary
+        .chars()
+        .take(SUMMARY_DISPLAY_LIMIT)
+        .collect::<String>();
+    summary.push_str("...");
+    summary
+}
+
+fn trim_trailing_open_oid_reference(summary: &mut String) {
+    let Some(start) = summary.rfind("(oid ") else {
+        return;
+    };
+    let after_prefix = &summary[start + "(oid ".len()..];
+    if after_prefix.find(')').is_none()
+        && !after_prefix.is_empty()
+        && after_prefix.chars().all(|ch| ch.is_ascii_digit())
+    {
+        summary.truncate(start);
+        let trimmed_len = summary.trim_end().len();
+        summary.truncate(trimmed_len);
+    }
 }
 
 fn hide_order_oid_references(summary: &str) -> String {
@@ -329,7 +373,7 @@ fn hide_order_oid_references(summary: &str) -> String {
 }
 
 fn strip_parenthesized_oid_references(summary: &str) -> String {
-    let mut result = String::with_capacity(summary.len());
+    let mut result = String::new();
     let mut rest = summary;
     while let Some(start) = rest.find("(oid ") {
         result.push_str(rest[..start].trim_end());
@@ -352,7 +396,7 @@ fn strip_parenthesized_oid_references(summary: &str) -> String {
 
 fn strip_inline_oid_references(summary: &str) -> String {
     let mut words = summary.split_whitespace().peekable();
-    let mut stripped = Vec::new();
+    let mut stripped = String::new();
 
     while let Some(word) = words.next() {
         if word.eq_ignore_ascii_case("oid")
@@ -360,19 +404,31 @@ fn strip_inline_oid_references(summary: &str) -> String {
             && let Some(suffix) = numeric_token_suffix(next)
         {
             words.next();
-            stripped.push(format!("order{suffix}"));
+            push_order_reference(&mut stripped, suffix);
             continue;
         }
 
         if let Some(suffix) = oid_assignment_suffix(word) {
-            stripped.push(format!("order{suffix}"));
+            push_order_reference(&mut stripped, suffix);
             continue;
         }
 
-        stripped.push(word.to_string());
+        push_summary_word(&mut stripped, word);
     }
 
-    stripped.join(" ")
+    stripped
+}
+
+fn push_order_reference(summary: &mut String, suffix: &str) {
+    push_summary_word(summary, "order");
+    summary.push_str(suffix);
+}
+
+fn push_summary_word(summary: &mut String, word: &str) {
+    if !summary.is_empty() {
+        summary.push(' ');
+    }
+    summary.push_str(word);
 }
 
 fn oid_assignment_suffix(word: &str) -> Option<&str> {
@@ -394,7 +450,7 @@ fn numeric_token_suffix(value: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::hide_order_oid_references;
+    use super::{SUMMARY_DISPLAY_LIMIT, compact_history_summary, hide_order_oid_references};
 
     #[test]
     fn hides_parenthesized_oid_from_history_summary() {
@@ -418,6 +474,32 @@ mod tests {
             hide_order_oid_references("filled oid=123 cloid=0xabc"),
             "filled order cloid=0xabc"
         );
+    }
+
+    #[test]
+    fn compacts_history_summary_after_bounded_oid_hiding() {
+        let summary = format!("filled oid=123 {}", "x ".repeat(SUMMARY_DISPLAY_LIMIT * 8));
+
+        let compacted = compact_history_summary(&summary);
+
+        assert!(compacted.starts_with("filled order x"));
+        assert!(compacted.ends_with("..."));
+        assert!(compacted.chars().count() <= SUMMARY_DISPLAY_LIMIT + 3);
+    }
+
+    #[test]
+    fn compact_history_summary_drops_trailing_partial_parenthesized_oid() {
+        let summary = format!(
+            "{} (oid {}",
+            "x".repeat(SUMMARY_DISPLAY_LIMIT),
+            "1".repeat(SUMMARY_DISPLAY_LIMIT * 8)
+        );
+
+        let compacted = compact_history_summary(&summary);
+
+        assert!(!compacted.contains("(oid"));
+        assert!(compacted.ends_with("..."));
+        assert!(compacted.chars().count() <= SUMMARY_DISPLAY_LIMIT + 3);
     }
 }
 
