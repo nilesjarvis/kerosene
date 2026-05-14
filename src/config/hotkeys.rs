@@ -8,6 +8,7 @@ pub enum HotkeyAction {
     AddCandlestickChart,
     OpenWalletTracker,
     OpenQuickSymbolSearch,
+    OpenSettingsWindow,
     SwitchAccount { secret_id: String },
 }
 
