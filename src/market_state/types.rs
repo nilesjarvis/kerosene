@@ -5,7 +5,7 @@ use crate::helpers::{aggregate_levels, tick_sizes_match};
 
 use std::cell::{Ref, RefCell};
 use std::collections::VecDeque;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum SymbolSearchSortMode {
@@ -134,6 +134,10 @@ pub struct LiveWatchlistInstance {
 
 pub type OrderBookId = u64;
 
+const SHORT_TERM_PRICE_MOVE_WINDOW: Duration = Duration::from_secs(3);
+const SHORT_TERM_PRICE_HISTORY_WINDOW: Duration = Duration::from_secs(10);
+const SHORT_TERM_PRICE_HISTORY_LIMIT: usize = 2_048;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OrderBookDisplayMode {
     #[default]
@@ -164,6 +168,7 @@ pub struct OrderBookInstance {
     pub show_spread_chart: bool,
     pub spread_history: VecDeque<(Instant, f64)>,
     pub spread_chart_height: f32,
+    mid_price_history: VecDeque<(Instant, f64)>,
     book_source_tick_size: Option<f64>,
     pending_book_sigfigs: Option<(Option<u8>, Option<u8>)>,
     book_revision: u64,
@@ -199,6 +204,7 @@ impl OrderBookInstance {
             show_spread_chart: false,
             spread_history: VecDeque::new(),
             spread_chart_height: 60.0,
+            mid_price_history: VecDeque::new(),
             book_source_tick_size: None,
             pending_book_sigfigs: None,
             book_revision: 0,
@@ -258,6 +264,78 @@ impl OrderBookInstance {
         self.tick_size = tick;
     }
 
+    pub fn best_bid_ask(&self) -> (Option<f64>, Option<f64>) {
+        let mut true_best_bid = self.book.bids.first().map(|level| level.px);
+        let mut true_best_ask = self.book.asks.first().map(|level| level.px);
+
+        if let Some(ctx) = &self.asset_ctx
+            && let Some(impact) = &ctx.impact_pxs
+            && impact.len() >= 2
+            && let (Ok(best_bid), Ok(best_ask)) =
+                (impact[0].parse::<f64>(), impact[1].parse::<f64>())
+        {
+            true_best_bid = Some(best_bid);
+            true_best_ask = Some(best_ask);
+        }
+
+        (positive_finite(true_best_bid), positive_finite(true_best_ask))
+    }
+
+    pub fn current_mid_price(&self) -> Option<f64> {
+        let (best_bid, best_ask) = self.best_bid_ask();
+        let mid = match (best_bid, best_ask) {
+            (Some(best_bid), Some(best_ask)) => (best_bid + best_ask) / 2.0,
+            (Some(best_bid), None) => best_bid,
+            (None, Some(best_ask)) => best_ask,
+            (None, None) => return None,
+        };
+
+        positive_finite(Some(mid))
+    }
+
+    pub fn record_mid_price_sample(&mut self, now: Instant) {
+        let Some(mid) = self.current_mid_price() else {
+            return;
+        };
+
+        if let Some((latest_time, latest_mid)) = self.mid_price_history.front_mut()
+            && mid_prices_match(*latest_mid, mid)
+        {
+            *latest_time = now;
+            self.trim_mid_price_history(now);
+            return;
+        }
+
+        self.mid_price_history.push_front((now, mid));
+        self.trim_mid_price_history(now);
+    }
+
+    pub fn clear_mid_price_history(&mut self) {
+        self.mid_price_history.clear();
+    }
+
+    pub fn short_term_price_move(&self) -> Option<f64> {
+        let (latest_time, latest_price) = self.mid_price_history.front().copied()?;
+        let cutoff = latest_time
+            .checked_sub(SHORT_TERM_PRICE_MOVE_WINDOW)
+            .unwrap_or(latest_time);
+
+        let mut reference = None;
+        for (time, price) in &self.mid_price_history {
+            if *time < cutoff {
+                break;
+            }
+            reference = Some((*time, *price));
+        }
+
+        let (reference_time, reference_price) = reference?;
+        if reference_time == latest_time {
+            return None;
+        }
+
+        Some(latest_price - reference_price)
+    }
+
     pub fn can_render_book_at_tick(&self, tick: f64) -> bool {
         self.book_source_tick_size
             .is_none_or(|source_tick| source_tick <= tick || tick_sizes_match(source_tick, tick))
@@ -274,6 +352,23 @@ impl OrderBookInstance {
         incoming_source_tick < current_source_tick
             && self.can_render_book_at_tick(self.tick_size)
             && (!self.book.bids.is_empty() || !self.book.asks.is_empty())
+    }
+
+    fn trim_mid_price_history(&mut self, now: Instant) {
+        let cutoff = now
+            .checked_sub(SHORT_TERM_PRICE_HISTORY_WINDOW)
+            .unwrap_or(now);
+
+        while self.mid_price_history.len() > SHORT_TERM_PRICE_HISTORY_LIMIT {
+            self.mid_price_history.pop_back();
+        }
+        while self
+            .mid_price_history
+            .back()
+            .is_some_and(|(time, _)| *time < cutoff)
+        {
+            self.mid_price_history.pop_back();
+        }
     }
 
     /// Cached aggregation of the current book at `tick`, with cumulative depth
@@ -321,6 +416,15 @@ impl OrderBookInstance {
         }
         Ref::map(self.dom_ladder.borrow(), |cache| &cache.rows)
     }
+}
+
+fn positive_finite(value: Option<f64>) -> Option<f64> {
+    value.filter(|value| value.is_finite() && *value > 0.0)
+}
+
+fn mid_prices_match(left: f64, right: f64) -> bool {
+    let tolerance = f64::EPSILON * 8.0 * left.abs().max(right.abs()).max(1.0);
+    (left - right).abs() <= tolerance
 }
 
 fn merge_books_preserving_scope(current: &OrderBook, incoming: &OrderBook) -> OrderBook {
@@ -390,6 +494,13 @@ mod tests {
 
     fn lvl(px: f64, sz: f64) -> BookLevel {
         BookLevel { px, sz }
+    }
+
+    fn book_at_mid(mid: f64) -> OrderBook {
+        OrderBook {
+            bids: vec![lvl(mid - 0.5, 1.0)],
+            asks: vec![lvl(mid + 0.5, 1.0)],
+        }
     }
 
     #[test]
@@ -519,6 +630,64 @@ mod tests {
         });
 
         assert!(inst.can_render_book_at_tick(0.1));
+    }
+
+    #[test]
+    fn short_term_price_move_tracks_recent_mid_delta() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 1.0);
+        let now = Instant::now();
+
+        inst.set_book(book_at_mid(100.0));
+        inst.record_mid_price_sample(now);
+        inst.set_book(book_at_mid(101.25));
+        inst.record_mid_price_sample(now + Duration::from_secs(3));
+
+        assert_eq!(inst.short_term_price_move(), Some(1.25));
+    }
+
+    #[test]
+    fn short_term_price_move_uses_oldest_sample_inside_three_second_window() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 1.0);
+        let now = Instant::now();
+
+        inst.set_book(book_at_mid(100.0));
+        inst.record_mid_price_sample(now);
+        inst.set_book(book_at_mid(101.0));
+        inst.record_mid_price_sample(now + Duration::from_secs(2));
+        inst.set_book(book_at_mid(102.5));
+        inst.record_mid_price_sample(now + Duration::from_secs(5));
+
+        assert_eq!(inst.short_term_price_move(), Some(1.5));
+    }
+
+    #[test]
+    fn unchanged_mid_samples_update_time_without_growing_history() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 1.0);
+        let now = Instant::now();
+        let later = now + Duration::from_secs(3);
+
+        inst.set_book(book_at_mid(100.0));
+        inst.record_mid_price_sample(now);
+        inst.record_mid_price_sample(later);
+
+        assert_eq!(inst.mid_price_history.len(), 1);
+        assert_eq!(inst.mid_price_history.front().copied(), Some((later, 100.0)));
+        assert_eq!(inst.short_term_price_move(), None);
+    }
+
+    #[test]
+    fn clearing_mid_price_history_removes_short_term_move() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 1.0);
+        let now = Instant::now();
+
+        inst.set_book(book_at_mid(100.0));
+        inst.record_mid_price_sample(now);
+        inst.set_book(book_at_mid(99.5));
+        inst.record_mid_price_sample(now + Duration::from_secs(2));
+
+        inst.clear_mid_price_history();
+
+        assert_eq!(inst.short_term_price_move(), None);
     }
 
     #[test]

@@ -169,6 +169,7 @@ impl TradingTerminal {
                 Ok(book) => {
                     let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
                     inst.set_book_with_source(book, source_tick);
+                    inst.record_mid_price_sample(std::time::Instant::now());
                     inst.book_error = None;
                     let mid = inst.book.mid_price();
 
