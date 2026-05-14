@@ -30,9 +30,15 @@ impl TradingTerminal {
                     self.push_toast("Select a saved layout before updating".to_string(), true);
                     return Task::none();
                 };
-                self.update_saved_layout_snapshot(name);
+                if !self.saved_layouts.iter().any(|layout| layout.name == name) {
+                    self.active_layout_name = None;
+                    self.push_toast(format!("Layout '{}' no longer exists", name), true);
+                    return Task::none();
+                }
+                self.update_saved_layout_snapshot(name.clone());
                 self.layout_rename_index = None;
                 self.layout_rename_input.clear();
+                self.push_toast(format!("Layout '{}' updated", name), false);
                 self.persist_config();
             }
             Message::LoadLayout(layout) => {
