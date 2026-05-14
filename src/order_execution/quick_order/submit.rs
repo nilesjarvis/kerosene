@@ -91,6 +91,9 @@ impl TradingTerminal {
         let sym = self.exchange_symbols.iter().find(|s| s.key == chart_symbol);
         let Some(sym) = sym else {
             self.order_status = Some((format!("Symbol '{}' not found", chart_symbol), true));
+            if let Some(instance) = self.charts.get_mut(&chart_id) {
+                instance.set_quick_order(form);
+            }
             return Task::none();
         };
         if sym.market_type == MarketType::Outcome {
