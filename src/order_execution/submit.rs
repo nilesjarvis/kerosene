@@ -9,7 +9,7 @@ use iced::Task;
 
 mod inputs;
 
-use inputs::{order_quantity_from_input, parse_positive_amount};
+use inputs::{order_quantity_from_input, parse_positive_amount, quantize_order_size};
 
 impl TradingTerminal {
     pub(crate) fn execute_order(&mut self, is_buy: bool) -> Task<Message> {
@@ -106,6 +106,16 @@ impl TradingTerminal {
             Some(quantity) => quantity,
             None => {
                 self.order_status = Some(("Invalid price for USD conversion".into(), true));
+                return Task::none();
+            }
+        };
+        let qty = match quantize_order_size(qty, sz_decimals) {
+            Some(quantity) => quantity,
+            None => {
+                self.order_status = Some((
+                    "Order quantity is too small after size precision quantization".into(),
+                    true,
+                ));
                 return Task::none();
             }
         };

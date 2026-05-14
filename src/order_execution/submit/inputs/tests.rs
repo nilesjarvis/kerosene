@@ -25,6 +25,24 @@ fn order_quantity_converts_usd_amount_by_price() {
 }
 
 #[test]
+fn order_size_quantization_floors_to_exchange_size_decimals() {
+    assert_eq!(quantize_order_size(10.0 / 3.0, 2), Some(3.33));
+    assert_eq!(quantize_order_size(1.9999, 0), Some(1.0));
+}
+
+#[test]
+fn order_size_quantization_caps_to_wire_precision() {
+    assert_eq!(quantize_order_size(1.123456789, 18), Some(1.12345678));
+}
+
+#[test]
+fn order_size_quantization_rejects_zero_nonfinite_and_too_small_sizes() {
+    assert_eq!(quantize_order_size(0.0, 2), None);
+    assert_eq!(quantize_order_size(f64::NAN, 2), None);
+    assert_eq!(quantize_order_size(0.009, 2), None);
+}
+
+#[test]
 fn order_quantity_rejects_invalid_raw_quantity_or_conversion_price() {
     assert_eq!(order_quantity_from_input(0.0, 100.0, false), None);
     assert_eq!(order_quantity_from_input(f64::NAN, 100.0, false), None);
