@@ -1,8 +1,9 @@
-use crate::helpers::{format_size, tick_decimals};
+use super::super::UserOrderBookLevels;
+use crate::helpers::{format_size, tick_decimals, user_order_price_marker};
 use crate::market_state::{DomLadderRow, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::container as container_style;
-use iced::widget::{Column, container, row, scrollable, text};
+use iced::widget::{Column, Space, container, row, scrollable, text};
 use iced::{Color, Element, Fill, Theme};
 
 const DOM_SIDE_ROWS: usize = 80;
@@ -15,6 +16,7 @@ pub(super) fn view_order_book_dom_ladder(
     inst: &OrderBookInstance,
     tick: f64,
     spread_widget: Element<'static, Message>,
+    user_order_levels: &UserOrderBookLevels,
 ) -> Element<'static, Message> {
     let rows = inst.dom_ladder_rows(tick, DOM_SIDE_ROWS);
     let decimals = tick_decimals(tick);
@@ -27,6 +29,8 @@ pub(super) fn view_order_book_dom_ladder(
                 rows.max_size,
                 rows.max_cumulative,
                 decimals,
+                tick,
+                user_order_levels,
             ))
         });
     let bids = rows
@@ -38,6 +42,8 @@ pub(super) fn view_order_book_dom_ladder(
                 rows.max_size,
                 rows.max_cumulative,
                 decimals,
+                tick,
+                user_order_levels,
             ))
         });
 
@@ -85,11 +91,23 @@ fn dom_row(
     max_size: f64,
     max_cumulative: f64,
     decimals: usize,
+    tick: f64,
+    user_order_levels: &UserOrderBookLevels,
 ) -> Element<'static, Message> {
+    let has_user_bid = user_order_levels.has_bid_at_price(row_data.price, tick);
+    let has_user_ask = user_order_levels.has_ask_at_price(row_data.price, tick);
+    let user_order_side = if has_user_bid {
+        Some(true)
+    } else if has_user_ask {
+        Some(false)
+    } else {
+        None
+    };
+
     row![
         dom_value_cell(row_data.bid_cumulative, max_cumulative, true, true),
         dom_value_cell(row_data.bid_size, max_size, true, false),
-        price_cell(row_data, decimals),
+        price_cell(row_data, decimals, user_order_side),
         dom_value_cell(row_data.ask_size, max_size, false, false),
         dom_value_cell(row_data.ask_cumulative, max_cumulative, false, true),
     ]
@@ -110,56 +128,64 @@ fn dom_value_cell(
     let alpha_scale = if is_cumulative { 0.16 } else { 0.34 };
     let text_alpha = if value.is_some() { 0.92 } else { 0.22 };
 
-    container(
-        text(label)
-            .size(12)
-            .font(iced::Font::MONOSPACE)
-            .align_x(iced::alignment::Horizontal::Right)
-            .style(move |theme: &Theme| text::Style {
-                color: Some(Color {
-                    a: text_alpha,
-                    ..theme.palette().text
-                }),
-            })
-            .width(Fill),
-    )
-    .width(Fill)
-    .padding([2, 4])
-    .style(move |theme: &Theme| {
-        let mut color = if is_bid {
-            theme.palette().success
-        } else {
-            theme.palette().danger
-        };
-        color.a = 0.03 + intensity * alpha_scale;
-        container_style::Style {
-            background: Some(color.into()),
-            ..Default::default()
-        }
-    })
-    .into()
+    let content = text(label)
+        .size(12)
+        .font(iced::Font::MONOSPACE)
+        .align_x(iced::alignment::Horizontal::Right)
+        .style(move |theme: &Theme| text::Style {
+            color: Some(Color {
+                a: text_alpha,
+                ..theme.palette().text
+            }),
+        })
+        .width(Fill);
+
+    container(content)
+        .width(Fill)
+        .padding([2, 4])
+        .style(move |theme: &Theme| {
+            let mut color = if is_bid {
+                theme.palette().success
+            } else {
+                theme.palette().danger
+            };
+            color.a = 0.03 + intensity * alpha_scale;
+            container_style::Style {
+                background: Some(color.into()),
+                ..Default::default()
+            }
+        })
+        .into()
 }
 
-fn price_cell(row_data: &DomLadderRow, decimals: usize) -> Element<'static, Message> {
+fn price_cell(
+    row_data: &DomLadderRow,
+    decimals: usize,
+    user_order_side: Option<bool>,
+) -> Element<'static, Message> {
     let price = row_data.price;
     let is_best_bid = row_data.is_best_bid;
     let is_best_ask = row_data.is_best_ask;
     container(
-        text(format!("{price:.decimals$}"))
-            .size(12)
-            .font(iced::Font::MONOSPACE)
-            .align_x(iced::alignment::Horizontal::Right)
-            .style(move |theme: &Theme| {
-                let color = if is_best_bid {
-                    theme.palette().success
-                } else if is_best_ask {
-                    theme.palette().danger
-                } else {
-                    theme.palette().text
-                };
-                text::Style { color: Some(color) }
-            })
-            .width(Fill),
+        row![
+            Space::new().width(Fill),
+            user_order_price_marker(user_order_side),
+            text(format!("{price:.decimals$}"))
+                .size(12)
+                .font(iced::Font::MONOSPACE)
+                .style(move |theme: &Theme| {
+                    let color = if is_best_bid {
+                        theme.palette().success
+                    } else if is_best_ask {
+                        theme.palette().danger
+                    } else {
+                        theme.palette().text
+                    };
+                    text::Style { color: Some(color) }
+                }),
+        ]
+        .spacing(2)
+        .align_y(iced::Alignment::Center),
     )
     .width(Fill)
     .padding([2, 4])

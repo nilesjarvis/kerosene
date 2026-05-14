@@ -1,8 +1,9 @@
 mod dom;
 mod spread;
 
+use super::UserOrderBookLevels;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{book_row, tick_decimals};
+use crate::helpers::{BookRowData, book_row, tick_decimals};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::{Column, column, container, scrollable};
@@ -18,6 +19,7 @@ impl TradingTerminal {
         inst: &OrderBookInstance,
         tick: f64,
         theme: &Theme,
+        user_order_levels: &UserOrderBookLevels,
     ) -> Element<'static, Message> {
         let max_levels = 100;
         let decimals = tick_decimals(tick);
@@ -51,13 +53,35 @@ impl TradingTerminal {
         let asks = ask_rows
             .into_iter()
             .fold(Column::new().spacing(0), |col, (px, size, cum)| {
-                col.push(book_row(px, size, cum, max_cum, max_sz, decimals, false))
+                col.push(book_row(
+                    BookRowData {
+                        px,
+                        sz: size,
+                        cum,
+                        has_user_order: user_order_levels.has_ask_at_price(px, tick),
+                    },
+                    max_cum,
+                    max_sz,
+                    decimals,
+                    false,
+                ))
             });
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
         let bids = bid_rows
             .into_iter()
             .fold(Column::new().spacing(0), |col, (px, size, cum)| {
-                col.push(book_row(px, size, cum, max_cum, max_sz, decimals, true))
+                col.push(book_row(
+                    BookRowData {
+                        px,
+                        sz: size,
+                        cum,
+                        has_user_order: user_order_levels.has_bid_at_price(px, tick),
+                    },
+                    max_cum,
+                    max_sz,
+                    decimals,
+                    true,
+                ))
             });
 
         let order_book_rows = column![asks, spread_widget, bids].spacing(2);
@@ -88,9 +112,10 @@ impl TradingTerminal {
         inst: &OrderBookInstance,
         tick: f64,
         theme: &Theme,
+        user_order_levels: &UserOrderBookLevels,
     ) -> Element<'static, Message> {
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
-        dom::view_order_book_dom_ladder(inst, tick, spread_widget)
+        dom::view_order_book_dom_ladder(inst, tick, spread_widget, user_order_levels)
     }
 
     pub(super) fn view_order_book_dom_header() -> Element<'static, Message> {
