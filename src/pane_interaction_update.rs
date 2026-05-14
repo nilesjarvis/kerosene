@@ -2,14 +2,19 @@ use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
-use crate::pane_state::PaneKind;
-use iced::Task;
+use crate::pane_state::{MAIN_PANE_GRID_SPACING, PaneKind};
 use iced::widget::pane_grid;
+use iced::{Size, Task};
+
+const MAIN_STATUS_BAR_RESERVED_HEIGHT: f32 = 28.0;
+const ORDER_ENTRY_MIN_WIDTH: f32 = 300.0;
+const ORDER_ENTRY_MIN_HEIGHT: f32 = 360.0;
 
 impl TradingTerminal {
     pub(crate) fn update_pane_interactions(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
+                let ratio = self.clamp_order_entry_resize_ratio(split, ratio);
                 self.panes.resize(split, ratio);
                 self.persist_config();
             }
@@ -21,6 +26,7 @@ impl TradingTerminal {
                 self.dragging_pane = None;
                 self.panes.drop(pane, target);
                 self.persist_config();
+                return self.sync_main_window_min_size();
             }
             Message::PaneDragged(pane_grid::DragEvent::Canceled { .. }) => {
                 self.dragging_pane = None;
@@ -102,6 +108,7 @@ impl TradingTerminal {
                         _ => {}
                     }
                     self.persist_config();
+                    return self.sync_main_window_min_size();
                 }
             }
             _ => {}
@@ -109,4 +116,164 @@ impl TradingTerminal {
 
         Task::none()
     }
+
+    fn clamp_order_entry_resize_ratio(&self, split: pane_grid::Split, ratio: f32) -> f32 {
+        let base_min_size = self.account_summary_pane_min_size();
+        let size = self.main_pane_grid_size();
+        let split_regions =
+            self.panes
+                .layout()
+                .split_regions(MAIN_PANE_GRID_SPACING, base_min_size, size);
+        let Some((axis, region, _current_ratio)) = split_regions.get(&split).copied() else {
+            return ratio;
+        };
+        let Some((_, a, b)) = split_node(self.panes.layout(), split) else {
+            return ratio;
+        };
+
+        let order_entry_in_a = subtree_contains_order_entry(a, &self.panes);
+        let order_entry_in_b = subtree_contains_order_entry(b, &self.panes);
+        if !order_entry_in_a && !order_entry_in_b {
+            return ratio;
+        }
+
+        let min_a = subtree_min_length(a, axis, &self.panes, base_min_size);
+        let min_b = subtree_min_length(b, axis, &self.panes, base_min_size);
+        let axis_length = match axis {
+            pane_grid::Axis::Horizontal => region.height,
+            pane_grid::Axis::Vertical => region.width,
+        };
+
+        clamp_split_ratio(
+            ratio,
+            axis_length,
+            min_a,
+            min_b,
+            order_entry_in_a,
+            order_entry_in_b,
+        )
+    }
+
+    fn main_pane_grid_size(&self) -> Size {
+        let size = self.main_window_size.unwrap_or(Size::new(1600.0, 960.0));
+        Size::new(
+            size.width,
+            (size.height - MAIN_STATUS_BAR_RESERVED_HEIGHT).max(1.0),
+        )
+    }
+
+    pub(crate) fn main_window_min_size(&self) -> Size {
+        let base_min_size = self.account_summary_pane_min_size();
+        let layout = self.panes.layout();
+
+        Size::new(
+            subtree_min_length(
+                layout,
+                pane_grid::Axis::Vertical,
+                &self.panes,
+                base_min_size,
+            ),
+            subtree_min_length(
+                layout,
+                pane_grid::Axis::Horizontal,
+                &self.panes,
+                base_min_size,
+            ) + MAIN_STATUS_BAR_RESERVED_HEIGHT,
+        )
+    }
+
+    pub(crate) fn sync_main_window_min_size(&self) -> Task<Message> {
+        self.main_window_id
+            .map(|id| iced::window::set_min_size(id, Some(self.main_window_min_size())))
+            .unwrap_or_else(Task::none)
+    }
+}
+
+fn split_node(
+    node: &pane_grid::Node,
+    split: pane_grid::Split,
+) -> Option<(pane_grid::Axis, &pane_grid::Node, &pane_grid::Node)> {
+    match node {
+        pane_grid::Node::Split { id, axis, a, b, .. } => {
+            if *id == split {
+                Some((*axis, a, b))
+            } else {
+                split_node(a, split).or_else(|| split_node(b, split))
+            }
+        }
+        pane_grid::Node::Pane(_) => None,
+    }
+}
+
+fn subtree_contains_order_entry(
+    node: &pane_grid::Node,
+    panes: &pane_grid::State<PaneKind>,
+) -> bool {
+    match node {
+        pane_grid::Node::Split { a, b, .. } => {
+            subtree_contains_order_entry(a, panes) || subtree_contains_order_entry(b, panes)
+        }
+        pane_grid::Node::Pane(pane) => {
+            matches!(panes.get(*pane), Some(PaneKind::OrderEntry))
+        }
+    }
+}
+
+fn subtree_min_length(
+    node: &pane_grid::Node,
+    measured_axis: pane_grid::Axis,
+    panes: &pane_grid::State<PaneKind>,
+    base_min_size: f32,
+) -> f32 {
+    match node {
+        pane_grid::Node::Split { axis, a, b, .. } => {
+            let min_a = subtree_min_length(a, measured_axis, panes, base_min_size);
+            let min_b = subtree_min_length(b, measured_axis, panes, base_min_size);
+
+            if *axis == measured_axis {
+                min_a + min_b + MAIN_PANE_GRID_SPACING
+            } else {
+                min_a.max(min_b)
+            }
+        }
+        pane_grid::Node::Pane(pane) => panes
+            .get(*pane)
+            .map(|kind| pane_min_length(kind, measured_axis, base_min_size))
+            .unwrap_or(base_min_size),
+    }
+}
+
+fn pane_min_length(kind: &PaneKind, axis: pane_grid::Axis, base_min_size: f32) -> f32 {
+    match (kind, axis) {
+        (PaneKind::OrderEntry, pane_grid::Axis::Horizontal) => ORDER_ENTRY_MIN_HEIGHT,
+        (PaneKind::OrderEntry, pane_grid::Axis::Vertical) => ORDER_ENTRY_MIN_WIDTH,
+        _ => base_min_size,
+    }
+}
+
+fn clamp_split_ratio(
+    ratio: f32,
+    axis_length: f32,
+    min_a: f32,
+    min_b: f32,
+    order_entry_in_a: bool,
+    order_entry_in_b: bool,
+) -> f32 {
+    if !ratio.is_finite() || axis_length <= 0.0 {
+        return ratio;
+    }
+
+    let raw_a = (axis_length * ratio - MAIN_PANE_GRID_SPACING / 2.0).round();
+    let max_a = axis_length - min_b - MAIN_PANE_GRID_SPACING;
+    let target_a = if max_a >= min_a {
+        raw_a.clamp(min_a, max_a)
+    } else if order_entry_in_a && !order_entry_in_b {
+        min_a.min((axis_length - MAIN_PANE_GRID_SPACING).max(0.0))
+    } else if order_entry_in_b && !order_entry_in_a {
+        (axis_length - min_b - MAIN_PANE_GRID_SPACING).max(0.0)
+    } else {
+        raw_a.clamp(0.0, (axis_length - MAIN_PANE_GRID_SPACING).max(0.0))
+    };
+
+    ((target_a + MAIN_PANE_GRID_SPACING / 2.0) / axis_length).clamp(0.0, 1.0)
 }
