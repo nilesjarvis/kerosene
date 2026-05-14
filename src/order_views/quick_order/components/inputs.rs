@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
-use crate::helpers;
+use crate::helpers::{self, parse_number};
 use crate::message::Message;
 use crate::order_execution::QuickOrderForm;
 use iced::widget::{Space, button, column, row, slider, text, text_input};
@@ -166,7 +166,7 @@ fn quick_order_percent_button<'a>(
 }
 
 fn quick_order_fee_quantity(form: &QuickOrderForm, price: f64) -> Option<f64> {
-    let quantity = form.quantity.parse::<f64>().ok()?;
+    let quantity = parse_number(&form.quantity)?;
     if !quantity.is_finite() || quantity <= 0.0 {
         return None;
     }

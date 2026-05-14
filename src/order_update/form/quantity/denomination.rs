@@ -2,6 +2,8 @@
 // Denomination Quantity Math
 // ---------------------------------------------------------------------------
 
+use crate::helpers::format_decimal_with_commas;
+
 pub(in crate::order_update::form) fn toggled_order_quantity_text(
     quantity: f64,
     now_quantity_is_usd: bool,
@@ -27,8 +29,8 @@ pub(in crate::order_update::form) fn toggled_order_quantity_text(
     }
 
     if now_quantity_is_usd {
-        Some(format!("{new_quantity:.2}"))
+        Some(format_decimal_with_commas(new_quantity, 2))
     } else {
-        Some(format!("{new_quantity:.decimals$}"))
+        Some(format_decimal_with_commas(new_quantity, decimals))
     }
 }

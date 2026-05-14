@@ -10,6 +10,10 @@ fn quick_order_size_wire_converts_usd_notional_to_coin_size() {
         quick_order_size_wire("2.5", false, 100.0, 5),
         Some("2.5".into())
     );
+    assert_eq!(
+        quick_order_size_wire("1,234.5", false, 100.0, 5),
+        Some("1234.5".into())
+    );
 }
 
 #[test]

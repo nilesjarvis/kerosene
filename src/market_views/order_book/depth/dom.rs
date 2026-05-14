@@ -3,7 +3,7 @@ use crate::helpers::{clickable_book_row, format_size, tick_decimals, user_order_
 use crate::market_state::{DomLadderRow, OrderBookId, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::container as container_style;
-use iced::widget::{Column, Space, container, row, scrollable, text};
+use iced::widget::{Column, Space, container, responsive, row, scrollable, text};
 use iced::{Color, Element, Fill, Theme};
 
 const DOM_SIDE_ROWS: usize = 80;
@@ -21,52 +21,105 @@ pub(super) fn view_order_book_dom_ladder(
 ) -> Element<'static, Message> {
     let rows = inst.dom_ladder_rows(tick, DOM_SIDE_ROWS);
     let decimals = tick_decimals(tick);
-    let asks = rows
-        .asks
-        .iter()
-        .fold(Column::new().spacing(0), |column, ladder_row| {
-            column.push(dom_row(
-                id,
-                ladder_row,
-                rows.max_size,
-                rows.max_cumulative,
-                decimals,
-                tick,
-                user_order_levels,
-            ))
-        });
-    let bids = rows
-        .bids
-        .iter()
-        .fold(Column::new().spacing(0), |column, ladder_row| {
-            column.push(dom_row(
-                id,
-                ladder_row,
-                rows.max_size,
-                rows.max_cumulative,
-                decimals,
-                tick,
-                user_order_levels,
-            ))
-        });
 
-    let ladder = iced::widget::column![asks, spread_widget, bids].spacing(2);
-
-    scrollable(container(ladder).width(Fill).padding(iced::Padding {
+    let ladder_padding = iced::Padding {
         top: 0.0,
         right: 15.0,
         bottom: 0.0,
         left: 0.0,
-    }))
-    .height(Fill)
-    .direction(iced::widget::scrollable::Direction::Vertical(
-        iced::widget::scrollable::Scrollbar::new()
-            .width(4.0)
-            .scroller_width(4.0)
-            .margin(2.0),
-    ))
-    .id(inst.scroll_id.clone())
-    .into()
+    };
+
+    if inst.center_on_mid {
+        let centered_asks = rows.asks.clone();
+        let centered_bids = rows.bids.clone();
+        let centered_ask_orders = user_order_levels.clone();
+        let centered_bid_orders = user_order_levels.clone();
+        let max_size = rows.max_size;
+        let max_cumulative = rows.max_cumulative;
+
+        let ladder = iced::widget::column![
+            responsive(move |size| {
+                let count =
+                    super::centered_order_book_side_row_count(size.height, centered_asks.len());
+                let start = centered_asks.len().saturating_sub(count);
+                let asks = dom_rows_column(
+                    id,
+                    &centered_asks[start..],
+                    max_size,
+                    max_cumulative,
+                    decimals,
+                    tick,
+                    &centered_ask_orders,
+                );
+
+                container(asks)
+                    .height(Fill)
+                    .align_y(iced::alignment::Vertical::Bottom)
+                    .into()
+            })
+            .height(Fill),
+            spread_widget,
+            responsive(move |size| {
+                let count =
+                    super::centered_order_book_side_row_count(size.height, centered_bids.len());
+                let bids = dom_rows_column(
+                    id,
+                    &centered_bids[..count],
+                    max_size,
+                    max_cumulative,
+                    decimals,
+                    tick,
+                    &centered_bid_orders,
+                );
+
+                container(bids)
+                    .height(Fill)
+                    .align_y(iced::alignment::Vertical::Top)
+                    .into()
+            })
+            .height(Fill),
+        ]
+        .height(Fill)
+        .spacing(2);
+
+        return container(ladder)
+            .width(Fill)
+            .height(Fill)
+            .padding(ladder_padding)
+            .clip(true)
+            .into();
+    }
+
+    let asks = dom_rows_column(
+        id,
+        &rows.asks,
+        rows.max_size,
+        rows.max_cumulative,
+        decimals,
+        tick,
+        user_order_levels,
+    );
+    let bids = dom_rows_column(
+        id,
+        &rows.bids,
+        rows.max_size,
+        rows.max_cumulative,
+        decimals,
+        tick,
+        user_order_levels,
+    );
+    let ladder = iced::widget::column![asks, spread_widget, bids].spacing(2);
+
+    scrollable(container(ladder).width(Fill).padding(ladder_padding))
+        .height(Fill)
+        .direction(iced::widget::scrollable::Direction::Vertical(
+            iced::widget::scrollable::Scrollbar::new()
+                .width(4.0)
+                .scroller_width(4.0)
+                .margin(2.0),
+        ))
+        .id(inst.scroll_id.clone())
+        .into()
 }
 
 pub(super) fn view_order_book_dom_header() -> Element<'static, Message> {
@@ -87,6 +140,29 @@ fn header_cell(label: &'static str) -> Element<'static, Message> {
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Right)
         .into()
+}
+
+fn dom_rows_column(
+    id: OrderBookId,
+    rows: &[DomLadderRow],
+    max_size: f64,
+    max_cumulative: f64,
+    decimals: usize,
+    tick: f64,
+    user_order_levels: &UserOrderBookLevels,
+) -> Column<'static, Message> {
+    rows.iter()
+        .fold(Column::new().spacing(0), |column, ladder_row| {
+            column.push(dom_row(
+                id,
+                ladder_row,
+                max_size,
+                max_cumulative,
+                decimals,
+                tick,
+                user_order_levels,
+            ))
+        })
 }
 
 fn dom_row(

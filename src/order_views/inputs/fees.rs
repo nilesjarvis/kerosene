@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::parse_number;
 use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::Fill;
@@ -28,15 +29,11 @@ impl TradingTerminal {
 
         let fee_price = match self.order_kind {
             OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc => {
-                self.order_price.parse::<f64>().ok()
+                parse_number(&self.order_price)
             }
             OrderKind::Market => self.resolve_mid_for_symbol(&self.active_symbol),
         };
-        let fee_qty = self
-            .order_quantity
-            .parse::<f64>()
-            .ok()
-            .filter(|qty| *qty > 0.0);
+        let fee_qty = parse_number(&self.order_quantity).filter(|qty| *qty > 0.0);
 
         let combined_fees = match (fee_price, fee_qty) {
             (Some(price), Some(quantity)) => {

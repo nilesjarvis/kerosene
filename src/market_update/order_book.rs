@@ -114,6 +114,18 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
+            Message::ToggleOrderBookCenterOnMid(id) => {
+                if let Some(inst) = self.order_books.get_mut(&id) {
+                    inst.center_on_mid = !inst.center_on_mid;
+                    let center_on_mid = inst.center_on_mid;
+
+                    self.persist_config();
+                    if !center_on_mid {
+                        return self.center_order_book(id);
+                    }
+                }
+                Task::none()
+            }
             Message::ToggleOrderBookSpreadChart(id) => {
                 if let Some(inst) = self.order_books.get_mut(&id) {
                     inst.show_spread_chart = !inst.show_spread_chart;
@@ -174,7 +186,6 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
-            Message::CenterOrderBook(id) => self.center_order_book(id),
             _ => Task::none(),
         }
     }

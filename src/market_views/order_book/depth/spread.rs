@@ -30,7 +30,7 @@ impl TradingTerminal {
                     .size(11)
                     .color(theme.extended_palette().background.weak.text),
                     Space::new().width(Fill),
-                    center_order_book_button(id, theme)
+                    center_order_book_button(id, inst.center_on_mid, theme)
                 ]
                 .align_y(iced::Alignment::Center),
             )
@@ -54,18 +54,46 @@ impl TradingTerminal {
     }
 }
 
-fn center_order_book_button(id: OrderBookId, theme: &Theme) -> button::Button<'static, Message> {
-    button(
-        text("Center")
-            .size(10)
-            .color(theme.extended_palette().background.weak.text),
-    )
+fn center_order_book_button(
+    id: OrderBookId,
+    is_active: bool,
+    theme: &Theme,
+) -> button::Button<'static, Message> {
+    let text_color = if is_active {
+        theme.palette().primary
+    } else {
+        theme.extended_palette().background.weak.text
+    };
+
+    button(text("Center").size(10).color(text_color))
     .padding([2, 4])
-    .style(move |_theme: &Theme, _status| button::Style {
-        background: Some(Color::TRANSPARENT.into()),
-        ..Default::default()
+    .style(move |theme: &Theme, status| {
+        let mut background = if is_active {
+            theme.palette().primary
+        } else {
+            Color::TRANSPARENT
+        };
+        background.a = match (is_active, status) {
+            (true, button::Status::Hovered) => 0.18,
+            (true, _) => 0.12,
+            (false, button::Status::Hovered) => 0.08,
+            (false, _) => 0.0,
+        };
+
+        let mut border_color = theme.palette().primary;
+        border_color.a = if is_active { 0.45 } else { 0.0 };
+
+        button::Style {
+            background: Some(background.into()),
+            border: iced::Border {
+                width: 1.0,
+                color: border_color,
+                radius: 2.0.into(),
+            },
+            ..Default::default()
+        }
     })
-    .on_press(Message::CenterOrderBook(id))
+    .on_press(Message::ToggleOrderBookCenterOnMid(id))
 }
 
 fn true_best_prices(inst: &OrderBookInstance) -> (Option<f64>, Option<f64>) {
