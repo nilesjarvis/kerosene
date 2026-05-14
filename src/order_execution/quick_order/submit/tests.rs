@@ -1,4 +1,54 @@
 use super::*;
+use crate::app_state::{TradingTerminal, sensitive_string};
+use crate::chart_state::{ChartId, ChartInstance};
+use crate::order_execution::QuickOrderForm;
+use crate::timeframe::Timeframe;
+
+fn quick_order_form() -> QuickOrderForm {
+    QuickOrderForm {
+        price: 100.0,
+        quantity: "1.25".to_string(),
+        quantity_is_usd: false,
+        percentage: 0.0,
+        is_limit: true,
+        click_x: 10.0,
+        click_y: 20.0,
+        chart_w: 400.0,
+        chart_h: 300.0,
+    }
+}
+
+fn terminal_with_quick_order(chart_id: ChartId, chart_symbol: &str) -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.wallet_key_input = sensitive_string("agent-key");
+    terminal.exchange_symbols.clear();
+
+    let mut instance = ChartInstance::new(chart_id, chart_symbol.to_string(), Timeframe::H1);
+    instance.set_quick_order(quick_order_form());
+    terminal.charts.insert(chart_id, instance);
+    terminal
+}
+
+#[test]
+fn handle_submit_quick_order_restores_form_when_symbol_metadata_is_missing() {
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "MISSING");
+
+    let _task = terminal.handle_submit_quick_order(chart_id, true);
+
+    let (message, is_error) = terminal.order_status.as_ref().expect("status");
+    assert!(*is_error);
+    assert_eq!(message, "Symbol 'MISSING' not found");
+
+    let instance = terminal.charts.get(&chart_id).expect("chart instance");
+    let form = instance.quick_order.as_ref().expect("quick order restored");
+    assert!(instance.chart.quick_order_open);
+    assert_eq!(instance.chart.quick_order_limit_price, Some(100.0));
+    assert_eq!(form.quantity, "1.25");
+    assert!(!form.quantity_is_usd);
+    assert!(form.is_limit);
+}
 
 #[test]
 fn quick_order_size_wire_converts_usd_notional_to_coin_size() {
