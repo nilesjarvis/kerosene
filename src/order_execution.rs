@@ -80,6 +80,10 @@ pub(crate) struct QuickOrderForm {
     pub(crate) price: f64,
     /// User-entered quantity string.
     pub(crate) quantity: String,
+    /// True when the quantity field is USD notional, false when it is coin size.
+    pub(crate) quantity_is_usd: bool,
+    /// Percentage of available notional represented by the current quantity.
+    pub(crate) percentage: f32,
     /// True = limit order at clicked price, false = market order.
     pub(crate) is_limit: bool,
     /// Canvas-local X coordinate of the right-click (for card positioning).

@@ -81,6 +81,7 @@ impl TradingTerminal {
                     || inst.funding_fetch_request.is_some()
                     || inst.liquidation_fetching
                     || inst.heatmap_fetching
+                    || inst.chart.quick_order_limit_price.is_some()
             })
     }
 

@@ -32,6 +32,7 @@ impl TradingTerminal {
 
         let title_row = Self::quick_order_title_row(chart_id, form, type_label);
         let qty_input = Self::quick_order_quantity_input(chart_id, form);
+        let size_controls = self.quick_order_size_controls(chart_id, form);
         let action_row = self.quick_order_action_row(chart_id);
         let fee_el = self.quick_order_fee_estimate(form);
         let presets_scroll = self.quick_order_presets_scroll(chart_id, form);
@@ -40,16 +41,25 @@ impl TradingTerminal {
             text("Qty")
                 .size(10)
                 .color(theme.extended_palette().background.weak.text),
+            Space::new().width(6.0),
+            Self::quick_order_denomination_button(chart_id, form.quantity_is_usd),
             Space::new().width(Fill),
             presets_scroll
         ]
         .align_y(iced::Alignment::Center);
 
-        let card_content =
-            column![title_row, qty_header, qty_input, fee_el, action_row,].spacing(6);
+        let card_content = column![
+            title_row,
+            qty_header,
+            qty_input,
+            size_controls,
+            fee_el,
+            action_row,
+        ]
+        .spacing(6);
 
         let card_width = 220.0;
-        let card_height = 170.0;
+        let card_height = 214.0;
         let max_x = (form.chart_w - card_width).max(0.0);
         let max_y = (form.chart_h - card_height).max(0.0);
         let pad_left = form.click_x.clamp(0.0, max_x);

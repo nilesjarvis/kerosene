@@ -45,6 +45,8 @@ impl CandlestickChart {
             chart_bull_color: None,
             chart_bear_color: None,
             quick_order_open: false,
+            quick_order_limit_price: None,
+            quick_order_line_phase: 0.0,
             obscure_position_prices: false,
             hide_positions_and_orders: false,
         }
@@ -78,6 +80,8 @@ impl CandlestickChart {
             chart_bull_color: self.chart_bull_color,
             chart_bear_color: self.chart_bear_color,
             quick_order_open: false,
+            quick_order_limit_price: None,
+            quick_order_line_phase: 0.0,
             obscure_position_prices: self.obscure_position_prices,
             hide_positions_and_orders: self.hide_positions_and_orders,
         }

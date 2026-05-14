@@ -66,7 +66,7 @@ impl TradingTerminal {
             focus: None,
             order_price: String::new(),
             order_quantity: String::new(),
-            order_quantity_is_usd: false,
+            order_quantity_is_usd: cfg.order_quantity_is_usd,
             order_percentage: 0.0,
             order_kind: boot_symbols.order_kind,
             order_reduce_only: cfg.reduce_only,

@@ -66,9 +66,11 @@ impl TradingTerminal {
         if self.is_outcome_coin(&self.active_symbol) {
             self.order_quantity_is_usd = false;
             self.order_quantity = Self::sanitize_outcome_quantity_input(&self.order_quantity);
+            self.persist_config();
             return;
         }
         self.order_quantity_is_usd = !self.order_quantity_is_usd;
+        self.persist_config();
 
         let Ok(qty) = self.order_quantity.parse::<f64>() else {
             return;

@@ -173,6 +173,28 @@ fn hide_pnl_round_trips_and_legacy_defaults_visible() {
 }
 
 #[test]
+fn order_quantity_denomination_round_trips_and_legacy_defaults_coin() {
+    let config = KeroseneConfig {
+        order_quantity_is_usd: true,
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert!(decoded.order_quantity_is_usd);
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    legacy
+        .as_object_mut()
+        .expect("config should serialize to object")
+        .remove("order_quantity_is_usd");
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert!(!decoded_legacy.order_quantity_is_usd);
+}
+
+#[test]
 fn hidden_positions_round_trip_and_legacy_defaults_empty() {
     let config = KeroseneConfig {
         hidden_positions_by_account: HashMap::from([(

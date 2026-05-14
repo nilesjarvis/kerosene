@@ -79,6 +79,7 @@ impl Default for KeroseneConfig {
             active_timeframe: default_timeframe(),
             order_kind: default_order_kind(),
             reduce_only: false,
+            order_quantity_is_usd: false,
             book_tick_size: default_tick_size(),
             symbol_search_sort_mode: default_symbol_search_sort_mode(),
             chart_screenshot_settings: Default::default(),

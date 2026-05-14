@@ -92,6 +92,8 @@ impl TradingTerminal {
             instance.set_quick_order(QuickOrderForm {
                 price,
                 quantity: String::new(),
+                quantity_is_usd: self.order_quantity_is_usd,
+                percentage: 0.0,
                 is_limit: true,
                 click_x,
                 click_y,

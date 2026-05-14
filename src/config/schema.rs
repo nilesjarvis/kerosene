@@ -75,6 +75,9 @@ pub struct KeroseneConfig {
     /// Whether reduce-only is toggled on by default.
     #[serde(default)]
     pub reduce_only: bool,
+    /// Whether order quantity inputs default to USD notional instead of coin size.
+    #[serde(default)]
+    pub order_quantity_is_usd: bool,
     /// Order book tick size.
     #[serde(default = "default_tick_size")]
     pub book_tick_size: f64,

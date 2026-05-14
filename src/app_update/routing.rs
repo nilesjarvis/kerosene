@@ -139,6 +139,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChaseCancelResult { .. }
         | Message::OpenQuickOrder(_, _, _, _, _, _)
         | Message::QuickOrderQtyChanged(_, _)
+        | Message::QuickOrderPercentageChanged(_, _)
+        | Message::QuickOrderToggleDenomination(_)
         | Message::QuickOrderToggleType(_)
         | Message::CloseQuickOrder(_)
         | Message::SubmitQuickOrder(_, _)

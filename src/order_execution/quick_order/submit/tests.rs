@@ -1,20 +1,25 @@
 use super::*;
 
 #[test]
-fn quick_order_quantity_wire_rejects_invalid_or_effectively_zero_sizes() {
-    assert_eq!(quick_order_quantity_wire("0"), None);
-    assert_eq!(quick_order_quantity_wire("-1"), None);
-    assert_eq!(quick_order_quantity_wire("NaN"), None);
-    assert_eq!(quick_order_quantity_wire("inf"), None);
-    assert_eq!(quick_order_quantity_wire("0.0000000000001"), None);
+fn quick_order_size_wire_converts_usd_notional_to_coin_size() {
+    assert_eq!(
+        quick_order_size_wire("250", true, 100.0),
+        Some("2.5".into())
+    );
+    assert_eq!(
+        quick_order_size_wire("2.5", false, 100.0),
+        Some("2.5".into())
+    );
 }
 
 #[test]
-fn quick_order_quantity_wire_formats_positive_finite_sizes() {
-    assert_eq!(
-        quick_order_quantity_wire(" 1.25000000 "),
-        Some("1.25".into())
-    );
+fn quick_order_size_wire_rejects_invalid_reference_for_usd() {
+    assert_eq!(quick_order_size_wire("250", true, 0.0), None);
+    assert_eq!(quick_order_size_wire("250", true, f64::NAN), None);
+    assert_eq!(quick_order_size_wire("0", false, 100.0), None);
+    assert_eq!(quick_order_size_wire("-1", false, 100.0), None);
+    assert_eq!(quick_order_size_wire("NaN", false, 100.0), None);
+    assert_eq!(quick_order_size_wire("0.0000000000001", false, 100.0), None);
 }
 
 #[test]

@@ -10,6 +10,8 @@ use crate::timeframe::Timeframe;
 pub(crate) type ChartId = u64;
 
 pub(crate) const CHART_PRICE_FLASH_MS: u64 = 800;
+const QUICK_ORDER_LIMIT_LINE_STRIDE: f32 = 12.0;
+const QUICK_ORDER_LIMIT_LINE_PHASE_STEP: f32 = 1.2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PriceFlashDirection {
@@ -152,6 +154,8 @@ impl ChartInstance {
     }
 
     pub(crate) fn set_quick_order(&mut self, form: QuickOrderForm) {
+        self.chart.quick_order_limit_price = form.is_limit.then_some(form.price);
+        self.chart.quick_order_line_phase = 0.0;
         self.quick_order = Some(form);
         self.chart.quick_order_open = true;
     }
@@ -159,12 +163,24 @@ impl ChartInstance {
     pub(crate) fn clear_quick_order(&mut self) {
         self.quick_order = None;
         self.chart.quick_order_open = false;
+        self.chart.quick_order_limit_price = None;
+        self.chart.quick_order_line_phase = 0.0;
     }
 
     pub(crate) fn take_quick_order(&mut self) -> Option<QuickOrderForm> {
         let form = self.quick_order.take();
         self.chart.quick_order_open = false;
+        self.chart.quick_order_limit_price = None;
+        self.chart.quick_order_line_phase = 0.0;
         form
+    }
+
+    pub(crate) fn advance_quick_order_limit_line(&mut self) {
+        if self.chart.quick_order_limit_price.is_some() {
+            self.chart.quick_order_line_phase = (self.chart.quick_order_line_phase
+                + QUICK_ORDER_LIMIT_LINE_PHASE_STEP)
+                .rem_euclid(QUICK_ORDER_LIMIT_LINE_STRIDE);
+        }
     }
 
     /// Create a new chart with the editor open and no symbol selected.
@@ -308,5 +324,73 @@ mod tests {
 
         instance.clear_expired_last_price_flash(1_000 + CHART_PRICE_FLASH_MS);
         assert!(instance.last_price_flash.is_none());
+    }
+
+    #[test]
+    fn quick_order_limit_preview_tracks_open_form_lifecycle() {
+        let mut instance = instance();
+
+        instance.set_quick_order(QuickOrderForm {
+            price: 100.0,
+            quantity: String::new(),
+            quantity_is_usd: false,
+            percentage: 0.0,
+            is_limit: true,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        });
+        assert!(instance.chart.quick_order_open);
+        assert_eq!(instance.chart.quick_order_limit_price, Some(100.0));
+
+        instance.clear_quick_order();
+        assert!(!instance.chart.quick_order_open);
+        assert_eq!(instance.chart.quick_order_limit_price, None);
+    }
+
+    #[test]
+    fn quick_order_market_form_does_not_show_limit_preview() {
+        let mut instance = instance();
+
+        instance.set_quick_order(QuickOrderForm {
+            price: 100.0,
+            quantity: String::new(),
+            quantity_is_usd: false,
+            percentage: 0.0,
+            is_limit: false,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        });
+
+        assert!(instance.chart.quick_order_open);
+        assert_eq!(instance.chart.quick_order_limit_price, None);
+    }
+
+    #[test]
+    fn quick_order_limit_preview_phase_only_advances_while_visible() {
+        let mut instance = instance();
+
+        instance.advance_quick_order_limit_line();
+        assert_eq!(instance.chart.quick_order_line_phase, 0.0);
+
+        instance.set_quick_order(QuickOrderForm {
+            price: 100.0,
+            quantity: String::new(),
+            quantity_is_usd: false,
+            percentage: 0.0,
+            is_limit: true,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        });
+        instance.advance_quick_order_limit_line();
+        assert!(instance.chart.quick_order_line_phase > 0.0);
+
+        instance.clear_quick_order();
+        assert_eq!(instance.chart.quick_order_line_phase, 0.0);
     }
 }

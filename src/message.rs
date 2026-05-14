@@ -359,6 +359,8 @@ pub(crate) enum Message {
     // Quick order form (right-click on chart)
     OpenQuickOrder(ChartId, f64, f32, f32, f32, f32),
     QuickOrderQtyChanged(ChartId, String),
+    QuickOrderPercentageChanged(ChartId, f32),
+    QuickOrderToggleDenomination(ChartId),
     QuickOrderToggleType(ChartId),
     CloseQuickOrder(ChartId),
     SubmitQuickOrder(ChartId, bool),

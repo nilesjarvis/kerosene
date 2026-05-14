@@ -71,6 +71,9 @@ impl TradingTerminal {
             }
             Message::SpinnerTick => {
                 self.spinner_phase = (self.spinner_phase + 0.35).rem_euclid(std::f32::consts::TAU);
+                for instance in self.charts.values_mut() {
+                    instance.advance_quick_order_limit_line();
+                }
             }
             Message::StatusBarTick => {
                 let now = Instant::now();

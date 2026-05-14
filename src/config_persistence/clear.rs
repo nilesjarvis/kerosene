@@ -100,6 +100,7 @@ impl TradingTerminal {
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;
         self.order_presets = defaults.order_presets;
+        self.order_quantity_is_usd = defaults.order_quantity_is_usd;
         self.preset_is_usd = defaults.preset_is_usd;
         self.favourite_symbols.clear();
         self.symbol_search_result_indices.clear();

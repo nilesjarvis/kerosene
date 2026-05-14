@@ -9,6 +9,14 @@ pub(super) struct AxisBadgeStyle {
     pub(super) text_color: Color,
 }
 
+pub(super) struct SegmentedHLineStyle {
+    pub(super) segment_len: f32,
+    pub(super) gap_len: f32,
+    pub(super) offset: f32,
+    pub(super) color: Color,
+    pub(super) width: f32,
+}
+
 pub(super) fn stroke_segmented_hline(
     frame: &mut canvas::Frame,
     chart_w: f32,
@@ -18,21 +26,45 @@ pub(super) fn stroke_segmented_hline(
     color: Color,
     width: f32,
 ) {
-    if chart_w <= 0.0 || segment_len <= 0.0 {
+    stroke_segmented_hline_with_offset(
+        frame,
+        chart_w,
+        y,
+        SegmentedHLineStyle {
+            segment_len,
+            gap_len,
+            offset: 0.0,
+            color,
+            width,
+        },
+    );
+}
+
+pub(super) fn stroke_segmented_hline_with_offset(
+    frame: &mut canvas::Frame,
+    chart_w: f32,
+    y: f32,
+    style: SegmentedHLineStyle,
+) {
+    if chart_w <= 0.0 || style.segment_len <= 0.0 {
         return;
     }
 
-    let mut x = 0.0_f32;
-    let stride = (segment_len + gap_len).max(segment_len);
+    let stride = (style.segment_len + style.gap_len).max(style.segment_len);
+    let phase = style.offset.rem_euclid(stride);
+    let mut x = phase - stride;
     while x < chart_w {
-        let end = (x + segment_len).min(chart_w);
-        let seg = canvas::Path::line(Point::new(x, y), Point::new(end, y));
-        frame.stroke(
-            &seg,
-            canvas::Stroke::default()
-                .with_color(color)
-                .with_width(width),
-        );
+        let start = x.max(0.0);
+        let end = (x + style.segment_len).min(chart_w);
+        if end > start {
+            let seg = canvas::Path::line(Point::new(start, y), Point::new(end, y));
+            frame.stroke(
+                &seg,
+                canvas::Stroke::default()
+                    .with_color(style.color)
+                    .with_width(style.width),
+            );
+        }
         x += stride;
     }
 }

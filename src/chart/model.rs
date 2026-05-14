@@ -84,6 +84,10 @@ pub struct CandlestickChart {
     /// inside the chart canvas close the card while right-clicks still publish a
     /// replacement quick-order at the clicked price.
     pub(crate) quick_order_open: bool,
+    /// Temporary limit price preview shown while the chart quick-order card is open.
+    pub(crate) quick_order_limit_price: Option<f64>,
+    /// Pixel phase for animating the temporary quick-order limit preview line.
+    pub(crate) quick_order_line_phase: f32,
     /// Whether position entry and liquidation labels should be redacted while rendering.
     pub(crate) obscure_position_prices: bool,
     /// Whether active position/liquidation and order overlays should be hidden while rendering.

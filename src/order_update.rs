@@ -132,6 +132,12 @@ impl TradingTerminal {
                     .handle_open_quick_order(chart_id, price, click_x, click_y, chart_w, chart_h);
             }
             Message::QuickOrderQtyChanged(id, qty) => self.handle_quick_order_qty_changed(id, qty),
+            Message::QuickOrderPercentageChanged(id, value) => {
+                self.handle_quick_order_percentage_changed(id, value)
+            }
+            Message::QuickOrderToggleDenomination(id) => {
+                self.handle_quick_order_toggle_denomination(id)
+            }
             Message::QuickOrderToggleType(id) => self.handle_quick_order_toggle_type(id),
             Message::CloseQuickOrder(id) => self.handle_close_quick_order(id),
             Message::SubmitQuickOrder(chart_id, is_buy) => {

@@ -7,6 +7,7 @@ use iced::{Color, Theme};
 mod current_price;
 mod orders;
 mod positions;
+mod quick_order;
 mod trades;
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,7 @@ impl CandlestickChart {
         IdxToCx: Fn(usize) -> f32,
     {
         self.draw_current_price_line(ctx);
+        self.draw_quick_order_limit_line(ctx);
         if self.should_draw_position_and_order_overlays() {
             self.draw_active_position_lines(ctx);
             self.draw_active_order_lines(ctx);

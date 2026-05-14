@@ -10,10 +10,27 @@ use iced::Task;
 #[cfg(test)]
 mod tests;
 
-fn quick_order_quantity_wire(input: &str) -> Option<String> {
+fn quick_order_size_wire(
+    input: &str,
+    quantity_is_usd: bool,
+    reference_price: f64,
+) -> Option<String> {
     let quantity = input.trim().parse::<f64>().ok()?;
-    if quantity.is_finite() && quantity > 1e-12 {
-        Some(float_to_wire(quantity))
+    if !quantity.is_finite() || quantity <= 0.0 {
+        return None;
+    }
+
+    let size = if quantity_is_usd {
+        if !reference_price.is_finite() || reference_price <= 0.0 {
+            return None;
+        }
+        quantity / reference_price
+    } else {
+        quantity
+    };
+
+    if size.is_finite() && size > 1e-12 {
+        Some(float_to_wire(size))
     } else {
         None
     }
@@ -72,17 +89,6 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let size = match quick_order_quantity_wire(&form.quantity) {
-            Some(size) => size,
-            None => {
-                self.order_status = Some(("Invalid quantity".into(), true));
-                if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.set_quick_order(form);
-                }
-                return Task::none();
-            }
-        };
-
         let chart_symbol = self
             .charts
             .get(&chart_id)
@@ -112,7 +118,7 @@ impl TradingTerminal {
         let sz_decimals = sym.sz_decimals;
         let is_spot = sym.market_type == MarketType::Spot;
 
-        let (order_kind, price) = if form.is_limit {
+        let (order_kind, price, reference_price) = if form.is_limit {
             let Some((rounded, price)) =
                 quick_order_limit_price_wire(form.price, sz_decimals, is_spot)
             else {
@@ -129,7 +135,7 @@ impl TradingTerminal {
                 }
                 return Task::none();
             }
-            (OrderKind::Limit, price)
+            (OrderKind::Limit, price, rounded)
         } else {
             let Some(mid) = self.resolve_mid_for_symbol(&chart_symbol) else {
                 self.order_status = Some((
@@ -165,8 +171,20 @@ impl TradingTerminal {
                 }
                 return Task::none();
             }
-            (OrderKind::Market, price)
+            (OrderKind::Market, price, mid)
         };
+
+        let size =
+            match quick_order_size_wire(&form.quantity, form.quantity_is_usd, reference_price) {
+                Some(size) => size,
+                None => {
+                    self.order_status = Some(("Invalid quantity".into(), true));
+                    if let Some(instance) = self.charts.get_mut(&chart_id) {
+                        instance.set_quick_order(form);
+                    }
+                    return Task::none();
+                }
+            };
 
         let reduce_only = if is_spot {
             false
