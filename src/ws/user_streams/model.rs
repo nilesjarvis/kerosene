@@ -12,7 +12,7 @@ pub type KeyedUserData = (Option<String>, WsUserData);
 #[derive(Debug, Clone)]
 pub enum WsUserData {
     AllDexPositions {
-        main_state: Box<ClearinghouseState>,
+        main_state: Option<Box<ClearinghouseState>>,
         states_by_dex: HashMap<String, ClearinghouseState>,
         all_positions: Vec<AssetPosition>,
         position_details: Vec<WalletPositionDetail>,

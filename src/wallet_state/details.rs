@@ -93,7 +93,7 @@ impl TradingTerminal {
         match data {
             WsUserData::AllDexPositions {
                 main_state,
-                states_by_dex: _,
+                states_by_dex,
                 all_positions,
                 position_details,
             } => {
@@ -111,14 +111,29 @@ impl TradingTerminal {
                     .filter(|state| state.address == address)
                 {
                     if let Some(details) = state.data.as_mut() {
-                        details.clearinghouse.margin_summary = main_state.margin_summary.clone();
-                        details.clearinghouse.withdrawable = main_state.withdrawable.clone();
-                        details.clearinghouse.cross_margin_summary =
-                            main_state.cross_margin_summary.clone();
-                        details.clearinghouse.cross_maintenance_margin_used =
-                            main_state.cross_maintenance_margin_used.clone();
-                        details.clearinghouse.asset_positions = all_positions.clone();
-                        details.positions = position_details.clone();
+                        if let Some(main_state) = &main_state {
+                            details.clearinghouse.margin_summary =
+                                main_state.margin_summary.clone();
+                            details.clearinghouse.withdrawable = main_state.withdrawable.clone();
+                            details.clearinghouse.cross_margin_summary =
+                                main_state.cross_margin_summary.clone();
+                            details.clearinghouse.cross_maintenance_margin_used =
+                                main_state.cross_maintenance_margin_used.clone();
+                            details.clearinghouse.asset_positions = all_positions.clone();
+                            details.positions = position_details.clone();
+                        } else {
+                            let updated_dexes: std::collections::HashSet<_> =
+                                states_by_dex.keys().map(String::as_str).collect();
+                            details
+                                .positions
+                                .retain(|position| !updated_dexes.contains(position.dex.as_str()));
+                            details.positions.extend(position_details.iter().cloned());
+                            details.clearinghouse.asset_positions = details
+                                .positions
+                                .iter()
+                                .map(|position| position.asset_position.clone())
+                                .collect();
+                        }
                         details.fetched_at_ms = now_ms;
                     }
                     state.last_refresh_ms = Some(now_ms);
