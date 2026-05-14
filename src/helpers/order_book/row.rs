@@ -1,6 +1,7 @@
 use crate::helpers::format_size;
 use crate::message::Message;
 
+use iced::widget::button;
 use iced::widget::canvas;
 use iced::widget::container as container_style;
 use iced::widget::{Space, container, row, text};
@@ -25,6 +26,7 @@ pub fn book_row(
     max_sz: f64,
     decimals: usize,
     is_bid: bool,
+    on_press: Message,
 ) -> Element<'static, Message> {
     let px = data.px;
     let sz = data.sz;
@@ -86,7 +88,7 @@ pub fn book_row(
     .spacing(4);
 
     let transparent = Color::TRANSPARENT;
-    container(row_content)
+    let row_element: Element<'static, Message> = container(row_content)
         .width(Fill)
         .padding([2, 4])
         .style(move |theme: &Theme| {
@@ -106,7 +108,9 @@ pub fn book_row(
                 ..Default::default()
             }
         })
-        .into()
+        .into();
+
+    clickable_book_row(row_element, on_press)
 }
 
 fn price_cell(
@@ -160,6 +164,35 @@ pub fn user_order_price_marker(user_order_side: Option<bool>) -> Element<'static
     canvas(UserOrderPriceMarker { is_bid })
         .width(USER_ORDER_MARKER_WIDTH)
         .height(USER_ORDER_MARKER_HEIGHT)
+        .into()
+}
+
+pub fn clickable_book_row(
+    content: Element<'static, Message>,
+    on_press: Message,
+) -> Element<'static, Message> {
+    button(content)
+        .width(Fill)
+        .padding(0)
+        .style(|theme: &Theme, status| {
+            let mut border_color = theme.palette().primary;
+            border_color.a = match status {
+                button::Status::Hovered => 0.42,
+                button::Status::Pressed => 0.68,
+                _ => 0.0,
+            };
+
+            button::Style {
+                background: None,
+                border: iced::Border {
+                    radius: 2.0.into(),
+                    width: 1.0,
+                    color: border_color,
+                },
+                ..Default::default()
+            }
+        })
+        .on_press(on_press)
         .into()
 }
 

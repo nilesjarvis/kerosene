@@ -1,4 +1,5 @@
 use super::super::pricing::rounded_market_price;
+use super::super::sizing::order_size_from_quantity_input;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
@@ -14,26 +15,11 @@ fn quick_order_size_wire(
     input: &str,
     quantity_is_usd: bool,
     reference_price: f64,
+    sz_decimals: u32,
 ) -> Option<String> {
     let quantity = input.trim().parse::<f64>().ok()?;
-    if !quantity.is_finite() || quantity <= 0.0 {
-        return None;
-    }
-
-    let size = if quantity_is_usd {
-        if !reference_price.is_finite() || reference_price <= 0.0 {
-            return None;
-        }
-        quantity / reference_price
-    } else {
-        quantity
-    };
-
-    if size.is_finite() && size > 1e-12 {
-        Some(float_to_wire(size))
-    } else {
-        None
-    }
+    order_size_from_quantity_input(quantity, reference_price, quantity_is_usd, sz_decimals)
+        .map(float_to_wire)
 }
 
 fn quick_order_limit_price_wire(
@@ -174,17 +160,21 @@ impl TradingTerminal {
             (OrderKind::Market, price, mid)
         };
 
-        let size =
-            match quick_order_size_wire(&form.quantity, form.quantity_is_usd, reference_price) {
-                Some(size) => size,
-                None => {
-                    self.order_status = Some(("Invalid quantity".into(), true));
-                    if let Some(instance) = self.charts.get_mut(&chart_id) {
-                        instance.set_quick_order(form);
-                    }
-                    return Task::none();
+        let size = match quick_order_size_wire(
+            &form.quantity,
+            form.quantity_is_usd,
+            reference_price,
+            sz_decimals,
+        ) {
+            Some(size) => size,
+            None => {
+                self.order_status = Some(("Invalid quantity for asset precision".into(), true));
+                if let Some(instance) = self.charts.get_mut(&chart_id) {
+                    instance.set_quick_order(form);
                 }
-            };
+                return Task::none();
+            }
+        };
 
         let reduce_only = if is_spot {
             false

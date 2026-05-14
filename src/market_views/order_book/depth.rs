@@ -64,6 +64,10 @@ impl TradingTerminal {
                     max_sz,
                     decimals,
                     false,
+                    Message::OrderBookPriceSelected {
+                        id,
+                        price: format!("{px:.decimals$}"),
+                    },
                 ))
             });
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
@@ -81,6 +85,10 @@ impl TradingTerminal {
                     max_sz,
                     decimals,
                     true,
+                    Message::OrderBookPriceSelected {
+                        id,
+                        price: format!("{px:.decimals$}"),
+                    },
                 ))
             });
 
@@ -115,7 +123,7 @@ impl TradingTerminal {
         user_order_levels: &UserOrderBookLevels,
     ) -> Element<'static, Message> {
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
-        dom::view_order_book_dom_ladder(inst, tick, spread_widget, user_order_levels)
+        dom::view_order_book_dom_ladder(id, inst, tick, spread_widget, user_order_levels)
     }
 
     pub(super) fn view_order_book_dom_header() -> Element<'static, Message> {

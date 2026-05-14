@@ -82,6 +82,10 @@ pub(crate) enum Message {
     SwitchBottomTab(BottomTab),
     OrderPriceChanged(String),
     SetMidPrice,
+    OrderBookPriceSelected {
+        id: OrderBookId,
+        price: String,
+    },
     OrderQuantityChanged(String),
     SetOrderKind(OrderKind),
     ToggleOrderDenomination,

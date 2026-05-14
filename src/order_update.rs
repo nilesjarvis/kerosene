@@ -18,6 +18,9 @@ impl TradingTerminal {
         match message {
             Message::OrderPriceChanged(value) => self.handle_order_price_changed(value),
             Message::SetMidPrice => self.handle_set_mid_price(),
+            Message::OrderBookPriceSelected { id, price } => {
+                return self.handle_order_book_price_selected(id, price);
+            }
             Message::OrderQuantityChanged(value) => self.handle_order_quantity_changed(value),
             Message::ToggleOrderDenomination => self.handle_toggle_order_denomination(),
             Message::OrderPercentageChanged(value) => self.handle_order_percentage_changed(value),

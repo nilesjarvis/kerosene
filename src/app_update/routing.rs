@@ -90,6 +90,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
 
         Message::OrderPriceChanged(_)
         | Message::SetMidPrice
+        | Message::OrderBookPriceSelected { .. }
         | Message::OrderQuantityChanged(_)
         | Message::ToggleOrderDenomination
         | Message::OrderPercentageChanged(_)
@@ -453,6 +454,13 @@ mod tests {
         );
         assert_eq!(
             message_route(&Message::DismissOrderStatus),
+            UpdateRoute::Order
+        );
+        assert_eq!(
+            message_route(&Message::OrderBookPriceSelected {
+                id: 7,
+                price: "100.5".to_string(),
+            }),
             UpdateRoute::Order
         );
         assert_eq!(

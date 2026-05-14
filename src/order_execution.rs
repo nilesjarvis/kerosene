@@ -3,6 +3,7 @@ mod chase;
 mod position_actions;
 pub(crate) mod pricing;
 mod quick_order;
+mod sizing;
 mod submit;
 mod symbols;
 mod twap;

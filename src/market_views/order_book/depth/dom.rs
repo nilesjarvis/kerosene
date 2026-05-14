@@ -1,6 +1,6 @@
 use super::super::UserOrderBookLevels;
-use crate::helpers::{format_size, tick_decimals, user_order_price_marker};
-use crate::market_state::{DomLadderRow, OrderBookInstance};
+use crate::helpers::{clickable_book_row, format_size, tick_decimals, user_order_price_marker};
+use crate::market_state::{DomLadderRow, OrderBookId, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Column, Space, container, row, scrollable, text};
@@ -13,6 +13,7 @@ const DOM_SIDE_ROWS: usize = 80;
 // ---------------------------------------------------------------------------
 
 pub(super) fn view_order_book_dom_ladder(
+    id: OrderBookId,
     inst: &OrderBookInstance,
     tick: f64,
     spread_widget: Element<'static, Message>,
@@ -25,6 +26,7 @@ pub(super) fn view_order_book_dom_ladder(
         .iter()
         .fold(Column::new().spacing(0), |column, ladder_row| {
             column.push(dom_row(
+                id,
                 ladder_row,
                 rows.max_size,
                 rows.max_cumulative,
@@ -38,6 +40,7 @@ pub(super) fn view_order_book_dom_ladder(
         .iter()
         .fold(Column::new().spacing(0), |column, ladder_row| {
             column.push(dom_row(
+                id,
                 ladder_row,
                 rows.max_size,
                 rows.max_cumulative,
@@ -87,6 +90,7 @@ fn header_cell(label: &'static str) -> Element<'static, Message> {
 }
 
 fn dom_row(
+    id: OrderBookId,
     row_data: &DomLadderRow,
     max_size: f64,
     max_cumulative: f64,
@@ -104,7 +108,7 @@ fn dom_row(
         None
     };
 
-    row![
+    let content: Element<'static, Message> = row![
         dom_value_cell(row_data.bid_cumulative, max_cumulative, true, true),
         dom_value_cell(row_data.bid_size, max_size, true, false),
         price_cell(row_data, decimals, user_order_side),
@@ -112,7 +116,15 @@ fn dom_row(
         dom_value_cell(row_data.ask_cumulative, max_cumulative, false, true),
     ]
     .spacing(3)
-    .into()
+    .into();
+
+    clickable_book_row(
+        content,
+        Message::OrderBookPriceSelected {
+            id,
+            price: format!("{:.decimals$}", row_data.price),
+        },
+    )
 }
 
 fn dom_value_cell(
