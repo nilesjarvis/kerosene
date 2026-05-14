@@ -72,10 +72,10 @@ fn all_dex_positions_prefixes_hip3_position_coins() {
     let Some((
         source_addr,
         WsUserData::AllDexPositions {
+            main_state,
             states_by_dex,
             all_positions,
             position_details,
-            ..
         },
     )) = parse_user_stream_message("allDexsClearinghouseState", &payload, Some(target), None)
     else {
@@ -83,6 +83,7 @@ fn all_dex_positions_prefixes_hip3_position_coins() {
     };
 
     assert_eq!(source_addr.as_deref(), Some(target));
+    assert!(main_state.is_some());
     assert_eq!(all_positions[0].position.coin, "BTC");
     assert_eq!(all_positions[1].position.coin, "xyz:NVDA");
     assert_eq!(
@@ -91,4 +92,55 @@ fn all_dex_positions_prefixes_hip3_position_coins() {
     );
     assert_eq!(position_details[1].dex, "xyz");
     assert_eq!(position_details[1].asset_position.position.coin, "xyz:NVDA");
+}
+
+#[test]
+fn all_dex_positions_accepts_hip3_only_payload_without_main_state() {
+    let target = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let payload = serde_json::json!({
+        "user": target,
+        "clearinghouseStates": [
+            ["xyz", clearinghouse_with_position("NVDA")]
+        ]
+    });
+
+    let Some((
+        source_addr,
+        WsUserData::AllDexPositions {
+            main_state,
+            states_by_dex,
+            all_positions,
+            position_details,
+        },
+    )) = parse_user_stream_message("allDexsClearinghouseState", &payload, Some(target), None)
+    else {
+        panic!("expected HIP-3-only all-dex positions update");
+    };
+
+    assert_eq!(source_addr.as_deref(), Some(target));
+    assert!(main_state.is_none());
+    assert_eq!(states_by_dex.len(), 1);
+    assert_eq!(
+        states_by_dex["xyz"].asset_positions[0].position.coin,
+        "xyz:NVDA"
+    );
+    assert_eq!(all_positions.len(), 1);
+    assert_eq!(all_positions[0].position.coin, "xyz:NVDA");
+    assert_eq!(position_details.len(), 1);
+    assert_eq!(position_details[0].dex, "xyz");
+    assert_eq!(position_details[0].asset_position.position.coin, "xyz:NVDA");
+}
+
+#[test]
+fn all_dex_positions_drops_empty_state_list() {
+    let target = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let payload = serde_json::json!({
+        "user": target,
+        "clearinghouseStates": []
+    });
+
+    assert!(
+        parse_user_stream_message("allDexsClearinghouseState", &payload, Some(target), None)
+            .is_none()
+    );
 }

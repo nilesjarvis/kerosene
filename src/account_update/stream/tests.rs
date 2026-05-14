@@ -1,7 +1,7 @@
 use super::*;
 use crate::account::{
-    AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
-    SpotClearinghouseState, UserFill,
+    AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
+    OpenOrder, SpotClearinghouseState, UserFill,
 };
 use crate::signing::ChaseOrder;
 use std::time::Instant;
@@ -38,6 +38,37 @@ fn fill_with_oid(time: u64, oid: u64, px: &str, sz: &str) -> UserFill {
     fill.px = px.to_string();
     fill.sz = sz.to_string();
     fill
+}
+
+fn clearinghouse_state(account_value: &str, withdrawable: &str, coin: &str) -> ClearinghouseState {
+    serde_json::from_value(serde_json::json!({
+        "marginSummary": {
+            "accountValue": account_value,
+            "totalNtlPos": "10",
+            "totalMarginUsed": "1"
+        },
+        "crossMarginSummary": null,
+        "crossMaintenanceMarginUsed": null,
+        "withdrawable": withdrawable,
+        "assetPositions": [{
+            "position": {
+                "coin": coin,
+                "szi": "1",
+                "entryPx": "10",
+                "positionValue": "10",
+                "unrealizedPnl": "0",
+                "liquidationPx": null,
+                "leverage": {
+                    "type": "cross",
+                    "value": 1
+                },
+                "marginUsed": "1",
+                "cumFunding": null
+            },
+            "liquidationPx": null
+        }]
+    }))
+    .expect("test clearinghouse state should deserialize")
 }
 
 fn chase_order() -> ChaseOrder {
@@ -143,6 +174,61 @@ fn non_position_ws_updates_do_not_refresh_position_snapshot_timestamp() {
             .map(|data| data.fetched_at_ms),
         Some(1_000)
     );
+}
+
+#[test]
+fn hip3_only_position_update_preserves_main_account_summary_and_positions() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    let mut account_data = account_data_with_timestamp(1_000);
+    let main_state = clearinghouse_state("100", "99", "BTC");
+    account_data.clearinghouse = main_state.clone();
+    account_data
+        .clearinghouses_by_dex
+        .insert(String::new(), main_state);
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = Some(account_data);
+
+    let hip3_state = clearinghouse_state("25", "24", "xyz:NVDA");
+    let mut states_by_dex = std::collections::HashMap::new();
+    states_by_dex.insert("xyz".to_string(), hip3_state.clone());
+    let all_positions: Vec<AssetPosition> = hip3_state.asset_positions.clone();
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::AllDexPositions {
+            main_state: None,
+            states_by_dex,
+            all_positions,
+            position_details: Vec::new(),
+        },
+    );
+
+    let data = terminal
+        .account_data
+        .as_ref()
+        .expect("account data should remain loaded");
+    assert_eq!(data.clearinghouse.margin_summary.account_value, "100");
+    assert_eq!(data.clearinghouse.withdrawable, "99");
+    assert_eq!(
+        data.clearinghouses_by_dex[""].asset_positions[0]
+            .position
+            .coin,
+        "BTC"
+    );
+    assert_eq!(
+        data.clearinghouses_by_dex["xyz"].asset_positions[0]
+            .position
+            .coin,
+        "xyz:NVDA"
+    );
+    let coins: Vec<_> = data
+        .clearinghouse
+        .asset_positions
+        .iter()
+        .map(|position| position.position.coin.as_str())
+        .collect();
+    assert_eq!(coins, vec!["BTC", "xyz:NVDA"]);
 }
 
 #[test]

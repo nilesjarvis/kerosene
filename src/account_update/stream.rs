@@ -1,4 +1,7 @@
-use crate::account::{OpenOrder, fetch_account_data_scoped, normalize_dex_open_order_coins};
+use crate::account::{
+    AssetPosition, ClearinghouseState, OpenOrder, fetch_account_data_scoped,
+    normalize_dex_open_order_coins,
+};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::ChaseOrder;
@@ -51,6 +54,33 @@ fn prepend_recent_fills(
     let remaining = max_len.saturating_sub(updated.len());
     updated.extend(existing.drain(..).take(remaining));
     *existing = updated;
+}
+
+fn sorted_dex_keys(
+    states_by_dex: &std::collections::HashMap<String, ClearinghouseState>,
+) -> Vec<String> {
+    let mut keys: Vec<_> = states_by_dex.keys().cloned().collect();
+    keys.sort_by(|left, right| match (left.is_empty(), right.is_empty()) {
+        (true, true) | (false, false) => left.cmp(right),
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+    });
+    keys
+}
+
+fn collect_positions_by_dex<F>(
+    states_by_dex: &std::collections::HashMap<String, ClearinghouseState>,
+    is_hidden: F,
+) -> Vec<AssetPosition>
+where
+    F: Fn(&str) -> bool,
+{
+    sorted_dex_keys(states_by_dex)
+        .into_iter()
+        .filter_map(|dex| states_by_dex.get(&dex))
+        .flat_map(|state| state.asset_positions.iter().cloned())
+        .filter(|position| !is_hidden(&position.position.coin))
+        .collect()
 }
 
 fn apply_fills_update<F>(
@@ -311,16 +341,24 @@ impl TradingTerminal {
                             .retain(|position| !is_hidden(&position.position.coin));
                     }
                     data.fetched_at_ms = Self::now_ms();
-                    data.clearinghouse.margin_summary = main_state.margin_summary;
-                    data.clearinghouse.withdrawable = main_state.withdrawable;
-                    data.clearinghouse.cross_margin_summary = main_state.cross_margin_summary;
-                    data.clearinghouse.cross_maintenance_margin_used =
-                        main_state.cross_maintenance_margin_used;
-                    data.clearinghouse.asset_positions = all_positions
-                        .into_iter()
-                        .filter(|position| !is_hidden(&position.position.coin))
-                        .collect();
-                    data.clearinghouses_by_dex = states_by_dex;
+                    if let Some(main_state) = main_state {
+                        data.clearinghouse.margin_summary = main_state.margin_summary;
+                        data.clearinghouse.withdrawable = main_state.withdrawable;
+                        data.clearinghouse.cross_margin_summary = main_state.cross_margin_summary;
+                        data.clearinghouse.cross_maintenance_margin_used =
+                            main_state.cross_maintenance_margin_used;
+                        data.clearinghouse.asset_positions = all_positions
+                            .into_iter()
+                            .filter(|position| !is_hidden(&position.position.coin))
+                            .collect();
+                        data.clearinghouses_by_dex = states_by_dex;
+                    } else {
+                        for (dex, state) in states_by_dex {
+                            data.clearinghouses_by_dex.insert(dex, state);
+                        }
+                        data.clearinghouse.asset_positions =
+                            collect_positions_by_dex(&data.clearinghouses_by_dex, is_hidden);
+                    }
                     self.sync_all_chart_overlays();
                 }
                 WsUserData::OpenOrders { dex, orders } => {

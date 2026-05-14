@@ -65,17 +65,19 @@ fn parse_all_dex_positions(data: &Value, target_addr: Option<&str>) -> Option<Ke
         }
     }
 
-    main_state.map(|state| {
-        (
-            Some(source_addr),
-            WsUserData::AllDexPositions {
-                main_state: Box::new(state),
-                states_by_dex,
-                all_positions,
-                position_details,
-            },
-        )
-    })
+    if states_by_dex.is_empty() {
+        return None;
+    }
+
+    Some((
+        Some(source_addr),
+        WsUserData::AllDexPositions {
+            main_state: main_state.map(Box::new),
+            states_by_dex,
+            all_positions,
+            position_details,
+        },
+    ))
 }
 
 fn parse_open_orders(data: &Value, target_addr: Option<&str>) -> Option<KeyedUserData> {
