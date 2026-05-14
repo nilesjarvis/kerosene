@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::{label_value, vertical_spacer};
+use crate::helpers::vertical_spacer;
 use crate::message::Message;
 use iced::widget::{container, row, text};
 use iced::{Element, Fill};
@@ -9,10 +9,7 @@ use iced::{Element, Fill};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(super) fn view_connected_account_status(
-        &self,
-        account_label: String,
-    ) -> Element<'_, Message> {
+    pub(super) fn view_connected_account_status(&self) -> Element<'_, Message> {
         let theme = self.theme();
         let ready_status = self.account_data.as_ref().map(|data| {
             let scope = data
@@ -74,8 +71,6 @@ impl TradingTerminal {
             .into()
         };
         let items = row![
-            label_value("Account", account_label),
-            vertical_spacer(),
             status_widget,
             vertical_spacer(),
             self.summary_market_universe_picker(),

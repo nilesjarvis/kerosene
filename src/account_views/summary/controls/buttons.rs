@@ -3,6 +3,9 @@ use crate::message::Message;
 use iced::widget::{button, pick_list, row, text};
 use iced::{Element, Length, Theme};
 
+const DROPDOWN_CHEVRON_UP: &str = "\u{25B4}";
+const DROPDOWN_CHEVRON_DOWN: &str = "\u{25BE}";
+
 // ---------------------------------------------------------------------------
 // Account Summary Window Buttons
 // ---------------------------------------------------------------------------
@@ -26,13 +29,17 @@ impl TradingTerminal {
     }
 
     pub(crate) fn summary_widgets_button(&self) -> Element<'_, Message> {
-        let arrow = if self.add_widget_menu_open { "^" } else { "v" };
+        let chevron = if self.add_widget_menu_open {
+            DROPDOWN_CHEVRON_UP
+        } else {
+            DROPDOWN_CHEVRON_DOWN
+        };
         button(
             row![
                 text("Widgets").size(10).width(Length::Fixed(42.0)),
-                text(arrow)
-                    .size(10)
-                    .width(Length::Fixed(8.0))
+                text(chevron)
+                    .size(13)
+                    .width(Length::Fixed(10.0))
                     .align_x(iced::alignment::Horizontal::Center),
             ]
             .spacing(4)
@@ -45,15 +52,19 @@ impl TradingTerminal {
     }
 
     pub(crate) fn summary_layouts_button(&self) -> Element<'_, Message> {
-        let arrow = if self.layout_menu_open { "^" } else { "v" };
+        let chevron = if self.layout_menu_open {
+            DROPDOWN_CHEVRON_UP
+        } else {
+            DROPDOWN_CHEVRON_DOWN
+        };
         button(
             row![
                 text(self.layout_switcher_button_label())
                     .size(10)
                     .width(Length::Fixed(110.0)),
-                text(arrow)
-                    .size(10)
-                    .width(Length::Fixed(8.0))
+                text(chevron)
+                    .size(13)
+                    .width(Length::Fixed(10.0))
                     .align_x(iced::alignment::Horizontal::Center),
             ]
             .spacing(4)

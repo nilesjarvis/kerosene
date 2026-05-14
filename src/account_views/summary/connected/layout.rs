@@ -3,43 +3,13 @@ use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{format_usd, label_value, label_value_colored, vertical_spacer};
 use crate::message::Message;
-use iced::widget::{Row, Space, button, row, text};
+use iced::widget::{Row, Space, row};
 use iced::{Fill, Theme};
 
 impl TradingTerminal {
-    pub(super) fn connected_account_label(&self, addr: &str) -> String {
-        let account_display = self.wallet_display(addr);
-        if account_display.has_label {
-            format!(
-                "{} ({})",
-                account_display.primary, account_display.secondary
-            )
-        } else {
-            account_display.primary
-        }
-    }
-
-    pub(super) fn connected_summary_base_row<'a>(
-        &'a self,
-        addr: &str,
-        account_label: &str,
-        theme: &Theme,
-    ) -> Row<'a, Message> {
-        let copy_btn = button(
-            text("Copy")
-                .size(10)
-                .color(theme.extended_palette().background.weak.text),
-        )
-        .on_press(Message::CopyToClipboard(addr.to_string()))
-        .padding(0)
-        .style(button::text);
-
+    pub(super) fn connected_summary_base_row<'a>(&'a self) -> Row<'a, Message> {
         row![
             self.summary_account_picker(),
-            vertical_spacer(),
-            row![label_value("Account", account_label), copy_btn]
-                .spacing(6)
-                .align_y(iced::Alignment::Center),
             vertical_spacer(),
         ]
         .spacing(16)
