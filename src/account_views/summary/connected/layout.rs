@@ -1,10 +1,11 @@
 use super::metrics::ConnectedSummaryValues;
+use super::super::CONNECTED_SUMMARY_ACTION_BREAKPOINT;
 use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{format_usd, label_value, label_value_colored, vertical_spacer};
 use crate::message::Message;
-use iced::widget::{Row, Space, row};
-use iced::{Fill, Theme};
+use iced::widget::{Row, Space, column, row};
+use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn connected_summary_base_row<'a>(&'a self) -> Row<'a, Message> {
@@ -14,6 +15,45 @@ impl TradingTerminal {
         ]
         .spacing(16)
         .align_y(iced::Alignment::Center)
+        .width(Fill)
+    }
+
+    pub(super) fn view_connected_summary_layout<'a>(
+        &'a self,
+        data: &AccountData,
+        theme: &Theme,
+        available_width: f32,
+    ) -> Element<'a, Message> {
+        let summary_values = self.connected_summary_values(data);
+        let metrics = self.connected_summary_metrics_row(data, &summary_values, theme);
+
+        if available_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT {
+            column![
+                metrics,
+                row![
+                    Space::new().width(Fill),
+                    self.connected_summary_actions_row()
+                ]
+                .width(Fill)
+                .align_y(iced::Alignment::Center),
+            ]
+            .spacing(6)
+            .width(Fill)
+            .into()
+        } else {
+            self.push_connected_summary_actions(metrics).into()
+        }
+    }
+
+    fn connected_summary_metrics_row<'a>(
+        &'a self,
+        data: &AccountData,
+        summary_values: &ConnectedSummaryValues,
+        theme: &Theme,
+    ) -> Row<'a, Message> {
+        let items = self.connected_summary_base_row();
+        self.push_connected_summary_metrics(items, data, summary_values, theme)
+            .width(Fill)
     }
 
     pub(super) fn push_connected_summary_metrics<'a>(
@@ -102,14 +142,23 @@ impl TradingTerminal {
     ) -> Row<'a, Message> {
         items
             .push(Space::new().width(Fill))
-            .push(self.summary_market_universe_picker())
-            .push(self.summary_hide_pnl_button())
-            .push(self.summary_sound_button())
-            .push(self.summary_notifications_button())
-            .push(self.summary_layouts_button())
-            .push(self.summary_widgets_button())
-            .push(self.summary_settings_button())
-            .push(self.summary_disconnect_button())
+            .push(self.connected_summary_actions_row())
+            .width(Fill)
+    }
+
+    fn connected_summary_actions_row<'a>(&'a self) -> Row<'a, Message> {
+        row![
+            self.summary_market_universe_picker(),
+            self.summary_hide_pnl_button(),
+            self.summary_sound_button(),
+            self.summary_notifications_button(),
+            self.summary_layouts_button(),
+            self.summary_widgets_button(),
+            self.summary_settings_button(),
+            self.summary_disconnect_button(),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center)
     }
 
     fn mask_connected_summary_usd(&self, value: &str) -> String {

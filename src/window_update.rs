@@ -57,6 +57,10 @@ impl TradingTerminal {
                     self.wallet_tracker.height = size.height;
                     self.persist_config();
                 }
+                if Some(id) == self.main_window_id {
+                    self.main_window_size = Some(size);
+                    self.persist_config();
+                }
                 if let Some(state) = self.wallet_detail_windows.get_mut(&id) {
                     state.width = size.width;
                     state.height = size.height;

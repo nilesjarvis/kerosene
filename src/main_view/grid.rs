@@ -65,6 +65,7 @@ impl TradingTerminal {
         .width(Fill)
         .height(Fill)
         .spacing(1)
+        .min_size(self.account_summary_pane_min_size())
         .on_resize(6, Message::PaneResized)
         .on_drag(Message::PaneDragged)
         .on_click(Message::PaneClicked)

@@ -4,20 +4,16 @@ mod status;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::container;
+use iced::widget::{container, responsive};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
     pub(crate) fn view_connected_account_summary(&self) -> Element<'_, Message> {
-        let theme = self.theme();
-
         if let Some(data) = &self.account_data {
-            let summary_values = self.connected_summary_values(data);
-            let items = self.connected_summary_base_row();
-            let items = self.push_connected_summary_metrics(items, data, &summary_values, &theme);
-            let items = self.push_connected_summary_actions(items);
-
-            container(items)
+            container(responsive(move |size| {
+                let theme = self.theme();
+                self.view_connected_summary_layout(data, &theme, size.width)
+            }))
                 .width(Fill)
                 .height(Fill)
                 .padding([2, 12])
