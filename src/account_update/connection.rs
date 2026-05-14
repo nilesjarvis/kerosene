@@ -143,12 +143,15 @@ impl TradingTerminal {
         stop_chase_task
     }
 
-    pub(super) fn apply_account_data_loaded(
+    pub(crate) fn apply_account_data_loaded(
         &mut self,
         address: String,
         result: Result<AccountData, String>,
     ) -> Task<Message> {
         if self.connected_address.as_deref() != Some(address.as_str()) {
+            if let Ok(data) = result {
+                self.reconcile_twap_fills_for_account(&address, &data.fills);
+            }
             return Task::none();
         }
         self.account_loading = false;
@@ -204,6 +207,20 @@ impl TradingTerminal {
         self.account_loading = true;
         self.account_reconciliation_required = true;
         self.account_error = None;
+        Task::perform(fetch_account_data(addr), move |r| {
+            Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
+        })
+    }
+
+    pub(crate) fn refresh_account_data_for_twap_reconciliation(
+        &mut self,
+        addr: String,
+    ) -> Task<Message> {
+        if self.connected_address.as_deref() == Some(addr.as_str()) {
+            return self.force_refresh_account_data_for_reconciliation(addr);
+        }
+
+        let requested_addr = addr.clone();
         Task::perform(fetch_account_data(addr), move |r| {
             Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
         })

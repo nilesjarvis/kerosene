@@ -1,3 +1,4 @@
+use crate::account::UserFill;
 use crate::api::MarketType;
 use crate::api::fetch_order_status_by_cloid;
 use crate::app_state::TradingTerminal;
@@ -1177,16 +1178,27 @@ impl TradingTerminal {
         let Some(data) = self.account_data.as_ref() else {
             return;
         };
-        let now = Instant::now();
+        let Some(address) = self.connected_address.clone() else {
+            return;
+        };
         let fills = data.fills.clone();
+        self.reconcile_twap_fills_for_account(&address, &fills);
+    }
+
+    pub(crate) fn reconcile_twap_fills_for_account(
+        &mut self,
+        account_address: &str,
+        fills: &[UserFill],
+    ) {
+        let now = Instant::now();
         let mut archive_ids = Vec::new();
         for twap in self.twap_orders.values_mut() {
-            if self.connected_address.as_deref() != Some(twap.account_address.as_str()) {
+            if twap.account_address != account_address {
                 continue;
             }
             let before = twap.filled_size;
             let before_status = twap.status;
-            twap.reconcile_fills(&fills);
+            twap.reconcile_fills(fills);
             if twap.filled_size > before {
                 if before_status == TwapStatus::Paused && !twap.has_status_unknown_child() {
                     twap.status_check_cloid = None;
@@ -1623,20 +1635,29 @@ impl TradingTerminal {
     ) -> Task<Message> {
         match policy {
             TwapAccountRefresh::Immediate => {
-                let Some(addr) = self.connected_address.clone() else {
+                let Some(addr) = self.twap_origin_address(twap_id) else {
                     return Task::none();
                 };
-                self.force_refresh_account_data_for_reconciliation(addr)
+                self.refresh_account_data_for_twap_reconciliation(addr)
             }
             _ if self.twap_refresh_policy_needs_refresh(policy, twap_id) => {
-                self.refresh_account_data()
+                let Some(addr) = self.twap_origin_address(twap_id) else {
+                    return Task::none();
+                };
+                self.refresh_account_data_for_twap_reconciliation(addr)
             }
             _ => Task::none(),
         }
     }
 
+    fn twap_origin_address(&self, twap_id: u64) -> Option<String> {
+        self.twap_orders
+            .get(&twap_id)
+            .map(|twap| twap.account_address.clone())
+    }
+
     fn check_twap_child_status(&mut self, twap_id: u64, cloid: String) -> Task<Message> {
-        let Some(address) = self.connected_address.clone() else {
+        let Some(address) = self.twap_origin_address(twap_id) else {
             return Task::none();
         };
         let request_cloid = cloid.clone();
@@ -1656,7 +1677,7 @@ impl TradingTerminal {
         cloid: String,
         delay: std::time::Duration,
     ) -> Task<Message> {
-        let Some(address) = self.connected_address.clone() else {
+        let Some(address) = self.twap_origin_address(twap_id) else {
             return Task::none();
         };
         let request_cloid = cloid.clone();
@@ -1883,7 +1904,7 @@ mod tests {
     };
     use crate::account::{
         AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
-        SpotClearinghouseState, UserFeeRates,
+        SpotClearinghouseState, UserFeeRates, UserFill,
     };
     use crate::api::OrderStatusResult;
     use crate::app_state::TradingTerminal;
@@ -1983,6 +2004,94 @@ mod tests {
             completeness: AccountDataCompleteness::default(),
             fetched_at_ms: TradingTerminal::now_ms(),
         }
+    }
+
+    fn user_fill(oid: u64, size: &str, price: &str) -> UserFill {
+        UserFill {
+            coin: "BTC".to_string(),
+            px: price.to_string(),
+            sz: size.to_string(),
+            side: "B".to_string(),
+            time: 1,
+            oid: Some(oid),
+            dir: "Open Long".to_string(),
+            closed_pnl: "0".to_string(),
+            fee: "0.01".to_string(),
+        }
+    }
+
+    #[test]
+    fn twap_status_checks_resolve_origin_account_after_account_switch() {
+        let now = Instant::now();
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xdef".to_string());
+        terminal.twap_orders.insert(1, test_twap(1, cloid, now));
+
+        assert_eq!(terminal.twap_origin_address(1).as_deref(), Some("0xabc"));
+    }
+
+    #[test]
+    fn twap_reconciliation_uses_fetched_account_scope_after_account_switch() {
+        let now = Instant::now();
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xdef".to_string());
+        let mut twap = test_twap(1, cloid, now);
+        twap.child_orders[0].oid = Some(42);
+        twap.child_orders[0].status = TwapChildStatus::AwaitingReconciliation;
+        twap.status_check_cloid = Some(cloid.to_string());
+        twap.reconciliation_deadline = Some(now + TWAP_RECONCILIATION_TIMEOUT);
+        terminal.twap_orders.insert(1, twap);
+        let fills = vec![user_fill(42, "0.5", "100")];
+
+        terminal.reconcile_twap_fills_for_account("0xdef", &fills);
+        assert_eq!(
+            terminal.twap_orders.get(&1).map(|twap| twap.filled_size),
+            Some(0.0)
+        );
+
+        terminal.reconcile_twap_fills_for_account("0xabc", &fills);
+
+        let twap = terminal
+            .twap_orders
+            .get(&1)
+            .expect("reconciled twap should remain active");
+        assert_eq!(twap.filled_size, 0.5);
+        assert_eq!(twap.child_orders[0].status, TwapChildStatus::Filled);
+        assert_eq!(twap.status_check_cloid, None);
+        assert_eq!(twap.reconciliation_deadline, None);
+    }
+
+    #[test]
+    fn stale_account_data_loaded_reconciles_twap_without_replacing_current_account() {
+        let now = Instant::now();
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xdef".to_string());
+        terminal.account_data = Some(empty_account_data());
+        let mut twap = test_twap(1, cloid, now);
+        twap.child_orders[0].oid = Some(42);
+        twap.child_orders[0].status = TwapChildStatus::AwaitingReconciliation;
+        twap.status_check_cloid = Some(cloid.to_string());
+        twap.reconciliation_deadline = Some(now + TWAP_RECONCILIATION_TIMEOUT);
+        terminal.twap_orders.insert(1, twap);
+        let mut stale_data = empty_account_data();
+        stale_data.fills.push(user_fill(42, "0.5", "100"));
+
+        let _task = terminal.apply_account_data_loaded("0xabc".to_string(), Ok(stale_data));
+
+        assert_eq!(terminal.connected_address.as_deref(), Some("0xdef"));
+        assert_eq!(
+            terminal.account_data.as_ref().map(|data| data.fills.len()),
+            Some(0)
+        );
+        let twap = terminal
+            .twap_orders
+            .get(&1)
+            .expect("reconciled twap should remain active");
+        assert_eq!(twap.filled_size, 0.5);
+        assert_eq!(twap.child_orders[0].status, TwapChildStatus::Filled);
     }
 
     #[test]
