@@ -5,6 +5,7 @@ use crate::signing::ChaseOrder;
 use crate::ws::WsUserData;
 
 use iced::Task;
+use std::collections::HashSet;
 
 #[cfg(test)]
 mod tests;
@@ -81,18 +82,61 @@ where
     }
 }
 
-fn chase_fill_summary(fills: &[crate::account::UserFill], oid: u64) -> Option<String> {
-    let matching: Vec<_> = fills.iter().filter(|fill| fill.oid == Some(oid)).collect();
-    if matching.is_empty() {
+#[derive(Debug, Clone)]
+struct ChaseFillTotals {
+    side: String,
+    coin: String,
+    filled_size: f64,
+    total_notional: f64,
+}
+
+fn chase_fill_totals(
+    fills: &[crate::account::UserFill],
+    oids: &[u64],
+    since_ms: Option<u64>,
+) -> Option<ChaseFillTotals> {
+    if oids.is_empty() {
         return None;
     }
 
-    let first = matching[0];
-    let side = if first.side == "B" { "BUY" } else { "SELL" };
-    let coin = first.coin.as_str();
-    let mut total_size = 0.0;
+    let mut seen = HashSet::new();
+    let mut side = None;
+    let mut coin = None;
+    let mut filled_size = 0.0;
     let mut total_notional = 0.0;
-    for fill in matching {
+    let mut matched = false;
+    for fill in fills {
+        let Some(oid) = fill.oid else {
+            continue;
+        };
+        if !oids.contains(&oid) {
+            continue;
+        }
+        if since_ms.is_some_and(|since_ms| fill.time < since_ms) {
+            continue;
+        }
+        let fill_key = (
+            oid,
+            fill.time,
+            fill.px.as_str(),
+            fill.sz.as_str(),
+            fill.side.as_str(),
+            fill.dir.as_str(),
+            fill.closed_pnl.as_str(),
+            fill.fee.as_str(),
+        );
+        if !seen.insert(fill_key) {
+            continue;
+        }
+        matched = true;
+        side.get_or_insert_with(|| {
+            if fill.side == "B" {
+                "BUY".to_string()
+            } else {
+                "SELL".to_string()
+            }
+        });
+        coin.get_or_insert_with(|| fill.coin.clone());
         let Ok(size) = fill.sz.parse::<f64>() else {
             continue;
         };
@@ -100,34 +144,83 @@ fn chase_fill_summary(fills: &[crate::account::UserFill], oid: u64) -> Option<St
             continue;
         };
         if size.is_finite() && size > 0.0 && price.is_finite() && price > 0.0 {
-            total_size += size;
+            filled_size += size;
             total_notional += size * price;
         }
     }
 
-    if total_size > 0.0 {
-        let avg_px = total_notional / total_size;
+    if !matched {
+        return None;
+    }
+
+    Some(ChaseFillTotals {
+        side: side.unwrap_or_else(|| "BUY".to_string()),
+        coin: coin.unwrap_or_else(|| "?".to_string()),
+        filled_size,
+        total_notional,
+    })
+}
+
+fn chase_fill_summary_for_oids(fills: &[crate::account::UserFill], oids: &[u64]) -> Option<String> {
+    let totals = chase_fill_totals(fills, oids, None)?;
+
+    if totals.filled_size > 0.0 {
+        let avg_px = totals.total_notional / totals.filled_size;
         Some(format!(
-            "Chase filled: {side} {} {coin} @ ${} (oid {oid})",
-            format_chase_fill_number(total_size),
+            "Chase filled: {} {} {} @ ${}",
+            totals.side,
+            format_chase_fill_number(totals.filled_size),
+            totals.coin,
             format_chase_fill_number(avg_px)
         ))
     } else {
-        Some(format!("Chase filled (oid {oid})"))
+        Some("Chase filled".to_string())
     }
+}
+
+fn chase_fill_summary_for_chase(
+    fills: &[crate::account::UserFill],
+    chase: &ChaseOrder,
+) -> Option<String> {
+    let oids = chase.known_oids_with_current();
+    let totals = chase_fill_totals(fills, &oids, Some(chase.started_at_ms))?;
+
+    if totals.filled_size > 0.0 {
+        let avg_px = totals.total_notional / totals.filled_size;
+        Some(format!(
+            "Chase filled: {} {} {} @ ${}",
+            totals.side,
+            format_chase_fill_number(totals.filled_size),
+            totals.coin,
+            format_chase_fill_number(avg_px)
+        ))
+    } else {
+        Some("Chase filled".to_string())
+    }
+}
+
+fn chase_fill_summary(fills: &[crate::account::UserFill], oid: u64) -> Option<String> {
+    chase_fill_summary_for_oids(fills, &[oid]).map(|summary| {
+        if summary == "Chase filled" {
+            format!("Chase filled (oid {oid})")
+        } else {
+            format!("{summary} (oid {oid})")
+        }
+    })
 }
 
 fn apply_open_order_to_chase(
     chase: &mut ChaseOrder,
     order: &OpenOrder,
     price_sync: ChaseOpenOrderPriceSync,
-) -> Result<(), ()> {
+) -> Result<bool, ()> {
     let sz = order.sz.parse::<f64>().map_err(|_| ())?;
-    if !sz.is_finite() || sz <= 0.0 {
+    let oversized = chase.sync_open_remaining_size(sz).ok_or(())?;
+    if !chase.remaining_size.is_finite() {
         return Err(());
     }
 
-    chase.remaining_size = sz;
+    chase.record_oid(order.oid);
     if let Ok(px) = order.limit_px.parse::<f64>()
         && let Some((rounded_px, price_wire)) = chase.rounded_price(px)
     {
@@ -143,7 +236,7 @@ fn apply_open_order_to_chase(
     }
     chase.oid_confirmed = true;
     chase.missing_open_order_refresh_requested = false;
-    Ok(())
+    Ok(oversized)
 }
 
 fn format_chase_fill_number(value: f64) -> String {
@@ -286,6 +379,7 @@ impl TradingTerminal {
         if fills_changed {
             self.sync_all_chart_trade_markers();
             self.reconcile_twap_fills_from_account();
+            self.reconcile_chase_fills_from_account();
         }
         let chase_task = if orders_changed {
             self.handle_chase_order_disappearance()
@@ -300,6 +394,31 @@ impl TradingTerminal {
         Task::batch([chase_task, mids_task, wallet_task])
     }
 
+    pub(crate) fn reconcile_chase_fills_from_account(&mut self) {
+        let Some(data) = self.account_data.as_ref() else {
+            return;
+        };
+        if !data.completeness.fills_complete {
+            return;
+        }
+        let fills = data.fills.clone();
+        self.reconcile_chase_fills_from_snapshot(&fills);
+    }
+
+    fn reconcile_chase_fills_from_snapshot(&mut self, fills: &[crate::account::UserFill]) {
+        let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
+        for chase_id in chase_ids {
+            let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
+                continue;
+            };
+            let oids = chase.known_oids_with_current();
+            let Some(totals) = chase_fill_totals(fills, &oids, Some(chase.started_at_ms)) else {
+                continue;
+            };
+            chase.set_filled_size(totals.filled_size);
+        }
+    }
+
     fn handle_chase_order_disappearance(&mut self) -> Task<Message> {
         let mut refresh_for_missing_order = false;
         let open_orders = self
@@ -309,6 +428,7 @@ impl TradingTerminal {
             .unwrap_or_default();
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
         let mut remove_ids = Vec::new();
+        let mut correction_ids = Vec::new();
 
         for chase_id in chase_ids {
             let Some((oid, confirmed, refresh_requested, has_pending)) =
@@ -332,13 +452,16 @@ impl TradingTerminal {
             match open_orders.iter().find(|order| order.oid == oid) {
                 Some(order) => {
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id)
-                        && apply_open_order_to_chase(
+                        && let Ok(oversized) = apply_open_order_to_chase(
                             chase,
                             order,
                             ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
                         )
-                        .is_err()
                     {
+                        if oversized {
+                            correction_ids.push(chase_id);
+                        }
+                    } else {
                         self.order_status = Some((
                             "Chase stopped: invalid remaining size from open orders".into(),
                             true,
@@ -367,10 +490,14 @@ impl TradingTerminal {
         for (chase_id, summary) in remove_ids {
             self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
+        let mut tasks: Vec<Task<Message>> = correction_ids
+            .into_iter()
+            .map(|chase_id| self.chase_cancel_for_current_price_reconciliation(chase_id))
+            .collect();
         if refresh_for_missing_order {
-            return self.refresh_account_data();
+            tasks.push(self.refresh_account_data());
         }
-        Task::none()
+        Task::batch(tasks)
     }
 
     pub(crate) fn reconcile_chase_after_account_refresh(&mut self) -> Task<Message> {
@@ -380,10 +507,16 @@ impl TradingTerminal {
         let open_orders = data.open_orders.clone();
         let fills = data.fills.clone();
         let open_orders_complete = data.completeness.open_orders_complete;
+        let fills_complete = data.completeness.fills_complete;
         let connected_address = self.connected_address.clone();
+        if fills_complete {
+            self.reconcile_chase_fills_from_snapshot(&fills);
+        }
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
         let mut tasks = Vec::new();
         let mut remove_ids = Vec::new();
+        let mut correction_ids = Vec::new();
+        let mut replacement_ids = Vec::new();
 
         for chase_id in chase_ids {
             let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
@@ -395,7 +528,26 @@ impl TradingTerminal {
             {
                 continue;
             }
+            let wants_replacement = chase_snapshot.pending_best_price.is_some();
+            if wants_replacement && (!open_orders_complete || !fills_complete) {
+                self.order_status = Some((
+                    "Chase paused: account refresh was incomplete; not placing replacement until fills and open orders are verified"
+                        .into(),
+                    true,
+                ));
+                continue;
+            }
+            if chase_snapshot.residual_size() <= f64::EPSILON {
+                let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
+                    .unwrap_or_else(|| "Chase completed: target size filled".to_string());
+                remove_ids.push((chase_id, status));
+                continue;
+            }
+
             let Some(oid) = chase_snapshot.current_oid else {
+                if wants_replacement {
+                    replacement_ids.push(chase_id);
+                }
                 continue;
             };
 
@@ -404,33 +556,54 @@ impl TradingTerminal {
                 Some(order) => {
                     let mut stop_after_refresh = None;
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-                        if apply_open_order_to_chase(chase, order, ChaseOpenOrderPriceSync::Trust)
-                            .is_err()
-                        {
-                            self.order_status = Some((
-                                "Chase stopped: invalid remaining size from account refresh".into(),
-                                true,
-                            ));
-                            remove_ids.push((
-                                chase_id,
-                                "Chase stopped: invalid remaining size from account refresh"
-                                    .to_string(),
-                            ));
-                        } else if chase.stop_requested {
-                            stop_after_refresh = chase
-                                .stop_reason
-                                .clone()
-                                .or_else(|| Some(("Chase stopped".to_string(), false)));
-                        } else {
-                            self.order_status = Some((format!("Chasing (oid {oid})..."), false));
+                        match apply_open_order_to_chase(
+                            chase,
+                            order,
+                            ChaseOpenOrderPriceSync::Trust,
+                        ) {
+                            Ok(oversized) => {
+                                if chase.stop_requested {
+                                    stop_after_refresh = chase
+                                        .stop_reason
+                                        .clone()
+                                        .or_else(|| Some(("Chase stopped".to_string(), false)));
+                                } else if oversized || wants_replacement {
+                                    correction_ids.push(chase_id);
+                                } else {
+                                    self.order_status =
+                                        Some((format!("Chasing (oid {oid})..."), false));
+                                }
+                            }
+                            Err(()) => {
+                                self.order_status = Some((
+                                    "Chase stopped: invalid remaining size from account refresh"
+                                        .into(),
+                                    true,
+                                ));
+                                remove_ids.push((
+                                    chase_id,
+                                    "Chase stopped: invalid remaining size from account refresh"
+                                        .to_string(),
+                                ));
+                            }
                         }
                     }
                     if let Some((reason, is_error)) = stop_after_refresh {
                         tasks.push(self.stop_chase_by_id_with_reason(chase_id, reason, is_error));
                     }
                 }
+                None if open_orders_complete && wants_replacement => {
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                        chase.record_oid(oid);
+                        chase.current_oid = None;
+                        chase.oid_confirmed = false;
+                        chase.missing_open_order_refresh_requested = false;
+                    }
+                    replacement_ids.push(chase_id);
+                }
                 None if open_orders_complete => {
-                    let status = chase_fill_summary(&fills, oid)
+                    let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
+                        .or_else(|| chase_fill_summary(&fills, oid))
                         .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
                     self.order_status = Some((status.clone(), false));
                     remove_ids.push((chase_id, status));
@@ -447,6 +620,25 @@ impl TradingTerminal {
         for (chase_id, summary) in remove_ids {
             self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
+        tasks.extend(
+            correction_ids
+                .into_iter()
+                .map(|chase_id| self.chase_cancel_for_current_price_reconciliation(chase_id)),
+        );
+        let replacements: Vec<_> = replacement_ids
+            .into_iter()
+            .filter_map(|chase_id| {
+                self.chase_orders
+                    .get(&chase_id)
+                    .and_then(|chase| chase.pending_best_price)
+                    .map(|best| (chase_id, best))
+            })
+            .collect();
+        tasks.extend(
+            replacements
+                .into_iter()
+                .map(|(chase_id, best)| self.chase_place_at_best(chase_id, best)),
+        );
         Task::batch(tasks)
     }
 }

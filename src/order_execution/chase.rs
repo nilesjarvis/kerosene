@@ -1,10 +1,11 @@
+use super::sizing::order_size_from_quantity_input;
 use crate::api::{MarketType, fetch_order_book};
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
 use crate::signing::ChaseOrder;
-use crate::twap_state::{MAX_ACTIVE_ADVANCED_ORDERS, twap_target_size_from_quantity};
+use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::Task;
 
 mod lifecycle;
@@ -114,21 +115,29 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let reference_price = self
-            .order_quantity_is_usd
-            .then(|| self.resolve_mid_for_symbol(&self.active_symbol))
-            .flatten();
-        let Some(qty) =
-            twap_target_size_from_quantity(raw_qty, reference_price, self.order_quantity_is_usd)
-        else {
-            let message = if self.order_quantity_is_usd {
-                format!(
-                    "Cannot start USD Chase: no fresh mid price for {}. Wait for market data or enter size in coin units.",
-                    self.active_symbol
-                )
-            } else {
-                "Invalid quantity".to_string()
+        let reference_price = if self.order_quantity_is_usd {
+            let Some(price) = self.resolve_mid_for_symbol(&self.active_symbol) else {
+                self.order_status = Some((
+                    format!(
+                        "Cannot start USD Chase: no fresh mid price for {}. Wait for market data or enter size in coin units.",
+                        self.active_symbol
+                    ),
+                    true,
+                ));
+                return Task::none();
             };
+            price
+        } else {
+            1.0
+        };
+
+        let Some(qty) = order_size_from_quantity_input(
+            raw_qty,
+            reference_price,
+            self.order_quantity_is_usd,
+            sym.sz_decimals,
+        ) else {
+            let message = "Invalid quantity for asset precision".to_string();
             self.order_status = Some((message, true));
             return Task::none();
         };
@@ -154,7 +163,9 @@ impl TradingTerminal {
                 agent_key: key.clone().into(),
                 is_buy,
                 target_size: qty,
+                filled_size: 0.0,
                 remaining_size: qty,
+                known_oids: Vec::new(),
                 asset,
                 sz_decimals,
                 is_spot,

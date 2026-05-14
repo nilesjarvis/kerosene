@@ -110,21 +110,6 @@ impl TradingTerminal {
             Message::ChasePlaceResult { chase_id, result } => {
                 return self.handle_chase_place_result(chase_id, *result);
             }
-            Message::ChaseModifyResult {
-                chase_id,
-                oid,
-                requested_price,
-                requested_price_wire,
-                result,
-            } => {
-                return self.handle_chase_modify_result(
-                    chase_id,
-                    oid,
-                    requested_price,
-                    requested_price_wire,
-                    *result,
-                );
-            }
             Message::ChaseCancelResult {
                 chase_id,
                 oid,

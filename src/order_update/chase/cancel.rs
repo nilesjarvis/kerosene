@@ -33,10 +33,23 @@ impl TradingTerminal {
         if !self.chase_orders.contains_key(&chase_id) {
             return self.refresh_after_chase_result(should_refresh);
         }
-        if !self.chase_orders.get(&chase_id).is_some_and(|chase| {
-            matches!(chase.pending_op, Some(ChasePendingOp::Cancel { oid: pending_oid }) if pending_oid == oid)
-        }) {
+        let pending_op = self
+            .chase_orders
+            .get(&chase_id)
+            .and_then(|chase| chase.pending_op);
+        let Some(pending_op) = pending_op else {
             return self.refresh_after_chase_result(should_refresh);
+        };
+        let pending_oid = match pending_op {
+            ChasePendingOp::Cancel { oid } | ChasePendingOp::CancelForReprice { oid } => oid,
+            _ => return self.refresh_after_chase_result(should_refresh),
+        };
+        if pending_oid != oid {
+            return self.refresh_after_chase_result(should_refresh);
+        }
+
+        if matches!(pending_op, ChasePendingOp::CancelForReprice { .. }) {
+            return self.handle_chase_reprice_cancel_result(chase_id, oid, result);
         }
 
         match result {
@@ -71,6 +84,78 @@ impl TradingTerminal {
         }
 
         self.refresh_after_chase_result(should_refresh)
+    }
+
+    fn handle_chase_reprice_cancel_result(
+        &mut self,
+        chase_id: u64,
+        oid: u64,
+        result: Result<ExchangeResponse, String>,
+    ) -> Task<Message> {
+        let should_refresh = result_requires_account_refresh(&result);
+        match result {
+            Ok(resp) => {
+                if resp.is_error() {
+                    let summary = resp.summary();
+                    if chase_terminal_cancel_error(&summary) {
+                        self.prepare_chase_reprice_reconciliation(chase_id, oid);
+                        self.order_status = Some((
+                            "Chase checking order status: order was filled or cancelled before the reprice cancel settled"
+                                .into(),
+                            false,
+                        ));
+                        return self.refresh_account_data();
+                    }
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                        chase.pending_op = None;
+                    }
+                    self.order_status =
+                        Some((format!("Chase reprice cancel failed: {summary}"), true));
+                    self.refresh_after_chase_result(should_refresh)
+                } else {
+                    let stop_status = self.chase_orders.get(&chase_id).and_then(|chase| {
+                        chase.stop_requested.then(|| {
+                            chase
+                                .stop_reason
+                                .clone()
+                                .unwrap_or_else(|| ("Chase stopped".to_string(), false))
+                        })
+                    });
+                    if let Some((reason, is_error)) = stop_status {
+                        self.order_status = Some((reason, is_error));
+                        self.remove_chase_order(chase_id);
+                        return self.refresh_after_chase_result(true);
+                    }
+
+                    self.prepare_chase_reprice_reconciliation(chase_id, oid);
+                    self.order_status = Some((
+                        "Chase repricing: reconciling fills before replacement".into(),
+                        false,
+                    ));
+                    self.refresh_account_data()
+                }
+            }
+            Err(e) => {
+                self.prepare_chase_reprice_reconciliation(chase_id, oid);
+                self.order_status = Some((
+                    format!(
+                        "Chase checking order status: reprice cancel response was not confirmed ({e})"
+                    ),
+                    false,
+                ));
+                self.refresh_account_data()
+            }
+        }
+    }
+
+    fn prepare_chase_reprice_reconciliation(&mut self, chase_id: u64, oid: u64) {
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+            chase.record_oid(oid);
+            chase.current_oid = Some(oid);
+            chase.pending_op = None;
+            chase.oid_confirmed = true;
+            chase.missing_open_order_refresh_requested = true;
+        }
     }
 
     fn handle_chase_uncertain_cancel_result(

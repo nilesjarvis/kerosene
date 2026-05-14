@@ -227,6 +227,7 @@ fn exchange_response_filled_status_reports_fill_and_completion() {
 
     assert_eq!(response.summary(), "Filled 1.25 @ $2500.5 (oid 77)");
     assert_eq!(response.order_oid(), Some(77));
+    assert_eq!(response.filled_total_size(), Some(1.25));
     assert!(!response.is_error());
     assert!(response.is_fully_filled());
     assert!(!response.is_ambiguous_order_result());
@@ -481,7 +482,9 @@ fn chase_order_debug_redacts_agent_key() {
         agent_key: "super-secret-agent-key".to_string().into(),
         is_buy: true,
         target_size: 1.0,
+        filled_size: 0.0,
         remaining_size: 1.0,
+        known_oids: vec![42],
         asset: 0,
         sz_decimals: 5,
         is_spot: false,
@@ -518,7 +521,9 @@ fn chase_price_moves_only_toward_fill() {
         agent_key: "agent-key".to_string().into(),
         is_buy: true,
         target_size: 1.0,
+        filled_size: 0.0,
         remaining_size: 1.0,
+        known_oids: vec![42],
         asset: 0,
         sz_decimals: 5,
         is_spot: false,

@@ -1,10 +1,11 @@
+use super::super::sizing::quantize_order_size;
 use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
 use crate::signing::{
     ChaseOrder, ChasePendingOp, MAX_CHASE_DRIFT_FRACTION, MAX_CHASE_DURATION, MAX_CHASE_REPRICES,
-    OrderKind, cancel_order, float_to_wire, modify_order, place_order,
+    OrderKind, cancel_order, float_to_wire, place_order,
 };
 use crate::twap_state::ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL;
 use iced::Task;
@@ -17,7 +18,6 @@ mod tests;
 pub(super) enum StopChaseAction {
     CancelResting { chase_id: u64, asset: u32, oid: u64 },
     AwaitPlaceResult,
-    AwaitModifyResult,
     AwaitCancelResult,
     Clear,
 }
@@ -99,8 +99,8 @@ fn plan_stop_chase_with_reason(
     chase.stop_reason = Some((reason, is_error));
     match chase.pending_op {
         Some(ChasePendingOp::Place) => StopChaseAction::AwaitPlaceResult,
-        Some(ChasePendingOp::Modify { .. }) => StopChaseAction::AwaitModifyResult,
         Some(ChasePendingOp::Cancel { .. }) => StopChaseAction::AwaitCancelResult,
+        Some(ChasePendingOp::CancelForReprice { .. }) => StopChaseAction::AwaitCancelResult,
         None => match chase.current_oid {
             Some(oid) => {
                 chase.pending_op = Some(ChasePendingOp::Cancel { oid });
@@ -180,13 +180,6 @@ impl TradingTerminal {
             StopChaseAction::AwaitPlaceResult => {
                 self.order_status = Some((
                     format!("{reason}: waiting for order id before cancelling"),
-                    is_error,
-                ));
-                Task::none()
-            }
-            StopChaseAction::AwaitModifyResult => {
-                self.order_status = Some((
-                    format!("{reason}: waiting for modify result before cancelling"),
                     is_error,
                 ));
                 Task::none()
@@ -388,17 +381,57 @@ impl TradingTerminal {
             return self.stop_chase_for_limit(chase_id, reason);
         }
 
+        self.start_chase_reprice_cancel(
+            chase_id,
+            rounded_best,
+            now,
+            "Chase repricing: cancelling current order before replacement",
+        )
+    }
+
+    pub(crate) fn chase_cancel_for_current_price_reconciliation(
+        &mut self,
+        chase_id: u64,
+    ) -> Task<Message> {
+        let now = Instant::now();
+        let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
+            return Task::none();
+        };
+        if chase_snapshot.stop_requested || chase_snapshot.has_pending_op() {
+            return Task::none();
+        }
+        let Some((rounded_price, _price_wire)) =
+            chase_snapshot.rounded_price(chase_snapshot.current_price)
+        else {
+            return self.stop_chase_for_limit(chase_id, ChaseLimitReason::InvalidPrice);
+        };
+        self.start_chase_reprice_cancel(
+            chase_id,
+            rounded_price,
+            now,
+            "Chase correcting remaining size: cancelling current order before replacement",
+        )
+    }
+
+    fn start_chase_reprice_cancel(
+        &mut self,
+        chase_id: u64,
+        rounded_best: f64,
+        now: Instant,
+        status: &'static str,
+    ) -> Task<Message> {
         let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
         let Some(oid) = chase.current_oid else {
             return Task::none();
         };
-        if !chase.remaining_size.is_finite() || chase.remaining_size <= 0.0 {
-            self.order_status = Some(("Chase stopped: invalid remaining size".to_string(), true));
+        let Some(remaining_size) = quantize_order_size(chase.residual_size(), chase.sz_decimals)
+        else {
+            self.order_status = Some(("Chase completed: target size filled".to_string(), false));
             self.remove_chase_order(chase_id);
             return Task::none();
-        }
+        };
         let key = chase.agent_key.trim().to_string();
         if key.is_empty() {
             self.order_status = Some((
@@ -411,33 +444,22 @@ impl TradingTerminal {
 
         let chase_id = chase.id;
         let asset = chase.asset;
-        let is_buy = chase.is_buy;
-        let size = float_to_wire(chase.remaining_size);
-        let reduce_only = chase.reduce_only;
-        chase.pending_op = Some(ChasePendingOp::Modify { oid });
+        chase.record_oid(oid);
+        chase.remaining_size = remaining_size;
+        chase.pending_op = Some(ChasePendingOp::CancelForReprice { oid });
         chase.last_reprice_at = Some(now);
-        chase.pending_best_price = None;
+        chase.pending_best_price = Some(rounded_best);
         chase.reprice_count = chase.reprice_count.saturating_add(1);
         self.last_advanced_exchange_request_at = Some(now);
+        self.order_status = Some((format!("{status} {oid}"), false));
 
-        Task::perform(
-            modify_order(
-                key.into(),
-                oid,
-                asset,
-                is_buy,
-                price_wire.clone(),
-                size,
-                reduce_only,
-            ),
-            move |r| Message::ChaseModifyResult {
+        Task::perform(cancel_order(key.into(), asset, oid), move |r| {
+            Message::ChaseCancelResult {
                 chase_id,
                 oid,
-                requested_price: rounded_best,
-                requested_price_wire: price_wire.clone(),
                 result: Box::new(r),
-            },
-        )
+            }
+        })
     }
 
     /// Place a new chase limit order at the current best bid/ask.
@@ -479,11 +501,11 @@ impl TradingTerminal {
         let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
-        if !chase.remaining_size.is_finite() || chase.remaining_size <= 0.0 {
-            self.order_status = Some(("Chase stopped: invalid remaining size".to_string(), true));
+        let Some(place_size) = quantize_order_size(chase.residual_size(), chase.sz_decimals) else {
+            self.order_status = Some(("Chase completed: target size filled".to_string(), false));
             self.remove_chase_order(chase_id);
             return Task::none();
-        }
+        };
         let key = chase.agent_key.trim().to_string();
         if key.is_empty() {
             self.order_status = Some((
@@ -495,7 +517,8 @@ impl TradingTerminal {
         }
 
         let chase_id = chase.id;
-        let size = float_to_wire(chase.remaining_size);
+        chase.remaining_size = place_size;
+        let size = float_to_wire(place_size);
         let asset = chase.asset;
         let is_buy = chase.is_buy;
         let reduce_only = chase.reduce_only;
@@ -506,6 +529,7 @@ impl TradingTerminal {
         }
         chase.current_oid = None;
         chase.pending_op = Some(ChasePendingOp::Place);
+        chase.pending_best_price = None;
         chase.oid_confirmed = false;
         chase.missing_open_order_refresh_requested = false;
         self.last_advanced_exchange_request_at = Some(now);

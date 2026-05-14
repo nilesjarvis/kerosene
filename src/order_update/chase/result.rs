@@ -63,6 +63,13 @@ impl TradingTerminal {
                         Some((format!("Chase place failed: {}", resp.summary()), true));
                     self.remove_chase_order(chase_id);
                 } else if resp.is_fully_filled() {
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                        if let Some(oid) = resp.order_oid() {
+                            chase.record_oid(oid);
+                        }
+                        let filled_size = resp.filled_total_size().unwrap_or(chase.remaining_size);
+                        chase.add_filled_size(filled_size);
+                    }
                     self.order_status = Some((resp.summary(), false));
                     self.remove_chase_order(chase_id);
                 } else {
@@ -98,6 +105,7 @@ impl TradingTerminal {
 
                     if let Some(oid) = resp.order_oid() {
                         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                            chase.record_oid(oid);
                             chase.current_oid = Some(oid);
                             chase.pending_op = None;
                             chase.oid_confirmed = false;

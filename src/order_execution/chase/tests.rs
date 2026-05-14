@@ -46,6 +46,23 @@ fn start_chase_keeps_base_size_when_quantity_is_not_usd() {
 }
 
 #[test]
+fn start_chase_quantizes_base_size_to_asset_precision() {
+    let mut terminal = chase_ready_terminal();
+    terminal.order_quantity = "1.239".to_string();
+    if let Some(symbol) = terminal.exchange_symbols.first_mut() {
+        symbol.sz_decimals = 2;
+    }
+
+    let _task = terminal.start_chase(true);
+
+    let chase = terminal
+        .selected_chase()
+        .expect("chase order should be inserted");
+    assert_eq!(chase.target_size, 1.23);
+    assert_eq!(chase.remaining_size, 1.23);
+}
+
+#[test]
 fn start_chase_converts_usd_notional_to_base_size_using_fresh_mid() {
     let mut terminal = chase_ready_terminal();
     terminal.order_quantity = "1000".to_string();

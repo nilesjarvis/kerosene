@@ -299,13 +299,6 @@ pub(crate) enum Message {
         chase_id: u64,
         result: Box<Result<ExchangeResponse, String>>,
     },
-    ChaseModifyResult {
-        chase_id: u64,
-        oid: u64,
-        requested_price: f64,
-        requested_price_wire: String,
-        result: Box<Result<ExchangeResponse, String>>,
-    },
     ChaseCancelResult {
         chase_id: u64,
         oid: u64,

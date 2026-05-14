@@ -213,17 +213,25 @@ impl AdvancedOrderHistoryEntry {
         } else {
             summary
         };
-        let inferred_full_fill = chase.stop_reason.is_none() && summary.starts_with("Chase filled");
-        let filled_size = if inferred_full_fill && chase.target_size.is_finite() {
-            chase.target_size.max(0.0)
-        } else if chase.target_size.is_finite()
-            && chase.target_size > 0.0
+        let target_size = finite_or_zero(chase.target_size);
+        let filled_size = if chase.filled_size.is_finite() && chase.filled_size > 0.0 {
+            if target_size > 0.0 {
+                chase.filled_size.min(target_size)
+            } else {
+                chase.filled_size
+            }
+        } else if target_size > 0.0
             && chase.remaining_size.is_finite()
             && chase.remaining_size > 0.0
         {
-            (chase.target_size - chase.remaining_size).clamp(0.0, chase.target_size)
+            (target_size - chase.remaining_size).clamp(0.0, target_size)
         } else {
             0.0
+        };
+        let remaining_size = if target_size > 0.0 {
+            (target_size - filled_size).max(0.0)
+        } else {
+            finite_or_zero(chase.remaining_size)
         };
 
         Self {
@@ -237,13 +245,9 @@ impl AdvancedOrderHistoryEntry {
             coin: chase.coin.clone(),
             display_coin: chase.coin.clone(),
             is_buy: chase.is_buy,
-            target_size: finite_or_zero(chase.target_size),
+            target_size,
             filled_size,
-            remaining_size: if inferred_full_fill {
-                0.0
-            } else {
-                finite_or_zero(chase.remaining_size)
-            },
+            remaining_size,
             average_price: Some(chase.current_price)
                 .filter(|value| value.is_finite() && *value > 0.0),
             min_price: None,

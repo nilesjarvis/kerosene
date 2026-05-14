@@ -21,7 +21,9 @@ fn chase() -> ChaseOrder {
         agent_key: "agent-key".to_string().into(),
         is_buy: true,
         target_size: 1.0,
+        filled_size: 0.0,
         remaining_size: 1.0,
+        known_oids: vec![42],
         asset: 0,
         sz_decimals: 3,
         is_spot: false,
@@ -128,7 +130,7 @@ fn sell_chase_reprices_only_toward_lower_prices() {
 #[test]
 fn chase_reprice_waits_while_operation_is_in_flight() {
     let mut chase = chase();
-    chase.pending_op = Some(ChasePendingOp::Modify { oid: 42 });
+    chase.pending_op = Some(ChasePendingOp::CancelForReprice { oid: 42 });
 
     assert!(!chase_should_reprice(
         &chase,

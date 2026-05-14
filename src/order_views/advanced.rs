@@ -120,6 +120,16 @@ fn chase_order_row(
     };
     let reduce_only = if chase.reduce_only { " | RO" } else { "" };
     let meta = format!("{} reprices{reduce_only}", chase.reprice_count);
+    let size = if chase.target_size.is_finite() && chase.target_size > 0.0 {
+        format!(
+            "{}/{} rem {}",
+            format_size(chase.filled_size),
+            format_size(chase.target_size),
+            format_size(chase.remaining_size)
+        )
+    } else {
+        format_size(chase.remaining_size)
+    };
 
     container(
         row![
@@ -127,7 +137,7 @@ fn chase_order_row(
             badge("CHASE", theme),
             text(side).size(10).color(side_color),
             text(chase.coin.clone()).size(12).width(Fill),
-            text(format!("{} @ {price}", format_size(chase.remaining_size))).size(11),
+            text(format!("{size} @ {price}")).size(11),
             text(meta).size(10).color(weak_text),
             text(status).size(10).color(status_color),
             stop_button(chase.id)
@@ -308,8 +318,8 @@ fn chase_status(chase: &ChaseOrder) -> &'static str {
     }
     match chase.pending_op {
         Some(ChasePendingOp::Place) => "Placing",
-        Some(ChasePendingOp::Modify { .. }) => "Modifying",
         Some(ChasePendingOp::Cancel { .. }) => "Canceling",
+        Some(ChasePendingOp::CancelForReprice { .. }) => "Repricing",
         None if chase.pending_best_price.is_some() => "Queued",
         None if chase.current_oid.is_none() => "Starting",
         None => "Resting",

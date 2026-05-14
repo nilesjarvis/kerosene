@@ -36,8 +36,10 @@ impl TradingTerminal {
                 "loading".to_string()
             };
             let chase_info = text(format!(
-                "Chasing {side_str} {} {:.4} @ {} ({} active)",
+                "Chasing {side_str} {} {:.4}/{:.4} rem {:.4} @ {} ({} active)",
                 chase.coin.as_str(),
+                chase.filled_size,
+                chase.target_size,
                 chase.remaining_size,
                 price,
                 self.active_advanced_order_count()

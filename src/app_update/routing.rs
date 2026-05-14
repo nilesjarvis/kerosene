@@ -136,7 +136,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChaseBookUpdate { .. }
         | Message::ChaseRepriceTick
         | Message::ChasePlaceResult { .. }
-        | Message::ChaseModifyResult { .. }
         | Message::ChaseCancelResult { .. }
         | Message::OpenQuickOrder(_, _, _, _, _, _)
         | Message::QuickOrderQtyChanged(_, _)

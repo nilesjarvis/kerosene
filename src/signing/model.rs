@@ -25,14 +25,11 @@ pub const MAX_CHASE_DURATION: Duration = Duration::from_secs(15 * 60);
 pub const MAX_CHASE_DRIFT_FRACTION: f64 = 0.05;
 /// Minimum delay between chase reprice requests.
 pub const MIN_CHASE_REPRICE_INTERVAL: Duration = Duration::from_secs(1);
-/// Additional pause after the exchange reports a rate-limit response.
-pub const CHASE_RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(5);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChasePendingOp {
     Place,
-    Modify { oid: u64 },
     Cancel { oid: u64 },
+    CancelForReprice { oid: u64 },
 }
 
 /// Client-side chase order state. Continuously reprices a limit order toward
@@ -49,7 +46,9 @@ pub struct ChaseOrder {
     pub agent_key: Zeroizing<String>,
     pub is_buy: bool,
     pub target_size: f64,
+    pub filled_size: f64,
     pub remaining_size: f64,
+    pub known_oids: Vec<u64>,
     pub asset: u32,
     pub sz_decimals: u32,
     pub is_spot: bool,
@@ -67,15 +66,14 @@ pub struct ChaseOrder {
     /// Wall-clock start time for history snapshots. Live chase state is not
     /// persisted or resumed across restarts.
     pub started_at_ms: u64,
-    /// Number of completed cancel/place replacement cycles.
+    /// Number of attempted cancel/place replacement cycles.
     pub reprice_count: u32,
     /// The exchange request currently in flight, if any.
     pub pending_op: Option<ChasePendingOp>,
-    /// Time of the most recent reprice request, or a future cooldown anchor
-    /// after a rate-limit response.
+    /// Time of the most recent reprice request.
     pub last_reprice_at: Option<std::time::Instant>,
-    /// Latest chase book price observed while a global/per-order throttle
-    /// prevented an immediate modify request.
+    /// Latest chase book price queued while waiting to cancel, reconcile, or
+    /// place the next residual-sized order.
     pub pending_best_price: Option<f64>,
     /// True after the user has requested a stop while a place/cancel request is
     /// still unresolved. The chase keeps its captured key/account context until
@@ -97,6 +95,68 @@ pub struct ChaseOrder {
 }
 
 impl ChaseOrder {
+    pub fn record_oid(&mut self, oid: u64) {
+        if !self.known_oids.contains(&oid) {
+            self.known_oids.push(oid);
+        }
+    }
+
+    pub fn known_oids_with_current(&self) -> Vec<u64> {
+        let mut oids = self.known_oids.clone();
+        if let Some(oid) = self.current_oid
+            && !oids.contains(&oid)
+        {
+            oids.push(oid);
+        }
+        oids
+    }
+
+    pub fn residual_size(&self) -> f64 {
+        if !self.target_size.is_finite() || self.target_size <= 0.0 {
+            return 0.0;
+        }
+        let filled = if self.filled_size.is_finite() && self.filled_size > 0.0 {
+            self.filled_size.min(self.target_size)
+        } else {
+            0.0
+        };
+        (self.target_size - filled).max(0.0)
+    }
+
+    pub fn set_filled_size(&mut self, filled_size: f64) -> bool {
+        if !filled_size.is_finite() || filled_size < 0.0 {
+            return false;
+        }
+        let filled_size = if self.target_size.is_finite() && self.target_size > 0.0 {
+            filled_size.min(self.target_size)
+        } else {
+            filled_size
+        };
+        if filled_size <= self.filled_size + f64::EPSILON {
+            return false;
+        }
+        self.filled_size = filled_size;
+        self.remaining_size = self.remaining_size.min(self.residual_size()).max(0.0);
+        true
+    }
+
+    pub fn add_filled_size(&mut self, filled_size: f64) -> bool {
+        if !filled_size.is_finite() || filled_size <= 0.0 {
+            return false;
+        }
+        self.set_filled_size(self.filled_size + filled_size)
+    }
+
+    pub fn sync_open_remaining_size(&mut self, open_size: f64) -> Option<bool> {
+        if !open_size.is_finite() || open_size <= 0.0 {
+            return None;
+        }
+        let residual = self.residual_size();
+        let oversized = open_size > residual + f64::EPSILON;
+        self.remaining_size = open_size.min(residual).max(0.0);
+        Some(oversized)
+    }
+
     pub fn rounded_price(&self, price: f64) -> Option<(f64, String)> {
         if !price.is_finite() || price <= 0.0 {
             return None;
@@ -142,7 +202,9 @@ impl std::fmt::Debug for ChaseOrder {
             .field("agent_key", &"<redacted>")
             .field("is_buy", &self.is_buy)
             .field("target_size", &self.target_size)
+            .field("filled_size", &self.filled_size)
             .field("remaining_size", &self.remaining_size)
+            .field("known_oids", &self.known_oids)
             .field("asset", &self.asset)
             .field("sz_decimals", &self.sz_decimals)
             .field("is_spot", &self.is_spot)
@@ -275,6 +337,31 @@ impl ExchangeResponse {
                 .iter()
                 .all(|st| st.get("filled").is_some() && st.get("resting").is_none())
             && !self.is_error()
+    }
+
+    pub fn filled_total_size(&self) -> Option<f64> {
+        let statuses = self
+            .response
+            .as_ref()
+            .and_then(|r| r.data.as_ref())
+            .map(|d| d.statuses.as_slice())?;
+        let mut total = 0.0;
+        for status in statuses {
+            let Some(filled) = status.get("filled") else {
+                continue;
+            };
+            let Some(size) = filled
+                .get("totalSz")
+                .and_then(|v| v.as_str())
+                .and_then(|value| value.parse::<f64>().ok())
+            else {
+                continue;
+            };
+            if size.is_finite() && size > 0.0 {
+                total += size;
+            }
+        }
+        (total.is_finite() && total > 0.0).then_some(total)
     }
 
     /// Whether the response indicates an error.
