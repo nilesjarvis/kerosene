@@ -78,6 +78,7 @@ mod tests {
     fn balance(coin: &str, total: &str, entry_ntl: &str) -> SpotBalance {
         SpotBalance {
             coin: coin.to_string(),
+            token: None,
             total: total.to_string(),
             hold: "0".to_string(),
             entry_ntl: entry_ntl.to_string(),

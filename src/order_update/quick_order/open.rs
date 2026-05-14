@@ -39,9 +39,9 @@ impl TradingTerminal {
                 });
 
                 if let Some((sym, display)) = chart_sym {
-                    if self.is_ticker_muted(&sym) {
+                    if self.symbol_key_is_hidden(&sym) {
                         self.order_status =
-                            Some(("Chart ticker is muted in Settings > Risk".into(), true));
+                            Some(("Chart ticker is hidden in Settings > Risk".into(), true));
                         return Task::none();
                     }
                     self.active_symbol = sym;
@@ -79,8 +79,8 @@ impl TradingTerminal {
             self.order_status = Some(("Invalid quick-order price".into(), true));
             return Task::none();
         }
-        if self.is_ticker_muted(&chart_symbol) {
-            self.order_status = Some(("Chart ticker is muted in Settings > Risk".into(), true));
+        if self.symbol_key_is_hidden(&chart_symbol) {
+            self.order_status = Some(("Chart ticker is hidden in Settings > Risk".into(), true));
             return Task::none();
         }
         if self.is_outcome_coin(&chart_symbol) {

@@ -36,7 +36,7 @@ impl TradingTerminal {
             .map(|d| {
                 d.open_orders
                     .iter()
-                    .filter(|order| !self.is_ticker_muted(&order.coin))
+                    .filter(|order| !self.symbol_key_is_hidden(&order.coin))
                     .collect()
             })
             .unwrap_or_default();

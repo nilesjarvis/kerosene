@@ -310,8 +310,8 @@ impl TradingTerminal {
         if symbol.is_empty() {
             return Some("No order-book symbol selected".to_string());
         }
-        if self.is_ticker_muted(symbol) {
-            return Some("Order book ticker is muted in Settings > Risk".to_string());
+        if self.symbol_key_is_hidden(symbol) {
+            return Some("Order book ticker is hidden in Settings > Risk".to_string());
         }
         if self.is_outcome_coin(symbol) {
             return Some("Order book depth is not available for outcome markets".to_string());
@@ -328,7 +328,7 @@ impl TradingTerminal {
                 OrderBookSymbolMode::Active => self.active_symbol.clone(),
                 OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
             };
-            self.is_ticker_muted(&symbol)
+            self.symbol_key_is_hidden(&symbol)
         })
     }
 }

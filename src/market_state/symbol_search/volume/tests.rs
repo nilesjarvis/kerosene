@@ -11,6 +11,7 @@ fn symbol(key: &str, ticker: &str) -> ExchangeSymbol {
         display_name: None,
         keywords: Vec::new(),
         asset_index: 0,
+        collateral_token: None,
         sz_decimals: 0,
         max_leverage: 0,
         only_isolated: false,

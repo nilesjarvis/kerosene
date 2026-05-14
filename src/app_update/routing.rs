@@ -184,6 +184,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::MutedTickerInputChanged(_)
         | Message::MuteTicker
         | Message::UnmuteTicker(_)
+        | Message::MarketUniverseChanged(_)
         | Message::MarketSlippageInputChanged(_)
         | Message::SaveMarketSlippage
         | Message::StartRecordingHotkey(_)

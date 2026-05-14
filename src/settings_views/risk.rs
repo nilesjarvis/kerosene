@@ -4,7 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
 use iced::Element;
-use iced::widget::{Column, button, column, row, rule, text, text_input};
+use iced::widget::{Column, button, column, pick_list, row, rule, text, text_input};
 
 impl TradingTerminal {
     pub(crate) fn view_settings_risk_section(&self) -> Element<'_, Message> {
@@ -12,6 +12,8 @@ impl TradingTerminal {
         let mut risk_section = Column::new()
             .spacing(12)
             .push(text("Risk").size(16).color(current_theme.palette().text))
+            .push(rule::horizontal(1))
+            .push(self.view_market_universe_picker())
             .push(rule::horizontal(1))
             .push(self.view_market_slippage_input())
             .push(rule::horizontal(1))
@@ -28,6 +30,37 @@ impl TradingTerminal {
         }
 
         risk_section.into()
+    }
+
+    fn view_market_universe_picker(&self) -> Element<'_, Message> {
+        let current_theme = self.theme();
+        let mut options = self.market_universe_options();
+        if !options.contains(&self.market_universe) {
+            options.push(self.market_universe.clone());
+        }
+
+        column![
+            text("Market Universe")
+                .size(14)
+                .color(current_theme.palette().text),
+            row![
+                pick_list(
+                    options,
+                    Some(self.market_universe.clone()),
+                    Message::MarketUniverseChanged,
+                )
+                .padding([4, 8])
+                .text_size(12)
+                .width(iced::Length::Fixed(220.0)),
+            ]
+            .spacing(8)
+            .align_y(iced::Alignment::Center),
+            text("Restricts visible symbols, account rows, orders, charts, and watchlists.")
+                .size(11)
+                .color(current_theme.extended_palette().background.weak.text),
+        ]
+        .spacing(8)
+        .into()
     }
 
     fn view_market_slippage_input(&self) -> Element<'_, Message> {

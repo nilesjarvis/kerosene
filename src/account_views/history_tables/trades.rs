@@ -22,7 +22,7 @@ impl TradingTerminal {
             .map(|d| {
                 d.fills
                     .iter()
-                    .filter(|fill| !self.is_ticker_muted(&fill.coin))
+                    .filter(|fill| !self.symbol_key_is_hidden(&fill.coin))
                     .collect()
             })
             .unwrap_or_default();

@@ -2,13 +2,15 @@ use k256::ecdsa::{RecoveryId, Signature, SigningKey, signature::hazmat::PrehashS
 use serde_json::Value;
 use sha3::{Digest, Keccak256};
 
-/// Compute the action hash: keccak256(msgpack(action) ++ nonce_be_bytes ++ vault_flag).
+/// Compute the action hash: keccak256(msgpack(action) ++ nonce_be_bytes ++ vault_flag
+/// [++ expires_after_marker ++ expires_after_be_bytes]).
 pub(super) fn action_hash_bytes(
     packed: &[u8],
     vault_address: Option<&str>,
     nonce: u64,
+    expires_after: Option<u64>,
 ) -> Result<[u8; 32], String> {
-    let mut data = Vec::with_capacity(packed.len() + 9);
+    let mut data = Vec::with_capacity(packed.len() + 18);
     data.extend_from_slice(packed);
     data.extend_from_slice(&nonce.to_be_bytes());
     match vault_address {
@@ -25,6 +27,10 @@ pub(super) fn action_hash_bytes(
             }
             data.extend_from_slice(&addr_bytes);
         }
+    }
+    if let Some(expires_after) = expires_after {
+        data.push(0x00);
+        data.extend_from_slice(&expires_after.to_be_bytes());
     }
     Ok(keccak256(&data))
 }
@@ -90,6 +96,7 @@ pub(super) fn sign_l1_action(
     msgpack_bytes: &[u8],
     vault_address: Option<&str>,
     nonce: u64,
+    expires_after: Option<u64>,
 ) -> Result<Value, String> {
     let key_bytes = hex::decode(
         private_key_hex
@@ -100,7 +107,7 @@ pub(super) fn sign_l1_action(
     let signing_key = SigningKey::from_bytes(key_bytes.as_slice().into())
         .map_err(|e| format!("Invalid key: {e}"))?;
 
-    let hash = action_hash_bytes(msgpack_bytes, vault_address, nonce)?;
+    let hash = action_hash_bytes(msgpack_bytes, vault_address, nonce, expires_after)?;
     let phantom_agent_source = "a"; // mainnet
     let digest = eip712_hash(phantom_agent_source, &hash);
 

@@ -35,6 +35,9 @@ pub(super) async fn post_info_json_with_retries(
             } else {
                 format!("{label} request failed with HTTP {status}: {body_preview}")
             };
+            if status.as_u16() == 429 {
+                return Err(last_error);
+            }
             continue;
         }
 

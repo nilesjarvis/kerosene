@@ -27,7 +27,7 @@ impl TradingTerminal {
                 show_heatmap: instance.show_heatmap,
                 symbol: &instance.symbol,
                 heatmap_fetching: instance.heatmap_fetching,
-                muted: self.is_ticker_muted(&instance.symbol),
+                muted: self.symbol_key_is_hidden(&instance.symbol),
                 coin: self.hyperdash_coin_for_symbol(&instance.symbol),
                 candles: &instance.chart.candles,
                 viewport: instance.heatmap_viewport,

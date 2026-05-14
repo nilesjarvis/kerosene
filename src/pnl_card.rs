@@ -702,7 +702,7 @@ impl TradingTerminal {
             .into_iter()
             .flat_map(|data| data.clearinghouse.asset_positions.iter())
             .filter(|ap| {
-                !self.is_ticker_muted(&ap.position.coin)
+                !self.symbol_key_is_hidden(&ap.position.coin)
                     && (self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
             })
     }

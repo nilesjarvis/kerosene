@@ -7,7 +7,7 @@ impl TradingTerminal {
             .journal
             .trades
             .iter()
-            .filter(|trade| !self.is_ticker_muted(&trade.coin))
+            .filter(|trade| !self.symbol_key_is_hidden(&trade.coin))
             .filter(|trade| match self.journal.filter {
                 journal::JournalFilter::All => true,
                 journal::JournalFilter::Perp => {

@@ -12,7 +12,7 @@ impl TradingTerminal {
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
         let symbol = request.symbol;
-        if self.is_ticker_muted(&symbol) {
+        if self.symbol_key_is_hidden(&symbol) {
             return Task::none();
         }
         let mut new_cache_data = None;
@@ -83,7 +83,7 @@ impl TradingTerminal {
         symbol: String,
         candle: Candle,
     ) -> Task<Message> {
-        if self.is_ticker_muted(&symbol) {
+        if self.symbol_key_is_hidden(&symbol) {
             return Task::none();
         }
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {

@@ -1,18 +1,22 @@
-use super::super::super::{HIP3_DEXES, OpenOrder};
+use super::super::super::{AccountDataFetchScope, HIP3_DEXES, OpenOrder};
 use crate::api::API_URL;
 
-/// Fetch open-order count for the wallet tracker's slow/manual order lane.
-pub async fn fetch_wallet_tracker_open_order_count(address: String) -> Result<usize, String> {
+pub async fn fetch_wallet_tracker_open_order_count_scoped(
+    address: String,
+    scope: AccountDataFetchScope,
+) -> Result<usize, String> {
     let client = crate::api::CLIENT.clone();
     let mut order_futs = Vec::new();
-    order_futs.push(
-        client
-            .post(API_URL)
-            .json(&serde_json::json!({"type": "openOrders", "user": address}))
-            .send(),
-    );
+    if scope.fetches_main_open_orders() {
+        order_futs.push(
+            client
+                .post(API_URL)
+                .json(&serde_json::json!({"type": "openOrders", "user": address}))
+                .send(),
+        );
+    }
 
-    for dex in HIP3_DEXES {
+    for dex in scope.hip3_dexes(HIP3_DEXES) {
         order_futs.push(
             client
                 .post(API_URL)

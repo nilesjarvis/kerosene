@@ -55,7 +55,7 @@ impl TradingTerminal {
         let mut yielded_count = 0;
 
         for liq in &self.liquidations {
-            if self.is_ticker_muted(&liq.coin) {
+            if self.symbol_key_is_hidden(&liq.coin) {
                 continue;
             }
             let key = LiquidationAggregationKey::from_event(liq);
@@ -104,7 +104,7 @@ impl TradingTerminal {
         }
 
         for liq in &self.liquidations {
-            if self.is_ticker_muted(&liq.coin) {
+            if self.symbol_key_is_hidden(&liq.coin) {
                 continue;
             }
             let notional = liq.size * liq.price;

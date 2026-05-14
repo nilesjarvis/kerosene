@@ -297,7 +297,7 @@ impl TradingTerminal {
         let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        if chase.coin != coin || self.is_ticker_muted(&coin) {
+        if chase.coin != coin || self.symbol_key_is_hidden(&coin) {
             return Task::none();
         }
         let Some(best) = Self::best_chase_price_from_book(&book, chase.is_buy) else {

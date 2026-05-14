@@ -50,6 +50,8 @@ pub struct ExchangeSymbol {
     /// Builder dexes: 110000 + (dex_idx - 1) * 10000 + asset_idx.
     /// Spot pairs: 10000 + spot universe index.
     pub asset_index: u32,
+    /// Collateral token index for the perp DEX. None for non-perp markets.
+    pub collateral_token: Option<u32>,
     /// Number of decimal places for the size field.
     pub sz_decimals: u32,
     /// Maximum allowed leverage for this asset (perps only).

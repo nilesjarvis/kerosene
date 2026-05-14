@@ -30,7 +30,7 @@ impl TradingTerminal {
             OrderBookSymbolMode::Active => self.active_symbol.clone(),
             OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
         };
-        if !tracking_symbol.is_empty() && self.is_ticker_muted(&tracking_symbol) {
+        if !tracking_symbol.is_empty() && self.symbol_key_is_hidden(&tracking_symbol) {
             let content = column![
                 text("Order Book").size(13).color(theme.palette().text),
                 rule::horizontal(1),

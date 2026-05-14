@@ -1,4 +1,6 @@
-use crate::account::{fetch_wallet_tracker_open_order_count, fetch_wallet_tracker_snapshot};
+use crate::account::{
+    fetch_wallet_tracker_open_order_count_scoped, fetch_wallet_tracker_snapshot_scoped,
+};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
@@ -11,9 +13,11 @@ impl TradingTerminal {
             .entry(address.clone())
             .or_default()
             .loading = true;
-        Task::perform(fetch_wallet_tracker_snapshot(address.clone()), move |r| {
-            Message::WalletTrackerLoaded(address.clone(), Box::new(r))
-        })
+        let scope = self.account_data_fetch_scope();
+        Task::perform(
+            fetch_wallet_tracker_snapshot_scoped(address.clone(), scope),
+            move |r| Message::WalletTrackerLoaded(address.clone(), Box::new(r)),
+        )
     }
 
     pub(crate) fn start_wallet_tracker_order_refresh(&mut self, address: String) -> Task<Message> {
@@ -22,8 +26,9 @@ impl TradingTerminal {
             .entry(address.clone())
             .or_default()
             .order_loading = true;
+        let scope = self.account_data_fetch_scope();
         Task::perform(
-            fetch_wallet_tracker_open_order_count(address.clone()),
+            fetch_wallet_tracker_open_order_count_scoped(address.clone(), scope),
             move |r| Message::WalletTrackerOrdersLoaded(address.clone(), Box::new(r)),
         )
     }

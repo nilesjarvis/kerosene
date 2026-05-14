@@ -24,7 +24,7 @@ impl TradingTerminal {
                 d.spot
                     .balances
                     .iter()
-                    .filter(|balance| !self.is_ticker_muted(&balance.coin))
+                    .filter(|balance| !self.account_spot_balance_is_hidden(d, &balance.coin))
                     .collect()
             })
             .unwrap_or_default();

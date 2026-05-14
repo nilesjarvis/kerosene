@@ -12,7 +12,7 @@ impl TradingTerminal {
         request: CandleFetchRequest,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
-        if self.is_ticker_muted(&request.symbol) {
+        if self.symbol_key_is_hidden(&request.symbol) {
             return Task::none();
         }
         let id = request.chart_id;

@@ -34,7 +34,7 @@ impl TradingTerminal {
         for instance in self.charts.values() {
             if matches!(instance.chart.status, ChartStatus::Loaded)
                 && !instance.symbol.is_empty()
-                && !self.is_ticker_muted(&instance.symbol)
+                && !self.symbol_key_is_hidden(&instance.symbol)
             {
                 subs.push(
                     Subscription::run_with(
@@ -51,7 +51,7 @@ impl TradingTerminal {
                 );
             }
             if !instance.symbol.is_empty()
-                && !self.is_ticker_muted(&instance.symbol)
+                && !self.symbol_key_is_hidden(&instance.symbol)
                 && !self.is_outcome_coin(&instance.symbol)
             {
                 subs.push(
@@ -77,7 +77,7 @@ impl TradingTerminal {
             for series in &inst.canvas.series {
                 if series.loaded
                     && !series.symbol.is_empty()
-                    && !self.is_ticker_muted(&series.symbol)
+                    && !self.symbol_key_is_hidden(&series.symbol)
                 {
                     subs.push(
                         Subscription::run_with(
@@ -108,7 +108,7 @@ impl TradingTerminal {
                 OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
             };
             if !symbol.is_empty()
-                && !self.is_ticker_muted(&symbol)
+                && !self.symbol_key_is_hidden(&symbol)
                 && !self.is_outcome_coin(&symbol)
             {
                 let sigfigs = self.canonical_l2_book_sigfigs(&symbol);
@@ -146,7 +146,7 @@ impl TradingTerminal {
             if chase.coin.is_empty()
                 || chase.current_oid.is_none()
                 || chase.stop_requested
-                || self.is_ticker_muted(&chase.coin)
+                || self.symbol_key_is_hidden(&chase.coin)
                 || self.is_outcome_coin(&chase.coin)
             {
                 continue;
@@ -181,7 +181,7 @@ impl TradingTerminal {
             if twap.coin.is_empty()
                 || twap.status.is_terminal()
                 || twap.stop_requested
-                || self.is_ticker_muted(&twap.coin)
+                || self.symbol_key_is_hidden(&twap.coin)
                 || self.is_outcome_coin(&twap.coin)
             {
                 continue;

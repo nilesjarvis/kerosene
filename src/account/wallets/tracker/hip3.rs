@@ -1,4 +1,4 @@
-use super::super::super::{AssetPosition, ClearinghouseState, HIP3_DEXES};
+use super::super::super::{AccountDataFetchScope, AssetPosition, ClearinghouseState, HIP3_DEXES};
 use super::snapshot::parse_tracker_number;
 use crate::api::API_URL;
 
@@ -9,11 +9,12 @@ use crate::api::API_URL;
 pub(super) async fn append_hip3_margin_and_positions(
     client: &reqwest::Client,
     address: &str,
+    scope: &AccountDataFetchScope,
     margin_used: &mut Option<f64>,
     asset_positions: &mut Vec<AssetPosition>,
 ) {
     let mut hip3_ch_futs = Vec::new();
-    for dex in HIP3_DEXES {
+    for dex in scope.hip3_dexes(HIP3_DEXES) {
         hip3_ch_futs.push(
             client
                 .post(API_URL)

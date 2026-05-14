@@ -13,6 +13,7 @@ pub type KeyedUserData = (Option<String>, WsUserData);
 pub enum WsUserData {
     AllDexPositions {
         main_state: Box<ClearinghouseState>,
+        states_by_dex: HashMap<String, ClearinghouseState>,
         all_positions: Vec<AssetPosition>,
         position_details: Vec<WalletPositionDetail>,
     },

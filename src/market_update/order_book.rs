@@ -44,7 +44,7 @@ impl TradingTerminal {
                 sigfigs,
                 book,
             } => {
-                if self.is_ticker_muted(&coin) {
+                if self.symbol_key_is_hidden(&coin) {
                     return Task::none();
                 }
                 if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
@@ -74,7 +74,7 @@ impl TradingTerminal {
                         OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
                     })
                     .unwrap_or_default();
-                if self.is_ticker_muted(&symbol) {
+                if self.symbol_key_is_hidden(&symbol) {
                     if let Some(inst) = self.order_books.get_mut(&id) {
                         inst.book_loading = false;
                     }
@@ -139,9 +139,11 @@ impl TradingTerminal {
                     OrderBookSymbolMode::Active => self.active_symbol.clone(),
                     OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
                 };
-                if self.is_ticker_muted(&symbol) {
-                    self.order_status =
-                        Some(("Order book ticker is muted in Settings > Risk".into(), true));
+                if self.symbol_key_is_hidden(&symbol) {
+                    self.order_status = Some((
+                        "Order book ticker is hidden in Settings > Risk".into(),
+                        true,
+                    ));
                     return Task::none();
                 }
                 let mid = self.resolve_mid_for_symbol(&symbol);

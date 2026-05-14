@@ -132,6 +132,7 @@ impl TradingTerminal {
     ) -> Row<'a, Message> {
         items
             .push(Space::new().width(Fill))
+            .push(self.summary_market_universe_picker())
             .push(self.summary_hide_pnl_button())
             .push(self.summary_sound_button())
             .push(self.summary_notifications_button())

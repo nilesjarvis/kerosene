@@ -3,8 +3,8 @@ mod hip3;
 use self::hip3::{append_hip3_open_orders, append_hip3_positions, fetch_hip3_wallet_details};
 use super::super::http::{best_effort_response_vec, post_info_json_with_retries};
 use super::super::{
-    ClearinghouseState, OpenOrder, SpotClearinghouseState, WalletDetailsData,
-    WalletOpenOrderDetail, WalletPositionDetail,
+    AccountDataFetchScope, ClearinghouseState, OpenOrder, SpotClearinghouseState,
+    WalletDetailsData, WalletOpenOrderDetail, WalletPositionDetail,
 };
 use crate::api::API_URL;
 
@@ -12,7 +12,10 @@ use crate::api::API_URL;
 ///
 /// This is heavier than `fetch_wallet_tracker_snapshot`, so it is intended for
 /// opening/manual refresh. Live updates are layered on via websocket state.
-pub async fn fetch_wallet_details(address: String) -> Result<WalletDetailsData, String> {
+pub async fn fetch_wallet_details_scoped(
+    address: String,
+    scope: AccountDataFetchScope,
+) -> Result<WalletDetailsData, String> {
     let client = crate::api::CLIENT.clone();
 
     let ch_fut = post_info_json_with_retries(
@@ -25,10 +28,20 @@ pub async fn fetch_wallet_details(address: String) -> Result<WalletDetailsData, 
         "spotClearinghouseState",
         serde_json::json!({"type": "spotClearinghouseState", "user": address}),
     );
-    let orders_fut = client
-        .post(API_URL)
-        .json(&serde_json::json!({"type": "frontendOpenOrders", "user": address}))
-        .send();
+    let fetch_main_orders = scope.fetches_main_open_orders();
+    let orders_fut = async {
+        if fetch_main_orders {
+            Some(
+                client
+                    .post(API_URL)
+                    .json(&serde_json::json!({"type": "frontendOpenOrders", "user": address}))
+                    .send()
+                    .await,
+            )
+        } else {
+            None
+        }
+    };
 
     let (ch_raw, spot_raw, main_orders_resp) =
         futures::future::join3(ch_fut, spot_fut, orders_fut).await;
@@ -49,21 +62,24 @@ pub async fn fetch_wallet_details(address: String) -> Result<WalletDetailsData, 
         })
         .collect();
 
-    let mut open_orders: Vec<WalletOpenOrderDetail> = best_effort_response_vec::<OpenOrder>(
-        "frontendOpenOrders",
-        main_orders_resp,
-        &mut warnings,
-    )
-    .await
-    .into_iter()
-    .map(|order| WalletOpenOrderDetail {
-        dex: String::new(),
-        order,
-    })
-    .collect();
+    let mut open_orders: Vec<WalletOpenOrderDetail> = match main_orders_resp {
+        Some(main_orders_resp) => best_effort_response_vec::<OpenOrder>(
+            "frontendOpenOrders",
+            main_orders_resp,
+            &mut warnings,
+        )
+        .await
+        .into_iter()
+        .map(|order| WalletOpenOrderDetail {
+            dex: String::new(),
+            order,
+        })
+        .collect(),
+        None => Vec::new(),
+    };
 
     let (hip3_ch_results, hip3_order_results) =
-        fetch_hip3_wallet_details(client.clone(), address).await;
+        fetch_hip3_wallet_details(client.clone(), address, &scope).await;
 
     append_hip3_positions(hip3_ch_results, &mut positions, &mut warnings).await;
     append_hip3_open_orders(hip3_order_results, &mut open_orders, &mut warnings).await;

@@ -21,7 +21,7 @@ impl TradingTerminal {
     pub(crate) fn watched_live_watchlist_symbols(&self) -> Vec<String> {
         let open_ids = self.open_live_watchlist_ids();
         watched_symbol_keys(&self.live_watchlists, &open_ids, |symbol| {
-            self.is_ticker_muted(symbol)
+            self.symbol_key_is_hidden(symbol)
         })
     }
 

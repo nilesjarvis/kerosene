@@ -38,7 +38,7 @@ impl TradingTerminal {
         let muted = self
             .charts
             .get(&chart_id)
-            .is_some_and(|instance| self.is_ticker_muted(&instance.symbol));
+            .is_some_and(|instance| self.symbol_key_is_hidden(&instance.symbol));
         if muted {
             return;
         }

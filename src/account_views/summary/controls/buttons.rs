@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{button, row, text};
+use iced::widget::{button, pick_list, row, text};
 use iced::{Element, Length, Theme};
 
 // ---------------------------------------------------------------------------
@@ -8,6 +8,23 @@ use iced::{Element, Length, Theme};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    pub(crate) fn summary_market_universe_picker(&self) -> Element<'_, Message> {
+        let mut options = self.market_universe_options();
+        if !options.contains(&self.market_universe) {
+            options.push(self.market_universe.clone());
+        }
+
+        pick_list(
+            options,
+            Some(self.market_universe.clone()),
+            Message::MarketUniverseChanged,
+        )
+        .padding([4, 8])
+        .text_size(10)
+        .width(Length::Fixed(136.0))
+        .into()
+    }
+
     pub(crate) fn summary_widgets_button(&self) -> Element<'_, Message> {
         let arrow = if self.add_widget_menu_open { "^" } else { "v" };
         button(

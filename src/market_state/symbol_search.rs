@@ -36,7 +36,7 @@ impl TradingTerminal {
         context_symbol_keys(
             self.exchange_symbols.iter(),
             |symbol| self.symbol_search_matches_market_filter(symbol),
-            |symbol| self.exchange_symbol_is_muted(symbol),
+            |symbol| self.exchange_symbol_is_hidden(symbol),
         )
     }
 
@@ -49,7 +49,7 @@ impl TradingTerminal {
             hip3_dex_filter: self.symbol_search_hip3_dex_filter.as_deref(),
             favourite_symbols: &self.favourite_symbols,
             contexts: &self.symbol_search_ctxs,
-            is_muted: |symbol| self.exchange_symbol_is_muted(symbol),
+            is_muted: |symbol| self.exchange_symbol_is_hidden(symbol),
         });
         self.symbol_search_result_indices = indices;
         self.symbol_search_favourite_count = favourite_count;

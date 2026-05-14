@@ -7,6 +7,9 @@ use crate::app_state::{TradingTerminal, sensitive_string};
 
 fn account_data_with_position(coin: &str, fetched_at_ms: u64) -> AccountData {
     AccountData {
+        fetch_scope: Default::default(),
+        request_weight_estimate: 0,
+        account_abstraction: Default::default(),
         clearinghouse: ClearinghouseState {
             margin_summary: MarginSummary {
                 account_value: "0".to_string(),
@@ -34,6 +37,7 @@ fn account_data_with_position(coin: &str, fetched_at_ms: u64) -> AccountData {
                 liquidation_px: None,
             }],
         },
+        clearinghouses_by_dex: std::collections::HashMap::new(),
         spot: SpotClearinghouseState {
             balances: Vec::new(),
             portfolio_margin_enabled: false,

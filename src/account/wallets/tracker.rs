@@ -1,4 +1,4 @@
-use super::super::{ClearinghouseState, WalletTrackerSnapshot};
+use super::super::{AccountDataFetchScope, ClearinghouseState, WalletTrackerSnapshot};
 use crate::api::API_URL;
 
 use serde_json::Value;
@@ -9,7 +9,7 @@ mod snapshot;
 mod spot_fallback;
 
 use hip3::append_hip3_margin_and_positions;
-pub use open_orders::fetch_wallet_tracker_open_order_count;
+pub use open_orders::fetch_wallet_tracker_open_order_count_scoped;
 use snapshot::{build_wallet_tracker_snapshot, parse_tracker_number};
 use spot_fallback::apply_spot_equity_fallback;
 
@@ -17,8 +17,9 @@ use spot_fallback::apply_spot_equity_fallback;
 ///
 /// This intentionally excludes `openOrders`: those requests have much higher
 /// rate-limit weight and are refreshed by a separate slow/manual lane.
-pub async fn fetch_wallet_tracker_snapshot(
+pub async fn fetch_wallet_tracker_snapshot_scoped(
     address: String,
+    scope: AccountDataFetchScope,
 ) -> Result<WalletTrackerSnapshot, String> {
     let client = crate::api::CLIENT.clone();
 
@@ -66,8 +67,14 @@ pub async fn fetch_wallet_tracker_snapshot(
         .and_then(parse_tracker_number);
 
     apply_spot_equity_fallback(&client, &address, &mut equity, &mut withdrawable).await?;
-    append_hip3_margin_and_positions(&client, &address, &mut margin_used, &mut asset_positions)
-        .await;
+    append_hip3_margin_and_positions(
+        &client,
+        &address,
+        &scope,
+        &mut margin_used,
+        &mut asset_positions,
+    )
+    .await;
 
     Ok(build_wallet_tracker_snapshot(
         equity,

@@ -85,7 +85,7 @@ impl TradingTerminal {
         let available_margin = self
             .account_data
             .as_ref()
-            .map(|data| data.available_margin_usdc())
+            .map(|data| self.visible_available_margin_usdc(data))
             .unwrap_or(Some(0.0));
         let weak_color = theme.extended_palette().background.weak.text;
         let available_color = if available_margin.is_some() {

@@ -38,7 +38,7 @@ impl TradingTerminal {
             .map(|d| {
                 d.funding_history
                     .iter()
-                    .filter(|entry| !self.is_ticker_muted(&entry.delta.coin))
+                    .filter(|entry| !self.symbol_key_is_hidden(&entry.delta.coin))
                     .collect()
             })
             .unwrap_or_default();

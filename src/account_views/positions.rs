@@ -23,7 +23,7 @@ impl TradingTerminal {
                 d.clearinghouse
                     .asset_positions
                     .iter()
-                    .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                    .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
                     .collect()
             })
             .unwrap_or_default();

@@ -31,7 +31,7 @@ impl TradingTerminal {
         } else {
             layout.active_symbol.clone()
         };
-        if self.is_ticker_muted(&symbol)
+        if self.symbol_key_is_hidden(&symbol)
             && let Some(fallback) = self.fallback_unmuted_symbol_key()
         {
             symbol = fallback;
@@ -48,7 +48,7 @@ impl TradingTerminal {
         self.favourite_symbols = layout
             .favourite_symbols
             .iter()
-            .filter(|symbol| !self.is_ticker_muted(symbol))
+            .filter(|symbol| !self.symbol_key_is_hidden(symbol))
             .cloned()
             .collect();
         self.sound_enabled = layout.sound_enabled;

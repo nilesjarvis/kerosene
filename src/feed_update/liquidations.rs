@@ -39,7 +39,7 @@ impl TradingTerminal {
                     let liquidation = Self::normalize_liquidation_event(liquidation);
                     self.liquidations_last_rx_ms = Some(Self::now_ms());
                     self.liquidations_status = "Connected".to_string();
-                    if self.is_ticker_muted(&liquidation.coin) {
+                    if self.symbol_key_is_hidden(&liquidation.coin) {
                         return Task::none();
                     }
                     let notional = liquidation.size * liquidation.price;

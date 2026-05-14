@@ -23,6 +23,10 @@ pub(super) fn append_perp_symbols(
             .get("universe")
             .and_then(|v| v.as_array())
             .unwrap_or(&empty_vec);
+        let collateral_token = dex_meta
+            .get("collateralToken")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
 
         for (asset_idx, asset) in universe.iter().enumerate() {
             if asset
@@ -90,6 +94,7 @@ pub(super) fn append_perp_symbols(
                 display_name,
                 keywords,
                 asset_index: offset + asset_idx as u32,
+                collateral_token: Some(collateral_token),
                 sz_decimals,
                 max_leverage,
                 only_isolated,

@@ -17,6 +17,7 @@ fn symbol(
         display_name: display_name.map(str::to_string),
         keywords: keywords.iter().map(|keyword| keyword.to_string()).collect(),
         asset_index: 0,
+        collateral_token: None,
         sz_decimals: 2,
         max_leverage: 50,
         only_isolated: false,

@@ -7,6 +7,38 @@ mod tests;
 // Account Wire Models
 // ---------------------------------------------------------------------------
 
+/// How Hyperliquid currently abstracts a user's spot/perp balances.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum AccountAbstractionMode {
+    Disabled,
+    #[default]
+    Default,
+    UnifiedAccount,
+    PortfolioMargin,
+    DexAbstraction,
+    Unknown(String),
+}
+
+impl AccountAbstractionMode {
+    pub fn from_api_value(raw: &str) -> Self {
+        match raw {
+            "disabled" => Self::Disabled,
+            "default" => Self::Default,
+            "unifiedAccount" => Self::UnifiedAccount,
+            "portfolioMargin" => Self::PortfolioMargin,
+            "dexAbstraction" => Self::DexAbstraction,
+            other => Self::Unknown(other.to_string()),
+        }
+    }
+
+    pub fn uses_shared_account_balance(&self) -> bool {
+        matches!(
+            self,
+            Self::Default | Self::UnifiedAccount | Self::PortfolioMargin | Self::DexAbstraction
+        )
+    }
+}
+
 /// Margin summary from clearinghouseState.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -150,6 +182,8 @@ pub struct FundingEntry {
 #[serde(rename_all = "camelCase")]
 pub struct SpotBalance {
     pub coin: String,
+    #[serde(default)]
+    pub token: Option<u32>,
     pub total: String,
     pub hold: String,
     pub entry_ntl: String,

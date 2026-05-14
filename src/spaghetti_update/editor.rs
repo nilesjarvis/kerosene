@@ -38,8 +38,8 @@ impl TradingTerminal {
         id: SpaghettiChartId,
         key: String,
     ) -> Task<Message> {
-        if self.is_ticker_muted(&key) {
-            self.push_toast("Ticker is muted in Settings > Risk".to_string(), true);
+        if self.symbol_key_is_hidden(&key) {
+            self.push_toast("Ticker is hidden in Settings > Risk".to_string(), true);
             return Task::none();
         }
         let sym = self.exchange_symbols.iter().find(|s| s.key == key);

@@ -204,7 +204,7 @@ impl TradingTerminal {
 
     fn quick_order_max_notional(&self, symbol: &str) -> Option<f64> {
         let data = self.account_data.as_ref()?;
-        let available_margin = data.available_margin_usdc()?;
+        let available_margin = self.visible_available_margin_usdc(data)?;
         if !available_margin.is_finite() || available_margin <= 0.0 {
             return None;
         }

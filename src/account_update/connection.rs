@@ -1,4 +1,4 @@
-use crate::account::{AccountData, fetch_account_data};
+use crate::account::{AccountData, AccountDataFetchScope, fetch_account_data_scoped};
 use crate::account_analytics::{fetch_income_data, fetch_portfolio_history};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -8,6 +8,37 @@ use iced::Task;
 use zeroize::Zeroize;
 
 impl TradingTerminal {
+    fn account_refresh_backoff_remaining_ms(&self) -> Option<u64> {
+        let until_ms = self.account_refresh_backoff_until_ms?;
+        let now_ms = Self::now_ms();
+        (until_ms > now_ms).then_some(until_ms - now_ms)
+    }
+
+    fn account_refresh_rate_limited(error: &str) -> bool {
+        let error = error.to_ascii_lowercase();
+        error.contains("429") || error.contains("too many requests") || error.contains("rate limit")
+    }
+
+    fn account_refresh_backoff_message(remaining_ms: u64) -> String {
+        format!(
+            "Account refresh is rate limited; retrying in {}s",
+            remaining_ms.div_ceil(1000)
+        )
+    }
+
+    pub(crate) fn account_data_fetch_scope(&self) -> AccountDataFetchScope {
+        self.market_universe
+            .selected_hip3_dex()
+            .map(AccountDataFetchScope::hip3_dex)
+            .unwrap_or_else(|| {
+                AccountDataFetchScope::all_markets(
+                    self.visible_mids_dexes()
+                        .into_iter()
+                        .filter(|dex| !dex.is_empty()),
+                )
+            })
+    }
+
     pub(super) fn connect_wallet(&mut self) -> Task<Message> {
         let Some(addr) = Self::normalize_wallet_address(&self.wallet_address_input) else {
             if !self.wallet_address_input.trim().is_empty() {
@@ -72,6 +103,7 @@ impl TradingTerminal {
         self.account_loading = true;
         self.account_reconciliation_required = false;
         self.account_error = None;
+        self.account_refresh_backoff_until_ms = None;
         self.portfolio.data = None;
         self.portfolio.last_error = None;
         self.income.loading = false;
@@ -84,9 +116,11 @@ impl TradingTerminal {
         self.persist_config();
 
         let account_addr = addr.clone();
-        let account_task = Task::perform(fetch_account_data(addr.clone()), move |r| {
-            Message::AccountDataLoaded(account_addr.clone(), Box::new(r))
-        });
+        let account_scope = self.account_data_fetch_scope();
+        let account_task = Task::perform(
+            fetch_account_data_scoped(addr.clone(), account_scope),
+            move |r| Message::AccountDataLoaded(account_addr.clone(), Box::new(r)),
+        );
         let mut tasks = vec![account_task];
         tasks.push(stop_chase_task);
         self.portfolio.loading = true;
@@ -121,6 +155,7 @@ impl TradingTerminal {
         self.account_loading = false;
         self.account_reconciliation_required = false;
         self.account_error = None;
+        self.account_refresh_backoff_until_ms = None;
         self.wallet_key_input.zeroize();
         self.wallet_address_input.clear();
         for instance in self.charts.values_mut() {
@@ -154,6 +189,7 @@ impl TradingTerminal {
         self.account_loading = false;
         match result {
             Ok(data) => {
+                self.account_refresh_backoff_until_ms = None;
                 self.account_reconciliation_required = false;
                 let data = self.filter_account_data_for_muted_tickers(data);
                 let is_pm = data.is_portfolio_margin();
@@ -178,6 +214,9 @@ impl TradingTerminal {
                 return chase_task;
             }
             Err(e) => {
+                if Self::account_refresh_rate_limited(&e) {
+                    self.account_refresh_backoff_until_ms = Some(Self::now_ms() + 60_000);
+                }
                 self.account_error = Some(e);
             }
         }
@@ -185,6 +224,10 @@ impl TradingTerminal {
     }
 
     pub(crate) fn refresh_account_data(&mut self) -> Task<Message> {
+        if let Some(remaining_ms) = self.account_refresh_backoff_remaining_ms() {
+            self.account_error = Some(Self::account_refresh_backoff_message(remaining_ms));
+            return Task::none();
+        }
         if !self.account_loading
             && let Some(addr) = &self.connected_address
         {
@@ -200,11 +243,17 @@ impl TradingTerminal {
         if self.connected_address.as_deref() != Some(addr.as_str()) {
             return Task::none();
         }
+        if let Some(remaining_ms) = self.account_refresh_backoff_remaining_ms() {
+            self.account_loading = false;
+            self.account_error = Some(Self::account_refresh_backoff_message(remaining_ms));
+            return Task::none();
+        }
         let requested_addr = addr.clone();
         self.account_loading = true;
         self.account_reconciliation_required = true;
         self.account_error = None;
-        Task::perform(fetch_account_data(addr), move |r| {
+        let scope = self.account_data_fetch_scope();
+        Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
             Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
         })
     }

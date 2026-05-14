@@ -99,6 +99,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) symbols_loading: bool,
     pub(crate) symbol_search_query: String,
     pub(crate) symbol_search_sort_mode: SymbolSearchSortMode,
+    pub(crate) market_universe: config::MarketUniverseConfig,
     pub(crate) symbol_search_market_filter: SymbolSearchMarketFilter,
     pub(crate) symbol_search_hip3_dex_filter: Option<String>,
     pub(crate) symbol_search_result_indices: Vec<usize>,
@@ -154,6 +155,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) account_loading: bool,
     pub(crate) account_reconciliation_required: bool,
     pub(crate) account_error: Option<String>,
+    pub(crate) account_refresh_backoff_until_ms: Option<u64>,
     // Real-time mid prices for all coins (updated via allMids WS stream)
     pub(crate) all_mids: HashMap<String, f64>,
     pub(crate) all_mids_updated_at_ms: HashMap<String, u64>,

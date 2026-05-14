@@ -17,6 +17,7 @@ fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
         display_name: None,
         keywords: Vec::new(),
         asset_index: 0,
+        collateral_token: None,
         sz_decimals: 2,
         max_leverage: 50,
         only_isolated: false,
@@ -39,6 +40,9 @@ fn open_order(coin: &str, oid: u64, limit_px: &str) -> OpenOrder {
 
 fn account_data_with_order(order: OpenOrder) -> AccountData {
     AccountData {
+        fetch_scope: Default::default(),
+        request_weight_estimate: 0,
+        account_abstraction: Default::default(),
         clearinghouse: ClearinghouseState {
             margin_summary: MarginSummary {
                 account_value: "0".to_string(),
@@ -50,6 +54,7 @@ fn account_data_with_order(order: OpenOrder) -> AccountData {
             withdrawable: "0".to_string(),
             asset_positions: Vec::new(),
         },
+        clearinghouses_by_dex: std::collections::HashMap::new(),
         spot: SpotClearinghouseState {
             balances: Vec::new(),
             portfolio_margin_enabled: false,

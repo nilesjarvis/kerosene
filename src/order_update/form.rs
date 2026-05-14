@@ -88,7 +88,7 @@ impl TradingTerminal {
             return;
         };
 
-        let Some(available_margin) = data.available_margin_usdc() else {
+        let Some(available_margin) = self.visible_available_margin_usdc(data) else {
             self.order_percentage = 0.0;
             return;
         };
@@ -152,7 +152,7 @@ impl TradingTerminal {
             return;
         };
 
-        let Some(available_margin) = data.available_margin_usdc() else {
+        let Some(available_margin) = self.visible_available_margin_usdc(data) else {
             self.order_quantity = "0".to_string();
             return;
         };
@@ -239,6 +239,7 @@ mod tests {
             display_name: None,
             keywords: Vec::new(),
             asset_index: 0,
+            collateral_token: None,
             sz_decimals: 5,
             max_leverage: 50,
             only_isolated: false,

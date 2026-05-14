@@ -82,7 +82,7 @@ impl TradingTerminal {
                 }
             }
             Message::MacroCandlesLoaded(id, symbol, tf, result) => {
-                if self.is_ticker_muted(&symbol) {
+                if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();
                 }
                 if let Some(inst) = self.charts.get_mut(&id)

@@ -41,7 +41,7 @@ impl TradingTerminal {
 
             let status = plan_funding_request(
                 instance,
-                self.is_ticker_muted(&instance.symbol),
+                self.symbol_key_is_hidden(&instance.symbol),
                 self.hyperdash_coin_for_symbol(&instance.symbol),
                 now_ms,
                 false,
@@ -132,7 +132,7 @@ impl TradingTerminal {
         if self
             .charts
             .get(&request.chart_id)
-            .is_some_and(|instance| self.is_ticker_muted(&instance.symbol))
+            .is_some_and(|instance| self.symbol_key_is_hidden(&instance.symbol))
         {
             return Task::none();
         }
@@ -188,7 +188,7 @@ fn plan_funding_request(
     api_key_missing: bool,
 ) -> FundingRequestPlan {
     if muted {
-        return FundingRequestPlan::Status("Ticker is muted in Settings > Risk".to_string(), true);
+        return FundingRequestPlan::Status("Ticker is hidden in Settings > Risk".to_string(), true);
     }
     if api_key_missing {
         return FundingRequestPlan::Status(

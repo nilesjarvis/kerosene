@@ -14,10 +14,20 @@ impl TradingTerminal {
         account_label: String,
     ) -> Element<'_, Message> {
         let theme = self.theme();
+        let ready_status = self.account_data.as_ref().map(|data| {
+            let scope = data
+                .fetch_scope
+                .selected_hip3_dex()
+                .map(|dex| format!("HIP-3 {dex}"))
+                .unwrap_or_else(|| "All markets".to_string());
+            format!("{scope} refresh (~{} API wt)", data.request_weight_estimate)
+        });
         let loading_label = if self.account_loading {
-            "Loading account..."
+            "Loading account...".to_string()
+        } else if let Some(status) = ready_status {
+            status
         } else {
-            "No account data"
+            "No account data".to_string()
         };
         let account_warning = self.account_data.as_ref().and_then(|data| {
             (!data.completeness.is_complete())
@@ -28,7 +38,7 @@ impl TradingTerminal {
             .account_error
             .as_deref()
             .or(account_warning.as_deref())
-            .unwrap_or(loading_label)
+            .unwrap_or(&loading_label)
             .to_string();
         let account_status_color = if self.account_error.is_some() {
             theme.palette().danger
@@ -68,6 +78,7 @@ impl TradingTerminal {
             vertical_spacer(),
             status_widget,
             vertical_spacer(),
+            self.summary_market_universe_picker(),
             self.summary_layouts_button(),
             self.summary_widgets_button(),
             self.summary_settings_button(),

@@ -33,17 +33,22 @@ pub(super) fn build_user_stream_subscriptions(
         return subscriptions;
     };
 
-    for stream_type in [
-        "allDexsClearinghouseState",
-        "openOrders",
-        "userFills",
-        "spotState",
-    ] {
+    for stream_type in ["allDexsClearinghouseState", "userFills", "spotState"] {
         subscriptions.push((
             format!("{stream_type}:{address}"),
             serde_json::json!({
                 "method": "subscribe",
                 "subscription": { "type": stream_type, "user": address }
+            }),
+        ));
+    }
+
+    if dexes.iter().any(|dex| dex.is_empty()) {
+        subscriptions.push((
+            format!("openOrders:{address}"),
+            serde_json::json!({
+                "method": "subscribe",
+                "subscription": { "type": "openOrders", "user": address }
             }),
         ));
     }

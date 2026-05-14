@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::normalize_market_slippage_pct;
+use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
 use iced::Task;
 
@@ -20,6 +21,69 @@ impl TradingTerminal {
             }
             message @ (Message::MuteTicker | Message::UnmuteTicker(_)) => {
                 return self.update_muted_ticker_preferences(message);
+            }
+            Message::MarketUniverseChanged(universe) => {
+                let universe = self.normalize_market_universe_selection(universe);
+                if self.market_universe == universe {
+                    return Task::none();
+                }
+
+                let status = match universe.selected_hip3_dex() {
+                    Some(dex) => {
+                        self.symbol_search_market_filter = SymbolSearchMarketFilter::Hip3;
+                        self.symbol_search_hip3_dex_filter = Some(dex.to_string());
+                        format!("Showing HIP-3 exchange {dex} only")
+                    }
+                    None => {
+                        self.symbol_search_market_filter = SymbolSearchMarketFilter::All;
+                        self.symbol_search_hip3_dex_filter = None;
+                        "Showing all markets".to_string()
+                    }
+                };
+
+                self.market_universe = universe;
+                self.muted_ticker_status = Some((status.clone(), false));
+                self.push_toast(status, false);
+                let hidden_chase_ids: Vec<u64> = self
+                    .chase_orders
+                    .iter()
+                    .filter_map(|(id, chase)| self.symbol_key_is_hidden(&chase.coin).then_some(*id))
+                    .collect();
+                let stop_chase_task = Task::batch(hidden_chase_ids.into_iter().map(|id| {
+                    self.stop_chase_by_id_with_reason(
+                        id,
+                        "Chase stopped: ticker was hidden by market universe",
+                        false,
+                    )
+                }));
+                let hidden_twap_ids: Vec<u64> = self
+                    .twap_orders
+                    .iter()
+                    .filter_map(|(id, twap)| {
+                        (!twap.status.is_terminal() && self.symbol_key_is_hidden(&twap.coin))
+                            .then_some(*id)
+                    })
+                    .collect();
+                let stop_twap_task = Task::batch(hidden_twap_ids.into_iter().map(|id| {
+                    self.stop_twap_with_reason(
+                        id,
+                        "TWAP stopped: ticker was hidden by market universe",
+                        false,
+                    )
+                }));
+                let scrub_task = self.scrub_hidden_symbol_state();
+                self.refresh_symbol_search_results();
+                self.refresh_live_watchlist_row_caches();
+                self.persist_config();
+                let account_task = self.refresh_account_data();
+                return Task::batch([
+                    stop_chase_task,
+                    stop_twap_task,
+                    scrub_task,
+                    self.request_symbol_search_context_refresh(true),
+                    self.request_live_watchlist_refresh(true),
+                    account_task,
+                ]);
             }
             Message::MarketSlippageInputChanged(value) => {
                 self.market_slippage_input = value;

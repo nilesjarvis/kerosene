@@ -80,8 +80,8 @@ impl TradingTerminal {
             .get(&chart_id)
             .map(|inst| inst.symbol.clone())
             .unwrap_or_default();
-        if self.is_ticker_muted(&chart_symbol) {
-            self.order_status = Some(("Chart ticker is muted in Settings > Risk".into(), true));
+        if self.symbol_key_is_hidden(&chart_symbol) {
+            self.order_status = Some(("Chart ticker is hidden in Settings > Risk".into(), true));
             if let Some(instance) = self.charts.get_mut(&chart_id) {
                 instance.set_quick_order(form);
             }

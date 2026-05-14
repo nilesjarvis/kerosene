@@ -10,6 +10,7 @@ fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
         display_name: None,
         keywords: Vec::new(),
         asset_index: 0,
+        collateral_token: None,
         sz_decimals: 5,
         max_leverage: 50,
         only_isolated: false,

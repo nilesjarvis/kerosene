@@ -1,5 +1,6 @@
 use crate::account::{
     AssetPosition, ClearinghouseState, OpenOrder, SpotBalance, UserFill, WalletPositionDetail,
+    normalize_dex_asset_position_coins,
 };
 
 use serde_json::Value;
@@ -36,6 +37,7 @@ fn parse_all_dex_positions(data: &Value, target_addr: Option<&str>) -> Option<Ke
     let states_arr = data.get("clearinghouseStates")?.as_array()?;
 
     let mut main_state: Option<ClearinghouseState> = None;
+    let mut states_by_dex: HashMap<String, ClearinghouseState> = HashMap::new();
     let mut all_positions: Vec<AssetPosition> = Vec::new();
     let mut position_details: Vec<WalletPositionDetail> = Vec::new();
 
@@ -44,8 +46,10 @@ fn parse_all_dex_positions(data: &Value, target_addr: Option<&str>) -> Option<Ke
             && arr.len() >= 2
         {
             let dex_name = arr[0].as_str().unwrap_or("");
-            if let Ok(clearinghouse) = serde_json::from_value::<ClearinghouseState>(arr[1].clone())
+            if let Ok(mut clearinghouse) =
+                serde_json::from_value::<ClearinghouseState>(arr[1].clone())
             {
+                normalize_dex_asset_position_coins(dex_name, &mut clearinghouse.asset_positions);
                 all_positions.extend(clearinghouse.asset_positions.clone());
                 position_details.extend(clearinghouse.asset_positions.iter().cloned().map(
                     |asset_position| WalletPositionDetail {
@@ -53,6 +57,7 @@ fn parse_all_dex_positions(data: &Value, target_addr: Option<&str>) -> Option<Ke
                         asset_position,
                     },
                 ));
+                states_by_dex.insert(dex_name.to_string(), clearinghouse.clone());
                 if dex_name.is_empty() {
                     main_state = Some(clearinghouse);
                 }
@@ -65,6 +70,7 @@ fn parse_all_dex_positions(data: &Value, target_addr: Option<&str>) -> Option<Ke
             Some(source_addr),
             WsUserData::AllDexPositions {
                 main_state: Box::new(state),
+                states_by_dex,
                 all_positions,
                 position_details,
             },

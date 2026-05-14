@@ -22,11 +22,13 @@ pub(in crate::account_views::summary::connected) struct ConnectedSummaryValues {
 
 impl TradingTerminal {
     pub(super) fn connected_summary_values(&self, data: &AccountData) -> ConnectedSummaryValues {
+        let clearinghouse = self.visible_clearinghouse_state(data);
+        let include_spot = self.account_view_includes_spot_balances(data);
         let live_upnl = sum_optional(
-            data.clearinghouse
+            clearinghouse
                 .asset_positions
                 .iter()
-                .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
                 .map(|ap| {
                     position_upnl_value(
                         &ap.position.szi,
@@ -38,10 +40,10 @@ impl TradingTerminal {
         );
 
         let live_ntl = sum_optional(
-            data.clearinghouse
+            clearinghouse
                 .asset_positions
                 .iter()
-                .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
                 .map(|ap| {
                     position_notional_value(
                         &ap.position.szi,
@@ -51,45 +53,75 @@ impl TradingTerminal {
                 }),
         );
 
-        let spot_value = sum_optional(
-            data.spot
-                .balances
-                .iter()
-                .filter(|b| !self.is_ticker_muted(&b.coin))
-                .map(|b| {
-                    spot_balance_value(
-                        &b.coin,
-                        &b.total,
-                        &b.entry_ntl,
-                        self.resolve_mid_for_symbol(&b.coin),
-                    )
-                }),
-        );
+        let spot_value = if include_spot {
+            sum_optional(
+                data.spot
+                    .balances
+                    .iter()
+                    .filter(|b| !self.account_spot_balance_is_hidden(data, &b.coin))
+                    .map(|b| {
+                        spot_balance_value(
+                            &b.coin,
+                            &b.total,
+                            &b.entry_ntl,
+                            self.resolve_mid_for_symbol(&b.coin),
+                        )
+                    }),
+            )
+        } else {
+            Some(0.0)
+        };
 
         let stale_upnl = sum_optional(
-            data.clearinghouse
+            clearinghouse
                 .asset_positions
                 .iter()
-                .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
                 .map(|ap| parse_summary_number(&ap.position.unrealized_pnl)),
         );
-        let perp_equity = if data.is_portfolio_margin() {
-            Some(0.0)
+        let balances_can_be_sized = !matches!(
+            data.account_abstraction,
+            crate::account::AccountAbstractionMode::Unknown(_)
+        );
+        let total_value = if !balances_can_be_sized {
+            None
+        } else if data.uses_shared_account_balance() && !include_spot {
+            self.visible_collateral_token().and_then(|token| {
+                shared_account_token_total_value(data, token, |coin| {
+                    self.resolve_mid_for_symbol(coin)
+                })
+            })
+        } else if data.uses_shared_account_balance() {
+            shared_account_total_value(data, || {
+                sum_optional(data.spot.balances.iter().map(|balance| {
+                    spot_balance_value(
+                        &balance.coin,
+                        &balance.total,
+                        &balance.entry_ntl,
+                        self.resolve_mid_for_symbol(&balance.coin),
+                    )
+                }))
+            })
         } else {
-            parse_summary_number(&data.clearinghouse.margin_summary.account_value)
-        };
-        let total_value = match (perp_equity, spot_value, live_upnl, stale_upnl) {
-            (Some(perp_equity), Some(spot_value), Some(live_upnl), Some(stale_upnl)) => {
-                Some(perp_equity + spot_value + (live_upnl - stale_upnl))
+            let perp_equity = parse_summary_number(&clearinghouse.margin_summary.account_value);
+            match (perp_equity, spot_value, live_upnl, stale_upnl) {
+                (Some(perp_equity), Some(spot_value), Some(live_upnl), Some(stale_upnl)) => {
+                    Some(perp_equity + spot_value + (live_upnl - stale_upnl))
+                }
+                _ => None,
             }
-            _ => None,
         };
 
-        let available = if data.is_portfolio_margin() {
-            portfolio_available_after_maintenance_usdc(data)
+        let available = if !balances_can_be_sized {
+            None
+        } else if data.is_portfolio_margin() {
+            data.available_margin_usdc()
+        } else if data.uses_shared_account_balance() {
+            self.visible_collateral_token()
+                .and_then(|token| data.available_margin_for_token(token))
         } else {
             match (
-                parse_summary_number(&data.clearinghouse.withdrawable),
+                parse_summary_number(&clearinghouse.withdrawable),
                 live_upnl,
                 stale_upnl,
             ) {
@@ -99,14 +131,17 @@ impl TradingTerminal {
                 _ => None,
             }
         };
-        let margin_used =
-            parse_summary_number(&data.clearinghouse.margin_summary.total_margin_used);
+        let margin_used = parse_summary_number(&clearinghouse.margin_summary.total_margin_used);
         let effective_leverage = effective_leverage(live_ntl, total_value);
         let portfolio_margin_ratio = data
-            .spot
-            .portfolio_margin_ratio
-            .as_deref()
-            .and_then(parse_summary_number);
+            .is_portfolio_margin()
+            .then(|| {
+                data.spot
+                    .portfolio_margin_ratio
+                    .as_deref()
+                    .and_then(parse_summary_number)
+            })
+            .flatten();
 
         ConnectedSummaryValues {
             total_value: summary_number_string(total_value),
@@ -180,7 +215,7 @@ fn spot_balance_value(
     if total.abs() < 1e-12 {
         return Some(0.0);
     }
-    if coin == "USDC" || coin == "USDH" {
+    if matches!(coin, "USDC" | "USDE" | "USDT0" | "USDH") {
         Some(total)
     } else if let Some(mid) = live_mid {
         Some(total * mid)
@@ -189,12 +224,48 @@ fn spot_balance_value(
     }
 }
 
-fn portfolio_available_after_maintenance_usdc(data: &AccountData) -> Option<f64> {
-    data.spot
-        .token_to_available_after_maintenance
-        .as_ref()
-        .and_then(|values| values.iter().find(|(token, _)| *token == 0))
-        .and_then(|(_, value)| parse_summary_number(value))
+fn shared_account_total_value(
+    data: &AccountData,
+    spot_value: impl FnOnce() -> Option<f64>,
+) -> Option<f64> {
+    if data.is_portfolio_margin() {
+        spot_value().or_else(|| data.account_value_usdc())
+    } else {
+        match (data.account_value_usdc(), spot_value()) {
+            (Some(account_value), Some(spot_value)) => Some(account_value.max(spot_value)),
+            (Some(account_value), None) => Some(account_value),
+            (None, Some(spot_value)) => Some(spot_value),
+            (None, None) => None,
+        }
+    }
+}
+
+fn shared_account_token_total_value(
+    data: &AccountData,
+    token: u32,
+    resolve_mid: impl FnOnce(&str) -> Option<f64>,
+) -> Option<f64> {
+    let balance = data
+        .spot
+        .balances
+        .iter()
+        .find(|balance| balance.token == Some(token))
+        .or_else(|| {
+            if token == 0 {
+                data.spot
+                    .balances
+                    .iter()
+                    .find(|balance| balance.coin == "USDC")
+            } else {
+                None
+            }
+        })?;
+    spot_balance_value(
+        &balance.coin,
+        &balance.total,
+        &balance.entry_ntl,
+        resolve_mid(&balance.coin),
+    )
 }
 
 fn sum_optional(values: impl IntoIterator<Item = Option<f64>>) -> Option<f64> {

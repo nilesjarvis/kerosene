@@ -24,7 +24,8 @@ impl TradingTerminal {
         let mut spot_rows: Vec<&SpotBalance> = balances
             .iter()
             .filter(|balance| {
-                wallet_has_visible_nonzero(&balance.total) && !self.is_ticker_muted(&balance.coin)
+                wallet_has_visible_nonzero(&balance.total)
+                    && !self.symbol_key_is_hidden(&balance.coin)
             })
             .collect();
         spot_rows.sort_by(|a, b| a.coin.cmp(&b.coin));
