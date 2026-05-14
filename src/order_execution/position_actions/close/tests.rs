@@ -54,6 +54,7 @@ fn terminal_with_stale_account() -> TradingTerminal {
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
     terminal.wallet_key_input = sensitive_string("agent-key");
     terminal.account_data = Some(account_data_with_position("BTC", 1));
+    terminal.account_loading = false;
     terminal
 }
 

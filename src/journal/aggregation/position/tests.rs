@@ -17,9 +17,38 @@ fn signed_fill_size_preserves_existing_side_mapping() {
 
 #[test]
 fn resolved_start_position_uses_same_timestamp_tracked_position() {
-    assert_eq!(resolved_start_position(1.0, Some((10, 2.0)), 10), 2.0);
-    assert_eq!(resolved_start_position(1.0, Some((9, 2.0)), 10), 1.0);
-    assert_eq!(resolved_start_position(1.0, None, 10), 1.0);
+    assert_eq!(
+        resolved_start_position(1.0, Some((10, 1.0)), 10),
+        ResolvedStartPosition {
+            start_pos: 1.0,
+            same_timestamp_mismatch: false,
+        }
+    );
+    assert_eq!(
+        resolved_start_position(1.0, Some((9, 2.0)), 10),
+        ResolvedStartPosition {
+            start_pos: 1.0,
+            same_timestamp_mismatch: false,
+        }
+    );
+    assert_eq!(
+        resolved_start_position(1.0, None, 10),
+        ResolvedStartPosition {
+            start_pos: 1.0,
+            same_timestamp_mismatch: false,
+        }
+    );
+}
+
+#[test]
+fn resolved_start_position_keeps_api_value_when_same_timestamp_chain_breaks() {
+    assert_eq!(
+        resolved_start_position(1.0, Some((10, 2.0)), 10),
+        ResolvedStartPosition {
+            start_pos: 1.0,
+            same_timestamp_mismatch: true,
+        }
+    );
 }
 
 #[test]

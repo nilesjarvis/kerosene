@@ -22,6 +22,7 @@ pub struct AggregatedTrade {
 pub struct AggregationDiagnostics {
     pub skipped_fill_count: usize,
     pub incomplete_trade_count: usize,
+    pub same_timestamp_position_mismatch_count: usize,
 }
 
 impl AggregationDiagnostics {
@@ -45,6 +46,18 @@ impl AggregationDiagnostics {
                 "{} trade{} marked partial because opening history is outside the loaded fills",
                 self.incomplete_trade_count,
                 if self.incomplete_trade_count == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            ));
+        }
+
+        if self.same_timestamp_position_mismatch_count > 0 {
+            parts.push(format!(
+                "{} same-timestamp fill{} used API startPosition because local position tracking was discontinuous",
+                self.same_timestamp_position_mismatch_count,
+                if self.same_timestamp_position_mismatch_count == 1 {
                     ""
                 } else {
                     "s"

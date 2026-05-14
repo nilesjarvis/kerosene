@@ -120,6 +120,8 @@ fn chase_context_rejects_changed_or_disconnected_account() {
 fn chase_exchange_requests_pause_while_account_reconciliation_is_loading() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;
+    terminal.account_loading = false;
+
     assert!(terminal.can_send_chase_exchange_request(now));
 
     terminal.account_loading = true;

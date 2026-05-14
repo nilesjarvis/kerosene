@@ -7,7 +7,7 @@ mod model;
 mod position;
 
 use builders::{apply_non_perp_fill, new_flip_trade, new_non_perp_trade, new_perp_trade};
-use helpers::{add_legacy_note_id, legacy_trade_id, parse_fill_values};
+use helpers::{add_legacy_note_id, legacy_trade_id, parse_fill_values, stable_trade_id};
 use position::{
     fill_position_transition, is_non_perp_coin, resolved_start_position, signed_fill_size,
 };
@@ -59,11 +59,15 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
             continue;
         }
 
-        let start_pos = resolved_start_position(
+        let resolved_start = resolved_start_position(
             api_start_pos,
             tracked_positions.get(&coin).copied(),
             fill.time,
         );
+        if resolved_start.same_timestamp_mismatch {
+            diagnostics.same_timestamp_position_mismatch_count += 1;
+        }
+        let start_pos = resolved_start.start_pos;
         let transition = fill_position_transition(start_pos, signed_sz, is_settlement);
         let new_pos = transition.new_pos;
 
@@ -88,6 +92,7 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
 
         trade.fill_count += 1;
         add_legacy_note_id(&mut trade, legacy_trade_id(&coin, fill.time));
+        add_stable_note_ids_for_fill(&mut trade, &coin, &fill);
 
         if is_settlement {
             trade.fee += fee;
@@ -120,8 +125,9 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
             trade.end_time = Some(fill.time);
             trade_history.push(trade);
 
-            let new_trade =
+            let mut new_trade =
                 new_flip_trade(&coin, &fill, new_pos, opening_sz, px, fee, opening_ratio);
+            add_stable_note_ids_for_fill(&mut new_trade, &coin, &fill);
             current_trades.insert(coin, new_trade);
         } else {
             trade.volume += sz * px;
@@ -165,4 +171,9 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
         trades: trade_history,
         diagnostics,
     }
+}
+
+fn add_stable_note_ids_for_fill(trade: &mut AggregatedTrade, coin: &str, fill: &UserFill) {
+    add_legacy_note_id(trade, stable_trade_id("perp", coin, fill));
+    add_legacy_note_id(trade, stable_trade_id("perp-flip", coin, fill));
 }

@@ -70,6 +70,7 @@ fn terminal_with_stale_account() -> TradingTerminal {
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
     terminal.wallet_key_input = sensitive_string("agent-key");
     terminal.account_data = Some(stale_account_data());
+    terminal.account_loading = false;
     terminal
 }
 

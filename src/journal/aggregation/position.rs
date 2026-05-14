@@ -14,6 +14,12 @@ pub(super) struct FillPositionTransition {
     pub(super) is_close: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct ResolvedStartPosition {
+    pub(super) start_pos: f64,
+    pub(super) same_timestamp_mismatch: bool,
+}
+
 pub(super) fn is_non_perp_coin(coin: &str) -> bool {
     coin.starts_with('@') || coin.starts_with('#')
 }
@@ -26,10 +32,24 @@ pub(super) fn resolved_start_position(
     api_start_pos: f64,
     tracked_position: Option<(u64, f64)>,
     fill_time: u64,
-) -> f64 {
+) -> ResolvedStartPosition {
     match tracked_position {
-        Some((last_time, position)) if last_time == fill_time => position,
-        _ => api_start_pos,
+        Some((last_time, position))
+            if last_time == fill_time && (position - api_start_pos).abs() <= POSITION_EPSILON =>
+        {
+            ResolvedStartPosition {
+                start_pos: position,
+                same_timestamp_mismatch: false,
+            }
+        }
+        Some((last_time, _position)) if last_time == fill_time => ResolvedStartPosition {
+            start_pos: api_start_pos,
+            same_timestamp_mismatch: true,
+        },
+        _ => ResolvedStartPosition {
+            start_pos: api_start_pos,
+            same_timestamp_mismatch: false,
+        },
     }
 }
 
