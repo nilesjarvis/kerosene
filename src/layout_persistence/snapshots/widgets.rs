@@ -1,7 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::market_state::{OrderBookDisplayMode, OrderBookSymbolMode};
-use crate::signing::OrderKind;
 
 // ---------------------------------------------------------------------------
 // Widget Config Snapshots
@@ -138,13 +137,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn order_kind_config_value(&self) -> String {
-        match self.order_kind {
-            OrderKind::Market => "Market",
-            OrderKind::Limit => "Limit",
-            OrderKind::Chase => "Chase",
-            OrderKind::LimitIoc => "Limit IOC",
-        }
-        .to_string()
+        self.order_kind.config_str().to_string()
     }
 
     pub(crate) fn saved_layout_snapshot(&self, name: String) -> config::SavedLayout {
