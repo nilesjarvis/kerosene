@@ -33,3 +33,14 @@ pub(super) fn order_quantity_from_input(
         None
     }
 }
+
+pub(super) fn quantize_order_size(size: f64, sz_decimals: u32) -> Option<f64> {
+    if !size.is_finite() || size <= 0.0 {
+        return None;
+    }
+
+    let decimals = sz_decimals.min(8);
+    let factor = 10f64.powi(decimals as i32);
+    let quantized = (size * factor).floor() / factor;
+    (quantized.is_finite() && quantized > 0.0).then_some(quantized)
+}
