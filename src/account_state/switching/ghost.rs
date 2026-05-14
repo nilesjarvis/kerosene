@@ -60,11 +60,15 @@ impl TradingTerminal {
         let Some(profile) = self.accounts.get(index) else {
             return Task::none();
         };
-        if !self.ghost_account_secret_ids.contains(&profile.secret_id) {
+        let secret_id = profile.secret_id.clone();
+        if !self.ghost_account_secret_ids.contains(&secret_id) {
             return Task::none();
         }
 
-        let secret_id = profile.secret_id.clone();
+        if self.account_change_blocked_by_active_chase("forgetting a ghost wallet") {
+            return Task::none();
+        }
+
         let was_active = self.active_account_index == index;
         if was_active {
             self.journal.switch_active_account(None);

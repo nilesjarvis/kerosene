@@ -43,6 +43,18 @@ impl TradingTerminal {
         self.tracked_trades_status = self.liquidations_status.clone();
     }
 
+    pub(crate) fn account_change_blocked_by_active_chase(&mut self, action: &str) -> bool {
+        if self.chase_orders.is_empty() {
+            return false;
+        }
+
+        self.push_toast(
+            format!("Stop active chase orders and wait for cancellation to finish before {action}"),
+            true,
+        );
+        true
+    }
+
     pub(crate) fn switch_account_task(&mut self, index: usize) -> Task<Message> {
         let Some(profile) = self.accounts.get(index).cloned() else {
             return Task::none();
@@ -60,12 +72,7 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if !self.chase_orders.is_empty() {
-            self.push_toast(
-                "Stop active chase orders and wait for cancellation to finish before switching accounts"
-                    .to_string(),
-                true,
-            );
+        if self.account_change_blocked_by_active_chase("switching accounts") {
             return Task::none();
         }
 
