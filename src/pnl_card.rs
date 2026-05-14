@@ -81,6 +81,7 @@ impl std::fmt::Display for PnlCardPercentMode {
 #[derive(Debug, Clone)]
 pub(crate) struct PnlCardWindowState {
     pub(crate) target: PnlCardTarget,
+    pub(crate) account_address: String,
     pub(crate) display_mode: PnlCardDisplayMode,
     pub(crate) percent_mode: PnlCardPercentMode,
     pub(crate) obscure_prices: bool,
@@ -88,9 +89,10 @@ pub(crate) struct PnlCardWindowState {
 }
 
 impl PnlCardWindowState {
-    pub(crate) fn new(target: PnlCardTarget) -> Self {
+    pub(crate) fn new(target: PnlCardTarget, account_address: String) -> Self {
         Self {
             target,
+            account_address,
             display_mode: PnlCardDisplayMode::Both,
             percent_mode: PnlCardPercentMode::Leveraged,
             obscure_prices: true,
@@ -105,11 +107,17 @@ impl PnlCardWindowState {
 
 impl TradingTerminal {
     pub(crate) fn open_pnl_card_window(&mut self, target: PnlCardTarget) -> Task<Message> {
-        if let Some(window_id) = self
-            .pnl_card_windows
-            .iter()
-            .find_map(|(id, state)| (state.target == target).then_some(*id))
-        {
+        let Some(account_address) = self.current_pnl_card_account_address() else {
+            self.push_toast(
+                "Connect an account before opening a PnL card".to_string(),
+                true,
+            );
+            return Task::none();
+        };
+
+        if let Some(window_id) = self.pnl_card_windows.iter().find_map(|(id, state)| {
+            (state.target == target && state.account_address == account_address).then_some(*id)
+        }) {
             return window::gain_focus(window_id);
         }
 
@@ -123,7 +131,7 @@ impl TradingTerminal {
         };
         let (window_id, task) = window::open(settings);
         self.pnl_card_windows
-            .insert(window_id, PnlCardWindowState::new(target));
+            .insert(window_id, PnlCardWindowState::new(target, account_address));
 
         task.map(Message::WindowOpened)
     }
@@ -231,25 +239,60 @@ impl TradingTerminal {
         }
     }
 
+    fn current_pnl_card_account_address(&self) -> Option<String> {
+        self.connected_address
+            .as_deref()
+            .and_then(Self::normalize_wallet_address)
+    }
+
+    fn pnl_card_account_is_current(&self, state: &PnlCardWindowState) -> bool {
+        pnl_card_account_matches(self.connected_address.as_deref(), state)
+    }
+
+    fn stale_pnl_card_message(&self, state: &PnlCardWindowState) -> String {
+        format!(
+            "PnL card was opened for {}. Reopen it for the current account.",
+            Self::short_address(&state.account_address)
+        )
+    }
+
+    fn pnl_card_metrics_for_state(
+        &self,
+        state: &PnlCardWindowState,
+    ) -> Result<PnlCardMetrics, String> {
+        if !self.pnl_card_account_is_current(state) {
+            return Err(self.stale_pnl_card_message(state));
+        }
+
+        match &state.target {
+            PnlCardTarget::Position(coin) => self
+                .position_pnl_card_metrics(coin)
+                .ok_or_else(|| "Position is no longer open".to_string()),
+            PnlCardTarget::Summary => self
+                .summary_pnl_card_metrics()
+                .ok_or_else(|| "No open positions".to_string()),
+        }
+    }
+
     fn pnl_card_export_image(&self, window_id: window::Id) -> Result<PnlCardImage, String> {
         let state = self
             .pnl_card_windows
             .get(&window_id)
             .cloned()
             .ok_or_else(|| "PnL card not found".to_string())?;
-        let metrics = match &state.target {
-            PnlCardTarget::Position(coin) => self
-                .position_pnl_card_metrics(coin)
-                .ok_or_else(|| "Position is no longer open".to_string())?,
-            PnlCardTarget::Summary => self
-                .summary_pnl_card_metrics()
-                .ok_or_else(|| "No open positions".to_string())?,
-        };
+        let metrics = self.pnl_card_metrics_for_state(&state)?;
 
         let theme = self.theme();
         let pnl_color = self.direction_color(&theme, metrics.upnl);
         render_pnl_card_image(&state, metrics, pnl_color, &theme)
     }
+}
+
+fn pnl_card_account_matches(current_address: Option<&str>, state: &PnlCardWindowState) -> bool {
+    current_address
+        .and_then(TradingTerminal::normalize_wallet_address)
+        .as_deref()
+        .is_some_and(|address| address == state.account_address)
 }
 
 // ---------------------------------------------------------------------------
@@ -263,16 +306,10 @@ impl TradingTerminal {
             return missing_pnl_card_view(&theme, "PnL card not found");
         };
 
-        let content = match &state.target {
-            PnlCardTarget::Position(coin) => self
-                .position_pnl_card_metrics(coin)
-                .map(|metrics| self.view_pnl_card_content(window_id, state, metrics, &theme))
-                .unwrap_or_else(|| missing_pnl_card_view(&theme, "Position is no longer open")),
-            PnlCardTarget::Summary => self
-                .summary_pnl_card_metrics()
-                .map(|metrics| self.view_pnl_card_content(window_id, state, metrics, &theme))
-                .unwrap_or_else(|| missing_pnl_card_view(&theme, "No open positions")),
-        };
+        let content = self
+            .pnl_card_metrics_for_state(state)
+            .map(|metrics| self.view_pnl_card_content(window_id, state, metrics, &theme))
+            .unwrap_or_else(|message| missing_pnl_card_view(&theme, message));
 
         container(scrollable(content).width(Fill).height(Fill))
             .width(Fill)
@@ -571,11 +608,11 @@ fn card_metric<'a>(
     .into()
 }
 
-fn missing_pnl_card_view<'a>(theme: &Theme, message: &'static str) -> Element<'a, Message> {
+fn missing_pnl_card_view<'a>(theme: &Theme, message: impl Into<String>) -> Element<'a, Message> {
     container(
         column![
             text("kerosene").size(18).font(Font::MONOSPACE),
-            text(message)
+            text(message.into())
                 .size(12)
                 .color(theme.extended_palette().background.weak.text),
         ]
@@ -1568,11 +1605,21 @@ mod tests {
         }
     }
 
+    fn test_account() -> String {
+        "0x1111111111111111111111111111111111111111".to_string()
+    }
+
+    fn other_account() -> String {
+        "0x2222222222222222222222222222222222222222".to_string()
+    }
+
     #[test]
     fn pnl_card_window_defaults_are_privacy_first() {
-        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let state =
+            PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
 
         assert_eq!(state.target, PnlCardTarget::Position("BTC".to_string()));
+        assert_eq!(state.account_address, test_account());
         assert_eq!(state.display_mode, PnlCardDisplayMode::Both);
         assert_eq!(state.percent_mode, PnlCardPercentMode::Leveraged);
         assert!(state.obscure_prices);
@@ -1580,8 +1627,22 @@ mod tests {
     }
 
     #[test]
+    fn pnl_card_account_binding_rejects_current_account_switch() {
+        let state =
+            PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
+
+        assert!(pnl_card_account_matches(
+            Some(&test_account().to_uppercase()),
+            &state
+        ));
+        assert!(!pnl_card_account_matches(Some(&other_account()), &state));
+        assert!(!pnl_card_account_matches(None, &state));
+    }
+
+    #[test]
     fn render_text_default_card_uses_leveraged_percent_usd_and_private_context() {
-        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let state =
+            PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
         let render_text = pnl_card_render_text(&state, &sample_metrics());
 
         assert_eq!(render_text.ticker, "BTC");
@@ -1596,7 +1657,8 @@ mod tests {
 
     #[test]
     fn render_text_can_show_asset_move_only_with_exact_prices_and_position_size() {
-        let mut state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let mut state =
+            PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
         state.display_mode = PnlCardDisplayMode::PercentOnly;
         state.percent_mode = PnlCardPercentMode::AssetMove;
         state.obscure_prices = false;
@@ -1614,7 +1676,8 @@ mod tests {
 
     #[test]
     fn render_text_can_show_usd_only_without_secondary_value() {
-        let mut state = PnlCardWindowState::new(PnlCardTarget::Position("ETH".to_string()));
+        let mut state =
+            PnlCardWindowState::new(PnlCardTarget::Position("ETH".to_string()), test_account());
         let mut metrics = sample_metrics();
         state.display_mode = PnlCardDisplayMode::UsdOnly;
         metrics.upnl = -42.5;
@@ -1627,7 +1690,7 @@ mod tests {
 
     #[test]
     fn render_text_preserves_usd_when_percent_basis_is_missing() {
-        let state = PnlCardWindowState::new(PnlCardTarget::Summary);
+        let state = PnlCardWindowState::new(PnlCardTarget::Summary, test_account());
         let mut metrics = sample_metrics();
         metrics.asset_move_pct = None;
         metrics.leveraged_pct = None;
@@ -1690,7 +1753,8 @@ mod tests {
 
     #[test]
     fn pnl_card_context_hides_position_size_by_default() {
-        let mut state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let mut state =
+            PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
         let metrics = sample_metrics();
 
         assert_eq!(pnl_card_context_display(&state, &metrics), "Short position");
@@ -1702,7 +1766,7 @@ mod tests {
 
     #[test]
     fn summary_context_is_not_replaced_by_position_privacy_text() {
-        let state = PnlCardWindowState::new(PnlCardTarget::Summary);
+        let state = PnlCardWindowState::new(PnlCardTarget::Summary, test_account());
         let mut metrics = sample_metrics();
         metrics.context = "3 open positions".to_string();
         metrics.private_context = None;
@@ -1732,7 +1796,8 @@ mod tests {
 
     #[test]
     fn render_pnl_card_image_produces_expected_png_payload() {
-        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let state =
+            PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
         let image = render_pnl_card_image(
             &state,
             sample_metrics(),
@@ -1751,7 +1816,8 @@ mod tests {
 
     #[test]
     fn positive_and_negative_exports_use_distinct_gradients() {
-        let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()));
+        let state =
+            PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
         let positive = render_pnl_card_image(
             &state,
             sample_metrics(),
