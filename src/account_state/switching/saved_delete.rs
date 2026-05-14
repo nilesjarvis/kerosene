@@ -42,6 +42,10 @@ impl TradingTerminal {
             return Task::none();
         };
 
+        if self.account_change_blocked_by_active_chase("deleting an account") {
+            return Task::none();
+        }
+
         // Ghost sessions have their own forget path; this entry point is for
         // saved profiles, which need keychain/encrypted-blob cleanup that
         // ghost accounts never accumulated.
