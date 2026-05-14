@@ -118,12 +118,8 @@ fn chase_order_row(
     } else {
         "Loading".to_string()
     };
-    let oid = chase
-        .current_oid
-        .map(|oid| format!("#{oid}"))
-        .unwrap_or_else(|| "-".to_string());
     let reduce_only = if chase.reduce_only { " | RO" } else { "" };
-    let meta = format!("{oid} | {} reprices{reduce_only}", chase.reprice_count);
+    let meta = format!("{} reprices{reduce_only}", chase.reprice_count);
 
     container(
         row![
@@ -264,7 +260,8 @@ fn history_order_row(
     } else {
         "saved".to_string()
     };
-    let summary = compact_summary(&entry.summary);
+    let display_summary = hide_order_oid_references(&entry.summary);
+    let summary = compact_summary(&display_summary);
 
     container(
         row![
@@ -325,6 +322,103 @@ fn compact_summary(summary: &str) -> String {
         return summary.to_string();
     }
     summary.chars().take(LIMIT).collect::<String>() + "..."
+}
+
+fn hide_order_oid_references(summary: &str) -> String {
+    strip_inline_oid_references(&strip_parenthesized_oid_references(summary))
+}
+
+fn strip_parenthesized_oid_references(summary: &str) -> String {
+    let mut result = String::with_capacity(summary.len());
+    let mut rest = summary;
+    while let Some(start) = rest.find("(oid ") {
+        result.push_str(rest[..start].trim_end());
+        let after_prefix = &rest[start + "(oid ".len()..];
+        let Some(end) = after_prefix.find(')') else {
+            result.push_str(&rest[start..]);
+            return result;
+        };
+        let order_id = &after_prefix[..end];
+        if order_id.is_empty() || !order_id.chars().all(|ch| ch.is_ascii_digit()) {
+            result.push_str(&rest[start..start + "(oid ".len()]);
+            rest = after_prefix;
+            continue;
+        }
+        rest = &after_prefix[end + 1..];
+    }
+    result.push_str(rest);
+    result
+}
+
+fn strip_inline_oid_references(summary: &str) -> String {
+    let mut words = summary.split_whitespace().peekable();
+    let mut stripped = Vec::new();
+
+    while let Some(word) = words.next() {
+        if word.eq_ignore_ascii_case("oid")
+            && let Some(next) = words.peek()
+            && let Some(suffix) = numeric_token_suffix(next)
+        {
+            words.next();
+            stripped.push(format!("order{suffix}"));
+            continue;
+        }
+
+        if let Some(suffix) = oid_assignment_suffix(word) {
+            stripped.push(format!("order{suffix}"));
+            continue;
+        }
+
+        stripped.push(word.to_string());
+    }
+
+    stripped.join(" ")
+}
+
+fn oid_assignment_suffix(word: &str) -> Option<&str> {
+    let (label, value) = word.split_once('=')?;
+    if label.eq_ignore_ascii_case("oid") {
+        numeric_token_suffix(value)
+    } else {
+        None
+    }
+}
+
+fn numeric_token_suffix(value: &str) -> Option<&str> {
+    let digit_end = value
+        .char_indices()
+        .find_map(|(index, ch)| (!ch.is_ascii_digit()).then_some(index))
+        .unwrap_or(value.len());
+    (digit_end > 0).then_some(&value[digit_end..])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hide_order_oid_references;
+
+    #[test]
+    fn hides_parenthesized_oid_from_history_summary() {
+        assert_eq!(
+            hide_order_oid_references("Chase filled: BUY 0.3 BTC @ $106 (oid 42)"),
+            "Chase filled: BUY 0.3 BTC @ $106"
+        );
+        assert_eq!(
+            hide_order_oid_references("Resting (oid 42); Error: rejected"),
+            "Resting; Error: rejected"
+        );
+    }
+
+    #[test]
+    fn hides_inline_oid_from_history_summary() {
+        assert_eq!(
+            hide_order_oid_references("Slice 2 unexpectedly rested as oid 123; cancelling"),
+            "Slice 2 unexpectedly rested as order; cancelling"
+        );
+        assert_eq!(
+            hide_order_oid_references("filled oid=123 cloid=0xabc"),
+            "filled order cloid=0xabc"
+        );
+    }
 }
 
 fn stop_button(chase_id: u64) -> Element<'static, Message> {
@@ -462,7 +556,7 @@ fn stop_like_button(label: &'static str, message: Message) -> Element<'static, M
 
 fn badge(label: &'static str, _theme: &Theme) -> Element<'static, Message> {
     container(text(label).size(9).center())
-        .padding([2, 5])
+        .padding([2, 3])
         .style(|theme: &Theme| container_style::Style {
             background: Some(theme.extended_palette().background.strong.color.into()),
             text_color: Some(theme.extended_palette().background.strong.text),
@@ -472,8 +566,6 @@ fn badge(label: &'static str, _theme: &Theme) -> Element<'static, Message> {
             },
             ..Default::default()
         })
-        .width(iced::Length::Fixed(42.0))
-        .center_x(Fill)
         .into()
 }
 
