@@ -103,13 +103,6 @@ impl TradingTerminal {
         Task::batch([stop_chase_task, account_task])
     }
 
-    pub(crate) fn find_account_by_wallet_address(&self, address: &str) -> Option<usize> {
-        self.accounts.iter().position(|profile| {
-            Self::normalize_wallet_address(&profile.wallet_address)
-                .is_some_and(|profile_address| profile_address == address)
-        })
-    }
-
     pub(crate) fn account_can_trade(profile: &AccountProfile) -> bool {
         !profile.agent_key.trim().is_empty()
     }
