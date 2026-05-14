@@ -61,6 +61,7 @@ impl TradingTerminal {
             live_watchlist_history_loaded_at: HashMap::new(),
             live_watchlist_status: None,
             panes: pane_grid::State::with_configuration(parts.pane_config),
+            dragging_pane: None,
             active_theme: cfg.active_theme.clone(),
             focus: None,
             order_price: String::new(),

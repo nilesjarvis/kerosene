@@ -13,11 +13,18 @@ impl TradingTerminal {
                 self.panes.resize(split, ratio);
                 self.persist_config();
             }
+            Message::PaneDragged(pane_grid::DragEvent::Picked { pane }) => {
+                self.dragging_pane = Some(pane);
+                self.close_chart_header_menus();
+            }
             Message::PaneDragged(pane_grid::DragEvent::Dropped { pane, target }) => {
+                self.dragging_pane = None;
                 self.panes.drop(pane, target);
                 self.persist_config();
             }
-            Message::PaneDragged(_) => {}
+            Message::PaneDragged(pane_grid::DragEvent::Canceled { .. }) => {
+                self.dragging_pane = None;
+            }
             Message::PaneClicked(pane) => {
                 self.focus = Some(pane);
 

@@ -4,7 +4,7 @@ use crate::message::Message;
 use crate::pane_state::PaneKind;
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, pane_grid, row, text};
-use iced::{Element, Fill, Theme};
+use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_main_pane_grid(&self) -> Element<'_, Message> {
@@ -12,6 +12,25 @@ impl TradingTerminal {
         let pane_count = self.panes.iter().count();
 
         let pane_grid_widget = pane_grid(&self.panes, |pane, kind, _is_maximized| {
+            let title = pane_title(kind);
+
+            if self.dragging_pane == Some(pane) {
+                let title_bar = pane_grid::TitleBar::new(
+                    text(title)
+                        .size(11)
+                        .font(iced::Font::MONOSPACE)
+                        .style(|theme: &Theme| iced::widget::text::Style {
+                            color: Some(drag_ghost_title_color(theme)),
+                        }),
+                )
+                .padding([3, 6])
+                .style(pane_drag_ghost_title_bar_style);
+
+                return pane_grid::Content::new(pane_drag_ghost_body())
+                    .title_bar(title_bar)
+                    .style(pane_drag_ghost_style);
+            }
+
             let content = self.view_pane_content(pane, kind, chart_count);
             let close_btn = pane_close_button(pane, pane_count, kind.can_be_closed());
             let controls_row = if matches!(kind, PaneKind::Chart(_)) {
@@ -23,18 +42,18 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center);
             let controls = pane_grid::Controls::new(controls_row);
 
-            let title_bar = pane_grid::TitleBar::new(
-                text(pane_title(kind))
+            let title_text =
+                text(title)
                     .size(11)
                     .font(iced::Font::MONOSPACE)
                     .style(|theme: &Theme| iced::widget::text::Style {
                         color: Some(subtle_pane_title_color(theme)),
-                    }),
-            )
-            .controls(controls)
-            .always_show_controls()
-            .padding([3, 6])
-            .style(pane_title_bar_style);
+                    });
+            let title_bar = pane_grid::TitleBar::new(title_text)
+                .controls(controls)
+                .always_show_controls()
+                .padding([3, 6])
+                .style(pane_title_bar_style);
 
             pane_grid::Content::new(content)
                 .title_bar(title_bar)
@@ -73,6 +92,55 @@ impl TradingTerminal {
 
         container(pane_grid_widget).width(Fill).height(Fill).into()
     }
+}
+
+fn pane_drag_ghost_body() -> Element<'static, Message> {
+    container(Space::new().width(Fill).height(Fill))
+        .width(Fill)
+        .height(Fill)
+        .into()
+}
+
+fn pane_drag_ghost_style(theme: &Theme) -> container_style::Style {
+    let mut background = theme.palette().primary;
+    background.a = 0.12;
+
+    let mut border_color = theme.palette().primary;
+    border_color.a = 0.85;
+
+    container_style::Style {
+        background: Some(background.into()),
+        border: iced::Border {
+            width: 1.0,
+            color: border_color,
+            radius: 2.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn pane_drag_ghost_title_bar_style(theme: &Theme) -> container_style::Style {
+    let mut background = theme.palette().primary;
+    background.a = 0.18;
+
+    let mut border_color = theme.palette().primary;
+    border_color.a = 0.35;
+
+    container_style::Style {
+        background: Some(background.into()),
+        border: iced::Border {
+            width: 0.0,
+            color: border_color,
+            radius: 0.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn drag_ghost_title_color(theme: &Theme) -> Color {
+    let mut color = theme.palette().text;
+    color.a = 0.72;
+    color
 }
 
 fn pane_title_bar_style(theme: &Theme) -> container_style::Style {

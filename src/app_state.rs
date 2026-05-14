@@ -43,6 +43,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) active_layout_name: Option<String>,
     pub(crate) layout_input: String,
     pub(crate) panes: pane_grid::State<PaneKind>,
+    pub(crate) dragging_pane: Option<pane_grid::Pane>,
     pub(crate) active_theme: String,
     pub(crate) hotkeys: Vec<config::HotkeyConfig>,
     pub(crate) recording_hotkey_for: Option<config::HotkeyAction>,
