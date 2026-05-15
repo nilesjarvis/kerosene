@@ -18,7 +18,10 @@ impl TradingTerminal {
             .push(rule::horizontal(1))
             .push(self.view_credential_storage_controls())
             .push(rule::horizontal(1))
-            .push(configuration_actions(&current_theme));
+            .push(configuration_actions(
+                &current_theme,
+                self.config_clear_block_reason(),
+            ));
 
         if let Some((status, is_error)) = &self.secret_store_status {
             storage_section = storage_section.push(text(status).size(11).color(if *is_error {
