@@ -13,6 +13,9 @@ use iced::{Color, Point, Size, alignment};
 // Order Overlays
 // ---------------------------------------------------------------------------
 
+const ORDER_LINE_WIDTH: f32 = 1.5;
+const MOVING_ORDER_LINE_WIDTH: f32 = 2.0;
+
 impl CandlestickChart {
     pub(super) fn draw_active_order_lines<PriceToY, IdxToCx>(
         &self,
@@ -52,7 +55,7 @@ impl CandlestickChart {
                             ..ctx.theme.palette().success
                         },
                         ctx.theme.palette().success,
-                        2.0,
+                        MOVING_ORDER_LINE_WIDTH,
                     )
                 } else {
                     (
@@ -61,7 +64,7 @@ impl CandlestickChart {
                             ..ctx.theme.palette().danger
                         },
                         ctx.theme.palette().danger,
-                        2.0,
+                        MOVING_ORDER_LINE_WIDTH,
                     )
                 }
             } else if order.is_buy {
@@ -71,7 +74,7 @@ impl CandlestickChart {
                         ..ctx.theme.palette().success
                     },
                     ctx.theme.palette().success,
-                    1.0,
+                    ORDER_LINE_WIDTH,
                 )
             } else {
                 (
@@ -80,7 +83,7 @@ impl CandlestickChart {
                         ..ctx.theme.palette().danger
                     },
                     ctx.theme.palette().danger,
-                    1.0,
+                    ORDER_LINE_WIDTH,
                 )
             };
 

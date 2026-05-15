@@ -17,6 +17,26 @@ pub(super) struct SegmentedHLineStyle {
     pub(super) width: f32,
 }
 
+pub(super) fn stroke_hline(
+    frame: &mut canvas::Frame,
+    chart_w: f32,
+    y: f32,
+    color: Color,
+    width: f32,
+) {
+    if chart_w <= 0.0 {
+        return;
+    }
+
+    let line = canvas::Path::line(Point::new(0.0, y), Point::new(chart_w, y));
+    frame.stroke(
+        &line,
+        canvas::Stroke::default()
+            .with_color(color)
+            .with_width(width),
+    );
+}
+
 pub(super) fn stroke_segmented_hline(
     frame: &mut canvas::Frame,
     chart_w: f32,

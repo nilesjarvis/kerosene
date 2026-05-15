@@ -1,5 +1,7 @@
 use super::TradingOverlayContext;
-use crate::chart::drawing::{AxisBadgeStyle, fill_right_axis_badge, stroke_segmented_hline};
+use crate::chart::drawing::{
+    AxisBadgeStyle, fill_right_axis_badge, stroke_hline, stroke_segmented_hline,
+};
 use crate::chart::model::CandlestickChart;
 use crate::helpers::format_price;
 use iced::widget::canvas;
@@ -8,6 +10,8 @@ use iced::{Color, Point, Size, alignment};
 // ---------------------------------------------------------------------------
 // Position Overlays
 // ---------------------------------------------------------------------------
+
+const POSITION_ENTRY_LINE_WIDTH: f32 = 2.5;
 
 impl CandlestickChart {
     pub(super) fn draw_active_position_lines<PriceToY, IdxToCx>(
@@ -44,7 +48,13 @@ impl CandlestickChart {
                     ctx.theme.palette().danger
                 };
 
-                stroke_segmented_hline(ctx.frame, ctx.chart_w, entry_y, 6.0, 4.0, pos_color, 1.0);
+                stroke_hline(
+                    ctx.frame,
+                    ctx.chart_w,
+                    entry_y,
+                    pos_color,
+                    POSITION_ENTRY_LINE_WIDTH,
+                );
                 fill_right_axis_badge(
                     ctx.frame,
                     ctx.chart_w,
