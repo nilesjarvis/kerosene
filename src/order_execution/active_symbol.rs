@@ -1,11 +1,21 @@
 use crate::api::{MarketType, OrderBook};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
-use crate::market_state::OrderBookSymbolMode;
+use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 use crate::message::Message;
 use crate::timeframe::Timeframe;
 
 use iced::Task;
+
+fn reset_active_order_book_for_symbol_switch(inst: &mut OrderBookInstance) {
+    inst.set_book(OrderBook::empty());
+    inst.asset_ctx = None;
+    inst.spread_history.clear();
+    inst.clear_mid_price_history();
+    inst.clear_book_request();
+    inst.book_loading = true;
+    inst.book_error = None;
+}
 
 impl TradingTerminal {
     pub(crate) fn switch_active_symbol_internal(&mut self, key: String) -> Task<Message> {
@@ -48,12 +58,7 @@ impl TradingTerminal {
         }
         for inst in self.order_books.values_mut() {
             if inst.mode == OrderBookSymbolMode::Active {
-                inst.set_book(OrderBook::empty());
-                inst.asset_ctx = None;
-                inst.spread_history.clear();
-                inst.clear_mid_price_history();
-                inst.book_loading = true;
-                inst.book_error = None;
+                reset_active_order_book_for_symbol_switch(inst);
             }
         }
 
@@ -137,5 +142,36 @@ impl TradingTerminal {
                 .map(|id| self.order_book_fetch_task_for_id(id)),
         );
         Task::batch([candle_task, book_task])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reset_active_order_book_for_symbol_switch;
+    use crate::api::{BookLevel, OrderBook};
+    use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
+
+    #[test]
+    fn active_order_book_reset_clears_stale_request_marker() {
+        let mut book = OrderBookInstance::new(1, OrderBookSymbolMode::Active, 1.0);
+        book.book_loading = true;
+        book.book_error = Some("old error".to_string());
+        book.asset_ctx = None;
+        book.spread_history
+            .push_back((std::time::Instant::now(), 1.0));
+        book.set_book(OrderBook {
+            bids: vec![BookLevel { px: 99.0, sz: 2.0 }],
+            asks: vec![BookLevel { px: 101.0, sz: 3.0 }],
+        });
+        book.mark_book_request((Some(5), Some(2)));
+
+        reset_active_order_book_for_symbol_switch(&mut book);
+
+        assert!(book.book_loading);
+        assert!(book.book_error.is_none());
+        assert!(book.book.bids.is_empty());
+        assert!(book.book.asks.is_empty());
+        assert!(book.spread_history.is_empty());
+        assert_eq!(book.pending_book_sigfigs(), None);
     }
 }
