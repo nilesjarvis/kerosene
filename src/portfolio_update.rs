@@ -6,6 +6,13 @@ use crate::message::Message;
 use chrono::{DateTime, Utc};
 use iced::Task;
 
+fn portfolio_refresh_address(connected_address: Option<&String>, loading: bool) -> Option<String> {
+    if loading {
+        return None;
+    }
+    connected_address.cloned()
+}
+
 impl TradingTerminal {
     pub(crate) fn update_portfolio_income(&mut self, message: Message) -> Task<Message> {
         match message {
@@ -16,10 +23,13 @@ impl TradingTerminal {
                 self.portfolio.window = window;
             }
             Message::RefreshPortfolio => {
-                if let Some(addr) = &self.connected_address {
+                if let Some(addr) = portfolio_refresh_address(
+                    self.connected_address.as_ref(),
+                    self.portfolio.loading,
+                ) {
                     let requested_addr = addr.clone();
                     self.portfolio.loading = true;
-                    return Task::perform(fetch_portfolio_history(addr.clone()), move |r| {
+                    return Task::perform(fetch_portfolio_history(addr), move |r| {
                         Message::PortfolioLoaded(requested_addr.clone(), Box::new(r))
                     });
                 }
@@ -107,5 +117,28 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::portfolio_refresh_address;
+
+    #[test]
+    fn portfolio_refresh_is_suppressed_while_request_is_in_flight() {
+        let address = "0xabc".to_string();
+
+        assert_eq!(portfolio_refresh_address(Some(&address), true), None);
+    }
+
+    #[test]
+    fn portfolio_refresh_starts_only_when_connected_and_idle() {
+        let address = "0xabc".to_string();
+
+        assert_eq!(
+            portfolio_refresh_address(Some(&address), false),
+            Some(address.clone())
+        );
+        assert_eq!(portfolio_refresh_address(None, false), None);
     }
 }
