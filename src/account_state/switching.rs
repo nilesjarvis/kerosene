@@ -55,6 +55,18 @@ impl TradingTerminal {
         true
     }
 
+    pub(crate) fn account_change_blocked_by_pending_move(&mut self, action: &str) -> bool {
+        if self.pending_move_order_contexts.is_empty() {
+            return false;
+        }
+
+        self.push_toast(
+            format!("Wait for pending move-order requests to finish before {action}"),
+            true,
+        );
+        true
+    }
+
     pub(crate) fn switch_account_task(&mut self, index: usize) -> Task<Message> {
         let Some(profile) = self.accounts.get(index).cloned() else {
             return Task::none();
@@ -69,6 +81,10 @@ impl TradingTerminal {
                 "Wait for the pending order request before switching accounts".to_string(),
                 true,
             );
+            return Task::none();
+        }
+
+        if self.account_change_blocked_by_pending_move("switching accounts") {
             return Task::none();
         }
 

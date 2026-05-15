@@ -1,5 +1,6 @@
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::config::AccountProfile;
+use crate::order_execution::PendingMoveOrderContext;
 use crate::signing::ChaseOrder;
 
 use std::time::Instant;
@@ -83,4 +84,46 @@ fn account_switch_is_blocked_while_chase_order_is_active() {
     let toast = terminal.toasts.last().expect("blocked switch should toast");
     assert!(toast.is_error);
     assert!(toast.message.contains("Stop active chase orders"));
+}
+
+#[test]
+fn account_switch_is_blocked_while_move_order_modify_is_pending() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.desktop_notifications = false;
+    terminal.accounts = vec![
+        account(
+            "account-a",
+            "Account A",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        account(
+            "account-b",
+            "Account B",
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+    ];
+    terminal.active_account_index = 0;
+    terminal.wallet_address_input = terminal.accounts[0].wallet_address.clone();
+    terminal.wallet_key_input = terminal.accounts[0].agent_key.clone();
+    terminal.connected_address = Some(terminal.accounts[0].wallet_address.clone());
+    terminal.pending_move_order_contexts.insert(
+        1001,
+        PendingMoveOrderContext::new(
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "old-account-agent-key",
+        )
+        .expect("valid pending move context"),
+    );
+
+    let _task = terminal.switch_account_task(1);
+
+    assert_eq!(terminal.active_account_index, 0);
+    assert_eq!(
+        terminal.wallet_address_input,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    );
+    assert!(terminal.pending_move_order_contexts.contains_key(&1001));
+    let toast = terminal.toasts.last().expect("blocked switch should toast");
+    assert!(toast.is_error);
+    assert!(toast.message.contains("pending move-order"));
 }
