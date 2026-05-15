@@ -122,6 +122,54 @@ fn chase_context_rejects_changed_or_disconnected_account() {
 }
 
 #[test]
+fn stop_chase_with_missing_agent_key_preserves_resting_order_context() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    let mut chase = chase();
+    chase.agent_key = "   ".to_string().into();
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.stop_chase_by_id(1);
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.current_oid, Some(42));
+    assert_eq!(chase.pending_op, None);
+    assert!(chase.stop_requested);
+    assert!(
+        chase
+            .stop_reason
+            .as_ref()
+            .is_some_and(|(_, is_error)| *is_error)
+    );
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+}
+
+#[test]
+fn reprice_with_missing_agent_key_preserves_resting_order_context() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase();
+    chase.agent_key = "".to_string().into();
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.chase_reprice_to_best_price(1, 101.0);
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.current_oid, Some(42));
+    assert_eq!(chase.pending_op, None);
+    assert!(chase.stop_requested);
+    assert!(chase.pending_best_price.is_none());
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+}
+
+#[test]
 fn chase_exchange_requests_pause_while_account_reconciliation_is_loading() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;

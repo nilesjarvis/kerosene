@@ -161,12 +161,7 @@ impl TradingTerminal {
             } => {
                 let key = chase.agent_key.trim().to_string();
                 if key.is_empty() {
-                    self.order_status = Some((
-                        "Chase stopped: original agent key is unavailable".into(),
-                        true,
-                    ));
-                    self.remove_chase_order(chase_id);
-                    return Task::none();
+                    return self.handle_chase_agent_key_unavailable(chase_id);
                 }
                 self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
                 Task::perform(cancel_order(key.into(), asset, oid), move |r| {
@@ -248,6 +243,19 @@ impl TradingTerminal {
         {
             chase.pending_best_price = Some(best);
         }
+    }
+
+    fn handle_chase_agent_key_unavailable(&mut self, chase_id: u64) -> Task<Message> {
+        let status = "Chase requires manual attention: original agent key is unavailable; \
+                      any resting exchange order was not cancelled";
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+            chase.pending_op = None;
+            chase.pending_best_price = None;
+            chase.stop_requested = true;
+            chase.stop_reason = Some((status.to_string(), true));
+        }
+        self.order_status = Some((status.into(), true));
+        self.refresh_account_data()
     }
 
     fn best_chase_price_from_book(book: &OrderBook, is_buy: bool) -> Option<f64> {
@@ -434,12 +442,7 @@ impl TradingTerminal {
         };
         let key = chase.agent_key.trim().to_string();
         if key.is_empty() {
-            self.order_status = Some((
-                "Chase stopped: original agent key is unavailable".into(),
-                true,
-            ));
-            self.remove_chase_order(chase_id);
-            return Task::none();
+            return self.handle_chase_agent_key_unavailable(chase_id);
         }
 
         let chase_id = chase.id;
