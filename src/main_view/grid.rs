@@ -6,6 +6,13 @@ use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, pane_grid, row, text};
 use iced::{Color, Element, Fill, Theme};
 
+// ---------------------------------------------------------------------------
+// Pane Chrome
+// ---------------------------------------------------------------------------
+
+const PANE_BORDER_WIDTH: f32 = 1.0;
+const PANE_CORNER_RADIUS: f32 = 6.0;
+
 impl TradingTerminal {
     pub(super) fn view_main_pane_grid(&self) -> Element<'_, Message> {
         let chart_count = self.charts.len();
@@ -57,10 +64,7 @@ impl TradingTerminal {
 
             pane_grid::Content::new(content)
                 .title_bar(title_bar)
-                .style(|theme: &Theme| container_style::Style {
-                    background: Some(theme.extended_palette().background.strong.color.into()),
-                    ..Default::default()
-                })
+                .style(pane_content_style)
         })
         .width(Fill)
         .height(Fill)
@@ -75,18 +79,18 @@ impl TradingTerminal {
                 hovered_region: pane_grid::Highlight {
                     background: palette.primary.into(),
                     border: iced::Border {
-                        width: 1.0,
+                        width: PANE_BORDER_WIDTH,
                         color: palette.primary,
-                        radius: 0.0.into(),
+                        radius: PANE_CORNER_RADIUS.into(),
                     },
                 },
                 picked_split: pane_grid::Line {
                     color: palette.primary,
-                    width: 2.0,
+                    width: MAIN_PANE_GRID_SPACING,
                 },
                 hovered_split: pane_grid::Line {
                     color: palette.primary,
-                    width: 2.0,
+                    width: MAIN_PANE_GRID_SPACING,
                 },
             }
         });
@@ -112,9 +116,9 @@ fn pane_drag_ghost_style(theme: &Theme) -> container_style::Style {
     container_style::Style {
         background: Some(background.into()),
         border: iced::Border {
-            width: 1.0,
+            width: PANE_BORDER_WIDTH,
             color: border_color,
-            radius: 2.0.into(),
+            radius: PANE_CORNER_RADIUS.into(),
         },
         ..Default::default()
     }
@@ -132,7 +136,7 @@ fn pane_drag_ghost_title_bar_style(theme: &Theme) -> container_style::Style {
         border: iced::Border {
             width: 0.0,
             color: border_color,
-            radius: 0.0.into(),
+            radius: iced::border::Radius::default().top(PANE_CORNER_RADIUS),
         },
         ..Default::default()
     }
@@ -160,6 +164,25 @@ fn pane_title_bar_style(theme: &Theme) -> container_style::Style {
                 .add_stop(1.00, separator)
                 .into(),
         ),
+        border: iced::Border {
+            radius: iced::border::Radius::default().top(PANE_CORNER_RADIUS),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn pane_content_style(theme: &Theme) -> container_style::Style {
+    let mut border_color = theme.extended_palette().background.strong.text;
+    border_color.a = 0.10;
+
+    container_style::Style {
+        background: Some(theme.extended_palette().background.strong.color.into()),
+        border: iced::Border {
+            width: PANE_BORDER_WIDTH,
+            color: border_color,
+            radius: PANE_CORNER_RADIUS.into(),
+        },
         ..Default::default()
     }
 }
