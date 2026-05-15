@@ -420,11 +420,12 @@ fn fill_snapshot_replaces_existing_history_and_filters_muted_symbols() {
     let mut muted_fill = fill(1);
     muted_fill.coin = "ETH".to_string();
 
-    let toasts = apply_fills_update(&mut existing, vec![fill(2), muted_fill], true, |coin| {
+    let update = apply_fills_update(&mut existing, vec![fill(2), muted_fill], true, |coin| {
         coin == "ETH"
     });
 
-    assert!(toasts.is_empty());
+    assert!(update.toast_msgs.is_empty());
+    assert_eq!(update.changed_symbols, None);
     let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
     assert_eq!(times, vec![2]);
 }
@@ -435,16 +436,48 @@ fn live_fill_update_prepends_history_and_returns_toasts() {
     let mut sell_fill = fill(1);
     sell_fill.side = "A".to_string();
 
-    let toasts = apply_fills_update(&mut existing, vec![sell_fill, fill(2)], false, |_| false);
+    let update = apply_fills_update(&mut existing, vec![sell_fill, fill(2)], false, |_| false);
 
     let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
     assert_eq!(times, vec![1, 2, 3]);
     assert_eq!(
-        toasts,
+        update.toast_msgs,
         vec![
             "Filled SELL 0.1 BTC @ $100".to_string(),
             "Filled BUY 0.1 BTC @ $100".to_string(),
         ]
+    );
+    assert_eq!(
+        update.changed_symbols,
+        Some(HashSet::from(["BTC".to_string()]))
+    );
+}
+
+#[test]
+fn live_fill_update_reports_only_unmuted_changed_symbols() {
+    let mut existing = vec![fill(3)];
+    let mut eth_fill = fill(1);
+    eth_fill.coin = "ETH".to_string();
+    let mut muted_sol_fill = fill(2);
+    muted_sol_fill.coin = "SOL".to_string();
+
+    let update = apply_fills_update(
+        &mut existing,
+        vec![eth_fill, muted_sol_fill],
+        false,
+        |coin| coin == "SOL",
+    );
+
+    assert_eq!(
+        update.changed_symbols,
+        Some(HashSet::from(["ETH".to_string()]))
+    );
+    assert_eq!(
+        existing
+            .iter()
+            .map(|fill| fill.coin.as_str())
+            .collect::<Vec<_>>(),
+        vec!["ETH", "BTC"]
     );
 }
 

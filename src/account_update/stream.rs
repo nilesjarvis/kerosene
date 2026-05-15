@@ -53,12 +53,20 @@ fn prepend_recent_fills(
     *existing = updated;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FillsUpdateResult {
+    toast_msgs: Vec<String>,
+    /// None means the full fills history changed (snapshot); Some contains the
+    /// exact symbols touched by an incremental update.
+    changed_symbols: Option<HashSet<String>>,
+}
+
 fn apply_fills_update<F>(
     existing: &mut Vec<crate::account::UserFill>,
     fills: Vec<crate::account::UserFill>,
     is_snapshot: bool,
     is_muted: F,
-) -> Vec<String>
+) -> FillsUpdateResult
 where
     F: Fn(&str) -> bool,
 {
@@ -68,8 +76,12 @@ where
         .collect();
     if is_snapshot {
         *existing = fills;
-        Vec::new()
+        FillsUpdateResult {
+            toast_msgs: Vec::new(),
+            changed_symbols: None,
+        }
     } else {
+        let changed_symbols = fills.iter().map(|fill| fill.coin.clone()).collect();
         let toast_msgs: Vec<String> = fills
             .iter()
             .map(|fill| {
@@ -78,7 +90,10 @@ where
             })
             .collect();
         prepend_recent_fills(existing, fills, 200);
-        toast_msgs
+        FillsUpdateResult {
+            toast_msgs,
+            changed_symbols: Some(changed_symbols),
+        }
     }
 }
 
@@ -280,6 +295,7 @@ impl TradingTerminal {
 
         let mut orders_changed = false;
         let mut fills_changed = false;
+        let mut fills_changed_symbols: Option<HashSet<String>> = None;
         let mut mids_task = Task::none();
         let mut fill_toast_msgs: Vec<String> = Vec::new();
         let exchange_symbols = self.exchange_symbols.clone();
@@ -341,8 +357,10 @@ impl TradingTerminal {
                     orders_changed = true;
                 }
                 WsUserData::Fills { fills, is_snapshot } => {
-                    fill_toast_msgs =
+                    let fills_update =
                         apply_fills_update(&mut data.fills, fills, is_snapshot, is_hidden);
+                    fill_toast_msgs = fills_update.toast_msgs;
+                    fills_changed_symbols = fills_update.changed_symbols;
                     fills_changed = true;
                 }
                 WsUserData::SpotBalances(balances) => {
@@ -396,7 +414,11 @@ impl TradingTerminal {
             self.sync_all_chart_orders();
         }
         if fills_changed {
-            self.sync_all_chart_trade_markers();
+            if let Some(changed_symbols) = fills_changed_symbols.as_ref() {
+                self.sync_chart_trade_markers_for_symbols(changed_symbols);
+            } else {
+                self.sync_all_chart_trade_markers();
+            }
             self.reconcile_twap_fills_from_account();
             self.reconcile_chase_fills_from_account();
         }

@@ -2,6 +2,8 @@ use super::ChartId;
 use crate::app_state::TradingTerminal;
 use crate::chart::{OrderOverlay, PositionOverlay, TradeMarker};
 
+use std::collections::{HashMap, HashSet};
+
 impl TradingTerminal {
     /// Update position and order overlays for a specific chart.
     pub(crate) fn sync_chart_position_for(&mut self, chart_id: ChartId) {
@@ -141,6 +143,27 @@ impl TradingTerminal {
         }
     }
 
+    fn sync_chart_trade_markers_from_index(
+        &mut self,
+        chart_id: ChartId,
+        markers_by_symbol: &HashMap<String, Vec<TradeMarker>>,
+    ) {
+        let symbol = match self.charts.get(&chart_id) {
+            Some(inst) => inst.symbol.clone(),
+            None => return,
+        };
+        if self.symbol_key_is_hidden(&symbol) {
+            if let Some(inst) = self.charts.get_mut(&chart_id) {
+                inst.chart.trade_markers.clear();
+            }
+            return;
+        }
+
+        if let Some(inst) = self.charts.get_mut(&chart_id) {
+            inst.chart.trade_markers = markers_by_symbol.get(&symbol).cloned().unwrap_or_default();
+        }
+    }
+
     /// Sync overlays for all chart instances.
     pub(crate) fn sync_all_chart_overlays(&mut self) {
         let _theme = self.theme();
@@ -148,8 +171,8 @@ impl TradingTerminal {
         for id in ids {
             self.sync_chart_position_for(id);
             self.sync_chart_orders_for(id);
-            self.sync_chart_trade_markers_for(id);
         }
+        self.sync_all_chart_trade_markers();
     }
 
     /// Sync only order overlays for all chart instances.
@@ -163,9 +186,36 @@ impl TradingTerminal {
 
     /// Sync only trade marker overlays for all chart instances.
     pub(crate) fn sync_all_chart_trade_markers(&mut self) {
-        let ids: Vec<ChartId> = self.charts.keys().copied().collect();
+        let symbols: HashSet<String> = self
+            .charts
+            .values()
+            .map(|inst| inst.symbol.clone())
+            .collect();
+        self.sync_chart_trade_markers_for_symbols(&symbols);
+    }
+
+    /// Sync trade marker overlays only for charts whose symbol changed.
+    pub(crate) fn sync_chart_trade_markers_for_symbols(&mut self, symbols: &HashSet<String>) {
+        if symbols.is_empty() {
+            return;
+        }
+
+        let ids: Vec<ChartId> = self
+            .charts
+            .iter()
+            .filter_map(|(id, inst)| symbols.contains(&inst.symbol).then_some(*id))
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+
+        let markers_by_symbol = self
+            .account_data
+            .as_ref()
+            .map(|data| trade_markers_by_symbol(&data.fills, symbols))
+            .unwrap_or_default();
         for id in ids {
-            self.sync_chart_trade_markers_for(id);
+            self.sync_chart_trade_markers_from_index(id, &markers_by_symbol);
         }
     }
 }
@@ -177,27 +227,51 @@ fn parse_positive_f64(raw: &str) -> Option<f64> {
         .filter(|value| value.is_finite() && *value > 0.0)
 }
 
+fn trade_markers_by_symbol(
+    fills: &[crate::account::UserFill],
+    symbols: &HashSet<String>,
+) -> HashMap<String, Vec<TradeMarker>> {
+    let mut markers_by_symbol: HashMap<String, Vec<TradeMarker>> = HashMap::new();
+    for fill in fills.iter().filter(|fill| symbols.contains(&fill.coin)) {
+        let Some(marker) = trade_marker_from_fill(fill) else {
+            continue;
+        };
+        markers_by_symbol
+            .entry(fill.coin.clone())
+            .or_default()
+            .push(marker);
+    }
+    for markers in markers_by_symbol.values_mut() {
+        markers.sort_by_key(|marker| marker.time_ms);
+    }
+    markers_by_symbol
+}
+
 fn trade_markers_for_symbol(fills: &[crate::account::UserFill], symbol: &str) -> Vec<TradeMarker> {
-    fills
+    let mut markers: Vec<_> = fills
         .iter()
         .filter(|fill| fill.coin == symbol)
-        .filter_map(|fill| {
-            let price = parse_positive_f64(&fill.px)?;
-            let size = parse_positive_f64(&fill.sz)?;
-            let is_buy = match fill.side.as_str() {
-                "B" => true,
-                "A" => false,
-                _ => return None,
-            };
+        .filter_map(trade_marker_from_fill)
+        .collect();
+    markers.sort_by_key(|marker| marker.time_ms);
+    markers
+}
 
-            Some(TradeMarker {
-                time_ms: fill.time,
-                price,
-                size,
-                is_buy,
-            })
-        })
-        .collect()
+fn trade_marker_from_fill(fill: &crate::account::UserFill) -> Option<TradeMarker> {
+    let price = parse_positive_f64(&fill.px)?;
+    let size = parse_positive_f64(&fill.sz)?;
+    let is_buy = match fill.side.as_str() {
+        "B" => true,
+        "A" => false,
+        _ => return None,
+    };
+
+    Some(TradeMarker {
+        time_ms: fill.time,
+        price,
+        size,
+        is_buy,
+    })
 }
 
 #[cfg(test)]
@@ -229,10 +303,10 @@ mod tests {
         let markers = trade_markers_for_symbol(&fills, "BTC");
 
         assert_eq!(markers.len(), 2);
-        assert_eq!(markers[0].time_ms, 2);
-        assert!(markers[0].is_buy);
-        assert_eq!(markers[1].time_ms, 1);
-        assert!(!markers[1].is_buy);
+        assert_eq!(markers[0].time_ms, 1);
+        assert!(!markers[0].is_buy);
+        assert_eq!(markers[1].time_ms, 2);
+        assert!(markers[1].is_buy);
     }
 
     #[test]
@@ -251,18 +325,36 @@ mod tests {
     }
 
     #[test]
-    fn trade_markers_for_symbol_requires_exact_symbol_match() {
+    fn trade_markers_by_symbol_indexes_only_requested_symbols() {
         let fills = vec![
-            fill("BTC", 1, "100", "0.1", "B"),
-            fill("xyz:BTC", 2, "101", "0.2", "B"),
+            fill("BTC", 3, "100", "0.1", "B"),
+            fill("ETH", 1, "200", "0.2", "A"),
+            fill("BTC", 2, "101", "0.3", "A"),
+            fill("SOL", 4, "10", "1", "B"),
         ];
+        let symbols = HashSet::from(["BTC".to_string(), "ETH".to_string()]);
 
-        let main_markers = trade_markers_for_symbol(&fills, "BTC");
-        let dex_markers = trade_markers_for_symbol(&fills, "xyz:BTC");
+        let indexed = trade_markers_by_symbol(&fills, &symbols);
 
-        assert_eq!(main_markers.len(), 1);
-        assert_eq!(main_markers[0].time_ms, 1);
-        assert_eq!(dex_markers.len(), 1);
-        assert_eq!(dex_markers[0].time_ms, 2);
+        assert_eq!(indexed.len(), 2);
+        assert_eq!(
+            indexed
+                .get("BTC")
+                .expect("BTC markers should be indexed")
+                .iter()
+                .map(|marker| marker.time_ms)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert_eq!(
+            indexed
+                .get("ETH")
+                .expect("ETH markers should be indexed")
+                .iter()
+                .map(|marker| marker.time_ms)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        assert!(!indexed.contains_key("SOL"));
     }
 }
