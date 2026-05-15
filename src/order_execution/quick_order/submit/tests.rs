@@ -1,7 +1,9 @@
 use super::*;
+use crate::api::ExchangeSymbol;
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::chart_state::{ChartId, ChartInstance};
-use crate::order_execution::QuickOrderForm;
+use crate::config::AccountProfile;
+use crate::order_execution::{PendingOrderAction, QuickOrderForm};
 use crate::timeframe::Timeframe;
 
 fn quick_order_form() -> QuickOrderForm {
@@ -15,6 +17,33 @@ fn quick_order_form() -> QuickOrderForm {
         click_y: 20.0,
         chart_w: 400.0,
         chart_h: 300.0,
+    }
+}
+
+fn exchange_symbol(key: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "crypto".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 0,
+        collateral_token: None,
+        sz_decimals: 2,
+        max_leverage: 50,
+        only_isolated: false,
+        market_type: MarketType::Perp,
+        outcome: None,
+    }
+}
+
+fn account(secret_id: &str, name: &str, wallet_address: &str) -> AccountProfile {
+    AccountProfile {
+        secret_id: secret_id.to_string(),
+        name: name.to_string(),
+        wallet_address: wallet_address.to_string(),
+        agent_key: sensitive_string(format!("{secret_id}-agent-key")),
+        hydromancer_api_key: sensitive_string(""),
     }
 }
 
@@ -48,6 +77,63 @@ fn handle_submit_quick_order_restores_form_when_symbol_metadata_is_missing() {
     assert_eq!(form.quantity, "1.25");
     assert!(!form.quantity_is_usd);
     assert!(form.is_limit);
+}
+
+#[test]
+fn handle_submit_quick_order_sets_pending_action_and_blocks_account_switching() {
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "BTC");
+    terminal.exchange_symbols = vec![exchange_symbol("BTC")];
+    terminal.all_mids.insert("BTC".to_string(), 100.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), TradingTerminal::now_ms());
+    terminal.accounts = vec![
+        account(
+            "account-a",
+            "Account A",
+            "0xabc0000000000000000000000000000000000000",
+        ),
+        account(
+            "account-b",
+            "Account B",
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+    ];
+    terminal.active_account_index = 0;
+    terminal.wallet_address_input = terminal.accounts[0].wallet_address.clone();
+    terminal.wallet_key_input = terminal.accounts[0].agent_key.clone();
+
+    let _task = terminal.handle_submit_quick_order(chart_id, true);
+
+    assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+    assert_eq!(terminal.active_account_index, 0);
+    let _switch_task = terminal.switch_account_task(1);
+    assert_eq!(terminal.active_account_index, 0);
+    assert_eq!(
+        terminal.wallet_address_input,
+        "0xabc0000000000000000000000000000000000000"
+    );
+    let toast = terminal.toasts.last().expect("blocked switch should toast");
+    assert!(toast.is_error);
+    assert!(
+        toast
+            .message
+            .contains("Wait for the pending order request before switching accounts")
+    );
+}
+
+#[test]
+fn handle_quick_order_result_clears_pending_action() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.pending_order_action = Some(PendingOrderAction::Sell);
+
+    let _task = terminal.handle_quick_order_result(Err("network error".to_string()));
+
+    assert_eq!(terminal.pending_order_action, None);
+    let (message, is_error) = terminal.order_status.as_ref().expect("status");
+    assert!(*is_error);
+    assert_eq!(message, "network error");
 }
 
 #[test]
