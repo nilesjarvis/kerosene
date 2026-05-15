@@ -32,22 +32,45 @@ pub(super) struct MovingAverageSpec<'a> {
     source_candles: &'a [Candle],
     period: usize,
     use_ema: bool,
-    color: Color,
+    color_role: MovingAverageColorRole,
     label: &'static str,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum MovingAverageColorRole {
+    Fast,
+    Slow,
+    WeeklyFast,
+    WeeklySlow,
+    Monthly,
+}
+
+impl MovingAverageColorRole {
+    fn color(self, theme: &Theme) -> Color {
+        let extended = theme.extended_palette();
+
+        match self {
+            Self::Fast => extended.warning.base.color,
+            Self::Slow => extended.primary.base.color,
+            Self::WeeklyFast => extended.success.base.color,
+            Self::WeeklySlow => extended.secondary.strong.color,
+            Self::Monthly => extended.danger.base.color,
+        }
+    }
 }
 
 impl<'a> MovingAverageSpec<'a> {
     pub(super) fn sma(
         source_candles: &'a [Candle],
         period: usize,
-        color: Color,
+        color_role: MovingAverageColorRole,
         label: &'static str,
     ) -> Self {
         Self {
             source_candles,
             period,
             use_ema: false,
-            color,
+            color_role,
             label,
         }
     }
@@ -55,14 +78,14 @@ impl<'a> MovingAverageSpec<'a> {
     pub(super) fn ema(
         source_candles: &'a [Candle],
         period: usize,
-        color: Color,
+        color_role: MovingAverageColorRole,
         label: &'static str,
     ) -> Self {
         Self {
             source_candles,
             period,
             use_ema: true,
-            color,
+            color_role,
             label,
         }
     }
@@ -85,10 +108,11 @@ where
             calculate_sma(spec.source_candles, spec.period)
         };
         let dash_segments = if spec.use_ema { &EMA_DASH[..] } else { &[] };
+        let color = spec.color_role.color(self.theme);
         self.draw_series(
             chart_candles,
             &series,
-            spec.color,
+            color,
             spec.label,
             dash_segments,
             show_labels,
