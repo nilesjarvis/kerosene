@@ -379,6 +379,7 @@ impl TradingTerminal {
                             wallet_details_update,
                         );
                         let scope = self.account_data_fetch_scope();
+                        self.account_refresh_requested_scope = Some(scope.clone());
                         let account_task =
                             Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
                                 Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))

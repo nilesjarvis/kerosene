@@ -1,4 +1,4 @@
-use crate::account::AccountData;
+use crate::account::{AccountData, AccountDataFetchScope};
 use crate::account_state::PositionsSortColumn;
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::api::{self, ExchangeSymbol};
@@ -154,6 +154,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) account_data: Option<AccountData>,
     pub(crate) account_loading: bool,
     pub(crate) account_reconciliation_required: bool,
+    pub(crate) account_refresh_requested_scope: Option<AccountDataFetchScope>,
     pub(crate) account_error: Option<String>,
     pub(crate) account_refresh_backoff_until_ms: Option<u64>,
     // Real-time mid prices for all coins (updated via allMids WS stream)

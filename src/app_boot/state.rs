@@ -158,6 +158,7 @@ impl TradingTerminal {
             account_data: None,
             account_loading: boot_account.has_wallet,
             account_reconciliation_required: false,
+            account_refresh_requested_scope: None,
             account_error: None,
             account_refresh_backoff_until_ms: None,
             all_mids: HashMap::new(),
