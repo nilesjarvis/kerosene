@@ -113,7 +113,7 @@ impl TradingTerminal {
                 self.add_or_focus_singleton_pane(
                     self.add_widget_axis(),
                     PaneKind::TrackedTrades,
-                    "Tracked Trades",
+                    "Wallet Tracker",
                     |kind| matches!(kind, PaneKind::TrackedTrades),
                 );
             }

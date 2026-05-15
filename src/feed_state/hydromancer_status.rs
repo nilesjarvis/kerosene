@@ -117,10 +117,10 @@ impl TradingTerminal {
 
     pub(crate) fn tracked_trades_connection_detail(&self, now_ms: u64) -> String {
         if self.hydromancer_api_key.trim().is_empty() {
-            "Tracked trades: disconnected | missing Hydromancer API key".to_string()
+            "Wallet Tracker: disconnected | missing Hydromancer API key".to_string()
         } else {
             Self::hydromancer_connection_detail_for(
-                "Tracked trades",
+                "Wallet Tracker",
                 &self.tracked_trades_status,
                 self.tracked_trades_last_rx_ms,
                 now_ms,

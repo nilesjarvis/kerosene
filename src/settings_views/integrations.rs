@@ -59,7 +59,7 @@ impl TradingTerminal {
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center),
-                text("Enables Liquidations and Tracked Trades")
+                text("Enables Liquidations and Wallet Tracker")
                     .size(11)
                     .color(current_theme.extended_palette().background.weak.text),
             ]

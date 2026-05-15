@@ -1,11 +1,11 @@
 use crate::app_state::TradingTerminal;
+use crate::feed_views::tracked_trades::layout::{
+    COIN_WIDTH, WALLET_COLUMN_WIDTH, WALLET_LABEL_WIDTH,
+};
 use crate::helpers;
 use crate::message::Message;
 use iced::widget::{Space, button, row, text, tooltip};
 use iced::{Color, Element, Theme};
-
-const WALLET_COLUMN_WIDTH: u32 = 164;
-const WALLET_LABEL_WIDTH: u32 = 108;
 
 impl TradingTerminal {
     pub(super) fn view_tracked_trade_wallet_cell(
@@ -107,7 +107,7 @@ impl TradingTerminal {
         .into();
 
         row![wallet_button, details_button, ghost_button]
-            .spacing(4)
+            .spacing(3)
             .align_y(iced::Alignment::Center)
             .width(WALLET_COLUMN_WIDTH)
             .into()
@@ -126,7 +126,7 @@ impl TradingTerminal {
         button(coin_content)
             .on_press(Message::SymbolSelected(coin))
             .padding(0)
-            .width(80)
+            .width(COIN_WIDTH)
             .style(|theme: &Theme, status| {
                 let text_color = match status {
                     button::Status::Hovered => theme.palette().primary,

@@ -84,7 +84,7 @@ pub(super) fn tracked_trade_settings_button(menu_open: bool) -> Element<'static,
                     ..Default::default()
                 }
             }),
-        text("Tracked trades settings").size(10),
+        text("Wallet Tracker settings").size(10),
         tooltip::Position::Top,
     )
     .into()

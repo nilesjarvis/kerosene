@@ -35,7 +35,7 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             theme,
         ))
         .push(menu_item(
-            "Tracked Trades",
+            "Wallet Tracker",
             if context.tracked_trades_open {
                 "Open"
             } else {
