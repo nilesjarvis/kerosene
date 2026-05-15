@@ -35,10 +35,19 @@ impl TradingTerminal {
                     self.liquidations_last_rx_ms = None;
                     self.liquidations_status = format!("Disconnected: {e}");
                 }
+                ws::HydromancerWsMessage::DataLoss { skipped_count } => {
+                    self.liquidation_summary_buckets.clear();
+                    self.liquidation_chart_buckets.clear();
+                    self.liquidations_status = format!(
+                        "Degraded: missed {skipped_count} Hydromancer liquidation messages; waiting for fresh events"
+                    );
+                }
                 ws::HydromancerWsMessage::Event(liquidation) => {
                     let liquidation = Self::normalize_liquidation_event(liquidation);
                     self.liquidations_last_rx_ms = Some(Self::now_ms());
-                    self.liquidations_status = "Connected".to_string();
+                    if !self.liquidations_status.starts_with("Degraded:") {
+                        self.liquidations_status = "Connected".to_string();
+                    }
                     if self.symbol_key_is_hidden(&liquidation.coin) {
                         return Task::none();
                     }
@@ -122,12 +131,36 @@ impl TradingTerminal {
 mod tests {
     use crate::app_state::TradingTerminal;
     use crate::message::Message;
-    use crate::ws::LiquidationEvent;
+    use crate::ws::{HydromancerWsMessage, LiquidationEvent};
 
     #[test]
-    fn clear_liquidations_resets_rows_summary_and_chart_buckets() {
+    fn hydromancer_lag_marks_liquidation_feed_degraded_until_next_event() {
         let mut terminal = TradingTerminal::boot().0;
-        let liquidation = LiquidationEvent {
+        let _ = terminal.update_liquidation_feed(Message::WsHydromancerLiquidation(
+            HydromancerWsMessage::Event(sample_liquidation()),
+        ));
+        assert_eq!(terminal.liquidations_status, "Connected");
+        assert!(!terminal.liquidation_summary_buckets.is_empty());
+        assert!(!terminal.liquidation_chart_buckets.is_empty());
+
+        let _ = terminal.update_liquidation_feed(Message::WsHydromancerLiquidation(
+            HydromancerWsMessage::DataLoss { skipped_count: 7 },
+        ));
+
+        assert!(terminal.liquidations_status.contains("Degraded"));
+        assert!(terminal.liquidations_status.contains("7"));
+        assert!(terminal.liquidation_summary_buckets.is_empty());
+        assert!(terminal.liquidation_chart_buckets.is_empty());
+
+        let _ = terminal.update_liquidation_feed(Message::WsHydromancerLiquidation(
+            HydromancerWsMessage::Event(sample_liquidation()),
+        ));
+        assert!(terminal.liquidations_status.contains("Degraded"));
+        assert_eq!(terminal.liquidations.len(), 2);
+    }
+
+    fn sample_liquidation() -> LiquidationEvent {
+        LiquidationEvent {
             coin: "HYPE".to_string(),
             price: 25.0,
             size: 4.0,
@@ -136,7 +169,13 @@ mod tests {
             method: "market".to_string(),
             liquidated_user: "0x0000000000000000000000000000000000000001".to_string(),
             tx_index: 1,
-        };
+        }
+    }
+
+    #[test]
+    fn clear_liquidations_resets_rows_summary_and_chart_buckets() {
+        let mut terminal = TradingTerminal::boot().0;
+        let liquidation = sample_liquidation();
 
         let _ = terminal.update_liquidation_feed(Message::WsHydromancerLiquidation(
             crate::ws::HydromancerWsMessage::Event(liquidation),

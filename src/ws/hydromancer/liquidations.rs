@@ -77,7 +77,15 @@ pub fn ws_hydromancer_liquidations(stream_key: &(String, u64)) -> WsStream<Hydro
                         }
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Lagged(skipped_count)) => {
+                    if output
+                        .send(HydromancerWsMessage::DataLoss { skipped_count })
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
                 Err(_) => {
                     tokio::time::sleep(std::time::Duration::from_secs(
                         HYDROMANCER_RECONNECT_DELAY_SECS,
