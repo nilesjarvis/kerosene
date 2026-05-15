@@ -154,6 +154,7 @@ impl TradingTerminal {
             }
         };
         self.pending_move_order_contexts.insert(oid, context);
+        self.sync_all_chart_orders();
 
         Task::perform(
             modify_order(key, oid, asset, is_buy, new_price_str, size, reduce_only),

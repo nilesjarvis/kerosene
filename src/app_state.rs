@@ -59,6 +59,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) order_status: Option<(String, bool)>,
     pub(crate) pending_order_action: Option<PendingOrderAction>,
     pub(crate) pending_move_order_contexts: HashMap<u64, PendingMoveOrderContext>,
+    pub(crate) active_move_order_drag: Option<u64>,
     // Order presets
     pub(crate) order_presets: crate::config::OrderPresetsConfig,
     pub(crate) presets_menu_expanded: bool,

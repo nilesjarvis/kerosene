@@ -74,7 +74,10 @@ impl CandlestickChart {
             state.drag = Some(DragKind::MoveOrder { oid: hit.order.oid });
             state.drag_start = Some(pos);
             state.drag_order_new_price = Some(hit.order.limit_px);
-            return Some(canvas::Action::capture());
+            return Some(
+                canvas::Action::publish(Message::MoveOrderDragStarted { oid: hit.order.oid })
+                    .and_capture(),
+            );
         }
 
         if let Some(tool) = self.active_tool

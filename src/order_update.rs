@@ -139,7 +139,13 @@ impl TradingTerminal {
             }
             Message::QuickOrderResult(result) => return self.handle_quick_order_result(*result),
             Message::EscapePressed => self.clear_transient_order_ui(),
-            Message::MoveOrder { oid, new_price } => return self.handle_move_order(oid, new_price),
+            Message::MoveOrderDragStarted { oid } => {
+                self.active_move_order_drag = Some(oid);
+            }
+            Message::MoveOrder { oid, new_price } => {
+                self.active_move_order_drag = None;
+                return self.handle_move_order(oid, new_price);
+            }
             Message::MoveOrderModifyResult { oid, result } => {
                 return self.handle_move_order_modify_result(oid, *result);
             }

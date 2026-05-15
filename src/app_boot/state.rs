@@ -73,6 +73,7 @@ impl TradingTerminal {
             order_status: None,
             pending_order_action: None,
             pending_move_order_contexts: HashMap::new(),
+            active_move_order_drag: None,
             order_presets: cfg.order_presets.clone(),
             preset_is_usd: cfg.preset_is_usd,
             presets_menu_expanded: false,

@@ -63,12 +63,14 @@ impl TradingTerminal {
                     && self.connected_address.as_deref() == Some(chase.account_address.as_str())
             })
             .filter_map(|chase| {
+                let oid = chase.current_oid?;
                 Some(OrderOverlay {
                     coin: chase.coin.clone(),
                     limit_px: chase.current_price,
                     sz: chase.remaining_size,
                     is_buy: chase.is_buy,
-                    oid: chase.current_oid?,
+                    oid,
+                    is_moving: self.pending_move_order_contexts.contains_key(&oid),
                 })
             })
             .filter(|order| {
@@ -94,6 +96,7 @@ impl TradingTerminal {
                             sz,
                             is_buy: o.side == "B",
                             oid: o.oid,
+                            is_moving: self.pending_move_order_contexts.contains_key(&o.oid),
                         })
                     })
                     .collect()

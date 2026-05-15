@@ -1,5 +1,8 @@
 use super::TradingOverlayContext;
-use crate::chart::drawing::{AxisBadgeStyle, fill_right_axis_badge, stroke_segmented_hline};
+use crate::chart::drawing::{
+    AxisBadgeStyle, SegmentedHLineStyle, fill_right_axis_badge, stroke_segmented_hline,
+    stroke_segmented_hline_with_offset,
+};
 use crate::chart::model::CandlestickChart;
 use crate::chart::state::DragKind;
 use crate::helpers::format_price;
@@ -29,6 +32,7 @@ impl CandlestickChart {
 
         for order in &self.active_orders {
             let is_dragging = dragging_oid == Some(order.oid);
+            let is_animating = is_dragging || order.is_moving;
             let display_px = if is_dragging {
                 ctx.state.drag_order_new_price.unwrap_or(order.limit_px)
             } else {
@@ -80,15 +84,30 @@ impl CandlestickChart {
                 )
             };
 
-            stroke_segmented_hline(
-                ctx.frame,
-                ctx.chart_w,
-                order_y,
-                3.0,
-                5.0,
-                order_color,
-                line_width,
-            );
+            if is_animating {
+                stroke_segmented_hline_with_offset(
+                    ctx.frame,
+                    ctx.chart_w,
+                    order_y,
+                    SegmentedHLineStyle {
+                        segment_len: 8.0,
+                        gap_len: 4.0,
+                        offset: self.order_line_phase,
+                        color: order_color,
+                        width: line_width,
+                    },
+                );
+            } else {
+                stroke_segmented_hline(
+                    ctx.frame,
+                    ctx.chart_w,
+                    order_y,
+                    3.0,
+                    5.0,
+                    order_color,
+                    line_width,
+                );
+            }
             fill_right_axis_badge(
                 ctx.frame,
                 ctx.chart_w,

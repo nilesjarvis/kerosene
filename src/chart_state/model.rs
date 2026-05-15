@@ -12,6 +12,8 @@ pub(crate) type ChartId = u64;
 pub(crate) const CHART_PRICE_FLASH_MS: u64 = 800;
 const QUICK_ORDER_LIMIT_LINE_STRIDE: f32 = 12.0;
 const QUICK_ORDER_LIMIT_LINE_PHASE_STEP: f32 = 1.2;
+const ORDER_LINE_STRIDE: f32 = 12.0;
+const ORDER_LINE_PHASE_STEP: f32 = 1.2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PriceFlashDirection {
@@ -180,6 +182,13 @@ impl ChartInstance {
             self.chart.quick_order_line_phase = (self.chart.quick_order_line_phase
                 + QUICK_ORDER_LIMIT_LINE_PHASE_STEP)
                 .rem_euclid(QUICK_ORDER_LIMIT_LINE_STRIDE);
+        }
+    }
+
+    pub(crate) fn advance_order_line_animation(&mut self) {
+        if !self.chart.active_orders.is_empty() {
+            self.chart.order_line_phase = (self.chart.order_line_phase + ORDER_LINE_PHASE_STEP)
+                .rem_euclid(ORDER_LINE_STRIDE);
         }
     }
 

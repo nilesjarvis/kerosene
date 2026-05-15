@@ -88,6 +88,8 @@ pub struct CandlestickChart {
     pub(crate) quick_order_limit_price: Option<f64>,
     /// Pixel phase for animating the temporary quick-order limit preview line.
     pub(crate) quick_order_line_phase: f32,
+    /// Pixel phase for animating active order lines while moving them.
+    pub(crate) order_line_phase: f32,
     /// Whether position entry and liquidation labels should be redacted while rendering.
     pub(crate) obscure_position_prices: bool,
     /// Whether active position/liquidation and order overlays should be hidden while rendering.
@@ -126,6 +128,7 @@ pub struct OrderOverlay {
     pub sz: f64,
     pub is_buy: bool,
     pub oid: u64,
+    pub is_moving: bool,
 }
 
 /// Lightweight user fill info passed to the chart for marker rendering.

@@ -148,6 +148,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SubmitQuickOrder(_, _)
         | Message::QuickOrderResult(_)
         | Message::EscapePressed
+        | Message::MoveOrderDragStarted { .. }
         | Message::MoveOrder { .. }
         | Message::MoveOrderModifyResult { .. }
         | Message::ChaseRestingOrder { .. } => UpdateRoute::Order,

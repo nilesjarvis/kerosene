@@ -13,6 +13,7 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
         self.pending_move_order_contexts.remove(&oid);
+        self.sync_all_chart_orders();
         match result {
             Ok(resp) => {
                 let is_error = resp.is_error();

@@ -1287,6 +1287,7 @@ mod tests {
             sz: 0.25,
             is_buy: true,
             oid: 42,
+            is_moving: false,
         });
         let settings = crate::config::ChartScreenshotSettingsConfig {
             obscure_position_entry: true,

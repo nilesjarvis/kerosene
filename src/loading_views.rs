@@ -74,6 +74,8 @@ impl TradingTerminal {
                 .any(|state| state.loading)
             || self.live_watchlist_contexts_loading
             || self.live_watchlist_history_loading
+            || self.active_move_order_drag.is_some()
+            || !self.pending_move_order_contexts.is_empty()
             || !self.chase_orders.is_empty()
             || self.charts.values().any(|inst| {
                 matches!(inst.chart.status, ChartStatus::Loading)

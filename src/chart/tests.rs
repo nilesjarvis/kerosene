@@ -160,6 +160,7 @@ fn quick_order_open_right_click_on_order_line_still_replaces_card_not_cancel_ord
         sz: 1.0,
         is_buy: true,
         oid: 42,
+        is_moving: false,
     });
     let mut state = ChartState::default();
     let (price_hi, price_range, price_h) = chart

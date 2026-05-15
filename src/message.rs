@@ -367,6 +367,9 @@ pub(crate) enum Message {
     QuickOrderResult(Box<Result<ExchangeResponse, String>>),
     EscapePressed,
     // Order drag-to-move (from chart canvas)
+    MoveOrderDragStarted {
+        oid: u64,
+    },
     MoveOrder {
         oid: u64,
         new_price: f64,
