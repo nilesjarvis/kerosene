@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{self, format_usd, order_type_button};
 use crate::message::Message;
 use crate::signing::OrderKind;
-use iced::widget::{Space, checkbox, container, row, text};
+use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -117,7 +117,7 @@ impl TradingTerminal {
 
     pub(super) fn view_order_entry_type_row(&self) -> Element<'static, Message> {
         let limit_selected = matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc);
-        let mut order_type_row = row![
+        row![
             order_type_button(
                 "Market",
                 self.order_kind == OrderKind::Market,
@@ -130,25 +130,7 @@ impl TradingTerminal {
             ),
         ]
         .spacing(4)
-        .align_y(iced::Alignment::Center);
-
-        if limit_selected {
-            order_type_row = order_type_row.push(
-                checkbox(self.order_kind == OrderKind::LimitIoc)
-                    .label("IOC")
-                    .on_toggle(|enabled| {
-                        Message::SetOrderKind(if enabled {
-                            OrderKind::LimitIoc
-                        } else {
-                            OrderKind::Limit
-                        })
-                    })
-                    .size(14)
-                    .text_size(11),
-            );
-        }
-
-        order_type_row.into()
+        .into()
     }
 }
 

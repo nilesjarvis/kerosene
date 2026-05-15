@@ -3,10 +3,10 @@ use crate::helpers::{self, format_usd};
 use crate::message::Message;
 use crate::signing::OrderKind;
 
-use iced::widget::{
-    Column, Space, button, canvas, row, slider, stack, text, text_input,
-};
 use iced::widget::canvas as canvas_widget;
+use iced::widget::{
+    Column, Space, button, canvas, checkbox, row, slider, stack, text, text_input,
+};
 use iced::{Color, Event, Fill, Length, Point, Rectangle, Renderer, Theme, mouse};
 
 const SIZE_PRESET_MARKS: [f32; 4] = [25.0, 50.0, 75.0, 100.0];
@@ -103,15 +103,42 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center);
 
         form = form.push(size_header).push(qty_input).push(slider_row);
+
+        let limit_selected = matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc);
+        let mut options_row = row![].spacing(14).align_y(iced::Alignment::Center);
+        let mut has_options = false;
+
         if !active_is_spot && !active_is_outcome {
-            form = form.push(
-                iced::widget::checkbox(self.order_reduce_only)
+            has_options = true;
+            options_row = options_row.push(
+                checkbox(self.order_reduce_only)
                     .label("Reduce Only")
                     .on_toggle(|_| Message::ToggleReduceOnly)
                     .size(14)
                     .text_size(12)
                     .text_shaping(iced::widget::text::Shaping::Advanced),
             );
+        }
+        if limit_selected {
+            has_options = true;
+            options_row = options_row.push(
+                checkbox(self.order_kind == OrderKind::LimitIoc)
+                    .label("IOC")
+                    .on_toggle(|enabled| {
+                        Message::SetOrderKind(if enabled {
+                            OrderKind::LimitIoc
+                        } else {
+                            OrderKind::Limit
+                        })
+                    })
+                    .size(14)
+                    .text_size(12)
+                    .text_shaping(iced::widget::text::Shaping::Advanced),
+            );
+        }
+
+        if has_options {
+            form = form.push(options_row);
         }
 
         (form, notional_val)
