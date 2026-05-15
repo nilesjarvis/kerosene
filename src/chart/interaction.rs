@@ -29,6 +29,18 @@ impl CandlestickChart {
         let needs_redraw_for_cursor = state.cursor_position != pos;
         state.cursor_position = pos;
 
+        if chart_w <= 0.0
+            || chart_h <= 0.0
+            || !chart_w.is_finite()
+            || !chart_h.is_finite()
+            || !bounds.width.is_finite()
+            || !bounds.height.is_finite()
+        {
+            let needs_redraw_for_hover = state.hover_order_oid.take().is_some();
+            return (needs_redraw_for_cursor || needs_redraw_for_hover)
+                .then(canvas::Action::request_redraw);
+        }
+
         if state.reset_epoch_seen != self.reset_epoch {
             state.reset_view(self.reset_epoch);
             self.candle_cache.clear();

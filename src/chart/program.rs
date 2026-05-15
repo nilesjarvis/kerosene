@@ -32,7 +32,13 @@ impl CandlestickChart {
 
         let chart_w = bounds.width - PRICE_AXIS_WIDTH;
         let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
-        if chart_w <= 0.0 || chart_h <= 0.0 {
+        if chart_w <= 0.0
+            || chart_h <= 0.0
+            || !chart_w.is_finite()
+            || !chart_h.is_finite()
+            || !bounds.width.is_finite()
+            || !bounds.height.is_finite()
+        {
             return vec![];
         }
         let volume_h = chart_h * VOLUME_REGION_RATIO;
@@ -107,6 +113,8 @@ impl CandlestickChart {
         };
         let candles_geo = self.draw_candle_layer(&candle_layer_context);
 
+        let right_axis_badges =
+            self.right_axis_badge_layout(state, price_h, price_range, &price_to_y);
         let mut overlay_frame = canvas::Frame::new(renderer, bounds.size());
 
         let chart_region = Rectangle {
@@ -128,6 +136,7 @@ impl CandlestickChart {
                 last_vis,
                 candle_bull_color,
                 candle_bear_color,
+                right_axis_badges: &right_axis_badges,
                 price_to_y: &price_to_y,
                 idx_to_cx: &idx_to_cx,
             };
@@ -141,6 +150,7 @@ impl CandlestickChart {
                 chart_h,
                 price_h,
                 price_range,
+                right_axis_badges: &right_axis_badges,
                 price_to_y: &price_to_y,
             };
             self.draw_annotation_overlays(&mut annotation_overlay_context);

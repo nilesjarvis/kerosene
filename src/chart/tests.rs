@@ -194,6 +194,158 @@ fn quick_order_open_right_click_on_order_line_still_replaces_card_not_cancel_ord
 }
 
 #[test]
+fn order_hit_testing_follows_stacked_left_labels() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);
+    chart.active_orders.push(OrderOverlay {
+        coin: "BTC".to_string(),
+        limit_px: 105.0,
+        sz: 1.0,
+        is_buy: true,
+        oid: 41,
+        is_moving: false,
+    });
+    chart.active_orders.push(OrderOverlay {
+        coin: "BTC".to_string(),
+        limit_px: 105.0,
+        sz: 2.0,
+        is_buy: true,
+        oid: 42,
+        is_moving: false,
+    });
+    let state = ChartState::default();
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, 400.0, 240.0)
+        .expect("visible price params");
+    let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
+    let label_positions = super::order_labels::order_label_position_slots(
+        super::order_labels::stack_order_label_positions_avoiding(
+            vec![
+                super::order_labels::OrderLabelAnchor {
+                    order_index: 0,
+                    order_y,
+                    is_buy: true,
+                },
+                super::order_labels::OrderLabelAnchor {
+                    order_index: 1,
+                    order_y,
+                    is_buy: true,
+                },
+            ],
+            price_h,
+            &[],
+        ),
+        chart.active_orders.len(),
+    );
+    let second_label = super::order_labels::order_label_position(&label_positions, 1)
+        .expect("second label should be laid out");
+
+    let hit = chart
+        .hit_test_order_line(&state, Point::new(6.0, second_label.label_y), 400.0, 240.0)
+        .expect("stacked label should be hittable");
+
+    assert_eq!(hit.order.oid, 42);
+    assert!(hit.is_label_hit());
+}
+
+#[test]
+fn order_label_hit_testing_avoids_active_position_label() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);
+    chart.active_position = Some(PositionOverlay {
+        entry_px: 105.0,
+        szi: 1.0,
+        liquidation_px: None,
+    });
+    chart.active_orders.push(OrderOverlay {
+        coin: "BTC".to_string(),
+        limit_px: 105.0,
+        sz: 1.0,
+        is_buy: true,
+        oid: 42,
+        is_moving: false,
+    });
+    let state = ChartState::default();
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, 400.0, 240.0)
+        .expect("visible price params");
+    let price_to_y = |price| chart.price_to_y_with(price, price_hi, price_range, price_h);
+    let order_y = price_to_y(105.0);
+    let label_positions = super::order_labels::order_label_position_slots(
+        super::order_labels::stack_order_label_positions_avoiding(
+            vec![super::order_labels::OrderLabelAnchor {
+                order_index: 0,
+                order_y,
+                is_buy: true,
+            }],
+            price_h,
+            &chart.order_label_reserved_ranges(price_h, &price_to_y),
+        ),
+        chart.active_orders.len(),
+    );
+    let label = super::order_labels::order_label_position(&label_positions, 0)
+        .expect("order label should be laid out");
+
+    assert!(label.label_y > order_y);
+
+    let hit = chart
+        .hit_test_order_line(&state, Point::new(6.0, label.label_y), 400.0, 240.0)
+        .expect("shifted order label should be hittable");
+
+    assert_eq!(hit.order.oid, 42);
+    assert!(hit.is_label_hit());
+}
+
+#[test]
+fn order_hit_testing_ignores_invalid_resize_bounds() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);
+    chart.active_orders.push(OrderOverlay {
+        coin: "BTC".to_string(),
+        limit_px: 105.0,
+        sz: 1.0,
+        is_buy: true,
+        oid: 42,
+        is_moving: false,
+    });
+    let state = ChartState::default();
+    let pos = Point::new(10.0, 10.0);
+
+    assert!(chart.hit_test_order_line(&state, pos, 0.0, 240.0).is_none());
+    assert!(chart.hit_test_order_line(&state, pos, 400.0, 0.0).is_none());
+    assert!(
+        chart
+            .hit_test_order_line(&state, pos, f32::NAN, 240.0)
+            .is_none()
+    );
+    assert!(
+        chart
+            .hit_test_order_line(&state, Point::new(f32::NAN, 10.0), 400.0, 240.0)
+            .is_none()
+    );
+}
+
+#[test]
+fn visible_price_params_reject_invalid_resize_bounds() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);
+    let state = ChartState::default();
+
+    assert!(chart.visible_price_params(&state, 0.0, 240.0).is_none());
+    assert!(chart.visible_price_params(&state, 400.0, 0.0).is_none());
+    assert!(
+        chart
+            .visible_price_params(&state, f32::NAN, 240.0)
+            .is_none()
+    );
+    assert!(
+        chart
+            .visible_price_params(&state, 400.0, f32::NAN)
+            .is_none()
+    );
+}
+
+#[test]
 fn quick_order_open_right_click_replaces_even_if_range_anchor_is_set() {
     let mut chart = CandlestickChart::new(1);
     chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);

@@ -61,7 +61,7 @@ impl CandlestickChart {
 
         if let Some(hit) = self.hit_test_order_line(state, pos, chart_w, chart_h) {
             let (cancel_x, cancel_end) = Self::order_cancel_x_range(hit.order);
-            if pos.x >= cancel_x && pos.x <= cancel_end {
+            if hit.is_label_hit() && pos.x >= cancel_x && pos.x <= cancel_end {
                 return Some(
                     canvas::Action::publish(Message::CancelOrder {
                         coin: hit.order.coin.clone(),

@@ -6,6 +6,7 @@ use crate::message::Message;
 use iced::widget::{button, column, container, row, text, text_input};
 use iced::{Color, Element, Fill, Length, Theme};
 
+const ACCOUNT_OPTION_TEXT_LEFT_PADDING: f32 = 4.0;
 const RENAME_ICON: &str = "✎";
 
 impl TradingTerminal {
@@ -27,21 +28,34 @@ impl TradingTerminal {
             .unwrap_or("");
 
         let account_control: Element<'_, Message> = if is_renaming {
-            row![
-                text(active_marker)
-                    .size(11)
-                    .color(theme.palette().primary)
-                    .width(12),
-                text_input("Account label", label_value)
-                    .style(helpers::text_input_style)
-                    .on_input(move |value| Message::AccountPickerLabelChanged(index, value))
-                    .size(11)
-                    .padding([4, 6])
+            container(
+                row![
+                    text(active_marker)
+                        .size(11)
+                        .color(theme.palette().primary)
+                        .width(12),
+                    container(
+                        text_input("Account label", label_value)
+                            .style(helpers::text_input_style)
+                            .on_input(move |value| Message::AccountPickerLabelChanged(index, value))
+                            .size(11)
+                            .padding([4, 6])
+                            .width(Fill),
+                    )
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                        left: ACCOUNT_OPTION_TEXT_LEFT_PADDING,
+                    })
                     .width(Fill),
-                Self::account_mode_tag(option.is_ghost, option.can_trade, theme),
-            ]
-            .spacing(8)
-            .align_y(iced::Alignment::Center)
+                    Self::account_mode_tag(option.is_ghost, option.can_trade, theme),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
+            )
+            .padding(account_option_row_padding())
+            .width(Fill)
             .into()
         } else {
             button(
@@ -50,13 +64,22 @@ impl TradingTerminal {
                         .size(11)
                         .color(theme.palette().primary)
                         .width(12),
-                    column![
-                        text(label).size(12).color(theme.palette().text),
-                        text(address)
-                            .size(10)
-                            .color(theme.extended_palette().background.weak.text),
-                    ]
-                    .spacing(1)
+                    container(
+                        column![
+                            text(label).size(12).color(theme.palette().text),
+                            text(address)
+                                .size(10)
+                                .color(theme.extended_palette().background.weak.text),
+                        ]
+                        .spacing(1)
+                        .width(Fill),
+                    )
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                        left: ACCOUNT_OPTION_TEXT_LEFT_PADDING,
+                    })
                     .width(Fill),
                     Self::account_mode_tag(option.is_ghost, option.can_trade, theme),
                 ]
@@ -64,7 +87,7 @@ impl TradingTerminal {
                 .align_y(iced::Alignment::Center),
             )
             .on_press(Message::AccountPickerSelected(index))
-            .padding([7, 8])
+            .padding(account_option_row_padding())
             .width(Fill)
             .style(move |theme: &Theme, status| {
                 let bg = match status {
@@ -119,6 +142,15 @@ impl TradingTerminal {
         .padding([2, 0])
         .width(Fill)
         .into()
+    }
+}
+
+fn account_option_row_padding() -> iced::Padding {
+    iced::Padding {
+        top: 7.0,
+        right: 8.0,
+        bottom: 7.0,
+        left: 12.0,
     }
 }
 

@@ -1,5 +1,9 @@
-use super::drawing::{AxisBadgeStyle, fill_right_axis_badge, stroke_segmented_hline};
+use super::drawing::{AxisBadgeStyle, SegmentedHLineStyle, stroke_segmented_hline};
 use super::model::CandlestickChart;
+use super::price_badges::{
+    RIGHT_AXIS_SECONDARY_BADGE_HEIGHT, RightAxisBadgeConnectorStyle, RightAxisBadgeKind,
+    RightAxisBadgeLayout, draw_stacked_right_axis_badge, right_axis_line_end_x,
+};
 use super::state::ChartState;
 use crate::annotations::{AnnotationKind, DrawingTool};
 use crate::helpers::format_price;
@@ -21,6 +25,7 @@ where
     pub(super) chart_h: f32,
     pub(super) price_h: f32,
     pub(super) price_range: f64,
+    pub(super) right_axis_badges: &'a RightAxisBadgeLayout,
     pub(super) price_to_y: &'a PriceToY,
 }
 
@@ -35,16 +40,21 @@ impl CandlestickChart {
             return;
         }
 
-        for ann in &self.annotations {
+        for (annotation_index, ann) in self.annotations.iter().enumerate() {
             match &ann.kind {
                 AnnotationKind::HorizontalLevel { price } => {
                     let y = (ctx.price_to_y)(*price);
                     if y < -10.0 || y > ctx.price_h + 10.0 {
                         continue;
                     }
-                    stroke_segmented_hline(ctx.frame, ctx.chart_w, y, 6.0, 4.0, ann.color, 1.0);
-                    fill_right_axis_badge(
+                    let kind = RightAxisBadgeKind::HorizontalAnnotation(annotation_index);
+                    let line_end_x =
+                        right_axis_line_end_x(ctx.right_axis_badges, kind, y, ctx.chart_w);
+                    stroke_segmented_hline(ctx.frame, line_end_x, y, 6.0, 4.0, ann.color, 1.0);
+                    draw_stacked_right_axis_badge(
                         ctx.frame,
+                        ctx.right_axis_badges,
+                        kind,
                         ctx.chart_w,
                         y,
                         format_price(*price),
@@ -52,9 +62,18 @@ impl CandlestickChart {
                         AxisBadgeStyle {
                             char_width: 6.5,
                             padding_width: 8.0,
-                            height: 14.0,
+                            height: RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
                             text_size: 9.0,
                             text_color: Color::BLACK,
+                        },
+                        RightAxisBadgeConnectorStyle::Segmented {
+                            style: SegmentedHLineStyle {
+                                segment_len: 6.0,
+                                gap_len: 4.0,
+                                offset: 0.0,
+                                color: ann.color,
+                                width: 1.0,
+                            },
                         },
                     );
                 }

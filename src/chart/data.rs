@@ -103,13 +103,20 @@ impl CandlestickChart {
     }
 
     pub(in crate::chart) fn chart_area_heights(&self, bounds_height: f32) -> (f32, f32) {
+        if !bounds_height.is_finite() {
+            return (0.0, 0.0);
+        }
+
         let available_h = (bounds_height - TIME_AXIS_HEIGHT).max(0.0);
         let funding_h = self.funding_panel_height(available_h);
         ((available_h - funding_h).max(0.0), funding_h)
     }
 
     fn funding_panel_height(&self, available_h: f32) -> f32 {
-        if !self.macro_indicators.show_funding_rate || available_h <= 0.0 {
+        if !self.macro_indicators.show_funding_rate
+            || available_h <= 0.0
+            || !available_h.is_finite()
+        {
             return 0.0;
         }
 

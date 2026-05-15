@@ -269,8 +269,12 @@ fn clamp_split_ratio(
     order_entry_in_b: bool,
     pane_border_thickness: f32,
 ) -> f32 {
-    if !ratio.is_finite() || axis_length <= 0.0 {
-        return ratio;
+    if !ratio.is_finite() {
+        return 0.5;
+    }
+
+    if axis_length <= 0.0 || !axis_length.is_finite() {
+        return ratio.clamp(0.0, 1.0);
     }
 
     let raw_a = (axis_length * ratio - pane_border_thickness / 2.0).round();
@@ -286,4 +290,23 @@ fn clamp_split_ratio(
     };
 
     ((target_a + pane_border_thickness / 2.0) / axis_length).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_split_ratio_recovers_from_non_finite_ratio() {
+        let ratio = clamp_split_ratio(f32::NAN, 500.0, 50.0, 50.0, false, false, 4.0);
+
+        assert_eq!(ratio, 0.5);
+    }
+
+    #[test]
+    fn clamp_split_ratio_handles_invalid_axis_length() {
+        let ratio = clamp_split_ratio(0.25, f32::NAN, 50.0, 50.0, false, false, 4.0);
+
+        assert_eq!(ratio, 0.25);
+    }
 }

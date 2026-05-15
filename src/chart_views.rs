@@ -1,4 +1,5 @@
 mod editor;
+mod indicator_badges;
 mod header;
 mod indicator_menu;
 mod toolbar;
@@ -116,20 +117,27 @@ impl TradingTerminal {
             let header = self.view_chart_header(chart_id, instance);
             let toolbar = self.view_chart_toolbar(chart_id, instance);
 
-            let chart_canvas = canvas(&instance.chart).width(Fill).height(Fill);
+            let chart_canvas: Element<'_, Message> =
+                canvas(&instance.chart).width(Fill).height(Fill).into();
+            let mut canvas_layers = vec![chart_canvas];
+            if let Some(indicator_badges) = self.view_chart_indicator_badges(chart_id, instance) {
+                canvas_layers.push(indicator_badges);
+            }
+            let chart_surface: Element<'_, Message> =
+                stack(canvas_layers).width(Fill).height(Fill).into();
 
             // Always wrap the canvas in a stack to keep the widget tree
             // structure stable.
             let chart_area: Element<'_, Message> = if let Some(form) = &instance.quick_order {
                 let cid = chart_id;
-                self.view_quick_order_card(cid, form, chart_canvas)
+                self.view_quick_order_card(cid, form, chart_surface)
             } else if let Some(overlay) = status_overlay {
-                stack![chart_canvas, overlay]
+                stack![chart_surface, overlay]
                     .width(Fill)
                     .height(Fill)
                     .into()
             } else {
-                stack![chart_canvas].width(Fill).height(Fill).into()
+                stack![chart_surface].width(Fill).height(Fill).into()
             };
             let chart_area = container(chart_area)
                 .id(Self::chart_screenshot_canvas_id(chart_id))

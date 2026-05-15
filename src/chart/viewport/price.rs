@@ -58,10 +58,19 @@ impl CandlestickChart {
         chart_w: f32,
         chart_h: f32,
     ) -> Option<(f64, f64, f32)> {
-        if self.candles.is_empty() {
+        if self.candles.is_empty()
+            || chart_w <= 0.0
+            || chart_h <= 0.0
+            || !chart_w.is_finite()
+            || !chart_h.is_finite()
+        {
             return None;
         }
         let price_h = chart_h * (1.0 - VOLUME_REGION_RATIO);
+        if price_h <= 0.0 || !price_h.is_finite() {
+            return None;
+        }
+
         let visible_range = self.visible_candle_range(state, chart_w)?;
         let first_vis = visible_range.first;
         let last_vis = visible_range.last;

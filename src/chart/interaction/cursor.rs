@@ -19,6 +19,16 @@ impl CandlestickChart {
         };
         let chart_w = bounds.width - PRICE_AXIS_WIDTH;
         let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
+        if chart_w <= 0.0
+            || chart_h <= 0.0
+            || !chart_w.is_finite()
+            || !chart_h.is_finite()
+            || !bounds.width.is_finite()
+            || !bounds.height.is_finite()
+        {
+            return mouse::Interaction::default();
+        }
+
         let drawable_h = chart_h + funding_panel_h;
         let on_funding_resize = pos.x < chart_w
             && self

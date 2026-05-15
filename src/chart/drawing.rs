@@ -1,6 +1,7 @@
 use iced::widget::canvas;
 use iced::{Color, Point, Size, alignment};
 
+#[derive(Debug, Clone, Copy)]
 pub(super) struct AxisBadgeStyle {
     pub(super) char_width: f32,
     pub(super) padding_width: f32,
@@ -9,6 +10,7 @@ pub(super) struct AxisBadgeStyle {
     pub(super) text_color: Color,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub(super) struct SegmentedHLineStyle {
     pub(super) segment_len: f32,
     pub(super) gap_len: f32,

@@ -1,6 +1,10 @@
 use super::TradingOverlayContext;
-use crate::chart::drawing::{AxisBadgeStyle, fill_right_axis_badge, stroke_segmented_hline};
+use crate::chart::drawing::{AxisBadgeStyle, SegmentedHLineStyle, stroke_segmented_hline};
 use crate::chart::model::CandlestickChart;
+use crate::chart::price_badges::{
+    RIGHT_AXIS_PRIMARY_BADGE_HEIGHT, RightAxisBadgeConnectorStyle, RightAxisBadgeKind,
+    draw_stacked_right_axis_badge, right_axis_line_end_x,
+};
 use crate::helpers::format_price;
 use iced::Color;
 
@@ -41,17 +45,26 @@ impl CandlestickChart {
                     }
                 };
 
+                let badge_kind = RightAxisBadgeKind::CurrentPrice;
+                let line_end_x = right_axis_line_end_x(
+                    ctx.right_axis_badges,
+                    badge_kind,
+                    last_y,
+                    ctx.chart_w,
+                );
                 stroke_segmented_hline(
                     ctx.frame,
-                    ctx.chart_w,
+                    line_end_x,
                     last_y,
                     2.0,
                     3.0,
                     price_color_dim,
                     1.0,
                 );
-                fill_right_axis_badge(
+                draw_stacked_right_axis_badge(
                     ctx.frame,
+                    ctx.right_axis_badges,
+                    badge_kind,
                     ctx.chart_w,
                     last_y,
                     format_price(last_px),
@@ -59,9 +72,18 @@ impl CandlestickChart {
                     AxisBadgeStyle {
                         char_width: 6.5,
                         padding_width: 8.0,
-                        height: 16.0,
+                        height: RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
                         text_size: 10.0,
                         text_color: Color::BLACK,
+                    },
+                    RightAxisBadgeConnectorStyle::Segmented {
+                        style: SegmentedHLineStyle {
+                            segment_len: 2.0,
+                            gap_len: 3.0,
+                            offset: 0.0,
+                            color: price_color_dim,
+                            width: 1.0,
+                        },
                     },
                 );
             }

@@ -1,7 +1,6 @@
 mod components;
 
 use crate::app_state::TradingTerminal;
-use crate::chart::CandlestickChart;
 use crate::chart_state::ChartId;
 use crate::helpers::format_price;
 use crate::message::Message;
@@ -20,7 +19,7 @@ impl TradingTerminal {
         &'a self,
         chart_id: ChartId,
         form: &'a QuickOrderForm,
-        chart_canvas: iced::widget::Canvas<&'a CandlestickChart, Message>,
+        chart_surface: Element<'a, Message>,
     ) -> Element<'a, Message> {
         let theme = self.theme();
         let price_str = format_price(form.price);
@@ -89,9 +88,7 @@ impl TradingTerminal {
             })
             .into();
 
-        let canvas_el: Element<'_, Message> = chart_canvas.width(Fill).height(Fill).into();
-
-        stack![canvas_el, positioned_card]
+        stack![chart_surface, positioned_card]
             .width(Fill)
             .height(Fill)
             .into()

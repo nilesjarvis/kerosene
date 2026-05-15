@@ -1,8 +1,14 @@
 use super::TradingOverlayContext;
 use crate::chart::drawing::{
-    AxisBadgeStyle, fill_right_axis_badge, stroke_hline, stroke_segmented_hline,
+    AxisBadgeStyle, SegmentedHLineStyle, stroke_hline, stroke_segmented_hline,
 };
 use crate::chart::model::CandlestickChart;
+use crate::chart::order_labels::POSITION_LABEL_HEIGHT;
+use crate::chart::price_badges::{
+    RIGHT_AXIS_PRIMARY_BADGE_HEIGHT, RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
+    RightAxisBadgeConnectorStyle, RightAxisBadgeKind, draw_stacked_right_axis_badge,
+    right_axis_line_end_x,
+};
 use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, alignment};
@@ -12,6 +18,9 @@ use iced::{Color, Point, Size, alignment};
 // ---------------------------------------------------------------------------
 
 const POSITION_ENTRY_LINE_WIDTH: f32 = 2.5;
+const POSITION_LABEL_X: f32 = 4.0;
+const POSITION_LABEL_TEXT_X: f32 = 10.0;
+const POSITION_LABEL_WIDTH: f32 = 52.0;
 
 impl CandlestickChart {
     pub(super) fn draw_active_position_lines<PriceToY, IdxToCx>(
@@ -47,44 +56,58 @@ impl CandlestickChart {
                 } else {
                     ctx.theme.palette().danger
                 };
+                let badge_kind = RightAxisBadgeKind::PositionEntry;
+                let line_end_x = right_axis_line_end_x(
+                    ctx.right_axis_badges,
+                    badge_kind,
+                    entry_y,
+                    ctx.chart_w,
+                );
 
                 stroke_hline(
                     ctx.frame,
-                    ctx.chart_w,
+                    line_end_x,
                     entry_y,
                     pos_color,
                     POSITION_ENTRY_LINE_WIDTH,
                 );
-                fill_right_axis_badge(
+                draw_stacked_right_axis_badge(
                     ctx.frame,
+                    ctx.right_axis_badges,
+                    badge_kind,
                     ctx.chart_w,
                     entry_y,
-                    position_entry_badge_label(pos_overlay.entry_px, self.obscure_position_prices),
+                    position_entry_badge_label(
+                        pos_overlay.entry_px,
+                        self.obscure_position_prices,
+                    ),
                     pos_color_solid,
                     AxisBadgeStyle {
                         char_width: 6.5,
                         padding_width: 8.0,
-                        height: 16.0,
+                        height: RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
                         text_size: 10.0,
                         text_color: Color::BLACK,
+                    },
+                    RightAxisBadgeConnectorStyle::Solid {
+                        color: pos_color,
+                        width: 1.5,
                     },
                 );
 
                 let side_label = if is_long { "LONG" } else { "SHORT" };
-                let side_bg_w = 40.0_f32;
-                let side_bg_h = 14.0_f32;
-                ctx.frame.fill_rectangle(
-                    Point::new(4.0, entry_y - side_bg_h * 0.5),
-                    Size::new(side_bg_w, side_bg_h),
-                    Color {
-                        a: 0.6,
-                        ..ctx.theme.extended_palette().background.strong.color
-                    },
+                let label_origin = Point::new(
+                    POSITION_LABEL_X,
+                    entry_y - POSITION_LABEL_HEIGHT * 0.5,
                 );
+                let label_size = Size::new(POSITION_LABEL_WIDTH, POSITION_LABEL_HEIGHT);
+
+                let label_background_path = canvas::Path::rectangle(label_origin, label_size);
+                ctx.frame.fill(&label_background_path, pos_color_solid);
                 ctx.frame.fill_text(canvas::Text {
                     content: side_label.to_string(),
-                    position: Point::new(6.0, entry_y),
-                    color: pos_color_solid,
+                    position: Point::new(POSITION_LABEL_TEXT_X, entry_y),
+                    color: Color::BLACK,
                     size: iced::Pixels(9.0),
                     align_x: alignment::Horizontal::Left.into(),
                     align_y: alignment::Vertical::Center,
@@ -101,18 +124,27 @@ impl CandlestickChart {
                         a: 0.55,
                         ..ctx.theme.palette().primary
                     };
+                    let badge_kind = RightAxisBadgeKind::PositionLiquidation;
+                    let line_end_x = right_axis_line_end_x(
+                        ctx.right_axis_badges,
+                        badge_kind,
+                        liq_y,
+                        ctx.chart_w,
+                    );
 
                     stroke_segmented_hline(
                         ctx.frame,
-                        ctx.chart_w,
+                        line_end_x,
                         liq_y,
                         2.0,
                         3.0,
                         liq_color_dim,
                         1.0,
                     );
-                    fill_right_axis_badge(
+                    draw_stacked_right_axis_badge(
                         ctx.frame,
+                        ctx.right_axis_badges,
+                        badge_kind,
                         ctx.chart_w,
                         liq_y,
                         position_liquidation_badge_label(liq_px, self.obscure_position_prices),
@@ -120,9 +152,18 @@ impl CandlestickChart {
                         AxisBadgeStyle {
                             char_width: 6.2,
                             padding_width: 9.0,
-                            height: 14.0,
+                            height: RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
                             text_size: 8.5,
                             text_color: Color::BLACK,
+                        },
+                        RightAxisBadgeConnectorStyle::Segmented {
+                            style: SegmentedHLineStyle {
+                                segment_len: 2.0,
+                                gap_len: 3.0,
+                                offset: 0.0,
+                                color: liq_color_dim,
+                                width: 1.0,
+                            },
                         },
                     );
                 }
