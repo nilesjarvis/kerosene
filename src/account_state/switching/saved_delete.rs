@@ -38,6 +38,10 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        if self.account_change_blocked_by_pending_move("deleting an account") {
+            return Task::none();
+        }
+
         let Some(profile_snapshot) = self.accounts.get(index).cloned() else {
             return Task::none();
         };

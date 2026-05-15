@@ -12,7 +12,7 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
-        self.pending_move_order_contexts.remove(&oid);
+        let pending_context = self.pending_move_order_contexts.remove(&oid);
         self.sync_all_chart_orders();
         match result {
             Ok(resp) => {
@@ -29,7 +29,13 @@ impl TradingTerminal {
             }
         }
         if should_refresh {
-            self.refresh_account_data()
+            if let Some(context) = pending_context {
+                self.refresh_account_data_for_twap_reconciliation(
+                    context.account_address().to_string(),
+                )
+            } else {
+                self.refresh_account_data()
+            }
         } else {
             Task::none()
         }

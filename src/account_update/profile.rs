@@ -142,6 +142,9 @@ impl TradingTerminal {
             );
             return Task::none();
         }
+        if self.account_change_blocked_by_pending_move("adding an account") {
+            return Task::none();
+        }
         let persisted_account_count = self.persisted_accounts_snapshot().len();
         let profile = config::AccountProfile {
             secret_id: config::new_secret_id(),

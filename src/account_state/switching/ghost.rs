@@ -40,6 +40,10 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        if self.account_change_blocked_by_pending_move("switching accounts") {
+            return Task::none();
+        }
+
         let Some(address) = Self::normalize_wallet_address(&address) else {
             self.push_toast("Invalid wallet address".to_string(), true);
             return Task::none();
@@ -68,6 +72,10 @@ impl TradingTerminal {
         };
         let secret_id = profile.secret_id.clone();
         if !self.ghost_account_secret_ids.contains(&secret_id) {
+            return Task::none();
+        }
+
+        if self.account_change_blocked_by_pending_move("forgetting a ghost wallet") {
             return Task::none();
         }
 

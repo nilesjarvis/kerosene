@@ -74,6 +74,10 @@ impl PendingMoveOrderContext {
             _ => Err(MoveOrderContextError::AccountChanged),
         }
     }
+
+    pub(crate) fn account_address(&self) -> &str {
+        &self.account_address
+    }
 }
 
 /// State for the right-click quick order form on a chart.
