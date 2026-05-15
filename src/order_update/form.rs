@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_price;
+use crate::helpers::{format_price, parse_number};
 use crate::market_state::{OrderBookId, OrderBookSymbolMode};
 use crate::message::Message;
 use crate::signing::OrderKind;
@@ -78,7 +78,7 @@ impl TradingTerminal {
             value
         };
 
-        let Ok(qty) = self.order_quantity.parse::<f64>() else {
+        let Some(qty) = parse_number(&self.order_quantity) else {
             self.order_percentage = 0.0;
             return;
         };
@@ -88,7 +88,7 @@ impl TradingTerminal {
             return;
         };
 
-        let Some(available_margin) = data.available_margin_usdc() else {
+        let Some(available_margin) = self.visible_available_margin_usdc(data) else {
             self.order_percentage = 0.0;
             return;
         };
@@ -124,7 +124,7 @@ impl TradingTerminal {
         self.order_quantity_is_usd = !self.order_quantity_is_usd;
         self.persist_config();
 
-        let Ok(qty) = self.order_quantity.parse::<f64>() else {
+        let Some(qty) = parse_number(&self.order_quantity) else {
             return;
         };
 
@@ -152,7 +152,7 @@ impl TradingTerminal {
             return;
         };
 
-        let Some(available_margin) = data.available_margin_usdc() else {
+        let Some(available_margin) = self.visible_available_margin_usdc(data) else {
             self.order_quantity = "0".to_string();
             return;
         };
@@ -192,11 +192,11 @@ impl TradingTerminal {
     }
 
     fn order_reference_price(&self) -> Option<f64> {
-        if self.order_kind == OrderKind::Limit || self.order_kind == OrderKind::Chase {
-            self.order_price
-                .parse::<f64>()
-                .ok()
-                .filter(|price| price.is_finite() && *price > 0.0)
+        if matches!(
+            self.order_kind,
+            OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc
+        ) {
+            parse_number(&self.order_price).filter(|price| price.is_finite() && *price > 0.0)
         } else {
             self.resolve_mid_for_symbol(&self.active_symbol)
                 .filter(|price| price.is_finite() && *price > 0.0)
@@ -213,9 +213,7 @@ impl TradingTerminal {
 }
 
 fn valid_selected_order_book_price(price: &str) -> bool {
-    price
-        .parse::<f64>()
-        .ok()
+    parse_number(price)
         .and_then(positive_finite_price)
         .is_some()
 }
@@ -239,6 +237,7 @@ mod tests {
             display_name: None,
             keywords: Vec::new(),
             asset_index: 0,
+            collateral_token: None,
             sz_decimals: 5,
             max_leverage: 50,
             only_isolated: false,
@@ -372,5 +371,19 @@ mod tests {
             terminal.order_status,
             Some(("Placing order...".to_string(), false))
         );
+    }
+
+    #[test]
+    fn limit_ioc_reference_price_uses_order_price_not_market_mid() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.active_symbol = "BTC".to_string();
+        terminal.order_kind = OrderKind::LimitIoc;
+        terminal.order_price = "99.5".to_string();
+        terminal.all_mids.insert("BTC".to_string(), 101.25);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+        assert_eq!(terminal.order_reference_price(), Some(99.5));
     }
 }

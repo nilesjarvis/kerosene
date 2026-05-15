@@ -29,12 +29,10 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 if let Some(inst) = self.order_books.get_mut(&id) {
+                    let now = std::time::Instant::now();
                     inst.asset_ctx = Some(ctx.clone());
-                    record_asset_context_spread(
-                        &mut inst.spread_history,
-                        &ctx,
-                        std::time::Instant::now(),
-                    );
+                    record_asset_context_spread(&mut inst.spread_history, &ctx, now);
+                    inst.record_mid_price_sample(now);
                 }
                 Task::none()
             }
@@ -44,7 +42,7 @@ impl TradingTerminal {
                 sigfigs,
                 book,
             } => {
-                if self.is_ticker_muted(&coin) {
+                if self.symbol_key_is_hidden(&coin) {
                     return Task::none();
                 }
                 if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
@@ -54,7 +52,9 @@ impl TradingTerminal {
                 if let Some(inst) = self.order_books.get_mut(&id)
                     && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
                 {
+                    let now = std::time::Instant::now();
                     inst.apply_book_update_preserving_scope(book.clone(), source_tick);
+                    inst.record_mid_price_sample(now);
                     inst.book_loading = false;
                     inst.book_error = None;
                 }
@@ -74,7 +74,7 @@ impl TradingTerminal {
                         OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
                     })
                     .unwrap_or_default();
-                if self.is_ticker_muted(&symbol) {
+                if self.symbol_key_is_hidden(&symbol) {
                     if let Some(inst) = self.order_books.get_mut(&id) {
                         inst.book_loading = false;
                     }
@@ -114,6 +114,18 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
+            Message::ToggleOrderBookCenterOnMid(id) => {
+                if let Some(inst) = self.order_books.get_mut(&id) {
+                    inst.center_on_mid = !inst.center_on_mid;
+                    let center_on_mid = inst.center_on_mid;
+
+                    self.persist_config();
+                    if !center_on_mid {
+                        return self.center_order_book(id);
+                    }
+                }
+                Task::none()
+            }
             Message::ToggleOrderBookSpreadChart(id) => {
                 if let Some(inst) = self.order_books.get_mut(&id) {
                     inst.show_spread_chart = !inst.show_spread_chart;
@@ -139,9 +151,11 @@ impl TradingTerminal {
                     OrderBookSymbolMode::Active => self.active_symbol.clone(),
                     OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
                 };
-                if self.is_ticker_muted(&symbol) {
-                    self.order_status =
-                        Some(("Order book ticker is muted in Settings > Risk".into(), true));
+                if self.symbol_key_is_hidden(&symbol) {
+                    self.order_status = Some((
+                        "Order book ticker is hidden in Settings > Risk".into(),
+                        true,
+                    ));
                     return Task::none();
                 }
                 let mid = self.resolve_mid_for_symbol(&symbol);
@@ -151,6 +165,7 @@ impl TradingTerminal {
                     inst.set_book(OrderBook::empty());
                     inst.asset_ctx = None;
                     inst.spread_history.clear();
+                    inst.clear_mid_price_history();
                     inst.book_loading = true;
                     inst.book_error = None;
 
@@ -172,7 +187,6 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
-            Message::CenterOrderBook(id) => self.center_order_book(id),
             _ => Task::none(),
         }
     }

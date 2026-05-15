@@ -198,6 +198,7 @@ impl TradingTerminal {
             reduce_only: layout_snapshot.reduce_only,
             order_quantity_is_usd: self.order_quantity_is_usd,
             symbol_search_sort_mode: self.symbol_search_sort_mode.config_value().to_string(),
+            market_universe: self.market_universe.clone().normalized(),
             chart_screenshot_settings: self.chart_screenshot_settings.clone(),
             accounts: persisted_accounts,
             active_account_index,

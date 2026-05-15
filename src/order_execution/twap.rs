@@ -160,8 +160,8 @@ impl TradingTerminal {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return Task::none();
         };
-        if self.is_ticker_muted(&self.active_symbol) {
-            self.order_status = Some(("Active ticker is muted in Settings > Risk".into(), true));
+        if self.symbol_key_is_hidden(&self.active_symbol) {
+            self.order_status = Some(("Active ticker is hidden in Settings > Risk".into(), true));
             return Task::none();
         }
 
@@ -246,8 +246,8 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let raw_qty = match self.order_quantity.trim().parse::<f64>() {
-            Ok(value) if value.is_finite() && value > 0.0 => value,
+        let raw_qty = match crate::helpers::parse_number(&self.order_quantity) {
+            Some(value) if value.is_finite() && value > 0.0 => value,
             _ => {
                 self.order_status = Some(("Invalid quantity".into(), true));
                 return Task::none();
@@ -385,7 +385,7 @@ impl TradingTerminal {
         coin: String,
         book: crate::api::OrderBook,
     ) -> Task<Message> {
-        if self.is_ticker_muted(&coin) {
+        if self.symbol_key_is_hidden(&coin) {
             return Task::none();
         }
         let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
@@ -1281,19 +1281,19 @@ impl TradingTerminal {
                 true,
             );
         }
-        // Defense in depth against the mute risk control. The mute handler
-        // already stops matching TWAPs (see
+        // Defense in depth against hidden symbols. The mute handler already
+        // stops matching TWAPs (see
         // `update_muted_ticker_preferences`), but this catches:
-        //   (a) a mute that was applied between the schedule tick and this
-        //       execute call;
+        //   (a) a mute or market-universe change that landed between the
+        //       schedule tick and this execute call;
         //   (b) any future code path that adds a TWAP without going through
-        //       the mute eviction pass.
-        // Without it, a freshly-muted symbol could fire one more slice off
+        //       the hidden-symbol eviction pass.
+        // Without it, a freshly-hidden symbol could fire one more slice off
         // its cached `latest_book` before the stop landed.
         if let Some(twap) = self.twap_orders.get(&twap_id)
-            && self.is_ticker_muted(&twap.coin)
+            && self.symbol_key_is_hidden(&twap.coin)
         {
-            return self.stop_twap_with_reason(twap_id, "TWAP stopped: ticker was muted", false);
+            return self.stop_twap_with_reason(twap_id, "TWAP stopped: ticker was hidden", false);
         }
 
         let Some((book, book_updated_at, is_buy, min_price, max_price, sz_decimals, is_spot)) =
@@ -1750,7 +1750,7 @@ impl TradingTerminal {
 }
 
 fn parse_positive_price(value: &str) -> Option<f64> {
-    let parsed = value.trim().parse::<f64>().ok()?;
+    let parsed = crate::helpers::parse_number(value)?;
     (parsed.is_finite() && parsed > 0.0).then_some(parsed)
 }
 
@@ -1980,6 +1980,9 @@ mod tests {
 
     fn empty_account_data() -> AccountData {
         AccountData {
+            fetch_scope: Default::default(),
+            request_weight_estimate: 0,
+            account_abstraction: Default::default(),
             clearinghouse: ClearinghouseState {
                 margin_summary: MarginSummary {
                     account_value: "0".to_string(),
@@ -1991,6 +1994,7 @@ mod tests {
                 withdrawable: "0".to_string(),
                 asset_positions: Vec::new(),
             },
+            clearinghouses_by_dex: std::collections::HashMap::new(),
             spot: SpotClearinghouseState {
                 balances: Vec::new(),
                 portfolio_margin_enabled: false,

@@ -1,5 +1,6 @@
 use super::super::super::{
-    ClearinghouseState, HIP3_DEXES, OpenOrder, WalletOpenOrderDetail, WalletPositionDetail,
+    AccountDataFetchScope, ClearinghouseState, HIP3_DEXES, OpenOrder, WalletOpenOrderDetail,
+    WalletPositionDetail, normalize_dex_asset_position_coins, normalize_dex_open_order_coins,
 };
 use crate::api::API_URL;
 
@@ -10,12 +11,13 @@ type Hip3ResponseResults = Vec<(String, Result<reqwest::Response, reqwest::Error
 pub(super) async fn fetch_hip3_wallet_details(
     client: reqwest::Client,
     address: String,
+    scope: &AccountDataFetchScope,
 ) -> (Hip3ResponseResults, Hip3ResponseResults) {
     let mut hip3_ch_futs = Vec::new();
     let mut hip3_order_futs = Vec::new();
-    for dex in HIP3_DEXES {
+    for dex in scope.hip3_dexes(HIP3_DEXES) {
         hip3_ch_futs.push((
-            (*dex).to_string(),
+            dex.clone(),
             client
                 .post(API_URL)
                 .json(&serde_json::json!({
@@ -26,7 +28,7 @@ pub(super) async fn fetch_hip3_wallet_details(
                 .send(),
         ));
         hip3_order_futs.push((
-            (*dex).to_string(),
+            dex.clone(),
             client
                 .post(API_URL)
                 .json(&serde_json::json!({
@@ -63,7 +65,8 @@ pub(super) async fn append_hip3_positions(
             Ok(response) if response.status().is_success() => {
                 match response.json::<Value>().await {
                     Ok(raw) => match serde_json::from_value::<ClearinghouseState>(raw) {
-                        Ok(ch) => {
+                        Ok(mut ch) => {
+                            normalize_dex_asset_position_coins(&dex, &mut ch.asset_positions);
                             positions.extend(ch.asset_positions.into_iter().map(
                                 |asset_position| WalletPositionDetail {
                                     dex: dex.clone(),
@@ -98,7 +101,8 @@ pub(super) async fn append_hip3_open_orders(
         match resp {
             Ok(response) if response.status().is_success() => {
                 match response.json::<Vec<OpenOrder>>().await {
-                    Ok(orders) => {
+                    Ok(mut orders) => {
+                        normalize_dex_open_order_coins(&dex, &mut orders);
                         open_orders.extend(orders.into_iter().map(|order| WalletOpenOrderDetail {
                             dex: dex.clone(),
                             order,

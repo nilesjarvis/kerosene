@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
 
 const EXCHANGE_URL: &str = "https://api.hyperliquid.xyz/exchange";
+const EXCHANGE_EXPIRES_AFTER_MS: u64 = 30_000;
 static LAST_EXCHANGE_NONCE_MS: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
@@ -59,10 +60,24 @@ async fn sign_and_post(
     let msgpack_bytes =
         rmp_serde::to_vec_named(action).map_err(|e| format!("Msgpack error: {e}"))?;
     let nonce = exchange_nonce_ms();
-    let signature = sign_l1_action(private_key.as_str(), &msgpack_bytes, vault_address, nonce)?;
+    let expires_after = nonce.saturating_add(EXCHANGE_EXPIRES_AFTER_MS);
+    let signature = sign_l1_action(
+        private_key.as_str(),
+        &msgpack_bytes,
+        vault_address,
+        nonce,
+        Some(expires_after),
+    )?;
     let action_json =
         serde_json::to_value(action).map_err(|e| format!("JSON serialize error: {e}"))?;
-    post_exchange(&action_json, &signature, nonce, vault_address).await
+    post_exchange(
+        &action_json,
+        &signature,
+        nonce,
+        vault_address,
+        Some(expires_after),
+    )
+    .await
 }
 
 async fn post_exchange(
@@ -70,12 +85,14 @@ async fn post_exchange(
     signature: &Value,
     nonce: u64,
     vault_address: Option<&str>,
+    expires_after: Option<u64>,
 ) -> Result<ExchangeResponse, String> {
     let payload = serde_json::json!({
         "action": action_json,
         "nonce": nonce,
         "signature": signature,
         "vaultAddress": vault_address,
+        "expiresAfter": expires_after,
     });
 
     let client = crate::api::CLIENT.clone();

@@ -1,4 +1,4 @@
-use crate::account::{OpenOrder, fetch_account_data, normalize_dex_open_order_coins};
+use crate::account::{OpenOrder, fetch_account_data_scoped, normalize_dex_open_order_coins};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::ChaseOrder;
@@ -284,6 +284,15 @@ impl TradingTerminal {
         let mut fill_toast_msgs: Vec<String> = Vec::new();
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
+        let market_universe = self.market_universe.clone();
+        let is_hidden = |symbol: &str| {
+            Self::symbol_key_is_hidden_with(
+                &exchange_symbols,
+                &muted_tickers,
+                &market_universe,
+                symbol,
+            )
+        };
         let is_muted = |symbol: &str| {
             Self::key_matches_muted_tickers(&exchange_symbols, &muted_tickers, symbol)
         };
@@ -291,9 +300,16 @@ impl TradingTerminal {
             match ws_data {
                 WsUserData::AllDexPositions {
                     main_state,
+                    states_by_dex,
                     all_positions,
                     position_details: _,
                 } => {
+                    let mut states_by_dex = states_by_dex;
+                    for state in states_by_dex.values_mut() {
+                        state
+                            .asset_positions
+                            .retain(|position| !is_hidden(&position.position.coin));
+                    }
                     data.fetched_at_ms = Self::now_ms();
                     data.clearinghouse.margin_summary = main_state.margin_summary;
                     data.clearinghouse.withdrawable = main_state.withdrawable;
@@ -302,8 +318,9 @@ impl TradingTerminal {
                         main_state.cross_maintenance_margin_used;
                     data.clearinghouse.asset_positions = all_positions
                         .into_iter()
-                        .filter(|position| !is_muted(&position.position.coin))
+                        .filter(|position| !is_hidden(&position.position.coin))
                         .collect();
+                    data.clearinghouses_by_dex = states_by_dex;
                     self.sync_all_chart_overlays();
                 }
                 WsUserData::OpenOrders { dex, orders } => {
@@ -318,14 +335,14 @@ impl TradingTerminal {
                         let prefix = format!("{dex}:");
                         data.open_orders.retain(|o| !o.coin.starts_with(&prefix));
                     }
-                    data.open_orders.retain(|order| !is_muted(&order.coin));
+                    data.open_orders.retain(|order| !is_hidden(&order.coin));
                     data.open_orders
-                        .extend(orders.into_iter().filter(|order| !is_muted(&order.coin)));
+                        .extend(orders.into_iter().filter(|order| !is_hidden(&order.coin)));
                     orders_changed = true;
                 }
                 WsUserData::Fills { fills, is_snapshot } => {
                     fill_toast_msgs =
-                        apply_fills_update(&mut data.fills, fills, is_snapshot, is_muted);
+                        apply_fills_update(&mut data.fills, fills, is_snapshot, is_hidden);
                     fills_changed = true;
                 }
                 WsUserData::SpotBalances(balances) => {
@@ -361,9 +378,11 @@ impl TradingTerminal {
                             source_address.clone(),
                             wallet_details_update,
                         );
-                        let account_task = Task::perform(fetch_account_data(addr), move |r| {
-                            Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
-                        });
+                        let scope = self.account_data_fetch_scope();
+                        let account_task =
+                            Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
+                                Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
+                            });
                         return Task::batch([wallet_task, account_task]);
                     }
                 }

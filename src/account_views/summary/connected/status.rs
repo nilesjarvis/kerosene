@@ -1,7 +1,8 @@
+use super::super::CONNECTED_STATUS_ACTION_BREAKPOINT;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{label_value, vertical_spacer};
+use crate::helpers::vertical_spacer;
 use crate::message::Message;
-use iced::widget::{container, row, text};
+use iced::widget::{Row, Space, column, container, responsive, row, text};
 use iced::{Element, Fill};
 
 // ---------------------------------------------------------------------------
@@ -9,15 +10,29 @@ use iced::{Element, Fill};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(super) fn view_connected_account_status(
-        &self,
-        account_label: String,
-    ) -> Element<'_, Message> {
+    pub(super) fn view_connected_account_status(&self) -> Element<'_, Message> {
+        responsive(move |size| self.view_connected_account_status_layout(size.width))
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+
+    fn view_connected_account_status_layout(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
+        let ready_status = self.account_data.as_ref().map(|data| {
+            let scope = data
+                .fetch_scope
+                .selected_hip3_dex()
+                .map(|dex| format!("HIP-3 {dex}"))
+                .unwrap_or_else(|| "All markets".to_string());
+            format!("{scope} refresh (~{} API wt)", data.request_weight_estimate)
+        });
         let loading_label = if self.account_loading {
-            "Loading account..."
+            "Loading account...".to_string()
+        } else if let Some(status) = ready_status {
+            status
         } else {
-            "No account data"
+            "No account data".to_string()
         };
         let account_warning = self.account_data.as_ref().and_then(|data| {
             (!data.completeness.is_complete())
@@ -28,7 +43,7 @@ impl TradingTerminal {
             .account_error
             .as_deref()
             .or(account_warning.as_deref())
-            .unwrap_or(loading_label)
+            .unwrap_or(&loading_label)
             .to_string();
         let account_status_color = if self.account_error.is_some() {
             theme.palette().danger
@@ -63,18 +78,24 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center)
             .into()
         };
-        let items = row![
-            label_value("Account", account_label),
-            vertical_spacer(),
-            status_widget,
-            vertical_spacer(),
-            self.summary_layouts_button(),
-            self.summary_widgets_button(),
-            self.summary_settings_button(),
-            self.summary_disconnect_button(),
-        ]
-        .spacing(16)
-        .align_y(iced::Alignment::Center);
+        let actions = self.connected_status_actions_row();
+        let items: Element<'_, Message> = if available_width < CONNECTED_STATUS_ACTION_BREAKPOINT {
+            column![
+                status_widget,
+                row![Space::new().width(Fill), actions]
+                    .width(Fill)
+                    .align_y(iced::Alignment::Center),
+            ]
+            .spacing(6)
+            .width(Fill)
+            .into()
+        } else {
+            row![status_widget, vertical_spacer(), actions]
+                .spacing(16)
+                .align_y(iced::Alignment::Center)
+                .width(Fill)
+                .into()
+        };
 
         container(items)
             .width(Fill)
@@ -82,5 +103,17 @@ impl TradingTerminal {
             .padding([2, 12])
             .center_y(Fill)
             .into()
+    }
+
+    fn connected_status_actions_row(&self) -> Row<'_, Message> {
+        row![
+            self.summary_market_universe_picker(),
+            self.summary_layouts_button(),
+            self.summary_widgets_button(),
+            self.summary_settings_button(),
+            self.summary_disconnect_button(),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center)
     }
 }

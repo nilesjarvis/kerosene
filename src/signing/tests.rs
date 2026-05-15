@@ -24,23 +24,37 @@ fn exchange_response_with_statuses(statuses: Vec<serde_json::Value>) -> Exchange
 
 #[test]
 fn action_hash_rejects_invalid_vault_hex() {
-    let result = action_hash_bytes(b"{}", Some("0xnot-hex"), 1);
+    let result = action_hash_bytes(b"{}", Some("0xnot-hex"), 1, None);
 
     assert!(result.is_err());
 }
 
 #[test]
 fn action_hash_rejects_invalid_vault_length() {
-    let result = action_hash_bytes(b"{}", Some("0x1234"), 1);
+    let result = action_hash_bytes(b"{}", Some("0x1234"), 1, None);
 
     assert!(result.is_err());
 }
 
 #[test]
 fn action_hash_accepts_valid_vault_address() {
-    let result = action_hash_bytes(b"{}", Some("0x0000000000000000000000000000000000000000"), 1);
+    let result = action_hash_bytes(
+        b"{}",
+        Some("0x0000000000000000000000000000000000000000"),
+        1,
+        None,
+    );
 
     assert!(result.is_ok());
+}
+
+#[test]
+fn action_hash_changes_when_expires_after_is_included() {
+    let without_expiry = action_hash_bytes(b"{}", None, 1, None).expect("hash without expiry");
+    let with_expiry =
+        action_hash_bytes(b"{}", None, 1, Some(1_700_000_000_000)).expect("hash with expiry");
+
+    assert_ne!(without_expiry, with_expiry);
 }
 
 #[test]

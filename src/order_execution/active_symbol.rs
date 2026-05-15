@@ -21,10 +21,10 @@ impl TradingTerminal {
             .or_else(|| self.exchange_symbols.iter().find(|s| s.ticker == key));
 
         let valid_key = sym.map(|s| s.key.clone()).unwrap_or(key.clone());
-        if self.is_ticker_muted(&valid_key) {
-            self.order_status = Some((format!("{valid_key} is muted in Settings > Risk"), true));
+        if self.symbol_key_is_hidden(&valid_key) {
+            self.order_status = Some((format!("{valid_key} is hidden in Settings > Risk"), true));
             self.symbol_search_status =
-                Some((format!("{valid_key} is muted in Settings > Risk"), true));
+                Some((format!("{valid_key} is hidden in Settings > Risk"), true));
             return Task::none();
         }
         let valid_is_outcome =
@@ -51,6 +51,7 @@ impl TradingTerminal {
                 inst.set_book(OrderBook::empty());
                 inst.asset_ctx = None;
                 inst.spread_history.clear();
+                inst.clear_mid_price_history();
                 inst.book_loading = true;
                 inst.book_error = None;
             }

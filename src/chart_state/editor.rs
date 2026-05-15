@@ -96,7 +96,7 @@ impl TradingTerminal {
         let mut filtered: Vec<&ExchangeSymbol> = self
             .exchange_symbols
             .iter()
-            .filter(|symbol| !self.exchange_symbol_is_muted(symbol))
+            .filter(|symbol| !self.exchange_symbol_is_hidden(symbol))
             .filter(|symbol| Self::chart_editor_symbol_matches(symbol, &normalized_query))
             .collect();
 

@@ -73,6 +73,7 @@ pub(super) fn append_spot_symbols(symbols: &mut Vec<ExchangeSymbol>, spot_meta: 
                 display_name: display,
                 keywords: kw,
                 asset_index: 10_000 + spot_index as u32,
+                collateral_token: None,
                 sz_decimals,
                 max_leverage: 1,
                 only_isolated: false,

@@ -43,7 +43,7 @@ impl TradingTerminal {
         let mut rows = Vec::with_capacity(watchlist.symbols.len());
 
         for sym_key in &watchlist.symbols {
-            if self.is_ticker_muted(sym_key) {
+            if self.symbol_key_is_hidden(sym_key) {
                 continue;
             }
             let sym_meta = symbols_by_key.get(sym_key.as_str()).copied();

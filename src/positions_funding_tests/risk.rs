@@ -34,6 +34,7 @@ fn muted_ticker_matching_uses_exchange_symbol_metadata_for_spot_keys() {
         display_name: Some("HYPE/USDC".to_string()),
         keywords: Vec::new(),
         asset_index: 10107,
+        collateral_token: None,
         sz_decimals: 2,
         max_leverage: 0,
         only_isolated: false,

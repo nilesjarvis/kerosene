@@ -1,6 +1,8 @@
 use super::{
-    ClearinghouseState, FundingEntry, OpenOrder, SpotClearinghouseState, UserFeeRates, UserFill,
+    AccountAbstractionMode, ClearinghouseState, FundingEntry, OpenOrder, SpotClearinghouseState,
+    UserFeeRates, UserFill,
 };
+use std::collections::HashMap;
 
 #[cfg(test)]
 mod tests;
@@ -19,6 +21,110 @@ pub enum AccountDataSection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountDataFetchScope {
+    AllMarkets { hip3_dexes: Vec<String> },
+    Hip3Dex { dex: String },
+}
+
+impl Default for AccountDataFetchScope {
+    fn default() -> Self {
+        Self::all_markets(crate::account::HIP3_DEXES.iter().copied())
+    }
+}
+
+impl AccountDataFetchScope {
+    pub fn all_markets(dexes: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        let mut hip3_dexes = dexes
+            .into_iter()
+            .filter_map(|dex| normalized_hip3_dex(dex.as_ref()))
+            .collect::<Vec<_>>();
+        hip3_dexes.sort();
+        hip3_dexes.dedup();
+        if hip3_dexes.is_empty() {
+            hip3_dexes = crate::account::HIP3_DEXES
+                .iter()
+                .map(|dex| (*dex).to_string())
+                .collect();
+        }
+        Self::AllMarkets { hip3_dexes }
+    }
+
+    pub fn hip3_dex(dex: impl Into<String>) -> Self {
+        normalized_hip3_dex(&dex.into())
+            .map(|dex| Self::Hip3Dex { dex })
+            .unwrap_or_default()
+    }
+
+    pub fn selected_hip3_dex(&self) -> Option<&str> {
+        match self {
+            Self::AllMarkets { .. } => None,
+            Self::Hip3Dex { dex } => Some(dex.as_str()),
+        }
+    }
+
+    pub fn hip3_dexes(&self, all_dexes: &[&str]) -> Vec<String> {
+        match self {
+            Self::AllMarkets { hip3_dexes } => {
+                if hip3_dexes.is_empty() {
+                    all_dexes.iter().map(|dex| (*dex).to_string()).collect()
+                } else {
+                    hip3_dexes.clone()
+                }
+            }
+            Self::Hip3Dex { dex } => vec![dex.clone()],
+        }
+    }
+
+    pub fn fetches_main_open_orders(&self) -> bool {
+        matches!(self, Self::AllMarkets { .. })
+    }
+
+    pub fn estimated_info_weight(&self) -> u32 {
+        // Hyperliquid currently weights clearinghouseState and spotClearinghouseState at 2.
+        // User fills/funding have return-size adders, so use a conservative base estimate.
+        let main_clearinghouse = 2;
+        let spot = 2;
+        let account_abstraction = 20;
+        let fills = 40;
+        let funding = 40;
+        let fees = 20;
+        let main_orders = if self.fetches_main_open_orders() {
+            20
+        } else {
+            0
+        };
+        let hip3_per_dex = 2 + 20;
+        main_clearinghouse
+            + spot
+            + account_abstraction
+            + fills
+            + funding
+            + fees
+            + main_orders
+            + hip3_per_dex * self.hip3_dex_count()
+    }
+
+    pub fn automatic_refresh_interval_secs(&self) -> u64 {
+        const ACCOUNT_REFRESH_WEIGHT_BUDGET_PER_MIN: u32 = 240;
+        let secs = (self.estimated_info_weight() as u64 * 60)
+            .div_ceil(ACCOUNT_REFRESH_WEIGHT_BUDGET_PER_MIN as u64);
+        secs.clamp(45, 180)
+    }
+
+    fn hip3_dex_count(&self) -> u32 {
+        match self {
+            Self::AllMarkets { hip3_dexes } => hip3_dexes.len() as u32,
+            Self::Hip3Dex { .. } => 1,
+        }
+    }
+}
+
+fn normalized_hip3_dex(dex: &str) -> Option<String> {
+    let dex = dex.trim().to_ascii_lowercase();
+    (!dex.is_empty()).then_some(dex)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountDataCompleteness {
     pub positions_complete: bool,
     pub open_orders_complete: bool,
@@ -31,7 +137,11 @@ pub struct AccountDataCompleteness {
 /// All account data fetched in one batch.
 #[derive(Debug, Clone)]
 pub struct AccountData {
+    pub fetch_scope: AccountDataFetchScope,
+    pub request_weight_estimate: u32,
+    pub account_abstraction: AccountAbstractionMode,
     pub clearinghouse: ClearinghouseState,
+    pub clearinghouses_by_dex: HashMap<String, ClearinghouseState>,
     pub spot: SpotClearinghouseState,
     pub open_orders: Vec<OpenOrder>,
     pub fills: Vec<UserFill>,
@@ -59,21 +169,81 @@ impl AccountData {
     /// Whether this account has portfolio margin enabled.
     pub fn is_portfolio_margin(&self) -> bool {
         self.spot.portfolio_margin_enabled
+            || self.account_abstraction == AccountAbstractionMode::PortfolioMargin
+    }
+
+    /// Whether account-level balance metrics should ignore individual perp-dex balances.
+    pub fn uses_shared_account_balance(&self) -> bool {
+        self.is_portfolio_margin() || self.account_abstraction.uses_shared_account_balance()
     }
 
     /// Available balance after maintenance margin for USDC (token 0).
-    pub fn available_after_maintenance_usdc(&self) -> Option<f64> {
+    pub fn available_after_maintenance_for_token(&self, token: u32) -> Option<f64> {
         self.spot
             .token_to_available_after_maintenance
             .as_ref()
-            .and_then(|values| values.iter().find(|(token, _)| *token == 0))
+            .and_then(|values| values.iter().find(|(entry_token, _)| *entry_token == token))
             .and_then(|(_, value)| parse_account_number(value))
+    }
+
+    /// Available spot balance for a token after spot holds are removed.
+    pub fn spot_available_for_token(&self, token: u32) -> Option<f64> {
+        let balance = self
+            .spot
+            .balances
+            .iter()
+            .find(|balance| balance.token == Some(token))
+            .or_else(|| {
+                if token == 0 {
+                    self.spot
+                        .balances
+                        .iter()
+                        .find(|balance| balance.coin == "USDC")
+                } else {
+                    None
+                }
+            })?;
+        let total = parse_account_number(&balance.total)?;
+        let hold = parse_account_number(&balance.hold)?;
+        Some(total - hold)
+    }
+
+    /// Account-level value in USDC terms when the API reports one directly.
+    pub fn account_value_usdc(&self) -> Option<f64> {
+        parse_account_number(&self.clearinghouse.margin_summary.account_value)
     }
 
     /// Margin available for order sizing in USDC terms.
     pub fn available_margin_usdc(&self) -> Option<f64> {
+        self.available_margin_for_token(0)
+    }
+
+    /// Margin available for order sizing in the requested collateral token.
+    pub fn available_margin_for_token(&self, token: u32) -> Option<f64> {
+        if matches!(self.account_abstraction, AccountAbstractionMode::Unknown(_)) {
+            return None;
+        }
+
         if self.is_portfolio_margin() {
-            self.available_after_maintenance_usdc()
+            self.available_after_maintenance_for_token(token)
+                .or_else(|| self.spot_available_for_token(token))
+        } else if self.account_abstraction == AccountAbstractionMode::UnifiedAccount {
+            self.spot_available_for_token(token)
+        } else if matches!(
+            self.account_abstraction,
+            AccountAbstractionMode::Default | AccountAbstractionMode::DexAbstraction
+        ) {
+            if token != 0 {
+                return self.spot_available_for_token(token);
+            }
+            match (self.withdrawable(), self.spot_available_for_token(0)) {
+                (Some(withdrawable), Some(spot_available)) => {
+                    Some(withdrawable.max(spot_available))
+                }
+                (Some(withdrawable), None) => Some(withdrawable),
+                (None, Some(spot_available)) => Some(spot_available),
+                (None, None) => None,
+            }
         } else {
             self.withdrawable()
         }
@@ -97,11 +267,20 @@ impl AccountData {
         }
 
         // 1. If user has interacted with this asset, the exact leverage is in asset_positions.
-        for pos in &self.clearinghouse.asset_positions {
-            if pos.position.coin == search_coin {
-                let is_cross = pos.position.leverage.leverage_type.to_lowercase() == "cross";
-                return Some((is_cross, pos.position.leverage.value, true));
-            }
+        if let Some(pos) = self
+            .clearinghouse
+            .asset_positions
+            .iter()
+            .find(|pos| pos.position.coin == original_coin)
+            .or_else(|| {
+                self.clearinghouse
+                    .asset_positions
+                    .iter()
+                    .find(|pos| pos.position.coin == search_coin)
+            })
+        {
+            let is_cross = pos.position.leverage.leverage_type.to_lowercase() == "cross";
+            return Some((is_cross, pos.position.leverage.value, true));
         }
 
         // 2. Otherwise, we only know the exchange's max allowed limit for the symbol.

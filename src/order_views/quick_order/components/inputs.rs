@@ -1,8 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
-use crate::helpers;
+use crate::helpers::{self, parse_number};
 use crate::message::Message;
-use crate::order_execution::QuickOrderForm;
+use crate::order_execution::{QuickOrderForm, order_size_from_quantity_input};
 use iced::widget::{Space, button, column, row, slider, text, text_input};
 use iced::{Color, Element, Fill, Theme};
 
@@ -104,7 +104,14 @@ impl TradingTerminal {
         } else {
             self.resolve_mid_for_symbol(&self.active_symbol)
         };
-        let fee_qty = fee_price.and_then(|price| quick_order_fee_quantity(form, price));
+        let fee_qty = fee_price.and_then(|price| {
+            let sz_decimals = self
+                .exchange_symbols
+                .iter()
+                .find(|symbol| symbol.key == self.active_symbol)
+                .map(|symbol| symbol.sz_decimals)?;
+            quick_order_fee_quantity(form, price, sz_decimals)
+        });
 
         match (fee_price, fee_qty) {
             (Some(px), Some(qty)) => {
@@ -165,14 +172,39 @@ fn quick_order_percent_button<'a>(
         })
 }
 
-fn quick_order_fee_quantity(form: &QuickOrderForm, price: f64) -> Option<f64> {
-    let quantity = form.quantity.parse::<f64>().ok()?;
-    if !quantity.is_finite() || quantity <= 0.0 {
-        return None;
+fn quick_order_fee_quantity(form: &QuickOrderForm, price: f64, sz_decimals: u32) -> Option<f64> {
+    let quantity = parse_number(&form.quantity)?;
+    order_size_from_quantity_input(quantity, price, form.quantity_is_usd, sz_decimals)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quick_order_fee_quantity;
+    use crate::order_execution::QuickOrderForm;
+
+    fn quick_order_form(quantity: &str, quantity_is_usd: bool) -> QuickOrderForm {
+        QuickOrderForm {
+            price: 100.0,
+            quantity: quantity.to_string(),
+            quantity_is_usd,
+            percentage: 0.0,
+            is_limit: true,
+            click_x: 0.0,
+            click_y: 0.0,
+            chart_w: 0.0,
+            chart_h: 0.0,
+        }
     }
-    if form.quantity_is_usd {
-        (price.is_finite() && price > 0.0).then_some(quantity / price)
-    } else {
-        Some(quantity)
+
+    #[test]
+    fn quick_order_usd_fee_quantity_converts_notional_to_base_size() {
+        let form = quick_order_form("250", true);
+        assert_eq!(quick_order_fee_quantity(&form, 100.0, 5), Some(2.5));
+    }
+
+    #[test]
+    fn quick_order_coin_fee_quantity_uses_asset_precision() {
+        let form = quick_order_form("1.239", false);
+        assert_eq!(quick_order_fee_quantity(&form, 100.0, 2), Some(1.23));
     }
 }

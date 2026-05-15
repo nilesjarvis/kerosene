@@ -2,6 +2,8 @@
 // Percentage Quantity Math
 // ---------------------------------------------------------------------------
 
+use crate::helpers::format_decimal_with_commas;
+
 pub(in crate::order_update::form) fn order_percentage_for_quantity(
     quantity: f64,
     quantity_is_usd: bool,
@@ -43,13 +45,13 @@ pub(in crate::order_update::form) fn quantity_for_percentage(
 
     let target_notional = max_notional * (percentage.clamp(0.0, 100.0) as f64 / 100.0);
     if quantity_is_usd {
-        return format!("{target_notional:.2}");
+        return format_decimal_with_commas(target_notional, 2);
     }
 
     if let Some(reference_price) = reference_price.filter(|price| price.is_finite() && *price > 0.0)
     {
         let target_coin = target_notional / reference_price;
-        format!("{target_coin:.decimals$}")
+        format_decimal_with_commas(target_coin, decimals)
     } else {
         "0".to_string()
     }

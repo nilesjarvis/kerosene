@@ -4,6 +4,8 @@ mod resolution;
 
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
+use crate::config::MarketUniverseConfig;
+use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
 
 use self::contexts::apply_contexts_loaded;
@@ -60,8 +62,8 @@ impl TradingTerminal {
     }
 
     fn toggle_market_favourite(&mut self, key: String) -> Task<Message> {
-        if self.is_ticker_muted(&key) {
-            self.symbol_search_status = Some((format!("{key} is muted in Settings > Risk"), true));
+        if self.symbol_key_is_hidden(&key) {
+            self.symbol_search_status = Some((format!("{key} is hidden by Settings > Risk"), true));
             return Task::none();
         }
         toggle_favourite_symbol(&mut self.favourite_symbols, key);
@@ -77,6 +79,33 @@ impl TradingTerminal {
         match result {
             Ok(symbols) => {
                 self.exchange_symbols = symbols;
+                let mut market_universe_changed = false;
+                let normalized_universe =
+                    self.normalize_market_universe_selection(self.market_universe.clone());
+                if normalized_universe != self.market_universe {
+                    self.market_universe = normalized_universe;
+                    market_universe_changed = true;
+                    self.symbol_search_status = Some((
+                        "Saved market universe was unavailable; showing all markets".to_string(),
+                        true,
+                    ));
+                    self.push_toast(
+                        "Saved market universe was unavailable; showing all markets".to_string(),
+                        true,
+                    );
+                    self.persist_config();
+                }
+                match self.market_universe.selected_hip3_dex() {
+                    Some(dex) => {
+                        self.symbol_search_market_filter = SymbolSearchMarketFilter::Hip3;
+                        self.symbol_search_hip3_dex_filter = Some(dex.to_string());
+                    }
+                    None if matches!(self.market_universe, MarketUniverseConfig::All) => {
+                        self.symbol_search_market_filter = SymbolSearchMarketFilter::All;
+                        self.symbol_search_hip3_dex_filter = None;
+                    }
+                    None => {}
+                }
                 self.refresh_symbol_search_results();
                 self.symbols_loading = false;
 
@@ -125,10 +154,13 @@ impl TradingTerminal {
                     }
                 }
 
-                tasks.push(self.scrub_muted_ticker_state());
+                tasks.push(self.scrub_hidden_symbol_state());
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();
                 tasks.push(self.request_symbol_search_context_refresh(false));
+                if market_universe_changed {
+                    tasks.push(self.refresh_account_data());
+                }
 
                 if !tasks.is_empty() {
                     return Task::batch(tasks);

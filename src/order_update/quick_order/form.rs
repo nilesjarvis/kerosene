@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
+use crate::helpers::{format_decimal_with_commas, parse_number};
 use crate::message::Message;
 use crate::signing::ExchangeResponse;
 use iced::Task;
@@ -204,7 +205,7 @@ impl TradingTerminal {
 
     fn quick_order_max_notional(&self, symbol: &str) -> Option<f64> {
         let data = self.account_data.as_ref()?;
-        let available_margin = data.available_margin_usdc()?;
+        let available_margin = self.visible_available_margin_usdc(data)?;
         if !available_margin.is_finite() || available_margin <= 0.0 {
             return None;
         }
@@ -252,7 +253,7 @@ impl TradingTerminal {
 }
 
 fn parse_positive_finite(value: &str) -> Option<f64> {
-    let parsed = value.trim().parse::<f64>().ok()?;
+    let parsed = parse_number(value)?;
     (parsed.is_finite() && parsed > 0.0).then_some(parsed)
 }
 
@@ -269,13 +270,13 @@ fn quick_order_quantity_for_percentage(
 
     let target_notional = max_notional * (percentage.clamp(0.0, 100.0) as f64 / 100.0);
     if quantity_is_usd {
-        return format!("{target_notional:.2}");
+        return format_decimal_with_commas(target_notional, 2);
     }
 
     if let Some(reference_price) = reference_price.filter(|price| price.is_finite() && *price > 0.0)
     {
         let target_coin = target_notional / reference_price;
-        format!("{target_coin:.decimals$}")
+        format_decimal_with_commas(target_coin, decimals)
     } else {
         "0".to_string()
     }
@@ -296,9 +297,9 @@ fn toggled_quick_order_quantity_text(
     };
 
     if target_is_usd {
-        format!("{:.2}", quantity * reference_price)
+        format_decimal_with_commas(quantity * reference_price, 2)
     } else {
-        format!("{:.decimals$}", quantity / reference_price)
+        format_decimal_with_commas(quantity / reference_price, decimals)
     }
 }
 
@@ -315,6 +316,10 @@ mod tests {
         assert_eq!(
             quick_order_quantity_for_percentage(25.0, 1_000.0, false, Some(100.0), 4),
             "2.5000"
+        );
+        assert_eq!(
+            quick_order_quantity_for_percentage(25.0, 5_000_000.0, false, Some(100.0), 2),
+            "12,500.00"
         );
     }
 
@@ -343,6 +348,10 @@ mod tests {
         assert_eq!(
             toggled_quick_order_quantity_text("250", false, Some(100.0), 4),
             "2.5000"
+        );
+        assert_eq!(
+            toggled_quick_order_quantity_text("1,234,500.00", false, Some(100.0), 2),
+            "12,345.00"
         );
     }
 }

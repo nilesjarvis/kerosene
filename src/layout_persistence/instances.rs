@@ -57,7 +57,7 @@ impl TradingTerminal {
             }
             instance.next_annotation_id = ann_id;
             instance.chart.annotations = instance.annotations.clone();
-            if !chart_cfg.symbol.is_empty() && !self.is_ticker_muted(&chart_cfg.symbol) {
+            if !chart_cfg.symbol.is_empty() && !self.symbol_key_is_hidden(&chart_cfg.symbol) {
                 let request = Self::build_candle_fetch_request(id, &chart_cfg.symbol, tf, None, 0);
                 instance.candle_fetch_request = Some(request.clone());
                 boot_tasks.push(Self::fetch_candles_task(request));
@@ -103,7 +103,7 @@ impl TradingTerminal {
             for sym_key in scfg
                 .symbols
                 .iter()
-                .filter(|sym_key| !self.is_ticker_muted(sym_key))
+                .filter(|sym_key| !self.symbol_key_is_hidden(sym_key))
             {
                 let color_idx = inst.next_color_idx;
                 inst.next_color_idx += 1;

@@ -39,7 +39,7 @@ impl TradingTerminal {
                     let trade = Self::normalize_tracked_trade_event(trade);
                     self.tracked_trades_last_rx_ms = Some(Self::now_ms());
                     self.tracked_trades_status = "Connected".to_string();
-                    if self.is_ticker_muted(&trade.coin) {
+                    if self.symbol_key_is_hidden(&trade.coin) {
                         return Task::none();
                     }
                     if self.remember_tracked_trade_event(&trade) {

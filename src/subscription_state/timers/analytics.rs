@@ -35,7 +35,7 @@ impl TradingTerminal {
         if has_portfolio_pane && self.connected_address.is_some() {
             let has_live_positions = self.account_data.as_ref().is_some_and(|data| {
                 data.clearinghouse.asset_positions.iter().any(|position| {
-                    !self.is_ticker_muted(&position.position.coin)
+                    !self.symbol_key_is_hidden(&position.position.coin)
                         && position
                             .position
                             .szi

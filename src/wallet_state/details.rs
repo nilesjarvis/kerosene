@@ -1,7 +1,10 @@
 use super::model::{
     WALLET_DETAILS_DEFAULT_HEIGHT, WALLET_DETAILS_DEFAULT_WIDTH, WalletDetailsWindowState,
 };
-use crate::account::{WalletOpenOrderDetail, fetch_wallet_details};
+use crate::account::{
+    AccountDataFetchScope, WalletOpenOrderDetail, fetch_wallet_details_scoped,
+    normalize_dex_open_order_coins,
+};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::ws::WsUserData;
@@ -12,10 +15,12 @@ impl TradingTerminal {
     pub(crate) fn wallet_details_fetch_task(
         window_id: window::Id,
         address: String,
+        scope: AccountDataFetchScope,
     ) -> Task<Message> {
-        Task::perform(fetch_wallet_details(address.clone()), move |r| {
-            Message::WalletDetailsLoaded(window_id, address.clone(), Box::new(r))
-        })
+        Task::perform(
+            fetch_wallet_details_scoped(address.clone(), scope),
+            move |r| Message::WalletDetailsLoaded(window_id, address.clone(), Box::new(r)),
+        )
     }
 
     pub(crate) fn open_wallet_details_window(&mut self, address: String) -> Task<Message> {
@@ -40,9 +45,10 @@ impl TradingTerminal {
         self.wallet_detail_windows
             .insert(window_id, WalletDetailsWindowState::new(address.clone()));
 
+        let scope = self.account_data_fetch_scope();
         Task::batch([
             open_task.map(Message::WindowOpened),
-            Self::wallet_details_fetch_task(window_id, address),
+            Self::wallet_details_fetch_task(window_id, address, scope),
         ])
     }
 
@@ -55,7 +61,9 @@ impl TradingTerminal {
         }
         state.loading = true;
         state.error = None;
-        Self::wallet_details_fetch_task(window_id, state.address.clone())
+        let address = state.address.clone();
+        let scope = self.account_data_fetch_scope();
+        Self::wallet_details_fetch_task(window_id, address, scope)
     }
 
     pub(crate) fn apply_wallet_details_ws_update(
@@ -73,22 +81,29 @@ impl TradingTerminal {
         let now_ms = Self::now_ms();
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
-        let is_muted = |symbol: &str| {
-            Self::key_matches_muted_tickers(&exchange_symbols, &muted_tickers, symbol)
+        let market_universe = self.market_universe.clone();
+        let is_hidden = |symbol: &str| {
+            Self::symbol_key_is_hidden_with(
+                &exchange_symbols,
+                &muted_tickers,
+                &market_universe,
+                symbol,
+            )
         };
         match data {
             WsUserData::AllDexPositions {
                 main_state,
+                states_by_dex: _,
                 all_positions,
                 position_details,
             } => {
                 let all_positions: Vec<_> = all_positions
                     .into_iter()
-                    .filter(|position| !is_muted(&position.position.coin))
+                    .filter(|position| !is_hidden(&position.position.coin))
                     .collect();
                 let position_details: Vec<_> = position_details
                     .into_iter()
-                    .filter(|position| !is_muted(&position.asset_position.position.coin))
+                    .filter(|position| !is_hidden(&position.asset_position.position.coin))
                     .collect();
                 for state in self
                     .wallet_detail_windows
@@ -111,9 +126,11 @@ impl TradingTerminal {
                 }
             }
             WsUserData::OpenOrders { dex, orders } => {
+                let mut orders = orders;
+                normalize_dex_open_order_coins(&dex, &mut orders);
                 let orders: Vec<_> = orders
                     .into_iter()
-                    .filter(|order| !is_muted(&order.coin))
+                    .filter(|order| !is_hidden(&order.coin))
                     .collect();
                 for state in self
                     .wallet_detail_windows
@@ -123,7 +140,7 @@ impl TradingTerminal {
                     if let Some(details) = state.data.as_mut() {
                         details
                             .open_orders
-                            .retain(|order| order.dex != dex && !is_muted(&order.order.coin));
+                            .retain(|order| order.dex != dex && !is_hidden(&order.order.coin));
                         details
                             .open_orders
                             .extend(orders.iter().cloned().map(|order| WalletOpenOrderDetail {
@@ -139,7 +156,7 @@ impl TradingTerminal {
             WsUserData::SpotBalances(balances) => {
                 let balances: Vec<_> = balances
                     .into_iter()
-                    .filter(|balance| !is_muted(&balance.coin))
+                    .filter(|balance| !is_hidden(&balance.coin))
                     .collect();
                 for state in self
                     .wallet_detail_windows

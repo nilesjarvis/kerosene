@@ -9,6 +9,7 @@ mod symbols;
 mod twap;
 
 pub(crate) use position_actions::NukePlan;
+pub(crate) use sizing::order_size_from_quantity_input;
 
 #[cfg(test)]
 pub(crate) use position_actions::{NukePositionOrder, NukeSkipReason};

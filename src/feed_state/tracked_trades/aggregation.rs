@@ -14,7 +14,7 @@ impl TradingTerminal {
         let mut latest_by_key: HashMap<TrackedTradeAggregationKey, usize> = HashMap::new();
 
         for trade in &self.tracked_trades {
-            if self.is_ticker_muted(&trade.coin) {
+            if self.symbol_key_is_hidden(&trade.coin) {
                 continue;
             }
             let key = TrackedTradeAggregationKey::from_event(trade);
@@ -45,7 +45,7 @@ impl TradingTerminal {
         } else {
             self.tracked_trades
                 .iter()
-                .filter(|trade| !self.is_ticker_muted(&trade.coin))
+                .filter(|trade| !self.symbol_key_is_hidden(&trade.coin))
                 .take(LIQUIDATION_FEED_RENDER_LIMIT)
                 .map(TrackedTradeFeedRow::from_event)
                 .collect()

@@ -25,7 +25,8 @@ impl TradingTerminal {
             .iter()
             .filter(|detail| {
                 let symbol = Self::wallet_detail_symbol(&detail.dex, &detail.order.coin);
-                !self.is_ticker_muted(&symbol) && !self.is_ticker_muted(&detail.order.coin)
+                !self.symbol_key_is_hidden(&symbol)
+                    && !self.symbol_key_is_hidden(&detail.order.coin)
             })
             .collect();
         order_rows.sort_by_key(|detail| Reverse(detail.order.timestamp));

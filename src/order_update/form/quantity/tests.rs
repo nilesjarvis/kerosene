@@ -46,6 +46,14 @@ fn toggled_quantity_formats_usd_and_coin_modes() {
         toggled_order_quantity_text(250.0, false, 100.0, 4),
         Some("2.5000".to_string())
     );
+    assert_eq!(
+        toggled_order_quantity_text(12_345.0, true, 100.0, 2),
+        Some("1,234,500.00".to_string())
+    );
+    assert_eq!(
+        toggled_order_quantity_text(1_234_500.0, false, 100.0, 2),
+        Some("12,345.00".to_string())
+    );
 }
 
 #[test]
@@ -64,13 +72,21 @@ fn percentage_quantity_formats_usd_and_coin_amounts() {
         quantity_for_percentage(25.0, 1_000.0, false, Some(100.0), 4),
         "2.5000"
     );
+    assert_eq!(
+        quantity_for_percentage(25.0, 1_000_000.0, true, Some(100.0), 4),
+        "250,000.00"
+    );
+    assert_eq!(
+        quantity_for_percentage(25.0, 5_000_000.0, false, Some(100.0), 2),
+        "12,500.00"
+    );
 }
 
 #[test]
 fn percentage_quantity_clamps_or_zeros_invalid_values() {
     assert_eq!(
         quantity_for_percentage(150.0, 1_000.0, true, Some(100.0), 4),
-        "1000.00"
+        "1,000.00"
     );
     assert_eq!(
         quantity_for_percentage(f32::NAN, 1_000.0, true, Some(100.0), 4),

@@ -49,8 +49,8 @@ impl TradingTerminal {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return Task::none();
         }
-        if self.is_ticker_muted(coin) {
-            self.order_status = Some(("Position ticker is muted in Settings > Risk".into(), true));
+        if self.symbol_key_is_hidden(coin) {
+            self.order_status = Some(("Position ticker is hidden in Settings > Risk".into(), true));
             return Task::none();
         }
 

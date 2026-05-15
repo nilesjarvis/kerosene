@@ -216,7 +216,7 @@ impl TradingTerminal {
         let slippage = self.market_slippage_fraction();
         let inputs = positions.into_iter().map(|ap| {
             let coin = ap.position.coin;
-            let is_visible = !self.is_ticker_muted(&coin) && !self.position_is_hidden(&coin);
+            let is_visible = !self.symbol_key_is_hidden(&coin) && !self.position_is_hidden(&coin);
             let sym = self
                 .exchange_symbols
                 .iter()

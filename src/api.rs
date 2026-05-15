@@ -14,11 +14,19 @@ pub(crate) use order_status::{OrderStatusResult, fetch_order_status_by_cloid};
 pub use user_fills::{UserFill, UserFillsPage, UserFillsRequest, fetch_user_fills};
 pub use watchlist::{WatchlistContext, fetch_watchlist_contexts, fetch_watchlist_history};
 
-use reqwest::Client;
+use reqwest::{
+    Client,
+    header::{HeaderMap, HeaderValue, USER_AGENT},
+};
 use std::sync::LazyLock;
 
 pub static CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    let mut headers = HeaderMap::new();
+    if let Ok(user_agent) = HeaderValue::from_str(KEROSENE_USER_AGENT) {
+        headers.insert(USER_AGENT, user_agent);
+    }
     Client::builder()
+        .default_headers(headers)
         .timeout(std::time::Duration::from_secs(15))
         .connect_timeout(std::time::Duration::from_secs(5))
         .pool_idle_timeout(std::time::Duration::from_secs(60))
@@ -28,6 +36,6 @@ pub static CLIENT: LazyLock<Client> = LazyLock::new(|| {
 
 const KEROSENE_USER_AGENT: &str = concat!("Kerosene/", env!("CARGO_PKG_VERSION"));
 
-pub const API_URL: &str = "https://api-ui.hyperliquid.xyz/info";
+pub const API_URL: &str = "https://api.hyperliquid.xyz/info";
 pub const OUTCOME_ASSET_ID_OFFSET: u32 = 100_000_000;
 pub const USDH_TOKEN_INDEX: u32 = 360;

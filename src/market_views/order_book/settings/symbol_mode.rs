@@ -41,7 +41,7 @@ impl TradingTerminal {
         let query_lower = inst.search_query.to_lowercase();
         let mut matches = 0;
         for sym in &self.exchange_symbols {
-            if self.exchange_symbol_is_muted(sym) {
+            if self.exchange_symbol_is_hidden(sym) {
                 continue;
             }
             if matches >= 5 {

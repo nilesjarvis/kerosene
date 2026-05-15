@@ -3,8 +3,17 @@ use crate::helpers::{self, format_usd};
 use crate::message::Message;
 use crate::signing::OrderKind;
 
-use iced::widget::{Column, Space, button, row, text, text_input};
-use iced::{Color, Fill, Theme};
+use iced::widget::canvas as canvas_widget;
+use iced::widget::{
+    Column, Space, button, canvas, checkbox, row, slider, stack, text, text_input,
+};
+use iced::{Color, Event, Fill, Length, Point, Rectangle, Renderer, Theme, mouse};
+
+const SIZE_PRESET_MARKS: [f32; 4] = [25.0, 50.0, 75.0, 100.0];
+const SIZE_PRESET_DOT_SIZE: f32 = 7.0;
+const SIZE_PRESET_HIT_RADIUS: f32 = 8.0;
+const SIZE_SLIDER_HEIGHT: f32 = 16.0;
+const SIZE_SLIDER_HANDLE_RADIUS: f32 = 7.0;
 
 impl TradingTerminal {
     pub(super) fn push_size_input_controls<'a>(
@@ -27,7 +36,10 @@ impl TradingTerminal {
 
         let parsed_qty = parse_positive_finite(&self.order_quantity);
         let parsed_price =
-            if self.order_kind == OrderKind::Limit || self.order_kind == OrderKind::Chase {
+            if matches!(
+                self.order_kind,
+                OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc
+            ) {
                 parse_positive_finite(&self.order_price)
             } else {
                 self.resolve_mid_for_symbol(&self.active_symbol)
@@ -56,37 +68,50 @@ impl TradingTerminal {
         ]
         .align_y(iced::Alignment::Center);
 
-        let percent_slider = iced::widget::slider(
+        let percent_slider = slider(
             0.0..=100.0,
             self.order_percentage,
             Message::OrderPercentageChanged,
         )
-        .step(1.0)
-        .style(|theme: &Theme, status| {
-            let palette = theme.palette();
-            let mut style = iced::widget::slider::default(theme, status);
-            style.handle.background = palette.primary.into();
-            style.handle.border_color = palette.primary;
-            style.rail.backgrounds.0 = palette.primary.into();
-            style.rail.backgrounds.1 = Color {
-                a: 0.2,
-                ..palette.text
-            }
-            .into();
-            style
-        });
+            .width(Fill)
+            .step(1.0)
+            .style(|theme: &Theme, status| {
+                let palette = theme.palette();
+                let mut style = slider::default(theme, status);
+                style.handle.background = palette.primary.into();
+                style.handle.border_color = palette.primary;
+                style.rail.backgrounds.0 = palette.primary.into();
+                style.rail.backgrounds.1 = Color {
+                    a: 0.2,
+                    ..palette.text
+                }
+                .into();
+                style
+            });
+        let preset_markers = canvas(SizePresetDots {
+            current_pct: self.order_percentage,
+        })
+        .width(Fill)
+        .height(Length::Fixed(SIZE_SLIDER_HEIGHT));
+        let size_slider = stack![percent_slider, preset_markers].width(Fill);
 
         let slider_label = text(format!("{:.0}%", self.order_percentage))
             .size(10)
             .color(theme.extended_palette().background.weak.text);
-        let slider_row = row![percent_slider, Space::new().width(6.0), slider_label]
+        let slider_row = row![size_slider, Space::new().width(6.0), slider_label]
             .spacing(4)
             .align_y(iced::Alignment::Center);
 
         form = form.push(size_header).push(qty_input).push(slider_row);
+
+        let limit_selected = matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc);
+        let mut options_row = row![].spacing(14).align_y(iced::Alignment::Center);
+        let mut has_options = false;
+
         if !active_is_spot && !active_is_outcome {
-            form = form.push(
-                iced::widget::checkbox(self.order_reduce_only)
+            has_options = true;
+            options_row = options_row.push(
+                checkbox(self.order_reduce_only)
                     .label("Reduce Only")
                     .on_toggle(|_| Message::ToggleReduceOnly)
                     .size(14)
@@ -94,13 +119,34 @@ impl TradingTerminal {
                     .text_shaping(iced::widget::text::Shaping::Advanced),
             );
         }
+        if limit_selected {
+            has_options = true;
+            options_row = options_row.push(
+                checkbox(self.order_kind == OrderKind::LimitIoc)
+                    .label("IOC")
+                    .on_toggle(|enabled| {
+                        Message::SetOrderKind(if enabled {
+                            OrderKind::LimitIoc
+                        } else {
+                            OrderKind::Limit
+                        })
+                    })
+                    .size(14)
+                    .text_size(12)
+                    .text_shaping(iced::widget::text::Shaping::Advanced),
+            );
+        }
+
+        if has_options {
+            form = form.push(options_row);
+        }
 
         (form, notional_val)
     }
 }
 
 fn parse_positive_finite(value: &str) -> Option<f64> {
-    let parsed = value.trim().parse::<f64>().ok()?;
+    let parsed = helpers::parse_number(value)?;
     (parsed.is_finite() && parsed > 0.0).then_some(parsed)
 }
 
@@ -177,6 +223,128 @@ fn denomination_button<'a>(label: &'static str) -> button::Button<'a, Message> {
                 ..Default::default()
             }
         })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SizePresetDots {
+    current_pct: f32,
+}
+
+impl canvas_widget::Program<Message> for SizePresetDots {
+    type State = ();
+
+    fn update(
+        &self,
+        _state: &mut Self::State,
+        event: &Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<canvas_widget::Action<Message>> {
+        let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event else {
+            return None;
+        };
+        let Some(position) = cursor.position_in(bounds) else {
+            return None;
+        };
+
+        size_preset_pct_at_position(bounds, position)
+            .map(|pct| {
+                canvas_widget::Action::publish(Message::OrderPercentageChanged(pct)).and_capture()
+            })
+    }
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Vec<canvas_widget::Geometry> {
+        let mut frame = canvas_widget::Frame::new(renderer, bounds.size());
+        let palette = theme.palette();
+        let hovered_pct = cursor
+            .position_in(bounds)
+            .and_then(|position| size_preset_pct_at_position(bounds, position));
+
+        for pct in SIZE_PRESET_MARKS {
+            let selected = (self.current_pct - pct).abs() < 0.5;
+            let hovered = hovered_pct.is_some_and(|hovered_pct| hovered_pct == pct);
+            let center = size_preset_dot_center(bounds, pct);
+
+            if hovered {
+                let mut halo_color = palette.primary;
+                halo_color.a = if selected { 0.18 } else { 0.12 };
+                frame.fill(
+                    &canvas_widget::Path::circle(center, SIZE_PRESET_HIT_RADIUS - 1.5),
+                    halo_color,
+                );
+
+                let ring = canvas_widget::Path::circle(center, SIZE_PRESET_HIT_RADIUS - 2.0);
+                let mut ring_color = palette.primary;
+                ring_color.a = if selected { 0.55 } else { 0.38 };
+                frame.stroke(
+                    &ring,
+                    canvas_widget::Stroke::default()
+                        .with_width(1.0)
+                        .with_color(ring_color),
+                );
+            }
+
+            let dot_radius = if hovered {
+                SIZE_PRESET_DOT_SIZE / 2.0 + 1.0
+            } else {
+                SIZE_PRESET_DOT_SIZE / 2.0
+            };
+            let dot = canvas_widget::Path::circle(center, dot_radius);
+            let mut color = if selected || hovered {
+                palette.primary
+            } else {
+                Color {
+                    a: 0.45,
+                    ..palette.text
+                }
+            };
+            if hovered && !selected {
+                color.a = 0.82;
+            }
+
+            frame.fill(&dot, color);
+        }
+
+        vec![frame.into_geometry()]
+    }
+
+    fn mouse_interaction(
+        &self,
+        _state: &Self::State,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> mouse::Interaction {
+        if cursor
+            .position_in(bounds)
+            .and_then(|position| size_preset_pct_at_position(bounds, position))
+            .is_some()
+        {
+            mouse::Interaction::Pointer
+        } else {
+            mouse::Interaction::default()
+        }
+    }
+}
+
+fn size_preset_dot_center(bounds: Rectangle, pct: f32) -> Point {
+    let rail_width = (bounds.width - SIZE_SLIDER_HANDLE_RADIUS * 2.0).max(0.0);
+    Point::new(
+        SIZE_SLIDER_HANDLE_RADIUS + rail_width * pct / 100.0,
+        bounds.height / 2.0,
+    )
+}
+
+fn size_preset_pct_at_position(bounds: Rectangle, position: Point) -> Option<f32> {
+    SIZE_PRESET_MARKS.into_iter().find(|pct| {
+        position.distance(size_preset_dot_center(bounds, *pct)) <= SIZE_PRESET_HIT_RADIUS
+    })
 }
 
 #[cfg(test)]

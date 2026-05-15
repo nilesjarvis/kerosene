@@ -10,7 +10,7 @@ impl TradingTerminal {
             Some(inst) => inst.symbol.clone(),
             None => return,
         };
-        if self.is_ticker_muted(&symbol) {
+        if self.symbol_key_is_hidden(&symbol) {
             if let Some(inst) = self.charts.get_mut(&chart_id) {
                 inst.chart.active_position = None;
             }
@@ -49,7 +49,7 @@ impl TradingTerminal {
             Some(inst) => inst.symbol.clone(),
             None => return,
         };
-        if self.is_ticker_muted(&symbol) {
+        if self.symbol_key_is_hidden(&symbol) {
             if let Some(inst) = self.charts.get_mut(&chart_id) {
                 inst.chart.active_orders.clear();
             }
@@ -119,7 +119,7 @@ impl TradingTerminal {
             Some(inst) => inst.symbol.clone(),
             None => return,
         };
-        if self.is_ticker_muted(&symbol) {
+        if self.symbol_key_is_hidden(&symbol) {
             if let Some(inst) = self.charts.get_mut(&chart_id) {
                 inst.chart.trade_markers.clear();
             }

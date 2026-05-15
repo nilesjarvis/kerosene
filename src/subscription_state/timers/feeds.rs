@@ -10,8 +10,11 @@ use iced::Subscription;
 impl TradingTerminal {
     pub(super) fn push_account_timer_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
         if self.connected_address.is_some() {
+            let refresh_secs = self
+                .account_data_fetch_scope()
+                .automatic_refresh_interval_secs();
             subs.push(
-                iced::time::every(std::time::Duration::from_secs(30))
+                iced::time::every(std::time::Duration::from_secs(refresh_secs))
                     .map(|_| Message::RefreshAccountData),
             );
         }
@@ -22,7 +25,7 @@ impl TradingTerminal {
             && self
                 .charts
                 .values()
-                .any(|inst| inst.show_liquidations && !self.is_ticker_muted(&inst.symbol));
+                .any(|inst| inst.show_liquidations && !self.symbol_key_is_hidden(&inst.symbol));
         if has_liq_charts {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(60))
@@ -34,7 +37,7 @@ impl TradingTerminal {
             && self
                 .charts
                 .values()
-                .any(|inst| inst.show_heatmap && !self.is_ticker_muted(&inst.symbol));
+                .any(|inst| inst.show_heatmap && !self.symbol_key_is_hidden(&inst.symbol));
         if has_heat_charts {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(60))

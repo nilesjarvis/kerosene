@@ -82,6 +82,7 @@ impl Default for KeroseneConfig {
             order_quantity_is_usd: false,
             book_tick_size: default_tick_size(),
             symbol_search_sort_mode: default_symbol_search_sort_mode(),
+            market_universe: Default::default(),
             chart_screenshot_settings: Default::default(),
             layout_ratios: default_layout_ratios(),
             pane_layout: None,

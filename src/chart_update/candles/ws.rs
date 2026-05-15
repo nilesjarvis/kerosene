@@ -13,7 +13,7 @@ impl TradingTerminal {
         interval: String,
         candle: Candle,
     ) -> Task<Message> {
-        if self.is_ticker_muted(&symbol) {
+        if self.symbol_key_is_hidden(&symbol) {
             return Task::none();
         }
         let mut refresh_funding = false;

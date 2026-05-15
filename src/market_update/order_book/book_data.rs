@@ -169,6 +169,7 @@ impl TradingTerminal {
                 Ok(book) => {
                     let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
                     inst.set_book_with_source(book, source_tick);
+                    inst.record_mid_price_sample(std::time::Instant::now());
                     inst.book_error = None;
                     let mid = inst.book.mid_price();
 
@@ -310,8 +311,8 @@ impl TradingTerminal {
         if symbol.is_empty() {
             return Some("No order-book symbol selected".to_string());
         }
-        if self.is_ticker_muted(symbol) {
-            return Some("Order book ticker is muted in Settings > Risk".to_string());
+        if self.symbol_key_is_hidden(symbol) {
+            return Some("Order book ticker is hidden in Settings > Risk".to_string());
         }
         if self.is_outcome_coin(symbol) {
             return Some("Order book depth is not available for outcome markets".to_string());
@@ -328,7 +329,7 @@ impl TradingTerminal {
                 OrderBookSymbolMode::Active => self.active_symbol.clone(),
                 OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
             };
-            self.is_ticker_muted(&symbol)
+            self.symbol_key_is_hidden(&symbol)
         })
     }
 }

@@ -14,6 +14,26 @@ pub enum OrderKind {
     LimitIoc,
 }
 
+impl OrderKind {
+    pub(crate) fn config_str(self) -> &'static str {
+        match self {
+            Self::Market => "Market",
+            Self::Limit => "Limit",
+            Self::Chase => "Chase",
+            Self::LimitIoc => "Limit IOC",
+        }
+    }
+
+    pub(crate) fn from_config_str(value: &str) -> Self {
+        match value {
+            "Market" => Self::Market,
+            "Chase" => Self::Chase,
+            "Limit IOC" | "LimitIoc" | "IOC" => Self::LimitIoc,
+            _ => Self::Limit,
+        }
+    }
+}
+
 /// Maximum number of consecutive cancel failures before the chase is
 /// automatically stopped to prevent an unbounded retry storm.
 pub const MAX_CHASE_CANCEL_RETRIES: u32 = 5;
@@ -484,4 +504,34 @@ fn status_summary(st: &Value) -> String {
         return "Cancelled".to_string();
     }
     format!("{st}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OrderKind;
+
+    #[test]
+    fn order_kind_config_strings_round_trip_all_variants() {
+        for kind in [
+            OrderKind::Market,
+            OrderKind::Limit,
+            OrderKind::Chase,
+            OrderKind::LimitIoc,
+        ] {
+            assert_eq!(OrderKind::from_config_str(kind.config_str()), kind);
+        }
+    }
+
+    #[test]
+    fn order_kind_config_parser_preserves_limit_ioc_aliases() {
+        assert_eq!(OrderKind::from_config_str("Limit IOC"), OrderKind::LimitIoc);
+        assert_eq!(OrderKind::from_config_str("LimitIoc"), OrderKind::LimitIoc);
+        assert_eq!(OrderKind::from_config_str("IOC"), OrderKind::LimitIoc);
+    }
+
+    #[test]
+    fn order_kind_config_parser_defaults_unknown_values_to_limit() {
+        assert_eq!(OrderKind::from_config_str(""), OrderKind::Limit);
+        assert_eq!(OrderKind::from_config_str("Unknown"), OrderKind::Limit);
+    }
 }

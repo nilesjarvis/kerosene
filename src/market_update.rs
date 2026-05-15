@@ -49,12 +49,12 @@ fn is_order_book_market_message(message: &Message) -> bool {
             | Message::WsBookUpdate { .. }
             | Message::SetBookTickSize(_, _)
             | Message::ToggleOrderBookSettings(_)
+            | Message::ToggleOrderBookCenterOnMid(_)
             | Message::ToggleOrderBookSpreadChart(_)
             | Message::OrderBookSpreadChartResize(_, _)
             | Message::OrderBookSearchChanged(_, _)
             | Message::OrderBookSetMode(_, _)
             | Message::SetOrderBookDisplayMode(_, _)
-            | Message::CenterOrderBook(_)
     )
 }
 
@@ -64,9 +64,10 @@ mod tests {
     use crate::market_state::OrderBookDisplayMode;
 
     #[test]
-    fn order_book_market_dispatch_includes_display_mode_switches() {
+    fn order_book_market_dispatch_includes_order_book_controls() {
         assert!(is_order_book_market_message(
             &Message::SetOrderBookDisplayMode(7, OrderBookDisplayMode::DomLadder)
         ));
+        assert!(is_order_book_market_message(&Message::ToggleOrderBookCenterOnMid(7)));
     }
 }

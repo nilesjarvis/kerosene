@@ -196,7 +196,7 @@ impl TradingTerminal {
             liquidation_fetching: instance.liquidation_fetching,
             hyperdash_key_missing: self.hyperdash_api_key.is_empty(),
             symbol: &instance.symbol,
-            ticker_muted: self.is_ticker_muted(&instance.symbol),
+            ticker_muted: self.symbol_key_is_hidden(&instance.symbol),
             coin: coin.as_deref(),
             mark: liquidation_mark_from_ctx(
                 instance
@@ -261,7 +261,7 @@ impl TradingTerminal {
         self.charts.get(&chart_id).is_some_and(|instance| {
             instance.show_liquidations
                 && !instance.symbol.is_empty()
-                && !self.is_ticker_muted(&instance.symbol)
+                && !self.symbol_key_is_hidden(&instance.symbol)
                 && self
                     .hyperdash_coin_for_symbol(&instance.symbol)
                     .is_some_and(|chart_coin| chart_coin == coin)

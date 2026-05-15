@@ -87,8 +87,8 @@ impl TradingTerminal {
         };
 
         let coin = order.coin.clone();
-        if self.is_ticker_muted(&coin) {
-            self.order_status = Some(("Order ticker is muted in Settings > Risk".into(), true));
+        if self.symbol_key_is_hidden(&coin) {
+            self.order_status = Some(("Order ticker is hidden in Settings > Risk".into(), true));
             return Task::none();
         }
         let Some(is_buy) = moved_order_is_buy(&order.side) else {

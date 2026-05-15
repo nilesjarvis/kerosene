@@ -44,7 +44,7 @@ impl TradingTerminal {
                 }
             }
             Message::ChartWsAssetCtxUpdate(id, symbol, ctx) => {
-                if self.is_ticker_muted(&symbol) {
+                if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();
                 }
                 let should_fetch_liq = self.charts.get(&id).is_some_and(|inst| {
@@ -67,7 +67,7 @@ impl TradingTerminal {
                     .get(&id)
                     .map(|instance| instance.symbol.clone())
                     .unwrap_or_default();
-                let chart_symbol_muted = self.is_ticker_muted(&chart_symbol);
+                let chart_symbol_muted = self.symbol_key_is_hidden(&chart_symbol);
                 let should_fetch = if let Some(instance) = self.charts.get_mut(&id) {
                     instance.heatmap_viewport = Some(viewport);
                     instance.show_heatmap && !instance.symbol.is_empty() && !chart_symbol_muted

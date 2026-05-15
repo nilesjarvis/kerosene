@@ -10,8 +10,8 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        if self.is_ticker_muted(&key) {
-            self.symbol_search_status = Some((format!("{key} is muted in Settings > Risk"), true));
+        if self.symbol_key_is_hidden(&key) {
+            self.symbol_search_status = Some((format!("{key} is hidden in Settings > Risk"), true));
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.editor_open = false;
                 instance.editor_search_query.clear();

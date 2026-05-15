@@ -26,7 +26,7 @@ impl TradingTerminal {
         for detail in &data.positions {
             let pos = &detail.asset_position.position;
             let symbol = Self::wallet_detail_symbol(&detail.dex, &pos.coin);
-            if self.is_ticker_muted(&symbol) || self.is_ticker_muted(&pos.coin) {
+            if self.symbol_key_is_hidden(&symbol) || self.symbol_key_is_hidden(&pos.coin) {
                 continue;
             }
             if !wallet_has_visible_nonzero(&pos.szi) {
@@ -56,7 +56,8 @@ impl TradingTerminal {
             .iter()
             .filter(|detail| {
                 let symbol = Self::wallet_detail_symbol(&detail.dex, &detail.order.coin);
-                !self.is_ticker_muted(&symbol) && !self.is_ticker_muted(&detail.order.coin)
+                !self.symbol_key_is_hidden(&symbol)
+                    && !self.symbol_key_is_hidden(&detail.order.coin)
             })
             .count();
 
@@ -65,7 +66,8 @@ impl TradingTerminal {
             .balances
             .iter()
             .filter(|balance| {
-                wallet_has_visible_nonzero(&balance.total) && !self.is_ticker_muted(&balance.coin)
+                wallet_has_visible_nonzero(&balance.total)
+                    && !self.symbol_key_is_hidden(&balance.coin)
             })
             .count();
         let pm_ratio = data

@@ -86,5 +86,12 @@ impl TradingTerminal {
 pub(in crate::order_update) fn result_requires_account_refresh(
     result: &Result<ExchangeResponse, String>,
 ) -> bool {
-    matches!(result, Ok(response) if !response.is_error())
+    match result {
+        Ok(response) => !response.is_error(),
+        // Signed exchange requests can fail locally after the exchange has
+        // already accepted the action. Reconcile account state on transport,
+        // response-body, or parse failures so basic order paths fail closed
+        // instead of leaving open orders/positions stale.
+        Err(_) => true,
+    }
 }

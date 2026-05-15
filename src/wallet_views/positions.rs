@@ -25,8 +25,8 @@ impl TradingTerminal {
                 let pos = &detail.asset_position.position;
                 let symbol = Self::wallet_detail_symbol(&detail.dex, &pos.coin);
                 wallet_has_visible_nonzero(&pos.szi)
-                    && !self.is_ticker_muted(&symbol)
-                    && !self.is_ticker_muted(&pos.coin)
+                    && !self.symbol_key_is_hidden(&symbol)
+                    && !self.symbol_key_is_hidden(&pos.coin)
             })
             .collect();
         position_rows.sort_by(|a, b| {

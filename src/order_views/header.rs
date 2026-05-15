@@ -85,7 +85,7 @@ impl TradingTerminal {
         let available_margin = self
             .account_data
             .as_ref()
-            .map(|data| data.available_margin_usdc())
+            .map(|data| self.visible_available_margin_usdc(data))
             .unwrap_or(Some(0.0));
         let weak_color = theme.extended_palette().background.weak.text;
         let available_color = if available_margin.is_some() {
@@ -116,6 +116,7 @@ impl TradingTerminal {
     }
 
     pub(super) fn view_order_entry_type_row(&self) -> Element<'static, Message> {
+        let limit_selected = matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc);
         row![
             order_type_button(
                 "Market",
@@ -124,7 +125,7 @@ impl TradingTerminal {
             ),
             order_type_button(
                 "Limit",
-                self.order_kind == OrderKind::Limit,
+                limit_selected,
                 Message::SetOrderKind(OrderKind::Limit),
             ),
         ]

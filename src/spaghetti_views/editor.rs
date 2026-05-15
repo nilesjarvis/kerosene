@@ -27,12 +27,12 @@ impl TradingTerminal {
         let mut filtered: Vec<&ExchangeSymbol> = if query.is_empty() {
             self.exchange_symbols
                 .iter()
-                .filter(|sym| !self.exchange_symbol_is_muted(sym))
+                .filter(|sym| !self.exchange_symbol_is_hidden(sym))
                 .collect()
         } else {
             self.exchange_symbols
                 .iter()
-                .filter(|sym| !self.exchange_symbol_is_muted(sym))
+                .filter(|sym| !self.exchange_symbol_is_hidden(sym))
                 .filter(|sym| {
                     sym.ticker.to_lowercase().contains(&query)
                         || sym.category.to_lowercase().contains(&query)

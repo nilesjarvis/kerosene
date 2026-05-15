@@ -21,7 +21,7 @@ impl TradingTerminal {
             let mode = match &order_book_config.mode {
                 config::OrderBookSymbolModeConfig::Active => OrderBookSymbolMode::Active,
                 config::OrderBookSymbolModeConfig::Fixed(symbol) => {
-                    if self.is_ticker_muted(symbol) {
+                    if self.symbol_key_is_hidden(symbol) {
                         OrderBookSymbolMode::Active
                     } else {
                         OrderBookSymbolMode::Fixed(symbol.clone())
@@ -35,6 +35,7 @@ impl TradingTerminal {
                 config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
                 config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
             };
+            instance.center_on_mid = order_book_config.center_on_mid;
             instance.show_spread_chart = order_book_config.show_spread_chart;
             instance.spread_chart_height = order_book_config.spread_chart_height;
             instance.book_loading = true;

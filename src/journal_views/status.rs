@@ -11,13 +11,13 @@ impl TradingTerminal {
             .journal
             .raw_fills
             .iter()
-            .filter(|fill| !self.is_ticker_muted(&fill.coin))
+            .filter(|fill| !self.symbol_key_is_hidden(&fill.coin))
             .count();
         let visible_trade_count = self
             .journal
             .trades
             .iter()
-            .filter(|trade| !self.is_ticker_muted(&trade.coin))
+            .filter(|trade| !self.symbol_key_is_hidden(&trade.coin))
             .count();
 
         (visible_fill_count, visible_trade_count)

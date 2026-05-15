@@ -19,8 +19,14 @@ impl TradingTerminal {
     pub(crate) fn handle_mids_update(&mut self, mids: HashMap<String, f64>) -> Task<Message> {
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
-        let is_muted = |symbol: &str| {
-            Self::key_matches_muted_tickers(&exchange_symbols, &muted_tickers, symbol)
+        let market_universe = self.market_universe.clone();
+        let is_hidden = |symbol: &str| {
+            Self::symbol_key_is_hidden_with(
+                &exchange_symbols,
+                &muted_tickers,
+                &market_universe,
+                symbol,
+            )
         };
 
         apply_mids_update(
@@ -29,7 +35,7 @@ impl TradingTerminal {
             &mut self.live_watchlist_flashes,
             mids,
             Self::now_ms(),
-            is_muted,
+            is_hidden,
         );
         if matches!(self.order_kind, OrderKind::Limit | OrderKind::Chase)
             && self.order_price.trim().is_empty()
@@ -53,8 +59,15 @@ impl TradingTerminal {
         known_mids_dexes(symbols, HIP3_DEXES)
     }
 
+    pub(crate) fn visible_mids_dexes(&self) -> Vec<String> {
+        self.market_universe
+            .selected_hip3_dex()
+            .map(|dex| vec![dex.to_string()])
+            .unwrap_or_else(|| Self::known_mids_dexes_from_symbols(&self.exchange_symbols))
+    }
+
     pub(crate) fn mids_bootstrap_tasks(&self) -> Vec<Task<Message>> {
-        let dexes = Self::known_mids_dexes_from_symbols(&self.exchange_symbols);
+        let dexes = self.visible_mids_dexes();
         let mut tasks = Vec::with_capacity(dexes.len());
         for dex in dexes {
             tasks.push(Self::fetch_mids_task_for_dex(&dex));

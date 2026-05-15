@@ -1,4 +1,7 @@
 use super::{LIVE_MID_MAX_AGE_MS, resolve_live_mid_from_candidates, valid_mid_price};
+use crate::app_state::TradingTerminal;
+use crate::helpers::format_price;
+use crate::signing::OrderKind;
 use std::collections::HashMap;
 
 #[test]
@@ -56,4 +59,19 @@ fn live_mid_resolution_uses_later_candidate_when_first_is_stale() {
         resolve_live_mid_from_candidates(&candidates, &all_mids, &updated_at, now_ms),
         Some(101.0)
     );
+}
+
+#[test]
+fn refresh_order_price_for_symbol_seeds_limit_ioc_price_from_mid() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.order_kind = OrderKind::LimitIoc;
+    terminal.order_price = "1".to_string();
+    terminal.all_mids.insert("BTC".to_string(), 101.25);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+    terminal.refresh_order_price_for_symbol("BTC");
+
+    assert_eq!(terminal.order_price, format_price(101.25));
 }

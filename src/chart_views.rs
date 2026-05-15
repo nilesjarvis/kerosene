@@ -69,7 +69,7 @@ impl TradingTerminal {
                 .into();
         }
 
-        if self.is_ticker_muted(&instance.symbol) {
+        if self.symbol_key_is_hidden(&instance.symbol) {
             let content = column![
                 text("Muted ticker")
                     .size(13)

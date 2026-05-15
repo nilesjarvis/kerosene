@@ -23,7 +23,7 @@ impl TradingTerminal {
             .get(&chart_id)
             .map(|instance| instance.symbol.clone())
             .unwrap_or_default();
-        let chart_symbol_muted = self.is_ticker_muted(&chart_symbol);
+        let chart_symbol_muted = self.symbol_key_is_hidden(&chart_symbol);
         let mut show_key_prompt = false;
         let should_fetch = if let Some(instance) = self.charts.get_mut(&chart_id) {
             instance.show_heatmap = !instance.show_heatmap;
@@ -46,7 +46,7 @@ impl TradingTerminal {
             } else if chart_symbol_muted {
                 instance.show_heatmap = false;
                 instance.heatmap_status =
-                    Some(("Ticker is muted in Settings > Risk".to_string(), true));
+                    Some(("Ticker is hidden in Settings > Risk".to_string(), true));
                 Self::clear_heatmap_display(instance);
                 false
             } else {
@@ -106,7 +106,9 @@ impl TradingTerminal {
             .charts
             .iter()
             .filter(|(_, inst)| {
-                inst.show_heatmap && !inst.symbol.is_empty() && !self.is_ticker_muted(&inst.symbol)
+                inst.show_heatmap
+                    && !inst.symbol.is_empty()
+                    && !self.symbol_key_is_hidden(&inst.symbol)
             })
             .map(|(id, _)| *id)
             .collect();

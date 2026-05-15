@@ -48,30 +48,7 @@ fn chase_order(account_address: &str) -> ChaseOrder {
 }
 
 #[test]
-fn adjust_active_index_shifts_down_when_earlier_account_removed() {
-    assert_eq!(TradingTerminal::adjust_active_index_after_removal(3, 1), 2);
-}
-
-#[test]
-fn adjust_active_index_keeps_value_when_later_account_removed() {
-    assert_eq!(TradingTerminal::adjust_active_index_after_removal(2, 5), 2);
-}
-
-#[test]
-fn adjust_active_index_keeps_value_when_active_itself_is_removed() {
-    // The active account being removed is handled separately by the
-    // fallback-switch path; the index adjustment alone should not shift.
-    assert_eq!(TradingTerminal::adjust_active_index_after_removal(4, 4), 4);
-}
-
-#[test]
-fn adjust_active_index_handles_zero_indexes() {
-    assert_eq!(TradingTerminal::adjust_active_index_after_removal(0, 0), 0);
-    assert_eq!(TradingTerminal::adjust_active_index_after_removal(1, 0), 0);
-}
-
-#[test]
-fn active_account_delete_is_blocked_while_chase_order_is_active() {
+fn account_switch_is_blocked_while_chase_order_is_active() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.desktop_notifications = false;
     terminal.accounts = vec![
@@ -95,17 +72,15 @@ fn active_account_delete_is_blocked_while_chase_order_is_active() {
         chase_order("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
     );
 
-    let _task = terminal.delete_saved_account_task(0);
+    let _task = terminal.switch_account_task(1);
 
     assert_eq!(terminal.active_account_index, 0);
-    assert_eq!(terminal.accounts.len(), 2);
-    assert_eq!(terminal.accounts[0].secret_id, "account-a");
     assert_eq!(
         terminal.wallet_address_input,
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
     assert!(terminal.chase_orders.contains_key(&42));
-    let toast = terminal.toasts.last().expect("blocked delete should toast");
+    let toast = terminal.toasts.last().expect("blocked switch should toast");
     assert!(toast.is_error);
     assert!(toast.message.contains("Stop active chase orders"));
 }

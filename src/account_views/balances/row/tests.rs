@@ -3,6 +3,7 @@ use super::*;
 fn spot_balance(total: &str) -> SpotBalance {
     SpotBalance {
         coin: "PURR".to_string(),
+        token: None,
         total: total.to_string(),
         hold: "0".to_string(),
         entry_ntl: "0".to_string(),

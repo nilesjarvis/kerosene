@@ -1,7 +1,8 @@
 use super::super::http::{best_effort_response_vec, post_info_json_with_retries};
 use super::super::{
-    AccountData, AccountDataCompleteness, AccountDataSection, ClearinghouseState, FundingEntry,
-    HIP3_DEXES, OpenOrder, SpotClearinghouseState, UserFeeRates, UserFill,
+    AccountAbstractionMode, AccountData, AccountDataCompleteness, AccountDataFetchScope,
+    AccountDataSection, ClearinghouseState, FundingEntry, HIP3_DEXES, OpenOrder,
+    SpotClearinghouseState, UserFeeRates, UserFill, normalize_dex_asset_position_coins,
     normalize_dex_open_order_coins,
 };
 use super::fees::user_fee_rates_from_value;
@@ -9,6 +10,7 @@ use super::merge::{merge_hip3_open_orders, merge_hip3_positions};
 use crate::api::API_URL;
 
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[cfg(test)]
 mod tests;
@@ -30,10 +32,35 @@ fn fee_rates_from_best_effort_value(
     }
 }
 
-/// Fetch all account data for a user address, across all perp dexes.
+fn account_abstraction_from_best_effort_value(
+    raw: Result<Value, String>,
+    spot: &SpotClearinghouseState,
+    completeness: &mut AccountDataCompleteness,
+) -> AccountAbstractionMode {
+    if spot.portfolio_margin_enabled {
+        return AccountAbstractionMode::PortfolioMargin;
+    }
+
+    match raw {
+        Ok(raw) => raw
+            .as_str()
+            .map(AccountAbstractionMode::from_api_value)
+            .unwrap_or_else(|| AccountAbstractionMode::Unknown(raw.to_string())),
+        Err(error) => {
+            completeness.mark_incomplete(AccountDataSection::Positions, error);
+            AccountAbstractionMode::Unknown("unavailable".to_string())
+        }
+    }
+}
+
+/// Fetch account data for a user address, scoped to the visible market universe.
 /// All HTTP requests are fired concurrently to minimize total latency.
-pub async fn fetch_account_data(address: String) -> Result<AccountData, String> {
+pub async fn fetch_account_data_scoped(
+    address: String,
+    scope: AccountDataFetchScope,
+) -> Result<AccountData, String> {
     let client = crate::api::CLIENT.clone();
+    let request_weight_estimate = scope.estimated_info_weight();
 
     // Main dex: clearinghouse, spot, orders, fills, funding
     let ch_fut = post_info_json_with_retries(
@@ -46,10 +73,25 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
         "spotClearinghouseState",
         serde_json::json!({"type": "spotClearinghouseState", "user": address}),
     );
-    let orders_fut = client
-        .post(API_URL)
-        .json(&serde_json::json!({"type": "frontendOpenOrders", "user": address}))
-        .send();
+    let abstraction_fut = post_info_json_with_retries(
+        client.clone(),
+        "userAbstraction",
+        serde_json::json!({"type": "userAbstraction", "user": address}),
+    );
+    let fetch_main_orders = scope.fetches_main_open_orders();
+    let orders_fut = async {
+        if fetch_main_orders {
+            Some(
+                client
+                    .post(API_URL)
+                    .json(&serde_json::json!({"type": "frontendOpenOrders", "user": address}))
+                    .send()
+                    .await,
+            )
+        } else {
+            None
+        }
+    };
     let fills_fut = client
         .post(API_URL)
         .json(&serde_json::json!({"type": "userFills", "user": address}))
@@ -77,9 +119,10 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
         .send();
 
     // HIP-3 dexes: clearinghouse + orders for each (fired in parallel)
+    let hip3_dexes = scope.hip3_dexes(HIP3_DEXES);
     let mut hip3_ch_futs = Vec::new();
     let mut hip3_ord_futs = Vec::new();
-    for dex in HIP3_DEXES {
+    for dex in &hip3_dexes {
         hip3_ch_futs.push(
             client
                 .post(API_URL)
@@ -108,13 +151,16 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
     // serializing: `reqwest::send()` returns a lazy future that doesn't
     // hit the network until polled, so the comments claiming HIP-3 and
     // userFees "fire in parallel" did not match runtime behavior. Now all
-    // 22 (5 main + 1 fees + 8×2 HIP-3) requests are polled in the same
-    // wave.
-    let main_fut = futures::future::join5(ch_fut, spot_fut, orders_fut, fills_fut, funding_fut);
+    // requests are polled in the same wave. The HIP-3 portion is scoped to
+    // the visible exchange when the terminal is in a single-exchange universe.
+    let main_fut = futures::future::join(
+        futures::future::join5(ch_fut, spot_fut, orders_fut, fills_fut, funding_fut),
+        abstraction_fut,
+    );
     let hip3_ch_join = futures::future::join_all(hip3_ch_futs);
     let hip3_ord_join = futures::future::join_all(hip3_ord_futs);
     let (
-        (ch_resp, spot_resp, orders_resp, fills_resp, funding_resp),
+        ((ch_resp, spot_resp, orders_resp, fills_resp, funding_resp), abstraction_resp),
         hip3_ch_results,
         hip3_ord_results,
         fees_resp,
@@ -134,9 +180,16 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
         .map_err(|e| format!("spotClearinghouseState deserialize failed: {e}"))?;
 
     let mut completeness = AccountDataCompleteness::default();
+    let account_abstraction =
+        account_abstraction_from_best_effort_value(abstraction_resp, &spot, &mut completeness);
     let mut bootstrap_warnings = Vec::new();
-    let open_orders: Vec<OpenOrder> =
-        best_effort_response_vec("frontendOpenOrders", orders_resp, &mut bootstrap_warnings).await;
+    let open_orders: Vec<OpenOrder> = match orders_resp {
+        Some(orders_resp) => {
+            best_effort_response_vec("frontendOpenOrders", orders_resp, &mut bootstrap_warnings)
+                .await
+        }
+        None => Vec::new(),
+    };
     let fills: Vec<UserFill> =
         best_effort_response_vec("userFills", fills_resp, &mut bootstrap_warnings).await;
     for warning in bootstrap_warnings {
@@ -205,13 +258,20 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
         }
     };
 
+    let mut clearinghouses_by_dex = HashMap::new();
+    clearinghouses_by_dex.insert(String::new(), clearinghouse.clone());
+
     let mut hip3_states = Vec::new();
-    for resp in hip3_ch_results {
+    for (dex, resp) in hip3_dexes.iter().zip(hip3_ch_results) {
         match resp {
             Ok(response) if response.status().is_success() => {
                 match response.json::<Value>().await {
                     Ok(raw) => match serde_json::from_value::<ClearinghouseState>(raw) {
-                        Ok(ch) => hip3_states.push(ch),
+                        Ok(mut ch) => {
+                            normalize_dex_asset_position_coins(dex, &mut ch.asset_positions);
+                            clearinghouses_by_dex.insert(dex.to_string(), ch.clone());
+                            hip3_states.push(ch);
+                        }
                         Err(e) => completeness.mark_incomplete(
                             AccountDataSection::Positions,
                             format!("HIP-3 clearinghouseState parse failed: {e}"),
@@ -238,7 +298,7 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
     }
 
     let mut hip3_order_sets = Vec::new();
-    for (dex, resp) in HIP3_DEXES.iter().zip(hip3_ord_results) {
+    for (dex, resp) in hip3_dexes.iter().zip(hip3_ord_results) {
         match resp {
             Ok(response) if response.status().is_success() => {
                 match response.json::<Vec<OpenOrder>>().await {
@@ -270,7 +330,11 @@ pub async fn fetch_account_data(address: String) -> Result<AccountData, String> 
     let open_orders = merge_hip3_open_orders(open_orders, hip3_order_sets);
 
     Ok(AccountData {
+        fetch_scope: scope,
+        request_weight_estimate,
+        account_abstraction,
         clearinghouse: merged_clearinghouse,
+        clearinghouses_by_dex,
         spot,
         open_orders,
         fills,

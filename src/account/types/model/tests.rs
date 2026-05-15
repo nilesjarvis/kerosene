@@ -1,4 +1,4 @@
-use super::{OpenOrder, UserFill};
+use super::{AccountAbstractionMode, OpenOrder, SpotBalance, UserFill};
 
 fn open_order_value(extra: serde_json::Value) -> serde_json::Value {
     let mut order = serde_json::json!({
@@ -71,4 +71,34 @@ fn user_fill_accepts_missing_order_id_metadata() {
     .expect("fill should deserialize");
 
     assert_eq!(fill.oid, None);
+}
+
+#[test]
+fn account_abstraction_mode_parses_known_api_values() {
+    assert_eq!(
+        AccountAbstractionMode::from_api_value("portfolioMargin"),
+        AccountAbstractionMode::PortfolioMargin
+    );
+    assert_eq!(
+        AccountAbstractionMode::from_api_value("unifiedAccount"),
+        AccountAbstractionMode::UnifiedAccount
+    );
+    assert_eq!(
+        AccountAbstractionMode::from_api_value("dexAbstraction"),
+        AccountAbstractionMode::DexAbstraction
+    );
+}
+
+#[test]
+fn spot_balance_preserves_optional_token_index() {
+    let balance: SpotBalance = serde_json::from_value(serde_json::json!({
+        "coin": "USDC",
+        "token": 0,
+        "total": "10",
+        "hold": "2",
+        "entryNtl": "0"
+    }))
+    .expect("spot balance should deserialize");
+
+    assert_eq!(balance.token, Some(0));
 }

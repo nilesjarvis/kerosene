@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::pane_title;
 use crate::message::Message;
-use crate::pane_state::PaneKind;
+use crate::pane_state::{MAIN_PANE_GRID_SPACING, PaneKind};
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, pane_grid, row, text};
 use iced::{Color, Element, Fill, Theme};
@@ -64,7 +64,8 @@ impl TradingTerminal {
         })
         .width(Fill)
         .height(Fill)
-        .spacing(1)
+        .spacing(MAIN_PANE_GRID_SPACING)
+        .min_size(self.account_summary_pane_min_size())
         .on_resize(6, Message::PaneResized)
         .on_drag(Message::PaneDragged)
         .on_click(Message::PaneClicked)

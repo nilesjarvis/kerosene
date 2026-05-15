@@ -28,7 +28,7 @@ impl TradingTerminal {
             return form;
         };
 
-        let warning = match data.available_margin_usdc() {
+        let warning = match self.visible_available_margin_usdc(data) {
             None => Some((
                 "Account margin data unavailable".to_string(),
                 theme.palette().warning,

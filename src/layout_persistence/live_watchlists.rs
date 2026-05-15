@@ -20,7 +20,7 @@ impl TradingTerminal {
                         symbols: watchlist_config
                             .symbols
                             .into_iter()
-                            .filter(|symbol| !self.is_ticker_muted(symbol))
+                            .filter(|symbol| !self.symbol_key_is_hidden(symbol))
                             .collect(),
                         search_query: String::new(),
                         sort_column: watchlist_config.sort_column,

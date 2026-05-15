@@ -1,7 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::market_state::{OrderBookDisplayMode, OrderBookSymbolMode};
-use crate::signing::OrderKind;
 
 // ---------------------------------------------------------------------------
 // Widget Config Snapshots
@@ -15,7 +14,7 @@ impl TradingTerminal {
             .into_iter()
             .map(|inst| config::ChartConfig {
                 id: inst.id,
-                symbol: if self.is_ticker_muted(&inst.symbol) {
+                symbol: if self.symbol_key_is_hidden(&inst.symbol) {
                     String::new()
                 } else {
                     inst.symbol.clone()
@@ -47,7 +46,7 @@ impl TradingTerminal {
                     .canvas
                     .series
                     .iter()
-                    .filter(|series| !self.is_ticker_muted(&series.symbol))
+                    .filter(|series| !self.symbol_key_is_hidden(&series.symbol))
                     .map(|series| series.symbol.clone())
                     .collect(),
                 timeframe: inst.interval.config_str().to_string(),
@@ -74,7 +73,7 @@ impl TradingTerminal {
                 mode: match &book.mode {
                     OrderBookSymbolMode::Active => config::OrderBookSymbolModeConfig::Active,
                     OrderBookSymbolMode::Fixed(symbol) => {
-                        if self.is_ticker_muted(symbol) {
+                        if self.symbol_key_is_hidden(symbol) {
                             config::OrderBookSymbolModeConfig::Active
                         } else {
                             config::OrderBookSymbolModeConfig::Fixed(symbol.clone())
@@ -90,6 +89,7 @@ impl TradingTerminal {
                         config::OrderBookDisplayModeConfig::DomLadder
                     }
                 },
+                center_on_mid: book.center_on_mid,
                 show_spread_chart: book.show_spread_chart,
                 spread_chart_height: book.spread_chart_height,
             })
@@ -104,7 +104,7 @@ impl TradingTerminal {
                 symbols: watchlist
                     .symbols
                     .iter()
-                    .filter(|symbol| !self.is_ticker_muted(symbol))
+                    .filter(|symbol| !self.symbol_key_is_hidden(symbol))
                     .cloned()
                     .collect(),
                 sort_column: watchlist.sort_column,
@@ -115,7 +115,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn active_symbol_config_value(&self) -> String {
-        if self.is_ticker_muted(&self.active_symbol) {
+        if self.symbol_key_is_hidden(&self.active_symbol) {
             self.fallback_unmuted_symbol_key().unwrap_or_default()
         } else {
             self.active_symbol.clone()
@@ -132,19 +132,13 @@ impl TradingTerminal {
     pub(crate) fn favourite_symbols_config_values(&self) -> Vec<String> {
         self.favourite_symbols
             .iter()
-            .filter(|symbol| !self.is_ticker_muted(symbol))
+            .filter(|symbol| !self.symbol_key_is_hidden(symbol))
             .cloned()
             .collect()
     }
 
     pub(crate) fn order_kind_config_value(&self) -> String {
-        match self.order_kind {
-            OrderKind::Market => "Market",
-            OrderKind::Limit => "Limit",
-            OrderKind::Chase => "Chase",
-            OrderKind::LimitIoc => "Limit IOC",
-        }
-        .to_string()
+        self.order_kind.config_str().to_string()
     }
 
     pub(crate) fn saved_layout_snapshot(&self, name: String) -> config::SavedLayout {

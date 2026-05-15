@@ -75,9 +75,9 @@ impl TradingTerminal {
                 Task::none()
             }
             Message::LiveWatchlistAddSymbol(id, symbol) => {
-                if self.is_ticker_muted(&symbol) {
+                if self.symbol_key_is_hidden(&symbol) {
                     self.live_watchlist_status =
-                        Some((format!("{symbol} is muted in Settings > Risk"), true));
+                        Some((format!("{symbol} is hidden in Settings > Risk"), true));
                     return Task::none();
                 }
                 if let Some(watchlist) = self.live_watchlists.get_mut(&id) {

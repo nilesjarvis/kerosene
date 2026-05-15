@@ -107,6 +107,7 @@ impl TradingTerminal {
             symbol_search_sort_mode: SymbolSearchSortMode::from_config_str(
                 &cfg.symbol_search_sort_mode,
             ),
+            market_universe: cfg.market_universe.clone().normalized(),
             symbol_search_market_filter: SymbolSearchMarketFilter::default(),
             symbol_search_hip3_dex_filter: None,
             symbol_search_result_indices: Vec::new(),
@@ -158,6 +159,7 @@ impl TradingTerminal {
             account_loading: boot_account.has_wallet,
             account_reconciliation_required: false,
             account_error: None,
+            account_refresh_backoff_until_ms: None,
             all_mids: HashMap::new(),
             all_mids_updated_at_ms: HashMap::new(),
             live_watchlist_flashes: HashMap::new(),

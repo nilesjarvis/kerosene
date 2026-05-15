@@ -104,11 +104,13 @@ impl TradingTerminal {
     }
 
     fn position_summary_account_value(&self, data: &account::AccountData) -> Option<f64> {
+        let clearinghouse = self.visible_clearinghouse_state(data);
+        let include_spot = self.account_view_includes_spot_balances(data);
         let live_upnl = sum_required(
-            data.clearinghouse
+            clearinghouse
                 .asset_positions
                 .iter()
-                .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
                 .map(|ap| {
                     position_summary_position_upnl_value(
                         &ap.position.szi,
@@ -119,30 +121,34 @@ impl TradingTerminal {
                 }),
         );
         let stale_upnl = sum_required(
-            data.clearinghouse
+            clearinghouse
                 .asset_positions
                 .iter()
-                .filter(|ap| !self.is_ticker_muted(&ap.position.coin))
+                .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
                 .map(|ap| parse_summary_number(&ap.position.unrealized_pnl)),
         );
-        let spot_value = sum_required(
-            data.spot
-                .balances
-                .iter()
-                .filter(|balance| !self.is_ticker_muted(&balance.coin))
-                .map(|balance| {
-                    position_summary_spot_balance_value(
-                        &balance.coin,
-                        &balance.total,
-                        &balance.entry_ntl,
-                        self.resolve_mid_for_symbol(&balance.coin),
-                    )
-                }),
-        );
-        let perp_equity = if data.is_portfolio_margin() {
+        let spot_value = if include_spot {
+            sum_required(
+                data.spot
+                    .balances
+                    .iter()
+                    .filter(|balance| !self.account_spot_balance_is_hidden(data, &balance.coin))
+                    .map(|balance| {
+                        position_summary_spot_balance_value(
+                            &balance.coin,
+                            &balance.total,
+                            &balance.entry_ntl,
+                            self.resolve_mid_for_symbol(&balance.coin),
+                        )
+                    }),
+            )
+        } else {
+            Some(0.0)
+        };
+        let perp_equity = if include_spot && data.is_portfolio_margin() {
             Some(0.0)
         } else {
-            parse_summary_number(&data.clearinghouse.margin_summary.account_value)
+            parse_summary_number(&clearinghouse.margin_summary.account_value)
         };
 
         match (perp_equity, spot_value, live_upnl, stale_upnl) {

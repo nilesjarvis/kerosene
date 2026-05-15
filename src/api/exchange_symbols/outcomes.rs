@@ -121,6 +121,7 @@ pub(super) fn append_outcome_symbols(
                 display_name: Some(format!("{} - {}", market_display_name, side_name)),
                 keywords,
                 asset_index: outcome_asset_index(encoding),
+                collateral_token: None,
                 sz_decimals: 0,
                 max_leverage: 1,
                 only_isolated: true,
