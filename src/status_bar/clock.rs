@@ -10,7 +10,7 @@ use iced::widget::{Row, row, text};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(super) fn status_clock_row(&self) -> Row<'static, Message> {
+    pub(super) fn status_clock_row(&self, separated: bool) -> Row<'static, Message> {
         let theme = self.theme();
         let now_utc = Utc::now();
         let local_now = Local::now();
@@ -25,17 +25,25 @@ impl TradingTerminal {
         let asia_text = market_clock_text("Asia", now_utc, chrono_tz::Asia::Tokyo, 9, 0);
         let ny_text = market_clock_text("New York", now_utc, chrono_tz::America::New_York, 9, 30);
 
-        row![
-            text(local_text).size(10).color(theme.palette().primary),
-            helpers::vertical_spacer(),
-            text(europe_text).size(10).color(theme.palette().primary),
-            helpers::vertical_spacer(),
-            text(asia_text).size(10).color(theme.palette().primary),
-            helpers::vertical_spacer(),
-            text(ny_text).size(10).color(theme.palette().primary),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center)
+        let row = row![text(local_text).size(10).color(theme.palette().primary)]
+            .spacing(8)
+            .align_y(iced::Alignment::Center);
+
+        let row = push_clock_gap(row, separated)
+            .push(text(europe_text).size(10).color(theme.palette().primary));
+        let row = push_clock_gap(row, separated)
+            .push(text(asia_text).size(10).color(theme.palette().primary));
+
+        push_clock_gap(row, separated)
+            .push(text(ny_text).size(10).color(theme.palette().primary))
+    }
+}
+
+fn push_clock_gap(row: Row<'static, Message>, separated: bool) -> Row<'static, Message> {
+    if separated {
+        row.push(helpers::vertical_spacer())
+    } else {
+        row
     }
 }
 
