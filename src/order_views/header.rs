@@ -127,6 +127,11 @@ impl TradingTerminal {
                 self.order_kind == OrderKind::Limit,
                 Message::SetOrderKind(OrderKind::Limit),
             ),
+            order_type_button(
+                "Limit IOC",
+                self.order_kind == OrderKind::LimitIoc,
+                Message::SetOrderKind(OrderKind::LimitIoc),
+            ),
         ]
         .spacing(4)
         .into()

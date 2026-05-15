@@ -12,11 +12,7 @@ pub(super) struct BootSymbolSelection {
 
 impl TradingTerminal {
     pub(super) fn boot_symbol_selection(cfg: &KeroseneConfig) -> BootSymbolSelection {
-        let order_kind = match cfg.order_kind.as_str() {
-            "Market" => OrderKind::Market,
-            "Chase" => OrderKind::Chase,
-            _ => OrderKind::Limit,
-        };
+        let order_kind = OrderKind::from_config_str(&cfg.order_kind);
         let muted_tickers: HashSet<String> = cfg
             .muted_tickers
             .iter()

@@ -1,7 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{self, default_market_slippage_pct, normalize_market_slippage_pct};
 use crate::message::Message;
-use crate::signing::OrderKind;
 use iced::Task;
 
 mod instances;
@@ -21,11 +20,7 @@ impl TradingTerminal {
     pub(crate) fn apply_layout(&mut self, layout: config::SavedLayout) -> Task<Message> {
         let mut boot_tasks = Vec::new();
 
-        let order_kind = match layout.order_kind.as_str() {
-            "Market" => OrderKind::Market,
-            "Chase" => OrderKind::Chase,
-            _ => OrderKind::Limit,
-        };
+        let order_kind = crate::signing::OrderKind::from_config_str(&layout.order_kind);
         let mut symbol = if layout.active_symbol.is_empty() {
             "HYPE".to_string()
         } else {

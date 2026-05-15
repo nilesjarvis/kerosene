@@ -36,7 +36,10 @@ impl TradingTerminal {
 
         let parsed_qty = parse_positive_finite(&self.order_quantity);
         let parsed_price =
-            if self.order_kind == OrderKind::Limit || self.order_kind == OrderKind::Chase {
+            if matches!(
+                self.order_kind,
+                OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc
+            ) {
                 parse_positive_finite(&self.order_price)
             } else {
                 self.resolve_mid_for_symbol(&self.active_symbol)
