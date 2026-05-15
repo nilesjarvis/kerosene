@@ -6,6 +6,7 @@ mod bloomberg;
 mod chart_colors;
 mod color_parse;
 mod hyperliquid;
+mod kraken;
 
 use self::color_parse::parse_hex_color;
 
@@ -72,6 +73,8 @@ impl TradingTerminal {
             && Self::palette_matches_hyperliquid_source(palette);
         let use_bloomberg_source_palette =
             theme_name == "Custom: Bloomberg" && Self::palette_matches_bloomberg_source(palette);
+        let use_kraken_source_palette =
+            theme_name == "Custom: Kraken" && Self::palette_matches_kraken_source(palette);
 
         Theme::Custom(std::sync::Arc::new(iced::theme::Custom::with_fn(
             name,
@@ -90,6 +93,9 @@ impl TradingTerminal {
                     && TradingTerminal::palette_matches_bloomberg_source(p)
                 {
                     return TradingTerminal::bloomberg_source_extended_palette();
+                }
+                if use_kraken_source_palette && TradingTerminal::palette_matches_kraken_source(p) {
+                    return TradingTerminal::kraken_source_extended_palette();
                 }
 
                 fn mix(a: Color, b: Color, factor: f32) -> Color {

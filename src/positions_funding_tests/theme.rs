@@ -84,3 +84,45 @@ fn bloomberg_theme_keeps_primary_backgrounds_true_black() {
         [0xFF, 0x9F, 0x1A, 255]
     );
 }
+
+#[test]
+fn kraken_theme_uses_aubergine_panels_and_trade_accents() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0x0B, 0x07, 0x11),
+        text: Color::from_rgb8(0xE8, 0xE1, 0xF2),
+        primary: Color::from_rgb8(0x71, 0x32, 0xF5),
+        success: Color::from_rgb8(0x2B, 0xB6, 0x7B),
+        warning: Color::from_rgb8(0xED, 0x9B, 0x35),
+        danger: Color::from_rgb8(0xB2, 0x42, 0x5F),
+    };
+
+    assert!(TradingTerminal::palette_matches_kraken_source(
+        source_palette
+    ));
+
+    let extended = TradingTerminal::kraken_source_extended_palette();
+    assert_eq!(
+        extended.background.base.color.into_rgba8(),
+        [0x0B, 0x07, 0x11, 255]
+    );
+    assert_eq!(
+        extended.background.weak.color.into_rgba8(),
+        [0x17, 0x13, 0x1D, 255]
+    );
+    assert_eq!(
+        extended.background.strong.color.into_rgba8(),
+        [0x21, 0x1D, 0x28, 255]
+    );
+    assert_eq!(
+        extended.primary.base.color.into_rgba8(),
+        [0x71, 0x32, 0xF5, 255]
+    );
+    assert_eq!(
+        extended.success.base.color.into_rgba8(),
+        [0x2B, 0xB6, 0x7B, 255]
+    );
+    assert_eq!(
+        extended.danger.strong.color.into_rgba8(),
+        [0xE3, 0x4A, 0x6F, 255]
+    );
+}

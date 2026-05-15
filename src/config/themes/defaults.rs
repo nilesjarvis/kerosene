@@ -86,6 +86,13 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             chart: Some(("#26A69A", "#EF5350")),
         },
         ThemeSpec {
+            name: "Kraken",
+            colors: [
+                "#0B0711", "#E8E1F2", "#7132F5", "#2BB67B", "#ED9B35", "#B2425F",
+            ],
+            chart: Some(("#2BB67B", "#E34A6F")),
+        },
+        ThemeSpec {
             name: "Bloomberg",
             colors: [
                 "#000000", "#F2F2E8", "#FF9F1A", "#00B050", "#FFD84A", "#B00024",

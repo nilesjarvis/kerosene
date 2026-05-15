@@ -50,6 +50,20 @@ fn default_custom_themes_include_kerosene_chart_colors() {
     assert_eq!(hyperliquid.chart_bull.as_deref(), Some("#26A69A"));
     assert_eq!(hyperliquid.chart_bear.as_deref(), Some("#EF5350"));
 
+    let kraken = themes
+        .iter()
+        .find(|theme| theme.name == "Kraken")
+        .expect("Kraken theme should be present");
+
+    assert_eq!(kraken.background, "#0B0711");
+    assert_eq!(kraken.text, "#E8E1F2");
+    assert_eq!(kraken.primary, "#7132F5");
+    assert_eq!(kraken.success, "#2BB67B");
+    assert_eq!(kraken.warning, "#ED9B35");
+    assert_eq!(kraken.danger, "#B2425F");
+    assert_eq!(kraken.chart_bull.as_deref(), Some("#2BB67B"));
+    assert_eq!(kraken.chart_bear.as_deref(), Some("#E34A6F"));
+
     let bloomberg = themes
         .iter()
         .find(|theme| theme.name == "Bloomberg")
