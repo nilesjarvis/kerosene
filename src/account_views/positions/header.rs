@@ -6,7 +6,7 @@ use crate::message::Message;
 
 use super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
 use iced::widget::{button, container, row, text, tooltip};
-use iced::{Color, Element, Fill, Theme, color};
+use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_positions_header<'a>(
@@ -75,32 +75,18 @@ impl TradingTerminal {
 
         let nuke_cell: Element<'a, Message> = if has_positions {
             let nuke_armed = self.nuke_confirmation.is_some();
-            let nuke_label = if nuke_armed { "CONFIRM" } else { "NUKE" };
-            button(
-                text(nuke_label)
-                    .size(10)
-                    .center()
-                    .color(theme.palette().text)
-                    .width(Fill),
-            )
-            .on_press(Message::NukePositions)
-            .padding([2, 8])
-            .style(|theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.palette().danger,
-                    _ => color!(0x5a2020),
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().text,
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            })
-            .into()
+            let nuke_label = if nuke_armed {
+                "\u{2622} CONFIRM"
+            } else {
+                "\u{2622} NUKE"
+            };
+            button(text(nuke_label).size(10).center().width(Fill))
+                .on_press(Message::NukePositions)
+                .padding([2, 8])
+                .style(move |theme: &Theme, status| {
+                    nuke_button_style(theme, status, nuke_armed)
+                })
+                .into()
         } else {
             text("").size(12).into()
         };
@@ -165,5 +151,34 @@ impl TradingTerminal {
         container(header_row.spacing(4).align_y(iced::Alignment::Center))
         .padding([0, 8])
         .into()
+    }
+}
+
+fn nuke_button_style(
+    theme: &Theme,
+    status: button::Status,
+    nuke_armed: bool,
+) -> button::Style {
+    let extended = theme.extended_palette();
+    let danger = &extended.danger;
+
+    let pair = match (nuke_armed, status) {
+        (_, button::Status::Pressed) | (true, button::Status::Hovered) => &danger.strong,
+        (true, _) | (false, button::Status::Hovered) => &danger.base,
+        (false, _) => &danger.weak,
+    };
+
+    button::Style {
+        background: Some(pair.color.into()),
+        text_color: pair.text,
+        border: iced::Border {
+            radius: 3.0.into(),
+            width: 1.0,
+            color: Color {
+                a: 0.55,
+                ..danger.base.color
+            },
+        },
+        ..Default::default()
     }
 }
