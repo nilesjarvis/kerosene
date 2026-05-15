@@ -4,7 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::message::Message;
 
-use super::POSITION_ACTION_WIDTH;
+use super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
 use iced::widget::{button, container, row, text, tooltip};
 use iced::{Color, Element, Fill, Theme, color};
 
@@ -15,6 +15,7 @@ impl TradingTerminal {
         positions: &[&account::AssetPosition],
         hidden_count: usize,
         theme: &Theme,
+        columns: PositionColumnVisibility,
     ) -> Element<'a, Message> {
         let has_positions = can_close
             && positions.iter().any(|ap| {
@@ -137,24 +138,31 @@ impl TradingTerminal {
                 .width(Fill)
         };
 
-        container(
-            row![
-                sort_btn("Symbol", PositionsSortColumn::Symbol),
-                sort_btn("Side", PositionsSortColumn::Side),
-                sort_btn("Size", PositionsSortColumn::Size),
-                sort_btn("Entry", PositionsSortColumn::Entry),
-                sort_btn("Liq", PositionsSortColumn::Liquidation),
-                sort_btn("Mark", PositionsSortColumn::Mark),
-                sort_btn("Value", PositionsSortColumn::Value),
-                sort_btn("uPnL", PositionsSortColumn::UnrealizedPnl),
-                sort_btn("Funding", PositionsSortColumn::Funding),
-                sort_btn("Total PnL", PositionsSortColumn::TotalPnl),
-                sort_btn("Lev", PositionsSortColumn::Leverage),
-                container(action_cell).width(POSITION_ACTION_WIDTH),
-            ]
-            .spacing(4)
-            .align_y(iced::Alignment::Center),
-        )
+        let mut header_row = row![
+            sort_btn("Symbol", PositionsSortColumn::Symbol),
+            sort_btn("Side", PositionsSortColumn::Side),
+            sort_btn("Size", PositionsSortColumn::Size),
+            sort_btn("Entry", PositionsSortColumn::Entry),
+        ];
+        if columns.liquidation {
+            header_row = header_row.push(sort_btn("Liq", PositionsSortColumn::Liquidation));
+        }
+        header_row = header_row
+            .push(sort_btn("Mark", PositionsSortColumn::Mark))
+            .push(sort_btn("Value", PositionsSortColumn::Value))
+            .push(sort_btn("uPnL", PositionsSortColumn::UnrealizedPnl));
+        if columns.funding {
+            header_row = header_row.push(sort_btn("Funding", PositionsSortColumn::Funding));
+        }
+        if columns.total_pnl {
+            header_row = header_row.push(sort_btn("Total PnL", PositionsSortColumn::TotalPnl));
+        }
+        if columns.leverage {
+            header_row = header_row.push(sort_btn("Lev", PositionsSortColumn::Leverage));
+        }
+        header_row = header_row.push(container(action_cell).width(POSITION_ACTION_WIDTH));
+
+        container(header_row.spacing(4).align_y(iced::Alignment::Center))
         .padding([0, 8])
         .into()
     }

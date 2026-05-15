@@ -12,12 +12,22 @@ impl TradingTerminal {
         form: Column<'a, Message>,
     ) -> Column<'a, Message> {
         let theme = self.theme();
-        if !matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc) {
-            return form.push(market_price_label(
-                self.resolve_mid_for_symbol(&self.active_symbol),
-                self.market_slippage_pct,
-                &theme,
-            ));
+        match self.order_kind {
+            OrderKind::Market => {
+                return form.push(market_price_label(
+                    self.resolve_mid_for_symbol(&self.active_symbol),
+                    self.market_slippage_pct,
+                    &theme,
+                ));
+            }
+            OrderKind::Chase => {
+                return form.push(chase_price_label(
+                    self.resolve_mid_for_symbol(&self.active_symbol),
+                    &theme,
+                ));
+            }
+            OrderKind::Twap => return form,
+            OrderKind::Limit | OrderKind::LimitIoc => {}
         }
 
         let price_input = text_input("Price", &self.order_price)
@@ -68,6 +78,18 @@ fn market_price_label<'a>(
     };
 
     text(market_info)
+        .size(11)
+        .color(theme.extended_palette().background.weak.text)
+}
+
+fn chase_price_label<'a>(mid: Option<f64>, theme: &Theme) -> iced::widget::Text<'a> {
+    let chase_info = if let Some(mid) = mid {
+        format!("Chase (~${mid:.2} mid)")
+    } else {
+        "Chase (no mid data)".to_string()
+    };
+
+    text(chase_info)
         .size(11)
         .color(theme.extended_palette().background.weak.text)
 }

@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, row, text, tooltip};
-use iced::{Element, Theme};
+use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(in crate::feed_views::liquidations::controls) fn view_liquidations_connection_controls(
@@ -23,41 +23,39 @@ impl TradingTerminal {
                 ..Default::default()
             });
 
-        row![
-            status_dot,
-            tooltip(
-                text(liquidations_status_label)
-                    .size(10)
-                    .color(theme.extended_palette().background.weak.text)
-                    .width(130),
-                text(liquidations_status_detail).size(10),
-                iced::widget::tooltip::Position::Top,
-            ),
-            reconnect_liquidations_button(),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center)
+        tooltip(
+            button(
+                row![
+                    status_dot,
+                    text(liquidations_status_label)
+                        .size(10)
+                        .color(theme.extended_palette().background.weak.text)
+                        .width(Fill),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
+            )
+            .on_press(Message::ReconnectLiquidations)
+            .padding([2, 6])
+            .width(156)
+            .style(|theme: &Theme, status| {
+                let bg = match status {
+                    button::Status::Hovered => theme.extended_palette().background.weak.color,
+                    _ => iced::Color::TRANSPARENT,
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    text_color: theme.extended_palette().background.weak.text,
+                    border: iced::Border {
+                        radius: 3.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            }),
+            text(liquidations_status_detail).size(10),
+            iced::widget::tooltip::Position::Top,
+        )
         .into()
     }
-}
-
-fn reconnect_liquidations_button() -> button::Button<'static, Message> {
-    button(text("Reconnect").size(10))
-        .on_press(Message::ReconnectLiquidations)
-        .padding([2, 6])
-        .style(|theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => theme.extended_palette().background.weak.color,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: theme.palette().primary,
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        })
 }

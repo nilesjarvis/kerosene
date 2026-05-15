@@ -29,10 +29,10 @@ impl TradingTerminal {
         }
 
         let fee_price = match self.order_kind {
-            OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc => {
-                parse_number(&self.order_price)
+            OrderKind::Limit | OrderKind::LimitIoc => parse_number(&self.order_price),
+            OrderKind::Market | OrderKind::Chase | OrderKind::Twap => {
+                self.resolve_mid_for_symbol(&self.active_symbol)
             }
-            OrderKind::Market => self.resolve_mid_for_symbol(&self.active_symbol),
         };
         let fee_qty = fee_price.and_then(|price| {
             let sz_decimals = self

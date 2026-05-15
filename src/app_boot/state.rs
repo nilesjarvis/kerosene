@@ -153,6 +153,7 @@ impl TradingTerminal {
             liquidation_feed_aggregation_enabled: cfg.liquidation_feed_aggregation_enabled,
             liquidation_chart_enabled: false,
             liquidation_summary_enabled: true,
+            liquidation_settings_menu_open: false,
             liquidation_chart_buckets: BTreeMap::new(),
             connected_address: None,
             account_data: None,

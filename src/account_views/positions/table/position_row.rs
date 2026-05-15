@@ -3,7 +3,7 @@ use crate::helpers::{self, format_price, format_usd};
 use crate::message::Message;
 use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
 
-use super::super::POSITION_ACTION_WIDTH;
+use super::super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
 use super::sort::PositionRowData;
 use iced::widget::{Space, button, container, row, text};
 use iced::{Element, Fill, Theme, color};
@@ -14,6 +14,7 @@ impl TradingTerminal {
         data: PositionRowData<'a>,
         can_close: bool,
         theme: &Theme,
+        columns: PositionColumnVisibility,
     ) -> Element<'a, Message> {
         let ap = data.ap;
         let pos = &ap.position;
@@ -131,7 +132,7 @@ impl TradingTerminal {
         .spacing(3)
         .align_y(iced::Alignment::Center);
 
-        let row_content = row![
+        let mut row_content = row![
             container(symbol_btn).width(Fill),
             text(side).size(12).color(side_color).width(Fill),
             text(size_str)
@@ -142,35 +143,55 @@ impl TradingTerminal {
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .width(Fill),
-            container(liq_element).width(Fill),
-            text(mark_str)
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .width(Fill),
-            text(val_display)
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .width(Fill),
-            container(upnl_cell).width(Fill),
-            text(fund_display)
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(funding_color)
-                .width(Fill),
-            text(total_display)
-                .size(13)
-                .font(iced::Font::MONOSPACE)
-                .color(total_pnl_color)
-                .width(Fill),
-            text(lev_str)
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(theme.extended_palette().background.weak.text)
-                .width(Fill),
-            container(close_cell).width(POSITION_ACTION_WIDTH),
-        ]
-        .spacing(4)
-        .align_y(iced::Alignment::Center);
+        ];
+        if columns.liquidation {
+            row_content = row_content.push(container(liq_element).width(Fill));
+        }
+        row_content = row_content
+            .push(
+                text(mark_str)
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .width(Fill),
+            )
+            .push(
+                text(val_display)
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .width(Fill),
+            )
+            .push(container(upnl_cell).width(Fill));
+        if columns.funding {
+            row_content = row_content.push(
+                text(fund_display)
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(funding_color)
+                    .width(Fill),
+            );
+        }
+        if columns.total_pnl {
+            row_content = row_content.push(
+                text(total_display)
+                    .size(13)
+                    .font(iced::Font::MONOSPACE)
+                    .color(total_pnl_color)
+                    .width(Fill),
+            );
+        }
+        if columns.leverage {
+            row_content = row_content.push(
+                text(lev_str)
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(theme.extended_palette().background.weak.text)
+                    .width(Fill),
+            );
+        }
+        row_content = row_content
+            .push(container(close_cell).width(POSITION_ACTION_WIDTH))
+            .spacing(4)
+            .align_y(iced::Alignment::Center);
 
         container(row_content)
             .width(Fill)

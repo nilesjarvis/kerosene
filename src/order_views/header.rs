@@ -128,6 +128,16 @@ impl TradingTerminal {
                 limit_selected,
                 Message::SetOrderKind(OrderKind::Limit),
             ),
+            order_type_button(
+                "Chase",
+                self.order_kind == OrderKind::Chase,
+                Message::SetOrderKind(OrderKind::Chase),
+            ),
+            order_type_button(
+                "TWAP",
+                self.order_kind == OrderKind::Twap,
+                Message::SetOrderKind(OrderKind::Twap),
+            ),
         ]
         .spacing(4)
         .into()

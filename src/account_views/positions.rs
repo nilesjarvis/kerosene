@@ -5,14 +5,46 @@ use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
-use iced::widget::{column, container, rule, scrollable, text};
+use iced::widget::{column, container, responsive, rule, scrollable, text};
 use iced::{Element, Fill};
 
 pub(super) const POSITION_ACTION_WIDTH: f32 = 152.0;
 
+const HIDE_TOTAL_PNL_BELOW: f32 = 1_080.0;
+const HIDE_LEVERAGE_BELOW: f32 = 990.0;
+const HIDE_FUNDING_BELOW: f32 = 900.0;
+const HIDE_LIQUIDATION_BELOW: f32 = 810.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PositionColumnVisibility {
+    pub(super) liquidation: bool,
+    pub(super) funding: bool,
+    pub(super) total_pnl: bool,
+    pub(super) leverage: bool,
+}
+
+impl PositionColumnVisibility {
+    fn for_width(width: f32) -> Self {
+        Self {
+            liquidation: width >= HIDE_LIQUIDATION_BELOW,
+            funding: width >= HIDE_FUNDING_BELOW,
+            total_pnl: width >= HIDE_TOTAL_PNL_BELOW,
+            leverage: width >= HIDE_LEVERAGE_BELOW,
+        }
+    }
+}
+
 impl TradingTerminal {
     pub(crate) fn view_positions(&self) -> Element<'_, Message> {
+        responsive(move |size| self.view_positions_for_width(size.width))
+            .width(Fill)
+            .height(Fill)
+            .into()
+    }
+
+    fn view_positions_for_width(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
+        let columns = PositionColumnVisibility::for_width(available_width);
         let can_close =
             self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
 
@@ -40,7 +72,8 @@ impl TradingTerminal {
                 .section_warning(AccountDataSection::Positions)
         });
 
-        let header = self.view_positions_header(can_close, &positions, hidden_count, &theme);
+        let header =
+            self.view_positions_header(can_close, &positions, hidden_count, &theme, columns);
 
         if positions.is_empty() {
             let msg = if let Some(warning) = warning {
@@ -66,7 +99,7 @@ impl TradingTerminal {
             return positions_scrollable(content);
         }
 
-        let rows = self.view_position_rows(&positions, can_close, &theme);
+        let rows = self.view_position_rows(&positions, can_close, &theme, columns);
         let mut content = column![header].spacing(4);
         if let Some(warning) = warning {
             content = content.push(text(warning).size(11).color(theme.palette().warning));
@@ -101,4 +134,58 @@ fn positions_scrollable<'a>(content: impl Into<Element<'a, Message>>) -> Element
         .width(Fill)
         .height(Fill)
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn position_columns_hide_one_group_at_a_time_as_width_shrinks() {
+        assert_eq!(
+            PositionColumnVisibility::for_width(HIDE_TOTAL_PNL_BELOW),
+            PositionColumnVisibility {
+                liquidation: true,
+                funding: true,
+                total_pnl: true,
+                leverage: true,
+            }
+        );
+        assert_eq!(
+            PositionColumnVisibility::for_width(HIDE_TOTAL_PNL_BELOW - 1.0),
+            PositionColumnVisibility {
+                liquidation: true,
+                funding: true,
+                total_pnl: false,
+                leverage: true,
+            }
+        );
+        assert_eq!(
+            PositionColumnVisibility::for_width(HIDE_LEVERAGE_BELOW - 1.0),
+            PositionColumnVisibility {
+                liquidation: true,
+                funding: true,
+                total_pnl: false,
+                leverage: false,
+            }
+        );
+        assert_eq!(
+            PositionColumnVisibility::for_width(HIDE_FUNDING_BELOW - 1.0),
+            PositionColumnVisibility {
+                liquidation: true,
+                funding: false,
+                total_pnl: false,
+                leverage: false,
+            }
+        );
+        assert_eq!(
+            PositionColumnVisibility::for_width(HIDE_LIQUIDATION_BELOW - 1.0),
+            PositionColumnVisibility {
+                liquidation: false,
+                funding: false,
+                total_pnl: false,
+                leverage: false,
+            }
+        );
+    }
 }

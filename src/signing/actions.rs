@@ -170,7 +170,7 @@ pub(super) struct ModifyAction {
 
 fn order_tif(order_kind: OrderKind) -> &'static str {
     match order_kind {
-        OrderKind::Market | OrderKind::LimitIoc => "Ioc",
+        OrderKind::Market | OrderKind::Twap | OrderKind::LimitIoc => "Ioc",
         OrderKind::Limit | OrderKind::Chase => "Gtc",
     }
 }

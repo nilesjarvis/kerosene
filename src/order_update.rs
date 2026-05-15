@@ -40,7 +40,13 @@ impl TradingTerminal {
             Message::DismissOrderStatus => self.handle_dismiss_order_status(),
             Message::PlaceBuy | Message::PlaceSell => {
                 let is_buy = matches!(message, Message::PlaceBuy);
-                return self.execute_order(is_buy);
+                return match self.order_kind {
+                    crate::signing::OrderKind::Chase => self.start_chase(is_buy),
+                    crate::signing::OrderKind::Twap => self.start_twap(is_buy),
+                    crate::signing::OrderKind::Market
+                    | crate::signing::OrderKind::Limit
+                    | crate::signing::OrderKind::LimitIoc => self.execute_order(is_buy),
+                };
             }
             Message::OrderResult(result) => return self.handle_order_result(*result),
             Message::CancelOrder { coin, oid } => return self.execute_cancel(&coin, oid),

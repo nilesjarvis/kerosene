@@ -5,12 +5,13 @@ use zeroize::Zeroizing;
 
 use super::numbers::{float_to_wire, round_price};
 
-/// Order type for the exchange API.
+/// Order type selected by the order entry UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderKind {
     Market,
     Limit,
     Chase,
+    Twap,
     LimitIoc,
 }
 
@@ -20,6 +21,7 @@ impl OrderKind {
             Self::Market => "Market",
             Self::Limit => "Limit",
             Self::Chase => "Chase",
+            Self::Twap => "TWAP",
             Self::LimitIoc => "Limit IOC",
         }
     }
@@ -28,6 +30,7 @@ impl OrderKind {
         match value {
             "Market" => Self::Market,
             "Chase" => Self::Chase,
+            "TWAP" | "Twap" => Self::Twap,
             "Limit IOC" | "LimitIoc" | "IOC" => Self::LimitIoc,
             _ => Self::Limit,
         }
@@ -516,6 +519,7 @@ mod tests {
             OrderKind::Market,
             OrderKind::Limit,
             OrderKind::Chase,
+            OrderKind::Twap,
             OrderKind::LimitIoc,
         ] {
             assert_eq!(OrderKind::from_config_str(kind.config_str()), kind);

@@ -204,6 +204,7 @@ pub(crate) enum Message {
     ToggleLiquidationFeedAggregation,
     ToggleLiquidationChart,
     ToggleLiquidationSummary,
+    ToggleLiquidationSettingsMenu,
     LiquidationAlertThresholdChanged(String),
     SaveLiquidationAlertThreshold,
     SetPortfolioScope(PortfolioScope),

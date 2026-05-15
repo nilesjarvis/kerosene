@@ -74,6 +74,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleLiquidationFeedAggregation
         | Message::ToggleLiquidationChart
         | Message::ToggleLiquidationSummary
+        | Message::ToggleLiquidationSettingsMenu
         | Message::LiquidationAlertThresholdChanged(_)
         | Message::SaveLiquidationAlertThreshold
         | Message::DismissToast(_)

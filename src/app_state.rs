@@ -148,6 +148,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_feed_aggregation_enabled: bool,
     pub(crate) liquidation_chart_enabled: bool,
     pub(crate) liquidation_summary_enabled: bool,
+    pub(crate) liquidation_settings_menu_open: bool,
     // (long_notional, short_notional)
     pub(crate) liquidation_chart_buckets: BTreeMap<u64, (f64, f64)>,
     pub(crate) connected_address: Option<String>,

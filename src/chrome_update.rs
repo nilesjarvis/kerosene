@@ -35,6 +35,13 @@ impl TradingTerminal {
             Message::ToggleLiquidationSummary => {
                 self.liquidation_summary_enabled = !self.liquidation_summary_enabled;
             }
+            Message::ToggleLiquidationSettingsMenu => {
+                let opening = !self.liquidation_settings_menu_open;
+                if opening {
+                    self.close_chart_header_menus();
+                }
+                self.liquidation_settings_menu_open = opening;
+            }
             Message::LiquidationAlertThresholdChanged(val) => {
                 self.liquidation_alert_input = val.clone();
                 if let Ok(num) = val.parse::<f64>() {

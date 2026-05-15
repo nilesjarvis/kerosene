@@ -14,6 +14,12 @@ use inputs::parse_positive_amount;
 
 impl TradingTerminal {
     pub(crate) fn execute_order(&mut self, is_buy: bool) -> Task<Message> {
+        match self.order_kind {
+            OrderKind::Chase => return self.start_chase(is_buy),
+            OrderKind::Twap => return self.start_twap(is_buy),
+            OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc => {}
+        }
+
         let _theme = self.theme();
         let key = self.wallet_key_input.trim().to_string();
         if key.is_empty() || self.connected_address.is_none() {
@@ -60,7 +66,7 @@ impl TradingTerminal {
         }
 
         let price = match self.order_kind {
-            OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc => {
+            OrderKind::Limit | OrderKind::LimitIoc => {
                 let px = match parse_positive_amount(&self.order_price) {
                     Some(price) => price,
                     None => {
@@ -101,6 +107,7 @@ impl TradingTerminal {
                 }
                 rounded
             }
+            OrderKind::Chase | OrderKind::Twap => unreachable!("advanced order modes return early"),
         };
 
         let qty = match order_size_from_quantity_input(

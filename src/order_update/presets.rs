@@ -57,6 +57,7 @@ impl TradingTerminal {
                         update_preset(&mut self.order_presets.limit_usd)
                     }
                     OrderKind::Chase => update_preset(&mut self.order_presets.chase_usd),
+                    OrderKind::Twap => {}
                 }
             } else {
                 match kind {
@@ -65,6 +66,7 @@ impl TradingTerminal {
                         update_preset(&mut self.order_presets.limit_coin)
                     }
                     OrderKind::Chase => update_preset(&mut self.order_presets.chase_coin),
+                    OrderKind::Twap => {}
                 }
             }
             self.persist_config();
@@ -132,6 +134,9 @@ impl TradingTerminal {
             } else if kind == OrderKind::Chase {
                 self.presets_menu_expanded = false;
                 Task::perform(async move { Message::StartChase(is_buy) }, |m| m)
+            } else if kind == OrderKind::Twap {
+                self.presets_menu_expanded = false;
+                Task::perform(async move { Message::StartTwap(is_buy) }, |m| m)
             } else {
                 Task::none()
             }

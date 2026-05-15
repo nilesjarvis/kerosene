@@ -141,10 +141,7 @@ impl TradingTerminal {
     }
 
     fn order_reference_price(&self) -> Option<f64> {
-        if matches!(
-            self.order_kind,
-            OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc
-        ) {
+        if matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc) {
             parse_number(&self.order_price).filter(|price| price.is_finite() && *price > 0.0)
         } else {
             self.resolve_mid_for_symbol(&self.active_symbol)

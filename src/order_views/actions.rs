@@ -5,6 +5,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{buy_button, sell_button};
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
+use crate::signing::OrderKind;
 use iced::widget::container as container_style;
 use iced::widget::{Column, container, row, text};
 use iced::{Color, Element, Fill, Theme, color};
@@ -19,6 +20,12 @@ impl TradingTerminal {
         form: Column<'a, Message>,
         can_trade: bool,
     ) -> Column<'a, Message> {
+        match self.order_kind {
+            OrderKind::Chase => return self.push_chase_controls(form, can_trade),
+            OrderKind::Twap => return self.push_twap_controls(form, can_trade),
+            OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc => {}
+        }
+
         let pending_buy = self.pending_order_action == Some(PendingOrderAction::Buy);
         let pending_sell = self.pending_order_action == Some(PendingOrderAction::Sell);
         let pending_standard = pending_buy || pending_sell;
@@ -48,9 +55,7 @@ impl TradingTerminal {
                 disabled_order_button("SELL")
             };
         }
-        let form = form.push(row![buy_btn, sell_btn].spacing(8));
-        let form = self.push_chase_controls(form, can_trade);
-        self.push_twap_controls(form, can_trade)
+        form.push(row![buy_btn, sell_btn].spacing(8))
     }
 }
 
