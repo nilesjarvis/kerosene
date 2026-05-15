@@ -67,17 +67,59 @@ impl TradingTerminal {
                     }
                 }
             }
-            Message::Tick if self.is_calendar_open() && !self.calendar_loading => {
-                let should_fetch = self
-                    .calendar_last_fetch
-                    .is_none_or(|last_fetch| last_fetch.elapsed().as_secs() >= 15 * 60);
-                if should_fetch {
-                    return self.request_calendar_refresh(false);
-                }
+            Message::Tick if self.calendar_refresh_due(Instant::now()) => {
+                self.calendar_next_retry = None;
+                return self.request_calendar_refresh(false);
             }
             _ => {}
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pane_state::PaneKind;
+    use iced::widget::pane_grid;
+
+    fn terminal_with_calendar() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.panes = pane_grid::State::with_configuration(pane_grid::Configuration::Pane(
+            PaneKind::Calendar,
+        ));
+        terminal.calendar_loading = false;
+        terminal.calendar_last_fetch = None;
+        terminal.calendar_next_retry = None;
+        terminal
+    }
+
+    #[test]
+    fn tick_honors_pending_calendar_retry_backoff_after_initial_failure() {
+        let mut terminal = terminal_with_calendar();
+
+        let _ =
+            terminal.update_calendar(Message::CalendarLoaded(Err("calendar offline".to_string())));
+        let retry_at = terminal
+            .calendar_next_retry
+            .expect("failed calendar load should schedule retry");
+
+        let _ = terminal.update_calendar(Message::Tick);
+
+        assert!(!terminal.calendar_loading);
+        assert_eq!(terminal.calendar_next_retry, Some(retry_at));
+    }
+
+    #[test]
+    fn tick_refreshes_calendar_when_retry_deadline_has_arrived() {
+        let mut terminal = terminal_with_calendar();
+        terminal.calendar_error = Some("calendar offline".to_string());
+        terminal.calendar_next_retry = Some(Instant::now() - Duration::from_secs(1));
+
+        let _ = terminal.update_calendar(Message::Tick);
+
+        assert!(terminal.calendar_loading);
+        assert_eq!(terminal.calendar_next_retry, None);
     }
 }

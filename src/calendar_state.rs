@@ -4,6 +4,7 @@ use crate::pane_state::PaneKind;
 
 use crate::api;
 use iced::Task;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CalendarImpactFilter {
@@ -39,6 +40,19 @@ impl TradingTerminal {
         }
 
         Task::perform(api::fetch_economic_calendar(), Message::CalendarLoaded)
+    }
+
+    pub(crate) fn calendar_refresh_due(&self, now: Instant) -> bool {
+        if self.calendar_loading || !self.is_calendar_open() {
+            return false;
+        }
+
+        if let Some(retry_at) = self.calendar_next_retry {
+            return now >= retry_at;
+        }
+
+        self.calendar_last_fetch
+            .is_none_or(|last_fetch| now.duration_since(last_fetch).as_secs() >= 15 * 60)
     }
 
     pub(crate) fn calendar_retry_delay_secs(attempts: u8) -> u64 {
