@@ -245,8 +245,8 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let raw_qty = match self.order_quantity.trim().parse::<f64>() {
-            Ok(value) if value.is_finite() && value > 0.0 => value,
+        let raw_qty = match crate::helpers::parse_number(&self.order_quantity) {
+            Some(value) if value.is_finite() && value > 0.0 => value,
             _ => {
                 self.order_status = Some(("Invalid quantity".into(), true));
                 return Task::none();
@@ -1729,7 +1729,7 @@ impl TradingTerminal {
 }
 
 fn parse_positive_price(value: &str) -> Option<f64> {
-    let parsed = value.trim().parse::<f64>().ok()?;
+    let parsed = crate::helpers::parse_number(value)?;
     (parsed.is_finite() && parsed > 0.0).then_some(parsed)
 }
 

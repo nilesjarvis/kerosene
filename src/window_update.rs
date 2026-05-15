@@ -5,7 +5,11 @@ use iced::Task;
 impl TradingTerminal {
     pub(crate) fn update_window(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::WindowOpened(_id) => {}
+            Message::WindowOpened(id) => {
+                if Some(id) == self.main_window_id {
+                    return self.sync_main_window_min_size();
+                }
+            }
             Message::WindowMoved(id, point) => {
                 if Some(id) == self.wallet_tracker.window_id {
                     self.wallet_tracker.x = Some(point.x);
@@ -56,6 +60,11 @@ impl TradingTerminal {
                     self.wallet_tracker.width = size.width;
                     self.wallet_tracker.height = size.height;
                     self.persist_config();
+                }
+                if Some(id) == self.main_window_id {
+                    self.main_window_size = Some(size);
+                    self.persist_config();
+                    return self.sync_main_window_min_size();
                 }
                 if let Some(state) = self.wallet_detail_windows.get_mut(&id) {
                     state.width = size.width;

@@ -399,7 +399,7 @@ pub(crate) enum Message {
     },
     OrderBookWsAssetCtxUpdate(OrderBookId, AssetContext),
     SetBookTickSize(OrderBookId, f64),
-    CenterOrderBook(OrderBookId),
+    ToggleOrderBookCenterOnMid(OrderBookId),
     ToggleOrderBookSettings(OrderBookId),
     ToggleOrderBookSpreadChart(OrderBookId),
     OrderBookSpreadChartResize(OrderBookId, f32),

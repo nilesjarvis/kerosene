@@ -4,8 +4,8 @@ mod symbols;
 mod ui;
 
 pub use formatting::{
-    format_duration, format_price, format_relative_time, format_size, format_timestamp,
-    format_timestamp_exact, format_usd, format_with_commas,
+    format_decimal_with_commas, format_duration, format_price, format_relative_time, format_size,
+    format_timestamp, format_timestamp_exact, format_usd, format_with_commas, parse_number,
 };
 pub use order_book::{
     BookRowData, aggregate_levels, book_row, book_tick_options, clickable_book_row,

@@ -90,8 +90,8 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let raw_qty: f64 = match self.order_quantity.parse::<f64>() {
-            Ok(v) if v.is_finite() && v > 0.0 => v,
+        let raw_qty: f64 = match helpers::parse_number(&self.order_quantity) {
+            Some(v) if v.is_finite() && v > 0.0 => v,
             _ => {
                 self.order_status = Some(("Invalid quantity".into(), true));
                 return Task::none();

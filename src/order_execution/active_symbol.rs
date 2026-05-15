@@ -51,6 +51,7 @@ impl TradingTerminal {
                 inst.set_book(OrderBook::empty());
                 inst.asset_ctx = None;
                 inst.spread_history.clear();
+                inst.clear_mid_price_history();
                 inst.book_loading = true;
                 inst.book_error = None;
             }

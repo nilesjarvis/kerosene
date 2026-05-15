@@ -173,12 +173,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WsBookUpdate { .. }
         | Message::SetBookTickSize(_, _)
         | Message::ToggleOrderBookSettings(_)
+        | Message::ToggleOrderBookCenterOnMid(_)
         | Message::ToggleOrderBookSpreadChart(_)
         | Message::OrderBookSpreadChartResize(_, _)
         | Message::OrderBookSearchChanged(_, _)
         | Message::OrderBookSetMode(_, _)
-        | Message::SetOrderBookDisplayMode(_, _)
-        | Message::CenterOrderBook(_) => UpdateRoute::Market,
+        | Message::SetOrderBookDisplayMode(_, _) => UpdateRoute::Market,
 
         Message::ThemeChanged(_)
         | Message::MutedTickerInputChanged(_)

@@ -3,6 +3,7 @@ use super::super::sizing::order_size_from_quantity_input;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
+use crate::helpers::parse_number;
 use crate::message::Message;
 use crate::signing::{OrderKind, float_to_wire, place_order, round_price};
 
@@ -17,7 +18,7 @@ fn quick_order_size_wire(
     reference_price: f64,
     sz_decimals: u32,
 ) -> Option<String> {
-    let quantity = input.trim().parse::<f64>().ok()?;
+    let quantity = parse_number(input)?;
     order_size_from_quantity_input(quantity, reference_price, quantity_is_usd, sz_decimals)
         .map(float_to_wire)
 }
@@ -90,6 +91,9 @@ impl TradingTerminal {
         let sym = self.exchange_symbols.iter().find(|s| s.key == chart_symbol);
         let Some(sym) = sym else {
             self.order_status = Some((format!("Symbol '{}' not found", chart_symbol), true));
+            if let Some(instance) = self.charts.get_mut(&chart_id) {
+                instance.set_quick_order(form);
+            }
             return Task::none();
         };
         if sym.market_type == MarketType::Outcome {

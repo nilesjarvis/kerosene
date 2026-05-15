@@ -114,6 +114,7 @@ impl TradingTerminal {
                 order_book.set_book(OrderBook::empty());
                 order_book.asset_ctx = None;
                 order_book.spread_history.clear();
+                order_book.clear_mid_price_history();
                 order_book.book_loading = false;
             }
         }

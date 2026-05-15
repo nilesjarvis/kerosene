@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_price;
+use crate::helpers::{format_price, parse_number};
 use crate::market_state::{OrderBookId, OrderBookSymbolMode};
 use crate::message::Message;
 use crate::signing::OrderKind;
@@ -78,7 +78,7 @@ impl TradingTerminal {
             value
         };
 
-        let Ok(qty) = self.order_quantity.parse::<f64>() else {
+        let Some(qty) = parse_number(&self.order_quantity) else {
             self.order_percentage = 0.0;
             return;
         };
@@ -124,7 +124,7 @@ impl TradingTerminal {
         self.order_quantity_is_usd = !self.order_quantity_is_usd;
         self.persist_config();
 
-        let Ok(qty) = self.order_quantity.parse::<f64>() else {
+        let Some(qty) = parse_number(&self.order_quantity) else {
             return;
         };
 
@@ -196,10 +196,7 @@ impl TradingTerminal {
             self.order_kind,
             OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc
         ) {
-            self.order_price
-                .parse::<f64>()
-                .ok()
-                .filter(|price| price.is_finite() && *price > 0.0)
+            parse_number(&self.order_price).filter(|price| price.is_finite() && *price > 0.0)
         } else {
             self.resolve_mid_for_symbol(&self.active_symbol)
                 .filter(|price| price.is_finite() && *price > 0.0)
@@ -216,9 +213,7 @@ impl TradingTerminal {
 }
 
 fn valid_selected_order_book_price(price: &str) -> bool {
-    price
-        .parse::<f64>()
-        .ok()
+    parse_number(price)
         .and_then(positive_finite_price)
         .is_some()
 }

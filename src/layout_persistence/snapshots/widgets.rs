@@ -89,6 +89,7 @@ impl TradingTerminal {
                         config::OrderBookDisplayModeConfig::DomLadder
                     }
                 },
+                center_on_mid: book.center_on_mid,
                 show_spread_chart: book.show_spread_chart,
                 spread_chart_height: book.spread_chart_height,
             })

@@ -85,6 +85,7 @@ impl TradingTerminal {
             config::HotkeyAction::AddCandlestickChart => "Add Candlestick Chart".to_string(),
             config::HotkeyAction::OpenWalletTracker => "Open Wallet Tracker".to_string(),
             config::HotkeyAction::OpenQuickSymbolSearch => "Quick Symbol Search".to_string(),
+            config::HotkeyAction::OpenSettingsWindow => "Open Settings".to_string(),
             config::HotkeyAction::SwitchAccount { secret_id } => self
                 .accounts
                 .iter()
@@ -111,6 +112,10 @@ impl TradingTerminal {
             (
                 config::HotkeyAction::OpenQuickSymbolSearch,
                 "Quick Symbol Search".to_string(),
+            ),
+            (
+                config::HotkeyAction::OpenSettingsWindow,
+                "Open Settings".to_string(),
             ),
         ];
 

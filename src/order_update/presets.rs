@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::OrderPreset;
+use crate::helpers::parse_number;
 use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::Task;
@@ -34,7 +35,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn handle_edit_preset_save(&mut self, kind: OrderKind, idx: usize) {
-        if let Ok(v) = self.preset_edit_buffer.parse::<f64>() {
+        if let Some(v) = parse_number(&self.preset_edit_buffer) {
             let prefix = if self.preset_is_usd { "$" } else { "" };
             let suffix = "";
 

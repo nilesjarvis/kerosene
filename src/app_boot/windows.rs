@@ -5,9 +5,15 @@ use iced::{Point, Size, Task, window};
 impl TradingTerminal {
     pub(super) fn boot_window_tasks(&mut self) -> Vec<Task<Message>> {
         let mut boot_tasks = Vec::new();
+        let main_min_size = self.main_window_min_size();
+        let requested_main_size = self.main_window_size.unwrap_or(Size::new(1600.0, 960.0));
 
         let main_window_settings = window::Settings {
-            size: self.main_window_size.unwrap_or(Size::new(1600.0, 960.0)),
+            size: Size::new(
+                requested_main_size.width.max(main_min_size.width),
+                requested_main_size.height.max(main_min_size.height),
+            ),
+            min_size: Some(main_min_size),
             position: self
                 .main_window_pos
                 .map(window::Position::Specific)

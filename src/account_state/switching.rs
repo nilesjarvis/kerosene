@@ -1,6 +1,9 @@
 mod ghost;
 mod saved_delete;
 
+#[cfg(test)]
+mod tests;
+
 use crate::app_state::TradingTerminal;
 use crate::config::AccountProfile;
 use crate::message::Message;
@@ -40,6 +43,18 @@ impl TradingTerminal {
         self.tracked_trades_status = self.liquidations_status.clone();
     }
 
+    pub(crate) fn account_change_blocked_by_active_chase(&mut self, action: &str) -> bool {
+        if self.chase_orders.is_empty() {
+            return false;
+        }
+
+        self.push_toast(
+            format!("Stop active chase orders and wait for cancellation to finish before {action}"),
+            true,
+        );
+        true
+    }
+
     pub(crate) fn switch_account_task(&mut self, index: usize) -> Task<Message> {
         let Some(profile) = self.accounts.get(index).cloned() else {
             return Task::none();
@@ -57,16 +72,9 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let stop_chase_task = Task::batch(
-            self.chase_orders
-                .keys()
-                .copied()
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|id| {
-                    self.stop_chase_by_id_with_reason(id, "Chase stopped: account changed", false)
-                }),
-        );
+        if self.account_change_blocked_by_active_chase("switching accounts") {
+            return Task::none();
+        }
 
         let is_ghost = self.ghost_account_secret_ids.contains(&profile.secret_id);
         self.active_account_index = index;
@@ -94,13 +102,11 @@ impl TradingTerminal {
         self.reset_account_stream_status();
         self.persist_config();
 
-        let account_task = if !self.wallet_address_input.trim().is_empty() {
+        if !self.wallet_address_input.trim().is_empty() {
             Task::done(Message::ConnectWallet)
         } else {
             Task::done(Message::DisconnectWallet)
-        };
-
-        Task::batch([stop_chase_task, account_task])
+        }
     }
 
     pub(crate) fn find_account_by_wallet_address(&self, address: &str) -> Option<usize> {

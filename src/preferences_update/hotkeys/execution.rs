@@ -17,6 +17,7 @@ impl TradingTerminal {
                 self.update(Message::OpenWalletTrackerWindow)
             }
             config::HotkeyAction::OpenQuickSymbolSearch => self.open_quick_symbol_search(),
+            config::HotkeyAction::OpenSettingsWindow => self.update(Message::OpenSettingsWindow),
             config::HotkeyAction::SwitchAccount { secret_id } => {
                 if let Some(index) = self.account_index_for_secret_id(&secret_id) {
                     return self.switch_account_task(index);

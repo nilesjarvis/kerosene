@@ -18,3 +18,20 @@ fn switch_account_hotkey_round_trips_secret_id() {
 
     assert_eq!(loaded, hotkey);
 }
+
+#[test]
+fn settings_window_hotkey_round_trips() {
+    let hotkey = HotkeyConfig {
+        action: HotkeyAction::OpenSettingsWindow,
+        key: ",".to_string(),
+        shift: false,
+        ctrl: true,
+        alt: false,
+        logo: false,
+    };
+
+    let json = serde_json::to_string(&hotkey).expect("hotkey should serialize");
+    let loaded: HotkeyConfig = serde_json::from_str(&json).expect("hotkey should deserialize");
+
+    assert_eq!(loaded, hotkey);
+}
