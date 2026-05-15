@@ -145,6 +145,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) tracked_trade_seen_keys: HashSet<String>,
     pub(crate) tracked_trade_seen_order: VecDeque<String>,
     pub(crate) tracked_trade_aggregation_enabled: bool,
+    pub(crate) tracked_trade_settings_menu_open: bool,
     pub(crate) liquidation_feed_aggregation_enabled: bool,
     pub(crate) liquidation_chart_enabled: bool,
     pub(crate) liquidation_summary_enabled: bool,

@@ -338,6 +338,7 @@ impl TradingTerminal {
         self.account_picker_open = false;
         self.account_picker_rename_index = None;
         self.chart_screenshot_menu_open = None;
+        self.tracked_trade_settings_menu_open = false;
         self.liquidation_settings_menu_open = false;
     }
 }

@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, row, text, tooltip};
-use iced::{Element, Fill, Theme};
+use iced::{Element, Theme};
 
 impl TradingTerminal {
     pub(in crate::feed_views::liquidations::controls) fn view_liquidations_connection_controls(
@@ -29,15 +29,13 @@ impl TradingTerminal {
                     status_dot,
                     text(liquidations_status_label)
                         .size(10)
-                        .color(theme.extended_palette().background.weak.text)
-                        .width(Fill),
+                        .color(theme.extended_palette().background.weak.text),
                 ]
                 .spacing(8)
                 .align_y(iced::Alignment::Center),
             )
             .on_press(Message::ReconnectLiquidations)
             .padding([2, 6])
-            .width(156)
             .style(|theme: &Theme, status| {
                 let bg = match status {
                     button::Status::Hovered => theme.extended_palette().background.weak.color,

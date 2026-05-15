@@ -24,6 +24,13 @@ impl TradingTerminal {
                 self.tracked_trade_aggregation_enabled = !self.tracked_trade_aggregation_enabled;
                 self.persist_config();
             }
+            Message::ToggleTrackedTradeSettingsMenu => {
+                let opening = !self.tracked_trade_settings_menu_open;
+                if opening {
+                    self.close_chart_header_menus();
+                }
+                self.tracked_trade_settings_menu_open = opening;
+            }
             Message::ToggleLiquidationFeedAggregation => {
                 self.liquidation_feed_aggregation_enabled =
                     !self.liquidation_feed_aggregation_enabled;

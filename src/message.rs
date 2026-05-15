@@ -201,6 +201,7 @@ pub(crate) enum Message {
     ToggleLiquidationAlerts,
     ToggleTrackedTradeAlerts,
     ToggleTrackedTradeAggregation,
+    ToggleTrackedTradeSettingsMenu,
     ToggleLiquidationFeedAggregation,
     ToggleLiquidationChart,
     ToggleLiquidationSummary,

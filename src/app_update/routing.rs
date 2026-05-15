@@ -71,6 +71,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleLiquidationAlerts
         | Message::ToggleTrackedTradeAlerts
         | Message::ToggleTrackedTradeAggregation
+        | Message::ToggleTrackedTradeSettingsMenu
         | Message::ToggleLiquidationFeedAggregation
         | Message::ToggleLiquidationChart
         | Message::ToggleLiquidationSummary

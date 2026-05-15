@@ -150,6 +150,7 @@ impl TradingTerminal {
             tracked_trade_seen_keys: HashSet::new(),
             tracked_trade_seen_order: VecDeque::new(),
             tracked_trade_aggregation_enabled: cfg.tracked_trade_aggregation_enabled,
+            tracked_trade_settings_menu_open: false,
             liquidation_feed_aggregation_enabled: cfg.liquidation_feed_aggregation_enabled,
             liquidation_chart_enabled: false,
             liquidation_summary_enabled: true,
