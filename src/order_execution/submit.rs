@@ -15,6 +15,11 @@ use inputs::parse_positive_amount;
 impl TradingTerminal {
     pub(crate) fn execute_order(&mut self, is_buy: bool) -> Task<Message> {
         let _theme = self.theme();
+        if self.pending_order_action.is_some() {
+            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
+            return Task::none();
+        }
+
         let key = self.wallet_key_input.trim().to_string();
         if key.is_empty() || self.connected_address.is_none() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
@@ -144,5 +149,59 @@ impl TradingTerminal {
             ),
             |r| Message::OrderResult(Box::new(r)),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::{ExchangeSymbol, MarketType};
+
+    fn symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 5,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
+
+    fn terminal_ready_for_limit_order() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.active_symbol = "BTC".to_string();
+        terminal.active_symbol_display = "BTC".to_string();
+        terminal.exchange_symbols = vec![symbol("BTC")];
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal.wallet_key_input = "agent-key".to_string().into();
+        terminal.order_kind = OrderKind::Limit;
+        terminal.order_price = "100".to_string();
+        terminal.order_quantity = "1".to_string();
+        terminal.order_quantity_is_usd = false;
+        terminal
+    }
+
+    #[test]
+    fn execute_order_rejects_queued_submit_while_order_action_is_pending() {
+        let mut terminal = terminal_ready_for_limit_order();
+        terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+        let _task = terminal.execute_order(false);
+
+        assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "Wait for the pending order action to finish".to_string(),
+                true
+            ))
+        );
     }
 }
