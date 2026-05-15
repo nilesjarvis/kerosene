@@ -2,11 +2,13 @@ use crate::account_state::AccountPickerOption;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
+use iced::widget::container as container_style;
 use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{border, Element, Fill, Length, Theme};
 
 const ACCOUNT_PICKER_WIDTH: f32 = 250.0;
-const ACCOUNT_PICKER_HEIGHT: f32 = 34.0;
+const ACCOUNT_PICKER_HEIGHT: f32 = 36.0;
+const ACCOUNT_PICKER_BORDER_WIDTH: f32 = 1.0;
 const ACCOUNT_PICKER_TRIGGER_WIDTH: f32 = 34.0;
 const ACCOUNT_PICKER_RADIUS: f32 = 4.0;
 const CHEVRON_UP: &str = "\u{25B4}";
@@ -42,6 +44,8 @@ impl TradingTerminal {
         let can_copy_address = !selected.address.trim().is_empty();
         let copy_message =
             can_copy_address.then(|| Message::CopyToClipboard(selected.address.clone()));
+        let inner_width = ACCOUNT_PICKER_WIDTH - ACCOUNT_PICKER_BORDER_WIDTH * 2.0;
+        let inner_height = ACCOUNT_PICKER_HEIGHT - ACCOUNT_PICKER_BORDER_WIDTH * 2.0;
 
         let label_button = button(
             row![
@@ -61,7 +65,7 @@ impl TradingTerminal {
         .on_press_maybe(copy_message)
         .padding([4, 8])
         .width(Fill)
-        .height(Length::Fixed(ACCOUNT_PICKER_HEIGHT))
+        .height(Length::Fixed(inner_height))
         .style(|theme: &Theme, status| {
             account_picker_segment_style(theme, status, AccountPickerSegment::Label, false)
         });
@@ -88,7 +92,7 @@ impl TradingTerminal {
         .on_press(Message::ToggleAccountPicker)
         .padding([4, 0])
         .width(Length::Fixed(ACCOUNT_PICKER_TRIGGER_WIDTH))
-        .height(Length::Fixed(ACCOUNT_PICKER_HEIGHT))
+        .height(Length::Fixed(inner_height))
         .style(move |theme: &Theme, status| {
             account_picker_segment_style(
                 theme,
@@ -101,12 +105,33 @@ impl TradingTerminal {
         container(
             row![label_segment, trigger_segment]
                 .spacing(0)
-                .width(Length::Fixed(ACCOUNT_PICKER_WIDTH))
-                .height(Length::Fixed(ACCOUNT_PICKER_HEIGHT)),
+                .width(Length::Fixed(inner_width))
+                .height(Length::Fixed(inner_height)),
         )
+        .padding(ACCOUNT_PICKER_BORDER_WIDTH)
         .width(Length::Fixed(ACCOUNT_PICKER_WIDTH))
         .height(Length::Fixed(ACCOUNT_PICKER_HEIGHT))
+        .style(move |theme: &Theme| account_picker_frame_style(theme, trigger_active))
         .into()
+    }
+}
+
+fn account_picker_frame_style(theme: &Theme, active: bool) -> container_style::Style {
+    let mut border_color = theme.extended_palette().background.weak.text;
+    border_color.a = 0.24;
+
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: iced::Border {
+            radius: ACCOUNT_PICKER_RADIUS.into(),
+            width: ACCOUNT_PICKER_BORDER_WIDTH,
+            color: if active {
+                theme.palette().primary
+            } else {
+                border_color
+            },
+        },
+        ..Default::default()
     }
 }
 
@@ -136,7 +161,7 @@ fn account_picker_segment_style(
                 AccountPickerSegment::Label => border::left(ACCOUNT_PICKER_RADIUS),
                 AccountPickerSegment::Trigger => border::right(ACCOUNT_PICKER_RADIUS),
             },
-            width: 1.0,
+            width: 0.0,
             color: border_color,
         },
         ..Default::default()

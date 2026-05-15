@@ -133,6 +133,8 @@ pub(crate) enum Message {
     CalendarWindowFilterChanged(CalendarWindowFilter),
     Tick,
     ThemeChanged(String),
+    PaneBorderThicknessChanged(f32),
+    PaneCornerRadiusChanged(f32),
     MutedTickerInputChanged(String),
     MuteTicker,
     UnmuteTicker(String),

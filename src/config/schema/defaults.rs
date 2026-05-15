@@ -3,6 +3,7 @@ use crate::config::wallets::{default_wallet_tracker_height, default_wallet_track
 use crate::config::{
     OrderPresetsConfig, WalletTrackerConfig, default_custom_themes, default_theme,
 };
+use crate::pane_state::{DEFAULT_PANE_BORDER_THICKNESS, DEFAULT_PANE_CORNER_RADIUS};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,35 @@ pub fn normalize_market_slippage_pct(value: f64) -> Option<f64> {
     (value.is_finite() && (0.0..=MAX_MARKET_SLIPPAGE_PCT).contains(&value)).then_some(value)
 }
 
+pub const MIN_PANE_BORDER_THICKNESS: f32 = 1.0;
+pub const MAX_PANE_BORDER_THICKNESS: f32 = 12.0;
+pub const MIN_PANE_CORNER_RADIUS: f32 = 0.0;
+pub const MAX_PANE_CORNER_RADIUS: f32 = 16.0;
+
+pub fn default_pane_border_thickness() -> f32 {
+    DEFAULT_PANE_BORDER_THICKNESS
+}
+
+pub fn default_pane_corner_radius() -> f32 {
+    DEFAULT_PANE_CORNER_RADIUS
+}
+
+pub fn normalize_pane_border_thickness(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_PANE_BORDER_THICKNESS, MAX_PANE_BORDER_THICKNESS)
+    } else {
+        default_pane_border_thickness()
+    }
+}
+
+pub fn normalize_pane_corner_radius(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_PANE_CORNER_RADIUS, MAX_PANE_CORNER_RADIUS)
+    } else {
+        default_pane_corner_radius()
+    }
+}
+
 impl Default for KeroseneConfig {
     fn default() -> Self {
         Self {
@@ -80,6 +110,8 @@ impl Default for KeroseneConfig {
             order_kind: default_order_kind(),
             reduce_only: false,
             order_quantity_is_usd: false,
+            pane_border_thickness: default_pane_border_thickness(),
+            pane_corner_radius: default_pane_corner_radius(),
             book_tick_size: default_tick_size(),
             symbol_search_sort_mode: default_symbol_search_sort_mode(),
             market_universe: Default::default(),

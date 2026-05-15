@@ -3,7 +3,8 @@ use crate::chart_state::ChartId;
 use crate::market_state::{LiveWatchlistId, OrderBookId};
 use crate::spaghetti_state::SpaghettiChartId;
 
-pub(crate) const MAIN_PANE_GRID_SPACING: f32 = 4.0;
+pub(crate) const DEFAULT_PANE_BORDER_THICKNESS: f32 = 4.0;
+pub(crate) const DEFAULT_PANE_CORNER_RADIUS: f32 = 6.0;
 
 #[derive(Debug, Clone)]
 pub(crate) enum PaneKind {

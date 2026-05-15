@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::pane_title;
 use crate::message::Message;
-use crate::pane_state::{MAIN_PANE_GRID_SPACING, PaneKind};
+use crate::pane_state::PaneKind;
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, container, pane_grid, row, text};
 use iced::{Color, Element, Fill, Theme};
@@ -11,12 +11,13 @@ use iced::{Color, Element, Fill, Theme};
 // ---------------------------------------------------------------------------
 
 const PANE_BORDER_WIDTH: f32 = 1.0;
-const PANE_CORNER_RADIUS: f32 = 6.0;
 
 impl TradingTerminal {
     pub(super) fn view_main_pane_grid(&self) -> Element<'_, Message> {
         let chart_count = self.charts.len();
         let pane_count = self.panes.iter().count();
+        let pane_border_thickness = self.pane_border_thickness;
+        let pane_corner_radius = self.pane_corner_radius;
 
         let pane_grid_widget = pane_grid(&self.panes, |pane, kind, _is_maximized| {
             let title = pane_title(kind);
@@ -31,11 +32,13 @@ impl TradingTerminal {
                         }),
                 )
                 .padding([3, 6])
-                .style(pane_drag_ghost_title_bar_style);
+                .style(move |theme: &Theme| {
+                    pane_drag_ghost_title_bar_style(theme, pane_corner_radius)
+                });
 
                 return pane_grid::Content::new(pane_drag_ghost_body())
                     .title_bar(title_bar)
-                    .style(pane_drag_ghost_style);
+                    .style(move |theme: &Theme| pane_drag_ghost_style(theme, pane_corner_radius));
             }
 
             let content = self.view_pane_content(pane, kind, chart_count);
@@ -60,20 +63,20 @@ impl TradingTerminal {
                 .controls(controls)
                 .always_show_controls()
                 .padding([3, 6])
-                .style(pane_title_bar_style);
+                .style(move |theme: &Theme| pane_title_bar_style(theme, pane_corner_radius));
 
             pane_grid::Content::new(content)
                 .title_bar(title_bar)
-                .style(pane_content_style)
+                .style(move |theme: &Theme| pane_content_style(theme, pane_corner_radius))
         })
         .width(Fill)
         .height(Fill)
-        .spacing(MAIN_PANE_GRID_SPACING)
+        .spacing(pane_border_thickness)
         .min_size(self.account_summary_pane_min_size())
         .on_resize(6, Message::PaneResized)
         .on_drag(Message::PaneDragged)
         .on_click(Message::PaneClicked)
-        .style(|theme: &Theme| {
+        .style(move |theme: &Theme| {
             let palette = theme.palette();
             pane_grid::Style {
                 hovered_region: pane_grid::Highlight {
@@ -81,16 +84,16 @@ impl TradingTerminal {
                     border: iced::Border {
                         width: PANE_BORDER_WIDTH,
                         color: palette.primary,
-                        radius: PANE_CORNER_RADIUS.into(),
+                        radius: pane_corner_radius.into(),
                     },
                 },
                 picked_split: pane_grid::Line {
                     color: palette.primary,
-                    width: MAIN_PANE_GRID_SPACING,
+                    width: pane_border_thickness,
                 },
                 hovered_split: pane_grid::Line {
                     color: palette.primary,
-                    width: MAIN_PANE_GRID_SPACING,
+                    width: pane_border_thickness,
                 },
             }
         });
@@ -106,7 +109,7 @@ fn pane_drag_ghost_body() -> Element<'static, Message> {
         .into()
 }
 
-fn pane_drag_ghost_style(theme: &Theme) -> container_style::Style {
+fn pane_drag_ghost_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
     let mut background = theme.palette().primary;
     background.a = 0.12;
 
@@ -118,13 +121,13 @@ fn pane_drag_ghost_style(theme: &Theme) -> container_style::Style {
         border: iced::Border {
             width: PANE_BORDER_WIDTH,
             color: border_color,
-            radius: PANE_CORNER_RADIUS.into(),
+            radius: corner_radius.into(),
         },
         ..Default::default()
     }
 }
 
-fn pane_drag_ghost_title_bar_style(theme: &Theme) -> container_style::Style {
+fn pane_drag_ghost_title_bar_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
     let mut background = theme.palette().primary;
     background.a = 0.18;
 
@@ -136,7 +139,7 @@ fn pane_drag_ghost_title_bar_style(theme: &Theme) -> container_style::Style {
         border: iced::Border {
             width: 0.0,
             color: border_color,
-            radius: iced::border::Radius::default().top(PANE_CORNER_RADIUS),
+            radius: iced::border::Radius::default().top(corner_radius),
         },
         ..Default::default()
     }
@@ -148,7 +151,7 @@ fn drag_ghost_title_color(theme: &Theme) -> Color {
     color
 }
 
-fn pane_title_bar_style(theme: &Theme) -> container_style::Style {
+fn pane_title_bar_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
     use iced::gradient;
 
     let background = theme.extended_palette().background.strong.color;
@@ -165,14 +168,14 @@ fn pane_title_bar_style(theme: &Theme) -> container_style::Style {
                 .into(),
         ),
         border: iced::Border {
-            radius: iced::border::Radius::default().top(PANE_CORNER_RADIUS),
+            radius: iced::border::Radius::default().top(corner_radius),
             ..Default::default()
         },
         ..Default::default()
     }
 }
 
-fn pane_content_style(theme: &Theme) -> container_style::Style {
+fn pane_content_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
     let mut border_color = theme.extended_palette().background.strong.text;
     border_color.a = 0.10;
 
@@ -181,7 +184,7 @@ fn pane_content_style(theme: &Theme) -> container_style::Style {
         border: iced::Border {
             width: PANE_BORDER_WIDTH,
             color: border_color,
-            radius: PANE_CORNER_RADIUS.into(),
+            radius: corner_radius.into(),
         },
         ..Default::default()
     }

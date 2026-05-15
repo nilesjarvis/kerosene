@@ -1,5 +1,7 @@
 use crate::app_state::TradingTerminal;
-use crate::config::normalize_market_slippage_pct;
+use crate::config::{
+    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
+};
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
 use iced::Task;
@@ -13,6 +15,15 @@ impl TradingTerminal {
             Message::ThemeChanged(theme_name) => {
                 self.active_theme = theme_name;
                 self.apply_chart_theme_colors();
+                self.persist_config();
+            }
+            Message::PaneBorderThicknessChanged(value) => {
+                self.pane_border_thickness = normalize_pane_border_thickness(value);
+                self.persist_config();
+                return self.sync_main_window_min_size();
+            }
+            Message::PaneCornerRadiusChanged(value) => {
+                self.pane_corner_radius = normalize_pane_corner_radius(value);
                 self.persist_config();
             }
             Message::MutedTickerInputChanged(value) => {

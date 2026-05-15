@@ -2,7 +2,7 @@ use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
-use crate::pane_state::{MAIN_PANE_GRID_SPACING, PaneKind};
+use crate::pane_state::PaneKind;
 use iced::widget::pane_grid;
 use iced::{Size, Task};
 
@@ -120,10 +120,11 @@ impl TradingTerminal {
     fn clamp_order_entry_resize_ratio(&self, split: pane_grid::Split, ratio: f32) -> f32 {
         let base_min_size = self.account_summary_pane_min_size();
         let size = self.main_pane_grid_size();
+        let pane_border_thickness = self.pane_border_thickness;
         let split_regions =
             self.panes
                 .layout()
-                .split_regions(MAIN_PANE_GRID_SPACING, base_min_size, size);
+                .split_regions(pane_border_thickness, base_min_size, size);
         let Some((axis, region, _current_ratio)) = split_regions.get(&split).copied() else {
             return ratio;
         };
@@ -137,8 +138,10 @@ impl TradingTerminal {
             return ratio;
         }
 
-        let min_a = subtree_min_length(a, axis, &self.panes, base_min_size);
-        let min_b = subtree_min_length(b, axis, &self.panes, base_min_size);
+        let min_a =
+            subtree_min_length(a, axis, &self.panes, base_min_size, pane_border_thickness);
+        let min_b =
+            subtree_min_length(b, axis, &self.panes, base_min_size, pane_border_thickness);
         let axis_length = match axis {
             pane_grid::Axis::Horizontal => region.height,
             pane_grid::Axis::Vertical => region.width,
@@ -151,6 +154,7 @@ impl TradingTerminal {
             min_b,
             order_entry_in_a,
             order_entry_in_b,
+            pane_border_thickness,
         )
     }
 
@@ -172,12 +176,14 @@ impl TradingTerminal {
                 pane_grid::Axis::Vertical,
                 &self.panes,
                 base_min_size,
+                self.pane_border_thickness,
             ),
             subtree_min_length(
                 layout,
                 pane_grid::Axis::Horizontal,
                 &self.panes,
                 base_min_size,
+                self.pane_border_thickness,
             ) + MAIN_STATUS_BAR_RESERVED_HEIGHT,
         )
     }
@@ -224,14 +230,17 @@ fn subtree_min_length(
     measured_axis: pane_grid::Axis,
     panes: &pane_grid::State<PaneKind>,
     base_min_size: f32,
+    pane_border_thickness: f32,
 ) -> f32 {
     match node {
         pane_grid::Node::Split { axis, a, b, .. } => {
-            let min_a = subtree_min_length(a, measured_axis, panes, base_min_size);
-            let min_b = subtree_min_length(b, measured_axis, panes, base_min_size);
+            let min_a =
+                subtree_min_length(a, measured_axis, panes, base_min_size, pane_border_thickness);
+            let min_b =
+                subtree_min_length(b, measured_axis, panes, base_min_size, pane_border_thickness);
 
             if *axis == measured_axis {
-                min_a + min_b + MAIN_PANE_GRID_SPACING
+                min_a + min_b + pane_border_thickness
             } else {
                 min_a.max(min_b)
             }
@@ -258,22 +267,23 @@ fn clamp_split_ratio(
     min_b: f32,
     order_entry_in_a: bool,
     order_entry_in_b: bool,
+    pane_border_thickness: f32,
 ) -> f32 {
     if !ratio.is_finite() || axis_length <= 0.0 {
         return ratio;
     }
 
-    let raw_a = (axis_length * ratio - MAIN_PANE_GRID_SPACING / 2.0).round();
-    let max_a = axis_length - min_b - MAIN_PANE_GRID_SPACING;
+    let raw_a = (axis_length * ratio - pane_border_thickness / 2.0).round();
+    let max_a = axis_length - min_b - pane_border_thickness;
     let target_a = if max_a >= min_a {
         raw_a.clamp(min_a, max_a)
     } else if order_entry_in_a && !order_entry_in_b {
-        min_a.min((axis_length - MAIN_PANE_GRID_SPACING).max(0.0))
+        min_a.min((axis_length - pane_border_thickness).max(0.0))
     } else if order_entry_in_b && !order_entry_in_a {
-        (axis_length - min_b - MAIN_PANE_GRID_SPACING).max(0.0)
+        (axis_length - min_b - pane_border_thickness).max(0.0)
     } else {
-        raw_a.clamp(0.0, (axis_length - MAIN_PANE_GRID_SPACING).max(0.0))
+        raw_a.clamp(0.0, (axis_length - pane_border_thickness).max(0.0))
     };
 
-    ((target_a + MAIN_PANE_GRID_SPACING / 2.0) / axis_length).clamp(0.0, 1.0)
+    ((target_a + pane_border_thickness / 2.0) / axis_length).clamp(0.0, 1.0)
 }

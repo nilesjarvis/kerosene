@@ -1,7 +1,8 @@
 use crate::config::themes::{default_custom_themes, is_known_default_hyperliquid_theme};
 use crate::config::{
     AccountProfile, KeroseneConfig, default_layout_ratios, default_market_slippage_pct,
-    new_secret_id, normalize_market_slippage_pct, prune_unsupported_pane_layout,
+    new_secret_id, normalize_market_slippage_pct, normalize_pane_border_thickness,
+    normalize_pane_corner_radius, prune_unsupported_pane_layout,
 };
 use zeroize::Zeroize;
 
@@ -14,6 +15,7 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     ensure_layout_ratios(config);
     prune_unsupported_pane_layouts(config);
     normalize_market_slippage(config);
+    normalize_pane_chrome(config);
     migrate_legacy_single_account(config);
     ensure_account_profile(config);
     clamp_active_account(config);
@@ -43,6 +45,11 @@ fn normalize_market_slippage(config: &mut KeroseneConfig) {
 
 fn normalized_market_slippage_pct(value: f64) -> f64 {
     normalize_market_slippage_pct(value).unwrap_or_else(default_market_slippage_pct)
+}
+
+fn normalize_pane_chrome(config: &mut KeroseneConfig) {
+    config.pane_border_thickness = normalize_pane_border_thickness(config.pane_border_thickness);
+    config.pane_corner_radius = normalize_pane_corner_radius(config.pane_corner_radius);
 }
 
 fn merge_default_themes(config: &mut KeroseneConfig) {
@@ -151,6 +158,26 @@ mod tests {
         assert_eq!(
             config.saved_layouts[0].market_slippage_pct,
             default_market_slippage_pct()
+        );
+    }
+
+    #[test]
+    fn normalizes_out_of_range_pane_chrome() {
+        let mut config = KeroseneConfig {
+            pane_border_thickness: 99.0,
+            pane_corner_radius: f32::NAN,
+            ..KeroseneConfig::default()
+        };
+
+        normalize_loaded_config(&mut config);
+
+        assert_eq!(
+            config.pane_border_thickness,
+            normalize_pane_border_thickness(99.0)
+        );
+        assert_eq!(
+            config.pane_corner_radius,
+            crate::config::default_pane_corner_radius()
         );
     }
 

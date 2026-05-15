@@ -43,18 +43,25 @@ impl TradingTerminal {
             .push(sections::add_account_button());
 
         container(scrollable(menu).height(iced::Length::Shrink))
-            .padding(6)
+            .padding(8)
             .width(360)
             .max_height(360.0)
-            .style(|theme: &Theme| container_style::Style {
-                background: Some(theme.extended_palette().background.base.color.into()),
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: 1.0,
-                    color: theme.extended_palette().background.strong.color,
-                },
-                ..Default::default()
-            })
+            .style(account_picker_dropdown_style)
             .into()
+    }
+}
+
+fn account_picker_dropdown_style(theme: &Theme) -> container_style::Style {
+    let mut border_color = theme.extended_palette().background.weak.text;
+    border_color.a = 0.22;
+
+    container_style::Style {
+        background: Some(theme.extended_palette().background.base.color.into()),
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: border_color,
+        },
+        ..Default::default()
     }
 }

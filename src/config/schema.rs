@@ -22,10 +22,13 @@ pub use accounts::{AccountProfile, CredentialStorageMode};
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
 use defaults::default_true;
 pub use defaults::{
-    DEFAULT_MARKET_SLIPPAGE_PCT, default_layout_ratios, default_liquidation_alert_threshold,
-    default_market_slippage_pct, default_order_kind, default_symbol,
-    default_symbol_search_sort_mode, default_tick_size, default_timeframe, new_secret_id,
-    normalize_market_slippage_pct,
+    DEFAULT_MARKET_SLIPPAGE_PCT, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
+    MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS, default_layout_ratios,
+    default_liquidation_alert_threshold, default_market_slippage_pct,
+    default_order_kind, default_pane_border_thickness, default_pane_corner_radius,
+    default_symbol, default_symbol_search_sort_mode, default_tick_size, default_timeframe,
+    new_secret_id, normalize_market_slippage_pct, normalize_pane_border_thickness,
+    normalize_pane_corner_radius,
 };
 
 // ---------------------------------------------------------------------------
@@ -126,6 +129,12 @@ pub struct KeroseneConfig {
     /// Whether order quantity inputs default to USD notional instead of coin size.
     #[serde(default)]
     pub order_quantity_is_usd: bool,
+    /// Width of the divider between pane widgets in pixels.
+    #[serde(default = "default_pane_border_thickness")]
+    pub pane_border_thickness: f32,
+    /// Corner radius applied to pane widgets in pixels.
+    #[serde(default = "default_pane_corner_radius")]
+    pub pane_corner_radius: f32,
     /// Order book tick size.
     #[serde(default = "default_tick_size")]
     pub book_tick_size: f64,

@@ -2,7 +2,8 @@ use super::super::secrets;
 use super::super::{
     AccountProfile, ChartConfig, ChartScreenshotSettingsConfig, CredentialStorageMode,
     EncryptedSecretsConfig, KeroseneConfig, MacroIndicatorsConfig, PaneKindConfig,
-    PaneLayoutConfig, default_market_slippage_pct,
+    PaneLayoutConfig, default_market_slippage_pct, default_pane_border_thickness,
+    default_pane_corner_radius,
 };
 use crate::advanced_order_history::{AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind};
 use std::collections::HashMap;
@@ -91,6 +92,39 @@ fn legacy_config_without_market_slippage_uses_default() {
         serde_json::from_value(value).expect("legacy config should deserialize");
 
     assert_eq!(config.market_slippage_pct, default_market_slippage_pct());
+}
+
+#[test]
+fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
+    let config = KeroseneConfig {
+        pane_border_thickness: 8.0,
+        pane_corner_radius: 12.0,
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert_eq!(decoded.pane_border_thickness, 8.0);
+    assert_eq!(decoded.pane_corner_radius, 12.0);
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    let object = legacy
+        .as_object_mut()
+        .expect("config should serialize to object");
+    object.remove("pane_border_thickness");
+    object.remove("pane_corner_radius");
+
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert_eq!(
+        decoded_legacy.pane_border_thickness,
+        default_pane_border_thickness()
+    );
+    assert_eq!(
+        decoded_legacy.pane_corner_radius,
+        default_pane_corner_radius()
+    );
 }
 
 #[test]
