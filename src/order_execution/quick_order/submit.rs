@@ -1,3 +1,4 @@
+use super::super::PendingOrderAction;
 use super::super::pricing::rounded_market_price;
 use super::super::sizing::order_size_from_quantity_input;
 use crate::api::MarketType;
@@ -191,6 +192,11 @@ impl TradingTerminal {
             format!("Placing {kind_str} {side_str} {size} {chart_symbol}..."),
             false,
         ));
+        self.pending_order_action = Some(if is_buy {
+            PendingOrderAction::Buy
+        } else {
+            PendingOrderAction::Sell
+        });
 
         Task::perform(
             place_order(

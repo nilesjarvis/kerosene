@@ -154,6 +154,7 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
+        self.pending_order_action = None;
         match result {
             Ok(resp) => {
                 let is_err = resp.is_error();
