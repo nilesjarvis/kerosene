@@ -35,7 +35,7 @@ fn successful_exchange_results_require_account_refresh() {
 }
 
 #[test]
-fn failed_exchange_or_transport_results_do_not_require_account_refresh() {
+fn exchange_error_responses_do_not_require_account_refresh() {
     let exchange_error = exchange_response(vec![serde_json::json!({
         "error": "Order rejected"
     })]);
@@ -52,7 +52,17 @@ fn failed_exchange_or_transport_results_do_not_require_account_refresh() {
 
     assert!(!result_requires_account_refresh(&Ok(exchange_error)));
     assert!(!result_requires_account_refresh(&Ok(later_exchange_error)));
-    assert!(!result_requires_account_refresh(&Err(
-        "network down".to_string()
+}
+
+#[test]
+fn ambiguous_transport_results_require_account_refresh() {
+    assert!(result_requires_account_refresh(&Err(
+        "Exchange request failed: connection closed before response".to_string()
+    )));
+    assert!(result_requires_account_refresh(&Err(
+        "Failed to read response: request body timed out".to_string()
+    )));
+    assert!(result_requires_account_refresh(&Err(
+        "Exchange error: not-json response".to_string()
     )));
 }
