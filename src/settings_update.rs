@@ -65,6 +65,12 @@ impl TradingTerminal {
                 self.apply_secret_storage_selection();
             }
             Message::ClearConfigs => {
+                if let Some(message) = self.config_clear_block_reason() {
+                    self.secret_store_status = Some((message.clone(), true));
+                    self.push_toast(message, true);
+                    return Task::none();
+                }
+
                 let profiles = self.persisted_accounts_snapshot();
                 return Task::perform(
                     async move { config::clear_all_configs(&profiles) },

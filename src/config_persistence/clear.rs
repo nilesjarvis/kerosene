@@ -4,7 +4,63 @@ use crate::pane_management::AddWidgetPlacement;
 use zeroize::Zeroize;
 
 impl TradingTerminal {
+    pub(crate) fn config_clear_block_reason(&self) -> Option<String> {
+        let chase_count = self.chase_orders.len();
+        let twap_count = self.twap_orders.len();
+        let open_order_count = self
+            .account_data
+            .as_ref()
+            .map(|data| data.open_orders.len())
+            .unwrap_or_default();
+
+        if chase_count == 0
+            && twap_count == 0
+            && open_order_count == 0
+            && self.pending_order_action.is_none()
+        {
+            return None;
+        }
+
+        let mut blockers = Vec::new();
+        if chase_count > 0 {
+            blockers.push(format!(
+                "{chase_count} active chase {}",
+                if chase_count == 1 { "order" } else { "orders" }
+            ));
+        }
+        if twap_count > 0 {
+            blockers.push(format!(
+                "{twap_count} active TWAP {}",
+                if twap_count == 1 { "order" } else { "orders" }
+            ));
+        }
+        if open_order_count > 0 {
+            blockers.push(format!(
+                "{open_order_count} known open exchange {}",
+                if open_order_count == 1 {
+                    "order"
+                } else {
+                    "orders"
+                }
+            ));
+        }
+        if self.pending_order_action.is_some() {
+            blockers.push("an in-flight order action".to_string());
+        }
+
+        Some(format!(
+            "Clear All Configs blocked: stop/cancel and reconcile {} before deleting credentials or runtime order state.",
+            blockers.join(", ")
+        ))
+    }
+
     pub(crate) fn apply_config_clear_to_runtime(&mut self, summary: config::ClearConfigSummary) {
+        if let Some(message) = self.config_clear_block_reason() {
+            self.secret_store_status = Some((message.clone(), true));
+            self.push_toast(message, true);
+            return;
+        }
+
         let defaults = KeroseneConfig::default();
 
         self.config_cleared_this_session = true;
@@ -124,5 +180,130 @@ impl TradingTerminal {
         }
         self.secret_store_status = Some((message.clone(), false));
         self.push_toast(message, false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message::Message;
+    use crate::order_execution::PendingOrderAction;
+    use crate::signing::ChaseOrder;
+    use crate::twap_state::{TwapOrder, TwapOrderInit};
+    use std::time::{Duration, Instant};
+    use zeroize::Zeroizing;
+
+    fn clear_summary() -> config::ClearConfigSummary {
+        config::ClearConfigSummary {
+            files_removed: 1,
+            keychain_entries_cleared: 0,
+            warnings: Vec::new(),
+        }
+    }
+
+    fn chase_order() -> ChaseOrder {
+        ChaseOrder {
+            id: 42,
+            coin: "BTC".to_string(),
+            account_address: "0xabc".to_string(),
+            agent_key: Zeroizing::new("agent-key".to_string()),
+            is_buy: true,
+            target_size: 1.0,
+            filled_size: 0.0,
+            remaining_size: 1.0,
+            known_oids: vec![123],
+            asset: 0,
+            sz_decimals: 5,
+            is_spot: false,
+            reduce_only: false,
+            current_oid: Some(123),
+            current_price: 50_000.0,
+            current_price_wire: "50000".to_string(),
+            initial_price: 50_000.0,
+            started_at: Instant::now(),
+            started_at_ms: 1_700_000_000_000,
+            reprice_count: 0,
+            pending_op: None,
+            last_reprice_at: None,
+            pending_best_price: None,
+            stop_requested: false,
+            stop_reason: None,
+            cancel_retries: 0,
+            oid_confirmed: true,
+            missing_open_order_refresh_requested: false,
+        }
+    }
+
+    fn twap_order() -> TwapOrder {
+        let now = Instant::now();
+        TwapOrder::new(TwapOrderInit {
+            id: 7,
+            coin: "BTC".to_string(),
+            display_coin: "BTC".to_string(),
+            account_address: "0xabc".to_string(),
+            agent_key: Zeroizing::new("agent-key".to_string()),
+            is_buy: false,
+            target_size: 2.0,
+            asset: 0,
+            sz_decimals: 5,
+            is_spot: false,
+            reduce_only: false,
+            min_price: 49_000.0,
+            max_price: 51_000.0,
+            randomize: false,
+            duration: Duration::from_secs(300),
+            slice_count: 5,
+            now,
+            started_at_ms: 1_700_000_000_000,
+        })
+    }
+
+    #[test]
+    fn clear_configs_is_blocked_while_chase_tracking_exists() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.wallet_key_input = "agent-key".to_string().into();
+        terminal.chase_orders.insert(42, chase_order());
+
+        let _ = terminal.update_settings(Message::ClearConfigs);
+
+        assert!(terminal.chase_orders.contains_key(&42));
+        assert_eq!(terminal.wallet_key_input.as_str(), "agent-key");
+        assert!(
+            terminal.secret_store_status.as_ref().is_some_and(
+                |(message, is_error)| *is_error && message.contains("active chase order")
+            )
+        );
+    }
+
+    #[test]
+    fn runtime_clear_is_blocked_while_twap_tracking_exists() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.wallet_key_input = "agent-key".to_string().into();
+        terminal.twap_orders.insert(7, twap_order());
+
+        terminal.apply_config_clear_to_runtime(clear_summary());
+
+        assert!(terminal.twap_orders.contains_key(&7));
+        assert_eq!(terminal.wallet_key_input.as_str(), "agent-key");
+        assert!(
+            terminal.secret_store_status.as_ref().is_some_and(
+                |(message, is_error)| *is_error && message.contains("active TWAP order")
+            )
+        );
+    }
+
+    #[test]
+    fn clear_configs_is_blocked_while_order_action_is_pending() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.wallet_key_input = "agent-key".to_string().into();
+        terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+        let _ = terminal.update_settings(Message::ClearConfigs);
+
+        assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+        assert_eq!(terminal.wallet_key_input.as_str(), "agent-key");
+        assert!(terminal.secret_store_status.as_ref().is_some_and(
+            |(message, is_error)| *is_error && message.contains("in-flight order action")
+        ));
     }
 }
