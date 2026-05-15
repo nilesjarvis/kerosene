@@ -12,7 +12,7 @@ impl TradingTerminal {
         form: Column<'a, Message>,
     ) -> Column<'a, Message> {
         let theme = self.theme();
-        if self.order_kind != OrderKind::Limit {
+        if !matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc) {
             return form.push(market_price_label(
                 self.resolve_mid_for_symbol(&self.active_symbol),
                 self.market_slippage_pct,

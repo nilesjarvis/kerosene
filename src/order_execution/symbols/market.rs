@@ -107,7 +107,10 @@ impl TradingTerminal {
     }
 
     pub(crate) fn refresh_order_price_for_symbol(&mut self, symbol: &str) {
-        if matches!(self.order_kind, OrderKind::Limit | OrderKind::Chase) {
+        if matches!(
+            self.order_kind,
+            OrderKind::Limit | OrderKind::Chase | OrderKind::LimitIoc
+        ) {
             if let Some(mid) = self.resolve_mid_for_symbol(symbol) {
                 self.order_price = format_price(mid);
             } else {
