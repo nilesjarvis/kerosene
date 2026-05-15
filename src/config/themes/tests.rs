@@ -15,6 +15,20 @@ fn default_custom_themes_include_kerosene_chart_colors() {
     assert_eq!(kerosene.success, "#FF7A1A");
     assert_eq!(kerosene.danger, "#F8EFE2");
 
+    let inverse_eink = themes
+        .iter()
+        .find(|theme| theme.name == "Inverse E-Ink")
+        .expect("Inverse E-Ink theme should be present");
+
+    assert_eq!(inverse_eink.background, "#000000");
+    assert_eq!(inverse_eink.text, "#ffffff");
+    assert_eq!(inverse_eink.primary, "#aaaaaa");
+    assert_eq!(inverse_eink.success, "#666666");
+    assert_eq!(inverse_eink.warning, "#888888");
+    assert_eq!(inverse_eink.danger, "#dddddd");
+    assert_eq!(inverse_eink.chart_bull, None);
+    assert_eq!(inverse_eink.chart_bear, None);
+
     let hyperliquid = themes
         .iter()
         .find(|theme| theme.name == "Hyperliquid")

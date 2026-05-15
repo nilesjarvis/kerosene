@@ -16,6 +16,13 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             chart: None,
         },
         ThemeSpec {
+            name: "Inverse E-Ink",
+            colors: [
+                "#000000", "#ffffff", "#aaaaaa", "#666666", "#888888", "#dddddd",
+            ],
+            chart: None,
+        },
+        ThemeSpec {
             name: "Charles Schwab",
             colors: [
                 "#FFFFFF", "#1C1C1C", "#00A0DF", "#188B50", "#F2A900", "#D9272E",
