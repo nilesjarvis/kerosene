@@ -253,8 +253,10 @@ impl OrderBookInstance {
         incoming_source_tick_size: Option<f64>,
     ) {
         if self.should_merge_finer_book(incoming_source_tick_size) {
-            self.book = merge_books_preserving_scope(&self.book, &incoming);
-            self.book_revision = self.book_revision.wrapping_add(1);
+            if let Some(merged) = merge_books_preserving_scope(&self.book, &incoming) {
+                self.book = merged;
+                self.book_revision = self.book_revision.wrapping_add(1);
+            }
         } else {
             self.set_book_with_source(incoming, incoming_source_tick_size);
         }
@@ -427,11 +429,15 @@ fn mid_prices_match(left: f64, right: f64) -> bool {
     (left - right).abs() <= tolerance
 }
 
-fn merge_books_preserving_scope(current: &OrderBook, incoming: &OrderBook) -> OrderBook {
-    OrderBook {
+fn merge_books_preserving_scope(current: &OrderBook, incoming: &OrderBook) -> Option<OrderBook> {
+    if incoming.bids.is_empty() || incoming.asks.is_empty() {
+        return None;
+    }
+
+    Some(OrderBook {
         bids: merge_book_side_preserving_scope(&current.bids, &incoming.bids, true),
         asks: merge_book_side_preserving_scope(&current.asks, &incoming.asks, false),
-    }
+    })
 }
 
 fn merge_book_side_preserving_scope(
@@ -439,9 +445,6 @@ fn merge_book_side_preserving_scope(
     incoming: &[BookLevel],
     is_bid: bool,
 ) -> Vec<BookLevel> {
-    if incoming.is_empty() {
-        return Vec::new();
-    }
     if current.is_empty() {
         return incoming.to_vec();
     }
@@ -799,7 +802,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_incoming_side_clears_that_side_instead_of_preserving_stale_levels() {
+    fn one_sided_finer_update_preserves_existing_scope() {
         let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 5.0);
         inst.set_book_with_source(
             OrderBook {
@@ -823,13 +826,20 @@ mod tests {
                 .iter()
                 .map(|level| level.px)
                 .collect::<Vec<_>>(),
-            vec![99.0, 95.0]
+            vec![100.0, 95.0]
         );
-        assert!(inst.book.asks.is_empty());
+        assert_eq!(
+            inst.book
+                .asks
+                .iter()
+                .map(|level| level.px)
+                .collect::<Vec<_>>(),
+            vec![105.0, 110.0]
+        );
     }
 
     #[test]
-    fn empty_finer_update_clears_existing_book() {
+    fn empty_finer_update_preserves_existing_book() {
         let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 5.0);
         inst.set_book_with_source(
             OrderBook {
@@ -847,12 +857,26 @@ mod tests {
             Some(1.0),
         );
 
-        assert!(inst.book.bids.is_empty());
-        assert!(inst.book.asks.is_empty());
+        assert_eq!(
+            inst.book
+                .bids
+                .iter()
+                .map(|level| level.px)
+                .collect::<Vec<_>>(),
+            vec![100.0, 95.0]
+        );
+        assert_eq!(
+            inst.book
+                .asks
+                .iter()
+                .map(|level| level.px)
+                .collect::<Vec<_>>(),
+            vec![105.0, 110.0]
+        );
     }
 
     #[test]
-    fn cleared_side_repopulates_from_later_finer_update() {
+    fn incomplete_finer_update_does_not_block_later_complete_update() {
         let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 5.0);
         inst.set_book_with_source(
             OrderBook {
@@ -869,7 +893,14 @@ mod tests {
             },
             Some(1.0),
         );
-        assert!(inst.book.asks.is_empty());
+        assert_eq!(
+            inst.book
+                .asks
+                .iter()
+                .map(|level| level.px)
+                .collect::<Vec<_>>(),
+            vec![105.0, 110.0]
+        );
 
         inst.apply_book_update_preserving_scope(
             OrderBook {
@@ -893,9 +924,39 @@ mod tests {
                 .iter()
                 .map(|level| level.px)
                 .collect::<Vec<_>>(),
-            vec![101.0]
+            vec![101.0, 105.0, 110.0]
         );
         assert_eq!(inst.book.asks[0].sz, 3.0);
+    }
+
+    #[test]
+    fn same_precision_empty_side_replaces_snapshot() {
+        let mut inst = OrderBookInstance::new(0u64, OrderBookSymbolMode::Active, 5.0);
+        inst.set_book_with_source(
+            OrderBook {
+                bids: vec![lvl(100.0, 10.0), lvl(95.0, 20.0)],
+                asks: vec![lvl(105.0, 10.0), lvl(110.0, 20.0)],
+            },
+            Some(5.0),
+        );
+
+        inst.apply_book_update_preserving_scope(
+            OrderBook {
+                bids: vec![lvl(99.0, 1.0)],
+                asks: Vec::new(),
+            },
+            Some(5.0),
+        );
+
+        assert_eq!(
+            inst.book
+                .bids
+                .iter()
+                .map(|level| level.px)
+                .collect::<Vec<_>>(),
+            vec![99.0]
+        );
+        assert!(inst.book.asks.is_empty());
     }
 
     #[test]

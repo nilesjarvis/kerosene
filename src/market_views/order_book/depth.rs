@@ -39,18 +39,13 @@ impl TradingTerminal {
             .into_iter()
             .rev()
             .collect();
-        let max_ask_cum = ask_rows.last().map(|(_, _, cum)| *cum).unwrap_or(1.0);
+        let max_ask_cum = max_cumulative_depth(&ask_rows);
 
         let bid_rows: Vec<(f64, f64, f64)> = depth.bids.iter().take(max_levels).copied().collect();
-        let max_bid_cum = bid_rows.last().map(|(_, _, cum)| *cum).unwrap_or(1.0);
+        let max_bid_cum = max_cumulative_depth(&bid_rows);
 
         let max_cum = max_ask_cum.max(max_bid_cum).max(1.0);
-        let max_sz = ask_rows
-            .iter()
-            .chain(bid_rows.iter())
-            .map(|(_, size, _)| *size)
-            .fold(0.0f64, |max_seen, size| max_seen.max(size))
-            .max(1.0);
+        let max_sz = max_level_size(&ask_rows, &bid_rows);
 
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
         let row_padding = iced::Padding {
@@ -171,6 +166,21 @@ impl TradingTerminal {
     }
 }
 
+fn max_cumulative_depth(rows: &[(f64, f64, f64)]) -> f64 {
+    rows.iter()
+        .map(|(_, _, cum)| *cum)
+        .fold(0.0f64, f64::max)
+        .max(1.0)
+}
+
+fn max_level_size(asks: &[(f64, f64, f64)], bids: &[(f64, f64, f64)]) -> f64 {
+    asks.iter()
+        .chain(bids.iter())
+        .map(|(_, size, _)| *size)
+        .fold(0.0f64, f64::max)
+        .max(1.0)
+}
+
 pub(super) fn centered_order_book_side_row_count(
     side_height: f32,
     available_rows: usize,
@@ -242,4 +252,34 @@ fn depth_bid_column(
                 },
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{max_cumulative_depth, max_level_size};
+
+    #[test]
+    fn max_cumulative_depth_uses_largest_value_after_ask_rows_are_reversed() {
+        let ask_rows = vec![
+            (101.0, 3.0, 6.0),
+            (100.5, 2.0, 3.0),
+            (100.0, 1.0, 1.0),
+        ];
+
+        assert_eq!(max_cumulative_depth(&ask_rows), 6.0);
+    }
+
+    #[test]
+    fn max_cumulative_depth_never_drops_below_one_for_empty_or_tiny_books() {
+        assert_eq!(max_cumulative_depth(&[]), 1.0);
+        assert_eq!(max_cumulative_depth(&[(100.0, 0.25, 0.25)]), 1.0);
+    }
+
+    #[test]
+    fn max_level_size_uses_both_sides() {
+        let asks = vec![(101.0, 2.0, 2.0)];
+        let bids = vec![(99.0, 5.0, 5.0)];
+
+        assert_eq!(max_level_size(&asks, &bids), 5.0);
+    }
 }
