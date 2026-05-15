@@ -652,48 +652,54 @@ async fn render_chart_screenshot(
     request: ChartScreenshotRenderRequest,
 ) -> Result<ChartScreenshotState, String> {
     let (width, height) = chart_screenshot_export_size(request.logical_bounds)?;
-    let mut renderer = <iced::Renderer as Headless>::new(Font::DEFAULT, Pixels(16.0), None)
+    let renderer = <iced::Renderer as Headless>::new(Font::DEFAULT, Pixels(16.0), None)
         .await
         .ok_or_else(|| "offscreen chart renderer unavailable".to_string())?;
 
-    let bounds = Rectangle {
-        x: 0.0,
-        y: 0.0,
-        width: width as f32,
-        height: height as f32,
-    };
-    let chart_w = (bounds.width - PRICE_AXIS_WIDTH).max(1.0);
-    let state = ChartState::for_export_viewport(&request.chart, request.viewport, chart_w);
+    let (symbol, timeframe, rgba, png) = tokio::task::spawn_blocking(move || {
+        let mut renderer = renderer;
+        let bounds = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: width as f32,
+            height: height as f32,
+        };
+        let chart_w = (bounds.width - PRICE_AXIS_WIDTH).max(1.0);
+        let state = ChartState::for_export_viewport(&request.chart, request.viewport, chart_w);
 
-    let layers = request.chart.draw_with_state(
-        &state,
-        &renderer,
-        &request.theme,
-        bounds,
-        mouse::Cursor::Unavailable,
-    );
-    for layer in layers {
-        renderer.draw_geometry(layer);
-    }
+        let layers = request.chart.draw_with_state(
+            &state,
+            &renderer,
+            &request.theme,
+            bounds,
+            mouse::Cursor::Unavailable,
+        );
+        for layer in layers {
+            renderer.draw_geometry(layer);
+        }
 
-    let mut rgba = renderer.screenshot(Size::new(width, height), 1.0, request.background_color);
-    draw_ticker_label(
-        &mut rgba,
-        width,
-        height,
-        &request.symbol,
-        &request.timeframe,
-        request.label_style,
-    );
-    let png = encode_png_rgba(width, height, &rgba)?;
+        let mut rgba = renderer.screenshot(Size::new(width, height), 1.0, request.background_color);
+        draw_ticker_label(
+            &mut rgba,
+            width,
+            height,
+            &request.symbol,
+            &request.timeframe,
+            request.label_style,
+        );
+        let png = encode_png_rgba(width, height, &rgba)?;
+        Ok::<_, String>((request.symbol, request.timeframe, rgba, png))
+    })
+    .await
+    .map_err(|err| format!("chart screenshot render task failed: {err}"))??;
+
     let preview_handle = ImageHandle::from_rgba(width, height, rgba.clone());
     let captured_at = Local::now();
-    let default_filename =
-        chart_screenshot_filename(&request.symbol, &request.timeframe, captured_at);
+    let default_filename = chart_screenshot_filename(&symbol, &timeframe, captured_at);
 
     Ok(ChartScreenshotState {
-        symbol: request.symbol,
-        timeframe: request.timeframe,
+        symbol,
+        timeframe,
         width,
         height,
         rgba: Arc::from(rgba),
