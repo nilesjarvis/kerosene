@@ -1,4 +1,11 @@
-use super::{CustomThemeConfig, default_custom_themes, is_known_default_hyperliquid_theme};
+use super::{
+    CustomThemeConfig, default_custom_themes, default_theme, is_known_default_hyperliquid_theme,
+};
+
+#[test]
+fn default_theme_is_kerosene() {
+    assert_eq!(default_theme(), "Custom: Kerosene");
+}
 
 #[test]
 fn default_custom_themes_include_kerosene_chart_colors() {

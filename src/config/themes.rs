@@ -22,7 +22,7 @@ pub struct CustomThemeConfig {
 }
 
 pub fn default_theme() -> String {
-    "Dark".to_string()
+    "Custom: Kerosene".to_string()
 }
 
 fn optional_hex_eq(value: &Option<String>, expected: &str) -> bool {
