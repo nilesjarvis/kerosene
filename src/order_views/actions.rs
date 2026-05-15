@@ -7,7 +7,7 @@ use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
 use iced::widget::container as container_style;
 use iced::widget::{Column, container, row, text};
-use iced::{Element, Fill, Theme, color};
+use iced::{Color, Element, Fill, Theme, color};
 
 // ---------------------------------------------------------------------------
 // Order Action Controls
@@ -25,77 +25,52 @@ impl TradingTerminal {
 
         let buy_label = format!("BUY {}", self.active_symbol_display.to_uppercase());
         let sell_label = format!("SELL {}", self.active_symbol_display.to_uppercase());
-        let mut buy_btn: Element<'_, Message> = buy_button(buy_label, Message::PlaceBuy);
-        let mut sell_btn: Element<'_, Message> = sell_button(sell_label, Message::PlaceSell);
-        if pending_buy {
-            buy_btn = container(self.view_spinner(18))
-                .padding([6, 0])
-                .center_x(Fill)
-                .width(Fill)
-                .style(move |_theme: &Theme| container_style::Style {
-                    background: Some(color!(0x30a050).into()),
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                })
-                .into();
-        }
-        if pending_sell {
-            sell_btn = container(self.view_spinner(18))
-                .padding([6, 0])
-                .center_x(Fill)
-                .width(Fill)
-                .style(move |_theme: &Theme| container_style::Style {
-                    background: Some(color!(0xdd3333).into()),
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                })
-                .into();
-        }
+        let mut buy_btn: Element<'_, Message> = if pending_buy {
+            pending_order_button(self.view_spinner(18), color!(0x30a050))
+        } else {
+            buy_button(buy_label, Message::PlaceBuy)
+        };
+        let mut sell_btn: Element<'_, Message> = if pending_sell {
+            pending_order_button(self.view_spinner(18), color!(0xdd3333))
+        } else {
+            sell_button(sell_label, Message::PlaceSell)
+        };
 
         if !can_trade || pending_standard {
-            buy_btn = disabled_order_button("BUY");
-            if pending_buy {
-                buy_btn = container(self.view_spinner(18))
-                    .padding([6, 0])
-                    .center_x(Fill)
-                    .width(Fill)
-                    .style(move |_theme: &Theme| container_style::Style {
-                        background: Some(color!(0x30a050).into()),
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    })
-                    .into();
-            }
-            sell_btn = disabled_order_button("SELL");
-            if pending_sell {
-                sell_btn = container(self.view_spinner(18))
-                    .padding([6, 0])
-                    .center_x(Fill)
-                    .width(Fill)
-                    .style(move |_theme: &Theme| container_style::Style {
-                        background: Some(color!(0xdd3333).into()),
-                        border: iced::Border {
-                            radius: 4.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    })
-                    .into();
-            }
+            buy_btn = if pending_buy {
+                pending_order_button(self.view_spinner(18), color!(0x30a050))
+            } else {
+                disabled_order_button("BUY")
+            };
+            sell_btn = if pending_sell {
+                pending_order_button(self.view_spinner(18), color!(0xdd3333))
+            } else {
+                disabled_order_button("SELL")
+            };
         }
         let form = form.push(row![buy_btn, sell_btn].spacing(8));
         let form = self.push_chase_controls(form, can_trade);
         self.push_twap_controls(form, can_trade)
     }
+}
+
+fn pending_order_button<'a>(
+    spinner: Element<'a, Message>,
+    background: Color,
+) -> Element<'a, Message> {
+    container(spinner)
+        .padding([6, 0])
+        .center_x(Fill)
+        .width(Fill)
+        .style(move |_theme: &Theme| container_style::Style {
+            background: Some(background.into()),
+            border: iced::Border {
+                radius: 4.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 fn disabled_order_button(label: &'static str) -> Element<'static, Message> {

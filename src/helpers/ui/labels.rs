@@ -7,19 +7,7 @@ use iced::{Color, Element, Theme};
 // ---------------------------------------------------------------------------
 
 pub fn label_value(label: impl ToString, value: impl ToString) -> Element<'static, Message> {
-    container(
-        row![
-            text(label.to_string())
-                .size(11)
-                .style(|t: &Theme| text::Style {
-                    color: Some(t.extended_palette().background.weak.text)
-                }),
-            text(value.to_string()).size(13).font(iced::Font::MONOSPACE),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center),
-    )
-    .into()
+    label_value_with_color(label, value, None)
 }
 
 pub fn label_value_colored(
@@ -27,6 +15,23 @@ pub fn label_value_colored(
     value: impl ToString,
     value_color: Color,
 ) -> Element<'static, Message> {
+    label_value_with_color(label, value, Some(value_color))
+}
+
+fn label_value_with_color(
+    label: impl ToString,
+    value: impl ToString,
+    value_color: Option<Color>,
+) -> Element<'static, Message> {
+    let value = text(value.to_string())
+        .size(13)
+        .font(iced::Font::MONOSPACE);
+    let value = if let Some(value_color) = value_color {
+        value.color(value_color)
+    } else {
+        value
+    };
+
     container(
         row![
             text(label.to_string())
@@ -34,10 +39,7 @@ pub fn label_value_colored(
                 .style(|t: &Theme| text::Style {
                     color: Some(t.extended_palette().background.weak.text)
                 }),
-            text(value.to_string())
-                .size(13)
-                .font(iced::Font::MONOSPACE)
-                .color(value_color),
+            value,
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center),

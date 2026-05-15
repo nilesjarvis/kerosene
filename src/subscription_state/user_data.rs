@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::ws::ws_user_data_stream;
+use crate::ws::{WsUserDataStreamParams, ws_user_data_stream};
 use iced::Subscription;
 
 // ---------------------------------------------------------------------------
@@ -11,7 +11,8 @@ impl TradingTerminal {
     pub(super) fn push_user_data_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
         // Real-time user data stream (positions, orders, fills, balances) + allMids.
         // The stream filters private subscriptions internally when no address is connected.
-        let sub_id = (self.connected_address.clone(), self.visible_mids_dexes());
+        let sub_id =
+            WsUserDataStreamParams::new(self.connected_address.clone(), self.visible_mids_dexes());
         subs.push(Subscription::run_with(sub_id, ws_user_data_stream).map(
             |(source_address, data)| Message::WsUserDataUpdate(source_address, Box::new(data)),
         ));
@@ -25,7 +26,7 @@ impl TradingTerminal {
         wallet_detail_addresses.sort();
         wallet_detail_addresses.dedup();
         for address in wallet_detail_addresses {
-            let sub_id = (Some(address), self.visible_mids_dexes());
+            let sub_id = WsUserDataStreamParams::new(Some(address), self.visible_mids_dexes());
             subs.push(Subscription::run_with(sub_id, ws_user_data_stream).map(
                 |(source_address, data)| {
                     Message::WalletDetailsWsUpdate(source_address, Box::new(data))

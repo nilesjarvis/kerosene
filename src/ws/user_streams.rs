@@ -13,12 +13,23 @@ use subscriptions::build_user_stream_subscriptions;
 
 pub use model::{KeyedUserData, WsUserData};
 
-#[allow(clippy::ptr_arg)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WsUserDataStreamParams {
+    pub address: Option<String>,
+    pub dexes: Vec<String>,
+}
+
+impl WsUserDataStreamParams {
+    pub fn new(address: Option<String>, dexes: Vec<String>) -> Self {
+        Self { address, dexes }
+    }
+}
+
 pub fn ws_user_data_stream(
-    params: &(Option<String>, Vec<String>),
+    params: &WsUserDataStreamParams,
 ) -> std::pin::Pin<Box<dyn futures::Stream<Item = KeyedUserData> + Send>> {
-    let addr = params.0.as_deref().and_then(normalize_ws_user_address);
-    let dexes = params.1.clone();
+    let addr = params.address.as_deref().and_then(normalize_ws_user_address);
+    let dexes = params.dexes.clone();
 
     Box::pin(iced::stream::channel(20, async move |mut output| {
         let (cmd_tx, mut msg_rx) = get_manager();

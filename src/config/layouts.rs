@@ -1,3 +1,4 @@
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -57,7 +58,7 @@ pub enum PaneKindConfig {
     Unsupported,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Deserialize)]
 enum KnownPaneKindConfig {
     AccountSummary,
     Chart { chart_id: u64 },
@@ -78,12 +79,11 @@ enum KnownPaneKindConfig {
     Outcomes,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Deserialize)]
 #[serde(untagged)]
-#[allow(dead_code)]
 enum PaneKindConfigWire {
     Known(KnownPaneKindConfig),
-    Unknown(serde_json::Value),
+    Unknown(IgnoredAny),
 }
 
 impl From<KnownPaneKindConfig> for PaneKindConfig {
@@ -118,7 +118,7 @@ impl<'de> Deserialize<'de> for PaneKindConfig {
     {
         Ok(match PaneKindConfigWire::deserialize(deserializer)? {
             PaneKindConfigWire::Known(kind) => kind.into(),
-            PaneKindConfigWire::Unknown(_) => Self::Unsupported,
+            PaneKindConfigWire::Unknown(_unknown) => Self::Unsupported,
         })
     }
 }

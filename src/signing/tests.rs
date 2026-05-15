@@ -458,36 +458,6 @@ fn action_enum_modify_constructor_matches_direct_builder() {
 }
 
 #[test]
-fn action_enum_batch_cancel_emits_multi_entry_cancel_action() {
-    let action = HyperliquidL1Action::batch_cancel([(3, 1), (3, 2), (5, 99)]);
-    let json = serde_json::to_value(&action).expect("batch cancel json");
-
-    assert_eq!(
-        json,
-        serde_json::json!({
-            "type": "cancel",
-            "cancels": [
-                { "a": 3, "o": 1 },
-                { "a": 3, "o": 2 },
-                { "a": 5, "o": 99 },
-            ],
-        })
-    );
-}
-
-#[test]
-fn action_enum_batch_cancel_single_entry_matches_cancel_order_wire_shape() {
-    let single = HyperliquidL1Action::cancel(3, 9001);
-    let batched = HyperliquidL1Action::batch_cancel([(3, 9001)]);
-
-    assert_eq!(
-        rmp_serde::to_vec_named(&single).expect("single msgpack"),
-        rmp_serde::to_vec_named(&batched).expect("batched msgpack"),
-        "1-entry batch_cancel and cancel_order produce identical wire bytes",
-    );
-}
-
-#[test]
 fn chase_order_debug_redacts_agent_key() {
     let chase = ChaseOrder {
         id: 1,

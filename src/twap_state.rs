@@ -255,28 +255,49 @@ pub(crate) struct TwapOrder {
     pub(crate) window_id: Option<window::Id>,
 }
 
+pub(crate) struct TwapOrderInit {
+    pub(crate) id: u64,
+    pub(crate) coin: String,
+    pub(crate) display_coin: String,
+    pub(crate) account_address: String,
+    pub(crate) agent_key: Zeroizing<String>,
+    pub(crate) is_buy: bool,
+    pub(crate) target_size: f64,
+    pub(crate) asset: u32,
+    pub(crate) sz_decimals: u32,
+    pub(crate) is_spot: bool,
+    pub(crate) reduce_only: bool,
+    pub(crate) min_price: f64,
+    pub(crate) max_price: f64,
+    pub(crate) randomize: bool,
+    pub(crate) duration: Duration,
+    pub(crate) slice_count: u32,
+    pub(crate) now: Instant,
+    pub(crate) started_at_ms: u64,
+}
+
 impl TwapOrder {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
-        id: u64,
-        coin: String,
-        display_coin: String,
-        account_address: String,
-        agent_key: Zeroizing<String>,
-        is_buy: bool,
-        target_size: f64,
-        asset: u32,
-        sz_decimals: u32,
-        is_spot: bool,
-        reduce_only: bool,
-        min_price: f64,
-        max_price: f64,
-        randomize: bool,
-        duration: Duration,
-        slice_count: u32,
-        now: Instant,
-        started_at_ms: u64,
-    ) -> Self {
+    pub(crate) fn new(init: TwapOrderInit) -> Self {
+        let TwapOrderInit {
+            id,
+            coin,
+            display_coin,
+            account_address,
+            agent_key,
+            is_buy,
+            target_size,
+            asset,
+            sz_decimals,
+            is_spot,
+            reduce_only,
+            min_price,
+            max_price,
+            randomize,
+            duration,
+            slice_count,
+            now,
+            started_at_ms,
+        } = init;
         let mut order = Self {
             id,
             coin,
@@ -883,12 +904,13 @@ fn fill_summary_for_oid(fills: &[UserFill], oid: u64) -> Option<FillSummary> {
 mod tests {
     use super::{
         MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE,
-        TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapPauseReason,
-        TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count, quantize_twap_slice_size,
-        twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate, twap_child_cloid,
-        twap_limit_price_for_slice, twap_min_quantized_child_notional,
-        twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
-        twap_target_size_from_quantity, validate_twap_interval,
+        TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapOrderInit,
+        TwapPauseReason, TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count,
+        quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
+        twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
+        twap_min_quantized_child_notional, twap_order_notional_meets_minimum,
+        twap_required_slice_rate, twap_response_fill_summary, twap_target_size_from_quantity,
+        validate_twap_interval,
     };
     use crate::account::UserFill;
     use crate::api::{BookLevel, OrderBook};
@@ -920,6 +942,34 @@ mod tests {
             closed_pnl: "0".to_string(),
             fee: "0.01".to_string(),
         }
+    }
+
+    fn test_twap_order(
+        now: Instant,
+        target_size: f64,
+        randomize: bool,
+        slice_count: u32,
+    ) -> TwapOrder {
+        TwapOrder::new(TwapOrderInit {
+            id: 1,
+            coin: "BTC".to_string(),
+            display_coin: "BTC".to_string(),
+            account_address: "0xabc".to_string(),
+            agent_key: "key".to_string().into(),
+            is_buy: true,
+            target_size,
+            asset: 0,
+            sz_decimals: 3,
+            is_spot: false,
+            reduce_only: false,
+            min_price: 90.0,
+            max_price: 110.0,
+            randomize,
+            duration: Duration::from_secs(60),
+            slice_count,
+            now,
+            started_at_ms: 1_000,
+        })
     }
 
     #[test]
@@ -964,26 +1014,7 @@ mod tests {
     #[test]
     fn randomized_sizes_never_overshoot_target() {
         let now = Instant::now();
-        let mut twap = TwapOrder::new(
-            1,
-            "BTC".to_string(),
-            "BTC".to_string(),
-            "0xabc".to_string(),
-            "key".to_string().into(),
-            true,
-            10.0,
-            0,
-            3,
-            false,
-            false,
-            90.0,
-            110.0,
-            true,
-            Duration::from_secs(60),
-            10,
-            now,
-            1_000,
-        );
+        let mut twap = test_twap_order(now, 10.0, true, 10);
         let mut total = 0.0;
         while twap.slices_attempted < twap.slice_count {
             let slice = twap.next_slice_size().expect("slice should calculate");
@@ -1000,26 +1031,7 @@ mod tests {
     #[test]
     fn skipped_slices_roll_size_forward() {
         let now = Instant::now();
-        let mut twap = TwapOrder::new(
-            1,
-            "BTC".to_string(),
-            "BTC".to_string(),
-            "0xabc".to_string(),
-            "key".to_string().into(),
-            true,
-            9.0,
-            0,
-            3,
-            false,
-            false,
-            90.0,
-            110.0,
-            false,
-            Duration::from_secs(60),
-            3,
-            now,
-            1_000,
-        );
+        let mut twap = test_twap_order(now, 9.0, false, 3);
         let first = twap.next_slice_size().expect("first slice");
         assert_eq!(first, 3.0);
         twap.slices_attempted += 1;
@@ -1123,26 +1135,7 @@ mod tests {
     #[test]
     fn paused_status_check_blocks_scheduling_until_reconciled() {
         let now = Instant::now();
-        let mut twap = TwapOrder::new(
-            1,
-            "BTC".to_string(),
-            "BTC".to_string(),
-            "0xabc".to_string(),
-            "key".to_string().into(),
-            true,
-            1.0,
-            0,
-            3,
-            false,
-            false,
-            90.0,
-            110.0,
-            false,
-            Duration::from_secs(60),
-            2,
-            now,
-            1_000,
-        );
+        let mut twap = test_twap_order(now, 1.0, false, 2);
         twap.pause(
             TwapPauseReason::StatusUnknown,
             Some(now),
@@ -1233,26 +1226,7 @@ mod tests {
     #[test]
     fn status_unknown_twap_reconciles_to_partial_or_completed_from_account_fills() {
         let now = Instant::now();
-        let mut partial = TwapOrder::new(
-            1,
-            "BTC".to_string(),
-            "BTC".to_string(),
-            "0xabc".to_string(),
-            "key".to_string().into(),
-            true,
-            2.0,
-            0,
-            3,
-            false,
-            false,
-            90.0,
-            110.0,
-            false,
-            Duration::from_secs(60),
-            2,
-            now,
-            1_000,
-        );
+        let mut partial = test_twap_order(now, 2.0, false, 2);
         partial.status = TwapStatus::Error;
         partial.child_orders.push(TwapChildOrder {
             index: 1,

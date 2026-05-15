@@ -174,22 +174,6 @@ pub async fn modify_order(
     sign_and_post(private_key, &action, None).await
 }
 
-/// Cancel multiple resting orders in a single signed action.
-///
-/// Each entry is `(asset_id, oid)`. The wire format is identical to
-/// `cancel_order` for a single entry — the exchange accepts 1..N cancels
-/// under the same `type: "cancel"` discriminator. Kept module-private until
-/// a UI hook lands (e.g. a "Cancel All Open Orders" affordance); the
-/// dispatcher path itself is fully exercised by the existing wrappers.
-#[allow(dead_code)]
-pub(super) async fn batch_cancel(
-    private_key: Zeroizing<String>,
-    cancels: Vec<(u32, u64)>,
-) -> Result<ExchangeResponse, String> {
-    let action = HyperliquidL1Action::batch_cancel(cancels);
-    sign_and_post(private_key, &action, None).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::allocate_exchange_nonce_from;

@@ -48,13 +48,6 @@ impl TradingTerminal {
         let max_sz = max_level_size(&ask_rows, &bid_rows);
 
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
-        let row_padding = iced::Padding {
-            top: 0.0,
-            right: 15.0,
-            bottom: 0.0,
-            left: 0.0,
-        };
-
         if inst.center_on_mid {
             let centered_asks = ask_rows.clone();
             let centered_bids = bid_rows.clone();
@@ -109,7 +102,7 @@ impl TradingTerminal {
             return container(order_book_rows)
                 .width(Fill)
                 .height(Fill)
-                .padding(row_padding)
+                .padding(order_book_row_padding())
                 .clip(true)
                 .into();
         }
@@ -137,15 +130,10 @@ impl TradingTerminal {
         scrollable(
             container(order_book_rows)
                 .width(Fill)
-                .padding(row_padding),
+                .padding(order_book_row_padding()),
         )
         .height(Fill)
-        .direction(iced::widget::scrollable::Direction::Vertical(
-            iced::widget::scrollable::Scrollbar::new()
-                .width(4.0)
-                .scroller_width(4.0)
-                .margin(2.0),
-        ))
+        .direction(order_book_scroll_direction())
         .id(inst.scroll_id.clone())
         .into()
     }
@@ -190,6 +178,24 @@ pub(super) fn centered_order_book_side_row_count(
     }
 
     ((side_height / CENTERED_ORDER_BOOK_ROW_HEIGHT).floor() as usize).min(available_rows)
+}
+
+pub(super) fn order_book_row_padding() -> iced::Padding {
+    iced::Padding {
+        top: 0.0,
+        right: 15.0,
+        bottom: 0.0,
+        left: 0.0,
+    }
+}
+
+pub(super) fn order_book_scroll_direction() -> iced::widget::scrollable::Direction {
+    iced::widget::scrollable::Direction::Vertical(
+        iced::widget::scrollable::Scrollbar::new()
+            .width(4.0)
+            .scroller_width(4.0)
+            .margin(2.0),
+    )
 }
 
 fn depth_ask_column(

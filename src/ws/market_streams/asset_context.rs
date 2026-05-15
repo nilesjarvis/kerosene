@@ -9,11 +9,10 @@ use tokio::sync::broadcast;
 // Active Asset Context Streams
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::ptr_arg)]
 fn ws_asset_ctx_stream(
-    coin: &String,
+    coin: &str,
 ) -> std::pin::Pin<Box<dyn futures::Stream<Item = AssetContext> + Send>> {
-    let coin = coin.clone();
+    let coin = coin.to_string();
 
     Box::pin(iced::stream::channel(10, async move |mut output| {
         let (cmd_tx, mut msg_rx) = get_manager();

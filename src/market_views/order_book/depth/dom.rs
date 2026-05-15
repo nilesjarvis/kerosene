@@ -22,13 +22,6 @@ pub(super) fn view_order_book_dom_ladder(
     let rows = inst.dom_ladder_rows(tick, DOM_SIDE_ROWS);
     let decimals = tick_decimals(tick);
 
-    let ladder_padding = iced::Padding {
-        top: 0.0,
-        right: 15.0,
-        bottom: 0.0,
-        left: 0.0,
-    };
-
     if inst.center_on_mid {
         let centered_asks = rows.asks.clone();
         let centered_bids = rows.bids.clone();
@@ -85,7 +78,7 @@ pub(super) fn view_order_book_dom_ladder(
         return container(ladder)
             .width(Fill)
             .height(Fill)
-            .padding(ladder_padding)
+            .padding(super::order_book_row_padding())
             .clip(true)
             .into();
     }
@@ -110,14 +103,13 @@ pub(super) fn view_order_book_dom_ladder(
     );
     let ladder = iced::widget::column![asks, spread_widget, bids].spacing(2);
 
-    scrollable(container(ladder).width(Fill).padding(ladder_padding))
+    scrollable(
+        container(ladder)
+            .width(Fill)
+            .padding(super::order_book_row_padding()),
+    )
         .height(Fill)
-        .direction(iced::widget::scrollable::Direction::Vertical(
-            iced::widget::scrollable::Scrollbar::new()
-                .width(4.0)
-                .scroller_width(4.0)
-                .margin(2.0),
-        ))
+        .direction(super::order_book_scroll_direction())
         .id(inst.scroll_id.clone())
         .into()
 }

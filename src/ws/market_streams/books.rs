@@ -14,10 +14,8 @@ type KeyedBookStream =
 // Order Book Streams
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::ptr_arg)]
-fn ws_book_stream(args: &(String, BookSigfigs)) -> BookStream {
-    let coin = args.0.clone();
-    let sigfigs = args.1;
+fn ws_book_stream(coin: &str, sigfigs: BookSigfigs) -> BookStream {
+    let coin = coin.to_string();
 
     Box::pin(iced::stream::channel(10, async move |mut output| {
         let (cmd_tx, mut msg_rx) = get_manager();
@@ -84,7 +82,7 @@ fn ws_book_stream(args: &(String, BookSigfigs)) -> BookStream {
 pub fn ws_book_stream_keyed(params: &(u64, String, BookSigfigs)) -> KeyedBookStream {
     let book_id = params.0;
     let sigfigs = params.2;
-    let inner = ws_book_stream(&(params.1.clone(), params.2));
+    let inner = ws_book_stream(&params.1, params.2);
     Box::pin(futures::StreamExt::map(inner, move |(coin, book)| {
         (book_id, coin, sigfigs, book)
     }))

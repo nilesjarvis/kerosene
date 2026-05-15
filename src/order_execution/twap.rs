@@ -12,12 +12,13 @@ use crate::twap_state::{
     ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL, MAX_ACTIVE_ADVANCED_ORDERS,
     MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_BOOK_STALE_AFTER, TWAP_MAX_RETRY_ATTEMPTS,
     TWAP_MAX_UNEXPECTED_CANCEL_RETRIES, TWAP_RECONCILIATION_TIMEOUT, TwapBookSnapshot,
-    TwapChildOrder, TwapChildStatus, TwapEventKind, TwapOrder, TwapPauseReason, TwapPendingOp,
-    TwapPendingSlice, TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count,
-    quantize_twap_slice_size, twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate,
-    twap_child_cloid, twap_limit_price_for_slice, twap_min_quantized_child_notional,
-    twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
-    twap_target_size_from_quantity, validate_twap_interval,
+    TwapChildOrder, TwapChildStatus, TwapEventKind, TwapOrder, TwapOrderInit, TwapPauseReason,
+    TwapPendingOp, TwapPendingSlice, TwapStatus, parse_twap_duration_minutes,
+    parse_twap_slice_count, quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
+    twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
+    twap_min_quantized_child_notional, twap_order_notional_meets_minimum,
+    twap_required_slice_rate, twap_response_fill_summary, twap_target_size_from_quantity,
+    validate_twap_interval,
 };
 use iced::{Size, Task, window};
 use std::time::Instant;
@@ -303,12 +304,12 @@ impl TradingTerminal {
 
         let twap_id = self.next_twap_id();
         let side = if is_buy { "BUY" } else { "SELL" };
-        let twap = TwapOrder::new(
-            twap_id,
-            self.active_symbol.clone(),
-            self.active_symbol_display.clone(),
+        let twap = TwapOrder::new(TwapOrderInit {
+            id: twap_id,
+            coin: self.active_symbol.clone(),
+            display_coin: self.active_symbol_display.clone(),
             account_address,
-            key.into(),
+            agent_key: key.into(),
             is_buy,
             target_size,
             asset,
@@ -317,12 +318,12 @@ impl TradingTerminal {
             reduce_only,
             min_price,
             max_price,
-            self.twap_form.randomize,
+            randomize: self.twap_form.randomize,
             duration,
             slice_count,
             now,
-            Self::now_ms(),
-        );
+            started_at_ms: Self::now_ms(),
+        });
         self.twap_orders.insert(twap_id, twap);
         self.selected_twap_id = Some(twap_id);
         self.order_status = Some((
@@ -1916,8 +1917,8 @@ mod tests {
     use crate::app_state::TradingTerminal;
     use crate::signing::ExchangeResponse;
     use crate::twap_state::{
-        TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapPauseReason,
-        TwapPendingOp, TwapPendingSlice, TwapStatus,
+        TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapOrderInit,
+        TwapPauseReason, TwapPendingOp, TwapPendingSlice, TwapStatus,
     };
     use std::time::{Duration, Instant};
 
@@ -1944,26 +1945,26 @@ mod tests {
     }
 
     fn test_twap(id: u64, cloid: &str, now: Instant) -> TwapOrder {
-        let mut twap = TwapOrder::new(
+        let mut twap = TwapOrder::new(TwapOrderInit {
             id,
-            "BTC".to_string(),
-            "BTC".to_string(),
-            "0xabc".to_string(),
-            "test-agent-key".to_string().into(),
-            true,
-            1.0,
-            0,
-            3,
-            false,
-            false,
-            90.0,
-            110.0,
-            false,
-            Duration::from_secs(300),
-            2,
+            coin: "BTC".to_string(),
+            display_coin: "BTC".to_string(),
+            account_address: "0xabc".to_string(),
+            agent_key: "test-agent-key".to_string().into(),
+            is_buy: true,
+            target_size: 1.0,
+            asset: 0,
+            sz_decimals: 3,
+            is_spot: false,
+            reduce_only: false,
+            min_price: 90.0,
+            max_price: 110.0,
+            randomize: false,
+            duration: Duration::from_secs(300),
+            slice_count: 2,
             now,
-            1_000,
-        );
+            started_at_ms: 1_000,
+        });
         twap.status = TwapStatus::Paused;
         twap.pause_reason = Some(TwapPauseReason::StatusUnknown);
         twap.status_check_cloid = Some(cloid.to_string());

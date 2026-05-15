@@ -85,19 +85,6 @@ impl HyperliquidL1Action {
             reduce_only,
         ))
     }
-
-    /// Batch cancel: a single `cancel` action carrying N (asset, oid) entries.
-    /// The exchange treats the multi-entry shape identically to a single
-    /// cancel — same wire `type` discriminator, same signing path.
-    pub(super) fn batch_cancel(cancels: impl IntoIterator<Item = (u32, u64)>) -> Self {
-        Self::Cancel(CancelAction {
-            action_type: "cancel".to_string(),
-            cancels: cancels
-                .into_iter()
-                .map(|(a, o)| CancelWire { a, o })
-                .collect(),
-        })
-    }
 }
 
 // ----- Msgpack wire types with correct field order -----
