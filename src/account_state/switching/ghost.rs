@@ -3,18 +3,27 @@ use crate::config::{self, AccountProfile};
 use crate::message::Message;
 
 use iced::Task;
+use std::collections::HashSet;
 
 // ---------------------------------------------------------------------------
 // Ghost Wallet Switching
 // ---------------------------------------------------------------------------
 
+fn find_ghost_account_index(
+    accounts: &[AccountProfile],
+    ghost_account_secret_ids: &HashSet<String>,
+    address: &str,
+) -> Option<usize> {
+    accounts.iter().position(|profile| {
+        ghost_account_secret_ids.contains(&profile.secret_id)
+            && TradingTerminal::normalize_wallet_address(&profile.wallet_address)
+                .is_some_and(|profile_address| profile_address == address)
+    })
+}
+
 impl TradingTerminal {
     pub(crate) fn find_ghost_account_by_wallet_address(&self, address: &str) -> Option<usize> {
-        self.accounts.iter().position(|profile| {
-            self.ghost_account_secret_ids.contains(&profile.secret_id)
-                && Self::normalize_wallet_address(&profile.wallet_address)
-                    .is_some_and(|profile_address| profile_address == address)
-        })
+        find_ghost_account_index(&self.accounts, &self.ghost_account_secret_ids, address)
     }
 
     pub(crate) fn ghost_account_name(&self, address: &str) -> String {
@@ -37,9 +46,6 @@ impl TradingTerminal {
         };
 
         if let Some(index) = self.find_ghost_account_by_wallet_address(&address) {
-            return self.switch_account_task(index);
-        }
-        if let Some(index) = self.find_account_by_wallet_address(&address) {
             return self.switch_account_task(index);
         }
 
@@ -97,5 +103,54 @@ impl TradingTerminal {
             self.persist_config();
             Task::none()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use zeroize::Zeroizing;
+
+    const WALLET: &str = "0x1111111111111111111111111111111111111111";
+
+    fn account(
+        secret_id: &str,
+        name: &str,
+        wallet_address: &str,
+        agent_key: &str,
+    ) -> AccountProfile {
+        AccountProfile {
+            secret_id: secret_id.to_string(),
+            name: name.to_string(),
+            wallet_address: wallet_address.to_string(),
+            agent_key: Zeroizing::new(agent_key.to_string()),
+            hydromancer_api_key: Zeroizing::new(String::new()),
+        }
+    }
+
+    #[test]
+    fn ghost_wallet_lookup_ignores_saved_trading_profile_with_same_address() {
+        let accounts = vec![account("saved", "Saved", WALLET, "agent-key")];
+        let ghost_account_secret_ids = HashSet::new();
+
+        assert_eq!(
+            find_ghost_account_index(&accounts, &ghost_account_secret_ids, WALLET),
+            None
+        );
+    }
+
+    #[test]
+    fn ghost_wallet_lookup_reuses_existing_ghost_profile() {
+        let accounts = vec![
+            account("saved", "Saved", WALLET, "agent-key"),
+            account("ghost", "Ghost", WALLET, ""),
+        ];
+        let ghost_account_secret_ids = HashSet::from(["ghost".to_string()]);
+
+        assert_eq!(
+            find_ghost_account_index(&accounts, &ghost_account_secret_ids, WALLET),
+            Some(1)
+        );
     }
 }
