@@ -53,6 +53,9 @@ pub enum HydromancerWsMessage {
         retry_delay_secs: u64,
     },
     Disconnected(String),
+    DataLoss {
+        skipped_count: u64,
+    },
     Event(LiquidationEvent),
     TrackedTrade(TrackedTradeEvent),
 }

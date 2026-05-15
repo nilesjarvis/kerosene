@@ -35,10 +35,17 @@ impl TradingTerminal {
                     self.tracked_trades_last_rx_ms = None;
                     self.tracked_trades_status = format!("Disconnected: {e}");
                 }
+                ws::HydromancerWsMessage::DataLoss { skipped_count } => {
+                    self.tracked_trades_status = format!(
+                        "Degraded: missed {skipped_count} Hydromancer tracked-trade messages; waiting for fresh events"
+                    );
+                }
                 ws::HydromancerWsMessage::TrackedTrade(trade) => {
                     let trade = Self::normalize_tracked_trade_event(trade);
                     self.tracked_trades_last_rx_ms = Some(Self::now_ms());
-                    self.tracked_trades_status = "Connected".to_string();
+                    if !self.tracked_trades_status.starts_with("Degraded:") {
+                        self.tracked_trades_status = "Connected".to_string();
+                    }
                     if self.symbol_key_is_hidden(&trade.coin) {
                         return Task::none();
                     }
@@ -68,5 +75,54 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app_state::TradingTerminal;
+    use crate::message::Message;
+    use crate::ws::{HydromancerWsMessage, TrackedTradeEvent};
+
+    #[test]
+    fn hydromancer_lag_marks_tracked_trade_feed_degraded_until_next_event() {
+        let mut terminal = TradingTerminal::boot().0;
+        let _ = terminal.update_tracked_trade_feed(Message::WsHydromancerTrackedTrades(
+            HydromancerWsMessage::Connected,
+        ));
+        assert_eq!(terminal.tracked_trades_status, "Connected");
+
+        let _ = terminal.update_tracked_trade_feed(Message::WsHydromancerTrackedTrades(
+            HydromancerWsMessage::DataLoss { skipped_count: 11 },
+        ));
+
+        assert!(terminal.tracked_trades_status.contains("Degraded"));
+        assert!(terminal.tracked_trades_status.contains("11"));
+
+        let _ = terminal.update_tracked_trade_feed(Message::WsHydromancerTrackedTrades(
+            HydromancerWsMessage::TrackedTrade(sample_tracked_trade()),
+        ));
+        assert!(terminal.tracked_trades_status.contains("Degraded"));
+        assert_eq!(terminal.tracked_trades.len(), 1);
+    }
+
+    fn sample_tracked_trade() -> TrackedTradeEvent {
+        TrackedTradeEvent {
+            address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_string(),
+            coin: "HYPE".to_string(),
+            price: 10.0,
+            size: 1.0,
+            is_buy: true,
+            time_ms: 1_000,
+            dir: "Open Long".to_string(),
+            start_position: Some(0.0),
+            closed_pnl: 0.0,
+            fee: 0.01,
+            fee_token: "USDC".to_string(),
+            tid: Some(7),
+            hash: "0xabc".to_string(),
+            oid: Some(9),
+            tx_index: 3,
+        }
     }
 }
