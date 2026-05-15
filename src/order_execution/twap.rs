@@ -819,7 +819,10 @@ impl TradingTerminal {
             }
             let cancel_task = twap_cancel_child_task(twap_id, key, asset, oid, cloid);
             return if self.twap_refresh_policy_needs_refresh(refresh_policy, twap_id) {
-                Task::batch([self.refresh_account_data(), cancel_task])
+                Task::batch([
+                    self.refresh_after_twap_result(refresh_policy, twap_id),
+                    cancel_task,
+                ])
             } else {
                 cancel_task
             };
@@ -828,7 +831,10 @@ impl TradingTerminal {
         if let Some(cloid) = status_check_cloid {
             let status_task = self.check_twap_child_status(twap_id, cloid);
             return if self.twap_refresh_policy_needs_refresh(refresh_policy, twap_id) {
-                Task::batch([self.refresh_account_data(), status_task])
+                Task::batch([
+                    self.refresh_after_twap_result(refresh_policy, twap_id),
+                    status_task,
+                ])
             } else {
                 status_task
             };
@@ -1168,7 +1174,7 @@ impl TradingTerminal {
         }
         self.archive_twap_if_terminal(twap_id);
         if refresh {
-            self.refresh_account_data()
+            self.refresh_after_twap_result(TwapAccountRefresh::Immediate, twap_id)
         } else {
             Task::none()
         }
@@ -1911,7 +1917,7 @@ mod tests {
     use crate::signing::ExchangeResponse;
     use crate::twap_state::{
         TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapPauseReason,
-        TwapStatus,
+        TwapPendingOp, TwapPendingSlice, TwapStatus,
     };
     use std::time::{Duration, Instant};
 
@@ -1975,6 +1981,25 @@ mod tests {
             fee: 0.0,
             retry_count: 0,
         });
+        twap
+    }
+
+    fn pending_twap(id: u64, cloid: &str, now: Instant) -> TwapOrder {
+        let mut twap = test_twap(id, cloid, now);
+        twap.status = TwapStatus::Running;
+        twap.pause_reason = None;
+        twap.paused_until = None;
+        twap.status_check_cloid = None;
+        twap.pending_op = Some(TwapPendingOp::Place(TwapPendingSlice {
+            index: 1,
+            planned_size: 0.5,
+            limit_price: 100.0,
+            cloid: cloid.to_string(),
+            retry_count: 0,
+        }));
+        if let Some(child) = twap.child_orders.first_mut() {
+            child.status = TwapChildStatus::Pending;
+        }
         twap
     }
 
@@ -2099,6 +2124,32 @@ mod tests {
     }
 
     #[test]
+    fn ambiguous_slice_result_after_account_switch_does_not_refresh_current_account() {
+        let now = Instant::now();
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xdef".to_string());
+        terminal.account_loading = false;
+        terminal.account_reconciliation_required = false;
+        terminal.twap_orders.insert(1, pending_twap(1, cloid, now));
+
+        let _task = terminal.handle_twap_slice_result(
+            1,
+            Err("Exchange request failed after submit".into()),
+        );
+
+        let twap = terminal
+            .twap_orders
+            .get(&1)
+            .expect("twap should remain active");
+        assert_eq!(twap.account_address, "0xabc");
+        assert_eq!(twap.status_check_cloid.as_deref(), Some(cloid));
+        assert_eq!(twap.child_orders[0].status, TwapChildStatus::StatusUnknown);
+        assert!(!terminal.account_loading);
+        assert!(!terminal.account_reconciliation_required);
+    }
+
+    #[test]
     fn filled_status_check_arms_reconciliation_deadline() {
         let now = Instant::now();
         let cloid = "0x1234567890abcdef1234567890abcdef";
@@ -2126,6 +2177,40 @@ mod tests {
             .expect("exchange-filled child must arm reconciliation watchdog");
         assert!(deadline > now);
         assert!(deadline <= Instant::now() + TWAP_RECONCILIATION_TIMEOUT);
+    }
+
+    #[test]
+    fn filled_status_check_after_account_switch_does_not_refresh_current_account() {
+        let now = Instant::now();
+        let cloid = "0x1234567890abcdef1234567890abcdef";
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xdef".to_string());
+        terminal.account_loading = false;
+        terminal.account_reconciliation_required = false;
+        terminal.twap_orders.insert(1, test_twap(1, cloid, now));
+
+        let _task = terminal.handle_twap_order_status_result(
+            1,
+            cloid.to_string(),
+            Ok(filled_status(cloid, 42)),
+        );
+
+        let twap = terminal
+            .twap_orders
+            .get(&1)
+            .expect("twap should remain active");
+        assert_eq!(twap.account_address, "0xabc");
+        assert_eq!(
+            twap.child_orders[0].status,
+            TwapChildStatus::AwaitingReconciliation
+        );
+        assert_eq!(twap.status_check_cloid.as_deref(), Some(cloid));
+        assert!(
+            twap.reconciliation_deadline.is_some(),
+            "filled status must wait for origin-account fills"
+        );
+        assert!(!terminal.account_loading);
+        assert!(!terminal.account_reconciliation_required);
     }
 
     #[test]

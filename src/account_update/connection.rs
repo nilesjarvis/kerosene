@@ -270,7 +270,8 @@ impl TradingTerminal {
         }
 
         let requested_addr = addr.clone();
-        Task::perform(fetch_account_data(addr), move |r| {
+        let scope = self.account_data_fetch_scope();
+        Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
             Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
         })
     }
