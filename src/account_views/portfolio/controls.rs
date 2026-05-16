@@ -1,14 +1,27 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::{timeframe_button, vertical_spacer};
 use crate::message::Message;
-use crate::portfolio_state::{PORTFOLIO_WINDOWS, PortfolioScope};
+use crate::portfolio_state::{PORTFOLIO_WINDOWS, PnlValueDisplayMode, PortfolioScope};
 use iced::Element;
 use iced::widget::{button, container, row, rule, scrollable, text};
 
 impl TradingTerminal {
     pub(super) fn view_portfolio_title(&self) -> Element<'static, Message> {
+        let value_mode = self.portfolio_pnl_value_display_mode();
+        let usd_mode = timeframe_button(
+            "$",
+            value_mode == PnlValueDisplayMode::Usd,
+            Message::SetPortfolioPnlValueMode(PnlValueDisplayMode::Usd),
+        );
+        let percent_mode = timeframe_button(
+            "%",
+            value_mode == PnlValueDisplayMode::Percent,
+            Message::SetPortfolioPnlValueMode(PnlValueDisplayMode::Percent),
+        );
+
         row![
             text("Portfolio PnL").size(13),
+            row![usd_mode, percent_mode].spacing(2),
             vertical_spacer(),
             button(text("Refresh").size(10))
                 .on_press(Message::RefreshPortfolio)

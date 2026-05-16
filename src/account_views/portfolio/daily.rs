@@ -1,6 +1,7 @@
 use crate::account_metrics::format_signed_usd_value;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::portfolio_state::PnlValueDisplayMode;
 use iced::widget::{Column, column, row, text};
 use iced::{Fill, Theme, color};
 
@@ -8,7 +9,8 @@ use super::format_signed_percent_value;
 
 impl TradingTerminal {
     pub(super) fn view_daily_pnl_list(&self, theme: &Theme) -> Column<'static, Message> {
-        let daily_rows = if self.hide_pnl {
+        let value_mode = self.portfolio_pnl_value_display_mode();
+        let daily_rows = if value_mode == PnlValueDisplayMode::Percent {
             let daily_source_points = self
                 .daily_source_portfolio_bucket()
                 .map(|bucket| {
@@ -30,7 +32,7 @@ impl TradingTerminal {
                 .unwrap_or_default();
             Self::compute_daily_pnl_rows_from_cumulative(&daily_source_points, 7)
         };
-        let no_data_text = if self.hide_pnl {
+        let no_data_text = if value_mode == PnlValueDisplayMode::Percent {
             "No daily performance data"
         } else {
             "No daily PnL data"
@@ -54,7 +56,7 @@ impl TradingTerminal {
                     column.push(
                         row![
                             text(day).size(11).color(color!(0xaaaaaa)).width(Fill),
-                            text(if self.hide_pnl {
+                            text(if value_mode == PnlValueDisplayMode::Percent {
                                 format_signed_percent_value(pnl)
                             } else {
                                 format_signed_usd_value(pnl)

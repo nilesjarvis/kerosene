@@ -17,7 +17,7 @@ use crate::market_state::{
 };
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
-use crate::portfolio_state::{PortfolioScope, PortfolioWindow};
+use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
 use crate::settings_state::SettingsTab;
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
@@ -210,6 +210,7 @@ pub(crate) enum Message {
     ToggleLiquidationSettingsMenu,
     LiquidationAlertThresholdChanged(String),
     SaveLiquidationAlertThreshold,
+    SetPortfolioPnlValueMode(PnlValueDisplayMode),
     SetPortfolioScope(PortfolioScope),
     SetPortfolioWindow(PortfolioWindow),
     // Drawing tools

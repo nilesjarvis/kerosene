@@ -281,6 +281,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PortfolioLoaded(_, _)
         | Message::RefreshIncome
         | Message::IncomeLoaded(_, _)
+        | Message::SetPortfolioPnlValueMode(_)
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,
 
@@ -368,6 +369,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
 mod tests {
     use super::*;
     use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
+    use crate::portfolio_state::PnlValueDisplayMode;
 
     #[test]
     fn routes_messages_with_known_overlap_to_existing_update_modules() {
@@ -381,6 +383,12 @@ mod tests {
             UpdateRoute::Chrome
         );
         assert_eq!(message_route(&Message::ToggleHidePnl), UpdateRoute::Chrome);
+        assert_eq!(
+            message_route(&Message::SetPortfolioPnlValueMode(
+                PnlValueDisplayMode::Percent,
+            )),
+            UpdateRoute::PortfolioIncome
+        );
         assert_eq!(
             message_route(&Message::ToggleLayoutMenu),
             UpdateRoute::Panes

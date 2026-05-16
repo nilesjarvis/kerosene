@@ -1,4 +1,5 @@
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
+use crate::portfolio_state::PnlValueDisplayMode;
 use chrono::{Datelike, TimeZone, Utc};
 
 // ---------------------------------------------------------------------------
@@ -74,6 +75,7 @@ pub(crate) struct PortfolioState {
     pub(crate) loading: bool,
     pub(crate) scope: PortfolioScope,
     pub(crate) window: PortfolioWindow,
+    pub(crate) pnl_value_display_mode: PnlValueDisplayMode,
     pub(crate) data: Option<PortfolioHistory>,
     pub(crate) last_error: Option<String>,
 }
@@ -84,6 +86,7 @@ impl Default for PortfolioState {
             loading: false,
             scope: PortfolioScope::All,
             window: PortfolioWindow::Week,
+            pnl_value_display_mode: PnlValueDisplayMode::Usd,
             data: None,
             last_error: None,
         }

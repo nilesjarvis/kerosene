@@ -15,13 +15,13 @@ use iced::{Element, Fill, color};
 impl TradingTerminal {
     pub(crate) fn view_portfolio(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        let (chart_points, value_mode, total_label, total_value, total_text, empty_chart_text) =
-            if self.hide_pnl {
+        let value_mode = self.portfolio_pnl_value_display_mode();
+        let (chart_points, total_label, total_value, total_text, empty_chart_text) =
+            if value_mode == PnlValueDisplayMode::Percent {
                 let performance_points = self.selected_portfolio_performance_points();
                 let total_performance = portfolio_total_performance(&performance_points);
                 (
                     performance_points,
-                    PnlValueDisplayMode::Percent,
                     "Total Performance:",
                     total_performance,
                     total_performance
@@ -34,7 +34,6 @@ impl TradingTerminal {
                 let total_pnl = portfolio_total_pnl(&pnl_points);
                 (
                     pnl_points,
-                    PnlValueDisplayMode::Usd,
                     "Total PnL:",
                     total_pnl,
                     total_pnl
@@ -87,7 +86,7 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center),
             chart_body,
             rule::horizontal(1),
-            text(if self.hide_pnl {
+            text(if value_mode == PnlValueDisplayMode::Percent {
                 "Daily Performance (last 7 days)"
             } else {
                 "Daily PnL (last 7 days)"
@@ -139,6 +138,10 @@ impl TradingTerminal {
             .padding(10)
             .into()
     }
+
+    fn portfolio_pnl_value_display_mode(&self) -> PnlValueDisplayMode {
+        self.portfolio.pnl_value_display_mode
+    }
 }
 
 fn portfolio_total_performance(points: &[(u64, f64)]) -> Option<f64> {
@@ -171,7 +174,9 @@ fn format_signed_percent_value(value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_signed_percent_value, portfolio_total_performance, portfolio_total_pnl};
+    use super::{
+        format_signed_percent_value, portfolio_total_performance, portfolio_total_pnl,
+    };
 
     #[test]
     fn portfolio_total_pnl_is_unknown_without_points_or_invalid_values() {
