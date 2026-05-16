@@ -116,50 +116,6 @@ pub(super) fn push_chart_mode_buttons<'a>(
         ))
 }
 
-pub(super) fn push_market_overlay_buttons<'a>(
-    toolbar: Row<'a, Message>,
-    chart_id: ChartId,
-    instance: &ChartInstance,
-    is_perp_chart: bool,
-    liquidation_spinner: Option<Element<'a, Message>>,
-    liquidation_error: Option<Element<'a, Message>>,
-    heatmap_spinner: Option<Element<'a, Message>>,
-) -> Row<'a, Message> {
-    if !is_perp_chart {
-        return toolbar;
-    }
-
-    let mut toolbar = toolbar
-        .push(chart_toolbar_separator())
-        .push(chart_toolbar_button(
-            "LIQ",
-            instance.show_liquidations,
-            Message::ToggleLiquidationOverlay(chart_id),
-        ));
-
-    if let Some(spinner) = liquidation_spinner {
-        toolbar = toolbar.push(spinner);
-    }
-
-    if let Some(status) = liquidation_error {
-        toolbar = toolbar.push(status);
-    }
-
-    toolbar = toolbar
-        .push(chart_toolbar_separator())
-        .push(chart_toolbar_button(
-            "HEAT",
-            instance.show_heatmap,
-            Message::ToggleHeatmapOverlay(chart_id),
-        ));
-
-    if let Some(spinner) = heatmap_spinner {
-        toolbar = toolbar.push(spinner);
-    }
-
-    toolbar
-}
-
 pub(super) fn chart_toolbar_separator() -> Element<'static, Message> {
     container(rule::vertical(1).style(|theme: &Theme| rule::Style {
         color: Color {

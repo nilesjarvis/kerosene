@@ -24,10 +24,11 @@ impl TradingTerminal {
         chart_id: ChartId,
         instance: &ChartInstance,
     ) -> Element<'_, Message> {
+        let theme = self.theme();
         let indicator_options = &instance.macro_indicators;
         let separator = || compact_separator();
 
-        let menu_col = Column::new()
+        let mut menu_col = Column::new()
             .spacing(3)
             .padding(6)
             .width(Fill)
@@ -145,6 +146,12 @@ impl TradingTerminal {
                 ],
             ));
 
+        if !instance.symbol.is_empty() && self.is_perp_coin(&instance.symbol) {
+            menu_col = menu_col
+                .push(separator())
+                .push(overlay_group(chart_id, instance, &theme));
+        }
+
         let menu_card = container(scrollable(menu_col).height(iced::Length::Shrink))
             .width(240.0)
             .max_height(220.0)
@@ -249,6 +256,106 @@ fn indicator_checkbox(chart_id: ChartId, option: IndicatorOption) -> Element<'st
         .font(Font::MONOSPACE)
         .width(Length::FillPortion(1))
         .into()
+}
+
+fn overlay_group(
+    chart_id: ChartId,
+    instance: &ChartInstance,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    let option_row = row![
+        overlay_checkbox(
+            "LIQ",
+            instance.show_liquidations,
+            Message::ToggleLiquidationOverlay(chart_id),
+        ),
+        overlay_checkbox(
+            "HEAT",
+            instance.show_heatmap,
+            Message::ToggleHeatmapOverlay(chart_id),
+        ),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .width(Fill);
+
+    let mut content = Column::new().spacing(2).width(Fill).push(option_row);
+
+    if let Some(status) = overlay_status(instance, theme) {
+        content = content.push(status);
+    }
+
+    row![
+        container(
+            text("OVR")
+                .size(10)
+                .font(Font::MONOSPACE)
+                .color(Color::from_rgb8(0x88, 0x88, 0x88))
+        )
+        .width(24.0),
+        content
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .width(Fill)
+    .into()
+}
+
+fn overlay_checkbox(
+    label: &'static str,
+    checked: bool,
+    message: Message,
+) -> Element<'static, Message> {
+    checkbox(checked)
+        .label(label)
+        .on_toggle(move |_| message.clone())
+        .size(10)
+        .spacing(4)
+        .text_size(10)
+        .font(Font::MONOSPACE)
+        .width(Length::FillPortion(1))
+        .into()
+}
+
+fn overlay_status(instance: &ChartInstance, theme: &Theme) -> Option<Element<'static, Message>> {
+    let mut parts = Vec::new();
+    let mut is_error = false;
+
+    if instance.show_liquidations {
+        if instance.liquidation_fetching {
+            parts.push("LIQ loading".to_string());
+        } else if let Some((status, status_is_error)) = &instance.liquidation_status {
+            parts.push(status.clone());
+            is_error |= *status_is_error;
+        }
+    }
+
+    if instance.show_heatmap {
+        if instance.heatmap_fetching {
+            parts.push("HEAT loading".to_string());
+        } else if let Some((status, status_is_error)) = &instance.heatmap_status {
+            parts.push(status.clone());
+            is_error |= *status_is_error;
+        }
+    }
+
+    if parts.is_empty() {
+        return None;
+    }
+
+    let color = if is_error {
+        theme.palette().danger
+    } else {
+        theme.extended_palette().background.weak.text
+    };
+
+    Some(
+        text(parts.join(" / "))
+            .size(9)
+            .font(Font::MONOSPACE)
+            .color(color)
+            .into(),
+    )
 }
 
 fn compact_separator() -> Element<'static, Message> {

@@ -106,24 +106,6 @@ impl TradingTerminal {
         .into()
     }
 
-    pub(crate) fn view_inline_spinner(&self, size: u32) -> Element<'_, Message> {
-        let theme = self.theme();
-        let thickness = (size as f32 * 0.15).clamp(1.5, 4.0);
-
-        container(
-            iced::widget::canvas(LoadingSpinner {
-                phase: self.spinner_phase,
-                color: theme.palette().primary,
-                thickness,
-            })
-            .width(size as f32)
-            .height(size as f32),
-        )
-        .width(size)
-        .height(size)
-        .into()
-    }
-
     pub(crate) fn loading_overlay(&self, label: &'static str) -> Element<'_, Message> {
         let theme = self.theme();
         container(

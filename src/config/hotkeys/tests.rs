@@ -35,3 +35,20 @@ fn settings_window_hotkey_round_trips() {
 
     assert_eq!(loaded, hotkey);
 }
+
+#[test]
+fn trading_journal_hotkey_round_trips() {
+    let hotkey = HotkeyConfig {
+        action: HotkeyAction::OpenTradingJournal,
+        key: "J".to_string(),
+        shift: false,
+        ctrl: true,
+        alt: false,
+        logo: false,
+    };
+
+    let json = serde_json::to_string(&hotkey).expect("hotkey should serialize");
+    let loaded: HotkeyConfig = serde_json::from_str(&json).expect("hotkey should deserialize");
+
+    assert_eq!(loaded, hotkey);
+}

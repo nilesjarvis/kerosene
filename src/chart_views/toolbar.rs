@@ -4,7 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::message::Message;
 use crate::timeframe::TIMEFRAME_OPTIONS;
-use iced::widget::{pick_list, row, text};
+use iced::widget::{pick_list, row};
 use iced::{Color, Element, Length, Theme};
 
 impl TradingTerminal {
@@ -51,34 +51,6 @@ impl TradingTerminal {
 
         tf_row = sections::push_drawing_tool_buttons(tf_row, chart_id, active_tool);
         tf_row = sections::push_chart_mode_buttons(tf_row, chart_id, instance);
-
-        let is_perp_chart = !instance.symbol.is_empty() && self.is_perp_coin(&instance.symbol);
-        let liquidation_spinner = (instance.show_liquidations && instance.liquidation_fetching)
-            .then(|| self.view_inline_spinner(12));
-        let liquidation_error = instance
-            .show_liquidations
-            .then_some(instance.liquidation_status.as_ref())
-            .flatten()
-            .and_then(|(_label, is_error)| {
-                (*is_error).then(|| {
-                    text("LIQ failed")
-                        .size(10)
-                        .color(theme.palette().danger)
-                        .into()
-                })
-            });
-        let heatmap_spinner = instance
-            .heatmap_fetching
-            .then(|| self.view_inline_spinner(12));
-        tf_row = sections::push_market_overlay_buttons(
-            tf_row,
-            chart_id,
-            instance,
-            is_perp_chart,
-            liquidation_spinner,
-            liquidation_error,
-            heatmap_spinner,
-        );
 
         sections::chart_toolbar_strip(tf_row)
     }

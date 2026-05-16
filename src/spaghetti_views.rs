@@ -7,8 +7,8 @@ mod toolbar;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::spaghetti_state::SpaghettiChartId;
-use iced::widget::{column, container, pane_grid, text};
-use iced::{Element, Fill};
+use iced::widget::{column, container, pane_grid, rule, text};
+use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_spaghetti_chart(
@@ -38,7 +38,21 @@ impl TradingTerminal {
         let tf_row = self.view_spaghetti_controls(id, inst);
         let chart_area = self.view_spaghetti_chart_area(inst, &theme);
 
-        let content = column![toolbar, tf_row, chart_area].spacing(4);
+        let padded_toolbar = container(toolbar).width(Fill).padding([0, 4]);
+        let padded_chart_area = container(chart_area)
+            .width(Fill)
+            .height(Fill)
+            .padding([0, 4]);
+        let content = column![
+            padded_toolbar,
+            spaghetti_controls_separator(),
+            tf_row,
+            spaghetti_controls_separator(),
+            padded_chart_area
+        ]
+        .spacing(0)
+        .width(Fill)
+        .height(Fill);
 
         let mut chart_layers: Vec<Element<'_, Message>> = vec![content.into()];
         if inst.style_menu_open {
@@ -48,7 +62,21 @@ impl TradingTerminal {
         container(iced::widget::stack(chart_layers))
             .width(Fill)
             .height(Fill)
-            .padding([4, 4])
+            .padding([4, 0])
             .into()
     }
+}
+
+fn spaghetti_controls_separator() -> Element<'static, Message> {
+    rule::horizontal(1)
+        .style(|theme: &Theme| rule::Style {
+            color: Color {
+                a: 0.10,
+                ..theme.extended_palette().background.weak.text
+            },
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
+        })
+        .into()
 }

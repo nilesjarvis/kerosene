@@ -83,6 +83,7 @@ impl TradingTerminal {
     pub(crate) fn hotkey_action_label(&self, action: &config::HotkeyAction) -> String {
         match action {
             config::HotkeyAction::AddCandlestickChart => "Add Candlestick Chart".to_string(),
+            config::HotkeyAction::OpenTradingJournal => "Open Trading Journal".to_string(),
             config::HotkeyAction::OpenWalletTracker => "Open Wallet Tracker".to_string(),
             config::HotkeyAction::OpenQuickSymbolSearch => "Quick Symbol Search".to_string(),
             config::HotkeyAction::OpenSettingsWindow => "Open Settings".to_string(),
@@ -104,6 +105,10 @@ impl TradingTerminal {
             (
                 config::HotkeyAction::AddCandlestickChart,
                 "Add Candlestick Chart".to_string(),
+            ),
+            (
+                config::HotkeyAction::OpenTradingJournal,
+                "Open Trading Journal".to_string(),
             ),
             (
                 config::HotkeyAction::OpenWalletTracker,

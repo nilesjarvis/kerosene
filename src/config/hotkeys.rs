@@ -6,6 +6,7 @@ mod tests;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum HotkeyAction {
     AddCandlestickChart,
+    OpenTradingJournal,
     OpenWalletTracker,
     OpenQuickSymbolSearch,
     OpenSettingsWindow,
