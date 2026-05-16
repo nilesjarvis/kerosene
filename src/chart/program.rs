@@ -102,6 +102,7 @@ impl CandlestickChart {
             heatmap_stride,
             first_vis,
             last_vis,
+            right_idx,
             price_lo,
             price_hi,
             price_range,

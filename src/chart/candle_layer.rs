@@ -34,6 +34,7 @@ where
     pub(super) heatmap_stride: usize,
     pub(super) first_vis: usize,
     pub(super) last_vis: usize,
+    pub(super) right_idx: isize,
     pub(super) price_lo: f64,
     pub(super) price_hi: f64,
     pub(super) price_range: f64,
@@ -65,6 +66,7 @@ impl CandlestickChart {
                 };
                 frame.with_clip(chart_region, |frame| {
                     self.draw_price_grid(ctx, frame);
+                    self.draw_time_grid(ctx, frame);
                     self.draw_historical_heatmap(ctx, frame);
                     self.draw_candles_and_volume(ctx, frame);
 
