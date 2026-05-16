@@ -8,8 +8,8 @@ use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::ChartId;
 use crate::message::Message;
-use iced::widget::{button, canvas, column, container, stack, text};
-use iced::{Element, Fill, Theme};
+use iced::widget::{button, canvas, column, container, rule, stack, text};
+use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_chart(
@@ -144,7 +144,22 @@ impl TradingTerminal {
                 .width(Fill)
                 .height(Fill);
 
-            let content = column![header, toolbar, chart_area].spacing(4);
+            let padded_header = container(header).width(Fill).padding([0, 4]);
+            let padded_chart_area = container(chart_area)
+                .width(Fill)
+                .height(Fill)
+                .padding([0, 4]);
+
+            let content = column![
+                padded_header,
+                chart_header_separator(),
+                toolbar,
+                chart_header_separator(),
+                padded_chart_area
+            ]
+            .spacing(0)
+            .width(Fill)
+            .height(Fill);
 
             let mut chart_layers: Vec<Element<'_, Message>> = vec![content.into()];
 
@@ -158,8 +173,22 @@ impl TradingTerminal {
             container(stack(chart_layers))
                 .width(Fill)
                 .height(Fill)
-                .padding([4, 4])
+                .padding([4, 0])
                 .into()
         }
     }
+}
+
+fn chart_header_separator() -> Element<'static, Message> {
+    rule::horizontal(1)
+        .style(|theme: &Theme| rule::Style {
+            color: Color {
+                a: 0.10,
+                ..theme.extended_palette().background.weak.text
+            },
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
+        })
+        .into()
 }

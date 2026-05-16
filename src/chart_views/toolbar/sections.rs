@@ -1,30 +1,47 @@
 use crate::annotations::DrawingTool;
 use crate::chart_state::{ChartId, ChartInstance};
-use crate::helpers::timeframe_button;
 use crate::message::Message;
 use iced::widget::{Row, button, container, rule, text, tooltip};
-use iced::{Color, Element, Theme};
+use iced::{Color, Element, Fill, Theme};
 
-pub(super) fn chart_reload_button(chart_id: ChartId) -> Element<'static, Message> {
-    button(text("\u{27F3}").size(12))
-        .on_press(Message::ChartReload(chart_id))
-        .padding([2, 4])
-        .style(|theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => Color::TRANSPARENT,
+pub(super) fn chart_toolbar_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
+    container(content.width(Fill).wrap().vertical_spacing(0))
+        .width(Fill)
+        .style(|theme: &Theme| {
+            let background = Color {
+                a: 0.04,
+                ..theme.extended_palette().background.weak.color
             };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: theme.palette().text,
+            container::Style {
+                background: Some(background.into()),
                 ..Default::default()
             }
         })
         .into()
 }
 
+pub(super) fn chart_toolbar_button(
+    label: &'static str,
+    active: bool,
+    msg: Message,
+) -> Element<'static, Message> {
+    button(text(label).size(11).center())
+        .on_press(msg)
+        .padding([3, 8])
+        .style(move |theme: &Theme, status| compact_toolbar_button_style(theme, status, active))
+        .into()
+}
+
+pub(super) fn chart_reload_button(chart_id: ChartId) -> Element<'static, Message> {
+    button(text("\u{27F3}").size(12))
+        .on_press(Message::ChartReload(chart_id))
+        .padding([3, 8])
+        .style(|theme: &Theme, status| compact_toolbar_button_style(theme, status, false))
+        .into()
+}
+
 pub(super) fn chart_reset_view_button(chart_id: ChartId) -> Element<'static, Message> {
-    timeframe_button("Reset View", false, Message::ChartResetView(chart_id))
+    chart_toolbar_button("Reset View", false, Message::ChartResetView(chart_id))
 }
 
 pub(super) fn chart_fetch_status_label(
@@ -33,14 +50,12 @@ pub(super) fn chart_fetch_status_label(
     theme: &Theme,
 ) -> Option<Element<'static, Message>> {
     if has_candles && instance.candle_fetch_request.is_some() {
-        Some(
-            text("Refreshing")
-                .size(10)
-                .color(theme.palette().warning)
-                .into(),
-        )
+        Some(chart_toolbar_status_label(
+            "Refreshing",
+            theme.palette().warning,
+        ))
     } else if has_candles && instance.candle_fetch_error.is_some() {
-        Some(text("Stale").size(10).color(theme.palette().danger).into())
+        Some(chart_toolbar_status_label("Stale", theme.palette().danger))
     } else {
         None
     }
@@ -59,12 +74,14 @@ pub(super) fn push_drawing_tool_buttons<'a>(
             active_tool,
             DrawingTool::HorizontalLevel,
         ))
+        .push(chart_toolbar_separator())
         .push(drawing_tool_button(
             "\u{2571}",
             chart_id,
             active_tool,
             DrawingTool::TrendLine,
         ))
+        .push(chart_toolbar_separator())
         .push(drawing_tool_button(
             "\u{2717}",
             chart_id,
@@ -80,13 +97,14 @@ pub(super) fn push_chart_mode_buttons<'a>(
 ) -> Row<'a, Message> {
     toolbar
         .push(chart_toolbar_separator())
-        .push(timeframe_button(
+        .push(chart_toolbar_button(
             "INV",
             instance.chart.inverted,
             Message::ToggleChartInvert(chart_id),
         ))
+        .push(chart_toolbar_separator())
         .push(tooltip(
-            timeframe_button(
+            chart_toolbar_button(
                 "FILL",
                 instance.chart.show_trade_markers,
                 Message::ToggleChartTradeMarkers(chart_id),
@@ -113,7 +131,7 @@ pub(super) fn push_market_overlay_buttons<'a>(
 
     let mut toolbar = toolbar
         .push(chart_toolbar_separator())
-        .push(timeframe_button(
+        .push(chart_toolbar_button(
             "LIQ",
             instance.show_liquidations,
             Message::ToggleLiquidationOverlay(chart_id),
@@ -127,11 +145,13 @@ pub(super) fn push_market_overlay_buttons<'a>(
         toolbar = toolbar.push(status);
     }
 
-    toolbar = toolbar.push(timeframe_button(
-        "HEAT",
-        instance.show_heatmap,
-        Message::ToggleHeatmapOverlay(chart_id),
-    ));
+    toolbar = toolbar
+        .push(chart_toolbar_separator())
+        .push(chart_toolbar_button(
+            "HEAT",
+            instance.show_heatmap,
+            Message::ToggleHeatmapOverlay(chart_id),
+        ));
 
     if let Some(spinner) = heatmap_spinner {
         toolbar = toolbar.push(spinner);
@@ -140,8 +160,19 @@ pub(super) fn push_market_overlay_buttons<'a>(
     toolbar
 }
 
-fn chart_toolbar_separator() -> Element<'static, Message> {
-    container(rule::vertical(1)).height(16).width(8).into()
+pub(super) fn chart_toolbar_separator() -> Element<'static, Message> {
+    container(rule::vertical(1).style(|theme: &Theme| rule::Style {
+        color: Color {
+            a: 0.12,
+            ..theme.extended_palette().background.weak.text
+        },
+        radius: 0.0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
+    }))
+    .height(14)
+    .width(1)
+    .into()
 }
 
 fn drawing_tool_button(
@@ -150,7 +181,7 @@ fn drawing_tool_button(
     active_tool: Option<DrawingTool>,
     tool: DrawingTool,
 ) -> Element<'static, Message> {
-    timeframe_button(
+    chart_toolbar_button(
         label,
         active_tool == Some(tool),
         Message::SetDrawingTool(
@@ -162,4 +193,45 @@ fn drawing_tool_button(
             },
         ),
     )
+}
+
+fn chart_toolbar_status_label(label: &'static str, color: Color) -> Element<'static, Message> {
+    container(text(label).size(10).color(color))
+        .padding([3, 8])
+        .into()
+}
+
+fn compact_toolbar_button_style(
+    theme: &Theme,
+    status: button::Status,
+    active: bool,
+) -> button::Style {
+    let background = if active {
+        Color {
+            a: 0.10,
+            ..theme.palette().primary
+        }
+    } else {
+        match status {
+            button::Status::Hovered => Color {
+                a: 0.55,
+                ..theme.extended_palette().background.strong.color
+            },
+            _ => Color::TRANSPARENT,
+        }
+    };
+
+    button::Style {
+        background: Some(background.into()),
+        text_color: if active {
+            theme.palette().primary
+        } else {
+            theme.extended_palette().background.weak.text
+        },
+        border: iced::Border {
+            radius: 0.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
