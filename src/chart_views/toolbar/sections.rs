@@ -97,10 +97,16 @@ pub(super) fn push_chart_mode_buttons<'a>(
 ) -> Row<'a, Message> {
     toolbar
         .push(chart_toolbar_separator())
-        .push(chart_toolbar_button(
-            "INV",
-            instance.chart.inverted,
-            Message::ToggleChartInvert(chart_id),
+        .push(tooltip(
+            chart_toolbar_button(
+                "\u{21C5}",
+                instance.chart.inverted,
+                Message::ToggleChartInvert(chart_id),
+            ),
+            text("Invert price axis")
+                .size(10)
+                .font(iced::Font::MONOSPACE),
+            tooltip::Position::Top,
         ))
         .push(chart_toolbar_separator())
         .push(tooltip(

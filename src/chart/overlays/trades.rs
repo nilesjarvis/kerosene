@@ -14,7 +14,6 @@ use std::collections::BTreeMap;
 const TRADE_MARKER_RADIUS: f32 = 3.2;
 const TRADE_MARKER_EDGE_PADDING: f32 = 1.0;
 const TRADE_MARKER_MIN_PRICE_HEIGHT: f32 = (TRADE_MARKER_RADIUS + TRADE_MARKER_EDGE_PADDING) * 2.0;
-const TRADE_MARKER_OVERFLOW_RADIUS: f32 = 4.4;
 const TRADE_MARKER_CANDLE_GAP: f32 = 8.0;
 const TRADE_MARKER_STACK_GAP: f32 = 7.0;
 const TRADE_MARKER_MAX_STACK: usize = 4;
@@ -272,7 +271,7 @@ where
     } else {
         base_y
     };
-    let edge_tolerance = TRADE_MARKER_CANDLE_GAP + TRADE_MARKER_OVERFLOW_RADIUS;
+    let edge_tolerance = TRADE_MARKER_CANDLE_GAP + TRADE_MARKER_RADIUS;
     if stack_max_y < -edge_tolerance || stack_min_y > ctx.price_h + edge_tolerance {
         return None;
     }
@@ -300,12 +299,8 @@ fn trade_marker_clamp_bounds(price_h: f32) -> Option<(f32, f32)> {
     ))
 }
 
-fn trade_marker_dot_radius(group_count: usize, dot_count: usize, stack_idx: usize) -> f32 {
-    if group_count > TRADE_MARKER_MAX_STACK && stack_idx + 1 == dot_count {
-        TRADE_MARKER_OVERFLOW_RADIUS
-    } else {
-        TRADE_MARKER_RADIUS
-    }
+fn trade_marker_dot_radius(_group_count: usize, _dot_count: usize, _stack_idx: usize) -> f32 {
+    TRADE_MARKER_RADIUS
 }
 
 fn trade_marker_anchor_y<PriceToY>(
@@ -529,13 +524,10 @@ mod tests {
     }
 
     #[test]
-    fn overflow_clusters_enlarge_only_the_last_visible_dot() {
+    fn grouped_fill_dots_use_uniform_radius() {
         assert_eq!(trade_marker_dot_radius(4, 4, 3), TRADE_MARKER_RADIUS);
         assert_eq!(trade_marker_dot_radius(5, 4, 0), TRADE_MARKER_RADIUS);
-        assert_eq!(
-            trade_marker_dot_radius(5, 4, 3),
-            TRADE_MARKER_OVERFLOW_RADIUS
-        );
+        assert_eq!(trade_marker_dot_radius(5, 4, 3), TRADE_MARKER_RADIUS);
     }
 
     #[test]
