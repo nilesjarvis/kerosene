@@ -4,12 +4,12 @@ use crate::message::Message;
 
 use iced::widget::container as container_style;
 use iced::widget::{button, column, container, row, text, tooltip};
-use iced::{border, Element, Fill, Length, Theme};
+use iced::{Element, Fill, Length, Theme, border};
 
-const ACCOUNT_PICKER_WIDTH: f32 = 250.0;
-const ACCOUNT_PICKER_HEIGHT: f32 = 36.0;
+const ACCOUNT_PICKER_WIDTH: f32 = 270.0;
+const ACCOUNT_PICKER_HEIGHT: f32 = 42.0;
 const ACCOUNT_PICKER_FRAME_PADDING: f32 = 2.0;
-const ACCOUNT_PICKER_TRIGGER_WIDTH: f32 = 34.0;
+const ACCOUNT_PICKER_TRIGGER_WIDTH: f32 = 38.0;
 const ACCOUNT_PICKER_RADIUS: f32 = 4.0;
 const CHEVRON_UP: &str = "\u{25B4}";
 const CHEVRON_DOWN: &str = "\u{25BE}";
@@ -34,7 +34,7 @@ impl TradingTerminal {
                 is_ghost: false,
             });
 
-        let label = Self::truncate_display_text(&Self::account_picker_label(&selected), 20);
+        let label = Self::truncate_display_text(&Self::account_picker_label(&selected), 22);
         let address = Self::account_picker_address_line(&selected);
         let chevron = if self.account_picker_open {
             CHEVRON_UP
@@ -55,15 +55,15 @@ impl TradingTerminal {
                         .size(10)
                         .color(theme.extended_palette().background.weak.text),
                 ]
-                .spacing(1)
+                .spacing(2)
                 .width(Fill),
                 Self::account_mode_tag(selected.is_ghost, selected.can_trade, theme),
             ]
-            .spacing(8)
+            .spacing(10)
             .align_y(iced::Alignment::Center),
         )
         .on_press_maybe(copy_message)
-        .padding([4, 10])
+        .padding([6, 12])
         .width(Fill)
         .height(Length::Fixed(inner_height))
         .style(|theme: &Theme, status| {
@@ -90,7 +90,7 @@ impl TradingTerminal {
                 .color(theme.extended_palette().background.weak.text),
         )
         .on_press(Message::ToggleAccountPicker)
-        .padding([4, 0])
+        .padding([6, 0])
         .width(Length::Fixed(ACCOUNT_PICKER_TRIGGER_WIDTH))
         .height(Length::Fixed(inner_height))
         .style(move |theme: &Theme, status| {

@@ -6,7 +6,7 @@ use crate::message::Message;
 use iced::widget::{button, column, container, row, text, text_input};
 use iced::{Color, Element, Fill, Length, Theme};
 
-const ACCOUNT_OPTION_TEXT_LEFT_PADDING: f32 = 4.0;
+const ACCOUNT_OPTION_TEXT_LEFT_PADDING: f32 = 6.0;
 const RENAME_ICON: &str = "✎";
 
 impl TradingTerminal {
@@ -39,7 +39,7 @@ impl TradingTerminal {
                             .style(helpers::text_input_style)
                             .on_input(move |value| Message::AccountPickerLabelChanged(index, value))
                             .size(11)
-                            .padding([4, 6])
+                            .padding([6, 8])
                             .width(Fill),
                     )
                     .padding(iced::Padding {
@@ -51,7 +51,7 @@ impl TradingTerminal {
                     .width(Fill),
                     Self::account_mode_tag(option.is_ghost, option.can_trade, theme),
                 ]
-                .spacing(8)
+                .spacing(10)
                 .align_y(iced::Alignment::Center),
             )
             .padding(account_option_row_padding())
@@ -71,7 +71,7 @@ impl TradingTerminal {
                                 .size(10)
                                 .color(theme.extended_palette().background.weak.text),
                         ]
-                        .spacing(1)
+                        .spacing(2)
                         .width(Fill),
                     )
                     .padding(iced::Padding {
@@ -83,7 +83,7 @@ impl TradingTerminal {
                     .width(Fill),
                     Self::account_mode_tag(option.is_ghost, option.can_trade, theme),
                 ]
-                .spacing(8)
+                .spacing(10)
                 .align_y(iced::Alignment::Center),
             )
             .on_press(Message::AccountPickerSelected(index))
@@ -136,10 +136,10 @@ impl TradingTerminal {
                 ),
                 account_action_button(delete_label, delete_message, delete_color, false),
             ]
-            .spacing(4)
+            .spacing(6)
             .align_y(iced::Alignment::Center),
         )
-        .padding([2, 0])
+        .padding([3, 0])
         .width(Fill)
         .into()
     }
@@ -147,10 +147,10 @@ impl TradingTerminal {
 
 fn account_option_row_padding() -> iced::Padding {
     iced::Padding {
-        top: 7.0,
-        right: 8.0,
-        bottom: 7.0,
-        left: 12.0,
+        top: 9.0,
+        right: 10.0,
+        bottom: 9.0,
+        left: 14.0,
     }
 }
 
@@ -162,11 +162,11 @@ fn account_action_button(
 ) -> Element<'static, Message> {
     button(text(label).size(10).center())
         .on_press(message)
-        .padding([6, 6])
+        .padding([7, 8])
         .width(if label == RENAME_ICON {
-            Length::Fixed(30.0)
+            Length::Fixed(34.0)
         } else {
-            Length::Fixed(56.0)
+            Length::Fixed(64.0)
         })
         .style(move |theme: &Theme, status| {
             let bg = match status {

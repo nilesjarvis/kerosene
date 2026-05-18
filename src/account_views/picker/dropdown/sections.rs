@@ -5,7 +5,7 @@ use iced::{Element, Fill, Theme};
 
 pub(super) fn dropdown_title(theme: &Theme) -> Element<'static, Message> {
     container(text("Accounts").size(12).color(theme.palette().text))
-        .padding([6, 8])
+        .padding([8, 10])
         .width(Fill)
         .into()
 }
@@ -17,7 +17,7 @@ pub(super) fn section_label(label: &'static str, theme: &Theme) -> Element<'stat
             .color(theme.extended_palette().background.weak.text)
             .width(Fill),
     )
-    .padding([5, 8])
+    .padding([6, 10])
     .width(Fill)
     .into()
 }
@@ -28,7 +28,7 @@ pub(super) fn empty_saved_profiles(theme: &Theme) -> Element<'static, Message> {
             .size(11)
             .color(theme.extended_palette().background.weak.text),
     )
-    .padding([5, 8])
+    .padding([8, 10])
     .width(Fill)
     .into()
 }
@@ -36,7 +36,7 @@ pub(super) fn empty_saved_profiles(theme: &Theme) -> Element<'static, Message> {
 pub(super) fn add_account_button() -> Element<'static, Message> {
     button(text("+ Account").size(11).center().width(Fill))
         .on_press(Message::AddAccount)
-        .padding([6, 8])
+        .padding([8, 10])
         .width(Fill)
         .style(|theme: &Theme, status| {
             let bg = match status {

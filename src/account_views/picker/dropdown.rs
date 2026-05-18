@@ -14,7 +14,7 @@ impl TradingTerminal {
         let options = self.account_picker_options();
 
         let mut menu = Column::new()
-            .spacing(2)
+            .spacing(4)
             .width(Fill)
             .push(sections::dropdown_title(&theme))
             .push(rule::horizontal(1))
@@ -43,9 +43,9 @@ impl TradingTerminal {
             .push(sections::add_account_button());
 
         container(scrollable(menu).height(iced::Length::Shrink))
-            .padding(8)
-            .width(360)
-            .max_height(360.0)
+            .padding(10)
+            .width(380)
+            .max_height(420.0)
             .style(account_picker_dropdown_style)
             .into()
     }
