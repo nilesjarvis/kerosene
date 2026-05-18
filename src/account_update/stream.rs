@@ -90,11 +90,7 @@ struct ChaseFillTotals {
     total_notional: f64,
 }
 
-fn chase_fill_totals(
-    fills: &[crate::account::UserFill],
-    oids: &[u64],
-    since_ms: Option<u64>,
-) -> Option<ChaseFillTotals> {
+fn chase_fill_totals(fills: &[crate::account::UserFill], oids: &[u64]) -> Option<ChaseFillTotals> {
     if oids.is_empty() {
         return None;
     }
@@ -110,9 +106,6 @@ fn chase_fill_totals(
             continue;
         };
         if !oids.contains(&oid) {
-            continue;
-        }
-        if since_ms.is_some_and(|since_ms| fill.time < since_ms) {
             continue;
         }
         let fill_key = (
@@ -162,7 +155,7 @@ fn chase_fill_totals(
 }
 
 fn chase_fill_summary_for_oids(fills: &[crate::account::UserFill], oids: &[u64]) -> Option<String> {
-    let totals = chase_fill_totals(fills, oids, None)?;
+    let totals = chase_fill_totals(fills, oids)?;
 
     if totals.filled_size > 0.0 {
         let avg_px = totals.total_notional / totals.filled_size;
@@ -183,7 +176,7 @@ fn chase_fill_summary_for_chase(
     chase: &ChaseOrder,
 ) -> Option<String> {
     let oids = chase.known_oids_with_current();
-    let totals = chase_fill_totals(fills, &oids, Some(chase.started_at_ms))?;
+    let totals = chase_fill_totals(fills, &oids)?;
 
     if totals.filled_size > 0.0 {
         let avg_px = totals.total_notional / totals.filled_size;
@@ -453,7 +446,7 @@ impl TradingTerminal {
                 continue;
             };
             let oids = chase.known_oids_with_current();
-            let Some(totals) = chase_fill_totals(fills, &oids, Some(chase.started_at_ms)) else {
+            let Some(totals) = chase_fill_totals(fills, &oids) else {
                 continue;
             };
             chase.set_filled_size(totals.filled_size);
@@ -603,9 +596,8 @@ impl TradingTerminal {
                             ChaseOpenOrderPriceSync::Trust,
                         ) {
                             Ok(oversized) => {
-                                let needs_reconcile =
-                                    chase.pending_best_price.is_some()
-                                        || chase.pending_size_correction;
+                                let needs_reconcile = chase.pending_best_price.is_some()
+                                    || chase.pending_size_correction;
                                 if chase.stop_requested {
                                     stop_after_refresh = chase
                                         .stop_reason
