@@ -1,10 +1,13 @@
 use crate::api::CLIENT;
-use reqwest::header::USER_AGENT;
+use reqwest::{Response, StatusCode, header::USER_AGENT};
 use serde::Deserialize;
 
 use super::errors::{hyperdash_graphql_error, hyperdash_http_error, hyperdash_missing_data_error};
 use super::models::{GqlError, PerpDeltas, TickerPositions};
 use super::{HYPERDASH_API_URL, KEROSENE_USER_AGENT, response_snippet};
+
+const PERP_DELTAS_RESPONSE_MAX_BYTES: usize = 2 * 1024 * 1024;
+const PERP_DELTAS_ENTRY_LIMIT: usize = 2_000;
 
 // ---------------------------------------------------------------------------
 // HyperDash Ticker Positioning
@@ -152,17 +155,59 @@ pub async fn fetch_perp_deltas(
         .await
         .map_err(|e| format!("HyperDash perp deltas request failed: {e}"))?;
 
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read HyperDash perp deltas response: {e}"))?;
+    let (status, text) = read_perp_deltas_response_text(response).await?;
 
     if !status.is_success() {
         return Err(hyperdash_http_error("perp deltas", status, &text));
     }
 
     parse_perp_deltas_response(&text)
+}
+
+async fn read_perp_deltas_response_text(
+    mut response: Response,
+) -> Result<(StatusCode, String), String> {
+    let status = response.status();
+    if let Some(length) = response.content_length()
+        && length > PERP_DELTAS_RESPONSE_MAX_BYTES as u64
+    {
+        return Err(perp_deltas_response_too_large(length));
+    }
+
+    let capacity = response
+        .content_length()
+        .and_then(|length| usize::try_from(length).ok())
+        .unwrap_or_default()
+        .min(PERP_DELTAS_RESPONSE_MAX_BYTES);
+    let mut body = Vec::with_capacity(capacity);
+
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("Failed to read HyperDash perp deltas response: {e}"))?
+    {
+        append_perp_deltas_response_chunk(&mut body, chunk.as_ref())?;
+    }
+
+    String::from_utf8(body)
+        .map(|text| (status, text))
+        .map_err(|e| format!("Failed to decode HyperDash perp deltas response as UTF-8: {e}"))
+}
+
+fn append_perp_deltas_response_chunk(body: &mut Vec<u8>, chunk: &[u8]) -> Result<(), String> {
+    let next_len = body.len().saturating_add(chunk.len());
+    if next_len > PERP_DELTAS_RESPONSE_MAX_BYTES {
+        return Err(perp_deltas_response_too_large(next_len as u64));
+    }
+
+    body.extend_from_slice(chunk);
+    Ok(())
+}
+
+fn perp_deltas_response_too_large(byte_count: u64) -> String {
+    format!(
+        "HyperDash perp deltas response too large ({byte_count} bytes; max {PERP_DELTAS_RESPONSE_MAX_BYTES} bytes)"
+    )
 }
 
 fn parse_ticker_positions_response(text: &str) -> Result<TickerPositions, String> {
@@ -217,7 +262,10 @@ fn parse_perp_deltas_response(text: &str) -> Result<PerpDeltas, String> {
         return Err(hyperdash_missing_data_error("perp deltas"));
     };
 
-    if let Some(deltas) = data.perp_deltas {
+    if let Some(mut deltas) = data.perp_deltas {
+        if deltas.deltas.len() > PERP_DELTAS_ENTRY_LIMIT {
+            deltas.deltas.truncate(PERP_DELTAS_ENTRY_LIMIT);
+        }
         return Ok(deltas);
     }
     if !error_messages.is_empty() {
@@ -228,7 +276,10 @@ fn parse_perp_deltas_response(text: &str) -> Result<PerpDeltas, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_perp_deltas_response, parse_ticker_positions_response};
+    use super::{
+        PERP_DELTAS_ENTRY_LIMIT, PERP_DELTAS_RESPONSE_MAX_BYTES, append_perp_deltas_response_chunk,
+        parse_perp_deltas_response, parse_ticker_positions_response,
+    };
 
     #[test]
     fn ticker_positions_parse_nullable_identity_and_liquidation_fields() {
@@ -322,6 +373,50 @@ mod tests {
         assert_eq!(parsed.timeframe, "15m");
         assert_eq!(parsed.deltas.len(), 1);
         assert_eq!(parsed.deltas[0].delta, 10.25);
+    }
+
+    #[test]
+    fn perp_deltas_truncates_large_result_set() {
+        let mut deltas = String::new();
+        for index in 0..(PERP_DELTAS_ENTRY_LIMIT + 3) {
+            if index > 0 {
+                deltas.push(',');
+            }
+            deltas.push_str(&format!(
+                r#"{{"address":"0x{index:040x}","current":1.0,"delta":2.0}}"#
+            ));
+        }
+
+        let payload = format!(
+            r#"{{"data":{{"perpDeltas":{{"market":"HYPE","timeframe":"15m","deltas":[{}]}}}}}}"#,
+            deltas
+        );
+
+        let parsed =
+            parse_perp_deltas_response(&payload).expect("perp deltas response should parse");
+
+        assert_eq!(parsed.deltas.len(), PERP_DELTAS_ENTRY_LIMIT);
+    }
+
+    #[test]
+    fn perp_deltas_response_chunk_cap_rejects_oversized_body_before_append() {
+        let mut body = vec![b'a'; PERP_DELTAS_RESPONSE_MAX_BYTES - 1];
+        let err = append_perp_deltas_response_chunk(&mut body, b"bb")
+            .expect_err("oversized response body should be rejected");
+
+        assert_eq!(body.len(), PERP_DELTAS_RESPONSE_MAX_BYTES - 1);
+        assert!(err.contains("HyperDash perp deltas response too large"));
+        assert!(err.contains(&PERP_DELTAS_RESPONSE_MAX_BYTES.to_string()));
+    }
+
+    #[test]
+    fn perp_deltas_response_chunk_cap_accepts_exact_limit() {
+        let mut body = vec![b'a'; PERP_DELTAS_RESPONSE_MAX_BYTES - 1];
+
+        append_perp_deltas_response_chunk(&mut body, b"b")
+            .expect("response body at exact cap should be accepted");
+
+        assert_eq!(body.len(), PERP_DELTAS_RESPONSE_MAX_BYTES);
     }
 
     #[test]
