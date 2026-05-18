@@ -19,7 +19,8 @@ use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
 use crate::positioning_state::{
-    PositioningInfoId, PositioningInfoPage, PositioningInfoSide, PositioningInfoSortField,
+    PositioningInfoChangeSortField, PositioningInfoChangeTimeframe, PositioningInfoId,
+    PositioningInfoPage, PositioningInfoSide, PositioningInfoSortField,
 };
 use crate::settings_state::SettingsTab;
 use crate::signing::{ExchangeResponse, OrderKind};
@@ -72,11 +73,14 @@ pub(crate) enum Message {
     PositioningInfoSymbolSelected(PositioningInfoId, String),
     PositioningInfoSideChanged(PositioningInfoId, PositioningInfoSide),
     PositioningInfoSortChanged(PositioningInfoId, PositioningInfoSortField),
+    PositioningInfoChangeTimeframeChanged(PositioningInfoId, PositioningInfoChangeTimeframe),
+    PositioningInfoChangeSortChanged(PositioningInfoId, PositioningInfoChangeSortField),
     ClearPositioningInfoFilters(PositioningInfoId),
     RefreshPositioningInfoPane(PositioningInfoId),
     RefreshPositioningInfo,
     PositioningInfoWsAssetCtxUpdate(String, AssetContext),
     PositioningInfoLoaded(String, Box<Result<crate::hyperdash_api::TickerPositions, String>>),
+    PositioningInfoChangeLoaded(String, Box<Result<crate::hyperdash_api::PerpDeltas, String>>),
     AddOrderBookPane,
     AddAdvancedOrdersPane,
     PositionsSortChanged(PositionsSortColumn),

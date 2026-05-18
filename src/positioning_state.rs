@@ -1,6 +1,6 @@
 use crate::account::AssetContext;
 use crate::config;
-use crate::hyperdash_api::TickerPositions;
+use crate::hyperdash_api::{PerpDeltas, TickerPositions};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -11,6 +11,7 @@ pub(crate) type PositioningInfoId = u64;
 
 pub(crate) const POSITIONING_INFO_LIMIT: u32 = 30;
 pub(crate) const POSITIONING_INFO_OFFSET: u32 = 0;
+pub(crate) const POSITIONING_CHANGE_ROW_LIMIT: usize = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum PositioningInfoPage {
@@ -89,6 +90,64 @@ pub(crate) fn default_positioning_sort_direction() -> config::SortDirection {
     PositioningInfoSortField::default().default_direction()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub(crate) enum PositioningInfoChangeTimeframe {
+    #[default]
+    FifteenMinutes,
+    OneHour,
+    FourHours,
+}
+
+impl PositioningInfoChangeTimeframe {
+    pub(crate) const ALL: [Self; 3] = [Self::FifteenMinutes, Self::OneHour, Self::FourHours];
+
+    pub(crate) fn api_value(self) -> &'static str {
+        match self {
+            Self::FifteenMinutes => "FIFTEEN_MINUTES",
+            Self::OneHour => "ONE_HOUR",
+            Self::FourHours => "FOUR_HOURS",
+        }
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::FifteenMinutes => "15m",
+            Self::OneHour => "1h",
+            Self::FourHours => "4h",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub(crate) enum PositioningInfoChangeSortField {
+    Trader,
+    Previous,
+    Current,
+    #[default]
+    Change,
+    CurrentUsd,
+    ChangeUsd,
+}
+
+impl PositioningInfoChangeSortField {
+    pub(crate) fn default_direction(self) -> config::SortDirection {
+        match self {
+            Self::Trader => config::SortDirection::Ascending,
+            Self::Previous
+            | Self::Current
+            | Self::Change
+            | Self::CurrentUsd
+            | Self::ChangeUsd => {
+                config::SortDirection::Descending
+            }
+        }
+    }
+}
+
+pub(crate) fn default_positioning_change_sort_direction() -> config::SortDirection {
+    PositioningInfoChangeSortField::default().default_direction()
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct PositioningInfoInstance {
     pub(crate) id: PositioningInfoId,
@@ -103,6 +162,14 @@ pub(crate) struct PositioningInfoInstance {
     pub(crate) data: Option<TickerPositions>,
     pub(crate) asset_ctx: Option<AssetContext>,
     pub(crate) asset_ctx_updated_at_ms: Option<u64>,
+    pub(crate) change_timeframe: PositioningInfoChangeTimeframe,
+    pub(crate) change_sort_field: PositioningInfoChangeSortField,
+    pub(crate) change_sort_direction: config::SortDirection,
+    pub(crate) change_loading: bool,
+    pub(crate) change_error: Option<String>,
+    pub(crate) change_data: Option<PerpDeltas>,
+    pub(crate) change_last_fetch_ms: Option<u64>,
+    pub(crate) change_pending_key: Option<String>,
     pub(crate) last_fetch_ms: Option<u64>,
     pub(crate) pending_key: Option<String>,
 }
@@ -122,6 +189,14 @@ impl PositioningInfoInstance {
             data: None,
             asset_ctx: None,
             asset_ctx_updated_at_ms: None,
+            change_timeframe: PositioningInfoChangeTimeframe::default(),
+            change_sort_field: PositioningInfoChangeSortField::default(),
+            change_sort_direction: default_positioning_change_sort_direction(),
+            change_loading: false,
+            change_error: None,
+            change_data: None,
+            change_last_fetch_ms: None,
+            change_pending_key: None,
             last_fetch_ms: None,
             pending_key: None,
         }
@@ -189,5 +264,23 @@ mod tests {
     fn positioning_notional_and_size_sorts_use_hyperdash_notional_enum_name() {
         assert_eq!(PositioningInfoSortField::NotionalSize.api_field(), "notional");
         assert_eq!(PositioningInfoSortField::Size.api_field(), "notional");
+    }
+
+    #[test]
+    fn positioning_change_defaults_to_short_timeframe_and_largest_change() {
+        let instance = PositioningInfoInstance::new(7, "HYPE".to_string());
+
+        assert_eq!(
+            instance.change_timeframe,
+            PositioningInfoChangeTimeframe::FifteenMinutes
+        );
+        assert_eq!(
+            instance.change_sort_field,
+            PositioningInfoChangeSortField::Change
+        );
+        assert_eq!(
+            instance.change_sort_direction,
+            config::SortDirection::Descending
+        );
     }
 }

@@ -23,6 +23,9 @@ impl TradingTerminal {
             instance.side = config.side;
             instance.sort_field = config.sort_field;
             instance.sort_direction = config.sort_direction;
+            instance.change_timeframe = config.change_timeframe;
+            instance.change_sort_field = config.change_sort_field;
+            instance.change_sort_direction = config.change_sort_direction;
             instance.normalize_removed_filters();
             self.positioning_infos.insert(config.id, instance);
             self.next_positioning_info_id = self.next_positioning_info_id.max(config.id + 1);

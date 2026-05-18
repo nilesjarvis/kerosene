@@ -129,6 +129,9 @@ impl TradingTerminal {
                 side: instance.side,
                 sort_field: instance.sort_field,
                 sort_direction: instance.sort_direction,
+                change_timeframe: instance.change_timeframe,
+                change_sort_field: instance.change_sort_field,
+                change_sort_direction: instance.change_sort_direction,
             })
             .collect()
     }

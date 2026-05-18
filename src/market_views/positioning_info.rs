@@ -3,11 +3,12 @@ use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers;
-use crate::hyperdash_api::{TickerPositionEntry, TickerPositions};
+use crate::hyperdash_api::{PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions};
 use crate::message::Message;
 use crate::positioning_state::{
-    POSITIONING_INFO_LIMIT, PositioningInfoId, PositioningInfoInstance, PositioningInfoPage,
-    PositioningInfoSide, PositioningInfoSortField,
+    POSITIONING_CHANGE_ROW_LIMIT, POSITIONING_INFO_LIMIT, PositioningInfoChangeSortField,
+    PositioningInfoChangeTimeframe, PositioningInfoId, PositioningInfoInstance,
+    PositioningInfoPage, PositioningInfoSide, PositioningInfoSortField,
 };
 use crate::wallet_state::address_book::WalletDisplay;
 
@@ -51,10 +52,9 @@ impl TradingTerminal {
             PositioningInfoPage::Positions => {
                 self.view_positioning_info_positions_page(instance, available_width, &theme)
             }
-            PositioningInfoPage::Change => container(Space::new().width(Fill).height(Fill))
-                .width(Fill)
-                .height(Fill)
-                .into(),
+            PositioningInfoPage::Change => {
+                self.view_positioning_info_change_page(instance, available_width, &theme)
+            }
         };
 
         container(column![navigation, rule::horizontal(1), body])
@@ -122,6 +122,86 @@ impl TradingTerminal {
                     .into()
             } else {
                 text("Positioning data unavailable")
+                    .size(12)
+                    .color(theme.extended_palette().background.weak.text)
+                    .into()
+            };
+            content = content
+                .push(rule::horizontal(1))
+                .push(container(status).width(Fill).height(Fill).center(Fill));
+        }
+
+        container(scrollable(content))
+            .width(Fill)
+            .height(Fill)
+            .padding(10)
+            .into()
+    }
+
+    fn view_positioning_info_change_page<'a>(
+        &'a self,
+        instance: &'a PositioningInfoInstance,
+        available_width: f32,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        let search = text_input("Select perp ticker...", &instance.search_query)
+            .style(helpers::text_input_style)
+            .on_input(move |q| Message::PositioningInfoSearchChanged(instance.id, q))
+            .size(12)
+            .padding([5, 8]);
+        let autocomplete =
+            self.view_positioning_info_autocomplete(instance.id, &instance.search_query, theme);
+        let controls = self.view_positioning_info_change_controls(instance);
+
+        let mut content = column![
+            self.view_positioning_info_title(instance, theme),
+            search,
+            autocomplete,
+            controls,
+        ]
+        .spacing(8);
+
+        if let Some(error) = &instance.change_error {
+            content = content.push(
+                text(error.clone())
+                    .size(11)
+                    .color(if instance.change_data.is_some() {
+                        theme.palette().warning
+                    } else {
+                        theme.palette().danger
+                    }),
+            );
+        }
+
+        if let Some(data) = &instance.change_data {
+            content = content
+                .push(rule::horizontal(1))
+                .push(self.view_positioning_info_change_summary(data, instance, theme))
+                .push(rule::horizontal(1))
+                .push(self.view_positioning_info_change_table(
+                    data,
+                    instance,
+                    available_width,
+                    theme,
+                ));
+        } else {
+            let status: Element<'_, Message> = if instance.change_loading {
+                row![
+                    self.view_spinner(18),
+                    text("Loading position changes...")
+                        .size(12)
+                        .color(theme.extended_palette().background.weak.text),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into()
+            } else if instance.change_error.is_none() {
+                text("No change data loaded")
+                    .size(12)
+                    .color(theme.extended_palette().background.weak.text)
+                    .into()
+            } else {
+                text("Change data unavailable")
                     .size(12)
                     .color(theme.extended_palette().background.weak.text)
                     .into()
@@ -331,6 +411,35 @@ impl TradingTerminal {
         .into()
     }
 
+    fn view_positioning_info_change_controls(
+        &self,
+        instance: &PositioningInfoInstance,
+    ) -> Element<'static, Message> {
+        let timeframe_row = PositioningInfoChangeTimeframe::ALL.iter().fold(
+            Row::new().spacing(4),
+            |row, &timeframe| {
+                row.push(positioning_control_button(
+                    timeframe.label(),
+                    instance.change_timeframe == timeframe,
+                    Message::PositioningInfoChangeTimeframeChanged(instance.id, timeframe),
+                ))
+            },
+        );
+
+        row![
+            text("Time")
+                .size(10)
+                .color(color!(0x888888))
+                .width(Length::Fixed(34.0)),
+            timeframe_row,
+            Space::new().width(Fill),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .width(Fill)
+        .into()
+    }
+
     fn view_positioning_info_summary(
         &self,
         data: &TickerPositions,
@@ -373,6 +482,41 @@ impl TradingTerminal {
             .align_y(Alignment::Center),
         ]
         .spacing(4)
+        .into()
+    }
+
+    fn view_positioning_info_change_summary(
+        &self,
+        data: &PerpDeltas,
+        instance: &PositioningInfoInstance,
+        theme: &Theme,
+    ) -> Element<'static, Message> {
+        let last_fetch = instance
+            .change_last_fetch_ms
+            .map(|last| {
+                format!(
+                    "{} ago",
+                    helpers::format_relative_time(last, TradingTerminal::now_ms())
+                )
+            })
+            .unwrap_or_else(|| "-".to_string());
+        let shown = data.deltas.len().min(POSITIONING_CHANGE_ROW_LIMIT);
+        let rows_label = if shown < data.deltas.len() {
+            format!("Showing {shown} of {}", data.deltas.len())
+        } else {
+            data.deltas.len().to_string()
+        };
+
+        row![
+            helpers::label_value("Timeframe", instance.change_timeframe.label().to_string()),
+            helpers::label_value("Rows", rows_label),
+            helpers::label_value("Fetched", last_fetch),
+            text(format!("API: {}", data.timeframe))
+                .size(10)
+                .color(theme.extended_palette().background.weak.text),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center)
         .into()
     }
 
@@ -421,6 +565,57 @@ impl TradingTerminal {
         scrollable(rows).width(Fill).height(Fill).into()
     }
 
+    fn view_positioning_info_change_table(
+        &self,
+        data: &PerpDeltas,
+        instance: &PositioningInfoInstance,
+        available_width: f32,
+        theme: &Theme,
+    ) -> Element<'static, Message> {
+        let columns = PositioningChangeColumns::for_width(available_width);
+        let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
+        let sorted = sorted_change_rows(
+            &data.deltas,
+            instance.change_sort_field,
+            instance.change_sort_direction,
+            live_mark,
+        );
+        let mut rows = Column::new()
+            .spacing(3)
+            .push(positioning_change_table_header(
+                instance.id,
+                instance.change_sort_field,
+                instance.change_sort_direction,
+                columns,
+                theme,
+            ))
+            .push(rule::horizontal(1));
+
+        if sorted.is_empty() {
+            rows = rows.push(
+                container(
+                    text("No changes found")
+                        .size(12)
+                        .color(theme.extended_palette().background.weak.text),
+                )
+                .width(Fill)
+                .padding([8, 0]),
+            );
+        } else {
+            for entry in sorted.into_iter().take(POSITIONING_CHANGE_ROW_LIMIT) {
+                rows = rows.push(positioning_change_row(
+                    entry,
+                    self.wallet_display(&entry.address),
+                    columns,
+                    theme,
+                    live_mark,
+                ));
+            }
+        }
+
+        scrollable(rows).width(Fill).height(Fill).into()
+    }
+
     fn positioning_info_symbol_display(&self, symbol: &str) -> String {
         self.exchange_symbols
             .iter()
@@ -457,6 +652,16 @@ struct PositioningInfoColumns {
     show_account: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PositioningChangeColumns {
+    trader_width: f32,
+    previous_width: f32,
+    current_width: f32,
+    delta_width: f32,
+    current_usd_width: f32,
+    delta_usd_width: f32,
+}
+
 const POSITIONING_TABLE_CONTENT_PADDING: f32 = 20.0;
 const POSITIONING_TABLE_SCROLLBAR_RESERVE: f32 = 14.0;
 const POSITIONING_TABLE_CELL_PADDING: f32 = 16.0;
@@ -483,6 +688,14 @@ const POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH: f32 = 168.0;
 const POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH: f32 = 240.0;
 const POSITIONING_TRADER_COMPACT_ACTIONS_WIDTH: f32 = 42.0;
 const POSITIONING_TRADER_FULL_ACTIONS_WIDTH: f32 = 106.0;
+const POSITIONING_CHANGE_TRADER_MIN_WIDTH: f32 = 132.0;
+const POSITIONING_CHANGE_PREVIOUS_WIDTH: f32 = 76.0;
+const POSITIONING_CHANGE_CURRENT_WIDTH: f32 = 76.0;
+const POSITIONING_CHANGE_DELTA_WIDTH: f32 = 76.0;
+const POSITIONING_CHANGE_CURRENT_USD_WIDTH: f32 = 84.0;
+const POSITIONING_CHANGE_DELTA_USD_WIDTH: f32 = 84.0;
+const POSITIONING_CHANGE_TRADER_WEIGHT: f32 = 2.6;
+const POSITIONING_CHANGE_NUMERIC_WEIGHT: f32 = 1.0;
 
 impl PositioningInfoColumns {
     fn for_width(width: f32) -> Self {
@@ -627,6 +840,64 @@ impl PositioningInfoColumns {
     }
 }
 
+impl PositioningChangeColumns {
+    fn for_width(width: f32) -> Self {
+        let content_width = PositioningInfoColumns::available_content_width(width);
+        let fixed_width = POSITIONING_CHANGE_PREVIOUS_WIDTH
+            + POSITIONING_CHANGE_CURRENT_WIDTH
+            + POSITIONING_CHANGE_DELTA_WIDTH
+            + POSITIONING_CHANGE_CURRENT_USD_WIDTH
+            + POSITIONING_CHANGE_DELTA_USD_WIDTH;
+        let base_width_without_trader = POSITIONING_TABLE_CELL_PADDING
+            + fixed_width
+            + POSITIONING_TABLE_COLUMN_SPACING * 5.0;
+        let available_for_trader = (content_width - base_width_without_trader).max(0.0);
+        let trader_width = if available_for_trader < POSITIONING_CHANGE_TRADER_MIN_WIDTH {
+            available_for_trader
+        } else {
+            POSITIONING_CHANGE_TRADER_MIN_WIDTH
+        };
+
+        let mut columns = Self {
+            trader_width,
+            previous_width: POSITIONING_CHANGE_PREVIOUS_WIDTH,
+            current_width: POSITIONING_CHANGE_CURRENT_WIDTH,
+            delta_width: POSITIONING_CHANGE_DELTA_WIDTH,
+            current_usd_width: POSITIONING_CHANGE_CURRENT_USD_WIDTH,
+            delta_usd_width: POSITIONING_CHANGE_DELTA_USD_WIDTH,
+        };
+        columns.distribute_extra_width((content_width - columns.total_width()).max(0.0));
+        columns
+    }
+
+    fn total_width(self) -> f32 {
+        POSITIONING_TABLE_CELL_PADDING
+            + self.trader_width
+            + self.previous_width
+            + self.current_width
+            + self.delta_width
+            + self.current_usd_width
+            + self.delta_usd_width
+            + POSITIONING_TABLE_COLUMN_SPACING * 5.0
+    }
+
+    fn distribute_extra_width(&mut self, extra: f32) {
+        if extra <= 0.0 {
+            return;
+        }
+
+        let total_weight =
+            POSITIONING_CHANGE_TRADER_WEIGHT + POSITIONING_CHANGE_NUMERIC_WEIGHT * 5.0;
+        self.trader_width += extra * POSITIONING_CHANGE_TRADER_WEIGHT / total_weight;
+        let numeric_extra = extra * POSITIONING_CHANGE_NUMERIC_WEIGHT / total_weight;
+        self.previous_width += numeric_extra;
+        self.current_width += numeric_extra;
+        self.delta_width += numeric_extra;
+        self.current_usd_width += numeric_extra;
+        self.delta_usd_width += numeric_extra;
+    }
+}
+
 fn positioning_table_header(
     id: PositioningInfoId,
     sort_field: PositioningInfoSortField,
@@ -727,7 +998,7 @@ fn positioning_position_row(
         .padding([4, 8])
         .align_y(Alignment::Center)
         .push(positioning_trader_cell(
-            position,
+            &position.address,
             wallet_display,
             columns.trader_width,
             theme,
@@ -817,14 +1088,175 @@ fn positioning_position_row(
         .into()
 }
 
+fn positioning_change_table_header(
+    id: PositioningInfoId,
+    sort_field: PositioningInfoChangeSortField,
+    sort_direction: config::SortDirection,
+    columns: PositioningChangeColumns,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    let muted = theme.extended_palette().background.weak.text;
+    Row::new()
+        .spacing(POSITIONING_TABLE_COLUMN_SPACING)
+        .padding([0, 8])
+        .push(change_sort_header_cell(
+            "Trader",
+            PositioningInfoChangeSortField::Trader,
+            id,
+            sort_field,
+            sort_direction,
+            Length::Fixed(columns.trader_width),
+            muted,
+            Horizontal::Left,
+        ))
+        .push(change_sort_header_cell(
+            "Previous",
+            PositioningInfoChangeSortField::Previous,
+            id,
+            sort_field,
+            sort_direction,
+            Length::Fixed(columns.previous_width),
+            muted,
+            Horizontal::Right,
+        ))
+        .push(change_sort_header_cell(
+            "Current",
+            PositioningInfoChangeSortField::Current,
+            id,
+            sort_field,
+            sort_direction,
+            Length::Fixed(columns.current_width),
+            muted,
+            Horizontal::Right,
+        ))
+        .push(change_sort_header_cell(
+            "\u{0394} Change",
+            PositioningInfoChangeSortField::Change,
+            id,
+            sort_field,
+            sort_direction,
+            Length::Fixed(columns.delta_width),
+            muted,
+            Horizontal::Right,
+        ))
+        .push(change_sort_header_cell(
+            "Current $",
+            PositioningInfoChangeSortField::CurrentUsd,
+            id,
+            sort_field,
+            sort_direction,
+            Length::Fixed(columns.current_usd_width),
+            muted,
+            Horizontal::Right,
+        ))
+        .push(change_sort_header_cell(
+            "Change $",
+            PositioningInfoChangeSortField::ChangeUsd,
+            id,
+            sort_field,
+            sort_direction,
+            Length::Fixed(columns.delta_usd_width),
+            muted,
+            Horizontal::Right,
+        ))
+        .into()
+}
+
+fn positioning_change_row(
+    entry: &PerpDeltaEntry,
+    wallet_display: WalletDisplay,
+    columns: PositioningChangeColumns,
+    theme: &Theme,
+    live_mark: Option<f64>,
+) -> Element<'static, Message> {
+    let previous = positioning_previous_change_size(entry);
+    let previous_color = previous
+        .map(|value| signed_value_color(value, theme))
+        .unwrap_or_else(|| theme.extended_palette().background.weak.text);
+    let current_color = signed_value_color(entry.current, theme);
+    let delta_color = signed_value_color(entry.delta, theme);
+    let current_usd = positioning_live_change_usd(entry.current, live_mark)
+        .map(format_signed_usd)
+        .unwrap_or_else(|| "-".to_string());
+    let delta_usd = positioning_live_change_usd(entry.delta, live_mark)
+        .map(format_signed_usd)
+        .unwrap_or_else(|| "-".to_string());
+
+    let row = Row::new()
+        .spacing(POSITIONING_TABLE_COLUMN_SPACING)
+        .padding([4, 8])
+        .align_y(Alignment::Center)
+        .push(positioning_trader_cell(
+            &entry.address,
+            wallet_display,
+            columns.trader_width,
+            theme,
+        ))
+        .push(value_cell(
+            previous
+                .map(|value| format_signed_size(value, false))
+                .unwrap_or_else(|| "-".to_string()),
+            Length::Fixed(columns.previous_width),
+            previous_color,
+            true,
+        ))
+        .push(value_cell(
+            format_signed_size(entry.current, false),
+            Length::Fixed(columns.current_width),
+            current_color,
+            true,
+        ))
+        .push(value_cell(
+            format_signed_size(entry.delta, true),
+            Length::Fixed(columns.delta_width),
+            delta_color,
+            true,
+        ))
+        .push(value_cell(
+            current_usd,
+            Length::Fixed(columns.current_usd_width),
+            current_color,
+            true,
+        ))
+        .push(value_cell(
+            delta_usd,
+            Length::Fixed(columns.delta_usd_width),
+            delta_color,
+            true,
+        ));
+
+    container(row)
+        .width(Fill)
+        .style(move |_theme: &Theme| {
+            use iced::gradient;
+            let mut base_color = delta_color;
+            base_color.a = 0.12;
+            iced::widget::container::Style {
+                background: Some(
+                    gradient::Linear::new(iced::Degrees(90.0))
+                        .add_stop(0.0, base_color)
+                        .add_stop(0.20, iced::Color::TRANSPARENT)
+                        .add_stop(1.0, iced::Color::TRANSPARENT)
+                        .into(),
+                ),
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
 fn positioning_trader_cell(
-    position: &TickerPositionEntry,
+    address: &str,
     wallet_display: WalletDisplay,
     width: f32,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let identity_label = position_identity(wallet_display);
-    let address = position.address.clone();
+    let address = address.to_string();
     let show_actions = width >= POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH;
     let show_full_actions = width >= POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH;
     let action_width = if show_actions {
@@ -949,6 +1381,44 @@ fn sort_header_cell(
 
     button(content)
         .on_press(Message::PositioningInfoSortChanged(id, field))
+        .style(|_theme: &Theme, _status| button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .padding(0)
+        .width(width)
+        .into()
+}
+
+fn change_sort_header_cell(
+    label: &'static str,
+    field: PositioningInfoChangeSortField,
+    id: PositioningInfoId,
+    sort_field: PositioningInfoChangeSortField,
+    sort_direction: config::SortDirection,
+    width: Length,
+    color: Color,
+    alignment: Horizontal,
+) -> Element<'static, Message> {
+    let is_active = sort_field == field;
+    let mut content = Row::new().spacing(2).align_y(Alignment::Center).push(
+        text(label)
+            .size(10)
+            .color(color)
+            .width(Fill)
+            .align_x(alignment),
+    );
+    if is_active {
+        let icon = if sort_direction == config::SortDirection::Ascending {
+            "\u{2191}"
+        } else {
+            "\u{2193}"
+        };
+        content = content.push(text(icon).size(10).color(color));
+    }
+
+    button(content)
+        .on_press(Message::PositioningInfoChangeSortChanged(id, field))
         .style(|_theme: &Theme, _status| button::Style {
             background: None,
             ..Default::default()
@@ -1223,6 +1693,92 @@ fn positioning_live_unrealized_pnl(
     }
 }
 
+fn positioning_live_change_usd(value: f64, live_mark: Option<f64>) -> Option<f64> {
+    let mark = live_mark?;
+    if mark.is_finite() && mark > 0.0 && value.is_finite() {
+        Some(value * mark)
+    } else {
+        None
+    }
+}
+
+fn positioning_previous_change_size(entry: &PerpDeltaEntry) -> Option<f64> {
+    let previous = entry.current - entry.delta;
+    previous.is_finite().then_some(previous)
+}
+
+fn sorted_change_rows(
+    deltas: &[PerpDeltaEntry],
+    sort_field: PositioningInfoChangeSortField,
+    sort_direction: config::SortDirection,
+    live_mark: Option<f64>,
+) -> Vec<&PerpDeltaEntry> {
+    let mut rows: Vec<&PerpDeltaEntry> = deltas.iter().collect();
+    rows.sort_by(|a, b| {
+        let ordering = match sort_field {
+            PositioningInfoChangeSortField::Trader => a.address.cmp(&b.address),
+            PositioningInfoChangeSortField::Previous => optional_number_cmp_directional(
+                positioning_previous_change_size(a),
+                positioning_previous_change_size(b),
+                sort_direction,
+            ),
+            PositioningInfoChangeSortField::Current => optional_number_cmp_directional(
+                finite_number(a.current),
+                finite_number(b.current),
+                sort_direction,
+            ),
+            PositioningInfoChangeSortField::Change => optional_number_cmp_directional(
+                finite_number(a.delta.abs()),
+                finite_number(b.delta.abs()),
+                sort_direction,
+            ),
+            PositioningInfoChangeSortField::CurrentUsd => optional_number_cmp_directional(
+                positioning_live_change_usd(a.current, live_mark),
+                positioning_live_change_usd(b.current, live_mark),
+                sort_direction,
+            ),
+            PositioningInfoChangeSortField::ChangeUsd => optional_number_cmp_directional(
+                positioning_live_change_usd(a.delta, live_mark).map(f64::abs),
+                positioning_live_change_usd(b.delta, live_mark).map(f64::abs),
+                sort_direction,
+            ),
+        };
+        let ordering = if sort_field == PositioningInfoChangeSortField::Trader
+            && sort_direction == config::SortDirection::Descending
+        {
+            ordering.reverse()
+        } else {
+            ordering
+        };
+        ordering.then_with(|| a.address.cmp(&b.address))
+    });
+    rows
+}
+
+fn optional_number_cmp_directional(
+    a: Option<f64>,
+    b: Option<f64>,
+    direction: config::SortDirection,
+) -> std::cmp::Ordering {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            let ordering = a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal);
+            if direction == config::SortDirection::Descending {
+                ordering.reverse()
+            } else {
+                ordering
+            }
+        }
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
+fn finite_number(value: f64) -> Option<f64> {
+    value.is_finite().then_some(value)
+}
+
 fn position_side_label(size: f64) -> &'static str {
     if size > 0.0 {
         "\u{2191} Long"
@@ -1277,6 +1833,20 @@ fn format_price_number(value: f64) -> String {
     }
 }
 
+fn format_signed_size(value: f64, plus_for_positive: bool) -> String {
+    if !value.is_finite() {
+        return "-".to_string();
+    }
+    let size = helpers::format_size(value.abs());
+    if value > 0.0 && plus_for_positive {
+        format!("+{size}")
+    } else if value < 0.0 {
+        format!("-{size}")
+    } else {
+        size
+    }
+}
+
 fn format_positioning_timestamp(timestamp: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(timestamp)
         .map(|dt| {
@@ -1320,6 +1890,14 @@ mod tests {
             prev_day_px: None,
             day_ntl_vlm: None,
             impact_pxs: None,
+        }
+    }
+
+    fn delta(address: &str, current: f64, change: f64) -> PerpDeltaEntry {
+        PerpDeltaEntry {
+            address: address.to_string(),
+            current,
+            delta: change,
         }
     }
 
@@ -1394,6 +1972,96 @@ mod tests {
     }
 
     #[test]
+    fn positioning_change_usd_uses_live_mark() {
+        assert_eq!(positioning_live_change_usd(-2.5, Some(20.0)), Some(-50.0));
+        assert_eq!(positioning_live_change_usd(2.5, None), None);
+        assert_eq!(positioning_live_change_usd(f64::NAN, Some(20.0)), None);
+    }
+
+    #[test]
+    fn positioning_change_previous_size_is_derived_from_current_and_delta() {
+        assert_eq!(
+            positioning_previous_change_size(&delta("0xaaa", 0.0, -50.0)),
+            Some(50.0)
+        );
+        assert_eq!(
+            positioning_previous_change_size(&delta("0xbbb", 65.5, 65.5)),
+            Some(0.0)
+        );
+        assert_eq!(
+            positioning_previous_change_size(&delta("0xccc", -100.0, 30.0)),
+            Some(-130.0)
+        );
+    }
+
+    #[test]
+    fn positioning_change_sort_defaults_to_largest_absolute_change() {
+        let rows = vec![
+            delta("0xaaa", 100.0, -5.0),
+            delta("0xbbb", 10.0, 50.0),
+            delta("0xccc", -10.0, -75.0),
+        ];
+
+        let sorted = sorted_change_rows(
+            &rows,
+            PositioningInfoChangeSortField::Change,
+            config::SortDirection::Descending,
+            Some(10.0),
+        );
+
+        assert_eq!(sorted[0].address, "0xccc");
+        assert_eq!(sorted[1].address, "0xbbb");
+        assert_eq!(sorted[2].address, "0xaaa");
+    }
+
+    #[test]
+    fn positioning_change_sort_can_use_derived_previous_size() {
+        let rows = vec![
+            delta("0xaaa", 0.0, -10.0),
+            delta("0xbbb", 30.0, 5.0),
+            delta("0xccc", -20.0, 5.0),
+        ];
+
+        let sorted = sorted_change_rows(
+            &rows,
+            PositioningInfoChangeSortField::Previous,
+            config::SortDirection::Descending,
+            Some(10.0),
+        );
+
+        assert_eq!(sorted[0].address, "0xbbb");
+        assert_eq!(sorted[1].address, "0xaaa");
+        assert_eq!(sorted[2].address, "0xccc");
+    }
+
+    #[test]
+    fn positioning_change_sort_keeps_invalid_values_last() {
+        let rows = vec![
+            delta("0xaaa", f64::NAN, 1.0),
+            delta("0xbbb", 5.0, 1.0),
+            delta("0xccc", 10.0, 1.0),
+        ];
+
+        let descending = sorted_change_rows(
+            &rows,
+            PositioningInfoChangeSortField::Current,
+            config::SortDirection::Descending,
+            Some(10.0),
+        );
+        let ascending = sorted_change_rows(
+            &rows,
+            PositioningInfoChangeSortField::Current,
+            config::SortDirection::Ascending,
+            Some(10.0),
+        );
+
+        assert_eq!(descending[0].address, "0xccc");
+        assert_eq!(descending[2].address, "0xaaa");
+        assert_eq!(ascending[0].address, "0xbbb");
+        assert_eq!(ascending[2].address, "0xaaa");
+    }
+
+    #[test]
     fn positioning_columns_expand_to_span_wide_panes() {
         let width = 1_200.0;
         let columns = PositioningInfoColumns::for_width(width);
@@ -1420,5 +2088,15 @@ mod tests {
         assert!(!columns.show_liq);
         assert!(!columns.show_funding);
         assert!(!columns.show_account);
+    }
+
+    #[test]
+    fn positioning_change_columns_reserve_scrollbar_width() {
+        let width = 900.0;
+        let columns = PositioningChangeColumns::for_width(width);
+        let content_width = PositioningInfoColumns::available_content_width(width);
+
+        assert!((columns.total_width() - content_width).abs() < 0.01);
+        assert!(columns.trader_width > POSITIONING_CHANGE_TRADER_MIN_WIDTH);
     }
 }

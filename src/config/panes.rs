@@ -1,5 +1,8 @@
 use crate::annotations::AnnotationConfig;
-use crate::positioning_state::{PositioningInfoSide, PositioningInfoSortField};
+use crate::positioning_state::{
+    PositioningInfoChangeSortField, PositioningInfoChangeTimeframe, PositioningInfoSide,
+    PositioningInfoSortField,
+};
 use crate::spaghetti::ComparisonColorMode;
 use serde::{Deserialize, Serialize};
 
@@ -140,6 +143,12 @@ pub struct PositioningInfoConfig {
     pub sort_field: PositioningInfoSortField,
     #[serde(default = "default_positioning_info_sort_direction")]
     pub sort_direction: super::SortDirection,
+    #[serde(default)]
+    pub change_timeframe: PositioningInfoChangeTimeframe,
+    #[serde(default)]
+    pub change_sort_field: PositioningInfoChangeSortField,
+    #[serde(default = "default_positioning_info_change_sort_direction")]
+    pub change_sort_direction: super::SortDirection,
 }
 
 /// Persisted state for a comparison chart pane.
@@ -190,6 +199,10 @@ fn default_positioning_info_sort_direction() -> super::SortDirection {
     PositioningInfoSortField::default().default_direction()
 }
 
+fn default_positioning_info_change_sort_direction() -> super::SortDirection {
+    PositioningInfoChangeSortField::default().default_direction()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{OrderBookConfig, OrderBookDisplayModeConfig, PositioningInfoConfig};
@@ -223,5 +236,6 @@ mod tests {
             serde_json::from_str(r#"{"id":7,"symbol":"HYPE"}"#).expect("config");
 
         assert_eq!(config.sort_direction, SortDirection::Descending);
+        assert_eq!(config.change_sort_direction, SortDirection::Descending);
     }
 }

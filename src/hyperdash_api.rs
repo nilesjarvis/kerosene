@@ -8,9 +8,9 @@ pub use heatmap::{fetch_liquidation_heatmap, normalize_heatmap_time_range};
 pub use liquidation_levels::{bucket_liquidations, fetch_liquidation_levels_at};
 pub use models::{
     HeatmapFetchParams, HeatmapRect, LiquidationBucket, LiquidationHeatmap, LiquidationLevel,
-    TickerPositionEntry, TickerPositions,
+    PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions,
 };
-pub use positioning::fetch_ticker_positions;
+pub use positioning::{fetch_perp_deltas, fetch_ticker_positions};
 
 // ---------------------------------------------------------------------------
 // HyperDash GraphQL API

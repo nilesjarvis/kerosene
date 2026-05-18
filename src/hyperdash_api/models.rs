@@ -114,6 +114,22 @@ pub struct TickerPositions {
     pub timestamp: String,
 }
 
+/// A single wallet-level position delta from the HyperDash perp delta endpoint.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct PerpDeltaEntry {
+    pub address: String,
+    pub current: f64,
+    pub delta: f64,
+}
+
+/// Position-size changes for one perp market and timeframe.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct PerpDeltas {
+    pub market: String,
+    pub timeframe: String,
+    pub deltas: Vec<PerpDeltaEntry>,
+}
+
 /// Parameters used for the last heatmap fetch, so we can detect when the
 /// visible range has changed enough to warrant a re-fetch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
