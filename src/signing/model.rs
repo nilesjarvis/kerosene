@@ -48,11 +48,13 @@ pub const MAX_CHASE_DURATION: Duration = Duration::from_secs(15 * 60);
 pub const MAX_CHASE_DRIFT_FRACTION: f64 = 0.05;
 /// Minimum delay between chase reprice requests.
 pub const MIN_CHASE_REPRICE_INTERVAL: Duration = Duration::from_secs(1);
+/// Cooldown after a retryable chase exchange error, such as a rate limit.
+pub const CHASE_RETRY_COOLDOWN: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChasePendingOp {
     Place,
+    Modify { oid: u64 },
     Cancel { oid: u64 },
-    CancelForReprice { oid: u64 },
 }
 
 /// Client-side chase order state. Continuously reprices a limit order toward
@@ -98,6 +100,9 @@ pub struct ChaseOrder {
     /// Latest chase book price queued while waiting to cancel, reconcile, or
     /// place the next residual-sized order.
     pub pending_best_price: Option<f64>,
+    /// True when the resting order size must be reduced to match known fills,
+    /// but the exchange request is waiting for the shared chase request gate.
+    pub pending_size_correction: bool,
     /// True after the user has requested a stop while a place/cancel request is
     /// still unresolved. The chase keeps its captured key/account context until
     /// the in-flight request lands so a late resting order can be cancelled.
@@ -242,6 +247,7 @@ impl std::fmt::Debug for ChaseOrder {
             .field("pending_op", &self.pending_op)
             .field("last_reprice_at", &self.last_reprice_at)
             .field("pending_best_price", &self.pending_best_price)
+            .field("pending_size_correction", &self.pending_size_correction)
             .field("stop_requested", &self.stop_requested)
             .field("stop_reason", &self.stop_reason)
             .field("cancel_retries", &self.cancel_retries)

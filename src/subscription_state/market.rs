@@ -134,7 +134,7 @@ impl TradingTerminal {
         if self
             .chase_orders
             .values()
-            .any(|chase| chase.pending_best_price.is_some())
+            .any(|chase| chase.pending_best_price.is_some() || chase.pending_size_correction)
         {
             subs.push(
                 iced::time::every(std::time::Duration::from_millis(250))

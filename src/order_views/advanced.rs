@@ -318,8 +318,8 @@ fn chase_status(chase: &ChaseOrder) -> &'static str {
     }
     match chase.pending_op {
         Some(ChasePendingOp::Place) => "Placing",
+        Some(ChasePendingOp::Modify { .. }) => "Repricing",
         Some(ChasePendingOp::Cancel { .. }) => "Canceling",
-        Some(ChasePendingOp::CancelForReprice { .. }) => "Repricing",
         None if chase.pending_best_price.is_some() => "Queued",
         None if chase.current_oid.is_none() => "Starting",
         None => "Resting",

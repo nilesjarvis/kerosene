@@ -81,6 +81,7 @@ impl TradingTerminal {
                         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                             chase.current_oid = Some(request.oid);
                             chase.pending_op = Some(ChasePendingOp::Cancel { oid: request.oid });
+                            chase.pending_size_correction = false;
                             chase.oid_confirmed = false;
                             chase.missing_open_order_refresh_requested = false;
                         }
@@ -108,6 +109,7 @@ impl TradingTerminal {
                             chase.record_oid(oid);
                             chase.current_oid = Some(oid);
                             chase.pending_op = None;
+                            chase.pending_size_correction = false;
                             chase.oid_confirmed = false;
                             chase.cancel_retries = 0;
                             chase.missing_open_order_refresh_requested = false;

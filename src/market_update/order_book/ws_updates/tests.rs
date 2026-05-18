@@ -38,6 +38,7 @@ fn chase() -> ChaseOrder {
         pending_op: None,
         last_reprice_at: None,
         pending_best_price: None,
+        pending_size_correction: false,
         stop_requested: false,
         stop_reason: None,
         cancel_retries: 0,
@@ -130,7 +131,7 @@ fn sell_chase_reprices_only_toward_lower_prices() {
 #[test]
 fn chase_reprice_waits_while_operation_is_in_flight() {
     let mut chase = chase();
-    chase.pending_op = Some(ChasePendingOp::CancelForReprice { oid: 42 });
+    chase.pending_op = Some(ChasePendingOp::Modify { oid: 42 });
 
     assert!(!chase_should_reprice(
         &chase,

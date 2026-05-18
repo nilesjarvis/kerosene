@@ -221,9 +221,13 @@ fn apply_open_order_to_chase(
     }
 
     chase.record_oid(order.oid);
+    let mut confirmed_expected_state = true;
+    let mut parsed_price = false;
+    let mut confirmed_pending_price = false;
     if let Ok(px) = order.limit_px.parse::<f64>()
         && let Some((rounded_px, price_wire)) = chase.rounded_price(px)
     {
+        parsed_price = true;
         let preserve_expected = matches!(
             price_sync,
             ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed
@@ -232,9 +236,27 @@ fn apply_open_order_to_chase(
         if !preserve_expected {
             chase.current_price = rounded_px;
             chase.current_price_wire = price_wire;
+            confirmed_pending_price = chase
+                .pending_best_price
+                .and_then(|price| chase.rounded_price(price))
+                .is_some_and(|(_, pending_wire)| pending_wire == chase.current_price_wire);
+        } else {
+            confirmed_expected_state = false;
         }
     }
-    chase.oid_confirmed = true;
+    if matches!(
+        price_sync,
+        ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed
+    ) && !chase.oid_confirmed
+        && !parsed_price
+    {
+        confirmed_expected_state = false;
+    }
+    chase.oid_confirmed = confirmed_expected_state;
+    chase.pending_size_correction = oversized;
+    if confirmed_pending_price {
+        chase.pending_best_price = None;
+    }
     chase.missing_open_order_refresh_requested = false;
     Ok(oversized)
 }
@@ -511,7 +533,7 @@ impl TradingTerminal {
         }
         let mut tasks: Vec<Task<Message>> = correction_ids
             .into_iter()
-            .map(|chase_id| self.chase_cancel_for_current_price_reconciliation(chase_id))
+            .map(|chase_id| self.chase_modify_for_current_price_reconciliation(chase_id))
             .collect();
         if refresh_for_missing_order {
             tasks.push(self.refresh_account_data());
@@ -581,12 +603,15 @@ impl TradingTerminal {
                             ChaseOpenOrderPriceSync::Trust,
                         ) {
                             Ok(oversized) => {
+                                let needs_reconcile =
+                                    chase.pending_best_price.is_some()
+                                        || chase.pending_size_correction;
                                 if chase.stop_requested {
                                     stop_after_refresh = chase
                                         .stop_reason
                                         .clone()
                                         .or_else(|| Some(("Chase stopped".to_string(), false)));
-                                } else if oversized || wants_replacement {
+                                } else if oversized || (wants_replacement && needs_reconcile) {
                                     correction_ids.push(chase_id);
                                 } else {
                                     self.order_status =
@@ -616,6 +641,7 @@ impl TradingTerminal {
                         chase.record_oid(oid);
                         chase.current_oid = None;
                         chase.oid_confirmed = false;
+                        chase.pending_size_correction = false;
                         chase.missing_open_order_refresh_requested = false;
                     }
                     replacement_ids.push(chase_id);
@@ -642,7 +668,7 @@ impl TradingTerminal {
         tasks.extend(
             correction_ids
                 .into_iter()
-                .map(|chase_id| self.chase_cancel_for_current_price_reconciliation(chase_id)),
+                .map(|chase_id| self.chase_modify_for_current_price_reconciliation(chase_id)),
         );
         let replacements: Vec<_> = replacement_ids
             .into_iter()

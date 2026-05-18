@@ -39,6 +39,7 @@ fn chase_order(account_address: &str) -> ChaseOrder {
         pending_op: None,
         last_reprice_at: None,
         pending_best_price: None,
+        pending_size_correction: false,
         stop_requested: false,
         stop_reason: None,
         cancel_retries: 0,

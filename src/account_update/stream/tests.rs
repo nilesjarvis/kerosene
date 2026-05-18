@@ -65,6 +65,7 @@ fn chase_order() -> ChaseOrder {
         pending_op: None,
         last_reprice_at: None,
         pending_best_price: None,
+        pending_size_correction: false,
         stop_requested: false,
         stop_reason: None,
         cancel_retries: 0,
@@ -225,6 +226,7 @@ fn open_order_sync_updates_chase_size_price_and_confirmation() {
     assert_eq!(chase.current_price, 101.5);
     assert_eq!(chase.current_price_wire, "101.5");
     assert!(chase.oid_confirmed);
+    assert!(!chase.pending_size_correction);
     assert!(!chase.missing_open_order_refresh_requested);
 }
 
@@ -241,6 +243,7 @@ fn open_order_sync_clamps_chase_size_to_unfilled_target() {
     );
 
     assert!((chase.remaining_size - 0.1).abs() < 1e-12);
+    assert!(chase.pending_size_correction);
 }
 
 #[test]
@@ -339,11 +342,41 @@ fn chase_reprice_reconciliation_pauses_on_incomplete_account_snapshot() {
 }
 
 #[test]
+fn chase_reprice_reconciliation_clears_confirmed_pending_target() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase_order();
+    chase.current_price = 101.0;
+    chase.current_price_wire = "101".to_string();
+    chase.pending_best_price = Some(101.0);
+    chase.oid_confirmed = false;
+    chase.missing_open_order_refresh_requested = true;
+    terminal.chase_orders.insert(1, chase);
+    let mut data = account_data_with_timestamp(1_000);
+    let mut order = open_order(42, Some(false));
+    order.limit_px = "101".to_string();
+    data.open_orders = vec![order];
+    terminal.account_data = Some(data);
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.pending_op, None);
+    assert_eq!(chase.pending_best_price, None);
+    assert!(!chase.pending_size_correction);
+    assert!(chase.oid_confirmed);
+}
+
+#[test]
 fn open_order_sync_preserves_expected_price_until_modify_confirmation_catches_up() {
     let mut chase = chase_order();
     chase.current_price = 101.0;
     chase.current_price_wire = "101".to_string();
     chase.oid_confirmed = false;
+    chase.pending_best_price = Some(101.0);
 
     let mut stale_order = open_order(42, Some(false));
     stale_order.sz = "0.25".to_string();
@@ -361,7 +394,28 @@ fn open_order_sync_preserves_expected_price_until_modify_confirmation_catches_up
     assert_eq!(chase.remaining_size, 0.25);
     assert_eq!(chase.current_price, 101.0);
     assert_eq!(chase.current_price_wire, "101");
+    assert!(!chase.oid_confirmed);
+    assert!(!chase.pending_size_correction);
+    assert_eq!(chase.pending_best_price, Some(101.0));
+
+    let mut confirmed_order = open_order(42, Some(false));
+    confirmed_order.sz = "0.25".to_string();
+    confirmed_order.limit_px = "101".to_string();
+
+    assert_eq!(
+        apply_open_order_to_chase(
+            &mut chase,
+            &confirmed_order,
+            ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
+        ),
+        Ok(false)
+    );
+
+    assert_eq!(chase.current_price, 101.0);
+    assert_eq!(chase.current_price_wire, "101");
     assert!(chase.oid_confirmed);
+    assert!(!chase.pending_size_correction);
+    assert_eq!(chase.pending_best_price, None);
 }
 
 #[test]
