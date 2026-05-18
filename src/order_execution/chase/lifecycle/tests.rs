@@ -138,7 +138,7 @@ fn chase_exchange_requests_pause_while_account_reconciliation_is_loading() {
 }
 
 #[test]
-fn chase_reprice_modifies_resting_order_and_preserves_residual_size() {
+fn chase_reprice_refreshes_account_before_modifying_resting_order() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
     terminal.account_loading = false;
@@ -151,9 +151,12 @@ fn chase_reprice_modifies_resting_order_and_preserves_residual_size() {
     let _task = terminal.chase_reprice_to_best_price(1, 101.0);
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert_eq!(chase.pending_op, Some(ChasePendingOp::Modify { oid: 42 }));
+    assert_eq!(chase.pending_op, None);
     assert_eq!(chase.pending_best_price, Some(101.0));
-    assert!((chase.remaining_size - 0.9).abs() < 1e-12);
+    assert!(chase.missing_open_order_refresh_requested);
+    assert!((chase.remaining_size - 1.0).abs() < 1e-12);
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
 }
 
 #[test]

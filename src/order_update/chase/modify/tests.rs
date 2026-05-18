@@ -52,9 +52,10 @@ fn exchange_response(status: serde_json::Value) -> ExchangeResponse {
 }
 
 #[test]
-fn chase_modify_success_updates_expected_price_without_refreshing_account() {
+fn chase_modify_success_updates_expected_price_and_refreshes_account() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.account_loading = false;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
     terminal.chase_orders.insert(1, chase());
 
     let _task = terminal.handle_chase_modify_result(
@@ -71,7 +72,9 @@ fn chase_modify_success_updates_expected_price_without_refreshing_account() {
     assert_eq!(chase.current_price, 101.0);
     assert_eq!(chase.current_price_wire, "101");
     assert!(!chase.oid_confirmed);
-    assert!(!terminal.account_loading);
+    assert!(chase.missing_open_order_refresh_requested);
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
 }
 
 #[test]
@@ -92,9 +95,11 @@ fn chase_modify_rate_limit_keeps_target_queued_for_retry() {
     assert_eq!(chase.pending_best_price, Some(101.0));
     assert_eq!(chase.current_price, 100.0);
     assert!(!chase.can_reprice_now(Instant::now() + Duration::from_secs(4)));
-    assert!(terminal
-        .last_advanced_exchange_request_at
-        .is_some_and(|last| last > Instant::now()));
+    assert!(
+        terminal
+            .last_advanced_exchange_request_at
+            .is_some_and(|last| last > Instant::now())
+    );
 
     let (status, is_error) = terminal.order_status.as_ref().expect("status");
     assert!(*is_error);

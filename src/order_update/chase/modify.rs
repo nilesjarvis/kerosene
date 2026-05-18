@@ -72,18 +72,17 @@ impl TradingTerminal {
                 if let Some((reason, is_error)) = stop_status {
                     return self.stop_chase_by_id_with_reason(chase_id, reason, is_error);
                 }
-                self.order_status = Some((format!("Chasing (oid {oid})..."), false));
-                Task::none()
+                self.order_status = Some((
+                    format!("Chasing (oid {oid}); refreshing account data..."),
+                    false,
+                ));
+                self.refresh_after_chase_result(true)
             }
-            Err(e) => {
-                self.check_chase_order_status(
-                    chase_id,
-                    oid,
-                    format!(
-                        "Chase checking order status: modify response was not confirmed ({e})"
-                    ),
-                )
-            }
+            Err(e) => self.check_chase_order_status(
+                chase_id,
+                oid,
+                format!("Chase checking order status: modify response was not confirmed ({e})"),
+            ),
         }
     }
 
@@ -160,7 +159,7 @@ impl TradingTerminal {
         chase.pending_size_correction = false;
         chase.cancel_retries = 0;
         chase.oid_confirmed = false;
-        chase.missing_open_order_refresh_requested = false;
+        chase.missing_open_order_refresh_requested = true;
         chase.stop_requested.then(|| {
             chase
                 .stop_reason
