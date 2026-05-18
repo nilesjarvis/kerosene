@@ -3,7 +3,10 @@ use crate::chart::ChartStatus;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use crate::ws::{self, ws_asset_ctx_stream_keyed, ws_book_stream_keyed, ws_candle_stream_keyed};
+use crate::ws::{
+    self, ws_asset_ctx_stream_keyed, ws_asset_ctx_stream_symbol, ws_book_stream_keyed,
+    ws_candle_stream_keyed,
+};
 use iced::Subscription;
 
 // ---------------------------------------------------------------------------
@@ -26,6 +29,7 @@ impl TradingTerminal {
         self.push_chart_market_subscriptions(subs);
         self.push_spaghetti_market_subscriptions(subs);
         self.push_order_book_subscriptions(subs);
+        self.push_positioning_info_market_subscriptions(subs);
         self.push_chase_market_subscriptions(subs);
         self.push_twap_market_subscriptions(subs);
     }
@@ -127,6 +131,37 @@ impl TradingTerminal {
                         .map(|(id, _symbol, ctx)| Message::OrderBookWsAssetCtxUpdate(id, ctx)),
                 );
             }
+        }
+    }
+
+    fn push_positioning_info_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
+        if self.hyperdash_api_key.trim().is_empty() {
+            return;
+        }
+
+        let mut symbols = Vec::new();
+        for (_, kind) in self.panes.iter() {
+            let PaneKind::PositioningInfo(id) = kind else {
+                continue;
+            };
+            let Some(instance) = self.positioning_infos.get(id) else {
+                continue;
+            };
+            if instance.symbol.is_empty()
+                || self.symbol_key_is_hidden(&instance.symbol)
+                || self.hyperdash_coin_for_symbol(&instance.symbol).is_none()
+                || symbols.iter().any(|symbol| symbol == &instance.symbol)
+            {
+                continue;
+            }
+            symbols.push(instance.symbol.clone());
+        }
+
+        for symbol in symbols {
+            subs.push(
+                Subscription::run_with((symbol.clone(),), ws_asset_ctx_stream_symbol)
+                    .map(|(symbol, ctx)| Message::PositioningInfoWsAssetCtxUpdate(symbol, ctx)),
+            );
         }
     }
 

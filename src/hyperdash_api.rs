@@ -2,12 +2,15 @@ mod errors;
 mod heatmap;
 mod liquidation_levels;
 mod models;
+mod positioning;
 
 pub use heatmap::{fetch_liquidation_heatmap, normalize_heatmap_time_range};
 pub use liquidation_levels::{bucket_liquidations, fetch_liquidation_levels_at};
 pub use models::{
     HeatmapFetchParams, HeatmapRect, LiquidationBucket, LiquidationHeatmap, LiquidationLevel,
+    TickerPositionEntry, TickerPositions,
 };
+pub use positioning::fetch_ticker_positions;
 
 // ---------------------------------------------------------------------------
 // HyperDash GraphQL API

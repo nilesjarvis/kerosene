@@ -32,6 +32,7 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
         PaneKind::Chart(id) => PaneKindConfig::Chart { chart_id: *id },
         PaneKind::OrderBook(id) => PaneKindConfig::OrderBook { id: *id },
         PaneKind::LiveWatchlist(id) => PaneKindConfig::LiveWatchlist { id: *id },
+        PaneKind::PositioningInfo(id) => PaneKindConfig::PositioningInfo { id: *id },
 
         PaneKind::Watchlist => PaneKindConfig::Watchlist,
         PaneKind::Portfolio => PaneKindConfig::Portfolio,
@@ -56,6 +57,7 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
         PaneKindConfig::Chart { chart_id } => Some(PaneKind::Chart(*chart_id)),
         PaneKindConfig::OrderBook { id } => Some(PaneKind::OrderBook(*id)),
         PaneKindConfig::LiveWatchlist { id } => Some(PaneKind::LiveWatchlist(*id)),
+        PaneKindConfig::PositioningInfo { id } => Some(PaneKind::PositioningInfo(*id)),
 
         PaneKindConfig::Watchlist => Some(PaneKind::Watchlist),
         PaneKindConfig::Portfolio => Some(PaneKind::Portfolio),

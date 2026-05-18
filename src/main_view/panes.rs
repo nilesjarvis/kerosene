@@ -20,6 +20,7 @@ impl TradingTerminal {
             PaneKind::Chart(id) => self.view_chart(*id, chart_count),
             PaneKind::OrderBook(id) => self.view_order_book(*id),
             PaneKind::LiveWatchlist(id) => self.view_live_watchlist(*id),
+            PaneKind::PositioningInfo(id) => self.view_positioning_info(*id),
             PaneKind::Watchlist => self.view_watchlist(),
             PaneKind::Portfolio => self.view_portfolio(),
             PaneKind::Income => self.view_income(),

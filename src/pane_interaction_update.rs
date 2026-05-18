@@ -102,6 +102,14 @@ impl TradingTerminal {
                         PaneKind::LiveWatchlist(id) => {
                             self.live_watchlists.remove(&id);
                         }
+                        PaneKind::PositioningInfo(id) => {
+                            self.positioning_infos.remove(&id);
+                            for pending in self.positioning_info_pending.values_mut() {
+                                pending.retain(|pending_id| *pending_id != id);
+                            }
+                            self.positioning_info_pending
+                                .retain(|_, pending| !pending.is_empty());
+                        }
                         PaneKind::OrderBook(id) => {
                             self.order_books.remove(&id);
                         }

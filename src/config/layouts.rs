@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     ChartConfig, CustomThemeConfig, LiveWatchlistConfig, OrderBookConfig, OrderPresetsConfig,
-    SpaghettiChartConfig, default_custom_themes, default_order_kind, default_symbol,
-    default_timeframe,
+    PositioningInfoConfig, SpaghettiChartConfig, default_custom_themes, default_order_kind,
+    default_symbol, default_timeframe,
 };
 
 /// Persisted axis for a pane split.
@@ -38,6 +38,9 @@ pub enum PaneKindConfig {
     LiveWatchlist {
         id: u64,
     },
+    PositioningInfo {
+        id: u64,
+    },
 
     Portfolio,
     Income,
@@ -65,6 +68,7 @@ enum KnownPaneKindConfig {
     OrderBook { id: u64 },
     Watchlist,
     LiveWatchlist { id: u64 },
+    PositioningInfo { id: u64 },
 
     Portfolio,
     Income,
@@ -94,6 +98,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::OrderBook { id } => Self::OrderBook { id },
             KnownPaneKindConfig::Watchlist => Self::Watchlist,
             KnownPaneKindConfig::LiveWatchlist { id } => Self::LiveWatchlist { id },
+            KnownPaneKindConfig::PositioningInfo { id } => Self::PositioningInfo { id },
             KnownPaneKindConfig::Portfolio => Self::Portfolio,
             KnownPaneKindConfig::Income => Self::Income,
             KnownPaneKindConfig::BottomTabs { active_tab } => Self::BottomTabs { active_tab },
@@ -170,6 +175,8 @@ pub struct SavedLayout {
     pub order_books: Vec<OrderBookConfig>,
     #[serde(default)]
     pub live_watchlists: Vec<LiveWatchlistConfig>,
+    #[serde(default)]
+    pub positioning_infos: Vec<PositioningInfoConfig>,
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,
 

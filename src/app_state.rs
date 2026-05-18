@@ -16,6 +16,7 @@ use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
+use crate::positioning_state::{PositioningInfoId, PositioningInfoInstance};
 use crate::settings_state::SettingsTab;
 use crate::signing::{ChaseOrder, OrderKind};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
@@ -234,6 +235,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) custom_themes: Vec<config::CustomThemeConfig>,
     // Trading Journal
     pub(crate) live_watchlists: HashMap<LiveWatchlistId, LiveWatchlistInstance>,
+    pub(crate) positioning_infos: HashMap<PositioningInfoId, PositioningInfoInstance>,
+    pub(crate) next_positioning_info_id: PositioningInfoId,
+    pub(crate) positioning_info_pending: HashMap<String, Vec<PositioningInfoId>>,
 
     pub(crate) live_watchlist_ctxs: HashMap<String, crate::api::WatchlistContext>,
     pub(crate) live_watchlist_history: HashMap<String, (f64, f64, f64)>,

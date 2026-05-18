@@ -23,7 +23,7 @@ impl TradingTerminal {
         if self.is_outcome_coin(coin) {
             format!("{:.0}", size)
         } else {
-            format!("{size:.4}")
+            format_position_size(size)
         }
     }
 
@@ -33,5 +33,33 @@ impl TradingTerminal {
         } else {
             coin.to_string()
         }
+    }
+}
+
+fn format_position_size(size: f64) -> String {
+    let formatted = format!("{size:.4}");
+    if let Some((whole, fraction)) = formatted.split_once('.')
+        && fraction.chars().all(|ch| ch == '0')
+    {
+        return whole.to_string();
+    }
+
+    formatted
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_position_size;
+
+    #[test]
+    fn position_size_formatter_hides_zero_fraction() {
+        assert_eq!(format_position_size(1.0), "1");
+        assert_eq!(format_position_size(25.0), "25");
+    }
+
+    #[test]
+    fn position_size_formatter_keeps_nonzero_fraction_precision() {
+        assert_eq!(format_position_size(1.25), "1.2500");
+        assert_eq!(format_position_size(0.125), "0.1250");
     }
 }

@@ -213,6 +213,7 @@ impl TradingTerminal {
             main_window_y: self.main_window_pos.map(|p| p.y),
 
             live_watchlists: layout_snapshot.live_watchlists,
+            positioning_infos: layout_snapshot.positioning_infos,
 
             favourite_symbols: layout_snapshot.favourite_symbols,
             muted_tickers: self.sorted_muted_tickers(),

@@ -27,6 +27,13 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
             theme,
         ))
         .push(menu_item(
+            "Positioning Information",
+            "Pane",
+            Some(Message::AddPositioningInfoPane),
+            context.can_add_pane,
+            theme,
+        ))
+        .push(menu_item(
             "Advanced Orders",
             "Pane",
             Some(Message::AddAdvancedOrdersPane),

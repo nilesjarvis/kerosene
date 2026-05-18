@@ -16,8 +16,8 @@ pub use hydromancer::{
     reconnect_hydromancer, ws_hydromancer_liquidations, ws_hydromancer_tracked_trades,
 };
 pub use market_streams::{
-    ws_asset_ctx_stream_keyed, ws_book_stream_keyed, ws_candle_stream_keyed,
-    ws_spaghetti_candle_stream,
+    ws_asset_ctx_stream_keyed, ws_asset_ctx_stream_symbol, ws_book_stream_keyed,
+    ws_candle_stream_keyed, ws_spaghetti_candle_stream,
 };
 pub use user_streams::{WsUserData, WsUserDataStreamParams, ws_user_data_stream};
 

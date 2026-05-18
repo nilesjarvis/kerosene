@@ -14,6 +14,7 @@ impl TradingTerminal {
             charts: cfg.charts.clone(),
             order_books: cfg.order_books.clone(),
             live_watchlists: cfg.live_watchlists.clone(),
+            positioning_infos: cfg.positioning_infos.clone(),
             spaghetti_charts: cfg.spaghetti_charts.clone(),
             active_symbol: cfg.active_symbol.clone(),
             active_timeframe: cfg.active_timeframe.clone(),

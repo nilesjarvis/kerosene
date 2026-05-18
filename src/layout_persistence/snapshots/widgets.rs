@@ -114,6 +114,25 @@ impl TradingTerminal {
             .collect()
     }
 
+    pub(crate) fn positioning_info_configs_snapshot(&self) -> Vec<config::PositioningInfoConfig> {
+        let mut instances: Vec<_> = self.positioning_infos.values().collect();
+        instances.sort_by_key(|instance| instance.id);
+        instances
+            .into_iter()
+            .map(|instance| config::PositioningInfoConfig {
+                id: instance.id,
+                symbol: if self.symbol_key_is_hidden(&instance.symbol) {
+                    self.fallback_unmuted_symbol_key().unwrap_or_default()
+                } else {
+                    instance.symbol.clone()
+                },
+                side: instance.side,
+                sort_field: instance.sort_field,
+                sort_direction: instance.sort_direction,
+            })
+            .collect()
+    }
+
     pub(crate) fn active_symbol_config_value(&self) -> String {
         if self.symbol_key_is_hidden(&self.active_symbol) {
             self.fallback_unmuted_symbol_key().unwrap_or_default()
@@ -149,6 +168,7 @@ impl TradingTerminal {
             charts: self.chart_configs_snapshot(),
             order_books: self.order_book_configs_snapshot(),
             live_watchlists: self.live_watchlist_configs_snapshot(),
+            positioning_infos: self.positioning_info_configs_snapshot(),
             spaghetti_charts: self.spaghetti_chart_configs_snapshot(),
             active_symbol: self.active_symbol_config_value(),
             active_timeframe: self.active_timeframe_config_value(),

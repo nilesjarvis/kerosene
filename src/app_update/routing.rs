@@ -160,6 +160,17 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::LiveWatchlistColumnToggled(_, _, _)
         | Message::AddOrderBookPane
         | Message::AddLiveWatchlistPane
+        | Message::AddPositioningInfoPane
+        | Message::PositioningInfoPageChanged(_, _)
+        | Message::PositioningInfoSearchChanged(_, _)
+        | Message::PositioningInfoSymbolSelected(_, _)
+        | Message::PositioningInfoSideChanged(_, _)
+        | Message::PositioningInfoSortChanged(_, _)
+        | Message::ClearPositioningInfoFilters(_)
+        | Message::RefreshPositioningInfoPane(_)
+        | Message::RefreshPositioningInfo
+        | Message::PositioningInfoWsAssetCtxUpdate(_, _)
+        | Message::PositioningInfoLoaded(_, _)
         | Message::LiveWatchlistSearchChanged(_, _)
         | Message::LiveWatchlistAddSymbol(_, _)
         | Message::LiveWatchlistRemoveSymbol(_, _)

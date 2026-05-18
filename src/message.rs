@@ -18,6 +18,9 @@ use crate::market_state::{
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
+use crate::positioning_state::{
+    PositioningInfoId, PositioningInfoPage, PositioningInfoSide, PositioningInfoSortField,
+};
 use crate::settings_state::SettingsTab;
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
@@ -63,6 +66,17 @@ pub(crate) enum Message {
     LiveWatchlistSortChanged(LiveWatchlistId, config::LiveWatchlistSortColumn),
     LiveWatchlistColumnToggled(LiveWatchlistId, config::LiveWatchlistColumn, bool),
     AddLiveWatchlistPane,
+    AddPositioningInfoPane,
+    PositioningInfoPageChanged(PositioningInfoId, PositioningInfoPage),
+    PositioningInfoSearchChanged(PositioningInfoId, String),
+    PositioningInfoSymbolSelected(PositioningInfoId, String),
+    PositioningInfoSideChanged(PositioningInfoId, PositioningInfoSide),
+    PositioningInfoSortChanged(PositioningInfoId, PositioningInfoSortField),
+    ClearPositioningInfoFilters(PositioningInfoId),
+    RefreshPositioningInfoPane(PositioningInfoId),
+    RefreshPositioningInfo,
+    PositioningInfoWsAssetCtxUpdate(String, AssetContext),
+    PositioningInfoLoaded(String, Box<Result<crate::hyperdash_api::TickerPositions, String>>),
     AddOrderBookPane,
     AddAdvancedOrdersPane,
     PositionsSortChanged(PositionsSortColumn),

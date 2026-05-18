@@ -66,6 +66,54 @@ pub struct LiquidationHeatmap {
     pub max_abs_usd: f64,
 }
 
+/// A single wallet-level perp position for the Positioning Information widget.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct TickerPositionEntry {
+    pub address: String,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    pub label: Option<String>,
+    pub tag: Option<String>,
+    pub verified: Option<bool>,
+    #[serde(rename = "copyScore")]
+    pub copy_score: Option<f64>,
+    pub size: f64,
+    #[serde(rename = "notionalSize")]
+    pub notional_size: f64,
+    #[serde(rename = "entryPrice")]
+    pub entry_price: f64,
+    #[serde(rename = "liquidationPrice")]
+    pub liquidation_price: Option<f64>,
+    #[serde(rename = "unrealizedPnl")]
+    pub unrealized_pnl: f64,
+    #[serde(rename = "fundingPnl")]
+    pub funding_pnl: f64,
+    #[serde(rename = "accountValue")]
+    pub account_value: f64,
+}
+
+/// Aggregated HyperDash positioning for one perp ticker.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct TickerPositions {
+    pub coin: String,
+    pub positions: Vec<TickerPositionEntry>,
+    #[serde(rename = "totalLongNotional")]
+    pub total_long_notional: f64,
+    #[serde(rename = "totalShortNotional")]
+    pub total_short_notional: f64,
+    #[serde(rename = "totalNotional")]
+    pub total_notional: f64,
+    #[serde(rename = "longCount")]
+    pub long_count: u64,
+    #[serde(rename = "shortCount")]
+    pub short_count: u64,
+    #[serde(rename = "totalCount")]
+    pub total_count: u64,
+    #[serde(rename = "hasMore")]
+    pub has_more: bool,
+    pub timestamp: String,
+}
+
 /// Parameters used for the last heatmap fetch, so we can detect when the
 /// visible range has changed enough to warrant a re-fetch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

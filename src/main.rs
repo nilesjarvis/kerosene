@@ -57,6 +57,7 @@ mod pane_state;
 mod pane_update;
 mod pnl_card;
 mod portfolio_state;
+mod positioning_state;
 mod portfolio_update;
 mod preferences_update;
 mod risk_state;

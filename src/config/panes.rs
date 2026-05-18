@@ -1,4 +1,5 @@
 use crate::annotations::AnnotationConfig;
+use crate::positioning_state::{PositioningInfoSide, PositioningInfoSortField};
 use crate::spaghetti::ComparisonColorMode;
 use serde::{Deserialize, Serialize};
 
@@ -127,6 +128,20 @@ pub struct OrderBookConfig {
     pub spread_chart_height: f32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PositioningInfoConfig {
+    #[serde(default)]
+    pub id: u64,
+    #[serde(default = "default_symbol")]
+    pub symbol: String,
+    #[serde(default)]
+    pub side: PositioningInfoSide,
+    #[serde(default)]
+    pub sort_field: PositioningInfoSortField,
+    #[serde(default = "default_positioning_info_sort_direction")]
+    pub sort_direction: super::SortDirection,
+}
+
 /// Persisted state for a comparison chart pane.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SpaghettiChartConfig {
@@ -171,9 +186,14 @@ fn default_spread_chart_height() -> f32 {
     60.0
 }
 
+fn default_positioning_info_sort_direction() -> super::SortDirection {
+    PositioningInfoSortField::default().default_direction()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{OrderBookConfig, OrderBookDisplayModeConfig};
+    use super::{OrderBookConfig, OrderBookDisplayModeConfig, PositioningInfoConfig};
+    use crate::config::SortDirection;
 
     #[test]
     fn order_book_config_defaults_to_depth_list_display_mode() {
@@ -195,5 +215,13 @@ mod tests {
         let rendered = serde_json::to_string(&config).expect("json");
         assert!(rendered.contains(r#""display_mode":"DomLadder""#));
         assert!(rendered.contains(r#""center_on_mid":true"#));
+    }
+
+    #[test]
+    fn positioning_info_config_defaults_to_descending_sort() {
+        let config: PositioningInfoConfig =
+            serde_json::from_str(r#"{"id":7,"symbol":"HYPE"}"#).expect("config");
+
+        assert_eq!(config.sort_direction, SortDirection::Descending);
     }
 }

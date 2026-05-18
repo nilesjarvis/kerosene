@@ -2,7 +2,7 @@ use super::hotkeys::HotkeyConfig;
 use super::layouts::{PaneLayoutConfig, SavedLayout};
 use super::live_watchlist::LiveWatchlistConfig;
 use super::order_presets::OrderPresetsConfig;
-use super::panes::{ChartConfig, OrderBookConfig, SpaghettiChartConfig};
+use super::panes::{ChartConfig, OrderBookConfig, PositioningInfoConfig, SpaghettiChartConfig};
 use super::screenshot::ChartScreenshotSettingsConfig;
 use super::secrets::EncryptedSecretsConfig;
 use super::themes::{CustomThemeConfig, default_custom_themes, default_theme};
@@ -163,6 +163,8 @@ pub struct KeroseneConfig {
     /// Favourite symbol keys (e.g. ["HYPE", "BTC", "@107"]).
     #[serde(default)]
     pub live_watchlists: Vec<LiveWatchlistConfig>,
+    #[serde(default)]
+    pub positioning_infos: Vec<PositioningInfoConfig>,
 
     pub favourite_symbols: Vec<String>,
     /// Globally hidden ticker symbols. Matching is intentionally broad for plain

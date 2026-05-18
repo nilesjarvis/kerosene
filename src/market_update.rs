@@ -1,5 +1,6 @@
 mod live_watchlist;
 mod order_book;
+mod positioning_info;
 mod symbols;
 
 use crate::app_state::TradingTerminal;
@@ -33,11 +34,31 @@ impl TradingTerminal {
             message if is_order_book_market_message(&message) => {
                 return self.update_order_book_market(message);
             }
+            message if is_positioning_info_market_message(&message) => {
+                return self.update_positioning_info_market(message);
+            }
             _ => {}
         }
 
         Task::none()
     }
+}
+
+fn is_positioning_info_market_message(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::AddPositioningInfoPane
+            | Message::PositioningInfoPageChanged(_, _)
+            | Message::PositioningInfoSearchChanged(_, _)
+            | Message::PositioningInfoSymbolSelected(_, _)
+            | Message::PositioningInfoSideChanged(_, _)
+            | Message::PositioningInfoSortChanged(_, _)
+            | Message::ClearPositioningInfoFilters(_)
+            | Message::RefreshPositioningInfoPane(_)
+            | Message::RefreshPositioningInfo
+            | Message::PositioningInfoWsAssetCtxUpdate(_, _)
+            | Message::PositioningInfoLoaded(_, _)
+    )
 }
 
 fn is_order_book_market_message(message: &Message) -> bool {

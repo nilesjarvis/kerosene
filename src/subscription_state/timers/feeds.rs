@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::pane_state::PaneKind;
 
 use iced::Subscription;
 
@@ -42,6 +43,23 @@ impl TradingTerminal {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(60))
                     .map(|_| Message::RefreshHeatmap),
+            );
+        }
+
+        let has_positioning_infos = !self.hyperdash_api_key.is_empty()
+            && self.panes.iter().any(|(_, kind)| {
+                let PaneKind::PositioningInfo(id) = kind else {
+                    return false;
+                };
+                self.positioning_infos.get(id).is_some_and(|instance| {
+                    !instance.symbol.trim().is_empty()
+                        && !self.symbol_key_is_hidden(&instance.symbol)
+                })
+            });
+        if has_positioning_infos {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(60))
+                    .map(|_| Message::RefreshPositioningInfo),
             );
         }
     }

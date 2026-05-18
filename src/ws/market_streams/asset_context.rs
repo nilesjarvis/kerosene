@@ -1,7 +1,7 @@
 use crate::account::AssetContext;
 use crate::ws::{SubscriptionGuard, WsCommand, WsStream, get_manager};
 
-use super::KeyedAssetContext;
+use super::{KeyedAssetContext, SymbolAssetContext};
 use futures::SinkExt as _;
 use tokio::sync::broadcast;
 
@@ -69,5 +69,13 @@ pub fn ws_asset_ctx_stream_keyed(params: &(u64, String)) -> WsStream<KeyedAssetC
     let inner = ws_asset_ctx_stream(&params.1);
     Box::pin(futures::StreamExt::map(inner, move |ctx| {
         (chart_id, coin.clone(), ctx)
+    }))
+}
+
+pub fn ws_asset_ctx_stream_symbol(params: &(String,)) -> WsStream<SymbolAssetContext> {
+    let coin = params.0.clone();
+    let inner = ws_asset_ctx_stream(&params.0);
+    Box::pin(futures::StreamExt::map(inner, move |ctx| {
+        (coin.clone(), ctx)
     }))
 }
