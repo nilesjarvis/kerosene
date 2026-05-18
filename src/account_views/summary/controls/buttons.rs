@@ -24,7 +24,7 @@ impl TradingTerminal {
         )
         .padding([4, 8])
         .text_size(10)
-        .width(Length::Fixed(136.0))
+        .width(Length::Shrink)
         .into()
     }
 
@@ -59,9 +59,7 @@ impl TradingTerminal {
         };
         button(
             row![
-                text(self.layout_switcher_button_label())
-                    .size(10)
-                    .width(Length::Fixed(110.0)),
+                text(self.layout_switcher_button_label()).size(10),
                 text(chevron)
                     .size(13)
                     .width(Length::Fixed(10.0))

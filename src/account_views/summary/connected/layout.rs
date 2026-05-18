@@ -1,21 +1,18 @@
-use super::metrics::ConnectedSummaryValues;
 use super::super::CONNECTED_SUMMARY_ACTION_BREAKPOINT;
+use super::metrics::ConnectedSummaryValues;
 use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_usd, label_value, label_value_colored, vertical_spacer};
+use crate::helpers::{format_usd, vertical_spacer};
 use crate::message::Message;
-use iced::widget::{Row, Space, column, row};
-use iced::{Element, Fill, Theme};
+use iced::widget::{Row, Space, column, container, row, text};
+use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn connected_summary_base_row<'a>(&'a self) -> Row<'a, Message> {
-        row![
-            self.summary_account_picker(),
-            vertical_spacer(),
-        ]
-        .spacing(16)
-        .align_y(iced::Alignment::Center)
-        .width(Fill)
+        row![self.summary_account_picker(), vertical_spacer(),]
+            .spacing(16)
+            .align_y(iced::Alignment::Center)
+            .width(Fill)
     }
 
     pub(super) fn view_connected_summary_layout<'a>(
@@ -69,69 +66,81 @@ impl TradingTerminal {
             let ratio_color = portfolio_margin_ratio_color(summary_values, theme);
 
             items
-                .push(label_value_colored(
+                .push(summary_metric_colored(
                     "Mode",
                     "Portfolio",
                     theme.palette().primary,
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value(
+                .push(summary_metric(
                     "Total Value",
                     self.mask_connected_summary_usd(&summary_values.total_value),
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value_colored(
+                .push(summary_metric_colored(
                     "Available",
                     self.mask_connected_summary_usd(&summary_values.available_value),
                     avail_color,
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value(
+                .push(summary_metric(
                     "Notional Pos",
                     self.mask_connected_summary_usd(&summary_values.live_notional),
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value(
+                .push(summary_metric(
                     "Eff Lev",
                     &summary_values.effective_leverage_value,
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value(
+                .push(summary_metric(
                     "Margin Used",
                     self.mask_connected_summary_usd(&summary_values.margin_used_value),
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value_colored(
+                .push(summary_metric_colored(
                     "Margin Ratio",
                     &summary_values.portfolio_margin_ratio_value,
                     ratio_color,
+                    theme,
                 ))
         } else {
             items
-                .push(label_value(
+                .push(summary_metric(
                     "Total Value",
                     self.mask_connected_summary_usd(&summary_values.total_value),
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value_colored(
+                .push(summary_metric_colored(
                     "Available",
                     self.mask_connected_summary_usd(&summary_values.available_value),
                     avail_color,
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value(
+                .push(summary_metric(
                     "Notional Pos",
                     self.mask_connected_summary_usd(&summary_values.live_notional),
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value(
+                .push(summary_metric(
                     "Eff Lev",
                     &summary_values.effective_leverage_value,
+                    theme,
                 ))
                 .push(vertical_spacer())
-                .push(label_value(
+                .push(summary_metric(
                     "Margin Used",
                     self.mask_connected_summary_usd(&summary_values.margin_used_value),
+                    theme,
                 ))
         }
     }
@@ -168,6 +177,49 @@ impl TradingTerminal {
             format_usd(value)
         }
     }
+}
+
+fn summary_metric(
+    label: &'static str,
+    value: impl ToString,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    summary_metric_with_color(label, value, None, theme)
+}
+
+fn summary_metric_colored(
+    label: &'static str,
+    value: impl ToString,
+    value_color: Color,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    summary_metric_with_color(label, value, Some(value_color), theme)
+}
+
+fn summary_metric_with_color(
+    label: &'static str,
+    value: impl ToString,
+    value_color: Option<Color>,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    let value = text(value.to_string()).size(13).font(iced::Font::MONOSPACE);
+    let value = if let Some(value_color) = value_color {
+        value.color(value_color)
+    } else {
+        value
+    };
+
+    container(
+        column![
+            text(label)
+                .size(10)
+                .color(theme.extended_palette().background.weak.text),
+            value,
+        ]
+        .spacing(1)
+        .align_x(iced::Alignment::Start),
+    )
+    .into()
 }
 
 fn portfolio_margin_ratio_color(
