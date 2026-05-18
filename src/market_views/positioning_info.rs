@@ -689,6 +689,8 @@ const POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH: f32 = 240.0;
 const POSITIONING_TRADER_COMPACT_ACTIONS_WIDTH: f32 = 42.0;
 const POSITIONING_TRADER_FULL_ACTIONS_WIDTH: f32 = 106.0;
 const POSITIONING_CHANGE_TRADER_MIN_WIDTH: f32 = 132.0;
+const POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH: f32 =
+    POSITIONING_CHANGE_TRADER_MIN_WIDTH;
 const POSITIONING_CHANGE_PREVIOUS_WIDTH: f32 = 76.0;
 const POSITIONING_CHANGE_CURRENT_WIDTH: f32 = 76.0;
 const POSITIONING_CHANGE_DELTA_WIDTH: f32 = 76.0;
@@ -1001,6 +1003,7 @@ fn positioning_position_row(
             &position.address,
             wallet_display,
             columns.trader_width,
+            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
             theme,
         ))
         .push(value_cell(
@@ -1190,6 +1193,7 @@ fn positioning_change_row(
             &entry.address,
             wallet_display,
             columns.trader_width,
+            POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
             theme,
         ))
         .push(value_cell(
@@ -1253,12 +1257,13 @@ fn positioning_trader_cell(
     address: &str,
     wallet_display: WalletDisplay,
     width: f32,
+    compact_actions_min_width: f32,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let identity_label = position_identity(wallet_display);
     let address = address.to_string();
-    let show_actions = width >= POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH;
-    let show_full_actions = width >= POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH;
+    let (show_actions, show_full_actions) =
+        positioning_trader_action_visibility(width, compact_actions_min_width);
     let action_width = if show_actions {
         if show_full_actions {
             POSITIONING_TRADER_FULL_ACTIONS_WIDTH
@@ -1333,6 +1338,16 @@ fn positioning_trader_cell(
         .width(Length::Fixed(width))
         .padding([1, 0])
         .into()
+}
+
+fn positioning_trader_action_visibility(
+    width: f32,
+    compact_actions_min_width: f32,
+) -> (bool, bool) {
+    (
+        width >= compact_actions_min_width,
+        width >= POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH,
+    )
 }
 
 fn header_cell(label: &'static str, width: Length, color: Color) -> Element<'static, Message> {
@@ -2098,5 +2113,19 @@ mod tests {
 
         assert!((columns.total_width() - content_width).abs() < 0.01);
         assert!(columns.trader_width > POSITIONING_CHANGE_TRADER_MIN_WIDTH);
+    }
+
+    #[test]
+    fn positioning_change_trader_column_shows_compact_actions_before_positions_threshold() {
+        let columns = PositioningChangeColumns::for_width(610.0);
+
+        assert!(columns.trader_width < POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH);
+        assert_eq!(
+            positioning_trader_action_visibility(
+                columns.trader_width,
+                POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
+            ),
+            (true, false)
+        );
     }
 }
