@@ -69,6 +69,7 @@ impl CandlestickChart {
                     self.draw_time_grid(ctx, frame);
                     self.draw_historical_heatmap(ctx, frame);
                     self.draw_candles_and_volume(ctx, frame);
+                    self.draw_volume_profile(ctx, frame);
 
                     let mut moving_average_layer = MovingAverageLayer {
                         frame: &mut *frame,

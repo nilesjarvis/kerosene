@@ -18,6 +18,7 @@ mod program;
 mod state;
 mod tooltips;
 mod viewport;
+mod volume_profile;
 
 pub use self::model::{
     CANDLE_GAP_RATIO, CandlestickChart, ChartStatus, ChartViewport, DEFAULT_CANDLE_WIDTH,

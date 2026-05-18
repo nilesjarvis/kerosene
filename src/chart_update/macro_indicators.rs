@@ -64,6 +64,10 @@ impl TradingTerminal {
                         "show_labels" => {
                             inst.macro_indicators.show_labels = !inst.macro_indicators.show_labels
                         }
+                        "show_volume_profile" => {
+                            inst.macro_indicators.show_volume_profile =
+                                !inst.macro_indicators.show_volume_profile
+                        }
                         _ => {}
                     }
                     inst.chart.macro_indicators = inst.macro_indicators.clone();

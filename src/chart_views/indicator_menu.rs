@@ -144,6 +144,16 @@ impl TradingTerminal {
                         checked: indicator_options.show_labels,
                     },
                 ],
+            ))
+            .push(separator())
+            .push(indicator_group(
+                chart_id,
+                "VOL",
+                [IndicatorOption {
+                    label: "Profile",
+                    key: "show_volume_profile",
+                    checked: indicator_options.show_volume_profile,
+                }],
             ));
 
         if !instance.symbol.is_empty() && self.is_perp_coin(&instance.symbol) {

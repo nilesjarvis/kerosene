@@ -306,6 +306,10 @@ fn advanced_order_history_round_trips_and_legacy_defaults_empty() {
 
 #[test]
 fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
+    let macro_indicators = MacroIndicatorsConfig {
+        show_volume_profile: true,
+        ..MacroIndicatorsConfig::default()
+    };
     let config = KeroseneConfig {
         charts: vec![ChartConfig {
             id: 7,
@@ -315,7 +319,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
             inverted: false,
             show_trade_markers: true,
             funding_panel_height: 56,
-            macro_indicators: MacroIndicatorsConfig::default(),
+            macro_indicators,
             open_interest_as_notional: true,
         }],
         ..KeroseneConfig::default()
@@ -326,6 +330,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
 
     assert!(decoded.charts[0].show_trade_markers);
     assert!(decoded.charts[0].open_interest_as_notional);
+    assert!(decoded.charts[0].macro_indicators.show_volume_profile);
 
     let mut legacy_chart = serde_json::to_value(&config.charts[0]).expect("chart serializes");
     legacy_chart
@@ -347,6 +352,17 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         serde_json::from_value(older_chart).expect("older chart config should deserialize");
 
     assert!(!decoded_older_chart.open_interest_as_notional);
+
+    let mut legacy_macro = serde_json::to_value(&config.charts[0].macro_indicators)
+        .expect("macro indicators serialize");
+    legacy_macro
+        .as_object_mut()
+        .expect("macro indicators config is an object")
+        .remove("show_volume_profile");
+    let decoded_macro: MacroIndicatorsConfig =
+        serde_json::from_value(legacy_macro).expect("legacy macro indicators should deserialize");
+
+    assert!(!decoded_macro.show_volume_profile);
 }
 
 #[test]

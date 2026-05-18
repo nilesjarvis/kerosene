@@ -27,6 +27,7 @@ enum IndicatorColorRole {
     WeeklySlow,
     Monthly,
     Funding,
+    VolumeProfile,
 }
 
 impl IndicatorColorRole {
@@ -39,6 +40,7 @@ impl IndicatorColorRole {
             Self::WeeklyFast => extended.success.base.color,
             Self::WeeklySlow | Self::Funding => extended.secondary.strong.color,
             Self::Monthly => extended.danger.base.color,
+            Self::VolumeProfile => theme.palette().primary,
         }
     }
 }
@@ -197,6 +199,14 @@ fn active_chart_indicators(instance: &ChartInstance, theme: &Theme) -> Vec<Activ
         "Funding",
         "show_funding_rate",
         IndicatorColorRole::Funding,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.show_volume_profile,
+        "Vol Profile",
+        "show_volume_profile",
+        IndicatorColorRole::VolumeProfile,
         theme,
     );
 
