@@ -16,7 +16,7 @@ impl TradingTerminal {
 
         let settings = window::Settings {
             size: Size::new(self.journal.width, self.journal.height),
-            ..window::Settings::default()
+            ..crate::window_chrome::settings()
         };
         let (id, task) = window::open(settings);
         self.journal.window_id = Some(id);

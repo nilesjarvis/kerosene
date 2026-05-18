@@ -378,7 +378,7 @@ impl TradingTerminal {
 
         let settings = window::Settings {
             size: Size::new(760.0, 560.0),
-            ..window::Settings::default()
+            ..crate::window_chrome::settings()
         };
         let (window_id, task) = window::open(settings);
         self.advanced_order_history_windows

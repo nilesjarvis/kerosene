@@ -18,7 +18,7 @@ impl TradingTerminal {
                 .main_window_pos
                 .map(window::Position::Specific)
                 .unwrap_or_else(|| window::Position::Centered),
-            ..window::Settings::default()
+            ..crate::window_chrome::settings()
         };
         let (main_id, main_open_task) = window::open(main_window_settings);
         self.main_window_id = Some(main_id);
@@ -33,7 +33,7 @@ impl TradingTerminal {
                     .zip(self.wallet_tracker.y)
                     .map(|(x, y)| window::Position::Specific(Point::new(x, y)))
                     .unwrap_or_else(|| window::Position::Centered),
-                ..window::Settings::default()
+                ..crate::window_chrome::settings()
             };
             let (wallet_id, wallet_open_task) = window::open(tracker_settings);
             self.wallet_tracker.window_id = Some(wallet_id);

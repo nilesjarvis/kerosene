@@ -127,7 +127,7 @@ impl TradingTerminal {
 
         let settings = window::Settings {
             size: Size::new(480.0, 640.0),
-            ..window::Settings::default()
+            ..crate::window_chrome::settings()
         };
         let (window_id, task) = window::open(settings);
         self.pnl_card_windows

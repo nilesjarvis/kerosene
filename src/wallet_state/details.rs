@@ -39,7 +39,7 @@ impl TradingTerminal {
 
         let settings = window::Settings {
             size: Size::new(WALLET_DETAILS_DEFAULT_WIDTH, WALLET_DETAILS_DEFAULT_HEIGHT),
-            ..window::Settings::default()
+            ..crate::window_chrome::settings()
         };
         let (window_id, open_task) = window::open(settings);
         self.wallet_detail_windows
