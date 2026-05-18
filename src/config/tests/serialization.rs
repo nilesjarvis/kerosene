@@ -281,6 +281,7 @@ fn advanced_order_history_round_trips_and_legacy_defaults_empty() {
             status: "Completed".to_string(),
             summary: "TWAP completed".to_string(),
             started_at_ms: 1_000,
+            adopted_resting: false,
             completed_at_ms: 2_000,
             logs: Vec::new(),
             children: Vec::new(),

@@ -90,7 +90,11 @@ struct ChaseFillTotals {
     total_notional: f64,
 }
 
-fn chase_fill_totals(fills: &[crate::account::UserFill], oids: &[u64]) -> Option<ChaseFillTotals> {
+fn chase_fill_totals(
+    fills: &[crate::account::UserFill],
+    oids: &[u64],
+    min_fill_time_ms: Option<u64>,
+) -> Option<ChaseFillTotals> {
     if oids.is_empty() {
         return None;
     }
@@ -106,6 +110,9 @@ fn chase_fill_totals(fills: &[crate::account::UserFill], oids: &[u64]) -> Option
             continue;
         };
         if !oids.contains(&oid) {
+            continue;
+        }
+        if min_fill_time_ms.is_some_and(|min_time| fill.time < min_time) {
             continue;
         }
         let fill_key = (
@@ -155,7 +162,7 @@ fn chase_fill_totals(fills: &[crate::account::UserFill], oids: &[u64]) -> Option
 }
 
 fn chase_fill_summary_for_oids(fills: &[crate::account::UserFill], oids: &[u64]) -> Option<String> {
-    let totals = chase_fill_totals(fills, oids)?;
+    let totals = chase_fill_totals(fills, oids, None)?;
 
     if totals.filled_size > 0.0 {
         let avg_px = totals.total_notional / totals.filled_size;
@@ -176,7 +183,7 @@ fn chase_fill_summary_for_chase(
     chase: &ChaseOrder,
 ) -> Option<String> {
     let oids = chase.known_oids_with_current();
-    let totals = chase_fill_totals(fills, &oids)?;
+    let totals = chase_fill_totals(fills, &oids, None)?;
 
     if totals.filled_size > 0.0 {
         let avg_px = totals.total_notional / totals.filled_size;
@@ -446,7 +453,12 @@ impl TradingTerminal {
                 continue;
             };
             let oids = chase.known_oids_with_current();
-            let Some(totals) = chase_fill_totals(fills, &oids) else {
+            let min_fill_time_ms = if chase.adopted_resting {
+                Some(chase.started_at_ms)
+            } else {
+                None
+            };
+            let Some(totals) = chase_fill_totals(fills, &oids, min_fill_time_ms) else {
                 continue;
             };
             chase.set_filled_size(totals.filled_size);

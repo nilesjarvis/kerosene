@@ -121,6 +121,7 @@ impl TradingTerminal {
                 initial_price: rounded_px,
                 started_at,
                 started_at_ms,
+                adopted_resting: true,
                 reprice_count: 0,
                 pending_op: None,
                 last_reprice_at: None,
