@@ -4,6 +4,12 @@ use std::path::{Path, PathBuf};
 /// Linux: ~/.config/kerosene/config.json
 /// macOS: ~/Library/Application Support/kerosene/config.json
 /// Windows: %APPDATA%\kerosene\config.json
+#[cfg(test)]
+pub(in crate::config) fn config_path() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(not(test))]
 pub(in crate::config) fn config_path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("kerosene").join("config.json"))
 }
