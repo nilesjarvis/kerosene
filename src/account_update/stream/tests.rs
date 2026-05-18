@@ -295,7 +295,7 @@ fn chase_fill_reconciliation_sums_known_reprice_oids() {
 }
 
 #[test]
-fn chase_fill_reconciliation_ignores_fills_before_chase_start() {
+fn chase_fill_reconciliation_counts_matching_oids_before_local_chase_start() {
     let mut terminal = TradingTerminal::boot().0;
     let mut chase = chase_order();
     chase.started_at_ms = 1_000;
@@ -310,8 +310,30 @@ fn chase_fill_reconciliation_ignores_fills_before_chase_start() {
     terminal.reconcile_chase_fills_from_account();
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert!((chase.filled_size - 0.1).abs() < 1e-12);
-    assert!((chase.remaining_size - 0.9).abs() < 1e-12);
+    assert!((chase.filled_size - 0.5).abs() < 1e-12);
+    assert!((chase.remaining_size - 0.5).abs() < 1e-12);
+}
+
+#[test]
+fn chase_fill_reconciliation_deduplicates_matching_oid_fills() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut chase = chase_order();
+    chase.started_at_ms = 1_000;
+    terminal.chase_orders.insert(1, chase);
+    let mut data = account_data_with_timestamp(1_000);
+    let duplicate = fill_with_oid(900, 42, "100", "0.4");
+    data.fills = vec![
+        duplicate.clone(),
+        duplicate,
+        fill_with_oid(1_001, 42, "101", "0.1"),
+    ];
+    terminal.account_data = Some(data);
+
+    terminal.reconcile_chase_fills_from_account();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert!((chase.filled_size - 0.5).abs() < 1e-12);
+    assert!((chase.remaining_size - 0.5).abs() < 1e-12);
 }
 
 #[test]
