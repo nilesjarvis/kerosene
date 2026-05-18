@@ -142,7 +142,9 @@ pub enum PaneLayoutConfig {
 
 pub fn prune_unsupported_pane_layout(layout: PaneLayoutConfig) -> Option<PaneLayoutConfig> {
     match layout {
-        PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported) => None,
+        PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported | PaneKindConfig::AccountSummary) => {
+            None
+        }
         PaneLayoutConfig::Leaf(kind) => Some(PaneLayoutConfig::Leaf(kind)),
         PaneLayoutConfig::Split { axis, ratio, a, b } => {
             match (

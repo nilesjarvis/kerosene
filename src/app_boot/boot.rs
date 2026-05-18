@@ -27,14 +27,12 @@ impl TradingTerminal {
 
         Self::register_last_layout(&mut cfg);
 
-        // Build the initial layout tree from saved (or default) ratios.
+        // Build the initial movable widget layout from saved (or default) ratios.
         //
-        //  Horizontal split (top 6% = account bar, bottom 94% = rest)
-        //    top  -> AccountSummary
-        //    bot  -> Horizontal split (top 70% = main, bottom 30% = bottom row)
-        //              main -> Vertical split (left 50% = chart, right 50%)
-        //                        right -> Vertical split (left 55% = orderbook, right 45% = watchlist)
-        //              bottom -> Vertical split (left 65% = tabs, right 35% = order entry)
+        //  Horizontal split (top 70% = main, bottom 30% = bottom row)
+        //    main -> Vertical split (left 50% = chart, right 50%)
+        //              right -> Vertical split (left 55% = orderbook, right 45% = watchlist)
+        //    bottom -> Vertical split (left 65% = tabs, right 35% = order entry)
         let layout_ratios = Self::boot_layout_ratios(&cfg);
 
         let boot_symbols = Self::boot_symbol_selection(&cfg);

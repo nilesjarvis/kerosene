@@ -6,7 +6,6 @@ use crate::pane_state::PaneKind;
 
 pub fn pane_title(kind: &PaneKind) -> String {
     match kind {
-        PaneKind::AccountSummary => "Account Summary".to_string(),
         PaneKind::Chart(id) => {
             // Title will be set dynamically in view, but provide a default.
             format!("Chart #{id}")

@@ -35,7 +35,7 @@ pub fn default_symbol_search_sort_mode() -> String {
 }
 
 pub fn default_layout_ratios() -> Vec<f32> {
-    vec![0.06, 0.70, 0.50, 0.55, 0.65]
+    vec![0.70, 0.50, 0.55, 0.65]
 }
 
 pub fn new_secret_id() -> String {

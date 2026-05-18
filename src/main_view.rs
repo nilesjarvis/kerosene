@@ -17,7 +17,14 @@ impl TradingTerminal {
     pub(crate) fn view_main(&self) -> Element<'_, Message> {
         let theme = self.theme();
 
-        let mut layers: Vec<Element<'_, Message>> = vec![self.view_main_pane_grid()];
+        let main_content: Element<'_, Message> =
+            column![self.view_account_summary_bar(), self.view_main_pane_grid()]
+                .spacing(self.pane_border_thickness)
+                .width(Fill)
+                .height(Fill)
+                .into();
+
+        let mut layers: Vec<Element<'_, Message>> = vec![main_content];
 
         if let Some(toast_overlay) = self.view_toast_overlay(&theme) {
             layers.push(toast_overlay);
@@ -31,6 +38,7 @@ impl TradingTerminal {
 
         container(
             column![main_stack, self.view_status_bar()]
+                .spacing(self.pane_border_thickness)
                 .width(Fill)
                 .height(Fill),
         )

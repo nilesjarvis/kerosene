@@ -113,38 +113,41 @@ fn default_pane_configuration(
     use pane_grid::{Axis, Configuration as PaneCfg};
 
     let ratios = &layout.layout_ratios;
-    let r0 = ratios.first().copied().unwrap_or(0.06);
-    let r1 = ratios.get(1).copied().unwrap_or(0.70);
-    let r2 = ratios.get(2).copied().unwrap_or(0.50);
-    let r3 = ratios.get(3).copied().unwrap_or(0.55);
-    let r4 = ratios.get(4).copied().unwrap_or(0.65);
+    let ratios = movable_pane_layout_ratios(ratios);
+    let r0 = ratios.first().copied().unwrap_or(0.70);
+    let r1 = ratios.get(1).copied().unwrap_or(0.50);
+    let r2 = ratios.get(2).copied().unwrap_or(0.55);
+    let r3 = ratios.get(3).copied().unwrap_or(0.65);
 
     PaneCfg::Split {
         axis: Axis::Horizontal,
         ratio: r0,
-        a: Box::new(PaneCfg::Pane(PaneKind::AccountSummary)),
-        b: Box::new(PaneCfg::Split {
-            axis: Axis::Horizontal,
+        a: Box::new(PaneCfg::Split {
+            axis: Axis::Vertical,
             ratio: r1,
-            a: Box::new(PaneCfg::Split {
-                axis: Axis::Vertical,
-                ratio: r2,
-                a: Box::new(PaneCfg::Pane(PaneKind::Chart(first_chart_id))),
-                b: Box::new(PaneCfg::Split {
-                    axis: Axis::Vertical,
-                    ratio: r3,
-                    a: Box::new(PaneCfg::Pane(PaneKind::OrderBook(0))),
-                    b: Box::new(PaneCfg::Pane(PaneKind::Watchlist)),
-                }),
-            }),
+            a: Box::new(PaneCfg::Pane(PaneKind::Chart(first_chart_id))),
             b: Box::new(PaneCfg::Split {
                 axis: Axis::Vertical,
-                ratio: r4,
-                a: Box::new(PaneCfg::Pane(PaneKind::BottomTabs {
-                    active_tab: BottomTab::Positions,
-                })),
-                b: Box::new(PaneCfg::Pane(PaneKind::OrderEntry)),
+                ratio: r2,
+                a: Box::new(PaneCfg::Pane(PaneKind::OrderBook(0))),
+                b: Box::new(PaneCfg::Pane(PaneKind::Watchlist)),
             }),
         }),
+        b: Box::new(PaneCfg::Split {
+            axis: Axis::Vertical,
+            ratio: r3,
+            a: Box::new(PaneCfg::Pane(PaneKind::BottomTabs {
+                active_tab: BottomTab::Positions,
+            })),
+            b: Box::new(PaneCfg::Pane(PaneKind::OrderEntry)),
+        }),
+    }
+}
+
+fn movable_pane_layout_ratios(ratios: &[f32]) -> &[f32] {
+    if ratios.len() >= 5 {
+        &ratios[1..]
+    } else {
+        ratios
     }
 }

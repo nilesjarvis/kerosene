@@ -9,7 +9,6 @@ pub(crate) const DEFAULT_PANE_CORNER_RADIUS: f32 = 6.0;
 
 #[derive(Debug, Clone)]
 pub(crate) enum PaneKind {
-    AccountSummary,
     Chart(ChartId),
     OrderBook(OrderBookId),
     Watchlist,
@@ -31,7 +30,7 @@ pub(crate) enum PaneKind {
 
 impl PaneKind {
     pub(crate) fn can_be_closed(&self) -> bool {
-        !matches!(self, Self::AccountSummary)
+        true
     }
 }
 
@@ -40,8 +39,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn account_summary_is_not_closeable() {
-        assert!(!PaneKind::AccountSummary.can_be_closed());
+    fn panes_are_closeable() {
         assert!(PaneKind::Chart(0).can_be_closed());
         assert!(PaneKind::OrderEntry.can_be_closed());
     }

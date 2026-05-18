@@ -92,7 +92,7 @@ impl TradingTerminal {
         container(content)
             .width(Fill)
             .height(Fill)
-            .padding([2, 12])
+            .padding([6, 12])
             .center_y(Fill)
             .into()
     }

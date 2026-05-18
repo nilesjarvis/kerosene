@@ -139,4 +139,24 @@ mod tests {
 
         assert!(TradingTerminal::pane_layout_to_configuration(&layout).is_none());
     }
+
+    #[test]
+    fn pane_layout_conversion_prunes_legacy_account_summary_sibling() {
+        let layout = PaneLayoutConfig::Split {
+            axis: AxisConfig::Horizontal,
+            ratio: 0.06,
+            a: Box::new(PaneLayoutConfig::Leaf(PaneKindConfig::AccountSummary)),
+            b: Box::new(PaneLayoutConfig::Leaf(PaneKindConfig::Chart {
+                chart_id: 7,
+            })),
+        };
+
+        let config = TradingTerminal::pane_layout_to_configuration(&layout)
+            .expect("movable pane sibling should remain");
+
+        assert!(matches!(
+            config,
+            pane_grid::Configuration::Pane(PaneKind::Chart(7))
+        ));
+    }
 }

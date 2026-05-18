@@ -38,10 +38,8 @@ impl TradingTerminal {
     }
 
     pub(crate) fn add_target_pane(&self) -> Option<pane_grid::Pane> {
-        let is_eligible = |kind: &PaneKind| !matches!(kind, PaneKind::AccountSummary);
-
         if let Some(pane) = self.focus
-            && self.panes.get(pane).is_some_and(is_eligible)
+            && self.panes.get(pane).is_some()
         {
             return Some(pane);
         }
@@ -56,7 +54,7 @@ impl TradingTerminal {
         }
 
         self.find_pane_matching(|kind| matches!(kind, PaneKind::Chart(_)))
-            .or_else(|| self.find_pane_matching(is_eligible))
+            .or_else(|| self.panes.iter().next().map(|(pane, _)| *pane))
     }
 
     pub(crate) fn add_target_title(&self) -> String {

@@ -28,7 +28,6 @@ fn bottom_tab_from_config(tab: BottomTabConfig) -> BottomTab {
 
 pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
     match kind {
-        PaneKind::AccountSummary => PaneKindConfig::AccountSummary,
         PaneKind::Chart(id) => PaneKindConfig::Chart { chart_id: *id },
         PaneKind::OrderBook(id) => PaneKindConfig::OrderBook { id: *id },
         PaneKind::LiveWatchlist(id) => PaneKindConfig::LiveWatchlist { id: *id },
@@ -53,7 +52,7 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
 
 pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
     match kind {
-        PaneKindConfig::AccountSummary => Some(PaneKind::AccountSummary),
+        PaneKindConfig::AccountSummary => None,
         PaneKindConfig::Chart { chart_id } => Some(PaneKind::Chart(*chart_id)),
         PaneKindConfig::OrderBook { id } => Some(PaneKind::OrderBook(*id)),
         PaneKindConfig::LiveWatchlist { id } => Some(PaneKind::LiveWatchlist(*id)),

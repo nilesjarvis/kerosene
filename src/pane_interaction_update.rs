@@ -126,7 +126,7 @@ impl TradingTerminal {
     }
 
     fn clamp_order_entry_resize_ratio(&self, split: pane_grid::Split, ratio: f32) -> f32 {
-        let base_min_size = self.account_summary_pane_min_size();
+        let base_min_size = self.pane_grid_min_size();
         let size = self.main_pane_grid_size();
         let pane_border_thickness = self.pane_border_thickness;
         let split_regions =
@@ -146,10 +146,8 @@ impl TradingTerminal {
             return ratio;
         }
 
-        let min_a =
-            subtree_min_length(a, axis, &self.panes, base_min_size, pane_border_thickness);
-        let min_b =
-            subtree_min_length(b, axis, &self.panes, base_min_size, pane_border_thickness);
+        let min_a = subtree_min_length(a, axis, &self.panes, base_min_size, pane_border_thickness);
+        let min_b = subtree_min_length(b, axis, &self.panes, base_min_size, pane_border_thickness);
         let axis_length = match axis {
             pane_grid::Axis::Horizontal => region.height,
             pane_grid::Axis::Vertical => region.width,
@@ -170,12 +168,16 @@ impl TradingTerminal {
         let size = self.main_window_size.unwrap_or(Size::new(1600.0, 960.0));
         Size::new(
             size.width,
-            (size.height - MAIN_STATUS_BAR_RESERVED_HEIGHT).max(1.0),
+            (size.height
+                - MAIN_STATUS_BAR_RESERVED_HEIGHT
+                - self.account_summary_bar_height()
+                - self.pane_border_thickness * 2.0)
+                .max(1.0),
         )
     }
 
     pub(crate) fn main_window_min_size(&self) -> Size {
-        let base_min_size = self.account_summary_pane_min_size();
+        let base_min_size = self.pane_grid_min_size();
         let layout = self.panes.layout();
 
         Size::new(
@@ -192,7 +194,9 @@ impl TradingTerminal {
                 &self.panes,
                 base_min_size,
                 self.pane_border_thickness,
-            ) + MAIN_STATUS_BAR_RESERVED_HEIGHT,
+            ) + self.pane_border_thickness * 2.0
+                + MAIN_STATUS_BAR_RESERVED_HEIGHT
+                + self.account_summary_bar_height(),
         )
     }
 
@@ -242,10 +246,20 @@ fn subtree_min_length(
 ) -> f32 {
     match node {
         pane_grid::Node::Split { axis, a, b, .. } => {
-            let min_a =
-                subtree_min_length(a, measured_axis, panes, base_min_size, pane_border_thickness);
-            let min_b =
-                subtree_min_length(b, measured_axis, panes, base_min_size, pane_border_thickness);
+            let min_a = subtree_min_length(
+                a,
+                measured_axis,
+                panes,
+                base_min_size,
+                pane_border_thickness,
+            );
+            let min_b = subtree_min_length(
+                b,
+                measured_axis,
+                panes,
+                base_min_size,
+                pane_border_thickness,
+            );
 
             if *axis == measured_axis {
                 min_a + min_b + pane_border_thickness
