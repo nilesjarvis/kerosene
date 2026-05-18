@@ -411,13 +411,15 @@ impl TradingTerminal {
             return self.stop_chase_for_limit(chase_id, reason);
         }
 
-        self.start_chase_reprice_modify(
-            chase_id,
-            rounded_best,
-            price_wire,
-            now,
-            "Chase repricing: modifying current order",
-        )
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+            chase.pending_best_price = Some(rounded_best);
+            chase.missing_open_order_refresh_requested = true;
+        }
+        self.order_status = Some((
+            "Chase verifying fills and open orders before modifying current order".into(),
+            false,
+        ));
+        self.refresh_account_data()
     }
 
     pub(crate) fn chase_modify_for_current_price_reconciliation(
@@ -439,10 +441,10 @@ impl TradingTerminal {
             );
         }
         if !chase_snapshot.can_reprice_now(now) || !self.can_send_chase_exchange_request(now) {
-            if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-                if chase.pending_best_price.is_none() {
-                    chase.pending_size_correction = true;
-                }
+            if let Some(chase) = self.chase_orders.get_mut(&chase_id)
+                && chase.pending_best_price.is_none()
+            {
+                chase.pending_size_correction = true;
             }
             return Task::none();
         }
@@ -511,7 +513,15 @@ impl TradingTerminal {
         self.order_status = Some((format!("{status} {oid}"), false));
 
         Task::perform(
-            modify_order(key.into(), oid, asset, is_buy, price_wire, size, reduce_only),
+            modify_order(
+                key.into(),
+                oid,
+                asset,
+                is_buy,
+                price_wire,
+                size,
+                reduce_only,
+            ),
             move |r| Message::ChaseModifyResult {
                 chase_id,
                 oid,
