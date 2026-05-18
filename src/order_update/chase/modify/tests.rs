@@ -25,6 +25,7 @@ fn chase() -> ChaseOrder {
         initial_price: 100.0,
         started_at,
         started_at_ms: 1_000,
+        adopted_resting: false,
         reprice_count: 1,
         pending_op: Some(ChasePendingOp::Modify { oid: 42 }),
         last_reprice_at: Some(started_at),

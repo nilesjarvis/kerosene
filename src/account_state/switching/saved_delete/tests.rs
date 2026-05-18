@@ -35,6 +35,7 @@ fn chase_order(account_address: &str) -> ChaseOrder {
         initial_price: 50_000.0,
         started_at: Instant::now(),
         started_at_ms: 1,
+        adopted_resting: false,
         reprice_count: 0,
         pending_op: None,
         last_reprice_at: None,

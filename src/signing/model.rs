@@ -91,6 +91,8 @@ pub struct ChaseOrder {
     /// Wall-clock start time for history snapshots. Live chase state is not
     /// persisted or resumed across restarts.
     pub started_at_ms: u64,
+    /// True when this chase adopted an already-resting exchange order.
+    pub adopted_resting: bool,
     /// Number of attempted cancel/place replacement cycles.
     pub reprice_count: u32,
     /// The exchange request currently in flight, if any.
@@ -243,6 +245,7 @@ impl std::fmt::Debug for ChaseOrder {
             .field("initial_price", &self.initial_price)
             .field("started_at", &self.started_at)
             .field("started_at_ms", &self.started_at_ms)
+            .field("adopted_resting", &self.adopted_resting)
             .field("reprice_count", &self.reprice_count)
             .field("pending_op", &self.pending_op)
             .field("last_reprice_at", &self.last_reprice_at)
