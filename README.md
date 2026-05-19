@@ -181,6 +181,35 @@ chmod +x target/Kerosene-*-*.AppImage
 
 If you prefer not to use the script, inspect `scripts/package.sh` for the exact commands. It calls `cargo-deb` and `appimagetool` for Linux packaging.
 
+## Package for macOS
+
+macOS packaging must be run on macOS. It uses built-in Apple command-line tools
+(`codesign`, `hdiutil`, `sips`, `ditto`, and `plutil`) plus Cargo to build a
+release binary, assemble `Kerosene.app`, apply an ad-hoc signature, and create a
+compressed DMG.
+
+```sh
+./scripts/package-macos.sh
+
+# Equivalent wrapper command
+./scripts/package.sh macos
+```
+
+The DMG is written to `target/Kerosene-<version>-macos-<arch>.dmg`, for example
+`target/Kerosene-0.1.3-macos-arm64.dmg` on Apple Silicon.
+
+No Apple Developer account is required for this packaging path. The output is
+ad-hoc signed, but it is not Developer ID signed or notarized. Macs receiving
+the DMG may show Gatekeeper warnings on first launch; users can open it from
+Finder's context menu or approve it in System Settings > Privacy & Security.
+
+Optional environment overrides:
+
+```sh
+BUNDLE_ID=com.example.kerosene ./scripts/package-macos.sh
+MACOSX_DEPLOYMENT_TARGET=12.0 ./scripts/package-macos.sh
+```
+
 ## Package for Windows
 
 Windows production builds use the MSVC target and emit a portable zip plus an MSI installer:
