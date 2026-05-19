@@ -1,5 +1,5 @@
 use super::CLIENT;
-use crate::hype_etf_state::{HypeEtfData, HypeEtfFund, HypeEtfTicker};
+use crate::hype_etf_state::{HypeEtfDailyFlow, HypeEtfData, HypeEtfFund, HypeEtfTicker};
 
 use flate2::read::GzDecoder;
 use serde::Deserialize;
@@ -45,7 +45,11 @@ async fn fetch_thyp() -> Result<HypeEtfFund, String> {
         .first()
         .ok_or_else(|| "THYP response did not include valuation history".to_string())?;
 
-    Ok(thyp_fund_from_response(latest, response.last_updated))
+    Ok(thyp_fund_from_response(
+        latest,
+        &response.data,
+        response.last_updated,
+    ))
 }
 
 async fn fetch_bhyp() -> Result<HypeEtfFund, String> {
@@ -104,7 +108,11 @@ fn decode_response_text(bytes: &[u8], label: &str) -> Result<String, String> {
     String::from_utf8(bytes.to_vec()).map_err(|e| format!("{label} response was not UTF-8: {e}"))
 }
 
-fn thyp_fund_from_response(latest: &ThypValuation, updated_at: Option<String>) -> HypeEtfFund {
+fn thyp_fund_from_response(
+    latest: &ThypValuation,
+    history: &[ThypValuation],
+    updated_at: Option<String>,
+) -> HypeEtfFund {
     let hype_exposure = latest
         .total_nav
         .zip(latest.index)
@@ -128,6 +136,7 @@ fn thyp_fund_from_response(latest: &ThypValuation, updated_at: Option<String>) -
         hype_reference_price: finite_positive(latest.index),
         staking_net_rate_pct: None,
         staking_current_pct: None,
+        daily_flows: thyp_daily_flows(history),
     }
 }
 
@@ -189,7 +198,39 @@ fn bhyp_fund_from_response(response: BhypResponse) -> HypeEtfFund {
         staking_current_pct: staking
             .and_then(|metrics| finite(metrics.current_percentage_of_assets_staked))
             .map(|value| value * 100.0),
+        // The BHYP feed currently exposes NAV history, but not historical share counts.
+        daily_flows: Vec::new(),
     }
+}
+
+fn thyp_daily_flows(history: &[ThypValuation]) -> Vec<HypeEtfDailyFlow> {
+    let mut history = history.iter().collect::<Vec<_>>();
+    history.sort_by(|a, b| a.valuation_date.cmp(&b.valuation_date));
+
+    let mut previous_units: Option<f64> = None;
+    let mut flows = Vec::new();
+    for valuation in history {
+        let current_units = finite_positive(valuation.total_units_outstanding);
+        if let (Some(previous_units), Some(current_units), Some(nav_per_share)) = (
+            previous_units,
+            current_units,
+            finite_positive(valuation.nav_per_share),
+        ) {
+            let amount_usd = (current_units - previous_units) * nav_per_share;
+            if amount_usd.is_finite() {
+                flows.push(HypeEtfDailyFlow {
+                    date: valuation.valuation_date.clone(),
+                    amount_usd,
+                });
+            }
+        }
+
+        if let Some(current_units) = current_units {
+            previous_units = Some(current_units);
+        }
+    }
+
+    flows
 }
 
 fn finite(value: Option<f64>) -> Option<f64> {
@@ -337,13 +378,61 @@ mod tests {
         )
         .expect("json");
 
-        let fund = thyp_fund_from_response(&response.data[0], response.last_updated);
+        let fund =
+            thyp_fund_from_response(&response.data[0], &response.data, response.last_updated);
 
         assert_eq!(fund.ticker, HypeEtfTicker::Thyp);
         assert_eq!(fund.net_assets_usd, Some(14240451.27));
         assert_eq!(fund.hype_reference_price, Some(45.57));
         assert_eq!(fund.median_spread_pct, Some(0.23121387));
         assert!(fund.hype_exposure.unwrap() > 312_000.0);
+        assert!(fund.daily_flows.is_empty());
+    }
+
+    #[test]
+    fn thyp_daily_flows_track_share_creations_in_date_order() {
+        let response: ThypResponse = serde_json::from_str(
+            r#"{
+                "success": true,
+                "data": [
+                    {
+                        "valuation_date": "2026-05-15",
+                        "nav_per_share": 25.86,
+                        "total_units_outstanding": 450000,
+                        "total_nav": 11636590.16,
+                        "nav_change_percentage": 0.271,
+                        "market_price": 25.856,
+                        "market_price_percentage_change": -0.324,
+                        "premium_discount": 0,
+                        "index": 44.69,
+                        "median_30d_spread": 0.0023273856,
+                        "daily_trading_volume": 224266,
+                        "trading_volume_30d": 188065
+                    },
+                    {
+                        "valuation_date": "2026-05-14",
+                        "nav_per_share": 25.79,
+                        "total_units_outstanding": 330000,
+                        "total_nav": 8509656.59,
+                        "nav_change_percentage": 14.014,
+                        "market_price": 25.94,
+                        "market_price_percentage_change": 14.551,
+                        "premium_discount": 0.5783,
+                        "index": 44.56,
+                        "median_30d_spread": 0.0022177866,
+                        "daily_trading_volume": 333704,
+                        "trading_volume_30d": 175998
+                    }
+                ]
+            }"#,
+        )
+        .expect("json");
+
+        let flows = thyp_daily_flows(&response.data);
+
+        assert_eq!(flows.len(), 1);
+        assert_eq!(flows[0].date, "2026-05-15");
+        assert!((flows[0].amount_usd - 3_103_200.0).abs() < 0.01);
     }
 
     #[test]
@@ -389,5 +478,6 @@ mod tests {
         assert!((fund.premium_discount_pct.unwrap() - 1.89).abs() < 0.0001);
         assert_eq!(fund.staking_net_rate_pct, Some(1.18125));
         assert_eq!(fund.staking_current_pct, Some(53.53022098741368));
+        assert!(fund.daily_flows.is_empty());
     }
 }

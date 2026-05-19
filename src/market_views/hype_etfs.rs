@@ -1,10 +1,12 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::{format_decimal_with_commas, format_size, format_usd};
-use crate::hype_etf_state::{HypeEtfFund, HypeEtfTotals, HypeEtfView};
+use crate::hype_etf_state::{HypeEtfDailyFlow, HypeEtfFund, HypeEtfTotals, HypeEtfView};
 use crate::message::Message;
 
-use iced::widget::{Column, button, column, container, responsive, row, rule, scrollable, text};
-use iced::{Color, Element, Fill, Theme, color};
+use iced::widget::{
+    Column, Space, button, column, container, responsive, row, rule, scrollable, text, tooltip,
+};
+use iced::{Color, Element, Fill, Length, Theme, color};
 
 // ---------------------------------------------------------------------------
 // HYPE ETF View
@@ -79,6 +81,20 @@ impl TradingTerminal {
                     self.hype_etfs.view,
                     data.totals_for(self.hype_etfs.view),
                     selected_funds.len(),
+                    available_width,
+                ));
+
+                let daily_flows = data.daily_flows_for(self.hype_etfs.view);
+                let missing_flow_labels = selected_funds
+                    .iter()
+                    .filter(|fund| fund.daily_flows.is_empty())
+                    .map(|fund| fund.ticker.label())
+                    .collect::<Vec<_>>();
+                body = body.push(daily_inflow_chart(
+                    &theme,
+                    self.hype_etfs.view,
+                    &daily_flows,
+                    &missing_flow_labels,
                     available_width,
                 ));
 
@@ -194,6 +210,200 @@ fn summary_section(
     ]
     .spacing(6)
     .into()
+}
+
+fn daily_inflow_chart(
+    theme: &Theme,
+    view: HypeEtfView,
+    flows: &[HypeEtfDailyFlow],
+    missing_flow_labels: &[&'static str],
+    available_width: f32,
+) -> Element<'static, Message> {
+    let max_bars = if available_width >= 560.0 {
+        30
+    } else if available_width >= 360.0 {
+        18
+    } else {
+        10
+    };
+    let bars = latest_daily_flows(flows, max_bars);
+    let net_flow = bars.iter().map(|flow| flow.amount_usd).sum::<f64>();
+
+    let header = row![
+        text(daily_inflow_title(view))
+            .size(11)
+            .color(theme.palette().text)
+            .width(Fill),
+        text(format_signed_usd_amount(net_flow))
+            .size(11)
+            .font(iced::Font::MONOSPACE)
+            .color(signed_color(theme, net_flow)),
+    ]
+    .spacing(8)
+    .align_y(iced::Alignment::Center);
+
+    let mut section = column![header].spacing(6);
+    if bars.is_empty() {
+        section = section.push(
+            text("No daily inflow history")
+                .size(11)
+                .color(theme.extended_palette().background.weak.text),
+        );
+    } else {
+        section = section.push(flow_bars(theme, &bars));
+        if let Some((first, last)) = bars.first().zip(bars.last()) {
+            section = section.push(
+                row![
+                    text(short_flow_date(&first.date))
+                        .size(10)
+                        .font(iced::Font::MONOSPACE)
+                        .color(theme.extended_palette().background.weak.text)
+                        .width(Fill),
+                    text(short_flow_date(&last.date))
+                        .size(10)
+                        .font(iced::Font::MONOSPACE)
+                        .color(theme.extended_palette().background.weak.text),
+                ]
+                .width(Fill)
+                .spacing(8),
+            );
+        }
+    }
+
+    if !missing_flow_labels.is_empty() {
+        section = section.push(
+            text(format!(
+                "Missing flow history: {}",
+                missing_flow_labels.join(", ")
+            ))
+            .size(10)
+            .color(theme.extended_palette().background.weak.text),
+        );
+    }
+
+    container(section)
+        .width(Fill)
+        .padding([8, 10])
+        .style(move |theme: &Theme| container::Style {
+            background: Some(theme.extended_palette().background.weak.color.into()),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: Color {
+                    a: 0.22,
+                    ..theme.extended_palette().background.strong.color
+                },
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+fn daily_inflow_title(view: HypeEtfView) -> String {
+    if view == HypeEtfView::All {
+        "Combined Daily Inflow".to_string()
+    } else {
+        format!("{} Daily Inflow", view.label())
+    }
+}
+
+fn latest_daily_flows(flows: &[HypeEtfDailyFlow], max_bars: usize) -> Vec<HypeEtfDailyFlow> {
+    flows
+        .iter()
+        .rev()
+        .take(max_bars)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
+fn flow_bars(theme: &Theme, flows: &[HypeEtfDailyFlow]) -> Element<'static, Message> {
+    let max_abs = flows
+        .iter()
+        .map(|flow| flow.amount_usd.abs())
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
+    let max_bar_height = 42.0;
+    let axis_color = Color {
+        a: 0.24,
+        ..theme.palette().text
+    };
+
+    let mut chart = row![].spacing(3).width(Fill);
+    for flow in flows.iter().cloned() {
+        let scaled = ((flow.amount_usd.abs() / max_abs) as f32 * max_bar_height).max(0.0);
+        let fill_height = if flow.amount_usd.abs() > 0.0 {
+            scaled.max(2.0)
+        } else {
+            1.0
+        };
+        let positive_height = if flow.amount_usd >= 0.0 {
+            fill_height
+        } else {
+            0.0
+        };
+        let negative_height = if flow.amount_usd < 0.0 {
+            fill_height
+        } else {
+            0.0
+        };
+        let bar_color = if flow.amount_usd == 0.0 {
+            axis_color
+        } else {
+            signed_color(theme, flow.amount_usd)
+        };
+        let tooltip_text = format!(
+            "{}\n{}",
+            flow.date,
+            format_signed_usd_amount(flow.amount_usd)
+        );
+
+        let bar = column![
+            container(Space::new()).height(Length::Fixed(max_bar_height - positive_height)),
+            flow_bar_segment(positive_height, bar_color),
+            flow_bar_segment(1.0, axis_color),
+            flow_bar_segment(negative_height, bar_color),
+            container(Space::new()).height(Length::Fixed(max_bar_height - negative_height)),
+        ]
+        .width(Fill)
+        .height(Length::Fixed(max_bar_height * 2.0 + 1.0));
+
+        let wrapped_bar = tooltip(
+            bar,
+            text(tooltip_text).size(10).font(iced::Font::MONOSPACE),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .style(|theme: &Theme| container::Style {
+            background: Some(theme.extended_palette().background.strong.color.into()),
+            text_color: Some(theme.palette().text),
+            border: iced::Border {
+                radius: 3.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        chart = chart.push(wrapped_bar);
+    }
+
+    container(chart)
+        .width(Fill)
+        .height(Length::Fixed(88.0))
+        .into()
+}
+
+fn flow_bar_segment(height: f32, color: Color) -> Element<'static, Message> {
+    container(Space::new())
+        .width(Fill)
+        .height(Length::Fixed(height))
+        .style(move |_| container::Style {
+            background: Some(color.into()),
+            ..Default::default()
+        })
+        .into()
 }
 
 fn fund_section(
@@ -403,4 +613,18 @@ fn format_pct(value: Option<f64>) -> String {
         .filter(|value| value.is_finite())
         .map(|value| format!("{value:+.2}%"))
         .unwrap_or_else(|| "n/a".to_string())
+}
+
+fn format_signed_usd_amount(value: f64) -> String {
+    let value = if value.abs() < 0.005 { 0.0 } else { value };
+    let formatted = format_usd(&format!("{value:.2}"));
+    if value > 0.0 {
+        format!("+{formatted}")
+    } else {
+        formatted
+    }
+}
+
+fn short_flow_date(date: &str) -> String {
+    date.get(5..).unwrap_or(date).replace('-', "/")
 }
