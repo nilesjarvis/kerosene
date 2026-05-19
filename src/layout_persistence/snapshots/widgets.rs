@@ -121,6 +121,7 @@ impl TradingTerminal {
             .into_iter()
             .map(|instance| config::PositioningInfoConfig {
                 id: instance.id,
+                page: instance.page,
                 symbol: if self.symbol_key_is_hidden(&instance.symbol) {
                     self.fallback_unmuted_symbol_key().unwrap_or_default()
                 } else {

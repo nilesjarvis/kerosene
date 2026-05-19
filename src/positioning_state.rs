@@ -13,7 +13,7 @@ pub(crate) const POSITIONING_INFO_LIMIT: u32 = 30;
 pub(crate) const POSITIONING_INFO_OFFSET: u32 = 0;
 pub(crate) const POSITIONING_CHANGE_ROW_LIMIT: usize = 500;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub(crate) enum PositioningInfoPage {
     #[default]
     Positions,
@@ -26,7 +26,7 @@ impl PositioningInfoPage {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Positions => "Positions",
-            Self::Change => "Change",
+            Self::Change => "\u{0394} Change",
         }
     }
 }
@@ -263,6 +263,11 @@ mod tests {
             "notional"
         );
         assert_eq!(PositioningInfoSortField::Size.api_field(), "notional");
+    }
+
+    #[test]
+    fn positioning_change_nav_label_uses_delta_symbol() {
+        assert_eq!(PositioningInfoPage::Change.label(), "\u{0394} Change");
     }
 
     #[test]

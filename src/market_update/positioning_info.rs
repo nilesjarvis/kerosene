@@ -25,6 +25,7 @@ impl TradingTerminal {
                     }
                     instance.page = page;
                 }
+                self.persist_config();
                 self.request_positioning_info_refresh(id, false)
             }
             Message::PositioningInfoSearchChanged(id, query) => {

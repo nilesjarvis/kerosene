@@ -73,6 +73,14 @@ pub(crate) struct ChartInstance {
     pub(crate) quick_order: Option<QuickOrderForm>,
     /// Remember the last quick order type (true=limit, false=market).
     pub(crate) last_quick_order_is_limit: bool,
+    /// Symbol the cached quick-order size belongs to.
+    pub(crate) last_quick_order_symbol: String,
+    /// Last quick-order quantity text for reopening the form on the same symbol.
+    pub(crate) last_quick_order_quantity: String,
+    /// Last quick-order quantity denomination.
+    pub(crate) last_quick_order_quantity_is_usd: bool,
+    /// Last quick-order percentage slider value.
+    pub(crate) last_quick_order_percentage: f32,
     /// User-drawn annotations (persisted).
     pub(crate) annotations: Vec<Annotation>,
     pub(crate) next_annotation_id: AnnotationId,
@@ -133,6 +141,10 @@ impl ChartInstance {
             editor_keyboard_selected: false,
             quick_order: None,
             last_quick_order_is_limit: true,
+            last_quick_order_symbol: String::new(),
+            last_quick_order_quantity: String::new(),
+            last_quick_order_quantity_is_usd: false,
+            last_quick_order_percentage: 0.0,
             annotations: Vec::new(),
             next_annotation_id: 0,
             show_liquidations: false,
@@ -157,7 +169,38 @@ impl ChartInstance {
         }
     }
 
+    pub(crate) fn quick_order_reopen_values(
+        &self,
+        fallback_quantity_is_usd: bool,
+    ) -> (String, bool, f32, bool) {
+        if let Some(form) = &self.quick_order {
+            return (
+                form.quantity.clone(),
+                form.quantity_is_usd,
+                form.percentage,
+                form.is_limit,
+            );
+        }
+
+        if self.last_quick_order_symbol == self.symbol {
+            return (
+                self.last_quick_order_quantity.clone(),
+                self.last_quick_order_quantity_is_usd,
+                self.last_quick_order_percentage,
+                self.last_quick_order_is_limit,
+            );
+        }
+
+        (
+            String::new(),
+            fallback_quantity_is_usd,
+            0.0,
+            self.last_quick_order_is_limit,
+        )
+    }
+
     pub(crate) fn set_quick_order(&mut self, form: QuickOrderForm) {
+        self.remember_quick_order_form(&form);
         self.chart.quick_order_limit_price = form.is_limit.then_some(form.price);
         self.chart.quick_order_line_phase = 0.0;
         self.quick_order = Some(form);
@@ -165,6 +208,7 @@ impl ChartInstance {
     }
 
     pub(crate) fn clear_quick_order(&mut self) {
+        self.remember_current_quick_order();
         self.quick_order = None;
         self.chart.quick_order_open = false;
         self.chart.quick_order_limit_price = None;
@@ -172,11 +216,36 @@ impl ChartInstance {
     }
 
     pub(crate) fn take_quick_order(&mut self) -> Option<QuickOrderForm> {
+        self.remember_current_quick_order();
         let form = self.quick_order.take();
         self.chart.quick_order_open = false;
         self.chart.quick_order_limit_price = None;
         self.chart.quick_order_line_phase = 0.0;
         form
+    }
+
+    fn remember_current_quick_order(&mut self) {
+        let Some(form) = self.quick_order.as_ref() else {
+            return;
+        };
+        let quantity = form.quantity.clone();
+        let quantity_is_usd = form.quantity_is_usd;
+        let percentage = form.percentage;
+        let is_limit = form.is_limit;
+
+        self.last_quick_order_symbol = self.symbol.clone();
+        self.last_quick_order_quantity = quantity;
+        self.last_quick_order_quantity_is_usd = quantity_is_usd;
+        self.last_quick_order_percentage = percentage;
+        self.last_quick_order_is_limit = is_limit;
+    }
+
+    fn remember_quick_order_form(&mut self, form: &QuickOrderForm) {
+        self.last_quick_order_symbol = self.symbol.clone();
+        self.last_quick_order_quantity = form.quantity.clone();
+        self.last_quick_order_quantity_is_usd = form.quantity_is_usd;
+        self.last_quick_order_percentage = form.percentage;
+        self.last_quick_order_is_limit = form.is_limit;
     }
 
     pub(crate) fn advance_quick_order_limit_line(&mut self) {
@@ -208,6 +277,10 @@ impl ChartInstance {
             editor_keyboard_selected: false,
             quick_order: None,
             last_quick_order_is_limit: true,
+            last_quick_order_symbol: String::new(),
+            last_quick_order_quantity: String::new(),
+            last_quick_order_quantity_is_usd: false,
+            last_quick_order_percentage: 0.0,
             annotations: Vec::new(),
             next_annotation_id: 0,
             show_liquidations: false,
@@ -358,6 +431,53 @@ mod tests {
         instance.clear_quick_order();
         assert!(!instance.chart.quick_order_open);
         assert_eq!(instance.chart.quick_order_limit_price, None);
+    }
+
+    #[test]
+    fn quick_order_reopen_values_preserve_cleared_form_for_same_symbol() {
+        let mut instance = instance();
+
+        instance.set_quick_order(QuickOrderForm {
+            price: 100.0,
+            quantity: "2.5".to_string(),
+            quantity_is_usd: false,
+            percentage: 25.0,
+            is_limit: false,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        });
+        instance.clear_quick_order();
+
+        assert_eq!(
+            instance.quick_order_reopen_values(true),
+            ("2.5".to_string(), false, 25.0, false)
+        );
+    }
+
+    #[test]
+    fn quick_order_reopen_values_drop_size_after_symbol_change() {
+        let mut instance = instance();
+
+        instance.set_quick_order(QuickOrderForm {
+            price: 100.0,
+            quantity: "2.5".to_string(),
+            quantity_is_usd: false,
+            percentage: 25.0,
+            is_limit: false,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        });
+        instance.clear_quick_order();
+        instance.symbol = "ETH".to_string();
+
+        assert_eq!(
+            instance.quick_order_reopen_values(true),
+            (String::new(), true, 0.0, false)
+        );
     }
 
     #[test]

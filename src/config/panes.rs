@@ -1,7 +1,7 @@
 use crate::annotations::AnnotationConfig;
 use crate::positioning_state::{
-    PositioningInfoChangeSortField, PositioningInfoChangeTimeframe, PositioningInfoSide,
-    PositioningInfoSortField,
+    PositioningInfoChangeSortField, PositioningInfoChangeTimeframe, PositioningInfoPage,
+    PositioningInfoSide, PositioningInfoSortField,
 };
 use crate::spaghetti::ComparisonColorMode;
 use serde::{Deserialize, Serialize};
@@ -138,6 +138,8 @@ pub struct OrderBookConfig {
 pub struct PositioningInfoConfig {
     #[serde(default)]
     pub id: u64,
+    #[serde(default)]
+    pub page: PositioningInfoPage,
     #[serde(default = "default_symbol")]
     pub symbol: String,
     #[serde(default)]
@@ -210,6 +212,7 @@ fn default_positioning_info_change_sort_direction() -> super::SortDirection {
 mod tests {
     use super::{OrderBookConfig, OrderBookDisplayModeConfig, PositioningInfoConfig};
     use crate::config::SortDirection;
+    use crate::positioning_state::PositioningInfoPage;
 
     #[test]
     fn order_book_config_defaults_to_depth_list_display_mode() {
@@ -239,5 +242,16 @@ mod tests {
 
         assert_eq!(config.sort_direction, SortDirection::Descending);
         assert_eq!(config.change_sort_direction, SortDirection::Descending);
+        assert_eq!(config.page, PositioningInfoPage::Positions);
+    }
+
+    #[test]
+    fn positioning_info_config_round_trips_active_page() {
+        let config: PositioningInfoConfig =
+            serde_json::from_str(r#"{"id":7,"symbol":"HYPE","page":"Change"}"#).expect("config");
+
+        assert_eq!(config.page, PositioningInfoPage::Change);
+        let rendered = serde_json::to_string(&config).expect("json");
+        assert!(rendered.contains(r#""page":"Change""#));
     }
 }

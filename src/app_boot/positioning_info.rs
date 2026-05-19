@@ -20,6 +20,7 @@ impl TradingTerminal {
             };
             let mut instance =
                 PositioningInfoInstance::new(config.id, self.visible_positioning_symbol(&symbol));
+            instance.page = config.page;
             instance.side = config.side;
             instance.sort_field = config.sort_field;
             instance.sort_direction = config.sort_direction;
