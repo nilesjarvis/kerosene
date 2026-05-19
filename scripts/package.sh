@@ -29,13 +29,14 @@ check_free_space() {
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [deb|appimage|all]
+Usage: $(basename "$0") [deb|appimage|macos|all]
 
 Build distributable packages for Kerosene.
 
 Commands:
   deb        Build a .deb package (requires cargo-deb)
   appimage   Build an .AppImage (requires appimagetool)
+  macos      Build a macOS .dmg (requires macOS built-in tooling)
   all        Build .deb and .AppImage (default)
 
 Options:
@@ -46,6 +47,9 @@ Output files are placed in target/.
 
 Windows release artifacts are built on Windows/MSVC with:
   pwsh ./scripts/package-windows.ps1
+
+macOS release artifacts are built on macOS with:
+  ./scripts/package-macos.sh
 EOF
     exit 0
 }
@@ -157,6 +161,7 @@ case "${1:-all}" in
     -h|--help) usage ;;
     deb)       build_deb ;;
     appimage)  build_appimage ;;
+    macos)     "$ROOT/scripts/package-macos.sh" ;;
     all)       build_deb; build_appimage ;;
     *)
         error "Unknown command: $1"
