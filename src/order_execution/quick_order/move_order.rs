@@ -52,7 +52,7 @@ fn moved_order_reduce_only(
     market_type: MarketType,
     reduce_only: Option<bool>,
 ) -> Result<bool, &'static str> {
-    if market_type == MarketType::Spot {
+    if TradingTerminal::market_type_is_spot_like(market_type) {
         return Ok(false);
     }
     reduce_only.ok_or(
@@ -109,10 +109,6 @@ impl TradingTerminal {
             self.order_status = Some((format!("Symbol '{}' not found", coin), true));
             return Task::none();
         };
-        if sym.market_type == MarketType::Outcome {
-            self.outcome_read_only_status("order moving");
-            return Task::none();
-        }
         let asset = sym.asset_index;
         let sz_decimals = sym.sz_decimals;
         let reduce_only = match moved_order_reduce_only(sym.market_type, order.reduce_only) {
@@ -123,7 +119,7 @@ impl TradingTerminal {
             }
         };
 
-        let is_spot = sym.market_type == MarketType::Spot;
+        let is_spot = Self::market_type_is_spot_like(sym.market_type);
         let Some((rounded_price, new_price_str)) =
             moved_order_price_wire(new_price, original_px, sz_decimals, is_spot)
         else {
@@ -133,6 +129,12 @@ impl TradingTerminal {
             }
             return Task::none();
         };
+        if sym.market_type == MarketType::Outcome
+            && let Err(e) = Self::validate_outcome_order_price(rounded_price)
+        {
+            self.order_status = Some((e, true));
+            return Task::none();
+        }
         if let Err(e) = self.validate_order_price_band(&coin, rounded_price) {
             self.order_status = Some((e, true));
             return Task::none();

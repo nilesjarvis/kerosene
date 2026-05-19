@@ -53,6 +53,10 @@ fn is_stable(coin: &str) -> bool {
 fn mid_candidates(coin: &str) -> Vec<String> {
     let mut out = vec![coin.to_string()];
 
+    if let Some(encoding) = coin.strip_prefix('+') {
+        out.push(format!("#{encoding}"));
+    }
+
     if let Some(stripped) = coin.strip_prefix('U') {
         out.push(stripped.to_string());
     }
@@ -120,6 +124,17 @@ mod tests {
         assert_eq!(
             estimate_spot_equity(&[balance("PURR", "2", "bad")], &mids),
             None
+        );
+    }
+
+    #[test]
+    fn outcome_balance_uses_trade_coin_mid() {
+        let mut mids = HashMap::new();
+        mids.insert("#650".to_string(), 0.42);
+
+        assert_eq!(
+            estimate_spot_equity(&[balance("+650", "10", "1")], &mids),
+            Some(4.2)
         );
     }
 }

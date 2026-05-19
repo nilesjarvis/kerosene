@@ -1,4 +1,5 @@
 use crate::account::{AccountData, ClearinghouseState};
+use crate::api::USDH_TOKEN_INDEX;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{format_decimal_with_commas, format_price, parse_number};
 use crate::market_state::{OrderBookId, OrderBookSymbolMode};
@@ -112,7 +113,7 @@ impl TradingTerminal {
         self.order_percentage = value;
         if self.is_outcome_coin(&self.active_symbol) {
             self.order_quantity_is_usd = false;
-            self.order_quantity = Self::sanitize_outcome_quantity_input(&self.order_quantity);
+            self.update_order_quantity_for_percentage(value);
             return;
         }
 
@@ -209,7 +210,11 @@ impl TradingTerminal {
             });
         }
 
-        let available_margin = self.visible_available_margin_usdc(data)?;
+        let available_margin = if self.is_outcome_coin(&self.active_symbol) {
+            data.available_margin_for_token(USDH_TOKEN_INDEX)?
+        } else {
+            self.visible_available_margin_usdc(data)?
+        };
         if !available_margin.is_finite() || available_margin <= 0.0 {
             return None;
         }

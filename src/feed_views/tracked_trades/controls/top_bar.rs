@@ -10,6 +10,19 @@ impl TradingTerminal {
     pub(crate) fn view_tracked_trades_top_bar(&self, now_ms: u64) -> Element<'_, Message> {
         let theme = self.theme();
         let labeled_addresses = self.labeled_wallet_addresses();
+        let tracked_addresses = self.tracked_trade_subscription_addresses();
+        let muted_count = labeled_addresses
+            .len()
+            .saturating_sub(tracked_addresses.len());
+        let wallet_count_label = if muted_count > 0 {
+            format!(
+                "{} wallets ({} muted)",
+                tracked_addresses.len(),
+                muted_count
+            )
+        } else {
+            format!("{} wallets", tracked_addresses.len())
+        };
 
         let tracked_status_label = self.tracked_trades_connection_label(now_ms);
         let tracked_status_detail = self.tracked_trades_connection_detail(now_ms);
@@ -21,7 +34,7 @@ impl TradingTerminal {
                 tracked_status_detail,
                 status_color,
             ),
-            text(format!("{} wallets", labeled_addresses.len()))
+            text(wallet_count_label)
                 .size(10)
                 .color(theme.extended_palette().background.weak.text),
             Space::new().width(Fill),

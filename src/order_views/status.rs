@@ -47,7 +47,7 @@ impl TradingTerminal {
     ) -> Column<'a, Message> {
         if active_is_outcome {
             form.push(
-                text("Outcome trading is intentionally disabled in this read-only build")
+                text("Outcome orders use USDH, probability prices, and whole-contract sizes")
                     .size(10)
                     .color(color!(0x666666)),
             )

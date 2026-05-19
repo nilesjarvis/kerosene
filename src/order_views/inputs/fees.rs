@@ -20,7 +20,7 @@ impl TradingTerminal {
         let theme = self.theme();
         if active_is_outcome {
             return form.push(
-                text("Est. Fees: unavailable for read-only outcomes")
+                text("Est. Fees: outcome fees apply on close/settlement")
                     .size(10)
                     .color(theme.extended_palette().background.weak.text)
                     .width(Fill)

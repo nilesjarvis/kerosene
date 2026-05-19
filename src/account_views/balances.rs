@@ -52,7 +52,9 @@ impl TradingTerminal {
         let rows = non_zero
             .iter()
             .fold(iced::widget::Column::new().spacing(2), |col, bal| {
-                col.push(balance_row(bal, &theme))
+                let display_coin = self.display_coin_for_spot_balance(&bal.coin);
+                let outcome_sell_coin = self.outcome_trade_coin_for_balance_coin(&bal.coin);
+                col.push(balance_row(bal, display_coin, outcome_sell_coin, &theme))
             });
 
         balances_rows_table(rows)

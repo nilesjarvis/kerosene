@@ -46,6 +46,18 @@ fn balance_amounts_mark_invalid_source_values() {
             "3.000000".to_string()
         )
     );
+    assert_eq!(
+        balance_amounts("+650", Some(10.9), Some(7.2), Some(3.0)),
+        ("10".to_string(), "7".to_string(), "3".to_string())
+    );
+    assert_eq!(
+        balance_amounts("USDH", Some(10.0), Some(7.0), Some(3.0)),
+        (
+            "$10.00".to_string(),
+            "$7.00".to_string(),
+            "$3.00".to_string()
+        )
+    );
 }
 
 #[test]

@@ -223,10 +223,17 @@ impl TradingTerminal {
     }
 
     pub(crate) fn account_spot_balance_is_hidden(&self, data: &AccountData, coin: &str) -> bool {
+        let outcome_trade_coin = self.outcome_trade_coin_for_balance_coin(coin);
         if data.is_portfolio_margin() {
             self.is_ticker_muted(coin)
+                || outcome_trade_coin
+                    .as_deref()
+                    .is_some_and(|trade_coin| self.is_ticker_muted(trade_coin))
         } else {
-            self.symbol_key_is_hidden(coin)
+            outcome_trade_coin
+                .as_deref()
+                .map(|trade_coin| self.symbol_key_is_hidden(trade_coin))
+                .unwrap_or_else(|| self.symbol_key_is_hidden(coin))
         }
     }
 

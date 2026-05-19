@@ -1,3 +1,4 @@
+use crate::api::USDH_TOKEN_INDEX;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{self, format_usd, order_type_button};
 use crate::message::Message;
@@ -85,7 +86,13 @@ impl TradingTerminal {
         let available_margin = self
             .account_data
             .as_ref()
-            .map(|data| self.visible_available_margin_usdc(data))
+            .map(|data| {
+                if self.is_outcome_coin(&self.active_symbol) {
+                    data.available_margin_for_token(USDH_TOKEN_INDEX)
+                } else {
+                    self.visible_available_margin_usdc(data)
+                }
+            })
             .unwrap_or(Some(0.0));
         let weak_color = theme.extended_palette().background.weak.text;
         let available_color = if available_margin.is_some() {

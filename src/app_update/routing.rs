@@ -96,6 +96,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::OrderQuantityChanged(_)
         | Message::ToggleOrderDenomination
         | Message::OrderPercentageChanged(_)
+        | Message::PrefillOutcomeSell(_)
         | Message::SetOrderKind(_)
         | Message::ToggleReduceOnly
         | Message::TogglePresetsMenu
@@ -284,6 +285,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WalletTrackerInputChanged(_)
         | Message::WalletTrackerLabelInputChanged(_)
         | Message::WalletTrackerAdd
+        | Message::WalletTrackerMute(_)
+        | Message::WalletTrackerUnmute(_)
         | Message::WalletTrackerRemove(_)
         | Message::WalletTrackerLabelChanged(_, _)
         | Message::WalletTrackerRefresh

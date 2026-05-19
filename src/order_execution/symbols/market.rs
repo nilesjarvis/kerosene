@@ -39,6 +39,10 @@ fn resolve_live_mid_from_candidates(
 }
 
 impl TradingTerminal {
+    pub(crate) fn market_type_is_spot_like(market_type: MarketType) -> bool {
+        matches!(market_type, MarketType::Spot | MarketType::Outcome)
+    }
+
     pub(crate) fn market_type_for_symbol(&self, coin: &str) -> Option<MarketType> {
         let _theme = self.theme();
         self.exchange_symbols
@@ -73,6 +77,9 @@ impl TradingTerminal {
         };
 
         push_unique(symbol.to_string());
+        if let Some(encoding) = symbol.strip_prefix('+') {
+            push_unique(format!("#{encoding}"));
+        }
         if let Some((dex, suffix)) = symbol.split_once(':') {
             if let Some(stripped) = suffix.strip_prefix('U') {
                 push_unique(format!("{dex}:{stripped}"));

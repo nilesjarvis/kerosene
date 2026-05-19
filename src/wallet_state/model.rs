@@ -71,6 +71,7 @@ pub(crate) struct WalletTrackerState {
     pub(crate) add_input: String,
     pub(crate) add_label_input: String,
     pub(crate) tracked_addresses: Vec<String>,
+    pub(crate) muted_addresses: Vec<String>,
     pub(crate) rows: HashMap<String, WalletTrackerRow>,
     pub(crate) core_refresh_queue: Vec<String>,
     pub(crate) order_refresh_queue: Vec<String>,
@@ -93,6 +94,14 @@ impl WalletTrackerState {
                 tracked_addresses.push(address);
             }
         }
+        let mut muted_addresses = Vec::new();
+        for address in &cfg.muted_addresses {
+            if let Some(address) = normalize_wallet_address_value(address)
+                && !muted_addresses.contains(&address)
+            {
+                muted_addresses.push(address);
+            }
+        }
 
         Self {
             window_id: None,
@@ -104,10 +113,29 @@ impl WalletTrackerState {
             add_input: String::new(),
             add_label_input: String::new(),
             tracked_addresses,
+            muted_addresses,
             rows: HashMap::new(),
             core_refresh_queue: Vec::new(),
             order_refresh_queue: Vec::new(),
         }
+    }
+
+    pub(crate) fn is_muted(&self, address: &str) -> bool {
+        self.muted_addresses.iter().any(|muted| muted == address)
+    }
+
+    pub(crate) fn mute_address(&mut self, address: &str) -> bool {
+        if self.is_muted(address) {
+            return false;
+        }
+        self.muted_addresses.push(address.to_string());
+        true
+    }
+
+    pub(crate) fn unmute_address(&mut self, address: &str) -> bool {
+        let original_len = self.muted_addresses.len();
+        self.muted_addresses.retain(|muted| muted != address);
+        self.muted_addresses.len() != original_len
     }
 
     pub(crate) fn to_config(
@@ -128,6 +156,7 @@ impl WalletTrackerState {
 
         WalletTrackerConfig {
             tracked_addresses: self.tracked_addresses.clone(),
+            muted_addresses: self.muted_addresses.clone(),
             wallets,
             open: self.open,
             width: self.width,

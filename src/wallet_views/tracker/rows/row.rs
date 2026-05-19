@@ -60,7 +60,7 @@ impl TradingTerminal {
                     .width(95),
                 container(state_el).width(90),
                 Space::new().width(Fill),
-                wallet_tracker_actions(address.clone()),
+                wallet_tracker_actions(address.clone(), self.wallet_tracker.is_muted(&address)),
             ]
             .spacing(8)
             .align_y(iced::Alignment::Center),

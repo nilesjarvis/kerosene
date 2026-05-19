@@ -210,6 +210,14 @@ fn moved_order_reduce_only_ignores_missing_spot_metadata() {
 }
 
 #[test]
+fn moved_order_reduce_only_ignores_missing_outcome_metadata() {
+    assert_eq!(
+        moved_order_reduce_only(MarketType::Outcome, None),
+        Ok(false)
+    );
+}
+
+#[test]
 fn pending_move_context_reuses_captured_agent_key_for_same_account() {
     let context = PendingMoveOrderContext::new(
         "0xabc0000000000000000000000000000000000000",

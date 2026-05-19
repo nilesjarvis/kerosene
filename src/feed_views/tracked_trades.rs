@@ -12,6 +12,7 @@ impl TradingTerminal {
         let theme = self.theme();
         let now_ms = Self::now_ms();
         let labeled_addresses = self.labeled_wallet_addresses();
+        let tracked_addresses = self.tracked_trade_subscription_addresses();
 
         if self.hydromancer_api_key.trim().is_empty() {
             let empty_state = container(
@@ -27,6 +28,16 @@ impl TradingTerminal {
         if labeled_addresses.is_empty() {
             let empty_state =
                 container(text("Add wallet labels in Wallet Tracker").color(theme.palette().text))
+                    .width(Fill)
+                    .height(Fill)
+                    .center_x(Fill)
+                    .center_y(Fill);
+            return empty_state.into();
+        }
+
+        if tracked_addresses.is_empty() {
+            let empty_state =
+                container(text("All labeled wallets are muted").color(theme.palette().text))
                     .width(Fill)
                     .height(Fill)
                     .center_x(Fill)

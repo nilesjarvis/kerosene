@@ -14,6 +14,8 @@ impl TradingTerminal {
             message @ (Message::WalletTrackerInputChanged(_)
             | Message::WalletTrackerLabelInputChanged(_)
             | Message::WalletTrackerAdd
+            | Message::WalletTrackerMute(_)
+            | Message::WalletTrackerUnmute(_)
             | Message::WalletTrackerRemove(_)
             | Message::WalletTrackerLabelChanged(_, _)) => {
                 self.update_wallet_tracker_entries(message)

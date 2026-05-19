@@ -140,6 +140,7 @@ impl Default for KeroseneConfig {
             spaghetti_charts: Vec::new(),
             wallet_tracker: WalletTrackerConfig {
                 tracked_addresses: Vec::new(),
+                muted_addresses: Vec::new(),
                 wallets: Vec::new(),
                 open: false,
                 width: default_wallet_tracker_width(),

@@ -35,6 +35,16 @@ impl TradingTerminal {
         added
     }
 
+    pub(crate) fn tracked_trade_subscription_addresses_from_address_book(
+        address_book: &HashMap<String, AddressBookEntry>,
+        muted_addresses: &[String],
+    ) -> Vec<String> {
+        Self::labeled_wallet_addresses_from_address_book(address_book)
+            .into_iter()
+            .filter(|address| !muted_addresses.contains(address))
+            .collect()
+    }
+
     pub(crate) fn sync_labeled_addresses_to_wallet_tracker(&mut self) -> Vec<String> {
         let added = Self::add_labeled_addresses_to_wallet_tracker(
             &mut self.wallet_tracker.tracked_addresses,
@@ -48,5 +58,12 @@ impl TradingTerminal {
 
     pub(crate) fn labeled_wallet_addresses(&self) -> Vec<String> {
         Self::labeled_wallet_addresses_from_address_book(&self.address_book)
+    }
+
+    pub(crate) fn tracked_trade_subscription_addresses(&self) -> Vec<String> {
+        Self::tracked_trade_subscription_addresses_from_address_book(
+            &self.address_book,
+            &self.wallet_tracker.muted_addresses,
+        )
     }
 }

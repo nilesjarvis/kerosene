@@ -20,7 +20,7 @@ impl TradingTerminal {
         let active_is_outcome = self.is_outcome_coin(&self.active_symbol);
         let can_trade = self.connected_address.is_some()
             && !self.wallet_key_input.trim().is_empty()
-            && !active_is_outcome;
+            && !self.symbol_key_is_hidden(&self.active_symbol);
 
         let (symbol_row, margin_used) = self.view_order_entry_symbol_row(&theme);
         let context_row = self.view_order_entry_context_row(margin_used, &theme);
@@ -29,7 +29,7 @@ impl TradingTerminal {
 
         if active_is_outcome {
             form = form.push(
-                text("Read-only USDH outcome contract. Trading will use whole contracts.")
+                text("USDH outcome contract. Prices are probabilities; size is whole contracts.")
                     .size(10)
                     .color(theme.palette().primary),
             );

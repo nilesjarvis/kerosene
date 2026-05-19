@@ -1,8 +1,48 @@
 use crate::app_state::TradingTerminal;
 
+pub(crate) const OUTCOME_MIN_PRICE: f64 = 0.001;
+pub(crate) const OUTCOME_MAX_PRICE: f64 = 0.999;
+
 impl TradingTerminal {
     pub(crate) fn outcome_read_only_status(&mut self, action: &str) {
-        self.order_status = Some((format!("Outcome {action} is read-only in this build"), true));
+        self.order_status = Some((format!("Outcome {action} is not supported yet"), true));
+    }
+
+    pub(crate) fn outcome_balance_coin_to_trade_coin(coin: &str) -> Option<String> {
+        coin.strip_prefix('+')
+            .map(|encoding| format!("#{encoding}"))
+    }
+
+    pub(crate) fn outcome_trade_coin_for_balance_coin(&self, coin: &str) -> Option<String> {
+        let trade_coin = Self::outcome_balance_coin_to_trade_coin(coin)?;
+        self.exchange_symbols
+            .iter()
+            .any(|symbol| {
+                symbol.key == trade_coin
+                    && symbol.market_type == crate::api::MarketType::Outcome
+                    && symbol.is_user_selectable_market()
+            })
+            .then_some(trade_coin)
+    }
+
+    pub(crate) fn display_coin_for_spot_balance(&self, coin: &str) -> String {
+        self.outcome_trade_coin_for_balance_coin(coin)
+            .map(|trade_coin| format!("{} ({coin})", self.display_name_for_symbol(&trade_coin)))
+            .unwrap_or_else(|| coin.to_string())
+    }
+
+    pub(crate) fn validate_outcome_order_price(price: f64) -> Result<(), String> {
+        if price.is_finite() && (OUTCOME_MIN_PRICE..=OUTCOME_MAX_PRICE).contains(&price) {
+            Ok(())
+        } else {
+            Err(format!(
+                "Outcome prices must be between {OUTCOME_MIN_PRICE:.3} and {OUTCOME_MAX_PRICE:.3}"
+            ))
+        }
+    }
+
+    pub(crate) fn clamp_outcome_market_price(price: f64) -> f64 {
+        price.clamp(OUTCOME_MIN_PRICE, OUTCOME_MAX_PRICE)
     }
 
     pub(crate) fn validate_outcome_contract_size(&self, qty: f64) -> Result<(), String> {
@@ -28,7 +68,9 @@ impl TradingTerminal {
 
 #[cfg(test)]
 mod tests {
+    use super::{OUTCOME_MAX_PRICE, OUTCOME_MIN_PRICE};
     use crate::api;
+    use crate::app_state::TradingTerminal;
     use chrono::TimeZone;
 
     fn outcome_info() -> api::OutcomeSymbolInfo {
@@ -187,5 +229,39 @@ mod tests {
             info.market_label(),
             "fallback / other settlement at 2026-05-20 06:00 UTC"
         );
+    }
+
+    #[test]
+    fn outcome_balance_coin_maps_to_trade_coin() {
+        assert_eq!(
+            TradingTerminal::outcome_balance_coin_to_trade_coin("+650"),
+            Some("#650".to_string())
+        );
+        assert_eq!(
+            TradingTerminal::outcome_balance_coin_to_trade_coin("#650"),
+            None
+        );
+    }
+
+    #[test]
+    fn outcome_price_validation_uses_probability_bounds() {
+        assert!(TradingTerminal::validate_outcome_order_price(OUTCOME_MIN_PRICE).is_ok());
+        assert!(TradingTerminal::validate_outcome_order_price(OUTCOME_MAX_PRICE).is_ok());
+        assert!(TradingTerminal::validate_outcome_order_price(0.0009).is_err());
+        assert!(TradingTerminal::validate_outcome_order_price(0.9991).is_err());
+        assert!(TradingTerminal::validate_outcome_order_price(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn outcome_market_price_clamps_to_probability_bounds() {
+        assert_eq!(
+            TradingTerminal::clamp_outcome_market_price(0.0),
+            OUTCOME_MIN_PRICE
+        );
+        assert_eq!(
+            TradingTerminal::clamp_outcome_market_price(1.0),
+            OUTCOME_MAX_PRICE
+        );
+        assert_eq!(TradingTerminal::clamp_outcome_market_price(0.42), 0.42);
     }
 }

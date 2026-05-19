@@ -41,6 +41,9 @@ pub struct WalletTrackerConfig {
     /// Tracked wallet addresses. Labels live in `KeroseneConfig::address_book`.
     #[serde(default)]
     pub tracked_addresses: Vec<String>,
+    /// Wallet addresses hidden from the tracker while labels remain active.
+    #[serde(default)]
+    pub muted_addresses: Vec<String>,
     /// Tracked wallet list.
     #[serde(default)]
     pub wallets: Vec<TrackedWalletConfig>,
@@ -65,6 +68,7 @@ impl Default for WalletTrackerConfig {
     fn default() -> Self {
         Self {
             tracked_addresses: Vec::new(),
+            muted_addresses: Vec::new(),
             wallets: Vec::new(),
             open: false,
             width: default_wallet_tracker_width(),

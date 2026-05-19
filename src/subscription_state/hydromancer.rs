@@ -36,7 +36,7 @@ impl TradingTerminal {
             .iter()
             .any(|(_, kind)| matches!(kind, PaneKind::TrackedTrades))
         {
-            let tracked_addresses = self.labeled_wallet_addresses();
+            let tracked_addresses = self.tracked_trade_subscription_addresses();
             if !tracked_addresses.is_empty() {
                 subs.push(
                     Subscription::run_with(

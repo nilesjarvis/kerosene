@@ -1,4 +1,3 @@
-use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::cancel_order;
@@ -23,10 +22,6 @@ impl TradingTerminal {
             self.order_status = Some((format!("Symbol '{coin}' not found"), true));
             return Task::none();
         };
-        if sym.market_type == MarketType::Outcome {
-            self.outcome_read_only_status("order cancellation");
-            return Task::none();
-        }
         let asset = sym.asset_index;
 
         self.order_status = Some(("Cancelling order...".into(), false));

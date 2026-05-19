@@ -82,15 +82,7 @@ impl TradingTerminal {
     ) -> Task<Message> {
         self.order_kind = kind;
         if self.is_outcome_coin(&self.active_symbol) {
-            if !self.preset_is_usd
-                && let Err(e) = self.validate_outcome_contract_size(preset.size)
-            {
-                self.order_status = Some((e, true));
-            } else {
-                self.outcome_read_only_status("trading");
-            }
-            self.presets_menu_expanded = false;
-            return Task::none();
+            return self.handle_execute_outcome_preset(kind, preset, is_buy);
         }
 
         let Some(mid) = self

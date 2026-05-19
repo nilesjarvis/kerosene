@@ -1,5 +1,5 @@
 use super::PendingOrderAction;
-use super::pricing::rounded_market_price;
+use super::pricing::{rounded_market_price, slipped_market_price};
 use super::sizing::order_size_from_quantity_input;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
@@ -47,7 +47,8 @@ impl TradingTerminal {
         };
         let asset = sym.asset_index;
         let sz_decimals = sym.sz_decimals;
-        let is_spot = sym.market_type == MarketType::Spot;
+        let is_outcome = sym.market_type == MarketType::Outcome;
+        let is_spot_like = Self::market_type_is_spot_like(sym.market_type);
 
         let raw_qty = match parse_positive_amount(&self.order_quantity) {
             Some(quantity) => quantity,
@@ -56,13 +57,12 @@ impl TradingTerminal {
                 return Task::none();
             }
         };
-        if sym.market_type == MarketType::Outcome {
+        if is_outcome {
             if let Err(e) = self.validate_outcome_contract_size(raw_qty) {
                 self.order_status = Some((e, true));
-            } else {
-                self.outcome_read_only_status("trading");
+                return Task::none();
             }
-            return Task::none();
+            self.order_quantity_is_usd = false;
         }
 
         let price = match self.order_kind {
@@ -74,7 +74,11 @@ impl TradingTerminal {
                         return Task::none();
                     }
                 };
-                let rounded = round_price(px, sz_decimals, is_spot);
+                let rounded = round_price(px, sz_decimals, is_spot_like);
+                if is_outcome && let Err(e) = Self::validate_outcome_order_price(rounded) {
+                    self.order_status = Some((e, true));
+                    return Task::none();
+                }
                 if let Err(e) = self.validate_order_price_band(&self.active_symbol, rounded) {
                     self.order_status = Some((e, true));
                     return Task::none();
@@ -94,13 +98,25 @@ impl TradingTerminal {
                     ));
                     return Task::none();
                 };
-                let rounded = rounded_market_price(
-                    mid,
-                    is_buy,
-                    self.market_slippage_fraction(),
-                    sz_decimals,
-                    is_spot,
-                );
+                let rounded = if is_outcome {
+                    let slipped =
+                        slipped_market_price(mid, is_buy, self.market_slippage_fraction());
+                    let clamped = Self::clamp_outcome_market_price(slipped);
+                    let rounded = round_price(clamped, sz_decimals, is_spot_like);
+                    Self::clamp_outcome_market_price(rounded)
+                } else {
+                    rounded_market_price(
+                        mid,
+                        is_buy,
+                        self.market_slippage_fraction(),
+                        sz_decimals,
+                        is_spot_like,
+                    )
+                };
+                if is_outcome && let Err(e) = Self::validate_outcome_order_price(rounded) {
+                    self.order_status = Some((e, true));
+                    return Task::none();
+                }
                 if let Err(e) = self.validate_order_price_band(&self.active_symbol, rounded) {
                     self.order_status = Some((e, true));
                     return Task::none();
@@ -113,7 +129,11 @@ impl TradingTerminal {
         let qty = match order_size_from_quantity_input(
             raw_qty,
             price,
-            self.order_quantity_is_usd,
+            if is_outcome {
+                false
+            } else {
+                self.order_quantity_is_usd
+            },
             sz_decimals,
         ) {
             Some(quantity) => quantity,
@@ -122,12 +142,16 @@ impl TradingTerminal {
                 return Task::none();
             }
         };
+        if is_outcome && let Err(e) = self.validate_outcome_contract_size(qty) {
+            self.order_status = Some((e, true));
+            return Task::none();
+        }
 
         let size_str = float_to_wire(qty);
         let price_str = float_to_wire(price);
 
         let order_kind = self.order_kind;
-        let reduce_only = if is_spot {
+        let reduce_only = if is_spot_like {
             false
         } else {
             self.order_reduce_only

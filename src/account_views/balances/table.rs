@@ -30,6 +30,7 @@ fn balances_header() -> Element<'static, Message> {
         text("Hold").size(12).width(Fill),
         text("Available").size(12).width(Fill),
         text("Entry Ntl").size(12).width(Fill),
+        text("").size(12).width(60),
     ]
     .spacing(4)
     .into()

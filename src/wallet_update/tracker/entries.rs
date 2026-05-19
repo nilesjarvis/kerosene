@@ -18,8 +18,23 @@ impl TradingTerminal {
                     self.push_toast("Invalid wallet address".to_string(), true);
                     return Task::none();
                 };
+                let was_muted = self.wallet_tracker.unmute_address(&addr);
                 if self.wallet_tracker.tracked_addresses.contains(&addr) {
-                    self.push_toast("Wallet already tracked".to_string(), true);
+                    if was_muted {
+                        let label = self.wallet_tracker.add_label_input.trim();
+                        if !label.is_empty() {
+                            self.address_book.entry(addr.clone()).or_default().label =
+                                label.to_string();
+                        }
+                        self.refresh_tracked_trades_subscription();
+                        self.wallet_tracker.rows.entry(addr.clone()).or_default();
+                        self.wallet_tracker.add_input.clear();
+                        self.wallet_tracker.add_label_input.clear();
+                        self.persist_config();
+                        self.queue_wallet_tracker_core_refresh(addr);
+                        return self.refresh_next_wallet_tracker_core();
+                    }
+                    self.push_toast("Wallet already shown in tracker".to_string(), true);
                     return Task::none();
                 }
 
@@ -42,6 +57,29 @@ impl TradingTerminal {
                 self.queue_wallet_tracker_core_refresh(addr);
                 return self.refresh_next_wallet_tracker_core();
             }
+            Message::WalletTrackerMute(address) => {
+                let normalized_address =
+                    Self::normalize_wallet_address(&address).unwrap_or_else(|| address.clone());
+                if !self
+                    .wallet_tracker
+                    .tracked_addresses
+                    .contains(&normalized_address)
+                {
+                    return Task::none();
+                }
+                if self.wallet_tracker.mute_address(&normalized_address) {
+                    self.refresh_tracked_trades_subscription();
+                    self.persist_config();
+                }
+            }
+            Message::WalletTrackerUnmute(address) => {
+                let normalized_address =
+                    Self::normalize_wallet_address(&address).unwrap_or_else(|| address.clone());
+                if self.wallet_tracker.unmute_address(&normalized_address) {
+                    self.refresh_tracked_trades_subscription();
+                    self.persist_config();
+                }
+            }
             Message::WalletTrackerRemove(address) => {
                 let normalized_address =
                     Self::normalize_wallet_address(&address).unwrap_or_else(|| address.clone());
@@ -49,6 +87,7 @@ impl TradingTerminal {
                 self.wallet_tracker
                     .tracked_addresses
                     .retain(|tracked| tracked != &normalized_address);
+                self.wallet_tracker.unmute_address(&normalized_address);
                 self.wallet_tracker.rows.remove(&normalized_address);
                 self.wallet_tracker
                     .core_refresh_queue

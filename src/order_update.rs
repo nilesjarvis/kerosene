@@ -7,6 +7,7 @@ mod chase;
 mod form;
 mod move_order;
 mod nuke;
+mod outcome;
 mod presets;
 mod quick_order;
 mod results;
@@ -24,6 +25,9 @@ impl TradingTerminal {
             Message::OrderQuantityChanged(value) => self.handle_order_quantity_changed(value),
             Message::ToggleOrderDenomination => self.handle_toggle_order_denomination(),
             Message::OrderPercentageChanged(value) => self.handle_order_percentage_changed(value),
+            Message::PrefillOutcomeSell(balance_coin) => {
+                return self.handle_prefill_outcome_sell(balance_coin);
+            }
             Message::SetOrderKind(kind) => self.handle_set_order_kind(kind),
             Message::ToggleReduceOnly => self.handle_toggle_reduce_only(),
             Message::TogglePresetsMenu => self.handle_toggle_presets_menu(),

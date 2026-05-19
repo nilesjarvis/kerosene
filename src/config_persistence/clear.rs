@@ -74,6 +74,7 @@ impl TradingTerminal {
         self.wallet_tracker.add_input.clear();
         self.wallet_tracker.add_label_input.clear();
         self.wallet_tracker.tracked_addresses.clear();
+        self.wallet_tracker.muted_addresses.clear();
         self.wallet_tracker.rows.clear();
         self.wallet_tracker.core_refresh_queue.clear();
         self.wallet_tracker.order_refresh_queue.clear();

@@ -7,6 +7,7 @@ use crate::wallet_state::WalletTrackerState;
 fn tracker_config_loads_union_of_current_and_legacy_addresses() {
     let cfg = WalletTrackerConfig {
         tracked_addresses: vec![ADDRESS_A.to_string(), ADDRESS_B.to_uppercase()],
+        muted_addresses: vec![ADDRESS_B.to_uppercase(), ADDRESS_B.to_string()],
         wallets: vec![
             TrackedWalletConfig {
                 address: ADDRESS_B.to_string(),
@@ -30,6 +31,7 @@ fn tracker_config_loads_union_of_current_and_legacy_addresses() {
             ADDRESS_C.to_string(),
         ]
     );
+    assert_eq!(tracker.muted_addresses, vec![ADDRESS_B.to_string()]);
 }
 
 #[test]
@@ -47,4 +49,28 @@ fn labeled_address_book_entries_are_added_to_wallet_tracker_list() {
         tracked_addresses,
         vec![ADDRESS_B.to_string(), ADDRESS_A.to_string()]
     );
+}
+
+#[test]
+fn muted_labeled_entries_stay_tracked_but_leave_tracked_trade_subscription() {
+    let mut tracked_addresses = Vec::new();
+    let muted_addresses = vec![ADDRESS_A.to_string()];
+    let address_book = labeled_address_book_with_color_only();
+
+    let added = TradingTerminal::add_labeled_addresses_to_wallet_tracker(
+        &mut tracked_addresses,
+        &address_book,
+    );
+    let subscription_addresses =
+        TradingTerminal::tracked_trade_subscription_addresses_from_address_book(
+            &address_book,
+            &muted_addresses,
+        );
+
+    assert_eq!(added, vec![ADDRESS_A.to_string(), ADDRESS_B.to_string()]);
+    assert_eq!(
+        tracked_addresses,
+        vec![ADDRESS_A.to_string(), ADDRESS_B.to_string()]
+    );
+    assert_eq!(subscription_addresses, vec![ADDRESS_B.to_string()]);
 }
