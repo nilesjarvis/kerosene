@@ -1,7 +1,7 @@
 use super::text_color_for_bg;
 use crate::message::Message;
 use iced::widget::{button, text};
-use iced::{Color, Element, Fill, Font, Theme};
+use iced::{Color, Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
 // Shared Buttons
@@ -26,36 +26,6 @@ pub fn timeframe_button(label: &str, active: bool, msg: Message) -> Element<'_, 
         };
 
         style
-    })
-    .into()
-}
-
-pub fn tab_button(label: &str, active: bool, msg: Message) -> Element<'_, Message> {
-    let btn = button(text(label).size(10).font(Font::MONOSPACE))
-        .on_press(msg)
-        .padding([2, 8]);
-
-    btn.style(move |theme: &Theme, status| {
-        let palette = theme.palette();
-        let extended = theme.extended_palette();
-        let bg = match status {
-            button::Status::Hovered => extended.background.strong.color,
-            _ => extended.background.weak.color,
-        };
-
-        button::Style {
-            background: Some(bg.into()),
-            text_color: if active {
-                palette.primary
-            } else {
-                palette.text
-            },
-            border: iced::Border {
-                radius: 3.0.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        }
     })
     .into()
 }
