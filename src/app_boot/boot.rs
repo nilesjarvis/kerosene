@@ -118,6 +118,7 @@ impl TradingTerminal {
         if state.is_calendar_open() {
             boot_tasks.push(state.request_calendar_refresh(false));
         }
+        boot_tasks.push(state.request_hype_etfs_boot_refresh());
 
         boot_tasks.push(state.request_live_watchlist_refresh(true));
         state.apply_chart_theme_colors();
