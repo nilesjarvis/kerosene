@@ -3,7 +3,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
 use iced::widget::container as container_style;
-use iced::widget::{Space, button, container, row, text};
+use iced::widget::{Space, button, column, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -21,11 +21,20 @@ impl TradingTerminal {
 
         let key = sym.key.clone();
         let probability = outcome_probability_text(mid);
-        let mut side_content = row![
+        let condition = side_info.side_condition_short_label();
+        let side_label = column![
             text(&side_info.side_name)
                 .size(12)
-                .color(theme.palette().text)
+                .color(theme.palette().text),
+            text(condition)
+                .size(10)
+                .color(theme.extended_palette().background.weak.text)
                 .width(Fill),
+        ]
+        .spacing(1)
+        .width(Fill);
+        let mut side_content = row![
+            side_label,
             text(probability)
                 .size(16)
                 .font(iced::Font::MONOSPACE)

@@ -111,10 +111,12 @@ impl TradingTerminal {
                 OrderBookSymbolMode::Active => self.active_symbol.clone(),
                 OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
             };
-            if !symbol.is_empty()
-                && !self.symbol_key_is_hidden(&symbol)
-                && !self.is_outcome_coin(&symbol)
-            {
+            let streams = order_book_market_streams_for_symbol(
+                &symbol,
+                self.symbol_key_is_hidden(&symbol),
+                self.is_outcome_coin(&symbol),
+            );
+            if streams.l2_book {
                 let sigfigs = self.canonical_l2_book_sigfigs(&symbol);
                 subs.push(
                     Subscription::run_with((ob.id, symbol.clone(), sigfigs), ws_book_stream_keyed)
@@ -125,7 +127,9 @@ impl TradingTerminal {
                             book,
                         }),
                 );
+            }
 
+            if streams.asset_ctx {
                 subs.push(
                     Subscription::run_with((ob.id, symbol.clone()), ws_asset_ctx_stream_keyed)
                         .map(|(id, _symbol, ctx)| Message::OrderBookWsAssetCtxUpdate(id, ctx)),
@@ -231,5 +235,67 @@ impl TradingTerminal {
                     }),
             );
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OrderBookMarketStreams {
+    l2_book: bool,
+    asset_ctx: bool,
+}
+
+fn order_book_market_streams_for_symbol(
+    symbol: &str,
+    hidden: bool,
+    outcome: bool,
+) -> OrderBookMarketStreams {
+    let market_data_enabled = !symbol.is_empty() && !hidden;
+    OrderBookMarketStreams {
+        l2_book: market_data_enabled,
+        asset_ctx: market_data_enabled && !outcome,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outcome_order_books_subscribe_to_l2_without_asset_ctx() {
+        assert_eq!(
+            order_book_market_streams_for_symbol("#650", false, true),
+            OrderBookMarketStreams {
+                l2_book: true,
+                asset_ctx: false,
+            }
+        );
+    }
+
+    #[test]
+    fn non_outcome_order_books_subscribe_to_l2_and_asset_ctx() {
+        assert_eq!(
+            order_book_market_streams_for_symbol("BTC", false, false),
+            OrderBookMarketStreams {
+                l2_book: true,
+                asset_ctx: true,
+            }
+        );
+    }
+
+    #[test]
+    fn hidden_or_empty_order_books_do_not_subscribe() {
+        let disabled = OrderBookMarketStreams {
+            l2_book: false,
+            asset_ctx: false,
+        };
+
+        assert_eq!(
+            order_book_market_streams_for_symbol("", false, false),
+            disabled
+        );
+        assert_eq!(
+            order_book_market_streams_for_symbol("BTC", true, false),
+            disabled
+        );
     }
 }

@@ -72,7 +72,10 @@ fn format_usd_trimmed(value: f64, signed: bool) -> String {
     if abs >= 1_000_000.0 {
         format!("{sign}${}M", format_trimmed_number(abs / 1_000_000.0, 2))
     } else {
-        format!("{sign}${}", trim_decimal_zeros(format_decimal_with_commas(abs, 2)))
+        format!(
+            "{sign}${}",
+            trim_decimal_zeros(format_decimal_with_commas(abs, 2))
+        )
     }
 }
 

@@ -27,11 +27,13 @@ impl TradingTerminal {
         let mut filtered: Vec<&ExchangeSymbol> = if query.is_empty() {
             self.exchange_symbols
                 .iter()
+                .filter(|sym| sym.is_user_selectable_market())
                 .filter(|sym| !self.exchange_symbol_is_hidden(sym))
                 .collect()
         } else {
             self.exchange_symbols
                 .iter()
+                .filter(|sym| sym.is_user_selectable_market())
                 .filter(|sym| !self.exchange_symbol_is_hidden(sym))
                 .filter(|sym| {
                     sym.ticker.to_lowercase().contains(&query)

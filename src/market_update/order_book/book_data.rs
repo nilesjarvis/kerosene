@@ -314,9 +314,6 @@ impl TradingTerminal {
         if self.symbol_key_is_hidden(symbol) {
             return Some("Order book ticker is hidden in Settings > Risk".to_string());
         }
-        if self.is_outcome_coin(symbol) {
-            return Some("Order book depth is not available for outcome markets".to_string());
-        }
         None
     }
 

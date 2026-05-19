@@ -4,6 +4,10 @@ use crate::message::Message;
 
 use iced::widget::{Column, column, container, row, text};
 use iced::{Element, Fill, Theme};
+use std::collections::HashMap;
+
+#[cfg(test)]
+mod tests;
 
 impl TradingTerminal {
     pub(in crate::market_views::outcomes) fn view_outcome_market_group<'a>(
@@ -20,9 +24,9 @@ impl TradingTerminal {
         });
 
         let info = sides.iter().find_map(|sym| sym.outcome.as_ref())?;
-        let market = Self::outcome_market_label(info);
+        let market = info.market_label_with_countdown(Self::now_ms());
 
-        let market_header = row![
+        let mut market_header = row![
             text(market)
                 .size(12)
                 .color(theme.palette().text)
@@ -31,6 +35,24 @@ impl TradingTerminal {
         .spacing(6)
         .align_y(iced::Alignment::Center)
         .width(Fill);
+        if let Some(volume) = outcome_group_volume(&sides, &self.outcome_volumes_24h) {
+            market_header = market_header.push(
+                text(format!(
+                    "24h Vol {}",
+                    format_outcome_contract_volume(volume)
+                ))
+                .size(11)
+                .font(iced::Font::MONOSPACE)
+                .color(theme.extended_palette().background.weak.text),
+            );
+        } else if self.outcome_volumes_loading {
+            market_header = market_header.push(
+                text("24h Vol ...")
+                    .size(11)
+                    .font(iced::Font::MONOSPACE)
+                    .color(theme.extended_palette().background.weak.text),
+            );
+        }
 
         let probability_bar = self.view_outcome_group_probability(&sides, theme);
         let side_selector = self.view_outcome_group_sides(&sides, theme, available_width);
@@ -118,5 +140,28 @@ impl TradingTerminal {
             }
             cards.into()
         }
+    }
+}
+
+fn outcome_group_volume(sides: &[&ExchangeSymbol], volumes: &HashMap<String, f64>) -> Option<f64> {
+    sides
+        .iter()
+        .filter_map(|symbol| volumes.get(&symbol.key).copied())
+        .filter(|volume| volume.is_finite() && *volume >= 0.0)
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+fn format_outcome_contract_volume(value: f64) -> String {
+    let abs = value.abs();
+    if abs >= 1_000_000_000.0 {
+        format!("{:.1}B contracts", value / 1_000_000_000.0)
+    } else if abs >= 1_000_000.0 {
+        format!("{:.1}M contracts", value / 1_000_000.0)
+    } else if abs >= 1_000.0 {
+        format!("{:.1}K contracts", value / 1_000.0)
+    } else if abs >= 1.0 {
+        format!("{value:.0} contracts")
+    } else {
+        format!("{value:.2} contracts")
     }
 }

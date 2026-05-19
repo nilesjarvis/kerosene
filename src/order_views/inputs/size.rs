@@ -4,9 +4,7 @@ use crate::message::Message;
 use crate::signing::OrderKind;
 
 use iced::widget::canvas as canvas_widget;
-use iced::widget::{
-    Column, Space, button, canvas, checkbox, row, slider, stack, text, text_input,
-};
+use iced::widget::{Column, Space, button, canvas, checkbox, row, slider, stack, text, text_input};
 use iced::{Color, Event, Fill, Length, Point, Rectangle, Renderer, Theme, mouse};
 
 const SIZE_PRESET_MARKS: [f32; 4] = [25.0, 50.0, 75.0, 100.0];
@@ -35,16 +33,12 @@ impl TradingTerminal {
             .padding(6);
 
         let parsed_qty = parse_positive_finite(&self.order_quantity);
-        let parsed_price =
-            if matches!(
-                self.order_kind,
-                OrderKind::Limit | OrderKind::LimitIoc
-            ) {
-                parse_positive_finite(&self.order_price)
-            } else {
-                self.resolve_mid_for_symbol(&self.active_symbol)
-                    .filter(|price| price.is_finite() && *price > 0.0)
-            };
+        let parsed_price = if matches!(self.order_kind, OrderKind::Limit | OrderKind::LimitIoc) {
+            parse_positive_finite(&self.order_price)
+        } else {
+            self.resolve_mid_for_symbol(&self.active_symbol)
+                .filter(|price| price.is_finite() && *price > 0.0)
+        };
 
         let (notional_val, notional_text) = order_notional_text(
             self.order_quantity_is_usd,
@@ -73,21 +67,21 @@ impl TradingTerminal {
             self.order_percentage,
             Message::OrderPercentageChanged,
         )
-            .width(Fill)
-            .step(1.0)
-            .style(|theme: &Theme, status| {
-                let palette = theme.palette();
-                let mut style = slider::default(theme, status);
-                style.handle.background = palette.primary.into();
-                style.handle.border_color = palette.primary;
-                style.rail.backgrounds.0 = palette.primary.into();
-                style.rail.backgrounds.1 = Color {
-                    a: 0.2,
-                    ..palette.text
-                }
-                .into();
-                style
-            });
+        .width(Fill)
+        .step(1.0)
+        .style(|theme: &Theme, status| {
+            let palette = theme.palette();
+            let mut style = slider::default(theme, status);
+            style.handle.background = palette.primary.into();
+            style.handle.border_color = palette.primary;
+            style.rail.backgrounds.0 = palette.primary.into();
+            style.rail.backgrounds.1 = Color {
+                a: 0.2,
+                ..palette.text
+            }
+            .into();
+            style
+        });
         let preset_markers = canvas(SizePresetDots {
             current_pct: self.order_percentage,
         })
@@ -245,10 +239,9 @@ impl canvas_widget::Program<Message> for SizePresetDots {
         };
         let position = cursor.position_in(bounds)?;
 
-        size_preset_pct_at_position(bounds, position)
-            .map(|pct| {
-                canvas_widget::Action::publish(Message::OrderPercentageChanged(pct)).and_capture()
-            })
+        size_preset_pct_at_position(bounds, position).map(|pct| {
+            canvas_widget::Action::publish(Message::OrderPercentageChanged(pct)).and_capture()
+        })
     }
 
     fn draw(

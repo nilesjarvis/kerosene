@@ -21,8 +21,8 @@ fn assert_close(actual: f64, expected: f64) {
 
 #[test]
 fn single_candle_distributes_volume_across_overlapped_buckets() {
-    let profile = calculate_volume_profile(&[candle(100.0, 104.0, 40.0)], 100.0, 104.0, 4)
-        .expect("profile");
+    let profile =
+        calculate_volume_profile(&[candle(100.0, 104.0, 40.0)], 100.0, 104.0, 4).expect("profile");
 
     assert_eq!(profile.buckets.len(), 4);
     for bucket in profile.buckets {
@@ -41,13 +41,16 @@ fn candles_outside_visible_price_range_contribute_nothing() {
     )
     .expect("profile");
 
-    assert_close(profile.buckets.iter().map(|bucket| bucket.volume).sum(), 20.0);
+    assert_close(
+        profile.buckets.iter().map(|bucket| bucket.volume).sum(),
+        20.0,
+    );
 }
 
 #[test]
 fn zero_range_candle_assigns_volume_to_matching_bucket() {
-    let profile = calculate_volume_profile(&[candle(101.5, 101.5, 12.0)], 100.0, 104.0, 4)
-        .expect("profile");
+    let profile =
+        calculate_volume_profile(&[candle(101.5, 101.5, 12.0)], 100.0, 104.0, 4).expect("profile");
 
     assert_close(profile.buckets[0].volume, 0.0);
     assert_close(profile.buckets[1].volume, 12.0);
@@ -76,10 +79,7 @@ fn invalid_or_non_positive_candles_are_skipped() {
 
 #[test]
 fn bucket_count_scales_with_chart_height_and_clamps() {
-    assert_eq!(
-        volume_profile_bucket_count(0.0),
-        VOLUME_PROFILE_MIN_BUCKETS
-    );
+    assert_eq!(volume_profile_bucket_count(0.0), VOLUME_PROFILE_MIN_BUCKETS);
     assert_eq!(
         volume_profile_bucket_count(96.0),
         VOLUME_PROFILE_MIN_BUCKETS

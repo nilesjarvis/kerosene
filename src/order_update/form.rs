@@ -250,14 +250,12 @@ impl OrderSizingBasis {
                 reference_price,
                 max_notional,
             ),
-            Self::ReduceOnlyPosition { position_size_coin } => {
-                percentage_for_position_quantity(
-                    quantity,
-                    position_size_coin,
-                    quantity_is_usd,
-                    reference_price,
-                )
-            }
+            Self::ReduceOnlyPosition { position_size_coin } => percentage_for_position_quantity(
+                quantity,
+                position_size_coin,
+                quantity_is_usd,
+                reference_price,
+            ),
         }
     }
 
@@ -496,9 +494,7 @@ mod tests {
         terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
         terminal.order_kind = OrderKind::Market;
         terminal.order_price.clear();
-        terminal.account_data = Some(account_data_with_positions(vec![asset_position(
-            coin, szi,
-        )]));
+        terminal.account_data = Some(account_data_with_positions(vec![asset_position(coin, szi)]));
         terminal
     }
 
@@ -572,13 +568,13 @@ mod tests {
             cross_margin_summary: None,
             cross_maintenance_margin_used: None,
             withdrawable: "0".to_string(),
-            asset_positions: vec![
-                asset_position("BTC", "1"),
-                asset_position("xyz:BTC", "3"),
-            ],
+            asset_positions: vec![asset_position("BTC", "1"), asset_position("xyz:BTC", "3")],
         };
 
-        assert_eq!(position_size_for_symbol(&clearinghouse, "xyz:BTC"), Some(3.0));
+        assert_eq!(
+            position_size_for_symbol(&clearinghouse, "xyz:BTC"),
+            Some(3.0)
+        );
         assert_eq!(position_size_for_symbol(&clearinghouse, "BTC"), Some(1.0));
     }
 

@@ -16,9 +16,8 @@ use crate::twap_state::{
     TwapPendingOp, TwapPendingSlice, TwapStatus, parse_twap_duration_minutes,
     parse_twap_slice_count, quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
     twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
-    twap_min_quantized_child_notional, twap_order_notional_meets_minimum,
-    twap_required_slice_rate, twap_response_fill_summary, twap_target_size_from_quantity,
-    validate_twap_interval,
+    twap_min_quantized_child_notional, twap_order_notional_meets_minimum, twap_required_slice_rate,
+    twap_response_fill_summary, twap_target_size_from_quantity, validate_twap_interval,
 };
 use iced::{Size, Task, window};
 use std::time::Instant;
@@ -2134,10 +2133,8 @@ mod tests {
         terminal.account_reconciliation_required = false;
         terminal.twap_orders.insert(1, pending_twap(1, cloid, now));
 
-        let _task = terminal.handle_twap_slice_result(
-            1,
-            Err("Exchange request failed after submit".into()),
-        );
+        let _task = terminal
+            .handle_twap_slice_result(1, Err("Exchange request failed after submit".into()));
 
         let twap = terminal
             .twap_orders

@@ -24,11 +24,10 @@ use defaults::default_true;
 pub use defaults::{
     DEFAULT_MARKET_SLIPPAGE_PCT, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
     MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS, default_layout_ratios,
-    default_liquidation_alert_threshold, default_market_slippage_pct,
-    default_order_kind, default_pane_border_thickness, default_pane_corner_radius,
-    default_symbol, default_symbol_search_sort_mode, default_tick_size, default_timeframe,
-    new_secret_id, normalize_market_slippage_pct, normalize_pane_border_thickness,
-    normalize_pane_corner_radius,
+    default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
+    default_pane_border_thickness, default_pane_corner_radius, default_symbol,
+    default_symbol_search_sort_mode, default_tick_size, default_timeframe, new_secret_id,
+    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
 };
 
 // ---------------------------------------------------------------------------

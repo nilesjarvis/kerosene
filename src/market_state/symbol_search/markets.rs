@@ -27,6 +27,10 @@ pub(super) fn symbol_search_matches_market_filter(
     filter: SymbolSearchMarketFilter,
     hip3_dex_filter: Option<&str>,
 ) -> bool {
+    if !symbol.is_user_selectable_market() {
+        return false;
+    }
+
     match filter {
         SymbolSearchMarketFilter::All => true,
         SymbolSearchMarketFilter::NativePerps => {

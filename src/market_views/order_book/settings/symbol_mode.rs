@@ -41,47 +41,39 @@ impl TradingTerminal {
         let query_lower = inst.search_query.to_lowercase();
         let mut matches = 0;
         for sym in &self.exchange_symbols {
-            if self.exchange_symbol_is_hidden(sym) {
+            if !sym.is_user_selectable_market() || self.exchange_symbol_is_hidden(sym) {
                 continue;
             }
             if matches >= 5 {
                 break;
             }
-            if sym
-                .display_name
-                .as_deref()
-                .unwrap_or(&sym.key)
-                .to_lowercase()
-                .contains(&query_lower)
+            let display = Self::exchange_symbol_display_name(sym);
+            if display.to_lowercase().contains(&query_lower)
                 || sym.key.to_lowercase().contains(&query_lower)
             {
                 let s_key = sym.key.clone();
                 let mode = OrderBookSymbolMode::Fixed(s_key.clone());
-                let btn = button(
-                    text(sym.display_name.clone().unwrap_or(sym.key.clone()))
-                        .size(12)
-                        .width(Fill),
-                )
-                .on_press(Message::OrderBookSetMode(id, mode.clone()))
-                .style(move |theme: &Theme, status| {
-                    let is_active =
-                        matches!(&inst.mode, OrderBookSymbolMode::Fixed(s) if s == &s_key);
-                    let bg = if is_active {
-                        theme.extended_palette().background.strong.color
-                    } else {
-                        match status {
-                            button::Status::Hovered => {
-                                theme.extended_palette().background.strong.color
+                let btn = button(text(display).size(12).width(Fill))
+                    .on_press(Message::OrderBookSetMode(id, mode.clone()))
+                    .style(move |theme: &Theme, status| {
+                        let is_active =
+                            matches!(&inst.mode, OrderBookSymbolMode::Fixed(s) if s == &s_key);
+                        let bg = if is_active {
+                            theme.extended_palette().background.strong.color
+                        } else {
+                            match status {
+                                button::Status::Hovered => {
+                                    theme.extended_palette().background.strong.color
+                                }
+                                _ => iced::Color::TRANSPARENT,
                             }
-                            _ => iced::Color::TRANSPARENT,
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: theme.palette().text,
+                            ..Default::default()
                         }
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: theme.palette().text,
-                        ..Default::default()
-                    }
-                });
+                    });
                 search_col = search_col.push(btn);
                 matches += 1;
             }

@@ -133,11 +133,7 @@ impl PositioningInfoChangeSortField {
     pub(crate) fn default_direction(self) -> config::SortDirection {
         match self {
             Self::Trader => config::SortDirection::Ascending,
-            Self::Previous
-            | Self::Current
-            | Self::Change
-            | Self::CurrentUsd
-            | Self::ChangeUsd => {
+            Self::Previous | Self::Current | Self::Change | Self::CurrentUsd | Self::ChangeUsd => {
                 config::SortDirection::Descending
             }
         }
@@ -262,7 +258,10 @@ mod tests {
 
     #[test]
     fn positioning_notional_and_size_sorts_use_hyperdash_notional_enum_name() {
-        assert_eq!(PositioningInfoSortField::NotionalSize.api_field(), "notional");
+        assert_eq!(
+            PositioningInfoSortField::NotionalSize.api_field(),
+            "notional"
+        );
         assert_eq!(PositioningInfoSortField::Size.api_field(), "notional");
     }
 

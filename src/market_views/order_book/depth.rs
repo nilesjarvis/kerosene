@@ -169,10 +169,7 @@ fn max_level_size(asks: &[(f64, f64, f64)], bids: &[(f64, f64, f64)]) -> f64 {
         .max(1.0)
 }
 
-pub(super) fn centered_order_book_side_row_count(
-    side_height: f32,
-    available_rows: usize,
-) -> usize {
+pub(super) fn centered_order_book_side_row_count(side_height: f32, available_rows: usize) -> usize {
     if side_height <= 0.0 {
         return 0;
     }
@@ -266,11 +263,7 @@ mod tests {
 
     #[test]
     fn max_cumulative_depth_uses_largest_value_after_ask_rows_are_reversed() {
-        let ask_rows = vec![
-            (101.0, 3.0, 6.0),
-            (100.5, 2.0, 3.0),
-            (100.0, 1.0, 1.0),
-        ];
+        let ask_rows = vec![(101.0, 3.0, 6.0), (100.5, 2.0, 3.0), (100.0, 1.0, 1.0)];
 
         assert_eq!(max_cumulative_depth(&ask_rows), 6.0);
     }

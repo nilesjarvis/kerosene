@@ -67,13 +67,8 @@ pub(super) struct RightAxisBadgeLayout {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RightAxisBadgeConnectorStyle {
-    Solid {
-        color: Color,
-        width: f32,
-    },
-    Segmented {
-        style: SegmentedHLineStyle,
-    },
+    Solid { color: Color, width: f32 },
+    Segmented { style: SegmentedHLineStyle },
 }
 
 impl CandlestickChart {
@@ -89,16 +84,12 @@ impl CandlestickChart {
     {
         let mut layout =
             RightAxisBadgeLayout::empty(self.active_orders.len(), self.annotations.len());
-        if price_range <= 0.0
-            || price_h <= 0.0
-            || !price_range.is_finite()
-            || !price_h.is_finite()
+        if price_range <= 0.0 || price_h <= 0.0 || !price_range.is_finite() || !price_h.is_finite()
         {
             return layout;
         }
 
-        let mut anchors =
-            Vec::with_capacity(self.active_orders.len() + self.annotations.len() + 4);
+        let mut anchors = Vec::with_capacity(self.active_orders.len() + self.annotations.len() + 4);
 
         if let Some(last_candle) = self.candles.last() {
             push_visible_badge(
@@ -348,9 +339,7 @@ fn stack_right_axis_badge_positions(
     price_h: f32,
 ) -> Vec<StackedRightAxisBadge> {
     anchors.retain(|anchor| {
-        anchor.source_y.is_finite()
-            && anchor.height > 0.0
-            && anchor.height.is_finite()
+        anchor.source_y.is_finite() && anchor.height > 0.0 && anchor.height.is_finite()
     });
     if anchors.is_empty() || price_h <= 0.0 || !price_h.is_finite() {
         return Vec::new();

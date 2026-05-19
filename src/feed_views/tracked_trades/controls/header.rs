@@ -67,13 +67,11 @@ impl TradingTerminal {
         }
 
         if row_layout.show_intent {
-            header = header
-                .push(Space::new().width(Fill))
-                .push(
-                    text("Intent")
-                        .size(11)
-                        .color(theme.extended_palette().background.weak.text),
-                );
+            header = header.push(Space::new().width(Fill)).push(
+                text("Intent")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text),
+            );
         }
 
         header.into()

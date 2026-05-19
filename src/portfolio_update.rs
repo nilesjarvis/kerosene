@@ -134,9 +134,8 @@ mod tests {
             PnlValueDisplayMode::Percent
         );
 
-        let _ = terminal.update_portfolio_income(Message::SetPortfolioPnlValueMode(
-            PnlValueDisplayMode::Usd,
-        ));
+        let _ = terminal
+            .update_portfolio_income(Message::SetPortfolioPnlValueMode(PnlValueDisplayMode::Usd));
         assert_eq!(
             terminal.portfolio.pnl_value_display_mode,
             PnlValueDisplayMode::Usd

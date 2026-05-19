@@ -906,11 +906,10 @@ mod tests {
         MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE,
         TWAP_RECONCILIATION_TIMEOUT, TwapChildOrder, TwapChildStatus, TwapOrder, TwapOrderInit,
         TwapPauseReason, TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count,
-        quantize_twap_slice_size, twap_aggregate_schedule_has_capacity,
-        twap_aggregate_slice_rate, twap_child_cloid, twap_limit_price_for_slice,
-        twap_min_quantized_child_notional, twap_order_notional_meets_minimum,
-        twap_required_slice_rate, twap_response_fill_summary, twap_target_size_from_quantity,
-        validate_twap_interval,
+        quantize_twap_slice_size, twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate,
+        twap_child_cloid, twap_limit_price_for_slice, twap_min_quantized_child_notional,
+        twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
+        twap_target_size_from_quantity, validate_twap_interval,
     };
     use crate::account::UserFill;
     use crate::api::{BookLevel, OrderBook};

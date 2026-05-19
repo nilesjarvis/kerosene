@@ -126,10 +126,7 @@ pub(super) fn order_label_position(
     positions: &[Option<OrderLabelPosition>],
     order_index: usize,
 ) -> Option<OrderLabelPosition> {
-    positions
-        .get(order_index)
-        .copied()
-        .flatten()
+    positions.get(order_index).copied().flatten()
 }
 
 pub(super) fn stack_order_label_positions_avoiding(
@@ -178,7 +175,10 @@ pub(super) fn stack_order_label_positions_avoiding(
         next_y = label_y + step;
     }
 
-    if positions.last().is_some_and(|position| position.label_y > max_y) {
+    if positions
+        .last()
+        .is_some_and(|position| position.label_y > max_y)
+    {
         let mut next_y = max_y;
         for position in positions.iter_mut().rev() {
             position.label_y = position.label_y.min(next_y);
@@ -253,7 +253,10 @@ fn stack_order_label_positions_in_band(
         next_y = label_y + step;
     }
 
-    if positions.last().is_some_and(|position| position.label_y > max_y) {
+    if positions
+        .last()
+        .is_some_and(|position| position.label_y > max_y)
+    {
         let mut next_y = max_y;
         for position in positions.iter_mut().rev() {
             position.label_y = position.label_y.min(next_y);
@@ -326,11 +329,7 @@ fn push_label_above_reserved(
     }
 }
 
-fn label_overlaps_range(
-    label_y: f32,
-    label_half: f32,
-    range: &ReservedLabelRange,
-) -> bool {
+fn label_overlaps_range(label_y: f32, label_half: f32, range: &ReservedLabelRange) -> bool {
     let label_top = label_y - label_half;
     let label_bottom = label_y + label_half;
     label_top < range.bottom + ORDER_LABEL_STACK_GAP

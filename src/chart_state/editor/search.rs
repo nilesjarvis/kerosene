@@ -10,6 +10,10 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 pub(super) fn chart_editor_symbol_matches(symbol: &ExchangeSymbol, query: &str) -> bool {
+    if !symbol.is_user_selectable_market() {
+        return false;
+    }
+
     query.is_empty()
         || symbol.ticker.to_lowercase().contains(query)
         || symbol.category.to_lowercase().contains(query)

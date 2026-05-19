@@ -222,11 +222,10 @@ mod tests {
 
     #[test]
     fn order_book_config_round_trips_dom_ladder_display_mode() {
-        let config: OrderBookConfig =
-            serde_json::from_str(
-                r#"{"id":7,"tick_size":1.0,"display_mode":"DomLadder","center_on_mid":true}"#,
-            )
-                .expect("config");
+        let config: OrderBookConfig = serde_json::from_str(
+            r#"{"id":7,"tick_size":1.0,"display_mode":"DomLadder","center_on_mid":true}"#,
+        )
+        .expect("config");
 
         let rendered = serde_json::to_string(&config).expect("json");
         assert!(rendered.contains(r#""display_mode":"DomLadder""#));

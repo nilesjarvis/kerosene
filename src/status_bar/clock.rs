@@ -141,12 +141,7 @@ fn next_market_open(
     None
 }
 
-fn market_is_active(
-    now_utc: DateTime<Utc>,
-    tz: Tz,
-    open: (u32, u32),
-    close: (u32, u32),
-) -> bool {
+fn market_is_active(now_utc: DateTime<Utc>, tz: Tz, open: (u32, u32), close: (u32, u32)) -> bool {
     let local_now = now_utc.with_timezone(&tz);
     let date = local_now.date_naive();
     if matches!(date.weekday(), Weekday::Sat | Weekday::Sun) {

@@ -23,12 +23,9 @@ pub(super) fn tracked_trade_connection_button(
 ) -> Element<'static, Message> {
     tooltip(
         button(
-            row![
-                tracked_trade_status_dot(status_color),
-                text(label).size(10),
-            ]
-            .spacing(8)
-            .align_y(iced::Alignment::Center),
+            row![tracked_trade_status_dot(status_color), text(label).size(10),]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
         )
         .on_press(Message::ReconnectTrackedTrades)
         .padding([2, 6])

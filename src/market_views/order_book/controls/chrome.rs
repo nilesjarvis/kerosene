@@ -5,7 +5,7 @@ use crate::market_state::{
 };
 use crate::message::Message;
 
-use iced::widget::{button, row, text};
+use iced::widget::{button, column, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -80,6 +80,65 @@ impl TradingTerminal {
         ]
         .align_y(iced::Alignment::Center)
         .into()
+    }
+
+    pub(in crate::market_views::order_book) fn view_order_book_outcome_metadata(
+        &self,
+        symbol: &str,
+        inst: &OrderBookInstance,
+    ) -> Option<Element<'static, Message>> {
+        let exchange_symbol = self.exchange_symbols.iter().find(|sym| sym.key == symbol)?;
+        let info = exchange_symbol.outcome.as_ref()?;
+        let theme = self.theme();
+        let condition = info.side_condition_label_with_countdown(Self::now_ms());
+        let probability = inst
+            .current_mid_price()
+            .or_else(|| self.resolve_mid_for_symbol(symbol))
+            .map(|mid| format!("{:.1}% implied", mid * 100.0))
+            .unwrap_or_else(|| "mid n/a".to_string());
+        let token_name = format!("+{}", info.encoding);
+        let detail = format!(
+            "{} | token {} | asset {} | quote {} | whole contracts",
+            symbol, token_name, exchange_symbol.asset_index, info.quote_symbol
+        );
+
+        Some(
+            container(
+                column![
+                    row![
+                        text(format!("Pays if {condition}"))
+                            .size(11)
+                            .color(theme.palette().text)
+                            .width(Fill),
+                        text(probability)
+                            .size(11)
+                            .font(iced::Font::MONOSPACE)
+                            .color(theme.palette().primary),
+                    ]
+                    .spacing(6)
+                    .align_y(iced::Alignment::Center),
+                    text(detail)
+                        .size(10)
+                        .color(theme.extended_palette().background.weak.text),
+                ]
+                .spacing(2),
+            )
+            .width(Fill)
+            .padding([4, 6])
+            .style(move |theme: &Theme| container::Style {
+                background: Some(theme.extended_palette().background.weak.color.into()),
+                border: iced::Border {
+                    radius: 3.0.into(),
+                    width: 1.0,
+                    color: Color {
+                        a: 0.25,
+                        ..theme.palette().primary
+                    },
+                },
+                ..Default::default()
+            })
+            .into(),
+        )
     }
 
     pub(in crate::market_views::order_book) fn view_order_book_spread_chart<'a>(

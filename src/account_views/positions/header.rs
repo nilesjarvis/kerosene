@@ -83,9 +83,7 @@ impl TradingTerminal {
             button(text(nuke_label).size(10).center().width(Fill))
                 .on_press(Message::NukePositions)
                 .padding([2, 8])
-                .style(move |theme: &Theme, status| {
-                    nuke_button_style(theme, status, nuke_armed)
-                })
+                .style(move |theme: &Theme, status| nuke_button_style(theme, status, nuke_armed))
                 .into()
         } else {
             text("").size(12).into()
@@ -149,16 +147,12 @@ impl TradingTerminal {
         header_row = header_row.push(container(action_cell).width(POSITION_ACTION_WIDTH));
 
         container(header_row.spacing(4).align_y(iced::Alignment::Center))
-        .padding([0, 8])
-        .into()
+            .padding([0, 8])
+            .into()
     }
 }
 
-fn nuke_button_style(
-    theme: &Theme,
-    status: button::Status,
-    nuke_armed: bool,
-) -> button::Style {
+fn nuke_button_style(theme: &Theme, status: button::Status, nuke_armed: bool) -> button::Style {
     let extended = theme.extended_palette();
     let danger = &extended.danger;
 

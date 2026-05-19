@@ -20,6 +20,21 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        if self
+            .exchange_symbols
+            .iter()
+            .find(|symbol| symbol.key == key)
+            .is_some_and(|symbol| !symbol.is_user_selectable_market())
+        {
+            self.symbol_search_status = Some((format!("{key} is not a tradable market"), true));
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.editor_open = false;
+                instance.editor_search_query.clear();
+                instance.editor_keyboard_selected = false;
+            }
+            return Task::none();
+        }
+
         let already_same = self.charts.get(&id).is_some_and(|inst| inst.symbol == key);
         if already_same {
             if let Some(instance) = self.charts.get_mut(&id) {

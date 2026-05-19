@@ -87,16 +87,17 @@ impl TradingTerminal {
 
             for &session in spaghetti::SESSION_OPTIONS {
                 let is_active = active_session == Some(session);
-                tf_row = tf_row
-                    .push(spaghetti_controls_separator())
-                    .push(spaghetti_controls_button(
-                        session.label(),
-                        is_active,
-                        Message::SpaghettiSetSession(
-                            id,
-                            if is_active { None } else { Some(session) },
-                        ),
-                    ));
+                tf_row =
+                    tf_row
+                        .push(spaghetti_controls_separator())
+                        .push(spaghetti_controls_button(
+                            session.label(),
+                            is_active,
+                            Message::SpaghettiSetSession(
+                                id,
+                                if is_active { None } else { Some(session) },
+                            ),
+                        ));
             }
         } else {
             tf_row = tf_row
@@ -155,9 +156,7 @@ fn spaghetti_controls_button(
     button(text(label).size(11).center())
         .on_press(msg)
         .padding([3, 8])
-        .style(move |theme: &Theme, status| {
-            spaghetti_controls_button_style(theme, status, active)
-        })
+        .style(move |theme: &Theme, status| spaghetti_controls_button_style(theme, status, active))
         .into()
 }
 

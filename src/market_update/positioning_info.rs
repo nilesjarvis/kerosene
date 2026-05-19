@@ -203,7 +203,8 @@ impl TradingTerminal {
             .is_some_and(|candidate| candidate.market_type != MarketType::Perp)
         {
             if let Some(instance) = self.positioning_infos.get_mut(&id) {
-                let error = "Positioning Information is only available for perp symbols".to_string();
+                let error =
+                    "Positioning Information is only available for perp symbols".to_string();
                 instance.error = Some(error.clone());
                 instance.change_error = Some(error);
                 instance.asset_ctx = None;
@@ -234,10 +235,7 @@ impl TradingTerminal {
         self.request_positioning_info_refresh(id, true)
     }
 
-    pub(crate) fn request_positioning_info_refresh_all(
-        &mut self,
-        force: bool,
-    ) -> Task<Message> {
+    pub(crate) fn request_positioning_info_refresh_all(&mut self, force: bool) -> Task<Message> {
         let ids: Vec<PositioningInfoId> = self
             .panes
             .iter()
@@ -505,9 +503,12 @@ impl TradingTerminal {
         }
 
         let api_key = self.hyperdash_api_key.trim().to_string();
-        Task::perform(fetch_perp_deltas(market, timeframe, api_key), move |result| {
-            Message::PositioningInfoChangeLoaded(request_key.clone(), Box::new(result))
-        })
+        Task::perform(
+            fetch_perp_deltas(market, timeframe, api_key),
+            move |result| {
+                Message::PositioningInfoChangeLoaded(request_key.clone(), Box::new(result))
+            },
+        )
     }
 
     fn apply_positioning_info_loaded(
@@ -584,7 +585,9 @@ impl TradingTerminal {
         }
         if !self.active_symbol.is_empty()
             && !self.symbol_key_is_hidden(&self.active_symbol)
-            && self.hyperdash_coin_for_symbol(&self.active_symbol).is_some()
+            && self
+                .hyperdash_coin_for_symbol(&self.active_symbol)
+                .is_some()
         {
             return self.active_symbol.clone();
         }

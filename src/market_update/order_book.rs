@@ -158,6 +158,16 @@ impl TradingTerminal {
                     ));
                     return Task::none();
                 }
+                if self
+                    .exchange_symbols
+                    .iter()
+                    .find(|exchange_symbol| exchange_symbol.key == symbol)
+                    .is_some_and(|exchange_symbol| !exchange_symbol.is_user_selectable_market())
+                {
+                    self.order_status =
+                        Some(("Order book market is not tradable".to_string(), true));
+                    return Task::none();
+                }
                 let mid = self.resolve_mid_for_symbol(&symbol);
                 if let Some(inst) = self.order_books.get_mut(&id) {
                     inst.mode = mode.clone();

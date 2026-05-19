@@ -229,17 +229,13 @@ impl TradingTerminal {
             config::HotkeyAction::SwitchLayout { name: layout_name } => layout_name != name,
             _ => true,
         });
-        if self
-            .recording_hotkey_for
-            .as_ref()
-            .is_some_and(|action| {
-                matches!(
-                    action,
-                    config::HotkeyAction::SwitchLayout { name: layout_name }
-                        if layout_name == name
-                )
-            })
-        {
+        if self.recording_hotkey_for.as_ref().is_some_and(|action| {
+            matches!(
+                action,
+                config::HotkeyAction::SwitchLayout { name: layout_name }
+                    if layout_name == name
+            )
+        }) {
             self.recording_hotkey_for = None;
         }
     }

@@ -46,12 +46,8 @@ impl CandlestickChart {
                 };
 
                 let badge_kind = RightAxisBadgeKind::CurrentPrice;
-                let line_end_x = right_axis_line_end_x(
-                    ctx.right_axis_badges,
-                    badge_kind,
-                    last_y,
-                    ctx.chart_w,
-                );
+                let line_end_x =
+                    right_axis_line_end_x(ctx.right_axis_badges, badge_kind, last_y, ctx.chart_w);
                 stroke_segmented_hline(
                     ctx.frame,
                     line_end_x,

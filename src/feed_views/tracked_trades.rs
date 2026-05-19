@@ -61,9 +61,6 @@ impl TradingTerminal {
         ]
         .spacing(6);
 
-        container(content)
-            .width(Fill)
-            .height(Fill)
-            .into()
+        container(content).width(Fill).height(Fill).into()
     }
 }

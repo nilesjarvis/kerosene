@@ -129,11 +129,7 @@ pub(super) fn draw_series_labels(
         ctx.chart_h,
     );
     for label in &mut labels {
-        if let Some(label_y) = label_positions
-            .get(label.index)
-            .copied()
-            .flatten()
-        {
+        if let Some(label_y) = label_positions.get(label.index).copied().flatten() {
             label.label_y = label_y;
         }
     }
@@ -172,10 +168,7 @@ fn draw_series_label(
         stroke_segmented_label_connector(
             frame,
             Point::new(line_end, label.y),
-            Point::new(
-                line_end + (ctx.chart_w - line_end) * 0.55,
-                label.y,
-            ),
+            Point::new(line_end + (ctx.chart_w - line_end) * 0.55, label.y),
             Point::new(ctx.chart_w + 2.0, label.label_y),
             line_color,
         );
@@ -241,12 +234,7 @@ fn stack_series_label_positions(
         return Vec::new();
     }
 
-    let slot_count = anchors
-        .iter()
-        .map(|anchor| anchor.index)
-        .max()
-        .unwrap_or(0)
-        + 1;
+    let slot_count = anchors.iter().map(|anchor| anchor.index).max().unwrap_or(0) + 1;
     let mut slots = vec![None; slot_count];
     if chart_h <= 0.0 || !chart_h.is_finite() {
         return slots;
@@ -467,9 +455,7 @@ fn legend_label(display: &str, points: &[(f32, f64)]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        SeriesLabelAnchor, legend_label, performance_label, stack_series_label_positions,
-    };
+    use super::{SeriesLabelAnchor, legend_label, performance_label, stack_series_label_positions};
 
     #[test]
     fn legend_label_marks_empty_series_unavailable() {

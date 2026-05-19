@@ -1,6 +1,6 @@
 mod editor;
-mod indicator_badges;
 mod header;
+mod indicator_badges;
 mod indicator_menu;
 mod toolbar;
 

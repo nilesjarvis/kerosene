@@ -47,6 +47,9 @@ impl TradingTerminal {
                 continue;
             }
             let sym_meta = symbols_by_key.get(sym_key.as_str()).copied();
+            if sym_meta.is_some_and(|symbol| !symbol.is_user_selectable_market()) {
+                continue;
+            }
             let display = sym_meta
                 .and_then(|symbol| symbol.display_name.as_deref())
                 .unwrap_or(sym_key);

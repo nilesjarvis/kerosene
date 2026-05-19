@@ -174,9 +174,7 @@ fn format_signed_percent_value(value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        format_signed_percent_value, portfolio_total_performance, portfolio_total_pnl,
-    };
+    use super::{format_signed_percent_value, portfolio_total_performance, portfolio_total_pnl};
 
     #[test]
     fn portfolio_total_pnl_is_unknown_without_points_or_invalid_values() {

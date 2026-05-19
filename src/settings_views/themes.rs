@@ -19,10 +19,8 @@ impl TradingTerminal {
             column![
                 text("Theme").size(16).color(current_theme.palette().text),
                 rule::horizontal(1),
-                scrollable(
-                    column![chrome_controls, rule::horizontal(1), theme_list].spacing(12)
-                )
-                .height(Fill),
+                scrollable(column![chrome_controls, rule::horizontal(1), theme_list].spacing(12))
+                    .height(Fill),
             ]
             .spacing(12)
             .into()

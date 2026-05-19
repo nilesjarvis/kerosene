@@ -60,6 +60,8 @@ impl TradingTerminal {
             OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_header(),
         };
         let waiting_for_selected_precision = !inst.can_render_book_at_tick(tick);
+        let title_row = self.view_order_book_title(id, inst);
+        let outcome_metadata = self.view_order_book_outcome_metadata(&tracking_symbol, inst);
 
         if waiting_for_selected_precision
             || (inst.book.bids.is_empty() && inst.book.asks.is_empty())
@@ -99,8 +101,15 @@ impl TradingTerminal {
                 .color(theme.extended_palette().background.weak.text)
                 .into()
             };
-            let content =
-                column![tick_buttons, header, rule::horizontal(1), loading_row].spacing(4);
+            let mut content = column![title_row].spacing(4);
+            if let Some(outcome_metadata) = outcome_metadata {
+                content = content.push(outcome_metadata);
+            }
+            content = content
+                .push(tick_buttons)
+                .push(header)
+                .push(rule::horizontal(1))
+                .push(loading_row);
 
             return container(content)
                 .width(Fill)
@@ -118,9 +127,11 @@ impl TradingTerminal {
                 Self::view_order_book_dom_ladder(id, inst, tick, &theme, &user_order_levels)
             }
         };
-        let title_row = self.view_order_book_title(id, inst);
 
         let mut content_col = column![title_row].spacing(4);
+        if let Some(outcome_metadata) = outcome_metadata {
+            content_col = content_col.push(outcome_metadata);
+        }
         if let Some(error) = &inst.book_error {
             content_col = content_col.push(
                 text(format!("{error}; showing last snapshot"))

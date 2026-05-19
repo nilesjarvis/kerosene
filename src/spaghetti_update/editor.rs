@@ -43,6 +43,10 @@ impl TradingTerminal {
             return Task::none();
         }
         let sym = self.exchange_symbols.iter().find(|s| s.key == key);
+        if sym.is_some_and(|symbol| !symbol.is_user_selectable_market()) {
+            self.push_toast("Market is not tradable".to_string(), true);
+            return Task::none();
+        }
         let display = sym
             .map(Self::exchange_symbol_display_name)
             .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());

@@ -87,15 +87,13 @@ impl TradingTerminal {
         .spacing(8);
 
         if let Some(error) = &instance.error {
-            content = content.push(
-                text(error.clone())
-                    .size(11)
-                    .color(if instance.data.is_some() {
-                        theme.palette().warning
-                    } else {
-                        theme.palette().danger
-                    }),
-            );
+            content = content.push(text(error.clone()).size(11).color(
+                if instance.data.is_some() {
+                    theme.palette().warning
+                } else {
+                    theme.palette().danger
+                },
+            ));
         }
 
         if let Some(data) = &instance.data {
@@ -162,15 +160,13 @@ impl TradingTerminal {
         .spacing(8);
 
         if let Some(error) = &instance.change_error {
-            content = content.push(
-                text(error.clone())
-                    .size(11)
-                    .color(if instance.change_data.is_some() {
-                        theme.palette().warning
-                    } else {
-                        theme.palette().danger
-                    }),
-            );
+            content = content.push(text(error.clone()).size(11).color(
+                if instance.change_data.is_some() {
+                    theme.palette().warning
+                } else {
+                    theme.palette().danger
+                },
+            ));
         }
 
         if let Some(data) = &instance.change_data {
@@ -233,10 +229,7 @@ impl TradingTerminal {
             },
         );
 
-        container(nav)
-            .width(Fill)
-            .padding([8, 10])
-            .into()
+        container(nav).width(Fill).padding([8, 10]).into()
     }
 
     fn view_positioning_info_title<'a>(
@@ -339,8 +332,12 @@ impl TradingTerminal {
             if let Some(icon) = helpers::symbol_icon(&sym_key, 14, theme.palette().text) {
                 coin_content = coin_content.push(icon);
             }
-            coin_content = coin_content
-                .push(text(display).size(12).color(theme.palette().text).width(Fill));
+            coin_content = coin_content.push(
+                text(display)
+                    .size(12)
+                    .color(theme.palette().text)
+                    .width(Fill),
+            );
             if let Some(dex) = helpers::hip3_dex(&sym_key) {
                 coin_content = coin_content.push(
                     text(dex.to_string())
@@ -386,16 +383,15 @@ impl TradingTerminal {
         instance: &PositioningInfoInstance,
     ) -> Element<'static, Message> {
         let can_clear = instance.has_active_filters() || instance.error.is_some();
-        let side_row =
-            PositioningInfoSide::ALL
-                .iter()
-                .fold(Row::new().spacing(4), |row, &side| {
-                    row.push(positioning_control_button(
-                        side.label(),
-                        instance.side == side,
-                        Message::PositioningInfoSideChanged(instance.id, side),
-                    ))
-                });
+        let side_row = PositioningInfoSide::ALL
+            .iter()
+            .fold(Row::new().spacing(4), |row, &side| {
+                row.push(positioning_control_button(
+                    side.label(),
+                    instance.side == side,
+                    Message::PositioningInfoSideChanged(instance.id, side),
+                ))
+            });
         row![
             text("Side")
                 .size(10)
@@ -850,9 +846,8 @@ impl PositioningChangeColumns {
             + POSITIONING_CHANGE_DELTA_WIDTH
             + POSITIONING_CHANGE_CURRENT_USD_WIDTH
             + POSITIONING_CHANGE_DELTA_USD_WIDTH;
-        let base_width_without_trader = POSITIONING_TABLE_CELL_PADDING
-            + fixed_width
-            + POSITIONING_TABLE_COLUMN_SPACING * 5.0;
+        let base_width_without_trader =
+            POSITIONING_TABLE_CELL_PADDING + fixed_width + POSITIONING_TABLE_COLUMN_SPACING * 5.0;
         let available_for_trader = (content_width - base_width_without_trader).max(0.0);
         let trader_width = if available_for_trader < POSITIONING_CHANGE_TRADER_MIN_WIDTH {
             available_for_trader
@@ -952,7 +947,11 @@ fn positioning_table_header(
         ));
 
     if columns.show_entry {
-        header = header.push(header_cell("Entry", Length::Fixed(columns.entry_width), muted));
+        header = header.push(header_cell(
+            "Entry",
+            Length::Fixed(columns.entry_width),
+            muted,
+        ));
     }
     if columns.show_liq {
         header = header.push(header_cell("Liq", Length::Fixed(columns.liq_width), muted));
@@ -988,8 +987,7 @@ fn positioning_position_row(
 ) -> Element<'static, Message> {
     let side = position_side_label(position.size);
     let side_color = position_side_color(position.size, theme);
-    let notional =
-        positioning_live_notional(position, live_mark).unwrap_or(position.notional_size);
+    let notional = positioning_live_notional(position, live_mark).unwrap_or(position.notional_size);
     let unrealized_pnl =
         positioning_live_unrealized_pnl(position, live_mark).unwrap_or(position.unrealized_pnl);
     let pnl_color = signed_value_color(unrealized_pnl, theme);
@@ -1554,9 +1552,7 @@ fn positioning_clear_filters_button(
                 theme.extended_palette().background.weak.text
             };
             let bg = match status {
-                button::Status::Hovered if active => {
-                    theme.extended_palette().background.weak.color
-                }
+                button::Status::Hovered if active => theme.extended_palette().background.weak.color,
                 _ => Color::TRANSPARENT,
             };
             button::Style {

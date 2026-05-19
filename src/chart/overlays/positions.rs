@@ -57,12 +57,8 @@ impl CandlestickChart {
                     ctx.theme.palette().danger
                 };
                 let badge_kind = RightAxisBadgeKind::PositionEntry;
-                let line_end_x = right_axis_line_end_x(
-                    ctx.right_axis_badges,
-                    badge_kind,
-                    entry_y,
-                    ctx.chart_w,
-                );
+                let line_end_x =
+                    right_axis_line_end_x(ctx.right_axis_badges, badge_kind, entry_y, ctx.chart_w);
 
                 stroke_hline(
                     ctx.frame,
@@ -77,10 +73,7 @@ impl CandlestickChart {
                     badge_kind,
                     ctx.chart_w,
                     entry_y,
-                    position_entry_badge_label(
-                        pos_overlay.entry_px,
-                        self.obscure_position_prices,
-                    ),
+                    position_entry_badge_label(pos_overlay.entry_px, self.obscure_position_prices),
                     pos_color_solid,
                     AxisBadgeStyle {
                         char_width: 6.5,
@@ -96,10 +89,8 @@ impl CandlestickChart {
                 );
 
                 let side_label = if is_long { "LONG" } else { "SHORT" };
-                let label_origin = Point::new(
-                    POSITION_LABEL_X,
-                    entry_y - POSITION_LABEL_HEIGHT * 0.5,
-                );
+                let label_origin =
+                    Point::new(POSITION_LABEL_X, entry_y - POSITION_LABEL_HEIGHT * 0.5);
                 let label_size = Size::new(POSITION_LABEL_WIDTH, POSITION_LABEL_HEIGHT);
 
                 let label_background_path = canvas::Path::rectangle(label_origin, label_size);

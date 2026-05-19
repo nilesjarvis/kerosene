@@ -39,7 +39,10 @@ impl TradingTerminal {
             );
 
             let mut row_ui = row![
-                text(helpers::format_relative_time(trade_row.last_time_ms, now_ms))
+                text(helpers::format_relative_time(
+                    trade_row.last_time_ms,
+                    now_ms
+                ))
                 .size(11)
                 .font(iced::Font::MONOSPACE)
                 .color(theme.extended_palette().background.weak.text)

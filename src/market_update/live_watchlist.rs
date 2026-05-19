@@ -80,6 +80,16 @@ impl TradingTerminal {
                         Some((format!("{symbol} is hidden in Settings > Risk"), true));
                     return Task::none();
                 }
+                if self
+                    .exchange_symbols
+                    .iter()
+                    .find(|exchange_symbol| exchange_symbol.key == symbol)
+                    .is_some_and(|exchange_symbol| !exchange_symbol.is_user_selectable_market())
+                {
+                    self.live_watchlist_status =
+                        Some((format!("{symbol} is not a tradable market"), true));
+                    return Task::none();
+                }
                 if let Some(watchlist) = self.live_watchlists.get_mut(&id) {
                     add_watchlist_symbol(watchlist, symbol);
                 }

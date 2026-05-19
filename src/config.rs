@@ -32,12 +32,12 @@ pub use panes::{
 #[cfg(test)]
 pub use schema::MAX_MARKET_SLIPPAGE_PCT;
 pub use schema::{
-    AccountProfile, CredentialStorageMode, DEFAULT_MARKET_SLIPPAGE_PCT,
+    AccountProfile, CredentialStorageMode, DEFAULT_MARKET_SLIPPAGE_PCT, KeroseneConfig,
     MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MIN_PANE_BORDER_THICKNESS,
-    MIN_PANE_CORNER_RADIUS, KeroseneConfig, MarketUniverseConfig, default_layout_ratios,
+    MIN_PANE_CORNER_RADIUS, MarketUniverseConfig, default_layout_ratios,
     default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
-    default_pane_border_thickness, default_pane_corner_radius, default_symbol,
-    default_tick_size, default_timeframe, new_secret_id, normalize_market_slippage_pct,
+    default_pane_border_thickness, default_pane_corner_radius, default_symbol, default_tick_size,
+    default_timeframe, new_secret_id, normalize_market_slippage_pct,
     normalize_pane_border_thickness, normalize_pane_corner_radius,
 };
 pub use screenshot::ChartScreenshotSettingsConfig;

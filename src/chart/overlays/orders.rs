@@ -198,8 +198,12 @@ fn draw_order_line<PriceToY, IdxToCx>(
 {
     let start_x = order_line_start_x(order, position, ctx.chart_w);
     let badge_kind = RightAxisBadgeKind::ActiveOrder(order.order_index);
-    let end_x =
-        right_axis_line_end_x(ctx.right_axis_badges, badge_kind, order.order_y, ctx.chart_w);
+    let end_x = right_axis_line_end_x(
+        ctx.right_axis_badges,
+        badge_kind,
+        order.order_y,
+        ctx.chart_w,
+    );
     let style = order_line_style(order);
     stroke_segmented_hline_range(ctx.frame, start_x, end_x, order.order_y, style);
 }

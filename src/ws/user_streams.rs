@@ -28,7 +28,10 @@ impl WsUserDataStreamParams {
 pub fn ws_user_data_stream(
     params: &WsUserDataStreamParams,
 ) -> std::pin::Pin<Box<dyn futures::Stream<Item = KeyedUserData> + Send>> {
-    let addr = params.address.as_deref().and_then(normalize_ws_user_address);
+    let addr = params
+        .address
+        .as_deref()
+        .and_then(normalize_ws_user_address);
     let dexes = params.dexes.clone();
 
     Box::pin(iced::stream::channel(20, async move |mut output| {

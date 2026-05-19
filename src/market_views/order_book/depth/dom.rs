@@ -108,10 +108,10 @@ pub(super) fn view_order_book_dom_ladder(
             .width(Fill)
             .padding(super::order_book_row_padding()),
     )
-        .height(Fill)
-        .direction(super::order_book_scroll_direction())
-        .id(inst.scroll_id.clone())
-        .into()
+    .height(Fill)
+    .direction(super::order_book_scroll_direction())
+    .id(inst.scroll_id.clone())
+    .into()
 }
 
 pub(super) fn view_order_book_dom_header() -> Element<'static, Message> {

@@ -46,7 +46,9 @@ impl TradingTerminal {
         .align_y(iced::Alignment::Center);
 
         if let Some(status) = sections::chart_fetch_status_label(has_candles, instance, &theme) {
-            tf_row = tf_row.push(sections::chart_toolbar_separator()).push(status);
+            tf_row = tf_row
+                .push(sections::chart_toolbar_separator())
+                .push(status);
         }
 
         tf_row = sections::push_drawing_tool_buttons(tf_row, chart_id, active_tool);
@@ -56,10 +58,7 @@ impl TradingTerminal {
     }
 }
 
-fn chart_toolbar_pick_list_style(
-    theme: &Theme,
-    status: pick_list::Status,
-) -> pick_list::Style {
+fn chart_toolbar_pick_list_style(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
     let background = match status {
         pick_list::Status::Hovered | pick_list::Status::Opened { .. } => Color {
             a: 0.55,

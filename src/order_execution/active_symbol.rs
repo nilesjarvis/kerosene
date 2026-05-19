@@ -21,6 +21,12 @@ impl TradingTerminal {
             .or_else(|| self.exchange_symbols.iter().find(|s| s.ticker == key));
 
         let valid_key = sym.map(|s| s.key.clone()).unwrap_or(key.clone());
+        if sym.is_some_and(|symbol| !symbol.is_user_selectable_market()) {
+            self.order_status = Some((format!("{valid_key} is not a tradable market"), true));
+            self.symbol_search_status =
+                Some((format!("{valid_key} is not a tradable market"), true));
+            return Task::none();
+        }
         if self.symbol_key_is_hidden(&valid_key) {
             self.order_status = Some((format!("{valid_key} is hidden in Settings > Risk"), true));
             self.symbol_search_status =

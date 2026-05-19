@@ -1,4 +1,4 @@
-use crate::api::ExchangeSymbol;
+use crate::api::{ExchangeSymbol, OutcomeSymbolInfo};
 use crate::app_state::TradingTerminal;
 
 impl TradingTerminal {
@@ -12,7 +12,7 @@ impl TradingTerminal {
 
     pub(crate) fn exchange_symbol_display_name(sym: &ExchangeSymbol) -> String {
         if let Some(info) = &sym.outcome {
-            return format!("{} - {}", Self::outcome_market_label(info), info.side_name);
+            return outcome_display_label(info);
         }
         sym.display_name
             .clone()
@@ -34,6 +34,10 @@ impl TradingTerminal {
             coin.to_string()
         }
     }
+}
+
+fn outcome_display_label(info: &OutcomeSymbolInfo) -> String {
+    info.display_label()
 }
 
 fn format_position_size(size: f64) -> String {

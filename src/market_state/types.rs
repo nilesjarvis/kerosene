@@ -278,7 +278,10 @@ impl OrderBookInstance {
             true_best_ask = Some(best_ask);
         }
 
-        (positive_finite(true_best_bid), positive_finite(true_best_ask))
+        (
+            positive_finite(true_best_bid),
+            positive_finite(true_best_ask),
+        )
     }
 
     pub fn current_mid_price(&self) -> Option<f64> {
@@ -677,7 +680,10 @@ mod tests {
         inst.record_mid_price_sample(later);
 
         assert_eq!(inst.mid_price_history.len(), 1);
-        assert_eq!(inst.mid_price_history.front().copied(), Some((later, 100.0)));
+        assert_eq!(
+            inst.mid_price_history.front().copied(),
+            Some((later, 100.0))
+        );
         assert_eq!(inst.short_term_price_move(), None);
     }
 

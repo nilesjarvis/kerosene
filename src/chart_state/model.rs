@@ -187,8 +187,8 @@ impl ChartInstance {
 
     pub(crate) fn advance_order_line_animation(&mut self) {
         if !self.chart.active_orders.is_empty() {
-            self.chart.order_line_phase = (self.chart.order_line_phase + ORDER_LINE_PHASE_STEP)
-                .rem_euclid(ORDER_LINE_STRIDE);
+            self.chart.order_line_phase =
+                (self.chart.order_line_phase + ORDER_LINE_PHASE_STEP).rem_euclid(ORDER_LINE_STRIDE);
         }
     }
 

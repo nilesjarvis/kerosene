@@ -185,6 +185,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolSearchMarketFilterChanged(_)
         | Message::SymbolSearchHip3DexFilterChanged(_)
         | Message::SymbolSearchContextsLoaded(_, _)
+        | Message::OutcomeVolumesLoaded(_)
         | Message::SymbolSelected(_)
         | Message::BookLoaded { .. }
         | Message::OrderBookWsAssetCtxUpdate(_, _)

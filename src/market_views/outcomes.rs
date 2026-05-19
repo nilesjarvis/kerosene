@@ -19,13 +19,19 @@ impl TradingTerminal {
         let theme = self.theme();
         let grouped = self.grouped_outcome_symbols();
 
-        let status = if self.symbols_loading {
+        let mut status = if self.symbols_loading {
             "Loading outcome metadata from Hyperliquid outcomeMeta"
         } else if grouped.is_empty() {
             "No outcome contracts returned by Hyperliquid outcomeMeta"
         } else {
-            "Read-only USDH outcomes from Hyperliquid outcomeMeta"
-        };
+            "Read-only USDH outcomes - 24h volume from candleSnapshot"
+        }
+        .to_string();
+        if self.outcome_volumes_loading {
+            status.push_str(" - loading volume");
+        } else if self.outcome_volumes_error.is_some() {
+            status.push_str(" - volume unavailable");
+        }
 
         let status_row = row![
             text(status)

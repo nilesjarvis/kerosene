@@ -112,6 +112,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) symbol_search_contexts_loading: bool,
     pub(crate) symbol_search_contexts_last_fetch_ms: Option<u64>,
     pub(crate) symbol_search_status: Option<(String, bool)>,
+    pub(crate) outcome_volumes_24h: HashMap<String, f64>,
+    pub(crate) outcome_volumes_loading: bool,
+    pub(crate) outcome_volumes_error: Option<String>,
     // L2 order books
     pub(crate) order_books: HashMap<OrderBookId, OrderBookInstance>,
     pub(crate) next_order_book_id: OrderBookId,

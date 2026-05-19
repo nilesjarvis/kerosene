@@ -79,8 +79,14 @@ pub(crate) enum Message {
     RefreshPositioningInfoPane(PositioningInfoId),
     RefreshPositioningInfo,
     PositioningInfoWsAssetCtxUpdate(String, AssetContext),
-    PositioningInfoLoaded(String, Box<Result<crate::hyperdash_api::TickerPositions, String>>),
-    PositioningInfoChangeLoaded(String, Box<Result<crate::hyperdash_api::PerpDeltas, String>>),
+    PositioningInfoLoaded(
+        String,
+        Box<Result<crate::hyperdash_api::TickerPositions, String>>,
+    ),
+    PositioningInfoChangeLoaded(
+        String,
+        Box<Result<crate::hyperdash_api::PerpDeltas, String>>,
+    ),
     AddOrderBookPane,
     AddAdvancedOrdersPane,
     PositionsSortChanged(PositionsSortColumn),
@@ -415,6 +421,7 @@ pub(crate) enum Message {
         u64,
         Result<HashMap<String, crate::api::WatchlistContext>, String>,
     ),
+    OutcomeVolumesLoaded(Result<HashMap<String, f64>, String>),
     SymbolSelected(String),
     BookLoaded {
         id: OrderBookId,

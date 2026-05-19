@@ -8,7 +8,9 @@ impl TradingTerminal {
     pub(super) fn grouped_outcome_symbols(&self) -> BTreeMap<u32, Vec<&ExchangeSymbol>> {
         let mut grouped = BTreeMap::new();
         for sym in self.exchange_symbols.iter().filter(|sym| {
-            sym.market_type == MarketType::Outcome && !self.exchange_symbol_is_hidden(sym)
+            sym.market_type == MarketType::Outcome
+                && sym.is_user_selectable_market()
+                && !self.exchange_symbol_is_hidden(sym)
         }) {
             if let Some(info) = &sym.outcome {
                 grouped

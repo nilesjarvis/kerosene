@@ -14,11 +14,11 @@ impl TradingTerminal {
                 let theme = self.theme();
                 self.view_connected_summary_layout(data, &theme, size.width)
             }))
-                .width(Fill)
-                .height(Fill)
-                .padding([6, 12])
-                .center_y(Fill)
-                .into()
+            .width(Fill)
+            .height(Fill)
+            .padding([6, 12])
+            .center_y(Fill)
+            .into()
         } else {
             self.view_connected_account_status()
         }

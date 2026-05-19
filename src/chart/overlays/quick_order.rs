@@ -39,8 +39,7 @@ impl CandlestickChart {
             ..ctx.theme.palette().primary
         };
         let badge_kind = RightAxisBadgeKind::QuickOrder;
-        let line_end_x =
-            right_axis_line_end_x(ctx.right_axis_badges, badge_kind, y, ctx.chart_w);
+        let line_end_x = right_axis_line_end_x(ctx.right_axis_badges, badge_kind, y, ctx.chart_w);
         stroke_segmented_hline_with_offset(
             ctx.frame,
             line_end_x,

@@ -17,6 +17,7 @@ impl TradingTerminal {
             | Message::SymbolSearchMarketFilterChanged(_)
             | Message::SymbolSearchHip3DexFilterChanged(_)
             | Message::SymbolSearchContextsLoaded(_, _)
+            | Message::OutcomeVolumesLoaded(_)
             | Message::SymbolSelected(_)) => {
                 return self.update_symbol_search_market(message);
             }
@@ -92,6 +93,8 @@ mod tests {
         assert!(is_order_book_market_message(
             &Message::SetOrderBookDisplayMode(7, OrderBookDisplayMode::DomLadder)
         ));
-        assert!(is_order_book_market_message(&Message::ToggleOrderBookCenterOnMid(7)));
+        assert!(is_order_book_market_message(
+            &Message::ToggleOrderBookCenterOnMid(7)
+        ));
     }
 }

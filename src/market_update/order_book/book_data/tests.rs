@@ -35,6 +35,13 @@ fn order_book_fetch_plan_uses_active_symbol() {
 }
 
 #[test]
+fn outcome_symbols_are_available_for_order_book_fetches() {
+    let terminal = TradingTerminal::boot().0;
+
+    assert_eq!(terminal.order_book_unavailable_reason("#650"), None);
+}
+
+#[test]
 fn order_book_fetch_plan_falls_back_to_live_mid_when_book_is_empty() {
     let plan = plan_order_book_fetch(
         1,

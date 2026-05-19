@@ -74,35 +74,38 @@ impl CandlestickChart {
             )
         });
 
-        self.active_orders.iter().enumerate().find_map(|(order_index, order)| {
-            let order_y = price_to_y(order.limit_px);
-            if order_y < -10.0 || order_y > price_h + 10.0 || !order_y.is_finite() {
-                return None;
-            }
-
-            if let Some(position) = label_positions
-                .as_deref()
-                .and_then(|positions| order_label_position(positions, order_index))
-            {
-                let (label_x, label_end_x) = order_label_x_range(order);
-                let (label_y, label_end_y) = order_label_y_range(position.label_y);
-                if pos.x >= label_x
-                    && pos.x <= label_end_x
-                    && pos.y >= label_y
-                    && pos.y <= label_end_y
-                {
-                    return Some(OrderLineHit {
-                        order,
-                        target: OrderHitTarget::Label,
-                    });
+        self.active_orders
+            .iter()
+            .enumerate()
+            .find_map(|(order_index, order)| {
+                let order_y = price_to_y(order.limit_px);
+                if order_y < -10.0 || order_y > price_h + 10.0 || !order_y.is_finite() {
+                    return None;
                 }
-            }
 
-            ((pos.y - order_y).abs() < ORDER_HIT_TOLERANCE).then_some(OrderLineHit {
-                order,
-                target: OrderHitTarget::Line,
+                if let Some(position) = label_positions
+                    .as_deref()
+                    .and_then(|positions| order_label_position(positions, order_index))
+                {
+                    let (label_x, label_end_x) = order_label_x_range(order);
+                    let (label_y, label_end_y) = order_label_y_range(position.label_y);
+                    if pos.x >= label_x
+                        && pos.x <= label_end_x
+                        && pos.y >= label_y
+                        && pos.y <= label_end_y
+                    {
+                        return Some(OrderLineHit {
+                            order,
+                            target: OrderHitTarget::Label,
+                        });
+                    }
+                }
+
+                ((pos.y - order_y).abs() < ORDER_HIT_TOLERANCE).then_some(OrderLineHit {
+                    order,
+                    target: OrderHitTarget::Line,
+                })
             })
-        })
     }
 
     pub(super) fn order_cancel_x_range(order: &OrderOverlay) -> (f32, f32) {
