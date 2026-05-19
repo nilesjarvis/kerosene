@@ -21,10 +21,3 @@ fn position_funding_pnl_inverts_clearinghouse_cum_funding() {
         Some(5.67)
     );
 }
-
-#[test]
-fn format_signed_amount_shows_received_and_paid_direction() {
-    assert_eq!(TradingTerminal::format_signed_amount(12.34), "+12.34");
-    assert_eq!(TradingTerminal::format_signed_amount(-12.34), "-12.34");
-    assert_eq!(TradingTerminal::format_signed_amount(-0.001), "0.00");
-}

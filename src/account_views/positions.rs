@@ -14,6 +14,7 @@ const HIDE_TOTAL_PNL_BELOW: f32 = 1_080.0;
 const HIDE_LEVERAGE_BELOW: f32 = 990.0;
 const HIDE_FUNDING_BELOW: f32 = 900.0;
 const HIDE_LIQUIDATION_BELOW: f32 = 810.0;
+const COMPACT_NUMBERS_BELOW: f32 = HIDE_LIQUIDATION_BELOW;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PositionColumnVisibility {
@@ -34,6 +35,26 @@ impl PositionColumnVisibility {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PositionNumberMode {
+    Full,
+    Compact,
+}
+
+impl PositionNumberMode {
+    fn for_width(width: f32) -> Self {
+        if width < COMPACT_NUMBERS_BELOW {
+            Self::Compact
+        } else {
+            Self::Full
+        }
+    }
+
+    pub(super) fn is_compact(self) -> bool {
+        matches!(self, Self::Compact)
+    }
+}
+
 impl TradingTerminal {
     pub(crate) fn view_positions(&self) -> Element<'_, Message> {
         responsive(move |size| self.view_positions_for_width(size.width))
@@ -45,6 +66,7 @@ impl TradingTerminal {
     fn view_positions_for_width(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
         let columns = PositionColumnVisibility::for_width(available_width);
+        let number_mode = PositionNumberMode::for_width(available_width);
         let can_close =
             self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
 
@@ -99,7 +121,7 @@ impl TradingTerminal {
             return positions_scrollable(content);
         }
 
-        let rows = self.view_position_rows(&positions, can_close, &theme, columns);
+        let rows = self.view_position_rows(&positions, can_close, &theme, columns, number_mode);
         let mut content = column![header].spacing(4);
         if let Some(warning) = warning {
             content = content.push(text(warning).size(11).color(theme.palette().warning));
@@ -107,7 +129,7 @@ impl TradingTerminal {
         let content = content.push(rule::horizontal(1)).push(rows);
         column![
             positions_scrollable(content),
-            self.view_position_summary_bar(&positions, &theme),
+            self.view_position_summary_bar(&positions, &theme, number_mode),
         ]
         .spacing(0)
         .width(Fill)
@@ -186,6 +208,18 @@ mod tests {
                 total_pnl: false,
                 leverage: false,
             }
+        );
+    }
+
+    #[test]
+    fn position_numbers_compact_after_optional_columns_are_hidden() {
+        assert_eq!(
+            PositionNumberMode::for_width(COMPACT_NUMBERS_BELOW),
+            PositionNumberMode::Full
+        );
+        assert_eq!(
+            PositionNumberMode::for_width(COMPACT_NUMBERS_BELOW - 1.0),
+            PositionNumberMode::Compact
         );
     }
 }

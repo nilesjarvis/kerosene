@@ -1,10 +1,11 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::{self, format_price, format_usd};
+use crate::helpers::{self, format_decimal_with_commas, format_price, format_size};
 use crate::message::Message;
 use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
 
-use super::super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
+use super::super::{POSITION_ACTION_WIDTH, PositionColumnVisibility, PositionNumberMode};
 use super::sort::PositionRowData;
+use super::{format_position_compact_number, format_position_usd_value};
 use iced::widget::{Space, button, container, row, text};
 use iced::{Element, Fill, Theme, color};
 
@@ -15,6 +16,7 @@ impl TradingTerminal {
         can_close: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,
+        number_mode: PositionNumberMode,
     ) -> Element<'a, Message> {
         let ap = data.ap;
         let pos = &ap.position;
@@ -31,7 +33,7 @@ impl TradingTerminal {
         let entry_str = format_position_entry_price(data.entry_px, &pos.entry_px);
         let size_str = data
             .szi
-            .map(|szi| self.display_size_for_symbol(&pos.coin, szi.abs()))
+            .map(|szi| self.display_position_size(&pos.coin, szi.abs(), number_mode))
             .unwrap_or_else(|| "Invalid".to_string());
 
         let pnl_color = data
@@ -103,16 +105,16 @@ impl TradingTerminal {
         } else {
             (
                 data.position_value
-                    .map(|value| format_usd(&format!("{value:.2}")))
+                    .map(|value| format_position_usd_value(value, number_mode))
                     .unwrap_or_else(|| "Invalid".to_string()),
                 data.upnl
-                    .map(|upnl| format_usd(&format!("{upnl:.2}")))
+                    .map(|upnl| format_position_usd_value(upnl, number_mode))
                     .unwrap_or_else(|| "Invalid".to_string()),
                 data.funding_since_open
-                    .map(Self::format_signed_amount)
+                    .map(|funding| format_position_signed_amount(funding, number_mode))
                     .unwrap_or_else(|| "-".to_string()),
                 data.total_pnl
-                    .map(|total_pnl| format_usd(&format!("{total_pnl:.2}")))
+                    .map(|total_pnl| format_position_usd_value(total_pnl, number_mode))
                     .unwrap_or_else(|| "Invalid".to_string()),
             )
         };
@@ -217,6 +219,73 @@ impl TradingTerminal {
             })
             .into()
     }
+
+    fn display_position_size(
+        &self,
+        coin: &str,
+        size: f64,
+        number_mode: PositionNumberMode,
+    ) -> String {
+        if !number_mode.is_compact() {
+            return self.display_size_for_symbol(coin, size);
+        }
+
+        if size >= 10_000.0 {
+            format_position_compact_number(size)
+        } else if self.is_outcome_coin(coin) {
+            format!("{size:.0}")
+        } else {
+            trim_decimal_zeros(format_size(size))
+        }
+    }
+}
+
+fn format_position_signed_amount(value: f64, number_mode: PositionNumberMode) -> String {
+    match number_mode {
+        PositionNumberMode::Full => format_signed_grouped_amount(value),
+        PositionNumberMode::Compact => format_signed_compact_amount(value),
+    }
+}
+
+fn format_signed_grouped_amount(value: f64) -> String {
+    let display_value = if value.abs() < 0.005 { 0.0 } else { value };
+    let sign = if display_value > 0.0 {
+        "+"
+    } else if display_value < 0.0 {
+        "-"
+    } else {
+        ""
+    };
+    let abs = display_value.abs();
+    if abs >= 1_000_000.0 {
+        format!("{sign}{:.2}M", abs / 1_000_000.0)
+    } else {
+        format!("{sign}{}", format_decimal_with_commas(abs, 2))
+    }
+}
+
+fn format_signed_compact_amount(value: f64) -> String {
+    let compact_value = format_position_compact_number(value.abs());
+    let sign = if value > 0.0 && compact_value != "0" {
+        "+"
+    } else if value < 0.0 && compact_value != "0" {
+        "-"
+    } else {
+        ""
+    };
+    format!("{sign}{compact_value}")
+}
+
+fn trim_decimal_zeros(value: String) -> String {
+    let Some((whole, fraction)) = value.split_once('.') else {
+        return value;
+    };
+    let fraction = fraction.trim_end_matches('0');
+    if fraction.is_empty() {
+        whole.to_string()
+    } else {
+        format!("{whole}.{fraction}")
+    }
 }
 
 fn format_position_entry_price(entry_px: Option<f64>, raw: &str) -> String {
@@ -293,5 +362,77 @@ mod tests {
             "0.00001234"
         );
         assert_eq!(format_position_entry_price(None, "100000"), "Invalid");
+    }
+
+    #[test]
+    fn compact_position_usd_rounds_to_whole_dollars() {
+        assert_eq!(
+            format_position_usd_value(1234.56, PositionNumberMode::Full),
+            "$1,234.56"
+        );
+        assert_eq!(
+            format_position_usd_value(1234.56, PositionNumberMode::Compact),
+            "$1,235"
+        );
+        assert_eq!(
+            format_position_usd_value(-1234.56, PositionNumberMode::Compact),
+            "-$1,235"
+        );
+        assert_eq!(
+            format_position_usd_value(0.5, PositionNumberMode::Compact),
+            "$1"
+        );
+        assert_eq!(
+            format_position_usd_value(532_023.0, PositionNumberMode::Compact),
+            "$500k"
+        );
+    }
+
+    #[test]
+    fn compact_signed_amount_rounds_to_whole_values() {
+        assert_eq!(
+            format_position_signed_amount(12.34, PositionNumberMode::Full),
+            "+12.34"
+        );
+        assert_eq!(
+            format_position_signed_amount(12345.67, PositionNumberMode::Full),
+            "+12,345.67"
+        );
+        assert_eq!(
+            format_position_signed_amount(-1234567.89, PositionNumberMode::Full),
+            "-1.23M"
+        );
+        assert_eq!(
+            format_position_signed_amount(12.56, PositionNumberMode::Compact),
+            "+13"
+        );
+        assert_eq!(
+            format_position_signed_amount(-12.56, PositionNumberMode::Compact),
+            "-13"
+        );
+        assert_eq!(
+            format_position_signed_amount(12345.67, PositionNumberMode::Compact),
+            "+12k"
+        );
+        assert_eq!(
+            format_position_signed_amount(532_023.0, PositionNumberMode::Compact),
+            "+500k"
+        );
+        assert_eq!(
+            format_position_signed_amount(-1234567.89, PositionNumberMode::Compact),
+            "-1.2M"
+        );
+        assert_eq!(
+            format_position_signed_amount(-0.49, PositionNumberMode::Compact),
+            "0"
+        );
+    }
+
+    #[test]
+    fn compact_position_size_trims_unneeded_zeroes() {
+        assert_eq!(trim_decimal_zeros(format_size(1.0)), "1");
+        assert_eq!(trim_decimal_zeros(format_size(1.25)), "1.25");
+        assert_eq!(format_position_compact_number(12_500.0), "13k");
+        assert_eq!(format_position_compact_number(532_023.0), "500k");
     }
 }

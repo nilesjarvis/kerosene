@@ -27,13 +27,4 @@ impl TradingTerminal {
             .filter(|value| value.is_finite())
             .map(|raw_payment| -raw_payment)
     }
-
-    pub(crate) fn format_signed_amount(value: f64) -> String {
-        let display_value = if value.abs() < 0.005 { 0.0 } else { value };
-        if display_value > 0.0 {
-            format!("+{display_value:.2}")
-        } else {
-            format!("{display_value:.2}")
-        }
-    }
 }

@@ -1,12 +1,13 @@
 use crate::account;
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_usd;
 use crate::message::Message;
 use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
 
 use iced::widget::{container, row, text};
 use iced::{Alignment, Color, Element, Fill, Font, Theme};
 
+use super::super::PositionNumberMode;
+use super::format_position_usd_value;
 use super::sort::PositionRowData;
 
 impl TradingTerminal {
@@ -14,6 +15,7 @@ impl TradingTerminal {
         &'a self,
         positions: &[&'a account::AssetPosition],
         theme: &Theme,
+        number_mode: PositionNumberMode,
     ) -> Element<'a, Message> {
         let totals =
             PositionSummaryTotals::from_rows(positions.iter().map(|ap| self.position_row_data(ap)));
@@ -30,25 +32,25 @@ impl TradingTerminal {
         let summary = row![
             summary_cell(
                 "Funding",
-                format_optional_unsigned_usd(totals.funding_gross, self.hide_pnl),
+                format_optional_unsigned_usd(totals.funding_gross, self.hide_pnl, number_mode),
                 weak_text,
                 neutral_text,
             ),
             summary_cell(
                 "Long Ntl",
-                format_unsigned_usd(totals.long_notional, self.hide_pnl),
+                format_unsigned_usd(totals.long_notional, self.hide_pnl, number_mode),
                 weak_text,
                 long_color,
             ),
             summary_cell(
                 "Short Ntl",
-                format_unsigned_usd(totals.short_notional, self.hide_pnl),
+                format_unsigned_usd(totals.short_notional, self.hide_pnl, number_mode),
                 weak_text,
                 short_color,
             ),
             summary_cell(
                 "Net Fund",
-                format_optional_signed_usd(totals.net_funding, self.hide_pnl),
+                format_optional_signed_usd(totals.net_funding, self.hide_pnl, number_mode),
                 weak_text,
                 totals
                     .net_funding
@@ -58,7 +60,7 @@ impl TradingTerminal {
             ),
             summary_cell_with_action(
                 "uPnL",
-                format_optional_signed_usd(totals.upnl, self.hide_pnl),
+                format_optional_signed_usd(totals.upnl, self.hide_pnl, number_mode),
                 weak_text,
                 totals
                     .upnl
@@ -72,7 +74,12 @@ impl TradingTerminal {
             ),
             summary_cell(
                 "Total PnL",
-                format_optional_total_pnl(totals.total_pnl, total_pnl_pct, self.hide_pnl),
+                format_optional_total_pnl(
+                    totals.total_pnl,
+                    total_pnl_pct,
+                    self.hide_pnl,
+                    number_mode,
+                ),
                 weak_text,
                 totals
                     .total_pnl
@@ -274,50 +281,68 @@ fn summary_cell_with_action(
     .into()
 }
 
-fn format_unsigned_usd(value: f64, hide_pnl: bool) -> String {
+fn format_unsigned_usd(value: f64, hide_pnl: bool, number_mode: PositionNumberMode) -> String {
     if hide_pnl {
         "$***".to_string()
     } else {
-        format_usd(&format!("{value:.2}"))
+        format_position_usd_value(value, number_mode)
     }
 }
 
-fn format_optional_unsigned_usd(total: OptionalTotal, hide_pnl: bool) -> String {
+fn format_optional_unsigned_usd(
+    total: OptionalTotal,
+    hide_pnl: bool,
+    number_mode: PositionNumberMode,
+) -> String {
     match total.value() {
-        Some(value) => format_unsigned_usd(value, hide_pnl),
+        Some(value) => format_unsigned_usd(value, hide_pnl, number_mode),
         None => "--".to_string(),
     }
 }
 
-fn format_optional_signed_usd(total: OptionalTotal, hide_pnl: bool) -> String {
+fn format_optional_signed_usd(
+    total: OptionalTotal,
+    hide_pnl: bool,
+    number_mode: PositionNumberMode,
+) -> String {
     match total.value() {
         Some(_) if hide_pnl => "$***".to_string(),
-        Some(value) => format_signed_usd(value),
+        Some(value) => format_signed_usd(value, number_mode),
         None => "--".to_string(),
     }
 }
 
-fn format_optional_total_pnl(total: OptionalTotal, percent: Option<f64>, hide_pnl: bool) -> String {
+fn format_optional_total_pnl(
+    total: OptionalTotal,
+    percent: Option<f64>,
+    hide_pnl: bool,
+    number_mode: PositionNumberMode,
+) -> String {
     match total.value() {
         Some(_) if hide_pnl => {
             let percent = percent
-                .map(format_signed_percent)
+                .map(|percent| format_signed_percent(percent, number_mode))
                 .unwrap_or_else(|| "--%".to_string());
             format!("$*** ({percent})")
         }
         Some(value) => {
             let percent = percent
-                .map(format_signed_percent)
+                .map(|percent| format_signed_percent(percent, number_mode))
                 .unwrap_or_else(|| "--%".to_string());
-            format!("{} ({percent})", format_signed_usd(value))
+            format!("{} ({percent})", format_signed_usd(value, number_mode))
         }
         None => "--".to_string(),
     }
 }
 
-fn format_signed_usd(value: f64) -> String {
-    let display_value = if value.abs() < 0.005 { 0.0 } else { value };
-    let formatted = format_usd(&format!("{display_value:.2}"));
+fn format_signed_usd(value: f64, number_mode: PositionNumberMode) -> String {
+    let min_display = if number_mode.is_compact() { 0.5 } else { 0.005 };
+    let display_value = if value.abs() < min_display {
+        0.0
+    } else {
+        value
+    };
+    let formatted = format_position_usd_value(display_value, number_mode);
     if display_value > 0.0 {
         format!("+{formatted}")
     } else {
@@ -325,12 +350,22 @@ fn format_signed_usd(value: f64) -> String {
     }
 }
 
-fn format_signed_percent(value: f64) -> String {
-    let display_value = if value.abs() < 0.005 { 0.0 } else { value };
-    if display_value > 0.0 {
-        format!("+{display_value:.2}%")
+fn format_signed_percent(value: f64, number_mode: PositionNumberMode) -> String {
+    let decimals = if number_mode.is_compact() { 1 } else { 2 };
+    let min_display = if number_mode.is_compact() {
+        0.05
     } else {
-        format!("{display_value:.2}%")
+        0.005
+    };
+    let display_value = if value.abs() < min_display {
+        0.0
+    } else {
+        value
+    };
+    if display_value > 0.0 {
+        format!("+{display_value:.decimals$}%")
+    } else {
+        format!("{display_value:.decimals$}%")
     }
 }
 
@@ -419,12 +454,21 @@ mod tests {
     fn summary_formatting_masks_only_present_values_when_pnl_is_hidden() {
         let mut total = OptionalTotal::default();
 
-        assert_eq!(format_optional_signed_usd(total, true), "--");
+        assert_eq!(
+            format_optional_signed_usd(total, true, PositionNumberMode::Full),
+            "--"
+        );
 
         total.add(Some(-12.34));
 
-        assert_eq!(format_optional_signed_usd(total, true), "$***");
-        assert_eq!(format_optional_signed_usd(total, false), "-$12.34");
+        assert_eq!(
+            format_optional_signed_usd(total, true, PositionNumberMode::Full),
+            "$***"
+        );
+        assert_eq!(
+            format_optional_signed_usd(total, false, PositionNumberMode::Full),
+            "-$12.34"
+        );
     }
 
     #[test]
@@ -443,18 +487,52 @@ mod tests {
         total.add(Some(12.5));
 
         assert_eq!(
-            format_optional_total_pnl(total, Some(1.25), false),
+            format_optional_total_pnl(total, Some(1.25), false, PositionNumberMode::Full),
             "+$12.50 (+1.25%)"
         );
         assert_eq!(
-            format_optional_total_pnl(total, None, false),
+            format_optional_total_pnl(total, None, false, PositionNumberMode::Full),
             "+$12.50 (--%)"
         );
         assert_eq!(
-            format_optional_total_pnl(total, Some(1.25), true),
+            format_optional_total_pnl(total, Some(1.25), true, PositionNumberMode::Full),
             "$*** (+1.25%)"
         );
-        assert_eq!(format_optional_total_pnl(total, None, true), "$*** (--%)");
+        assert_eq!(
+            format_optional_total_pnl(total, None, true, PositionNumberMode::Full),
+            "$*** (--%)"
+        );
+    }
+
+    #[test]
+    fn compact_summary_formatting_rounds_money_and_percent() {
+        let mut total = OptionalTotal::default();
+        total.add(Some(1234.56));
+
+        assert_eq!(
+            format_optional_unsigned_usd(total, false, PositionNumberMode::Compact),
+            "$1,235"
+        );
+        assert_eq!(
+            format_optional_signed_usd(total, false, PositionNumberMode::Compact),
+            "+$1,235"
+        );
+        assert_eq!(
+            format_optional_total_pnl(total, Some(1.25), false, PositionNumberMode::Compact),
+            "+$1,235 (+1.2%)"
+        );
+
+        let mut large_total = OptionalTotal::default();
+        large_total.add(Some(532_023.0));
+
+        assert_eq!(
+            format_optional_unsigned_usd(large_total, false, PositionNumberMode::Compact),
+            "$500k"
+        );
+        assert_eq!(
+            format_optional_total_pnl(large_total, Some(1.25), false, PositionNumberMode::Compact),
+            "+$500k (+1.2%)"
+        );
     }
 
     #[test]
