@@ -45,6 +45,41 @@ impl TradingTerminal {
         price.clamp(OUTCOME_MIN_PRICE, OUTCOME_MAX_PRICE)
     }
 
+    pub(crate) fn validate_outcome_market_slippage(
+        mid: f64,
+        is_buy: bool,
+        slippage: f64,
+        submitted_price: f64,
+    ) -> Result<(), String> {
+        if !mid.is_finite()
+            || !submitted_price.is_finite()
+            || mid <= 0.0
+            || submitted_price <= 0.0
+            || !slippage.is_finite()
+            || slippage < 0.0
+        {
+            return Err("Unable to validate market slippage for this outcome order".to_string());
+        }
+
+        let max_buy_price = mid * (1.0 + slippage);
+        let min_sell_price = mid * (1.0 - slippage);
+
+        if is_buy && submitted_price > max_buy_price {
+            return Err(format!(
+                "Outcome market buy price exceeds configured slippage cap ({:.2}%)",
+                slippage * 100.0
+            ));
+        }
+        if !is_buy && submitted_price < min_sell_price {
+            return Err(format!(
+                "Outcome market sell price exceeds configured slippage cap ({:.2}%)",
+                slippage * 100.0
+            ));
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn validate_outcome_contract_size(&self, qty: f64) -> Result<(), String> {
         if qty.fract().abs() <= 1e-9 {
             Ok(())

@@ -79,6 +79,17 @@ impl TradingTerminal {
                     self.order_status = Some((e, true));
                     return Task::none();
                 }
+                if is_outcome
+                    && let Err(e) = Self::validate_outcome_market_slippage(
+                        mid,
+                        is_buy,
+                        self.market_slippage_fraction(),
+                        rounded,
+                    )
+                {
+                    self.order_status = Some((e, true));
+                    return Task::none();
+                }
                 if let Err(e) = self.validate_order_price_band(&self.active_symbol, rounded) {
                     self.order_status = Some((e, true));
                     return Task::none();
@@ -114,6 +125,17 @@ impl TradingTerminal {
                     )
                 };
                 if is_outcome && let Err(e) = Self::validate_outcome_order_price(rounded) {
+                    self.order_status = Some((e, true));
+                    return Task::none();
+                }
+                if is_outcome
+                    && let Err(e) = Self::validate_outcome_market_slippage(
+                        mid,
+                        is_buy,
+                        self.market_slippage_fraction(),
+                        rounded,
+                    )
+                {
                     self.order_status = Some((e, true));
                     return Task::none();
                 }
