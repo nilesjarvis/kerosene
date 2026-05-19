@@ -124,6 +124,7 @@ impl TradingTerminal {
                 }
             }
             message @ (Message::StartRecordingHotkey(_)
+            | Message::ClearHotkey(_)
             | Message::KeyboardEvent(_, _)
             | Message::ExecuteHotkey(_)) => return self.update_hotkey_preferences(message),
             _ => {}

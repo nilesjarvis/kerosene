@@ -286,9 +286,7 @@ fn preferred_side_of_reserved(
     let center_y = reserved_range.center();
     if anchor.order_y < center_y {
         ReservedSide::Above
-    } else if anchor.order_y > center_y {
-        ReservedSide::Below
-    } else if anchor.is_buy {
+    } else if anchor.order_y > center_y || anchor.is_buy {
         ReservedSide::Below
     } else {
         ReservedSide::Above

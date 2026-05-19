@@ -10,4 +10,22 @@ impl TradingTerminal {
 
         Task::none()
     }
+
+    pub(super) fn clear_configured_hotkey(&mut self, message: Message) -> Task<Message> {
+        let Message::ClearHotkey(action) = message else {
+            return Task::none();
+        };
+
+        if self.recording_hotkey_for.as_ref() == Some(&action) {
+            self.recording_hotkey_for = None;
+        }
+
+        let before = self.hotkeys.len();
+        self.hotkeys.retain(|hotkey| hotkey.action != action);
+        if self.hotkeys.len() != before {
+            self.persist_config();
+        }
+
+        Task::none()
+    }
 }

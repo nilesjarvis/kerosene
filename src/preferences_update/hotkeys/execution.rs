@@ -19,6 +19,18 @@ impl TradingTerminal {
             }
             config::HotkeyAction::OpenQuickSymbolSearch => self.open_quick_symbol_search(),
             config::HotkeyAction::OpenSettingsWindow => self.update(Message::OpenSettingsWindow),
+            config::HotkeyAction::SwitchLayout { name } => {
+                let layout = self
+                    .saved_layouts
+                    .iter()
+                    .find(|layout| layout.name == name)
+                    .cloned();
+                if let Some(layout) = layout {
+                    return self.update(Message::LoadLayout(layout));
+                }
+                self.push_toast("Layout hotkey target no longer exists".to_string(), true);
+                Task::none()
+            }
             config::HotkeyAction::SwitchAccount { secret_id } => {
                 if let Some(index) = self.account_index_for_secret_id(&secret_id) {
                     return self.switch_account_task(index);

@@ -1405,6 +1405,7 @@ fn sort_header_cell(
         .into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn change_sort_header_cell(
     label: &'static str,
     field: PositioningInfoChangeSortField,

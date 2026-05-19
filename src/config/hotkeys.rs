@@ -11,6 +11,7 @@ pub enum HotkeyAction {
     OpenQuickSymbolSearch,
     OpenSettingsWindow,
     SwitchAccount { secret_id: String },
+    SwitchLayout { name: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

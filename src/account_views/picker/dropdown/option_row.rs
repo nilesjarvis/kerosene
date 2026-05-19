@@ -1,9 +1,10 @@
 use crate::account_state::AccountPickerOption;
 use crate::app_state::TradingTerminal;
+use crate::config;
 use crate::helpers;
 use crate::message::Message;
 
-use iced::widget::{button, column, container, row, text, text_input};
+use iced::widget::{Row, button, column, container, row, text, text_input};
 use iced::{Color, Element, Fill, Length, Theme};
 
 const ACCOUNT_OPTION_TEXT_LEFT_PADDING: f32 = 6.0;
@@ -58,12 +59,14 @@ impl TradingTerminal {
             .width(Fill)
             .into()
         } else {
-            button(
-                row![
+            let mut account_row = Row::new()
+                .push(
                     text(active_marker)
                         .size(11)
                         .color(theme.palette().primary)
                         .width(12),
+                )
+                .push(
                     container(
                         column![
                             text(label).size(12).color(theme.palette().text),
@@ -81,36 +84,46 @@ impl TradingTerminal {
                         left: ACCOUNT_OPTION_TEXT_LEFT_PADDING,
                     })
                     .width(Fill),
-                    Self::account_mode_tag(option.is_ghost, option.can_trade, theme),
-                ]
-                .spacing(10)
-                .align_y(iced::Alignment::Center),
-            )
-            .on_press(Message::AccountPickerSelected(index))
-            .padding(account_option_row_padding())
-            .width(Fill)
-            .style(move |theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ if is_active => theme.extended_palette().background.weak.color,
-                    _ => Color::TRANSPARENT,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().text,
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        width: if is_active { 1.0 } else { 0.0 },
-                        color: if is_active {
-                            theme.palette().primary
-                        } else {
-                            Color::TRANSPARENT
+                );
+            if let Some(hotkey) = self.account_picker_hotkey_display(index) {
+                account_row = account_row.push(
+                    text(hotkey)
+                        .size(10)
+                        .color(theme.extended_palette().background.weak.text),
+                );
+            }
+            account_row = account_row.push(Self::account_mode_tag(
+                option.is_ghost,
+                option.can_trade,
+                theme,
+            ));
+
+            button(account_row.spacing(10).align_y(iced::Alignment::Center))
+                .on_press(Message::AccountPickerSelected(index))
+                .padding(account_option_row_padding())
+                .width(Fill)
+                .style(move |theme: &Theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered => theme.extended_palette().background.strong.color,
+                        _ if is_active => theme.extended_palette().background.weak.color,
+                        _ => Color::TRANSPARENT,
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: theme.palette().text,
+                        border: iced::Border {
+                            radius: 4.0.into(),
+                            width: if is_active { 1.0 } else { 0.0 },
+                            color: if is_active {
+                                theme.palette().primary
+                            } else {
+                                Color::TRANSPARENT
+                            },
                         },
-                    },
-                    ..Default::default()
-                }
-            })
-            .into()
+                        ..Default::default()
+                    }
+                })
+                .into()
         };
 
         let delete_message = if option.is_ghost {
@@ -142,6 +155,15 @@ impl TradingTerminal {
         .padding([3, 0])
         .width(Fill)
         .into()
+    }
+
+    fn account_picker_hotkey_display(&self, index: usize) -> Option<String> {
+        let secret_id = self.accounts.get(index)?.secret_id.clone();
+        let action = config::HotkeyAction::SwitchAccount { secret_id };
+        self.hotkeys
+            .iter()
+            .find(|hotkey| hotkey.action == action)
+            .map(Self::hotkey_display)
     }
 }
 

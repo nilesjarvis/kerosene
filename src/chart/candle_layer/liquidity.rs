@@ -90,9 +90,11 @@ impl CandlestickChart {
             return;
         };
 
-        let max_bar_w = (ctx.chart_w * VOLUME_PROFILE_MAX_WIDTH_RATIO)
-            .min(VOLUME_PROFILE_MAX_WIDTH)
-            .max(0.0);
+        let max_bar_w = if ctx.chart_w.is_nan() {
+            0.0
+        } else {
+            (ctx.chart_w * VOLUME_PROFILE_MAX_WIDTH_RATIO).clamp(0.0, VOLUME_PROFILE_MAX_WIDTH)
+        };
         if max_bar_w <= 0.0 {
             return;
         }

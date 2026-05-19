@@ -132,12 +132,12 @@ fn accumulate_candle_volume(
     .unwrap_or_else(|| buckets.len().saturating_sub(1));
 
     let candle_range = candle.high - candle.low;
-    for idx in first_idx..=last_idx {
-        let overlap_lo = candle.low.max(buckets[idx].price_lo).max(price_lo);
-        let overlap_hi = candle.high.min(buckets[idx].price_hi).min(price_hi);
+    for bucket in buckets.iter_mut().take(last_idx + 1).skip(first_idx) {
+        let overlap_lo = candle.low.max(bucket.price_lo).max(price_lo);
+        let overlap_hi = candle.high.min(bucket.price_hi).min(price_hi);
         let overlap = overlap_hi - overlap_lo;
         if overlap > 0.0 && overlap.is_finite() {
-            buckets[idx].volume += candle.volume * overlap / candle_range;
+            bucket.volume += candle.volume * overlap / candle_range;
         }
     }
 }

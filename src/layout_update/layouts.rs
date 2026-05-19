@@ -54,6 +54,7 @@ impl TradingTerminal {
                     .iter()
                     .position(|layout| layout.name == name);
                 self.saved_layouts.retain(|layout| layout.name != name);
+                self.remove_layout_hotkeys(&name);
                 if self.active_layout_name.as_deref() == Some(name.as_str()) {
                     self.active_layout_name = None;
                 }
@@ -215,11 +216,47 @@ impl TradingTerminal {
 
         self.saved_layouts[index].name = new_name.clone();
         if self.active_layout_name.as_deref() == Some(old_name.as_str()) {
-            self.active_layout_name = Some(new_name);
+            self.active_layout_name = Some(new_name.clone());
         }
+        self.rename_layout_hotkeys(&old_name, &new_name);
         self.layout_rename_index = None;
         self.layout_rename_input.clear();
         self.persist_config();
+    }
+
+    fn remove_layout_hotkeys(&mut self, name: &str) {
+        self.hotkeys.retain(|hotkey| match &hotkey.action {
+            config::HotkeyAction::SwitchLayout { name: layout_name } => layout_name != name,
+            _ => true,
+        });
+        if self
+            .recording_hotkey_for
+            .as_ref()
+            .is_some_and(|action| {
+                matches!(
+                    action,
+                    config::HotkeyAction::SwitchLayout { name: layout_name }
+                        if layout_name == name
+                )
+            })
+        {
+            self.recording_hotkey_for = None;
+        }
+    }
+
+    fn rename_layout_hotkeys(&mut self, old_name: &str, new_name: &str) {
+        for hotkey in &mut self.hotkeys {
+            if let config::HotkeyAction::SwitchLayout { name } = &mut hotkey.action
+                && name == old_name
+            {
+                *name = new_name.to_string();
+            }
+        }
+        if let Some(config::HotkeyAction::SwitchLayout { name }) = &mut self.recording_hotkey_for
+            && name == old_name
+        {
+            *name = new_name.to_string();
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::config;
 use crate::helpers;
 use crate::layout_preview::saved_layout_preview;
 use crate::message::Message;
@@ -114,43 +115,50 @@ impl TradingTerminal {
         let marker = if is_active { ">" } else { "" };
         let label = layout_switcher_label(Some(layout.name.as_str()), ROW_LABEL_CHARS);
         let preview = saved_layout_preview(layout.pane_layout.as_ref(), theme, is_active);
-        let load_button: Element<'_, Message> = button(
-            row![
-                text(marker)
-                    .size(11)
-                    .color(theme.palette().primary)
-                    .width(Length::Fixed(12.0)),
-                preview,
-                text(label).size(12).color(theme.palette().text).width(Fill),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center),
-        )
-        .on_press(Message::LoadLayout(layout.clone()))
-        .padding([7, 8])
-        .width(Fill)
-        .style(move |theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ if is_active => theme.extended_palette().background.weak.color,
-                _ => Color::TRANSPARENT,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: theme.palette().text,
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: if is_active { 1.0 } else { 0.0 },
-                    color: if is_active {
-                        theme.palette().primary
-                    } else {
-                        Color::TRANSPARENT
+        let mut load_contents = row![
+            text(marker)
+                .size(11)
+                .color(theme.palette().primary)
+                .width(Length::Fixed(12.0)),
+            preview,
+            text(label).size(12).color(theme.palette().text).width(Fill),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+        if let Some(hotkey) = self.layout_switcher_hotkey_display(&layout.name) {
+            load_contents = load_contents.push(
+                text(hotkey)
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text),
+            );
+        }
+
+        let load_button: Element<'_, Message> = button(load_contents)
+            .on_press(Message::LoadLayout(layout.clone()))
+            .padding([7, 8])
+            .width(Fill)
+            .style(move |theme: &Theme, status| {
+                let bg = match status {
+                    button::Status::Hovered => theme.extended_palette().background.strong.color,
+                    _ if is_active => theme.extended_palette().background.weak.color,
+                    _ => Color::TRANSPARENT,
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    text_color: theme.palette().text,
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: if is_active { 1.0 } else { 0.0 },
+                        color: if is_active {
+                            theme.palette().primary
+                        } else {
+                            Color::TRANSPARENT
+                        },
                     },
-                },
-                ..Default::default()
-            }
-        })
-        .into();
+                    ..Default::default()
+                }
+            })
+            .into();
 
         container(
             row![
@@ -176,6 +184,16 @@ impl TradingTerminal {
         .padding([2, 0])
         .width(Fill)
         .into()
+    }
+
+    fn layout_switcher_hotkey_display(&self, name: &str) -> Option<String> {
+        let action = config::HotkeyAction::SwitchLayout {
+            name: name.to_string(),
+        };
+        self.hotkeys
+            .iter()
+            .find(|hotkey| hotkey.action == action)
+            .map(Self::hotkey_display)
     }
 }
 

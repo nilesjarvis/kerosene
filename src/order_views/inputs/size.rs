@@ -243,9 +243,7 @@ impl canvas_widget::Program<Message> for SizePresetDots {
         let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event else {
             return None;
         };
-        let Some(position) = cursor.position_in(bounds) else {
-            return None;
-        };
+        let position = cursor.position_in(bounds)?;
 
         size_preset_pct_at_position(bounds, position)
             .map(|pct| {

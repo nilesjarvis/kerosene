@@ -161,6 +161,7 @@ pub(crate) enum Message {
     SaveMarketSlippage,
     ExecuteHotkey(config::HotkeyAction),
     StartRecordingHotkey(config::HotkeyAction),
+    ClearHotkey(config::HotkeyAction),
     OpenWalletTrackerWindow,
     OpenWalletDetailsWindow(String),
     RefreshWalletDetails(window::Id),

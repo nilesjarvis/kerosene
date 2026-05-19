@@ -127,29 +127,30 @@ impl CandlestickChart {
             );
         }
 
-        if !self.hide_positions_and_orders && !self.obscure_position_prices {
-            if let Some(position) = &self.active_position {
+        if !self.hide_positions_and_orders
+            && !self.obscure_position_prices
+            && let Some(position) = &self.active_position
+        {
+            push_visible_badge(
+                &mut anchors,
+                RightAxisBadgeKind::PositionEntry,
+                price_to_y(position.entry_px),
+                RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
+                RIGHT_AXIS_POSITION_ENTRY_SORT_RANK,
+                None,
+                price_h,
+            );
+
+            if let Some(liq_px) = position.liquidation_px {
                 push_visible_badge(
                     &mut anchors,
-                    RightAxisBadgeKind::PositionEntry,
-                    price_to_y(position.entry_px),
-                    RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
-                    RIGHT_AXIS_POSITION_ENTRY_SORT_RANK,
+                    RightAxisBadgeKind::PositionLiquidation,
+                    price_to_y(liq_px),
+                    RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
+                    RIGHT_AXIS_LIQUIDATION_SORT_RANK,
                     None,
                     price_h,
                 );
-
-                if let Some(liq_px) = position.liquidation_px {
-                    push_visible_badge(
-                        &mut anchors,
-                        RightAxisBadgeKind::PositionLiquidation,
-                        price_to_y(liq_px),
-                        RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
-                        RIGHT_AXIS_LIQUIDATION_SORT_RANK,
-                        None,
-                        price_h,
-                    );
-                }
             }
         }
 
@@ -283,6 +284,7 @@ pub(super) fn right_axis_line_end_x(
     chart_w
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn draw_stacked_right_axis_badge(
     frame: &mut canvas::Frame,
     layout: &RightAxisBadgeLayout,

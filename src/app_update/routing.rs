@@ -208,6 +208,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::MarketSlippageInputChanged(_)
         | Message::SaveMarketSlippage
         | Message::StartRecordingHotkey(_)
+        | Message::ClearHotkey(_)
         | Message::KeyboardEvent(_, _)
         | Message::ExecuteHotkey(_) => UpdateRoute::Preferences,
 
