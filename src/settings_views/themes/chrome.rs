@@ -1,7 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{
-    MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MIN_PANE_BORDER_THICKNESS,
-    MIN_PANE_CORNER_RADIUS, default_pane_border_thickness, default_pane_corner_radius,
+    DEFAULT_UI_SCALE, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE,
+    MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, default_pane_border_thickness,
+    default_pane_corner_radius,
 };
 use crate::message::Message;
 use iced::widget::{column, row, slider, text};
@@ -18,6 +19,13 @@ impl TradingTerminal {
 
         column![
             text("Widget Chrome").size(14).color(theme.palette().text),
+            scale_slider_row(
+                &theme,
+                "Scale",
+                self.ui_scale,
+                MIN_UI_SCALE..=MAX_UI_SCALE,
+                Message::UiScaleChanged,
+            ),
             chrome_slider_row(
                 &theme,
                 "Divider",
@@ -33,7 +41,8 @@ impl TradingTerminal {
                 Message::PaneCornerRadiusChanged,
             ),
             text(format!(
-                "Defaults: {:.0}px divider, {:.0}px corners",
+                "Defaults: {:.0}% scale, {:.0}px divider, {:.0}px corners",
+                DEFAULT_UI_SCALE * 100.0,
                 default_pane_border_thickness(),
                 default_pane_corner_radius()
             ))
@@ -43,6 +52,29 @@ impl TradingTerminal {
         .spacing(10)
         .into()
     }
+}
+
+fn scale_slider_row<'a>(
+    theme: &Theme,
+    label: &'static str,
+    value: f32,
+    range: RangeInclusive<f32>,
+    on_change: fn(f32) -> Message,
+) -> Element<'a, Message> {
+    row![
+        text(label)
+            .size(12)
+            .color(theme.palette().text)
+            .width(Length::Fixed(72.0)),
+        slider(range, value, on_change).step(0.05).width(Fill),
+        text(format!("{:.0}%", value * 100.0))
+            .size(12)
+            .color(theme.extended_palette().background.weak.text)
+            .width(Length::Fixed(48.0)),
+    ]
+    .spacing(10)
+    .align_y(iced::Alignment::Center)
+    .into()
 }
 
 fn chrome_slider_row<'a>(

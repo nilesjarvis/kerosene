@@ -2,7 +2,7 @@ use crate::config::themes::{default_custom_themes, is_known_default_hyperliquid_
 use crate::config::{
     AccountProfile, KeroseneConfig, default_layout_ratios, default_market_slippage_pct,
     new_secret_id, normalize_market_slippage_pct, normalize_pane_border_thickness,
-    normalize_pane_corner_radius, prune_unsupported_pane_layout,
+    normalize_pane_corner_radius, normalize_ui_scale, prune_unsupported_pane_layout,
 };
 use zeroize::Zeroize;
 
@@ -48,6 +48,7 @@ fn normalized_market_slippage_pct(value: f64) -> f64 {
 }
 
 fn normalize_pane_chrome(config: &mut KeroseneConfig) {
+    config.ui_scale = normalize_ui_scale(config.ui_scale);
     config.pane_border_thickness = normalize_pane_border_thickness(config.pane_border_thickness);
     config.pane_corner_radius = normalize_pane_corner_radius(config.pane_corner_radius);
 }
@@ -164,6 +165,7 @@ mod tests {
     #[test]
     fn normalizes_out_of_range_pane_chrome() {
         let mut config = KeroseneConfig {
+            ui_scale: 99.0,
             pane_border_thickness: 99.0,
             pane_corner_radius: f32::NAN,
             ..KeroseneConfig::default()
@@ -171,6 +173,7 @@ mod tests {
 
         normalize_loaded_config(&mut config);
 
+        assert_eq!(config.ui_scale, normalize_ui_scale(99.0));
         assert_eq!(
             config.pane_border_thickness,
             normalize_pane_border_thickness(99.0)

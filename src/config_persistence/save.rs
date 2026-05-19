@@ -197,6 +197,7 @@ impl TradingTerminal {
             order_kind: layout_snapshot.order_kind,
             reduce_only: layout_snapshot.reduce_only,
             order_quantity_is_usd: self.order_quantity_is_usd,
+            ui_scale: self.ui_scale,
             pane_border_thickness: self.pane_border_thickness,
             pane_corner_radius: self.pane_corner_radius,
             symbol_search_sort_mode: self.symbol_search_sort_mode.config_value().to_string(),

@@ -85,6 +85,7 @@ impl TradingTerminal {
         self.journal.clear_active_account_data();
 
         self.active_theme = defaults.active_theme;
+        self.ui_scale = defaults.ui_scale;
         self.custom_themes = defaults.custom_themes;
         self.sound_enabled = defaults.sound_enabled;
         self.desktop_notifications = defaults.desktop_notifications;

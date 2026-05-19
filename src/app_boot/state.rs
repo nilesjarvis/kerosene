@@ -63,6 +63,7 @@ impl TradingTerminal {
             panes: pane_grid::State::with_configuration(parts.pane_config),
             dragging_pane: None,
             active_theme: cfg.active_theme.clone(),
+            ui_scale: cfg.ui_scale,
             pane_border_thickness: cfg.pane_border_thickness,
             pane_corner_radius: cfg.pane_corner_radius,
             focus: None,

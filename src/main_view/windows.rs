@@ -86,4 +86,8 @@ impl TradingTerminal {
     pub(crate) fn window_theme(state: &Self, _window_id: window::Id) -> Theme {
         state.theme()
     }
+
+    pub(crate) fn window_scale_factor(state: &Self, _window_id: window::Id) -> f32 {
+        state.ui_scale
+    }
 }

@@ -201,6 +201,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SetOrderBookDisplayMode(_, _) => UpdateRoute::Market,
 
         Message::ThemeChanged(_)
+        | Message::UiScaleChanged(_)
         | Message::PaneBorderThicknessChanged(_)
         | Message::PaneCornerRadiusChanged(_)
         | Message::MutedTickerInputChanged(_)

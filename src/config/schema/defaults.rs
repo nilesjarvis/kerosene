@@ -61,10 +61,25 @@ pub fn normalize_market_slippage_pct(value: f64) -> Option<f64> {
     (value.is_finite() && (0.0..=MAX_MARKET_SLIPPAGE_PCT).contains(&value)).then_some(value)
 }
 
+pub const DEFAULT_UI_SCALE: f32 = 1.0;
+pub const MIN_UI_SCALE: f32 = 0.75;
+pub const MAX_UI_SCALE: f32 = 1.10;
 pub const MIN_PANE_BORDER_THICKNESS: f32 = 1.0;
 pub const MAX_PANE_BORDER_THICKNESS: f32 = 12.0;
 pub const MIN_PANE_CORNER_RADIUS: f32 = 0.0;
 pub const MAX_PANE_CORNER_RADIUS: f32 = 16.0;
+
+pub fn default_ui_scale() -> f32 {
+    DEFAULT_UI_SCALE
+}
+
+pub fn normalize_ui_scale(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_UI_SCALE, MAX_UI_SCALE)
+    } else {
+        default_ui_scale()
+    }
+}
 
 pub fn default_pane_border_thickness() -> f32 {
     DEFAULT_PANE_BORDER_THICKNESS
@@ -110,6 +125,7 @@ impl Default for KeroseneConfig {
             order_kind: default_order_kind(),
             reduce_only: false,
             order_quantity_is_usd: false,
+            ui_scale: default_ui_scale(),
             pane_border_thickness: default_pane_border_thickness(),
             pane_corner_radius: default_pane_corner_radius(),
             book_tick_size: default_tick_size(),

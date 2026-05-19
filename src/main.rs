@@ -102,5 +102,6 @@ pub fn main() -> iced::Result {
     .subscription(TradingTerminal::subscription)
     .title(TradingTerminal::window_title)
     .theme(TradingTerminal::window_theme)
+    .scale_factor(TradingTerminal::window_scale_factor)
     .run()
 }

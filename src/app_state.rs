@@ -46,6 +46,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) panes: pane_grid::State<PaneKind>,
     pub(crate) dragging_pane: Option<pane_grid::Pane>,
     pub(crate) active_theme: String,
+    pub(crate) ui_scale: f32,
     pub(crate) pane_border_thickness: f32,
     pub(crate) pane_corner_radius: f32,
     pub(crate) hotkeys: Vec<config::HotkeyConfig>,
