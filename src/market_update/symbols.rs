@@ -112,17 +112,21 @@ impl TradingTerminal {
                 self.refresh_symbol_search_results();
                 self.symbols_loading = false;
 
-                let key = self.active_symbol.clone();
-                let resolved_key = resolve_exchange_symbol(&self.exchange_symbols, &key)
-                    .map(|symbol| symbol.key.clone());
-
                 let mut tasks = Vec::new();
                 tasks.extend(self.mids_bootstrap_tasks());
 
-                if let Some(valid_key) = resolved_key
-                    && valid_key != self.active_symbol
-                {
-                    tasks.push(self.switch_active_symbol_internal(valid_key));
+                let active_symbol = self.active_symbol.clone();
+                match self.restored_active_symbol_key(&active_symbol) {
+                    Some(valid_key) if valid_key != self.active_symbol => {
+                        tasks.push(self.switch_active_symbol_internal(valid_key));
+                    }
+                    Some(_) => {}
+                    None => {
+                        self.active_symbol.clear();
+                        self.active_symbol_display.clear();
+                        self.order_status =
+                            Some(("No tradable market symbols are available".into(), true));
+                    }
                 }
 
                 for (id, inst) in self.charts.iter_mut() {

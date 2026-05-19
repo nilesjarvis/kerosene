@@ -50,6 +50,13 @@ impl TradingTerminal {
                     });
 
                     if let Some((sym, display)) = chart_sym {
+                        if let Some(symbol) = self.resolve_exchange_symbol_by_key_or_ticker(&sym)
+                            && let Err(message) =
+                                self.validate_exchange_symbol_orderable(symbol, "Chart")
+                        {
+                            self.order_status = Some((message, true));
+                            return Task::none();
+                        }
                         self.active_symbol = sym;
                         self.active_symbol_display = display;
                         for inst in self.order_books.values_mut() {

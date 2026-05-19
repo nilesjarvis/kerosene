@@ -224,6 +224,16 @@ impl TradingTerminal {
 
     pub(crate) fn account_spot_balance_is_hidden(&self, data: &AccountData, coin: &str) -> bool {
         let outcome_trade_coin = self.outcome_trade_coin_for_balance_coin(coin);
+        if let Some(trade_coin) = Self::outcome_balance_coin_to_trade_coin(coin)
+            && self.exchange_symbols.iter().any(|symbol| {
+                symbol.key == trade_coin
+                    && symbol.market_type == MarketType::Outcome
+                    && !symbol.is_user_selectable_market()
+            })
+        {
+            return true;
+        }
+
         if data.is_portfolio_margin() {
             self.is_ticker_muted(coin)
                 || outcome_trade_coin
@@ -290,7 +300,7 @@ impl TradingTerminal {
         for preferred in ["HYPE", "BTC", "ETH"] {
             if !self.symbol_key_is_hidden(preferred) {
                 if let Some(symbol) = self.exchange_symbols.iter().find(|symbol| {
-                    symbol.key == preferred && !self.exchange_symbol_is_hidden(symbol)
+                    symbol.key == preferred && self.exchange_symbol_is_orderable(symbol)
                 }) {
                     return Some(symbol.key.clone());
                 }
@@ -305,12 +315,12 @@ impl TradingTerminal {
         self.exchange_symbols
             .iter()
             .find(|symbol| {
-                symbol.market_type == MarketType::Perp && !self.exchange_symbol_is_hidden(symbol)
+                symbol.market_type == MarketType::Perp && self.exchange_symbol_is_orderable(symbol)
             })
             .or_else(|| {
                 self.exchange_symbols
                     .iter()
-                    .find(|symbol| !self.exchange_symbol_is_hidden(symbol))
+                    .find(|symbol| self.exchange_symbol_is_orderable(symbol))
             })
             .map(|symbol| symbol.key.clone())
     }

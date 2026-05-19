@@ -2,6 +2,7 @@ use super::*;
 use crate::account::{
     AccountAbstractionMode, AccountData, ClearinghouseState, MarginSummary, SpotClearinghouseState,
 };
+use crate::api::OutcomeSymbolInfo;
 
 fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -24,6 +25,50 @@ fn perp_symbol_with_collateral(key: &str, token: Option<u32>) -> ExchangeSymbol 
     ExchangeSymbol {
         collateral_token: token,
         ..symbol(key, key.rsplit(':').next().unwrap_or(key), MarketType::Perp)
+    }
+}
+
+fn outcome_symbol(key: &str, is_question_fallback: bool) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "outcome".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 0,
+        collateral_token: None,
+        sz_decimals: 0,
+        max_leverage: 1,
+        only_isolated: true,
+        market_type: MarketType::Outcome,
+        outcome: Some(OutcomeSymbolInfo {
+            outcome_id: 66,
+            question_id: Some(12),
+            question_name: Some("Recurring".to_string()),
+            question_description: None,
+            question_class: Some("priceBucket".to_string()),
+            question_underlying: Some("BTC".to_string()),
+            question_expiry: Some("20260520-0600".to_string()),
+            question_price_thresholds: vec!["75348".to_string(), "78423".to_string()],
+            question_period: Some("1d".to_string()),
+            question_named_outcomes: vec![67, 68, 69],
+            question_settled_named_outcomes: Vec::new(),
+            question_fallback_outcome: Some(66),
+            bucket_index: None,
+            is_question_fallback,
+            side_index: 0,
+            side_name: "Yes".to_string(),
+            outcome_name: "Recurring Fallback".to_string(),
+            description: "other".to_string(),
+            class: None,
+            underlying: None,
+            expiry: None,
+            target_price: None,
+            period: None,
+            quote_symbol: "USDH".to_string(),
+            quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+            encoding: 660,
+        }),
     }
 }
 
@@ -141,4 +186,14 @@ fn non_portfolio_selected_hip3_still_hides_spot_balances() {
 
     assert!(!terminal.account_view_includes_spot_balances(&data));
     assert!(terminal.account_spot_balance_is_hidden(&data, "USDC"));
+}
+
+#[test]
+fn fallback_outcome_balances_are_hidden_even_when_all_markets_are_visible() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![outcome_symbol("#660", true), outcome_symbol("#670", false)];
+    let data = account_data_with_mode(AccountAbstractionMode::UnifiedAccount, false);
+
+    assert!(terminal.account_spot_balance_is_hidden(&data, "+660"));
+    assert!(!terminal.account_spot_balance_is_hidden(&data, "+670"));
 }

@@ -109,6 +109,17 @@ impl TradingTerminal {
             self.order_status = Some((format!("Symbol '{}' not found", coin), true));
             return Task::none();
         };
+        if let Err(message) = self.validate_exchange_symbol_orderable(sym, "Order") {
+            self.order_status = Some((message, true));
+            return Task::none();
+        }
+        if sym.market_type == MarketType::Outcome {
+            let raw_size = order.sz.trim().parse::<f64>().unwrap_or(f64::NAN);
+            if let Err(e) = self.validate_outcome_contract_size(raw_size) {
+                self.order_status = Some((format!("Move failed: {e}"), true));
+                return Task::none();
+            }
+        }
         let asset = sym.asset_index;
         let sz_decimals = sym.sz_decimals;
         let reduce_only = match moved_order_reduce_only(sym.market_type, order.reduce_only) {

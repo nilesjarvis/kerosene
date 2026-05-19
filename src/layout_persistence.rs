@@ -22,17 +22,15 @@ impl TradingTerminal {
         let mut boot_tasks = Vec::new();
 
         let order_kind = crate::signing::OrderKind::from_config_str(&layout.order_kind);
-        let mut symbol = if layout.active_symbol.is_empty() {
+        let requested_symbol = if layout.active_symbol.is_empty() {
             "HYPE".to_string()
         } else {
             layout.active_symbol.clone()
         };
-        if self.symbol_key_is_hidden(&symbol)
-            && let Some(fallback) = self.fallback_unmuted_symbol_key()
-        {
-            symbol = fallback;
-        }
-        let display = symbol.split(':').nth(1).unwrap_or(&symbol).to_string();
+        let symbol = self
+            .restored_active_symbol_key(&requested_symbol)
+            .unwrap_or_else(|| "HYPE".to_string());
+        let display = self.display_name_for_symbol(&symbol);
 
         self.order_kind = order_kind;
         self.active_symbol = symbol.clone();

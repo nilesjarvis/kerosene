@@ -39,7 +39,14 @@ impl TradingTerminal {
                 });
 
                 if let Some((sym, display)) = chart_sym {
-                    if self.symbol_key_is_hidden(&sym) {
+                    if let Some(symbol) = self.resolve_exchange_symbol_by_key_or_ticker(&sym) {
+                        if let Err(message) =
+                            self.validate_exchange_symbol_orderable(symbol, "Chart")
+                        {
+                            self.order_status = Some((message, true));
+                            return Task::none();
+                        }
+                    } else if self.symbol_key_is_hidden(&sym) {
                         self.order_status =
                             Some(("Chart ticker is hidden in Settings > Risk".into(), true));
                         return Task::none();

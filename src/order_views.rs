@@ -18,9 +18,12 @@ impl TradingTerminal {
         let theme = self.theme();
         let active_is_spot = self.is_spot_coin(&self.active_symbol);
         let active_is_outcome = self.is_outcome_coin(&self.active_symbol);
+        let active_symbol_is_orderable = self
+            .resolve_exchange_symbol_by_key_or_ticker(&self.active_symbol)
+            .is_some_and(|symbol| self.exchange_symbol_is_orderable(symbol));
         let can_trade = self.connected_address.is_some()
             && !self.wallet_key_input.trim().is_empty()
-            && !self.symbol_key_is_hidden(&self.active_symbol);
+            && active_symbol_is_orderable;
 
         let (symbol_row, margin_used) = self.view_order_entry_symbol_row(&theme);
         let context_row = self.view_order_entry_context_row(margin_used, &theme);

@@ -5,7 +5,7 @@ use crate::account::{
     AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
     SpotClearinghouseState, UserFeeRates,
 };
-use crate::api::{ExchangeSymbol, MarketType};
+use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::order_execution::{MoveOrderContextError, PendingMoveOrderContext};
 
@@ -23,6 +23,50 @@ fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
         only_isolated: false,
         market_type,
         outcome: None,
+    }
+}
+
+fn outcome_symbol(key: &str, is_question_fallback: bool) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "outcome".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 100_000_000,
+        collateral_token: None,
+        sz_decimals: 0,
+        max_leverage: 1,
+        only_isolated: true,
+        market_type: MarketType::Outcome,
+        outcome: Some(OutcomeSymbolInfo {
+            outcome_id: 66,
+            question_id: Some(12),
+            question_name: Some("Recurring".to_string()),
+            question_description: None,
+            question_class: Some("priceBucket".to_string()),
+            question_underlying: Some("BTC".to_string()),
+            question_expiry: Some("20260520-0600".to_string()),
+            question_price_thresholds: vec!["75348".to_string(), "78423".to_string()],
+            question_period: Some("1d".to_string()),
+            question_named_outcomes: vec![67, 68, 69],
+            question_settled_named_outcomes: Vec::new(),
+            question_fallback_outcome: Some(66),
+            bucket_index: None,
+            is_question_fallback,
+            side_index: 0,
+            side_name: "Yes".to_string(),
+            outcome_name: "Recurring Fallback".to_string(),
+            description: "other".to_string(),
+            class: None,
+            underlying: None,
+            expiry: None,
+            target_price: None,
+            period: None,
+            quote_symbol: "USDH".to_string(),
+            quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+            encoding: 660,
+        }),
     }
 }
 
@@ -158,6 +202,34 @@ fn handle_move_order_allows_in_band_drag_price() {
     assert!(!*is_error);
     assert_eq!(message, "Moving BTC order to $101...");
     assert!(terminal.pending_move_order_contexts.contains_key(&42));
+}
+
+#[test]
+fn handle_move_order_rejects_non_tradable_fallback_outcome() {
+    let mut terminal = terminal_with_move_order("#660", "#660", 0.42);
+    terminal.exchange_symbols = vec![outcome_symbol("#660", true)];
+    terminal.account_data = Some(account_data_with_order(open_order("#660", 42, "0.42")));
+
+    let _task = terminal.handle_move_order(42, 0.43);
+
+    let (message, is_error) = terminal.order_status.as_ref().expect("status");
+    assert!(*is_error);
+    assert!(message.contains("not a tradable market"));
+    assert!(!terminal.pending_move_order_contexts.contains_key(&42));
+}
+
+#[test]
+fn handle_move_order_rejects_fractional_outcome_size() {
+    let mut terminal = terminal_with_move_order("#670", "#670", 0.42);
+    terminal.exchange_symbols = vec![outcome_symbol("#670", false)];
+    terminal.account_data = Some(account_data_with_order(open_order("#670", 42, "0.42")));
+
+    let _task = terminal.handle_move_order(42, 0.43);
+
+    let (message, is_error) = terminal.order_status.as_ref().expect("status");
+    assert!(*is_error);
+    assert!(message.contains("whole-contract sizes"));
+    assert!(!terminal.pending_move_order_contexts.contains_key(&42));
 }
 
 #[test]

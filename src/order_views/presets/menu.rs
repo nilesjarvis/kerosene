@@ -11,10 +11,6 @@ impl TradingTerminal {
         mut form: Column<'a, Message>,
         active_is_outcome: bool,
     ) -> Column<'a, Message> {
-        if active_is_outcome {
-            return form;
-        }
-
         let presets_toggle = button(
             text(if self.presets_menu_expanded {
                 "Presets  \u{2212}"
@@ -46,21 +42,27 @@ impl TradingTerminal {
         form = form.push(Space::new().height(8.0)).push(presets_toggle);
 
         if self.presets_menu_expanded {
-            form = form.push(self.view_order_presets_menu());
+            form = form.push(self.view_order_presets_menu(active_is_outcome));
         }
 
         form
     }
 
-    fn view_order_presets_menu(&self) -> Element<'_, Message> {
+    fn view_order_presets_menu(&self, active_is_outcome: bool) -> Element<'_, Message> {
         let theme = self.theme();
         let mut presets_col = Column::new().spacing(12);
+        let denomination_label = match (active_is_outcome, self.preset_is_usd) {
+            (true, true) => "$ USDH",
+            (true, false) => "Contracts",
+            (false, true) => "$ USD",
+            (false, false) => "Coin",
+        };
 
         let currency_toggle = row![
             text("Size Denomination:").size(11).color(color!(0x888888)),
             Space::new().width(Fill),
             button(
-                text(if self.preset_is_usd { "$ USD" } else { "Coin" })
+                text(denomination_label)
                     .size(10)
                     .color(theme.palette().primary)
             )
@@ -95,12 +97,14 @@ impl TradingTerminal {
                     "Limit",
                     &self.order_presets.limit_usd,
                     OrderKind::Limit,
-                ))
-                .push(self.view_order_preset_row(
+                ));
+            if !active_is_outcome {
+                presets_col = presets_col.push(self.view_order_preset_row(
                     "Chase",
                     &self.order_presets.chase_usd,
                     OrderKind::Chase,
                 ));
+            }
         } else {
             presets_col = presets_col
                 .push(self.view_order_preset_row(
@@ -112,12 +116,14 @@ impl TradingTerminal {
                     "Limit",
                     &self.order_presets.limit_coin,
                     OrderKind::Limit,
-                ))
-                .push(self.view_order_preset_row(
+                ));
+            if !active_is_outcome {
+                presets_col = presets_col.push(self.view_order_preset_row(
                     "Chase",
                     &self.order_presets.chase_coin,
                     OrderKind::Chase,
                 ));
+            }
         }
 
         container(presets_col)

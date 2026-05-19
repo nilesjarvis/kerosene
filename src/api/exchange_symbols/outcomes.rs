@@ -70,7 +70,7 @@ pub(super) fn append_outcome_symbols(
         let description_parts = parse_outcome_description(&outcome.description);
         let question = questions_by_outcome.get(&outcome.outcome);
         for (side_index, side) in outcome.side_specs.iter().enumerate() {
-            if side_index > 9 {
+            if side_index > 1 {
                 continue;
             }
 
@@ -243,6 +243,27 @@ mod tests {
             yes.display_name.as_deref(),
             Some("YES: BTC is above 76,886 at 2026-05-20 06:00 UTC")
         );
+    }
+
+    #[test]
+    fn skips_non_binary_outcome_sides() {
+        let mut symbols = Vec::new();
+        append_outcome_symbols(
+            &mut symbols,
+            outcome_meta_from_json(serde_json::json!({
+                "outcomes": [{
+                    "outcome": 65,
+                    "name": "Recurring",
+                    "description": "class:priceBinary|underlying:BTC|expiry:20260520-0600|targetPrice:76886|period:1d",
+                    "sideSpecs": [{"name": "Yes"}, {"name": "No"}, {"name": "Maybe"}]
+                }],
+                "questions": []
+            })),
+        );
+
+        assert!(symbols.iter().any(|symbol| symbol.key == "#650"));
+        assert!(symbols.iter().any(|symbol| symbol.key == "#651"));
+        assert!(!symbols.iter().any(|symbol| symbol.key == "#652"));
     }
 
     #[test]
