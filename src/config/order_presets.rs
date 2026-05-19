@@ -52,19 +52,19 @@ fn default_market_usd_presets() -> Vec<OrderPreset> {
 fn default_limit_usd_presets() -> Vec<OrderPreset> {
     vec![
         OrderPreset {
-            label: "$500".to_string(),
+            label: "-1%".to_string(),
             size: 500.0,
-            price_offset_pct: None,
+            price_offset_pct: Some(1.0),
         },
         OrderPreset {
-            label: "$1k".to_string(),
+            label: "-2%".to_string(),
             size: 1000.0,
-            price_offset_pct: None,
+            price_offset_pct: Some(2.0),
         },
         OrderPreset {
-            label: "$5k".to_string(),
-            size: 5000.0,
-            price_offset_pct: None,
+            label: "-5%".to_string(),
+            size: 2000.0,
+            price_offset_pct: Some(5.0),
         },
     ]
 }
@@ -117,19 +117,19 @@ fn default_market_coin_presets() -> Vec<OrderPreset> {
 fn default_limit_coin_presets() -> Vec<OrderPreset> {
     vec![
         OrderPreset {
-            label: "0.1".to_string(),
-            size: 0.1,
-            price_offset_pct: None,
-        },
-        OrderPreset {
-            label: "0.5".to_string(),
-            size: 0.5,
-            price_offset_pct: None,
-        },
-        OrderPreset {
-            label: "1.0".to_string(),
+            label: "-1%".to_string(),
             size: 1.0,
-            price_offset_pct: None,
+            price_offset_pct: Some(1.0),
+        },
+        OrderPreset {
+            label: "-2%".to_string(),
+            size: 2.0,
+            price_offset_pct: Some(2.0),
+        },
+        OrderPreset {
+            label: "-5%".to_string(),
+            size: 5.0,
+            price_offset_pct: Some(5.0),
         },
     ]
 }
@@ -164,5 +164,40 @@ impl Default for OrderPresetsConfig {
             limit_coin: default_limit_coin_presets(),
             chase_coin: default_chase_coin_presets(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OrderPresetsConfig;
+
+    #[test]
+    fn default_limit_presets_keep_price_offsets_for_one_click_safety() {
+        let presets = OrderPresetsConfig::default();
+
+        assert_eq!(
+            presets
+                .limit_usd
+                .iter()
+                .map(|preset| (preset.label.as_str(), preset.size, preset.price_offset_pct))
+                .collect::<Vec<_>>(),
+            vec![
+                ("-1%", 500.0, Some(1.0)),
+                ("-2%", 1000.0, Some(2.0)),
+                ("-5%", 2000.0, Some(5.0)),
+            ]
+        );
+        assert_eq!(
+            presets
+                .limit_coin
+                .iter()
+                .map(|preset| (preset.label.as_str(), preset.size, preset.price_offset_pct))
+                .collect::<Vec<_>>(),
+            vec![
+                ("-1%", 1.0, Some(1.0)),
+                ("-2%", 2.0, Some(2.0)),
+                ("-5%", 5.0, Some(5.0)),
+            ]
+        );
     }
 }
