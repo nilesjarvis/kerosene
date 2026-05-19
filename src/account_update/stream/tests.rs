@@ -294,6 +294,35 @@ fn chase_fill_reconciliation_removes_fully_filled_chase() {
 }
 
 #[test]
+fn chase_fill_reconciliation_keeps_fully_filled_chase_while_place_pending() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut chase = chase_order();
+    chase.pending_op = Some(ChasePendingOp::Place);
+    terminal.chase_orders.insert(1, chase);
+    let mut data = account_data_with_timestamp(1_000);
+    data.fills = vec![fill_with_oid(1_001, 42, "100", "1.0")];
+    terminal.account_data = Some(data);
+
+    terminal.reconcile_chase_fills_from_account();
+
+    assert!(terminal.chase_orders.contains_key(&1));
+}
+
+#[test]
+fn chase_fill_reconciliation_keeps_fully_filled_chase_with_open_resting_order() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.chase_orders.insert(1, chase_order());
+    let mut data = account_data_with_timestamp(1_000);
+    data.fills = vec![fill_with_oid(1_001, 42, "100", "1.0")];
+    data.open_orders = vec![open_order(42, Some(false))];
+    terminal.account_data = Some(data);
+
+    terminal.reconcile_chase_fills_from_account();
+
+    assert!(terminal.chase_orders.contains_key(&1));
+}
+
+#[test]
 fn chase_fill_reconciliation_sums_known_reprice_oids() {
     let mut terminal = TradingTerminal::boot().0;
     let mut chase = chase_order();

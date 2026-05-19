@@ -442,6 +442,11 @@ impl TradingTerminal {
     fn reconcile_chase_fills_from_snapshot(&mut self, fills: &[crate::account::UserFill]) {
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
         let mut remove_ids = Vec::new();
+        let open_orders = self
+            .account_data
+            .as_ref()
+            .map(|data| data.open_orders.clone())
+            .unwrap_or_default();
         for chase_id in chase_ids {
             let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                 continue;
@@ -452,6 +457,14 @@ impl TradingTerminal {
             };
             chase.set_filled_size(totals.filled_size);
             if chase.residual_size() <= f64::EPSILON {
+                if chase.has_pending_op() {
+                    continue;
+                }
+                if let Some(oid) = chase.current_oid
+                    && open_orders.iter().any(|order| order.oid == oid)
+                {
+                    continue;
+                }
                 let summary = chase_fill_summary_for_chase(fills, chase)
                     .unwrap_or_else(|| "Chase completed: target size filled".to_string());
                 remove_ids.push((chase_id, summary));
