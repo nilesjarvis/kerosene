@@ -250,7 +250,9 @@ fn apply_open_order_to_chase(
     if confirmed_pending_price {
         chase.pending_best_price = None;
     }
-    chase.missing_open_order_refresh_requested = false;
+    if confirmed_expected_state {
+        chase.missing_open_order_refresh_requested = false;
+    }
     Ok(oversized)
 }
 
@@ -496,25 +498,41 @@ impl TradingTerminal {
             }
             match open_orders.iter().find(|order| order.oid == oid) {
                 Some(order) => {
-                    if let Some(chase) = self.chase_orders.get_mut(&chase_id)
-                        && let Ok(oversized) = apply_open_order_to_chase(
-                            chase,
-                            order,
-                            ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
-                        )
-                    {
-                        if oversized {
-                            correction_ids.push(chase_id);
+                    let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
+                        continue;
+                    };
+                    let sync_result = apply_open_order_to_chase(
+                        chase,
+                        order,
+                        ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
+                    );
+                    match sync_result {
+                        Ok(oversized) => {
+                            if oversized {
+                                correction_ids.push(chase_id);
+                            } else if (refresh_requested || !confirmed)
+                                && self.chase_orders.get(&chase_id).is_some_and(|chase| {
+                                    chase.oid_confirmed
+                                        && !chase.missing_open_order_refresh_requested
+                                        && !chase.stop_requested
+                                        && !chase.has_pending_op()
+                                })
+                            {
+                                self.order_status =
+                                    Some((format!("Chasing (oid {oid})..."), false));
+                            }
                         }
-                    } else {
-                        self.order_status = Some((
-                            "Chase stopped: invalid remaining size from open orders".into(),
-                            true,
-                        ));
-                        remove_ids.push((
-                            chase_id,
-                            "Chase stopped: invalid remaining size from open orders".to_string(),
-                        ));
+                        Err(()) => {
+                            self.order_status = Some((
+                                "Chase stopped: invalid remaining size from open orders".into(),
+                                true,
+                            ));
+                            remove_ids.push((
+                                chase_id,
+                                "Chase stopped: invalid remaining size from open orders"
+                                    .to_string(),
+                            ));
+                        }
                     }
                 }
                 None => {

@@ -460,6 +460,87 @@ fn open_order_sync_preserves_expected_price_until_modify_confirmation_catches_up
 }
 
 #[test]
+fn websocket_open_order_confirmation_clears_refreshing_chase_status() {
+    let mut terminal = TradingTerminal::boot().0;
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+    terminal.order_status = Some((
+        "Chasing (oid 42); refreshing account data...".to_string(),
+        false,
+    ));
+
+    let mut chase = chase_order();
+    chase.current_price = 101.0;
+    chase.current_price_wire = "101".to_string();
+    chase.oid_confirmed = false;
+    chase.missing_open_order_refresh_requested = true;
+    terminal.chase_orders.insert(1, chase);
+
+    let mut order = open_order(42, Some(false));
+    order.limit_px = "101".to_string();
+    order.sz = "1.0".to_string();
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: vec![order],
+        },
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert!(chase.oid_confirmed);
+    assert!(!chase.missing_open_order_refresh_requested);
+    assert_eq!(
+        terminal.order_status,
+        Some(("Chasing (oid 42)...".to_string(), false))
+    );
+}
+
+#[test]
+fn stale_websocket_open_order_keeps_chase_refresh_pending() {
+    let mut terminal = TradingTerminal::boot().0;
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+    terminal.order_status = Some((
+        "Chasing (oid 42); refreshing account data...".to_string(),
+        false,
+    ));
+
+    let mut chase = chase_order();
+    chase.current_price = 101.0;
+    chase.current_price_wire = "101".to_string();
+    chase.oid_confirmed = false;
+    chase.missing_open_order_refresh_requested = true;
+    terminal.chase_orders.insert(1, chase);
+
+    let mut stale_order = open_order(42, Some(false));
+    stale_order.limit_px = "100".to_string();
+    stale_order.sz = "1.0".to_string();
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: vec![stale_order],
+        },
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert!(!chase.oid_confirmed);
+    assert!(chase.missing_open_order_refresh_requested);
+    assert_eq!(
+        terminal.order_status,
+        Some((
+            "Chasing (oid 42); refreshing account data...".to_string(),
+            false
+        ))
+    );
+}
+
+#[test]
 fn websocket_account_repair_skips_when_initial_fetch_is_loading() {
     assert!(!should_repair_account_from_ws(
         Some("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
