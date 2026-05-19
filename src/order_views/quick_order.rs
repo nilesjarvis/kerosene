@@ -34,7 +34,6 @@ impl TradingTerminal {
         let size_controls = self.quick_order_size_controls(chart_id, form);
         let action_row = self.quick_order_action_row(chart_id);
         let fee_el = self.quick_order_fee_estimate(form);
-        let presets_scroll = self.quick_order_presets_scroll(chart_id, form);
 
         let qty_header = row![
             text("Qty")
@@ -42,8 +41,6 @@ impl TradingTerminal {
                 .color(theme.extended_palette().background.weak.text),
             Space::new().width(6.0),
             Self::quick_order_denomination_button(chart_id, form.quantity_is_usd),
-            Space::new().width(Fill),
-            presets_scroll
         ]
         .align_y(iced::Alignment::Center);
 

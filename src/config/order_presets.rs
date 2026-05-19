@@ -52,19 +52,19 @@ fn default_market_usd_presets() -> Vec<OrderPreset> {
 fn default_limit_usd_presets() -> Vec<OrderPreset> {
     vec![
         OrderPreset {
-            label: "-1%".to_string(),
+            label: "$500".to_string(),
             size: 500.0,
-            price_offset_pct: Some(1.0),
+            price_offset_pct: None,
         },
         OrderPreset {
-            label: "-2%".to_string(),
+            label: "$1k".to_string(),
             size: 1000.0,
-            price_offset_pct: Some(2.0),
+            price_offset_pct: None,
         },
         OrderPreset {
-            label: "-5%".to_string(),
-            size: 2000.0,
-            price_offset_pct: Some(5.0),
+            label: "$5k".to_string(),
+            size: 5000.0,
+            price_offset_pct: None,
         },
     ]
 }
@@ -117,19 +117,19 @@ fn default_market_coin_presets() -> Vec<OrderPreset> {
 fn default_limit_coin_presets() -> Vec<OrderPreset> {
     vec![
         OrderPreset {
-            label: "-1%".to_string(),
+            label: "0.1".to_string(),
+            size: 0.1,
+            price_offset_pct: None,
+        },
+        OrderPreset {
+            label: "0.5".to_string(),
+            size: 0.5,
+            price_offset_pct: None,
+        },
+        OrderPreset {
+            label: "1.0".to_string(),
             size: 1.0,
-            price_offset_pct: Some(1.0),
-        },
-        OrderPreset {
-            label: "-2%".to_string(),
-            size: 2.0,
-            price_offset_pct: Some(2.0),
-        },
-        OrderPreset {
-            label: "-5%".to_string(),
-            size: 5.0,
-            price_offset_pct: Some(5.0),
+            price_offset_pct: None,
         },
     ]
 }
