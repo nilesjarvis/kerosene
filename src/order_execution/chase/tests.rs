@@ -1,6 +1,9 @@
 use super::*;
 use crate::api::{ExchangeSymbol, MarketType};
+use crate::chart::OrderOverlay;
+use crate::chart_state::ChartInstance;
 use crate::signing::OrderKind;
+use crate::timeframe::Timeframe;
 
 fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -136,4 +139,45 @@ fn start_chase_rejects_usd_notional_with_stale_mid() {
 
     assert!(terminal.chase_orders.is_empty());
     assert_eq!(terminal.pending_order_action, None);
+}
+
+#[test]
+fn removing_chase_order_resyncs_chart_order_overlays() {
+    let mut terminal = chase_ready_terminal();
+    terminal.charts.clear();
+    terminal
+        .charts
+        .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+    terminal
+        .charts
+        .get_mut(&1)
+        .expect("chart")
+        .chart
+        .active_orders
+        .push(OrderOverlay {
+            coin: "BTC".to_string(),
+            limit_px: 100.0,
+            sz: 1.0,
+            is_buy: true,
+            oid: 42,
+            is_moving: false,
+        });
+
+    let _task =
+        terminal.handle_chase_resting_order("BTC".to_string(), 42, true, 1.0, 100.0, Some(false));
+    let chase_id = terminal
+        .selected_chase_id()
+        .expect("resting chase should be selected");
+
+    terminal.remove_chase_order(chase_id);
+
+    assert!(
+        terminal
+            .charts
+            .get(&1)
+            .expect("chart")
+            .chart
+            .active_orders
+            .is_empty()
+    );
 }

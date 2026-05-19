@@ -38,6 +38,7 @@ impl TradingTerminal {
         chase_id: u64,
         summary: Option<String>,
     ) {
+        let removed = self.chase_orders.contains_key(&chase_id);
         if let Some(chase) = self.chase_orders.remove(&chase_id) {
             let summary = summary.unwrap_or_else(|| {
                 chase
@@ -50,6 +51,9 @@ impl TradingTerminal {
         }
         if self.selected_chase_id == Some(chase_id) {
             self.selected_chase_id = self.chase_orders.keys().next_back().copied();
+        }
+        if removed {
+            self.sync_all_chart_orders();
         }
     }
 
