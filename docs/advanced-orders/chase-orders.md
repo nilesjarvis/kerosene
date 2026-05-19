@@ -106,6 +106,226 @@ Kerosene also stops or refuses a Chase order when:
 
 ## Technical model
 
+### Lifecycle overview
+
+```
+                        CHASE ORDER LIFECYCLE
+                        =====================
+
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │                        ORDER ENTRY PANE                             │
+ │  User: enters size → clicks CHASE BUY / CHASE SELL                  │
+ └────────────────────────────────┬────────────────────────────────────┘
+                                  │
+                                  ▼
+ ┌─────────────────────────────────────────────────────────────────────┐
+ │                     START VALIDATION                                 │
+ │  ┌─────────────────────────┐  ┌────────────────────────────┐        │
+ │  │  Check prerequisites:   │  │  • Wallet connected        │        │
+ │  │  • Agent key captured   │  │  • Valid size + symbol     │        │
+ │  │  • < 8 active chases    │  │  • Not risk-muted          │        │
+ │  │  • No pending ops       │  │  • Not outcome market      │        │
+ │  └───────────┬─────────────┘  └────────────────────────────┘        │
+ │              │ FAIL → reject with toast                              │
+ └──────────────┼──────────────────────────────────────────────────────┘
+                │ PASS
+                ▼
+ ┌────────────────────────────────┐
+ │  CREATE ChaseOrder struct      │
+ │  • id, coin, price, size       │
+ │  • current_oid = None         │
+ │  • pending_op = Place         │
+ └────────────┬───────────────────┘
+              │
+              ▼
+ ┌────────────────────────────────┐
+ │  FETCH ORDER BOOK (best bid/   │
+ │  ask) → round price for wire   │
+ │  format                        │
+ └────────────┬───────────────────┘
+              │
+              ▼
+         ╔══════════════╗
+         ║ STATUS:      ║
+         ║ STARTING →   ║
+         ║  PLACING     ║
+         ╚══════╤═══════╝
+                │
+                ▼
+ ┌────────────────────────────────────────┐
+ │  SUBMIT place_order() via Hyperliquid  │
+ │  REST API                              │
+ └────────────┬───────────────────────────┘
+              │
+       ┌────────┴────────┐
+       │                 │
+       ▼                 ▼
+  FULL FILL         PARTIAL / RESTING
+       │                 │
+       │                 ▼
+       │     ┌────────────────────────────┐
+       │     │  Store current_oid         │
+       │     │  CHASE ORDER IS NOW ACTIVE │
+       │     │                            │
+       │     │  ╔══════════════╗          │
+       │     │  ║ STATUS:      ║          │
+       │     │  ║ RESTING      ║          │
+       │     │  ╚══════════════╝          │
+       │     └────────┬───────────────────┘
+       │              │
+       ▼              ▼
+       │     ┌─────────────────────────────────────────┐
+       │     │  ENTER BOOK-DRIVEN REPRICE LOOP         │
+       │     │                                        │
+       │     │  WebSocket → ChaseBookUpdate            │
+       │     │       │                                 │
+       │     │       ▼                                 │
+       │     │  ┌──────────────────────────┐           │
+       │     │  │ Reprice conditions met?  │           │
+       │     │  │                          │           │
+       │     │  │ BUY: best bid > price    │           │
+       │     │  │ SELL: best ask < price   │           │
+       │     │  │ + throttle OK            │           │
+       │     │  │ + no pending op          │           │
+       │     │  │ + lifecycle limits OK    │           │
+       │     │  └────────┬─────────────────┘           │
+       │     │           │ NO                          │
+       │     │    ┌──────┴──────┐                      │
+       │     │    │ Stay        │◄───┘                 │
+       │     │    │ RESTING/QUEUED │                    │
+       │     │    └──────────────┘                     │
+       │     │           │ YES                         │
+       │     │           ▼                             │
+       │     │  ╔═════════════════╗                    │
+       │     │  ║ STATUS:         ║                    │
+       │     │  ║ MODIFYING       ║                    │
+       │     │  ╚════════════════╝                    │
+       │     │           │                             │
+       │     │           ▼                             │
+       │     │  modify_order(oid, new_price)           │
+       │     │  reprice_count++                        │
+       │     │           │                             │
+       │     │           ▼                             │
+       │     │  ┌──────────────────┐                   │
+       │     │  │ ModifyResult:    │                   │
+       │     │  └────────┬─────────┘                   │
+       │     │           │                             │
+       │     │     ┌─────┼────────┬──────┬───┐        │
+       │     │     │ OK  │ Retry │Rate- │FULL│        │
+       │     │     │     │       │limit │FILL│        │
+       │     │     │     │       │(5s)  │   │        │
+       │     │     │     │       │     │   │        │
+       │     │  ┌──┴─┐   │     ┌─┴─┐  │   │        │
+       │     │  │◄───┤   │     │   │  ▼   ▼        │
+       │     │  └────┘   │     │   │ END  END      │
+       │     │           │     │   │ + log+ hist    │
+       │     │           ▼     │   │ fill &         │
+       │     │  ╔═════════╗    │   │ move to        │
+       │     │  ║ STATUS: ║    │   │ advanced       │
+       │     │  ║CHECKING ║    │   │ history        │
+       │     │  ╚════════╝     │                │
+       │     │        │        │                │
+       │     │        ▼        │                │
+       │     │  ┌──────┐       │                │
+       │     │  │ REST  │       │                │
+       │     │  └───┬───┘       │                │
+       │     │      │           │                │
+       │     │      ▼           │                │
+       │     │  Open order disappears from WS?    │
+       │     │      │                      │     │
+       │     │      ▼                      │     │
+       │     │  ╔════════════╗             │     │
+       │     │  ║ STATUS:    ║             │     │
+       │     │  ║ CHECKING   ║             │     │
+       │     │  ╚════════════╝             │     │
+       │     │        │                    │     │
+       │     │   REST account refresh       │     │
+       │     │        │                    │     │
+       │     │     confirmed gone?          │     │
+       │     │  ┌──────┴───────┐            │     │
+       │     │  │ YES  │  NO   │            │     │
+       │     │       │        │             │     │
+       │     │       ▼        ▼             │     │
+       │     │    END  back to               │     │
+       │     │  + log  RESTING               │     │
+       │     │  fill  (was stale)            │     │
+       │     │  summary                      │     │
+       │     └───────────────────────────────┘     │
+       │                                           │
+       │     MOVE to advanced_order_history        │
+       │
+       ▼
+  ┌──────────────────┐
+  │   END + LOG      │
+  │   FILL SUMMARY   │
+  └──────────────────┘
+
+
+ ═══════════════════════════════════════════════════════════════════
+                          STOP FLOW (any time)
+ ═══════════════════════════════════════════════════════════════════
+
+ ┌─────────────────────────────────────────────────────────┐
+ │  User clicks STOP / STOP ALL                              │
+ │  OR lifecycle limit reached (15min, 1000 reprices,       │
+ │  5% drift, wallet disconnect, account change)             │
+ └──────┬─────────────────────────────────────────────────┘
+        │
+        ▼
+ ╔═════════════════════╗
+ ║ STATUS: STOPPING    ║
+ ╚═══════╤════════════╝
+         │
+         ▼
+ ┌──────────────────────────────┐
+ │  stop_requested = true       │
+ │                              │
+ │  Operation in flight?        │
+ │  ┌───────┬───────┬──────────┐│
+ │  │ Place │ Modify│   None   ││
+ │  └───┬───┴───┬───┘         ││
+ │      │       │             ││
+ │      │       │      ┌───┐  ││
+ │      ▼       ▼      ▼   ▼  ││
+ │    Wait for  │  cancel_order││
+ │    op result │  (oid)      ││
+ │    then ────┘      │       ││
+ │    cancel           ▼       ││
+ │                 ┌───┴──┐    ││
+ │                 │ OK   │    ││
+ │                 └──┬───┘    ││
+ │                    │        ││
+ │                    ▼        ││
+ │              Cancel failed? ││
+ │           ┌────────┬───────┘││
+ │           │ YES    │  NO    ││
+ │           └──┬─────┴──┬────┘││
+ │              │        │     ││
+ │              ▼        ▼     ││
+ │           Retry      END   ││
+ │           (<5x, warn) +    ││
+ │           move to hist     ││
+ │                    │       ││
+ │                    ▼       ││
+ └───────── MOVE to history ──┘
+
+
+ ════════════════════════════════════════════════════════════
+                   DURATION LIMITS (auto-stop)
+ ════════════════════════════════════════════════════════════
+
+ ┌───────────────────────┬──────────┐
+ │ Max active chases     │ 8        │
+ │ Reprice throttle      │ 1s/order │
+ │ Global interval       │ 250ms    │
+ │ Rate-limit cooldown   │ 5s       │
+ │ Max reprices          │ 1,000    │
+ │ Max duration          │ 15 min   │
+ │ Max price drift       │ 5%       │
+ │ Max cancel retries    │ 5        │
+ └───────────────────────┴──────────┘
+```
+
 ### State
 
 The core state lives in `ChaseOrder` (`src/signing/model.rs`). It stores:
