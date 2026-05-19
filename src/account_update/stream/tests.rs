@@ -275,6 +275,25 @@ fn chase_fill_reconciliation_updates_filled_and_remaining_size() {
 }
 
 #[test]
+fn chase_fill_reconciliation_removes_fully_filled_chase() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.chase_orders.insert(1, chase_order());
+    let mut data = account_data_with_timestamp(1_000);
+    data.fills = vec![fill_with_oid(1_001, 42, "100", "1.0")];
+    terminal.account_data = Some(data);
+
+    terminal.reconcile_chase_fills_from_account();
+
+    assert!(terminal.chase_orders.is_empty());
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, is_error)| !*is_error && message.contains("Chase filled"))
+    );
+}
+
+#[test]
 fn chase_fill_reconciliation_sums_known_reprice_oids() {
     let mut terminal = TradingTerminal::boot().0;
     let mut chase = chase_order();
