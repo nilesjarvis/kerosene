@@ -1,3 +1,5 @@
+#[path = "settings/orientation.rs"]
+mod orientation;
 #[path = "settings/spread_chart.rs"]
 mod spread_chart;
 #[path = "settings/symbol_mode.rs"]
@@ -16,13 +18,18 @@ impl TradingTerminal {
         inst: &'a OrderBookInstance,
     ) -> Element<'a, Message> {
         let search_col = self.view_order_book_symbol_mode_controls(id, inst);
+        let reverse_side_btn = orientation::view_order_book_reverse_side_toggle(id, inst);
         let show_chart_btn = spread_chart::view_order_book_spread_toggle(id, inst);
 
-        container(column![
-            search_col,
-            Space::new().height(10.0),
-            show_chart_btn
-        ])
+        container(
+            column![
+                search_col,
+                Space::new().height(10.0),
+                reverse_side_btn,
+                show_chart_btn
+            ]
+            .spacing(4),
+        )
         .padding(8)
         .style(move |theme: &Theme| container::Style {
             background: Some(theme.extended_palette().background.weak.color.into()),

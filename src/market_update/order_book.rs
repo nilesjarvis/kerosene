@@ -126,6 +126,13 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
+            Message::ToggleOrderBookReverseSide(id) => {
+                if let Some(inst) = self.order_books.get_mut(&id) {
+                    inst.reverse_side = !inst.reverse_side;
+                }
+                self.persist_config();
+                Task::none()
+            }
             Message::ToggleOrderBookSpreadChart(id) => {
                 if let Some(inst) = self.order_books.get_mut(&id) {
                     inst.show_spread_chart = !inst.show_spread_chart;

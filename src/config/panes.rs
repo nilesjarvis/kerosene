@@ -129,6 +129,8 @@ pub struct OrderBookConfig {
     #[serde(default)]
     pub center_on_mid: bool,
     #[serde(default)]
+    pub reverse_side: bool,
+    #[serde(default)]
     pub show_spread_chart: bool,
     #[serde(default = "default_spread_chart_height")]
     pub spread_chart_height: f32,
@@ -221,18 +223,20 @@ mod tests {
 
         assert_eq!(config.display_mode, OrderBookDisplayModeConfig::DepthList);
         assert!(!config.center_on_mid);
+        assert!(!config.reverse_side);
     }
 
     #[test]
     fn order_book_config_round_trips_dom_ladder_display_mode() {
         let config: OrderBookConfig = serde_json::from_str(
-            r#"{"id":7,"tick_size":1.0,"display_mode":"DomLadder","center_on_mid":true}"#,
+            r#"{"id":7,"tick_size":1.0,"display_mode":"DomLadder","center_on_mid":true,"reverse_side":true}"#,
         )
         .expect("config");
 
         let rendered = serde_json::to_string(&config).expect("json");
         assert!(rendered.contains(r#""display_mode":"DomLadder""#));
         assert!(rendered.contains(r#""center_on_mid":true"#));
+        assert!(rendered.contains(r#""reverse_side":true"#));
     }
 
     #[test]

@@ -11,6 +11,16 @@ use iced::{Element, Fill, Theme};
 
 const CENTERED_ORDER_BOOK_ROW_HEIGHT: f32 = 20.0;
 
+#[derive(Debug, Clone, Copy)]
+struct DepthColumnContext {
+    id: OrderBookId,
+    tick: f64,
+    max_cum: f64,
+    max_sz: f64,
+    decimals: usize,
+    reverse_side: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Order Book Depth
 // ---------------------------------------------------------------------------
@@ -48,6 +58,14 @@ impl TradingTerminal {
         let max_sz = max_level_size(&ask_rows, &bid_rows);
 
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
+        let column_context = DepthColumnContext {
+            id,
+            tick,
+            max_cum,
+            max_sz,
+            decimals,
+            reverse_side: inst.reverse_side,
+        };
         if inst.center_on_mid {
             let centered_asks = ask_rows.clone();
             let centered_bids = bid_rows.clone();
@@ -60,12 +78,8 @@ impl TradingTerminal {
                         centered_order_book_side_row_count(size.height, centered_asks.len());
                     let start = centered_asks.len().saturating_sub(count);
                     let asks = depth_ask_column(
-                        id,
+                        column_context,
                         &centered_asks[start..],
-                        tick,
-                        max_cum,
-                        max_sz,
-                        decimals,
                         &centered_ask_orders,
                     );
 
@@ -80,12 +94,8 @@ impl TradingTerminal {
                     let count =
                         centered_order_book_side_row_count(size.height, centered_bids.len());
                     let bids = depth_bid_column(
-                        id,
+                        column_context,
                         &centered_bids[..count],
-                        tick,
-                        max_cum,
-                        max_sz,
-                        decimals,
                         &centered_bid_orders,
                     );
 
@@ -107,24 +117,8 @@ impl TradingTerminal {
                 .into();
         }
 
-        let asks = depth_ask_column(
-            id,
-            &ask_rows,
-            tick,
-            max_cum,
-            max_sz,
-            decimals,
-            user_order_levels,
-        );
-        let bids = depth_bid_column(
-            id,
-            &bid_rows,
-            tick,
-            max_cum,
-            max_sz,
-            decimals,
-            user_order_levels,
-        );
+        let asks = depth_ask_column(column_context, &ask_rows, user_order_levels);
+        let bids = depth_bid_column(column_context, &bid_rows, user_order_levels);
         let order_book_rows = column![asks, spread_widget, bids].spacing(2);
 
         scrollable(
@@ -149,8 +143,8 @@ impl TradingTerminal {
         dom::view_order_book_dom_ladder(id, inst, tick, spread_widget, user_order_levels)
     }
 
-    pub(super) fn view_order_book_dom_header() -> Element<'static, Message> {
-        dom::view_order_book_dom_header()
+    pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static, Message> {
+        dom::view_order_book_dom_header(reverse_side)
     }
 }
 
@@ -196,12 +190,8 @@ pub(super) fn order_book_scroll_direction() -> iced::widget::scrollable::Directi
 }
 
 fn depth_ask_column(
-    id: OrderBookId,
+    context: DepthColumnContext,
     rows: &[(f64, f64, f64)],
-    tick: f64,
-    max_cum: f64,
-    max_sz: f64,
-    decimals: usize,
     user_order_levels: &UserOrderBookLevels,
 ) -> Column<'static, Message> {
     rows.iter()
@@ -212,27 +202,24 @@ fn depth_ask_column(
                     px,
                     sz: size,
                     cum,
-                    has_user_order: user_order_levels.has_ask_at_price(px, tick),
+                    has_user_order: user_order_levels.has_ask_at_price(px, context.tick),
                 },
-                max_cum,
-                max_sz,
-                decimals,
+                context.max_cum,
+                context.max_sz,
+                context.decimals,
                 false,
+                context.reverse_side,
                 Message::OrderBookPriceSelected {
-                    id,
-                    price: format!("{px:.decimals$}"),
+                    id: context.id,
+                    price: format!("{:.decimals$}", px, decimals = context.decimals),
                 },
             ))
         })
 }
 
 fn depth_bid_column(
-    id: OrderBookId,
+    context: DepthColumnContext,
     rows: &[(f64, f64, f64)],
-    tick: f64,
-    max_cum: f64,
-    max_sz: f64,
-    decimals: usize,
     user_order_levels: &UserOrderBookLevels,
 ) -> Column<'static, Message> {
     rows.iter()
@@ -243,15 +230,16 @@ fn depth_bid_column(
                     px,
                     sz: size,
                     cum,
-                    has_user_order: user_order_levels.has_bid_at_price(px, tick),
+                    has_user_order: user_order_levels.has_bid_at_price(px, context.tick),
                 },
-                max_cum,
-                max_sz,
-                decimals,
+                context.max_cum,
+                context.max_sz,
+                context.decimals,
                 true,
+                context.reverse_side,
                 Message::OrderBookPriceSelected {
-                    id,
-                    price: format!("{px:.decimals$}"),
+                    id: context.id,
+                    price: format!("{:.decimals$}", px, decimals = context.decimals),
                 },
             ))
         })

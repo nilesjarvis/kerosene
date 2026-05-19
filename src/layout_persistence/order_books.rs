@@ -36,6 +36,7 @@ impl TradingTerminal {
                 config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
             };
             instance.center_on_mid = order_book_config.center_on_mid;
+            instance.reverse_side = order_book_config.reverse_side;
             instance.show_spread_chart = order_book_config.show_spread_chart;
             instance.spread_chart_height = order_book_config.spread_chart_height;
             instance.book_loading = true;

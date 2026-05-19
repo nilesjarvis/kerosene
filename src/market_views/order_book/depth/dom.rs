@@ -8,6 +8,16 @@ use iced::{Color, Element, Fill, Theme};
 
 const DOM_SIDE_ROWS: usize = 80;
 
+#[derive(Debug, Clone, Copy)]
+struct DomRowContext {
+    id: OrderBookId,
+    max_size: f64,
+    max_cumulative: f64,
+    decimals: usize,
+    tick: f64,
+    reverse_side: bool,
+}
+
 // ---------------------------------------------------------------------------
 // DOM Ladder View
 // ---------------------------------------------------------------------------
@@ -21,29 +31,28 @@ pub(super) fn view_order_book_dom_ladder(
 ) -> Element<'static, Message> {
     let rows = inst.dom_ladder_rows(tick, DOM_SIDE_ROWS);
     let decimals = tick_decimals(tick);
+    let row_context = DomRowContext {
+        id,
+        max_size: rows.max_size,
+        max_cumulative: rows.max_cumulative,
+        decimals,
+        tick,
+        reverse_side: inst.reverse_side,
+    };
 
     if inst.center_on_mid {
         let centered_asks = rows.asks.clone();
         let centered_bids = rows.bids.clone();
         let centered_ask_orders = user_order_levels.clone();
         let centered_bid_orders = user_order_levels.clone();
-        let max_size = rows.max_size;
-        let max_cumulative = rows.max_cumulative;
 
         let ladder = iced::widget::column![
             responsive(move |size| {
                 let count =
                     super::centered_order_book_side_row_count(size.height, centered_asks.len());
                 let start = centered_asks.len().saturating_sub(count);
-                let asks = dom_rows_column(
-                    id,
-                    &centered_asks[start..],
-                    max_size,
-                    max_cumulative,
-                    decimals,
-                    tick,
-                    &centered_ask_orders,
-                );
+                let asks =
+                    dom_rows_column(&centered_asks[start..], row_context, &centered_ask_orders);
 
                 container(asks)
                     .height(Fill)
@@ -55,15 +64,8 @@ pub(super) fn view_order_book_dom_ladder(
             responsive(move |size| {
                 let count =
                     super::centered_order_book_side_row_count(size.height, centered_bids.len());
-                let bids = dom_rows_column(
-                    id,
-                    &centered_bids[..count],
-                    max_size,
-                    max_cumulative,
-                    decimals,
-                    tick,
-                    &centered_bid_orders,
-                );
+                let bids =
+                    dom_rows_column(&centered_bids[..count], row_context, &centered_bid_orders);
 
                 container(bids)
                     .height(Fill)
@@ -83,24 +85,8 @@ pub(super) fn view_order_book_dom_ladder(
             .into();
     }
 
-    let asks = dom_rows_column(
-        id,
-        &rows.asks,
-        rows.max_size,
-        rows.max_cumulative,
-        decimals,
-        tick,
-        user_order_levels,
-    );
-    let bids = dom_rows_column(
-        id,
-        &rows.bids,
-        rows.max_size,
-        rows.max_cumulative,
-        decimals,
-        tick,
-        user_order_levels,
-    );
+    let asks = dom_rows_column(&rows.asks, row_context, user_order_levels);
+    let bids = dom_rows_column(&rows.bids, row_context, user_order_levels);
     let ladder = iced::widget::column![asks, spread_widget, bids].spacing(2);
 
     scrollable(
@@ -114,13 +100,19 @@ pub(super) fn view_order_book_dom_ladder(
     .into()
 }
 
-pub(super) fn view_order_book_dom_header() -> Element<'static, Message> {
+pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static, Message> {
+    let labels = if reverse_side {
+        ["Ask Total", "Ask Size", "Price", "Bid Size", "Bid Total"]
+    } else {
+        ["Bid Total", "Bid Size", "Price", "Ask Size", "Ask Total"]
+    };
+
     row![
-        header_cell("Bid Total"),
-        header_cell("Bid Size"),
-        header_cell("Price"),
-        header_cell("Ask Size"),
-        header_cell("Ask Total"),
+        header_cell(labels[0]),
+        header_cell(labels[1]),
+        header_cell(labels[2]),
+        header_cell(labels[3]),
+        header_cell(labels[4]),
     ]
     .spacing(3)
     .into()
@@ -135,39 +127,23 @@ fn header_cell(label: &'static str) -> Element<'static, Message> {
 }
 
 fn dom_rows_column(
-    id: OrderBookId,
     rows: &[DomLadderRow],
-    max_size: f64,
-    max_cumulative: f64,
-    decimals: usize,
-    tick: f64,
+    context: DomRowContext,
     user_order_levels: &UserOrderBookLevels,
 ) -> Column<'static, Message> {
     rows.iter()
         .fold(Column::new().spacing(0), |column, ladder_row| {
-            column.push(dom_row(
-                id,
-                ladder_row,
-                max_size,
-                max_cumulative,
-                decimals,
-                tick,
-                user_order_levels,
-            ))
+            column.push(dom_row(ladder_row, context, user_order_levels))
         })
 }
 
 fn dom_row(
-    id: OrderBookId,
     row_data: &DomLadderRow,
-    max_size: f64,
-    max_cumulative: f64,
-    decimals: usize,
-    tick: f64,
+    context: DomRowContext,
     user_order_levels: &UserOrderBookLevels,
 ) -> Element<'static, Message> {
-    let has_user_bid = user_order_levels.has_bid_at_price(row_data.price, tick);
-    let has_user_ask = user_order_levels.has_ask_at_price(row_data.price, tick);
+    let has_user_bid = user_order_levels.has_bid_at_price(row_data.price, context.tick);
+    let has_user_ask = user_order_levels.has_ask_at_price(row_data.price, context.tick);
     let user_order_side = if has_user_bid {
         Some(true)
     } else if has_user_ask {
@@ -176,21 +152,25 @@ fn dom_row(
         None
     };
 
-    let content: Element<'static, Message> = row![
-        dom_value_cell(row_data.bid_cumulative, max_cumulative, true, true),
-        dom_value_cell(row_data.bid_size, max_size, true, false),
-        price_cell(row_data, decimals, user_order_side),
-        dom_value_cell(row_data.ask_size, max_size, false, false),
-        dom_value_cell(row_data.ask_cumulative, max_cumulative, false, true),
-    ]
+    let bid_total = dom_value_cell(row_data.bid_cumulative, context.max_cumulative, true, true);
+    let bid_size = dom_value_cell(row_data.bid_size, context.max_size, true, false);
+    let price = price_cell(row_data, context.decimals, user_order_side);
+    let ask_size = dom_value_cell(row_data.ask_size, context.max_size, false, false);
+    let ask_total = dom_value_cell(row_data.ask_cumulative, context.max_cumulative, false, true);
+
+    let content: Element<'static, Message> = if context.reverse_side {
+        row![ask_total, ask_size, price, bid_size, bid_total]
+    } else {
+        row![bid_total, bid_size, price, ask_size, ask_total]
+    }
     .spacing(3)
     .into();
 
     clickable_book_row(
         content,
         Message::OrderBookPriceSelected {
-            id,
-            price: format!("{:.decimals$}", row_data.price),
+            id: context.id,
+            price: format!("{:.decimals$}", row_data.price, decimals = context.decimals),
         },
     )
 }

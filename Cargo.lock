@@ -2695,6 +2695,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "dirs",
+ "flate2",
  "futures",
  "hex",
  "iced",

@@ -9,6 +9,7 @@ use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{CandleFetchRequest, ChartId, FundingFetchRequest};
 use crate::config;
 use crate::hydromancer_api::FundingRatePoint;
+use crate::hype_etf_state::{HypeEtfData, HypeEtfView};
 use crate::hyperdash_api::{LiquidationHeatmap, LiquidationLevel};
 use crate::journal;
 use crate::market_state::{
@@ -151,9 +152,14 @@ pub(crate) enum Message {
     AddLiquidationsPane,
     AddTrackedTradesPane,
     AddOutcomesPane,
+    AddHypeEtfsPane,
     AddTradingJournal,
     RefreshCalendar,
     CalendarLoaded(Result<Vec<api::CalendarEvent>, String>),
+    RefreshHypeEtfs,
+    HypeEtfsRefreshTick,
+    HypeEtfsViewChanged(HypeEtfView),
+    HypeEtfsLoaded(Box<Result<HypeEtfData, String>>),
     CalendarImpactFilterChanged(CalendarImpactFilter),
     CalendarWindowFilterChanged(CalendarWindowFilter),
     Tick,
@@ -443,6 +449,7 @@ pub(crate) enum Message {
     OrderBookWsAssetCtxUpdate(OrderBookId, AssetContext),
     SetBookTickSize(OrderBookId, f64),
     ToggleOrderBookCenterOnMid(OrderBookId),
+    ToggleOrderBookReverseSide(OrderBookId),
     ToggleOrderBookSettings(OrderBookId),
     ToggleOrderBookSpreadChart(OrderBookId),
     OrderBookSpreadChartResize(OrderBookId, f32),

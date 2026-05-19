@@ -90,6 +90,7 @@ impl TradingTerminal {
                     }
                 },
                 center_on_mid: book.center_on_mid,
+                reverse_side: book.reverse_side,
                 show_spread_chart: book.show_spread_chart,
                 spread_chart_height: book.spread_chart_height,
             })

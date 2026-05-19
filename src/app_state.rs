@@ -5,6 +5,7 @@ use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{ChartId, ChartInstance};
+use crate::hype_etf_state::HypeEtfState;
 use crate::hyperdash_api::LiquidationHeatmap;
 use crate::market_state::{
     LiveWatchlistId, LiveWatchlistInstance, OrderBookId, OrderBookInstance,
@@ -116,6 +117,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) outcome_volumes_24h: HashMap<String, f64>,
     pub(crate) outcome_volumes_loading: bool,
     pub(crate) outcome_volumes_error: Option<String>,
+    pub(crate) hype_etfs: HypeEtfState,
     // L2 order books
     pub(crate) order_books: HashMap<OrderBookId, OrderBookInstance>,
     pub(crate) next_order_book_id: OrderBookId,

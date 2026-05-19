@@ -24,6 +24,17 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             theme,
         ))
         .push(menu_item(
+            "HYPE ETFs",
+            if context.hype_etfs_open {
+                "Open"
+            } else {
+                "Pane"
+            },
+            Some(Message::AddHypeEtfsPane),
+            context.can_add_pane,
+            theme,
+        ))
+        .push(menu_item(
             "Liquidations Feed",
             if context.liquidations_open {
                 "Open"

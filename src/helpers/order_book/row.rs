@@ -26,6 +26,7 @@ pub fn book_row(
     max_sz: f64,
     decimals: usize,
     is_bid: bool,
+    reverse_side: bool,
     on_press: Message,
 ) -> Element<'static, Message> {
     let px = data.px;
@@ -60,31 +61,17 @@ pub fn book_row(
         c
     };
 
-    let price_color = if is_bid {
-        move |theme: &Theme| theme.palette().success
-    } else {
-        move |theme: &Theme| theme.palette().danger
-    };
-
     // Text brightness also driven by heat (0.3 to 1.0)
     let sz_pct = heat.max(0.3);
-    let size_color = move |theme: &Theme| Color {
-        a: sz_pct,
-        ..theme.palette().text
-    };
 
-    let row_content = row![
-        price_cell(px, decimals, data.has_user_order, is_bid, price_color),
-        text(format_size(sz))
-            .size(12)
-            .font(iced::Font::MONOSPACE)
-            .align_x(iced::alignment::Horizontal::Right)
-            .style(move |t: &Theme| text::Style {
-                color: Some(size_color(t))
-            })
-            .width(Fill),
-        total_cell(cum),
-    ]
+    let price = price_cell(px, decimals, data.has_user_order, is_bid);
+    let size = size_cell(sz, sz_pct);
+    let total = total_cell(cum);
+    let row_content = if reverse_side {
+        row![total, size, price]
+    } else {
+        row![price, size, total]
+    }
     .spacing(4);
 
     let transparent = Color::TRANSPARENT;
@@ -93,18 +80,24 @@ pub fn book_row(
         .padding([2, 4])
         .style(move |theme: &Theme| {
             use iced::gradient;
-            let start_point = 1.0 - bar_pct;
-            let s_start = start_point.clamp(0.0, 1.0);
+            let gradient = if reverse_side {
+                let end = bar_pct.clamp(0.0, 1.0);
+                gradient::Linear::new(iced::Degrees(90.0))
+                    .add_stop(0.0, color_end(theme))
+                    .add_stop(end, color_start(theme))
+                    .add_stop((end + 0.0001).min(1.0), transparent)
+            } else {
+                let start_point = 1.0 - bar_pct;
+                let s_start = start_point.clamp(0.0, 1.0);
+                gradient::Linear::new(iced::Degrees(90.0))
+                    .add_stop(s_start.max(0.0001) - 0.0001, transparent)
+                    .add_stop(s_start, color_start(theme))
+                    .add_stop(1.0, color_end(theme))
+            };
 
             // Smooth linear gradient based on Heatmap intensity
             container_style::Style {
-                background: Some(
-                    gradient::Linear::new(iced::Degrees(90.0))
-                        .add_stop(s_start.max(0.0001) - 0.0001, transparent)
-                        .add_stop(s_start, color_start(theme))
-                        .add_stop(1.0, color_end(theme))
-                        .into(),
-                ),
+                background: Some(gradient.into()),
                 ..Default::default()
             }
         })
@@ -118,7 +111,6 @@ fn price_cell(
     decimals: usize,
     has_user_order: bool,
     is_bid: bool,
-    price_color: impl Fn(&Theme) -> Color + 'static,
 ) -> Element<'static, Message> {
     container(
         row![
@@ -128,7 +120,11 @@ fn price_cell(
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .style(move |t: &Theme| text::Style {
-                    color: Some(price_color(t))
+                    color: Some(if is_bid {
+                        t.palette().success
+                    } else {
+                        t.palette().danger
+                    })
                 }),
         ]
         .spacing(2)
@@ -136,6 +132,21 @@ fn price_cell(
     )
     .width(Fill)
     .into()
+}
+
+fn size_cell(sz: f64, alpha: f32) -> Element<'static, Message> {
+    text(format_size(sz))
+        .size(12)
+        .font(iced::Font::MONOSPACE)
+        .align_x(iced::alignment::Horizontal::Right)
+        .style(move |theme: &Theme| text::Style {
+            color: Some(Color {
+                a: alpha,
+                ..theme.palette().text
+            }),
+        })
+        .width(Fill)
+        .into()
 }
 
 fn total_cell(cum: f64) -> Element<'static, Message> {

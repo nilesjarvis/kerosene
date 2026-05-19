@@ -16,6 +16,7 @@ pub(super) struct AddWidgetMenuContext {
     pub(super) liquidations_open: bool,
     pub(super) tracked_trades_open: bool,
     pub(super) outcomes_open: bool,
+    pub(super) hype_etfs_open: bool,
     pub(super) journal_open: bool,
     pub(super) wallet_tracker_open: bool,
     pub(super) settings_open: bool,
@@ -38,6 +39,7 @@ impl AddWidgetMenuContext {
             tracked_trades_open: terminal
                 .pane_is_open(|kind| matches!(kind, PaneKind::TrackedTrades)),
             outcomes_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Outcomes)),
+            hype_etfs_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::HypeEtfs)),
             journal_open: terminal.journal.window_id.is_some(),
             wallet_tracker_open: terminal.wallet_tracker.window_id.is_some(),
             settings_open: terminal.settings_window_id.is_some(),

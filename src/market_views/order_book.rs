@@ -56,8 +56,8 @@ impl TradingTerminal {
         let tick = Self::resolved_order_book_tick(inst, &tick_options);
         let tick_buttons = Self::view_order_book_tick_buttons(id, &tick_options, tick);
         let header = match inst.display_mode {
-            OrderBookDisplayMode::DepthList => Self::view_order_book_header(),
-            OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_header(),
+            OrderBookDisplayMode::DepthList => Self::view_order_book_header(inst.reverse_side),
+            OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_header(inst.reverse_side),
         };
         let waiting_for_selected_precision = !inst.can_render_book_at_tick(tick);
         let title_row = self.view_order_book_title(id, inst);

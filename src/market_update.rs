@@ -1,3 +1,4 @@
+mod hype_etfs;
 mod live_watchlist;
 mod order_book;
 mod positioning_info;
@@ -20,6 +21,12 @@ impl TradingTerminal {
             | Message::OutcomeVolumesLoaded(_)
             | Message::SymbolSelected(_)) => {
                 return self.update_symbol_search_market(message);
+            }
+            message @ (Message::RefreshHypeEtfs
+            | Message::HypeEtfsRefreshTick
+            | Message::HypeEtfsViewChanged(_)
+            | Message::HypeEtfsLoaded(_)) => {
+                return self.update_hype_etfs_market(message);
             }
             message @ (Message::LiveWatchlistSortChanged(_, _)
             | Message::LiveWatchlistColumnToggled(_, _, _)
@@ -75,6 +82,7 @@ fn is_order_book_market_message(message: &Message) -> bool {
             | Message::SetBookTickSize(_, _)
             | Message::ToggleOrderBookSettings(_)
             | Message::ToggleOrderBookCenterOnMid(_)
+            | Message::ToggleOrderBookReverseSide(_)
             | Message::ToggleOrderBookSpreadChart(_)
             | Message::OrderBookSpreadChartResize(_, _)
             | Message::OrderBookSearchChanged(_, _)
@@ -95,6 +103,9 @@ mod tests {
         ));
         assert!(is_order_book_market_message(
             &Message::ToggleOrderBookCenterOnMid(7)
+        ));
+        assert!(is_order_book_market_message(
+            &Message::ToggleOrderBookReverseSide(7)
         ));
     }
 }

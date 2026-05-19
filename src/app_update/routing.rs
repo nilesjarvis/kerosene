@@ -64,7 +64,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddLiquidationsPane
         | Message::AddAdvancedOrdersPane
         | Message::AddTrackedTradesPane
-        | Message::AddOutcomesPane => UpdateRoute::Panes,
+        | Message::AddOutcomesPane
+        | Message::AddHypeEtfsPane => UpdateRoute::Panes,
 
         Message::ToggleHidePnl
         | Message::ToggleIncomeAlerts
@@ -187,6 +188,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolSearchHip3DexFilterChanged(_)
         | Message::SymbolSearchContextsLoaded(_, _)
         | Message::OutcomeVolumesLoaded(_)
+        | Message::RefreshHypeEtfs
+        | Message::HypeEtfsRefreshTick
+        | Message::HypeEtfsViewChanged(_)
+        | Message::HypeEtfsLoaded(_)
         | Message::SymbolSelected(_)
         | Message::BookLoaded { .. }
         | Message::OrderBookWsAssetCtxUpdate(_, _)
@@ -194,6 +199,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SetBookTickSize(_, _)
         | Message::ToggleOrderBookSettings(_)
         | Message::ToggleOrderBookCenterOnMid(_)
+        | Message::ToggleOrderBookReverseSide(_)
         | Message::ToggleOrderBookSpreadChart(_)
         | Message::OrderBookSpreadChartResize(_, _)
         | Message::OrderBookSearchChanged(_, _)

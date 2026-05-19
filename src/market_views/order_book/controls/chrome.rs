@@ -9,21 +9,19 @@ use iced::widget::{button, column, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
-    pub(in crate::market_views::order_book) fn view_order_book_header() -> Element<'static, Message>
-    {
+    pub(in crate::market_views::order_book) fn view_order_book_header(
+        reverse_side: bool,
+    ) -> Element<'static, Message> {
+        let labels = if reverse_side {
+            ["Total", "Size", "Price"]
+        } else {
+            ["Price", "Size", "Total"]
+        };
+
         row![
-            text("Price")
-                .size(12)
-                .width(Fill)
-                .align_x(iced::alignment::Horizontal::Right),
-            text("Size")
-                .size(12)
-                .width(Fill)
-                .align_x(iced::alignment::Horizontal::Right),
-            text("Total")
-                .size(12)
-                .width(Fill)
-                .align_x(iced::alignment::Horizontal::Right),
+            header_cell(labels[0]),
+            header_cell(labels[1]),
+            header_cell(labels[2]),
         ]
         .spacing(4)
         .into()
@@ -157,6 +155,14 @@ impl TradingTerminal {
         .height(iced::Length::Fixed(inst.spread_chart_height))
         .into()
     }
+}
+
+fn header_cell(label: &'static str) -> Element<'static, Message> {
+    text(label)
+        .size(12)
+        .width(Fill)
+        .align_x(iced::alignment::Horizontal::Right)
+        .into()
 }
 
 fn display_mode_button(

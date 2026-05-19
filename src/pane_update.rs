@@ -21,7 +21,8 @@ impl TradingTerminal {
             | Message::AddLiquidationsPane
             | Message::AddTrackedTradesPane
             | Message::AddAdvancedOrdersPane
-            | Message::AddOutcomesPane => self.add_widget_pane(message),
+            | Message::AddOutcomesPane
+            | Message::AddHypeEtfsPane => self.add_widget_pane(message),
             _ => Task::none(),
         }
     }

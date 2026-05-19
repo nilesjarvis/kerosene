@@ -57,6 +57,7 @@ pub enum PaneKindConfig {
     Liquidations,
     TrackedTrades,
     Outcomes,
+    HypeEtfs,
     /// Legacy or unknown persisted panes that no longer have runtime support.
     Unsupported,
 }
@@ -81,6 +82,7 @@ enum KnownPaneKindConfig {
     Liquidations,
     TrackedTrades,
     Outcomes,
+    HypeEtfs,
 }
 
 #[derive(Deserialize)]
@@ -112,6 +114,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::Liquidations => Self::Liquidations,
             KnownPaneKindConfig::TrackedTrades => Self::TrackedTrades,
             KnownPaneKindConfig::Outcomes => Self::Outcomes,
+            KnownPaneKindConfig::HypeEtfs => Self::HypeEtfs,
         }
     }
 }

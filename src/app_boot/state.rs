@@ -123,6 +123,7 @@ impl TradingTerminal {
             outcome_volumes_24h: HashMap::new(),
             outcome_volumes_loading: false,
             outcome_volumes_error: None,
+            hype_etfs: crate::hype_etf_state::HypeEtfState::default(),
             order_books: HashMap::new(),
             next_order_book_id: 0,
             accounts: cfg.accounts.clone(),

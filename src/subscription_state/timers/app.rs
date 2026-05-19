@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::pane_state::PaneKind;
 
 use iced::Subscription;
 
@@ -42,6 +43,13 @@ impl TradingTerminal {
         subs.push(
             iced::time::every(std::time::Duration::from_secs(60 * 15)).map(|_| Message::Tick),
         );
+
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::HypeEtfs)) {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(60 * 5))
+                    .map(|_| Message::HypeEtfsRefreshTick),
+            );
+        }
 
         if !self.hydromancer_api_key.trim().is_empty()
             && self

@@ -1,6 +1,7 @@
 mod calendar;
 mod candles;
 mod exchange_symbols;
+mod hype_etfs;
 mod order_book;
 mod order_status;
 mod outcome_volume;
@@ -10,6 +11,7 @@ mod watchlist;
 pub use calendar::{CalendarEvent, fetch_economic_calendar};
 pub use candles::{Candle, fetch_candles, is_valid_candle, normalize_candles};
 pub use exchange_symbols::{ExchangeSymbol, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols};
+pub(crate) use hype_etfs::fetch_hype_etfs;
 pub use order_book::{BookLevel, OrderBook, fetch_order_book, parse_ws_book};
 pub(crate) use order_status::{OrderStatusResult, fetch_order_status_by_cloid};
 pub(crate) use outcome_volume::fetch_outcome_volumes_24h;

@@ -84,7 +84,7 @@ If cancel status cannot be confirmed, Kerosene retries status checks/cancel hand
 
 Current built-in limits:
 
-- Maximum active Chase orders: `8`.
+- Maximum active advanced orders: `8` total across Chase and TWAP.
 - Minimum per-order reprice interval: `1s`.
 - Minimum global interval between Chase exchange requests: `250ms`.
 - Rate-limit cooldown after a detected exchange rate-limit response: `5s`.
@@ -109,221 +109,218 @@ Kerosene also stops or refuses a Chase order when:
 ### Lifecycle overview
 
 ```
-                        CHASE ORDER LIFECYCLE
-                        =====================
+                         CHASE ORDER LIFECYCLE
+                         =====================
 
- ┌─────────────────────────────────────────────────────────────────────┐
- │                        ORDER ENTRY PANE                             │
- │  User: enters size → clicks CHASE BUY / CHASE SELL                  │
- └────────────────────────────────┬────────────────────────────────────┘
-                                  │
-                                  ▼
- ┌─────────────────────────────────────────────────────────────────────┐
- │                     START VALIDATION                                 │
- │  ┌─────────────────────────┐  ┌────────────────────────────┐        │
- │  │  Check prerequisites:   │  │  • Wallet connected        │        │
- │  │  • Agent key captured   │  │  • Valid size + symbol     │        │
- │  │  • < 8 active chases    │  │  • Not risk-muted          │        │
- │  │  • No pending ops       │  │  • Not outcome market      │        │
- │  └───────────┬─────────────┘  └────────────────────────────┘        │
- │              │ FAIL → reject with toast                              │
- └──────────────┼──────────────────────────────────────────────────────┘
-                │ PASS
-                ▼
- ┌────────────────────────────────┐
- │  CREATE ChaseOrder struct      │
- │  • id, coin, price, size       │
- │  • current_oid = None         │
- │  • pending_op = Place         │
- └────────────┬───────────────────┘
-              │
-              ▼
- ┌────────────────────────────────┐
- │  FETCH ORDER BOOK (best bid/   │
- │  ask) → round price for wire   │
- │  format                        │
- └────────────┬───────────────────┘
-              │
-              ▼
-         ╔══════════════╗
-         ║ STATUS:      ║
-         ║ STARTING →   ║
-         ║  PLACING     ║
-         ╚══════╤═══════╝
-                │
-                ▼
- ┌────────────────────────────────────────┐
- │  SUBMIT place_order() via Hyperliquid  │
- │  REST API                              │
- └────────────┬───────────────────────────┘
-              │
-       ┌────────┴────────┐
-       │                 │
-       ▼                 ▼
-  FULL FILL         PARTIAL / RESTING
-       │                 │
-       │                 ▼
-       │     ┌────────────────────────────┐
-       │     │  Store current_oid         │
-       │     │  CHASE ORDER IS NOW ACTIVE │
-       │     │                            │
-       │     │  ╔══════════════╗          │
-       │     │  ║ STATUS:      ║          │
-       │     │  ║ RESTING      ║          │
-       │     │  ╚══════════════╝          │
-       │     └────────┬───────────────────┘
-       │              │
-       ▼              ▼
-       │     ┌─────────────────────────────────────────┐
-       │     │  ENTER BOOK-DRIVEN REPRICE LOOP         │
-       │     │                                        │
-       │     │  WebSocket → ChaseBookUpdate            │
-       │     │       │                                 │
-       │     │       ▼                                 │
-       │     │  ┌──────────────────────────┐           │
-       │     │  │ Reprice conditions met?  │           │
-       │     │  │                          │           │
-       │     │  │ BUY: best bid > price    │           │
-       │     │  │ SELL: best ask < price   │           │
-       │     │  │ + throttle OK            │           │
-       │     │  │ + no pending op          │           │
-       │     │  │ + lifecycle limits OK    │           │
-       │     │  └────────┬─────────────────┘           │
-       │     │           │ NO                          │
-       │     │    ┌──────┴──────┐                      │
-       │     │    │ Stay        │◄───┘                 │
-       │     │    │ RESTING/QUEUED │                    │
-       │     │    └──────────────┘                     │
-       │     │           │ YES                         │
-       │     │           ▼                             │
-       │     │  ╔═════════════════╗                    │
-       │     │  ║ STATUS:         ║                    │
-       │     │  ║ MODIFYING       ║                    │
-       │     │  ╚════════════════╝                    │
-       │     │           │                             │
-       │     │           ▼                             │
-       │     │  modify_order(oid, new_price)           │
-       │     │  reprice_count++                        │
-       │     │           │                             │
-       │     │           ▼                             │
-       │     │  ┌──────────────────┐                   │
-       │     │  │ ModifyResult:    │                   │
-       │     │  └────────┬─────────┘                   │
-       │     │           │                             │
-       │     │     ┌─────┼────────┬──────┬───┐        │
-       │     │     │ OK  │ Retry │Rate- │FULL│        │
-       │     │     │     │       │limit │FILL│        │
-       │     │     │     │       │(5s)  │   │        │
-       │     │     │     │       │     │   │        │
-       │     │  ┌──┴─┐   │     ┌─┴─┐  │   │        │
-       │     │  │◄───┤   │     │   │  ▼   ▼        │
-       │     │  └────┘   │     │   │ END  END      │
-       │     │           │     │   │ + log+ hist    │
-       │     │           ▼     │   │ fill &         │
-       │     │  ╔═════════╗    │   │ move to        │
-       │     │  ║ STATUS: ║    │   │ advanced       │
-       │     │  ║CHECKING ║    │   │ history        │
-       │     │  ╚════════╝     │                │
-       │     │        │        │                │
-       │     │        ▼        │                │
-       │     │  ┌──────┐       │                │
-       │     │  │ REST  │       │                │
-       │     │  └───┬───┘       │                │
-       │     │      │           │                │
-       │     │      ▼           │                │
-       │     │  Open order disappears from WS?    │
-       │     │      │                      │     │
-       │     │      ▼                      │     │
-       │     │  ╔════════════╗             │     │
-       │     │  ║ STATUS:    ║             │     │
-       │     │  ║ CHECKING   ║             │     │
-       │     │  ╚════════════╝             │     │
-       │     │        │                    │     │
-       │     │   REST account refresh       │     │
-       │     │        │                    │     │
-       │     │     confirmed gone?          │     │
-       │     │  ┌──────┴───────┐            │     │
-       │     │  │ YES  │  NO   │            │     │
-       │     │       │        │             │     │
-       │     │       ▼        ▼             │     │
-       │     │    END  back to               │     │
-       │     │  + log  RESTING               │     │
-       │     │  fill  (was stale)            │     │
-       │     │  summary                      │     │
-       │     └───────────────────────────────┘     │
-       │                                           │
-       │     MOVE to advanced_order_history        │
-       │
-       ▼
-  ┌──────────────────┐
-  │   END + LOG      │
-  │   FILL SUMMARY   │
-  └──────────────────┘
+ORDER ENTRY
++--------------------------------------------------------------------+
+| User enters size and clicks CHASE BUY / CHASE SELL                  |
++-------------------------------+------------------------------------+
+                                |
+                                v
+START VALIDATION
++--------------------------------------------------------------------+
+| Required before local state is created:                             |
+| - wallet connected + agent key captured                             |
+| - no pending order action                                           |
+| - < 8 active advanced orders total (Chase + TWAP)                   |
+| - valid size, symbol, precision, and USD reference price if needed  |
+| - symbol is not hidden by risk settings                             |
+| - selected market supports Chase trading; outcome markets do not    |
+|                                                                    |
+| Any failure -> reject with user-visible status/toast; no Chase.      |
++-------------------------------+------------------------------------+
+                                |
+                                v
+CREATE LOCAL ChaseOrder
++--------------------------------------------------------------------+
+| Stored immediately after validation:                                |
+| - id, coin, side, target_size, remaining_size, account, agent key   |
+| - current_oid = None                                                |
+| - current_price = 0, current_price_wire = "", initial_price = 0     |
+| - pending_op = None, pending_best_price = None                      |
+| - pending_order_action = ChaseBuy / ChaseSell                       |
++-------------------------------+------------------------------------+
+                                |
+                                v
+FETCH INITIAL BOOK
++--------------------------------------------------------------------+
+| Fetch symbol-aware order book -> choose best bid for buy,           |
+| best ask for sell.                                                  |
+|                                                                    |
+| Fetch error or no usable best price -> remove Chase and stop.        |
++-------------------------------+------------------------------------+
+                                |
+                                v
+PLACE INITIAL LIMIT ORDER
++--------------------------------------------------------------------+
+| Before sending:                                                     |
+| - verify account still matches captured account                     |
+| - round best price for Hyperliquid wire format                      |
+| - quantize residual size                                           |
+| - set current_price/current_price_wire and initial_price            |
+| - set pending_op = Place                                            |
+|                                                                    |
+| If global request gate is busy: queue pending_best_price and wait    |
+| for the Chase reprice tick to call place_at_best later.              |
++-------------------------------+------------------------------------+
+                                |
+                                v
+place_order(limit)
+                                |
+              +-----------------+------------------+
+              |                 |                  |
+              v                 v                  v
+        error/unknown       full fill        resting response
+              |                 |                  |
+              |                 |                  v
+              |                 |        +-------------------------+
+              |                 |        | record oid              |
+              |                 |        | current_oid = oid       |
+              |                 |        | pending_op = None       |
+              |                 |        | oid_confirmed = false   |
+              |                 |        +-----------+-------------+
+              |                 |                    |
+              v                 v                    v
+        archive/refresh    archive fill       ACTIVE, UNCONFIRMED
+                                               until open-orders
+                                               snapshot confirms oid
 
 
- ═══════════════════════════════════════════════════════════════════
-                          STOP FLOW (any time)
- ═══════════════════════════════════════════════════════════════════
+ACTIVE RECONCILIATION
++--------------------------------------------------------------------+
+| Account open-order snapshots and refreshes update the active Chase: |
+| - matching oid confirms the order and syncs remaining size/price    |
+| - matching fills update filled_size                                 |
+| - target fully filled -> archive with fill summary                  |
+| - size too large after fills -> queue a size-correction modify      |
+| - confirmed oid missing from WS -> request REST account refresh     |
++-------------------------------+------------------------------------+
+                                |
+                                v
+BOOK-DRIVEN REPRICE CANDIDATE
++--------------------------------------------------------------------+
+| WebSocket book update -> best bid/ask                               |
+|                                                                    |
+| Ignore/no-op when:                                                  |
+| - wrong coin, hidden symbol, stop requested, pending op in flight   |
+| - no current oid, same rounded wire price, or price moves away      |
+| - current oid has not been confirmed yet                            |
+|                                                                    |
+| Queue pending_best_price when throttled or waiting for confirmation. |
++-------------------------------+------------------------------------+
+                                |
+                                v
+REPRICE GUARDS PASS
++--------------------------------------------------------------------+
+| Check lifecycle limits: valid price, max duration, max reprices,    |
+| and max drift from initial price.                                   |
+|                                                                    |
+| If a limit is reached -> stop Chase and cancel current oid if any.  |
++-------------------------------+------------------------------------+
+                                |
+                                v
+VERIFY BEFORE MODIFYING
++--------------------------------------------------------------------+
+| Kerosene does not immediately modify on the book tick. It first:    |
+| - stores pending_best_price                                         |
+| - marks missing_open_order_refresh_requested                        |
+| - refreshes account data to verify fills and open orders            |
++-------------------------------+------------------------------------+
+                                |
+                                v
+ACCOUNT REFRESH RESULT
++--------------------------------------------------------------------+
+| Open order still exists:                                            |
+|   if pending price or size correction remains -> modify same oid     |
+|   otherwise continue resting                                        |
+|                                                                    |
+| Open order missing and pending price exists:                        |
+|   assume old oid is gone after complete refresh, clear current_oid,  |
+|   place residual size at pending best price                         |
+|                                                                    |
+| Open order missing and no pending price:                            |
+|   archive as filled/ended using fill history when available          |
+|                                                                    |
+| Incomplete open-orders/fills refresh:                               |
+|   pause instead of modifying or placing replacement                  |
++-------------------------------+------------------------------------+
+                                |
+                                v
+MODIFY CURRENT ORDER
++--------------------------------------------------------------------+
+| Send modify_order(current_oid, pending_best_price or current_price, |
+| residual_size).                                                     |
+|                                                                    |
+| While sending:                                                      |
+| - pending_op = Modify { oid }                                       |
+| - last_reprice_at = now                                             |
+| - reprice_count++                                                   |
++-------------------------------+------------------------------------+
+                                |
+                                v
+MODIFY RESULT
++--------------------------------------------------------------------+
+| full fill:                                                          |
+|   record fill, archive Chase, refresh account                       |
+|                                                                    |
+| success/resting:                                                    |
+|   update expected price, clear pending op, set oid_confirmed=false, |
+|   request account refresh before chasing again                      |
+|                                                                    |
+| retryable/rate-limit error:                                         |
+|   clear pending op, keep pending target queued, apply cooldown       |
+|                                                                    |
+| terminal-looking or unknown result:                                 |
+|   check status with account refresh before deciding                  |
+|                                                                    |
+| non-retryable modify error:                                         |
+|   stop Chase and cancel current oid if possible                     |
++--------------------------------------------------------------------+
 
- ┌─────────────────────────────────────────────────────────┐
- │  User clicks STOP / STOP ALL                              │
- │  OR lifecycle limit reached (15min, 1000 reprices,       │
- │  5% drift, wallet disconnect, account change)             │
- └──────┬─────────────────────────────────────────────────┘
-        │
-        ▼
- ╔═════════════════════╗
- ║ STATUS: STOPPING    ║
- ╚═══════╤════════════╝
-         │
-         ▼
- ┌──────────────────────────────┐
- │  stop_requested = true       │
- │                              │
- │  Operation in flight?        │
- │  ┌───────┬───────┬──────────┐│
- │  │ Place │ Modify│   None   ││
- │  └───┬───┴───┬───┘         ││
- │      │       │             ││
- │      │       │      ┌───┐  ││
- │      ▼       ▼      ▼   ▼  ││
- │    Wait for  │  cancel_order││
- │    op result │  (oid)      ││
- │    then ────┘      │       ││
- │    cancel           ▼       ││
- │                 ┌───┴──┐    ││
- │                 │ OK   │    ││
- │                 └──┬───┘    ││
- │                    │        ││
- │                    ▼        ││
- │              Cancel failed? ││
- │           ┌────────┬───────┘││
- │           │ YES    │  NO    ││
- │           └──┬─────┴──┬────┘││
- │              │        │     ││
- │              ▼        ▼     ││
- │           Retry      END   ││
- │           (<5x, warn) +    ││
- │           move to hist     ││
- │                    │       ││
- │                    ▼       ││
- └───────── MOVE to history ──┘
+
+STOP FLOW (user stop, Stop All, wallet/account change, or limits)
++--------------------------------------------------------------------+
+| Set stop_requested = true and remember stop_reason.                 |
++-------------------------------+------------------------------------+
+                                |
+        +-----------------------+------------------------+
+        |                       |                        |
+        v                       v                        v
+ pending Place            pending Modify           pending Cancel
+        |                       |                        |
+        v                       v                        v
+ wait for result       wait for modify result      wait for cancel result
+        |                       |                        |
+        |                       v                        |
+        |              if still has current_oid,          |
+        |              send cancel_order                  |
+        |                                                |
+        v                                                v
+ if late resting oid appears, cancel it          cancel result handling
+
+No pending op:
+  - current_oid exists -> pending_op = Cancel { oid }, send cancel_order
+  - no current_oid     -> archive/clear immediately
+
+Cancel result handling:
+  - success -> archive/remove Chase and refresh account
+  - filled/canceled/not found/unknown -> check order status via refresh
+  - other cancel error -> clear pending op, warn, count retry
+  - after 5 cancel failures/unknowns -> archive with "check open orders"
 
 
- ════════════════════════════════════════════════════════════
-                   DURATION LIMITS (auto-stop)
- ════════════════════════════════════════════════════════════
-
- ┌───────────────────────┬──────────┐
- │ Max active chases     │ 8        │
- │ Reprice throttle      │ 1s/order │
- │ Global interval       │ 250ms    │
- │ Rate-limit cooldown   │ 5s       │
- │ Max reprices          │ 1,000    │
- │ Max duration          │ 15 min   │
- │ Max price drift       │ 5%       │
- │ Max cancel retries    │ 5        │
- └───────────────────────┴──────────┘
+LIMITS AND GATES
++----------------------------+---------------------------------------+
+| Max active advanced orders | 8 total across Chase + TWAP           |
+| Per-order reprice throttle | 1s/order                              |
+| Global exchange interval   | 250ms                                 |
+| Rate-limit cooldown        | 5s                                    |
+| Max reprices               | 1,000                                 |
+| Max duration               | 15 min                                |
+| Max price drift            | 5% from initial Chase price           |
+| Max cancel retries         | 5                                     |
++----------------------------+---------------------------------------+
 ```
 
 ### State
@@ -349,7 +346,7 @@ The core state lives in `ChaseOrder` (`src/signing/model.rs`). It stores:
 
 The start flow is implemented in `src/order_execution/chase.rs` and `src/order_execution/chase/lifecycle.rs`.
 
-1. Validate prerequisites: active account, captured agent key, no incompatible pending order action, valid quantity, known symbol, supported market, risk settings, and active Chase count.
+1. Validate prerequisites: active account, captured agent key, no incompatible pending order action, valid quantity, known symbol, supported market, risk settings, and active advanced-order count.
 2. Create a `ChaseOrder` with no `current_oid` and a `Place` not yet sent.
 3. Fetch the current book using symbol-aware significant figures.
 4. Choose the best bid for buy or best ask for sell.
@@ -373,7 +370,9 @@ Before sending a modify request, Kerosene checks:
 - Per-order and global throttles permit another exchange request.
 - Lifecycle limits have not been reached.
 
-When checks pass, Kerosene sends `modify_order` for the same order id and increments the reprice count. If checks are temporarily blocked by throttling, it stores `pending_best_price`; `handle_chase_reprice_tick` later drains that queued price when allowed.
+When checks pass, Kerosene stores `pending_best_price` and refreshes account data before modifying. During reconciliation, it sends `modify_order` for the same order id only if the order is still open and the pending price or size correction remains.
+
+If a complete refresh shows the old order is gone while a pending price exists, Kerosene clears `current_oid` and places the residual size at the pending best price. If checks are temporarily blocked by throttling or an unconfirmed oid, it stores `pending_best_price`; `handle_chase_reprice_tick` later drains that queued price when allowed. `reprice_count` increments when the modify request is actually started.
 
 ### Result handling and reconciliation
 

@@ -126,6 +126,18 @@ impl TradingTerminal {
                     |kind| matches!(kind, PaneKind::Outcomes),
                 );
             }
+            Message::AddHypeEtfsPane => {
+                self.add_widget_menu_open = false;
+                let outcome = self.add_or_focus_singleton_pane(
+                    self.add_widget_axis(),
+                    PaneKind::HypeEtfs,
+                    "HYPE ETFs",
+                    |kind| matches!(kind, PaneKind::HypeEtfs),
+                );
+                if !matches!(outcome, AddPaneOutcome::Failed) && self.hype_etfs.data.is_none() {
+                    return self.request_hype_etfs_refresh(false);
+                }
+            }
             _ => {}
         }
 

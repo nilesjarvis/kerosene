@@ -33,6 +33,7 @@ mod feed_views;
 mod helpers;
 mod hotkey_state;
 mod hydromancer_api;
+mod hype_etf_state;
 mod hyperdash_api;
 mod hyperdash_update;
 mod journal;
