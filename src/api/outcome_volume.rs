@@ -1,14 +1,21 @@
 use super::{Candle, fetch_candles};
+use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const OUTCOME_VOLUME_LOOKBACK_MS: u64 = 24 * 60 * 60 * 1000;
+const MAX_OUTCOME_VOLUME_SYMBOLS: usize = 250;
+const OUTCOME_VOLUME_FETCH_CONCURRENCY: usize = 8;
 
 pub async fn fetch_outcome_volumes_24h(
-    symbols: Vec<String>,
+    mut symbols: Vec<String>,
 ) -> Result<HashMap<String, f64>, String> {
     if symbols.is_empty() {
         return Ok(HashMap::new());
+    }
+
+    if symbols.len() > MAX_OUTCOME_VOLUME_SYMBOLS {
+        symbols.truncate(MAX_OUTCOME_VOLUME_SYMBOLS);
     }
 
     let end_time = SystemTime::now()
@@ -18,10 +25,11 @@ pub async fn fetch_outcome_volumes_24h(
         .min(u128::from(u64::MAX)) as u64;
     let start_time = end_time.saturating_sub(OUTCOME_VOLUME_LOOKBACK_MS);
 
-    let fetches = symbols
-        .into_iter()
-        .map(|symbol| fetch_outcome_symbol_volume(symbol, start_time, end_time));
-    let results = futures::future::join_all(fetches).await;
+    let results = stream::iter(symbols.into_iter())
+        .map(|symbol| fetch_outcome_symbol_volume(symbol, start_time, end_time))
+        .buffer_unordered(OUTCOME_VOLUME_FETCH_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
 
     let mut volumes = HashMap::new();
     let mut errors = Vec::new();
