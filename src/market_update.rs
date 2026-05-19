@@ -28,15 +28,7 @@ impl TradingTerminal {
             | Message::HypeEtfsLoaded(_)) => {
                 return self.update_hype_etfs_market(message);
             }
-            message @ (Message::LiveWatchlistSortChanged(_, _)
-            | Message::LiveWatchlistColumnToggled(_, _, _)
-            | Message::AddLiveWatchlistPane
-            | Message::LiveWatchlistSearchChanged(_, _)
-            | Message::LiveWatchlistAddSymbol(_, _)
-            | Message::LiveWatchlistRemoveSymbol(_, _)
-            | Message::LiveWatchlistRefreshTick
-            | Message::LiveWatchlistContextsLoaded(_, _)
-            | Message::LiveWatchlistHistoryLoaded(_, _, _)) => {
+            message if is_live_watchlist_market_message(&message) => {
                 return self.update_live_watchlist_market(message);
             }
             message if is_order_book_market_message(&message) => {
@@ -50,6 +42,22 @@ impl TradingTerminal {
 
         Task::none()
     }
+}
+
+fn is_live_watchlist_market_message(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::LiveWatchlistSortChanged(_, _)
+            | Message::LiveWatchlistColumnToggled(_, _, _)
+            | Message::ToggleLiveWatchlistSettings(_)
+            | Message::AddLiveWatchlistPane
+            | Message::LiveWatchlistSearchChanged(_, _)
+            | Message::LiveWatchlistAddSymbol(_, _)
+            | Message::LiveWatchlistRemoveSymbol(_, _)
+            | Message::LiveWatchlistRefreshTick
+            | Message::LiveWatchlistContextsLoaded(_, _)
+            | Message::LiveWatchlistHistoryLoaded(_, _, _)
+    )
 }
 
 fn is_positioning_info_market_message(message: &Message) -> bool {
@@ -106,6 +114,13 @@ mod tests {
         ));
         assert!(is_order_book_market_message(
             &Message::ToggleOrderBookReverseSide(7)
+        ));
+    }
+
+    #[test]
+    fn live_watchlist_market_dispatch_includes_settings_toggle() {
+        assert!(is_live_watchlist_market_message(
+            &Message::ToggleLiveWatchlistSettings(7)
         ));
     }
 }

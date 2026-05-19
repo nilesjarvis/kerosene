@@ -2,8 +2,8 @@ use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::market_state::LiveWatchlistId;
 use crate::message::Message;
-use iced::Element;
 use iced::widget::text_input;
+use iced::{Element, Fill};
 
 impl TradingTerminal {
     pub(in crate::market_views::live_watchlist) fn view_live_watchlist_search_bar(
@@ -16,6 +16,7 @@ impl TradingTerminal {
             .on_input(move |q| Message::LiveWatchlistSearchChanged(id, q))
             .size(12)
             .padding([5, 8])
+            .width(Fill)
             .into()
     }
 }

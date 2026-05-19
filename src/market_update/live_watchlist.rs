@@ -32,6 +32,16 @@ impl TradingTerminal {
                 self.persist_config();
                 Task::none()
             }
+            Message::ToggleLiveWatchlistSettings(id) => {
+                let opening = self.live_watchlist_settings_menu_open != Some(id);
+                if opening {
+                    self.close_chart_header_menus();
+                    self.live_watchlist_settings_menu_open = Some(id);
+                } else {
+                    self.live_watchlist_settings_menu_open = None;
+                }
+                Task::none()
+            }
             Message::AddLiveWatchlistPane => {
                 self.add_widget_menu_open = false;
                 let Some(focus) = self.add_target_pane() else {

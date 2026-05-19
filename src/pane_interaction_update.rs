@@ -107,6 +107,9 @@ impl TradingTerminal {
                         }
                         PaneKind::LiveWatchlist(id) => {
                             self.live_watchlists.remove(&id);
+                            if self.live_watchlist_settings_menu_open == Some(id) {
+                                self.live_watchlist_settings_menu_open = None;
+                            }
                         }
                         PaneKind::PositioningInfo(id) => {
                             self.positioning_infos.remove(&id);

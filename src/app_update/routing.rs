@@ -160,6 +160,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolsLoaded(_)
         | Message::LiveWatchlistSortChanged(_, _)
         | Message::LiveWatchlistColumnToggled(_, _, _)
+        | Message::ToggleLiveWatchlistSettings(_)
         | Message::AddOrderBookPane
         | Message::AddLiveWatchlistPane
         | Message::AddPositioningInfoPane

@@ -67,6 +67,7 @@ pub(crate) enum Message {
     LiveWatchlistRefreshTick,
     LiveWatchlistSortChanged(LiveWatchlistId, config::LiveWatchlistSortColumn),
     LiveWatchlistColumnToggled(LiveWatchlistId, config::LiveWatchlistColumn, bool),
+    ToggleLiveWatchlistSettings(LiveWatchlistId),
     AddLiveWatchlistPane,
     AddPositioningInfoPane,
     PositioningInfoPageChanged(PositioningInfoId, PositioningInfoPage),

@@ -60,6 +60,7 @@ impl TradingTerminal {
             live_watchlist_contexts_last_fetch_ms: None,
             live_watchlist_history_loaded_at: HashMap::new(),
             live_watchlist_status: None,
+            live_watchlist_settings_menu_open: None,
             panes: pane_grid::State::with_configuration(parts.pane_config),
             dragging_pane: None,
             active_theme: cfg.active_theme.clone(),

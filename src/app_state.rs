@@ -241,6 +241,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) custom_themes: Vec<config::CustomThemeConfig>,
     // Trading Journal
     pub(crate) live_watchlists: HashMap<LiveWatchlistId, LiveWatchlistInstance>,
+    pub(crate) live_watchlist_settings_menu_open: Option<LiveWatchlistId>,
     pub(crate) positioning_infos: HashMap<PositioningInfoId, PositioningInfoInstance>,
     pub(crate) next_positioning_info_id: PositioningInfoId,
     pub(crate) positioning_info_pending: HashMap<String, Vec<PositioningInfoId>>,

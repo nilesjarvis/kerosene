@@ -340,6 +340,7 @@ impl TradingTerminal {
         self.chart_screenshot_menu_open = None;
         self.tracked_trade_settings_menu_open = false;
         self.liquidation_settings_menu_open = false;
+        self.live_watchlist_settings_menu_open = None;
     }
 }
 
