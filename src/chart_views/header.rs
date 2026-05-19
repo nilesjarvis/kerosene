@@ -2,20 +2,31 @@ mod actions;
 mod metrics;
 mod symbol;
 
-use self::metrics::push_asset_context_columns;
+use self::metrics::{ChartHeaderMetricVisibility, push_asset_context_columns};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{
     CHART_PRICE_FLASH_MS, ChartId, ChartInstance, PriceFlash, PriceFlashDirection,
 };
 use crate::message::Message;
-use iced::widget::{Space, column, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{Space, column, responsive, row, text};
+use iced::{Color, Element, Fill, Length, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_chart_header<'a>(
         &'a self,
         chart_id: ChartId,
         instance: &'a ChartInstance,
+    ) -> Element<'a, Message> {
+        responsive(move |size| self.view_chart_header_sized(chart_id, instance, size.width))
+            .height(Length::Shrink)
+            .into()
+    }
+
+    fn view_chart_header_sized<'a>(
+        &'a self,
+        chart_id: ChartId,
+        instance: &'a ChartInstance,
+        available_width: f32,
     ) -> Element<'a, Message> {
         let theme = self.theme();
         let (Some(last), Some(first)) = (
@@ -47,21 +58,23 @@ impl TradingTerminal {
             &theme,
         );
 
-        let chg_val = text(format!("{change:+.2} ({change_pct:+.2}%)"))
-            .size(12)
-            .font(iced::Font::MONOSPACE)
-            .color(theme.palette().text);
-        let col_chg = column![
-            text("24h Chg")
-                .size(9)
-                .color(theme.extended_palette().background.weak.text),
-            chg_val
-        ]
-        .spacing(2);
+        let metric_visibility = ChartHeaderMetricVisibility::for_width(available_width);
+        let mut header_row = row![sym_btn].spacing(16).align_y(iced::Alignment::Center);
 
-        let mut header_row = row![sym_btn, Space::new().width(8), col_chg,]
-            .spacing(16)
-            .align_y(iced::Alignment::Center);
+        if metric_visibility.show_24h_change {
+            let chg_val = text(format!("{change:+.2} ({change_pct:+.2}%)"))
+                .size(12)
+                .font(iced::Font::MONOSPACE)
+                .color(theme.palette().text);
+            let col_chg = column![
+                text("24h Chg")
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+                chg_val
+            ]
+            .spacing(2);
+            header_row = header_row.push(Space::new().width(8)).push(col_chg);
+        }
 
         if let Some(ctx) = &instance.asset_ctx {
             header_row = push_asset_context_columns(
@@ -71,6 +84,7 @@ impl TradingTerminal {
                 ctx,
                 last.close,
                 instance.open_interest_as_notional,
+                metric_visibility,
             );
         }
 

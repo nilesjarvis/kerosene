@@ -1,5 +1,6 @@
 mod columns;
 
+pub(super) use self::columns::ChartHeaderMetricVisibility;
 use self::columns::{push_perp_metric_columns, push_spot_metric_columns};
 
 use crate::account::AssetContext;
@@ -20,6 +21,7 @@ pub(super) fn push_asset_context_columns<'a>(
     ctx: &'a AssetContext,
     chart_price: f64,
     open_interest_as_notional: bool,
+    visibility: ChartHeaderMetricVisibility,
 ) -> Row<'a, Message> {
     if ctx.funding.is_some() {
         push_perp_metric_columns(
@@ -29,6 +31,7 @@ pub(super) fn push_asset_context_columns<'a>(
             ctx,
             chart_price,
             open_interest_as_notional,
+            visibility,
         )
     } else {
         push_spot_metric_columns(header_row, theme, ctx)

@@ -7,13 +7,39 @@ use chrono::Timelike;
 use iced::Theme;
 use iced::widget::{Row, button, column, text};
 
+const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
+const HIDE_OPEN_INTEREST_BELOW: f32 = 560.0;
+const HIDE_FUNDING_BELOW: f32 = 460.0;
+const HIDE_24H_CHANGE_BELOW: f32 = 340.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChartHeaderMetricVisibility {
+    pub(crate) show_24h_change: bool,
+    pub(crate) show_mark_oracle: bool,
+    pub(crate) show_open_interest: bool,
+    pub(crate) show_funding: bool,
+}
+
+impl ChartHeaderMetricVisibility {
+    pub(crate) fn for_width(width: f32) -> Self {
+        let width = if width.is_finite() { width } else { 0.0 };
+        Self {
+            show_24h_change: width >= HIDE_24H_CHANGE_BELOW,
+            show_mark_oracle: width >= HIDE_MARK_ORACLE_BELOW,
+            show_open_interest: width >= HIDE_OPEN_INTEREST_BELOW,
+            show_funding: width >= HIDE_FUNDING_BELOW,
+        }
+    }
+}
+
 pub(super) fn push_perp_metric_columns<'a>(
-    header_row: Row<'a, Message>,
+    mut header_row: Row<'a, Message>,
     theme: &Theme,
     chart_id: ChartId,
     ctx: &'a AssetContext,
     chart_price: f64,
     open_interest_as_notional: bool,
+    visibility: ChartHeaderMetricVisibility,
 ) -> Row<'a, Message> {
     let funding = parse_ctx_f64(ctx.funding.as_deref());
     let funding_color = match funding {
@@ -25,8 +51,8 @@ pub(super) fn push_perp_metric_columns<'a>(
     let oracle = parse_ctx_f64(ctx.oracle_px.as_deref());
     let oi = parse_ctx_f64(ctx.open_interest.as_deref());
 
-    header_row
-        .push(metric_column(
+    if visibility.show_mark_oracle {
+        header_row = header_row.push(metric_column(
             "Mark / Oracle".to_string(),
             format!(
                 "{} / {}",
@@ -35,20 +61,29 @@ pub(super) fn push_perp_metric_columns<'a>(
             ),
             theme.palette().text,
             theme,
-        ))
-        .push(metric_column(
+        ));
+    }
+
+    if visibility.show_funding {
+        header_row = header_row.push(metric_column(
             format!("Funding ({})", funding_countdown()),
             format_funding_pct(funding),
             funding_color,
             theme,
-        ))
-        .push(clickable_metric_column(
+        ));
+    }
+
+    if visibility.show_open_interest {
+        header_row = header_row.push(clickable_metric_column(
             open_interest_label(open_interest_as_notional),
             format_open_interest(oi, chart_price, open_interest_as_notional),
             theme.palette().text,
             theme,
             Message::ToggleOpenInterestNotional(chart_id),
-        ))
+        ));
+    }
+
+    header_row
 }
 
 pub(super) fn push_spot_metric_columns<'a>(
@@ -214,8 +249,8 @@ fn parse_ctx_f64(value: Option<&str>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_funding_pct, format_open_interest, format_open_interest_notional, format_volume,
-        open_interest_label, parse_ctx_f64,
+        ChartHeaderMetricVisibility, format_funding_pct, format_open_interest,
+        format_open_interest_notional, format_volume, open_interest_label, parse_ctx_f64,
     };
 
     #[test]
@@ -253,5 +288,54 @@ mod tests {
         );
         assert_eq!(open_interest_label(false), "Open Interest");
         assert_eq!(open_interest_label(true), "Open Interest $");
+    }
+
+    #[test]
+    fn metric_visibility_collapses_in_priority_order() {
+        assert_eq!(
+            ChartHeaderMetricVisibility::for_width(760.0),
+            ChartHeaderMetricVisibility {
+                show_24h_change: true,
+                show_mark_oracle: true,
+                show_open_interest: true,
+                show_funding: true,
+            }
+        );
+        assert_eq!(
+            ChartHeaderMetricVisibility::for_width(680.0),
+            ChartHeaderMetricVisibility {
+                show_24h_change: true,
+                show_mark_oracle: false,
+                show_open_interest: true,
+                show_funding: true,
+            }
+        );
+        assert_eq!(
+            ChartHeaderMetricVisibility::for_width(520.0),
+            ChartHeaderMetricVisibility {
+                show_24h_change: true,
+                show_mark_oracle: false,
+                show_open_interest: false,
+                show_funding: true,
+            }
+        );
+        assert_eq!(
+            ChartHeaderMetricVisibility::for_width(420.0),
+            ChartHeaderMetricVisibility {
+                show_24h_change: true,
+                show_mark_oracle: false,
+                show_open_interest: false,
+                show_funding: false,
+            }
+        );
+        assert_eq!(
+            ChartHeaderMetricVisibility::for_width(320.0),
+            ChartHeaderMetricVisibility {
+                show_24h_change: false,
+                show_mark_oracle: false,
+                show_open_interest: false,
+                show_funding: false,
+            }
+        );
     }
 }

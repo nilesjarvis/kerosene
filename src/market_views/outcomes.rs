@@ -3,7 +3,7 @@ mod groups;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{Column, column, container, responsive, row, scrollable, text};
+use iced::widget::{Column, column, container, responsive, scrollable, text};
 use iced::{Element, Fill};
 
 // ---------------------------------------------------------------------------
@@ -19,28 +19,17 @@ impl TradingTerminal {
         let theme = self.theme();
         let grouped = self.grouped_outcome_symbols();
 
-        let mut status = if self.symbols_loading {
-            "Loading outcome metadata from Hyperliquid outcomeMeta"
+        let status = if self.symbols_loading {
+            Some("Loading outcome metadata from Hyperliquid outcomeMeta".to_string())
         } else if grouped.is_empty() {
-            "No outcome contracts returned by Hyperliquid outcomeMeta"
-        } else {
-            "Read-only USDH outcomes - 24h volume from candleSnapshot"
-        }
-        .to_string();
-        if self.outcome_volumes_loading {
-            status.push_str(" - loading volume");
+            Some("No outcome contracts returned by Hyperliquid outcomeMeta".to_string())
+        } else if self.outcome_volumes_loading {
+            Some("Loading 24h volume".to_string())
         } else if self.outcome_volumes_error.is_some() {
-            status.push_str(" - volume unavailable");
-        }
-
-        let status_row = row![
-            text(status)
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(Fill)
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center);
+            Some("24h volume unavailable".to_string())
+        } else {
+            None
+        };
 
         let mut market_groups = Column::new().spacing(8);
         let mut is_first_group = true;
@@ -55,7 +44,16 @@ impl TradingTerminal {
             }
         }
 
-        let content = column![status_row, scrollable(market_groups)].spacing(8);
+        let mut content = column![].spacing(8);
+        if let Some(status) = status {
+            content = content.push(
+                text(status)
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .width(Fill),
+            );
+        }
+        content = content.push(scrollable(market_groups));
 
         container(content)
             .width(Fill)
