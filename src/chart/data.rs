@@ -8,6 +8,7 @@ use super::{
 };
 use crate::api::{Candle, is_valid_candle, normalize_candles};
 use crate::hydromancer_api::FundingRatePoint;
+use crate::timeframe::Timeframe;
 use iced::Color;
 use iced::widget::canvas;
 use std::collections::BTreeMap;
@@ -20,6 +21,8 @@ impl CandlestickChart {
     pub fn new(id: u64) -> Self {
         Self {
             id,
+            timeframe: Timeframe::H1,
+            clock_now_ms: current_unix_ms(),
             candles: Vec::new(),
             status: ChartStatus::Loading,
             candle_cache: canvas::Cache::new(),
@@ -56,6 +59,8 @@ impl CandlestickChart {
     pub(crate) fn snapshot_for_export(&self) -> Self {
         Self {
             id: self.id,
+            timeframe: self.timeframe,
+            clock_now_ms: self.clock_now_ms,
             candles: self.candles.clone(),
             status: self.status.clone(),
             candle_cache: canvas::Cache::new(),
@@ -92,6 +97,17 @@ impl CandlestickChart {
     pub fn request_view_reset(&mut self) {
         self.reset_epoch = self.reset_epoch.saturating_add(1);
         self.candle_cache.clear();
+    }
+
+    pub(crate) fn set_timeframe(&mut self, timeframe: Timeframe) {
+        if self.timeframe != timeframe {
+            self.timeframe = timeframe;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_clock_now_ms(&mut self, now_ms: u64) {
+        self.clock_now_ms = now_ms;
     }
 
     pub fn set_chart_colors(&mut self, bull: Option<Color>, bear: Option<Color>) {
@@ -299,6 +315,13 @@ impl CandlestickChart {
         self.funding_status = None;
         self.candle_cache.clear();
     }
+}
+
+fn current_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or_default()
 }
 
 fn normalized_funding_rates(points: Vec<FundingRatePoint>) -> Vec<FundingRatePoint> {

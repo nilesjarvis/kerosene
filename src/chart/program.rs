@@ -172,6 +172,14 @@ impl CandlestickChart {
             price_to_y: &price_to_y,
         };
         self.draw_crosshair_overlay(&mut crosshair_context);
+        self.draw_next_candle_countdown(
+            &mut overlay_frame,
+            theme,
+            chart_w,
+            chart_h + funding_panel_h,
+            bounds,
+            state.cursor_position,
+        );
         let overlay_geo = overlay_frame.into_geometry();
 
         vec![candles_geo, overlay_geo]

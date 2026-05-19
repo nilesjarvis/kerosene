@@ -1,5 +1,6 @@
 mod annotation_overlays;
 mod candle_layer;
+mod countdown;
 mod crosshair;
 mod data;
 mod drawing;

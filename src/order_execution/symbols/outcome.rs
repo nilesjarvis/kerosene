@@ -1,3 +1,4 @@
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 
 pub(crate) const OUTCOME_MIN_PRICE: f64 = 0.001;
@@ -31,6 +32,14 @@ impl TradingTerminal {
     }
 
     pub(crate) fn display_coin_for_spot_balance(&self, coin: &str) -> String {
+        if let Some(symbol) = self
+            .exchange_symbols
+            .iter()
+            .find(|symbol| symbol.key == coin && symbol.market_type == MarketType::Spot)
+        {
+            return Self::exchange_symbol_display_name(symbol);
+        }
+
         self.outcome_trade_coin_for_balance_coin(coin)
             .map(|trade_coin| format!("{} ({coin})", self.display_name_for_symbol(&trade_coin)))
             .unwrap_or_else(|| coin.to_string())
@@ -106,6 +115,23 @@ mod tests {
             quote_symbol: "USDH".to_string(),
             quote_token_index: Some(150),
             encoding: 650,
+        }
+    }
+
+    fn spot_symbol(key: &str, ticker: &str, display: &str) -> api::ExchangeSymbol {
+        api::ExchangeSymbol {
+            key: key.to_string(),
+            ticker: ticker.to_string(),
+            category: "spot".to_string(),
+            display_name: Some(display.to_string()),
+            keywords: Vec::new(),
+            asset_index: 10107,
+            collateral_token: None,
+            sz_decimals: 2,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: api::MarketType::Spot,
+            outcome: None,
         }
     }
 
@@ -246,6 +272,15 @@ mod tests {
             TradingTerminal::outcome_balance_coin_to_trade_coin("#650"),
             None
         );
+    }
+
+    #[test]
+    fn display_coin_for_spot_balance_uses_spot_pair_display() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![spot_symbol("@107", "HYPE", "HYPE/USDC")];
+
+        assert_eq!(terminal.display_coin_for_spot_balance("@107"), "HYPE/USDC");
+        assert_eq!(terminal.display_coin_for_spot_balance("HYPE"), "HYPE");
     }
 
     #[test]

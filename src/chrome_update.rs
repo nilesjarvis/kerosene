@@ -92,6 +92,10 @@ impl TradingTerminal {
             }
             Message::StatusBarTick => {
                 let now = Instant::now();
+                let now_ms = Self::now_ms();
+                for instance in self.charts.values_mut() {
+                    instance.chart.set_clock_now_ms(now_ms);
+                }
                 let config_save_task = self.flush_config_save_if_due(now);
                 for status in sound::take_status_messages() {
                     self.push_silent_toast(status.message, status.is_error);

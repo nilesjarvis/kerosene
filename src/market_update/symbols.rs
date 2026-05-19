@@ -122,8 +122,7 @@ impl TradingTerminal {
                     }
                     Some(_) => {}
                     None => {
-                        self.active_symbol.clear();
-                        self.active_symbol_display.clear();
+                        self.apply_active_symbol_selection(String::new(), String::new());
                         self.order_status =
                             Some(("No tradable market symbols are available".into(), true));
                     }

@@ -115,15 +115,23 @@ impl TradingTerminal {
 
     pub(super) fn view_tracked_trade_coin_cell(&self, coin: String) -> Element<'_, Message> {
         let theme = self.theme();
+        let display_coin = self.display_coin_for_spot_balance(&coin);
         let mut coin_content = row![];
-        if let Some(icon) = helpers::symbol_icon(&coin, 14, theme.palette().text) {
+        if let Some(icon) = helpers::symbol_icon(&display_coin, 14, theme.palette().text)
+            .or_else(|| helpers::symbol_icon(&coin, 14, theme.palette().text))
+        {
             coin_content = coin_content.push(icon).push(Space::new().width(4.0));
         }
         coin_content = coin_content
-            .push(text(coin.clone()).size(12).font(iced::Font::MONOSPACE))
+            .push(
+                text(display_coin.clone())
+                    .size(12)
+                    .font(iced::Font::MONOSPACE),
+            )
             .align_y(iced::Alignment::Center);
 
-        button(coin_content)
+        let raw_coin = coin.clone();
+        let coin_button = button(coin_content)
             .on_press(Message::SymbolSelected(coin))
             .padding(0)
             .width(COIN_WIDTH)
@@ -137,7 +145,17 @@ impl TradingTerminal {
                     text_color,
                     ..Default::default()
                 }
-            })
-            .into()
+            });
+
+        if display_coin != raw_coin {
+            return tooltip(
+                coin_button,
+                text(raw_coin).size(10).font(iced::Font::MONOSPACE),
+                iced::widget::tooltip::Position::Top,
+            )
+            .into();
+        }
+
+        coin_button.into()
     }
 }

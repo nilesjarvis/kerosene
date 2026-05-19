@@ -33,8 +33,7 @@ impl TradingTerminal {
         let display = self.display_name_for_symbol(&symbol);
 
         self.order_kind = order_kind;
-        self.active_symbol = symbol.clone();
-        self.active_symbol_display = display;
+        self.apply_active_symbol_selection(symbol.clone(), display);
         self.active_theme = layout.active_theme.clone();
         self.order_reduce_only = layout.reduce_only;
         self.order_presets = layout.order_presets.clone();

@@ -21,14 +21,15 @@ impl TradingTerminal {
         balances: &'a [SpotBalance],
     ) -> Element<'a, Message> {
         let theme = self.theme();
-        let mut spot_rows: Vec<&SpotBalance> = balances
+        let mut spot_rows: Vec<(&SpotBalance, String)> = balances
             .iter()
             .filter(|balance| {
                 wallet_has_visible_nonzero(&balance.total)
                     && !self.symbol_key_is_hidden(&balance.coin)
             })
+            .map(|balance| (balance, self.display_coin_for_spot_balance(&balance.coin)))
             .collect();
-        spot_rows.sort_by(|a, b| a.coin.cmp(&b.coin));
+        spot_rows.sort_by(|a, b| a.1.cmp(&b.1));
         let mut spot_table = Column::new()
             .spacing(4)
             .push(text("Spot Balances").size(13).color(theme.palette().text))
@@ -41,8 +42,8 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text),
             );
         } else {
-            for balance in spot_rows.into_iter().take(80) {
-                spot_table = spot_table.push(wallet_spot_row(balance, &theme));
+            for (balance, display_coin) in spot_rows.into_iter().take(80) {
+                spot_table = spot_table.push(wallet_spot_row(balance, display_coin, &theme));
             }
         }
 

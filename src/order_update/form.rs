@@ -597,6 +597,12 @@ mod tests {
     #[test]
     fn order_book_price_selected_switches_to_fixed_symbol_before_setting_price() {
         let mut terminal = terminal_with_order_book(OrderBookSymbolMode::Fixed("ETH".to_string()));
+        terminal.exchange_symbols = vec![
+            symbol("BTC", MarketType::Perp),
+            symbol("ETH", MarketType::Perp),
+        ];
+        terminal.order_quantity = "10".to_string();
+        terminal.order_percentage = 50.0;
 
         let _task = terminal.handle_order_book_price_selected(7, "2500.5".to_string());
 
@@ -604,6 +610,8 @@ mod tests {
         assert_eq!(terminal.active_symbol_display, "ETH");
         assert_eq!(terminal.order_kind, OrderKind::Limit);
         assert_eq!(terminal.order_price, "2500.5");
+        assert!(terminal.order_quantity.is_empty());
+        assert_eq!(terminal.order_percentage, 0.0);
     }
 
     #[test]

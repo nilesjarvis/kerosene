@@ -48,6 +48,7 @@ impl TradingTerminal {
 
         if let Some(instance) = self.charts.get_mut(&id) {
             instance.interval = tf;
+            instance.chart.set_timeframe(tf);
             instance.heatmap_last_fetch = None;
             instance.heatmap_viewport = None;
             instance.heatmap_status = None;

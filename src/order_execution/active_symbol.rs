@@ -8,6 +8,21 @@ use crate::timeframe::Timeframe;
 use iced::Task;
 
 impl TradingTerminal {
+    pub(crate) fn apply_active_symbol_selection(&mut self, key: String, display: String) {
+        if self.active_symbol != key {
+            self.order_quantity.clear();
+            self.order_percentage = 0.0;
+        }
+
+        let is_outcome = self.is_outcome_coin(&key);
+        self.active_symbol = key;
+        self.active_symbol_display = display;
+        if is_outcome {
+            self.order_quantity_is_usd = false;
+            self.order_quantity = Self::sanitize_outcome_quantity_input(&self.order_quantity);
+        }
+    }
+
     pub(crate) fn switch_active_symbol_internal(&mut self, key: String) -> Task<Message> {
         let sym = self
             .exchange_symbols
@@ -33,8 +48,6 @@ impl TradingTerminal {
                 Some((format!("{valid_key} is hidden in Settings > Risk"), true));
             return Task::none();
         }
-        let valid_is_outcome =
-            sym.is_some_and(|s| s.market_type == MarketType::Outcome) || valid_key.starts_with('#');
         let display = sym
             .map(Self::exchange_symbol_display_name)
             .unwrap_or_else(|| {
@@ -45,13 +58,8 @@ impl TradingTerminal {
                     .to_string()
             });
 
-        self.active_symbol = valid_key.clone();
-        self.active_symbol_display = display.clone();
+        self.apply_active_symbol_selection(valid_key.clone(), display.clone());
         self.refresh_order_price_for_symbol(&valid_key);
-        if valid_is_outcome {
-            self.order_quantity_is_usd = false;
-            self.order_quantity = Self::sanitize_outcome_quantity_input(&self.order_quantity);
-        }
         for inst in self.order_books.values_mut() {
             if inst.mode == OrderBookSymbolMode::Active {
                 inst.set_book(OrderBook::empty());

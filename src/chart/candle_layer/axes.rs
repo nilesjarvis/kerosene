@@ -1,6 +1,7 @@
 use super::CandleLayerContext;
 use crate::chart::model::CandlestickChart;
 use crate::helpers::{format_price, format_timestamp};
+use crate::timeframe::Timeframe;
 use iced::alignment;
 use iced::widget::canvas;
 use iced::{Color, Point};
@@ -158,7 +159,7 @@ impl CandlestickChart {
 
         let label_mode = self
             .visible_time_axis_span(ctx)
-            .map(TimeAxisLabelMode::for_span)
+            .map(|span| TimeAxisLabelMode::for_timeframe_and_span(self.timeframe, span))
             .unwrap_or(TimeAxisLabelMode::DateTime);
         let step_i = (visible_slots / label_count as isize).max(1);
         let left_idx = ctx.right_idx - visible_slots;
@@ -246,17 +247,20 @@ impl CandlestickChart {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TimeAxisLabelMode {
+    Time,
     DateTime,
     Month,
     MonthYear,
 }
 
 impl TimeAxisLabelMode {
-    fn for_span(span_secs: u64) -> Self {
+    fn for_timeframe_and_span(timeframe: Timeframe, span_secs: u64) -> Self {
         if span_secs >= YEAR_AXIS_SPAN_SECS {
             Self::MonthYear
         } else if span_secs >= MONTH_AXIS_SPAN_SECS {
             Self::Month
+        } else if uses_time_only_axis(timeframe) {
+            Self::Time
         } else {
             Self::DateTime
         }
@@ -274,6 +278,7 @@ fn first_grid_offset(left_idx: isize, step_i: isize) -> isize {
 
 fn format_time_axis_label(unix_secs: u64, mode: TimeAxisLabelMode) -> String {
     match mode {
+        TimeAxisLabelMode::Time => format_time_of_day(unix_secs),
         TimeAxisLabelMode::DateTime => format_timestamp(unix_secs),
         TimeAxisLabelMode::Month => {
             let (_, month, _, _) = timestamp_parts(unix_secs);
@@ -284,6 +289,22 @@ fn format_time_axis_label(unix_secs: u64, mode: TimeAxisLabelMode) -> String {
             format!("{} {:02}", month_name(month), year % 100)
         }
     }
+}
+
+fn uses_time_only_axis(timeframe: Timeframe) -> bool {
+    timeframe.duration_ms() <= Timeframe::H1.duration_ms()
+}
+
+fn format_time_of_day(unix_secs: u64) -> String {
+    let secs_per_day: u64 = 86400;
+    let secs_per_hour: u64 = 3600;
+    let secs_per_minute: u64 = 60;
+
+    let remaining = unix_secs % secs_per_day;
+    let hours = remaining / secs_per_hour;
+    let minutes = (remaining % secs_per_hour) / secs_per_minute;
+
+    format!("{hours:02}:{minutes:02}")
 }
 
 fn month_name(month: usize) -> &'static str {
@@ -348,6 +369,15 @@ fn is_leap_year(year: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{TimeAxisLabelMode, format_time_axis_label};
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn low_timeframe_axis_labels_use_time_only() {
+        assert_eq!(
+            format_time_axis_label(1_714_566_840, TimeAxisLabelMode::Time),
+            "12:34"
+        );
+    }
 
     #[test]
     fn monthly_axis_labels_use_month_names() {
@@ -364,15 +394,19 @@ mod tests {
     #[test]
     fn axis_label_mode_switches_to_months_for_wide_views() {
         assert_eq!(
-            TimeAxisLabelMode::for_span(30 * 24 * 60 * 60),
+            TimeAxisLabelMode::for_timeframe_and_span(Timeframe::M15, 30 * 24 * 60 * 60),
+            TimeAxisLabelMode::Time
+        );
+        assert_eq!(
+            TimeAxisLabelMode::for_timeframe_and_span(Timeframe::H4, 30 * 24 * 60 * 60),
             TimeAxisLabelMode::DateTime
         );
         assert_eq!(
-            TimeAxisLabelMode::for_span(120 * 24 * 60 * 60),
+            TimeAxisLabelMode::for_timeframe_and_span(Timeframe::M15, 120 * 24 * 60 * 60),
             TimeAxisLabelMode::Month
         );
         assert_eq!(
-            TimeAxisLabelMode::for_span(400 * 24 * 60 * 60),
+            TimeAxisLabelMode::for_timeframe_and_span(Timeframe::M15, 400 * 24 * 60 * 60),
             TimeAxisLabelMode::MonthYear
         );
     }

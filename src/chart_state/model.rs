@@ -119,12 +119,14 @@ pub(crate) struct ChartInstance {
 impl ChartInstance {
     pub(crate) fn new(id: ChartId, symbol: String, interval: Timeframe) -> Self {
         let display = symbol.split(':').nth(1).unwrap_or(&symbol).to_string();
+        let mut chart = CandlestickChart::new(id);
+        chart.set_timeframe(interval);
         Self {
             id,
             symbol,
             symbol_display: display,
             interval,
-            chart: CandlestickChart::new(id),
+            chart,
             asset_ctx: None,
             editor_open: false,
             editor_search_query: String::new(),

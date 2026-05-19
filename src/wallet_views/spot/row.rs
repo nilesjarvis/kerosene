@@ -22,7 +22,11 @@ pub(super) fn wallet_spot_header() -> Row<'static, Message> {
     .spacing(8)
 }
 
-pub(super) fn wallet_spot_row(balance: &SpotBalance, theme: &Theme) -> Element<'static, Message> {
+pub(super) fn wallet_spot_row(
+    balance: &SpotBalance,
+    display_coin: String,
+    theme: &Theme,
+) -> Element<'static, Message> {
     let total = parse_wallet_number(&balance.total);
     let hold = parse_wallet_number(&balance.hold);
     let available = total.zip(hold).map(|(total, hold)| total - hold);
@@ -33,7 +37,7 @@ pub(super) fn wallet_spot_row(balance: &SpotBalance, theme: &Theme) -> Element<'
     let invalid_color = theme.palette().warning;
 
     row![
-        text(balance.coin.clone())
+        text(display_coin)
             .size(11)
             .font(iced::Font::MONOSPACE)
             .color(if is_usdc {

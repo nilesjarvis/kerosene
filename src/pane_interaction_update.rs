@@ -57,8 +57,7 @@ impl TradingTerminal {
                             self.order_status = Some((message, true));
                             return Task::none();
                         }
-                        self.active_symbol = sym;
-                        self.active_symbol_display = display;
+                        self.apply_active_symbol_selection(sym, display);
                         for inst in self.order_books.values_mut() {
                             if inst.mode == OrderBookSymbolMode::Active {
                                 inst.set_book(OrderBook::empty());
