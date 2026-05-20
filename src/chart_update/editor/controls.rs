@@ -22,43 +22,51 @@ impl TradingTerminal {
                 if let Some(instance) = self.charts.get_mut(&id) {
                     instance.editor_open = true;
                     instance.editor_search_query.clear();
-                    instance.editor_keyboard_selected = false;
+                    instance.editor_selected_index = None;
                 }
-                return iced::widget::operation::focus(Self::chart_symbol_search_input_id(id));
+                return Task::batch([
+                    Self::focus_chart_symbol_search_input(id),
+                    Self::scroll_chart_symbol_search_results_to(id, 0.0),
+                ]);
             }
             Message::ChartCloseEditor(id) => {
                 if let Some(instance) = self.charts.get_mut(&id) {
                     instance.editor_open = false;
                     instance.editor_search_query.clear();
-                    instance.editor_keyboard_selected = false;
+                    instance.editor_selected_index = None;
                 }
             }
             Message::ChartEditorSearchChanged(id, query) => {
                 if let Some(instance) = self.charts.get_mut(&id) {
                     instance.editor_search_query = query;
-                    instance.editor_keyboard_selected = false;
+                    instance.editor_selected_index = None;
                 }
+                return Self::scroll_chart_symbol_search_results_to(id, 0.0);
             }
             Message::ChartEditorSubmit(id) => {
-                let query = self
+                let (query, selected_index) = self
                     .charts
                     .get(&id)
-                    .map(|instance| instance.editor_search_query.trim().to_string())
+                    .map(|instance| {
+                        (
+                            instance.editor_search_query.trim().to_string(),
+                            instance.editor_selected_index,
+                        )
+                    })
                     .unwrap_or_default();
 
-                if query.is_empty() {
-                    return Task::none();
-                }
+                let filtered = self.chart_editor_filtered_symbols(&query);
+                let selected_symbol = selected_index
+                    .and_then(|index| filtered.get(index))
+                    .or_else(|| (!query.is_empty()).then(|| filtered.first()).flatten());
 
-                if let Some(key) = self
-                    .chart_editor_filtered_symbols(&query)
-                    .first()
-                    .map(|symbol| symbol.key.clone())
-                {
+                if let Some(key) = selected_symbol.map(|symbol| symbol.key.clone()) {
                     return self.update(Message::ChartSymbolSelected(id, key));
                 }
 
-                self.push_toast(format!("No symbol matches '{query}'"), true);
+                if !query.is_empty() {
+                    self.push_toast(format!("No symbol matches '{query}'"), true);
+                }
             }
             _ => {}
         }

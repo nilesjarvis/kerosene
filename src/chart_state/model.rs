@@ -165,8 +165,8 @@ pub(crate) struct ChartInstance {
     pub(crate) editor_open: bool,
     /// Search query text for the symbol editor.
     pub(crate) editor_search_query: String,
-    /// Whether the top editor result is armed for keyboard selection.
-    pub(crate) editor_keyboard_selected: bool,
+    /// Search result index currently highlighted for keyboard selection.
+    pub(crate) editor_selected_index: Option<usize>,
     /// Right-click quick order form (if open).
     pub(crate) quick_order: Option<QuickOrderForm>,
     /// Remember the last quick order type (true=limit, false=market).
@@ -236,7 +236,7 @@ impl ChartInstance {
             asset_ctx: None,
             editor_open: false,
             editor_search_query: String::new(),
-            editor_keyboard_selected: false,
+            editor_selected_index: None,
             quick_order: None,
             last_quick_order_is_limit: true,
             last_quick_order_symbol: String::new(),
@@ -277,7 +277,7 @@ impl ChartInstance {
             asset_ctx: self.asset_ctx.clone(),
             editor_open: false,
             editor_search_query: String::new(),
-            editor_keyboard_selected: false,
+            editor_selected_index: None,
             quick_order: None,
             last_quick_order_is_limit: self.last_quick_order_is_limit,
             last_quick_order_symbol: self.last_quick_order_symbol.clone(),
@@ -413,7 +413,7 @@ impl ChartInstance {
             asset_ctx: None,
             editor_open: true,
             editor_search_query: String::new(),
-            editor_keyboard_selected: false,
+            editor_selected_index: None,
             quick_order: None,
             last_quick_order_is_limit: true,
             last_quick_order_symbol: String::new(),

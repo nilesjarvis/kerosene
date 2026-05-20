@@ -52,11 +52,6 @@ impl TradingTerminal {
             .into();
         };
 
-        // ----- Chart editor overlay (symbol selection) -----
-        if instance.editor_open {
-            return self.view_chart_editor(chart_id, instance);
-        }
-
         // ----- Empty chart (no symbol selected yet) -----
         if instance.symbol.is_empty() {
             let open_editor_btn = button(
@@ -84,12 +79,19 @@ impl TradingTerminal {
                 }
             });
 
-            return container(open_editor_btn)
+            let empty_chart: Element<'_, Message> = container(open_editor_btn)
                 .width(Fill)
                 .height(Fill)
                 .center(Fill)
                 .padding(10)
                 .into();
+
+            let mut empty_layers = vec![empty_chart];
+            if instance.editor_open {
+                empty_layers.push(self.view_chart_editor(chart_id, instance));
+            }
+
+            return stack(empty_layers).width(Fill).height(Fill).into();
         }
 
         if self.symbol_key_is_hidden(&instance.symbol) {
@@ -103,12 +105,19 @@ impl TradingTerminal {
             ]
             .spacing(10)
             .align_x(iced::Alignment::Center);
-            return container(content)
+            let hidden_chart: Element<'_, Message> = container(content)
                 .width(Fill)
                 .height(Fill)
                 .center(Fill)
                 .padding(10)
                 .into();
+
+            let mut hidden_layers = vec![hidden_chart];
+            if instance.editor_open {
+                hidden_layers.push(self.view_chart_editor(chart_id, instance));
+            }
+
+            return stack(hidden_layers).width(Fill).height(Fill).into();
         }
 
         // The toolbar elements are now integrated directly into the header row.
@@ -150,7 +159,7 @@ impl TradingTerminal {
 
             // Always wrap the canvas in a stack to keep the widget tree
             // structure stable.
-            let chart_area: Element<'_, Message> =
+            let chart_base: Element<'_, Message> =
                 if quick_order_on_surface && let Some(form) = &instance.quick_order {
                     let cid = chart_id;
                     self.view_quick_order_card(cid, form, chart_surface)
@@ -162,6 +171,14 @@ impl TradingTerminal {
                 } else {
                     stack![chart_surface].width(Fill).height(Fill).into()
                 };
+
+            let mut chart_area_layers = vec![chart_base];
+            if instance.editor_open {
+                chart_area_layers.push(self.view_chart_editor(chart_id, instance));
+            }
+
+            let chart_area: Element<'_, Message> =
+                stack(chart_area_layers).width(Fill).height(Fill).into();
             let chart_area = container(chart_area)
                 .id(Self::chart_screenshot_canvas_id(surface_id))
                 .width(Fill)

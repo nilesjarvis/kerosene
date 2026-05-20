@@ -14,6 +14,28 @@ impl TradingTerminal {
         iced::widget::Id::from(format!("chart_symbol_search_{chart_id}"))
     }
 
+    pub(crate) fn chart_symbol_search_results_scroll_id(chart_id: ChartId) -> iced::widget::Id {
+        iced::widget::Id::from(format!("chart_symbol_search_results_{chart_id}"))
+    }
+
+    pub(crate) fn focus_chart_symbol_search_input(chart_id: ChartId) -> Task<Message> {
+        iced::widget::operation::focus(Self::chart_symbol_search_input_id(chart_id))
+    }
+
+    pub(crate) fn scroll_chart_symbol_search_results_to(
+        chart_id: ChartId,
+        offset_y: f32,
+    ) -> Task<Message> {
+        iced::widget::operation::scroll_to(
+            Self::chart_symbol_search_results_scroll_id(chart_id),
+            iced::widget::scrollable::AbsoluteOffset {
+                x: None,
+                y: Some(offset_y),
+            },
+        )
+        .map(|_: ()| Message::NoOp)
+    }
+
     pub(crate) fn active_candlestick_chart_id(&self) -> Option<ChartId> {
         if let Some(pane) = self.focus
             && let Some(PaneKind::Chart(id)) = self.panes.get(pane)
@@ -75,7 +97,7 @@ impl TradingTerminal {
         if let Some(instance) = self.charts.get_mut(&chart_id) {
             instance.editor_open = true;
             instance.editor_search_query.clear();
-            instance.editor_keyboard_selected = false;
+            instance.editor_selected_index = None;
             instance.clear_quick_order();
             instance.chart.active_tool = None;
         }
@@ -83,7 +105,10 @@ impl TradingTerminal {
         self.chart_surface_active_tools
             .remove(&crate::chart_state::ChartSurfaceId::Docked(chart_id));
 
-        iced::widget::operation::focus(Self::chart_symbol_search_input_id(chart_id))
+        Task::batch([
+            Self::focus_chart_symbol_search_input(chart_id),
+            Self::scroll_chart_symbol_search_results_to(chart_id, 0.0),
+        ])
     }
 
     pub(crate) fn chart_editor_symbol_matches(symbol: &ExchangeSymbol, query: &str) -> bool {

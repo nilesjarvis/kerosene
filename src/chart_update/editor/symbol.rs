@@ -15,7 +15,7 @@ impl TradingTerminal {
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.editor_open = false;
                 instance.editor_search_query.clear();
-                instance.editor_keyboard_selected = false;
+                instance.editor_selected_index = None;
             }
             return Task::none();
         }
@@ -30,7 +30,7 @@ impl TradingTerminal {
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.editor_open = false;
                 instance.editor_search_query.clear();
-                instance.editor_keyboard_selected = false;
+                instance.editor_selected_index = None;
             }
             return Task::none();
         }
@@ -40,7 +40,7 @@ impl TradingTerminal {
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.editor_open = false;
                 instance.editor_search_query.clear();
-                instance.editor_keyboard_selected = false;
+                instance.editor_selected_index = None;
             }
             return Task::none();
         }
@@ -53,7 +53,7 @@ impl TradingTerminal {
                 instance.chart.annotations.clear();
                 instance.editor_open = false;
                 instance.editor_search_query.clear();
-                instance.editor_keyboard_selected = false;
+                instance.editor_selected_index = None;
                 instance.heatmap_last_fetch = None;
                 instance.heatmap_viewport = None;
                 instance.heatmap_status = None;
@@ -115,7 +115,7 @@ impl TradingTerminal {
             instance.asset_ctx = None;
             instance.editor_open = false;
             instance.editor_search_query.clear();
-            instance.editor_keyboard_selected = false;
+            instance.editor_selected_index = None;
             instance.heatmap_last_fetch = None;
             instance.heatmap_viewport = None;
             instance.heatmap_status = None;

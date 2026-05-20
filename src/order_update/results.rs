@@ -57,7 +57,7 @@ impl TradingTerminal {
             instance.clear_quick_order();
             instance.editor_open = false;
             instance.editor_search_query.clear();
-            instance.editor_keyboard_selected = false;
+            instance.editor_selected_index = None;
             instance.chart.active_tool = None;
         }
         self.chart_quick_order_surface.clear();
