@@ -34,14 +34,9 @@ impl TradingTerminal {
                 return self.update_chart_candles(message);
             }
             Message::ChartResetView(id, surface_id) => {
-                let reset_epoch = self
-                    .chart_surface_reset_epochs
-                    .entry(surface_id)
-                    .or_default();
-                *reset_epoch = reset_epoch.saturating_add(1);
                 self.chart_surface_viewports.remove(&surface_id);
-                if !self.chart_has_detached_window(id)
-                    && let Some(instance) = self.charts.get_mut(&id)
+                if let Some(instance) = self.charts.get_mut(&id)
+                    && instance.chart.surface_id() == surface_id
                 {
                     instance.chart.request_view_reset();
                     instance.heatmap_viewport = None;
@@ -53,22 +48,31 @@ impl TradingTerminal {
                     instance.clear_expired_last_price_flash(now_ms);
                 }
             }
-            Message::ChartWsAssetCtxUpdate(id, symbol, ctx) => {
+            Message::ChartWsAssetCtxUpdate(_id, symbol, ctx) => {
                 if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();
                 }
-                let should_fetch_liq = self.charts.get(&id).is_some_and(|inst| {
-                    inst.symbol == symbol
-                        && inst.show_liquidations
-                        && inst.liquidation_data.is_none()
-                });
-                if let Some(instance) = self.charts.get_mut(&id)
-                    && instance.symbol == symbol
-                {
-                    instance.asset_ctx = Some(ctx);
+                let fetch_liquidation_ids: Vec<_> = self
+                    .charts
+                    .iter()
+                    .filter_map(|(chart_id, inst)| {
+                        (inst.symbol == symbol
+                            && inst.show_liquidations
+                            && inst.liquidation_data.is_none())
+                        .then_some(*chart_id)
+                    })
+                    .collect();
+                for instance in self.charts.values_mut() {
+                    if instance.symbol == symbol {
+                        instance.asset_ctx = Some(ctx.clone());
+                    }
                 }
-                if should_fetch_liq {
-                    return self.maybe_fetch_liquidations(id);
+                if !fetch_liquidation_ids.is_empty() {
+                    return Task::batch(
+                        fetch_liquidation_ids
+                            .into_iter()
+                            .map(|chart_id| self.maybe_fetch_liquidations(chart_id)),
+                    );
                 }
             }
             Message::ChartViewportChanged(id, surface_id, viewport) => {

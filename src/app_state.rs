@@ -232,7 +232,6 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_screenshot_pending_request_id: Option<u64>,
     pub(crate) chart_screenshot_settings: config::ChartScreenshotSettingsConfig,
     pub(crate) chart_screenshot_menu_open: Option<ChartSurfaceId>,
-    pub(crate) chart_surface_reset_epochs: HashMap<ChartSurfaceId, u64>,
     pub(crate) chart_surface_active_tools: HashMap<ChartSurfaceId, DrawingTool>,
     pub(crate) chart_surface_viewports: HashMap<ChartSurfaceId, ChartViewport>,
     pub(crate) chart_quick_order_surface: HashMap<ChartId, ChartSurfaceId>,

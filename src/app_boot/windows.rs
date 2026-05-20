@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::chart_state::DetachedChartWindowState;
+use crate::chart_state::{ChartSurfaceId, DetachedChartWindowState};
 use crate::config::KeroseneConfig;
 use crate::message::Message;
 use iced::{Point, Size, Task, window};
@@ -61,6 +61,11 @@ impl TradingTerminal {
                 ..crate::window_chrome::settings()
             };
             let (window_id, open_task) = window::open(settings);
+            if let Some(instance) = self.charts.get_mut(&state.chart_id) {
+                instance
+                    .chart
+                    .set_surface_id(ChartSurfaceId::Detached(window_id));
+            }
             self.detached_chart_windows.insert(window_id, state);
             boot_tasks.push(open_task.map(Message::WindowOpened));
         }

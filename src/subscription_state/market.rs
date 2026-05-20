@@ -8,6 +8,7 @@ use crate::ws::{
     ws_candle_stream_keyed,
 };
 use iced::Subscription;
+use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
 // Market Subscriptions
@@ -35,37 +36,48 @@ impl TradingTerminal {
     }
 
     fn push_chart_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
+        let mut candle_streams: BTreeMap<(String, String), u64> = BTreeMap::new();
+        let mut asset_ctx_streams: BTreeMap<String, u64> = BTreeMap::new();
+
         for instance in self.charts.values() {
             if matches!(instance.chart.status, ChartStatus::Loaded)
                 && !instance.symbol.is_empty()
                 && !self.symbol_key_is_hidden(&instance.symbol)
             {
-                subs.push(
-                    Subscription::run_with(
-                        (
-                            instance.id,
-                            instance.symbol.clone(),
-                            instance.interval.api_str().to_string(),
-                        ),
-                        ws_candle_stream_keyed,
-                    )
-                    .map(|(id, symbol, interval, candle)| {
-                        Message::ChartWsCandleUpdate(id, symbol, interval, candle)
-                    }),
+                let key = (
+                    instance.symbol.clone(),
+                    instance.interval.api_str().to_string(),
                 );
+                candle_streams
+                    .entry(key)
+                    .and_modify(|id| *id = (*id).min(instance.id))
+                    .or_insert(instance.id);
             }
             if !instance.symbol.is_empty()
                 && !self.symbol_key_is_hidden(&instance.symbol)
                 && !self.is_outcome_coin(&instance.symbol)
             {
-                subs.push(
-                    Subscription::run_with(
-                        (instance.id, instance.symbol.clone()),
-                        ws_asset_ctx_stream_keyed,
-                    )
-                    .map(|(id, symbol, ctx)| Message::ChartWsAssetCtxUpdate(id, symbol, ctx)),
-                );
+                asset_ctx_streams
+                    .entry(instance.symbol.clone())
+                    .and_modify(|id| *id = (*id).min(instance.id))
+                    .or_insert(instance.id);
             }
+        }
+
+        for ((symbol, interval), id) in candle_streams {
+            subs.push(
+                Subscription::run_with((id, symbol, interval), ws_candle_stream_keyed).map(
+                    |(id, symbol, interval, candle)| {
+                        Message::ChartWsCandleUpdate(id, symbol, interval, candle)
+                    },
+                ),
+            );
+        }
+        for (symbol, id) in asset_ctx_streams {
+            subs.push(
+                Subscription::run_with((id, symbol), ws_asset_ctx_stream_keyed)
+                    .map(|(id, symbol, ctx)| Message::ChartWsAssetCtxUpdate(id, symbol, ctx)),
+            );
         }
     }
 
@@ -259,6 +271,8 @@ fn order_book_market_streams_for_symbol(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
 
     #[test]
     fn outcome_order_books_subscribe_to_l2_without_asset_ctx() {
@@ -297,5 +311,30 @@ mod tests {
             order_book_market_streams_for_symbol("BTC", true, false),
             disabled
         );
+    }
+
+    #[test]
+    fn duplicate_chart_market_streams_are_deduplicated_by_market_key() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let mut btc_h1_primary = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        btc_h1_primary.chart.status = ChartStatus::Loaded;
+        let mut btc_h1_detached = ChartInstance::new(2, "BTC".to_string(), Timeframe::H1);
+        btc_h1_detached.chart.status = ChartStatus::Loaded;
+        let mut btc_m5 = ChartInstance::new(3, "BTC".to_string(), Timeframe::M5);
+        btc_m5.chart.status = ChartStatus::Loaded;
+        let mut eth_h1 = ChartInstance::new(4, "ETH".to_string(), Timeframe::H1);
+        eth_h1.chart.status = ChartStatus::Loaded;
+
+        terminal.charts.insert(1, btc_h1_primary);
+        terminal.charts.insert(2, btc_h1_detached);
+        terminal.charts.insert(3, btc_m5);
+        terminal.charts.insert(4, eth_h1);
+
+        let mut subscriptions = Vec::new();
+        terminal.push_chart_market_subscriptions(&mut subscriptions);
+
+        assert_eq!(subscriptions.len(), 5);
     }
 }

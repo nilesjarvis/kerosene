@@ -105,28 +105,15 @@ impl CandlestickChart {
         chart
     }
 
-    pub(crate) fn snapshot_for_surface(
-        &self,
-        surface_id: ChartSurfaceId,
-        surface_reset_epoch: u64,
-        active_tool: Option<crate::annotations::DrawingTool>,
-        quick_order_open: bool,
-        quick_order_limit_price: Option<f64>,
-    ) -> Self {
-        let mut snapshot = self.snapshot_for_export();
-        snapshot.surface_id = surface_id;
-        snapshot.reset_epoch = self.reset_epoch.saturating_add(surface_reset_epoch);
-        snapshot.active_tool = active_tool;
-        snapshot.quick_order_open = quick_order_open;
-        snapshot.quick_order_limit_price = quick_order_limit_price;
-        snapshot.quick_order_line_phase = if quick_order_open {
-            self.quick_order_line_phase
-        } else {
-            0.0
-        };
-        snapshot.obscure_position_prices = self.obscure_position_prices;
-        snapshot.hide_positions_and_orders = self.hide_positions_and_orders;
-        snapshot
+    pub(crate) fn surface_id(&self) -> ChartSurfaceId {
+        self.surface_id
+    }
+
+    pub(crate) fn set_surface_id(&mut self, surface_id: ChartSurfaceId) {
+        if self.surface_id != surface_id {
+            self.surface_id = surface_id;
+            self.candle_cache.clear();
+        }
     }
 
     pub fn request_view_reset(&mut self) {

@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartSurfaceId;
 use crate::message::Message;
 use iced::Task;
 
@@ -15,8 +14,8 @@ impl TradingTerminal {
                 } else {
                     self.chart_surface_active_tools.remove(&surface_id);
                 }
-                if surface_id == ChartSurfaceId::Docked(chart_id)
-                    && let Some(instance) = self.charts.get_mut(&chart_id)
+                if let Some(instance) = self.charts.get_mut(&chart_id)
+                    && instance.chart.surface_id() == surface_id
                 {
                     instance.chart.active_tool = tool;
                 }
@@ -43,8 +42,8 @@ impl TradingTerminal {
             }
             Message::ClearDrawingTool(chart_id, surface_id) => {
                 self.chart_surface_active_tools.remove(&surface_id);
-                if surface_id == ChartSurfaceId::Docked(chart_id)
-                    && let Some(instance) = self.charts.get_mut(&chart_id)
+                if let Some(instance) = self.charts.get_mut(&chart_id)
+                    && instance.chart.surface_id() == surface_id
                 {
                     instance.chart.active_tool = None;
                 }

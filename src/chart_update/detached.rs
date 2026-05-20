@@ -13,10 +13,6 @@ impl TradingTerminal {
             .find_map(|(window_id, state)| (state.chart_id == chart_id).then_some(*window_id))
     }
 
-    pub(crate) fn chart_has_detached_window(&self, chart_id: ChartId) -> bool {
-        self.detached_chart_window_for(chart_id).is_some()
-    }
-
     pub(crate) fn chart_is_docked(&self, chart_id: ChartId) -> bool {
         self.panes
             .iter()
@@ -32,13 +28,10 @@ impl TradingTerminal {
             .get(&surface_id)
             .copied()
             .or_else(|| {
-                (surface_id == ChartSurfaceId::Docked(chart_id))
-                    .then(|| {
-                        self.charts
-                            .get(&chart_id)
-                            .and_then(|inst| inst.chart.active_tool)
-                    })
-                    .flatten()
+                self.charts
+                    .get(&chart_id)
+                    .and_then(|inst| (inst.chart.surface_id() == surface_id).then_some(inst))
+                    .and_then(|inst| inst.chart.active_tool)
             })
     }
 
@@ -56,7 +49,7 @@ impl TradingTerminal {
         self.chart_quick_order_surface
             .get(&chart_id)
             .copied()
-            .unwrap_or(ChartSurfaceId::Docked(chart_id))
+            .unwrap_or_else(|| instance.chart.surface_id())
             == surface_id
     }
 
@@ -65,13 +58,27 @@ impl TradingTerminal {
         chart_id: ChartId,
         surface_id: ChartSurfaceId,
     ) {
-        self.chart_surface_reset_epochs.remove(&surface_id);
         self.chart_surface_active_tools.remove(&surface_id);
         self.chart_surface_viewports.remove(&surface_id);
         if self.chart_screenshot_menu_open == Some(surface_id) {
             self.chart_screenshot_menu_open = None;
         }
-        if self.chart_quick_order_surface.get(&chart_id) == Some(&surface_id) {
+        if let Some(instance) = self.charts.get_mut(&chart_id)
+            && instance.chart.surface_id() == surface_id
+        {
+            instance.chart.active_tool = None;
+        }
+
+        let quick_order_surface = self
+            .chart_quick_order_surface
+            .get(&chart_id)
+            .copied()
+            .or_else(|| {
+                self.charts
+                    .get(&chart_id)
+                    .map(|inst| inst.chart.surface_id())
+            });
+        if quick_order_surface == Some(surface_id) {
             if let Some(instance) = self.charts.get_mut(&chart_id) {
                 instance.clear_quick_order();
             }
@@ -104,9 +111,6 @@ impl TradingTerminal {
         let valid_chart_ids: HashSet<_> = self.charts.keys().copied().collect();
         let valid_window_ids: HashSet<_> = self.detached_chart_windows.keys().copied().collect();
 
-        self.chart_surface_reset_epochs.retain(|surface_id, _| {
-            surface_is_valid(*surface_id, &valid_chart_ids, &valid_window_ids)
-        });
         self.chart_surface_active_tools.retain(|surface_id, _| {
             surface_is_valid(*surface_id, &valid_chart_ids, &valid_window_ids)
         });
@@ -144,7 +148,7 @@ impl TradingTerminal {
         }
 
         let detached_chart_id = self.alloc_chart_id();
-        let (detached_symbol, detached_interval, detached_last_time, detached_instance) = {
+        let (detached_symbol, detached_interval, detached_last_time, mut detached_instance) = {
             let source = self
                 .charts
                 .get(&chart_id)
@@ -156,7 +160,6 @@ impl TradingTerminal {
                 source.clone_for_detached_window(detached_chart_id),
             )
         };
-        self.charts.insert(detached_chart_id, detached_instance);
 
         let state = DetachedChartWindowState::new(detached_chart_id);
         let settings = window::Settings {
@@ -165,6 +168,10 @@ impl TradingTerminal {
             ..crate::window_chrome::settings()
         };
         let (window_id, task) = window::open(settings);
+        detached_instance
+            .chart
+            .set_surface_id(ChartSurfaceId::Detached(window_id));
+        self.charts.insert(detached_chart_id, detached_instance);
         self.detached_chart_windows.insert(window_id, state);
         self.persist_config();
 
@@ -211,7 +218,6 @@ mod tests {
         terminal.panes = panes;
         terminal.charts.clear();
         terminal.detached_chart_windows.clear();
-        terminal.chart_surface_reset_epochs.clear();
         terminal.chart_surface_active_tools.clear();
         terminal.chart_surface_viewports.clear();
         terminal.chart_quick_order_surface.clear();
@@ -229,15 +235,24 @@ mod tests {
         let mut terminal = terminal_with_chart(chart_id);
 
         let _task = terminal.open_detached_chart_window(chart_id);
-        let detached_chart_id = terminal
+        let (window_id, detached_chart_id) = terminal
             .detached_chart_windows
-            .values()
+            .iter()
+            .map(|(window_id, state)| (*window_id, state.chart_id))
             .next()
-            .expect("detached chart window")
-            .chart_id;
+            .expect("detached chart window");
 
         assert_ne!(detached_chart_id, chart_id);
         assert_eq!(terminal.detached_chart_windows.len(), 1);
+        assert_eq!(
+            terminal
+                .charts
+                .get(&chart_id)
+                .expect("source")
+                .chart
+                .surface_id(),
+            ChartSurfaceId::Docked(chart_id)
+        );
         assert_eq!(
             terminal.charts.get(&chart_id).expect("source").symbol,
             "BTC"
@@ -249,6 +264,15 @@ mod tests {
                 .expect("detached")
                 .symbol,
             "BTC"
+        );
+        assert_eq!(
+            terminal
+                .charts
+                .get(&detached_chart_id)
+                .expect("detached")
+                .chart
+                .surface_id(),
+            ChartSurfaceId::Detached(window_id)
         );
 
         let _task = terminal.update_chart(Message::ChartSymbolSelected(

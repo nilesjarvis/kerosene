@@ -138,31 +138,9 @@ impl TradingTerminal {
         {
             let header = self.view_chart_header(chart_id, instance, surface_id);
             let toolbar = self.view_chart_toolbar(chart_id, instance, surface_id);
-            let active_tool = self.active_chart_surface_tool(chart_id, surface_id);
             let quick_order_on_surface = self.chart_surface_has_quick_order(chart_id, surface_id);
-            let quick_order_limit_price = quick_order_on_surface
-                .then_some(instance.chart.quick_order_limit_price)
-                .flatten();
-
-            let chart_canvas: Element<'_, Message> = if self.chart_has_detached_window(chart_id) {
-                let reset_epoch = self
-                    .chart_surface_reset_epochs
-                    .get(&surface_id)
-                    .copied()
-                    .unwrap_or_default();
-                canvas(instance.chart.snapshot_for_surface(
-                    surface_id,
-                    reset_epoch,
-                    active_tool,
-                    quick_order_on_surface,
-                    quick_order_limit_price,
-                ))
-                .width(Fill)
-                .height(Fill)
-                .into()
-            } else {
-                canvas(&instance.chart).width(Fill).height(Fill).into()
-            };
+            let chart_canvas: Element<'_, Message> =
+                canvas(&instance.chart).width(Fill).height(Fill).into();
             let mut canvas_layers = vec![chart_canvas];
             if let Some(indicator_badges) = self.view_chart_indicator_badges(chart_id, instance) {
                 canvas_layers.push(indicator_badges);

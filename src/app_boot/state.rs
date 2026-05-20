@@ -240,7 +240,6 @@ impl TradingTerminal {
             chart_screenshot_pending_request_id: None,
             chart_screenshot_settings: cfg.chart_screenshot_settings.clone(),
             chart_screenshot_menu_open: None,
-            chart_surface_reset_epochs: HashMap::new(),
             chart_surface_active_tools: HashMap::new(),
             chart_surface_viewports: HashMap::new(),
             chart_quick_order_surface: HashMap::new(),
