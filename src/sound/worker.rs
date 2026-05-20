@@ -4,7 +4,12 @@ use super::{SoundKind, report_sound_status};
 
 use rodio::buffer::SamplesBuffer;
 use std::collections::HashMap;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(
+    target_os = "freebsd",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "openbsd"
+))]
 use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -69,13 +74,34 @@ fn is_rate_limited(kind: SoundKind, last_played_by_kind: &mut HashMap<SoundKind,
     false
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(target_os = "freebsd", target_os = "linux", target_os = "openbsd"))]
 pub(super) fn try_external_sound(event_id: &str) -> bool {
     Command::new("canberra-gtk-play")
         .arg("-i")
         .arg(event_id)
         .spawn()
         .is_ok()
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn try_external_sound(event_id: &str) -> bool {
+    let sound_path = match event_id {
+        "dialog-error" => "/System/Library/Sounds/Basso.aiff",
+        "message-new-instant" => "/System/Library/Sounds/Glass.aiff",
+        _ => "/System/Library/Sounds/Pop.aiff",
+    };
+    Command::new("afplay").arg(sound_path).spawn().is_ok()
+}
+
+#[cfg(all(
+    not(target_os = "freebsd"),
+    not(target_os = "linux"),
+    not(target_os = "macos"),
+    not(target_os = "openbsd"),
+    not(target_os = "windows")
+))]
+pub(super) fn try_external_sound(_event_id: &str) -> bool {
+    false
 }
 
 #[cfg(target_os = "windows")]
