@@ -33,6 +33,18 @@ impl TradingTerminal {
             return self.apply_recorded_hotkey(action, key, modifiers);
         }
 
+        if self.alfred.open {
+            if let Some(key_str) = Self::hotkey_key_string(&key)
+                && self.hotkeys.iter().any(|hotkey| {
+                    hotkey.action == config::HotkeyAction::OpenAlfred
+                        && Self::hotkey_matches(hotkey, &key_str, modifiers)
+                })
+            {
+                return self.update(Message::ToggleAlfred);
+            }
+            return self.handle_alfred_keyboard(key.as_ref(), modifiers, status);
+        }
+
         if let Some(editor_task) = self.handle_chart_editor_keyboard(key.as_ref(), modifiers) {
             return editor_task;
         }

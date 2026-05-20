@@ -36,6 +36,7 @@ More screenshots, including alternate themes and focused feature views, are avai
 
 Feature-specific guides live in [`docs/`](docs/):
 
+- [Alfred](docs/alfred.md) — command palette behavior, natural-language order drafts, close-position commands, NUKE, and safety rails.
 - [Chase Orders](docs/advanced-orders/chase-orders.md) — high-level behavior, user expectations, limits, and technical lifecycle details for Kerosene's client-side Chase order automation.
 - [Trading Journal](docs/journal.md) — user-facing behavior, fill loading, trade aggregation, same-millisecond position-chain ordering, diagnostics, and regression coverage.
 - [TWAP Orders](docs/advanced-orders/twap-orders.md) — user behavior, safety rails, slice execution, persistence, and technical lifecycle details for Kerosene's client-side TWAP order automation.

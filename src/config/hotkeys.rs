@@ -7,6 +7,7 @@ mod tests;
 pub enum HotkeyAction {
     AddCandlestickChart,
     ChartTimeframePrefix,
+    OpenAlfred,
     OpenTradingJournal,
     OpenWalletTracker,
     OpenQuickSymbolSearch,

@@ -10,6 +10,7 @@ use iced::Subscription;
 impl TradingTerminal {
     pub(super) fn push_keyboard_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
         if self.recording_hotkey_for.is_some()
+            || self.alfred.open
             || !self.hotkeys.is_empty()
             || self.chart_timeframe_hotkey_prefix.is_some()
             || self.charts.values().any(|inst| inst.editor_open)

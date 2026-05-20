@@ -33,6 +33,10 @@ impl TradingTerminal {
             layers.push(toast_overlay);
         }
 
+        if let Some(alfred_overlay) = self.view_alfred_overlay(&theme) {
+            layers.push(alfred_overlay);
+        }
+
         if self.show_unlock_credentials_popup && self.encrypted_credentials_locked() {
             layers.push(self.view_unlock_credentials_popup());
         }

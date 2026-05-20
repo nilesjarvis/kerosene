@@ -7,6 +7,7 @@ use crate::message::Message;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UpdateRoute {
     Account,
+    Alfred,
     Annotations,
     Calendar,
     Chart,
@@ -228,6 +229,13 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ClearHotkey(_)
         | Message::KeyboardEvent(_, _)
         | Message::ExecuteHotkey(_) => UpdateRoute::Preferences,
+
+        Message::ToggleAlfred
+        | Message::CloseAlfred
+        | Message::AlfredQueryChanged(_)
+        | Message::AlfredSelectionMoved(_)
+        | Message::AlfredSubmit
+        | Message::AlfredCommandSelected(_) => UpdateRoute::Alfred,
 
         Message::OpenSettingsWindow
         | Message::SettingsTabSelected(_)

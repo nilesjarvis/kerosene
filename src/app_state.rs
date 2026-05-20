@@ -1,6 +1,7 @@
 use crate::account::AccountData;
 use crate::account_state::PositionsSortColumn;
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
+use crate::alfred_state::AlfredState;
 use crate::annotations::DrawingTool;
 use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
@@ -55,6 +56,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) hotkeys: Vec<config::HotkeyConfig>,
     pub(crate) chart_timeframe_hotkey_prefix: Option<config::HotkeyPrefixConfig>,
     pub(crate) recording_hotkey_for: Option<config::HotkeyAction>,
+    pub(crate) alfred: AlfredState,
     pub(crate) focus: Option<pane_grid::Pane>,
     // Order entry form fields
     pub(crate) order_price: String,

@@ -15,11 +15,13 @@ impl TradingTerminal {
             }
             Message::CloseAllMenus => {
                 self.close_chart_header_menus();
+                self.alfred.close();
             }
             Message::ToggleAddWidgetMenu => {
                 let opening = !self.add_widget_menu_open;
                 if opening {
                     self.close_chart_header_menus();
+                    self.alfred.close();
                 }
                 self.add_widget_menu_open = opening;
             }
@@ -27,6 +29,7 @@ impl TradingTerminal {
                 let opening = !self.layout_menu_open;
                 if opening {
                     self.close_chart_header_menus();
+                    self.alfred.close();
                 }
                 self.layout_menu_open = opening;
             }

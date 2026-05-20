@@ -21,6 +21,10 @@ impl TradingTerminal {
         key_str: &str,
         modifiers: iced::keyboard::Modifiers,
     ) -> bool {
+        if key_str == "Space" {
+            return modifiers.shift() || modifiers.control() || modifiers.alt() || modifiers.logo();
+        }
+
         if [
             "Shift",
             "Control",
@@ -28,7 +32,6 @@ impl TradingTerminal {
             "Meta",
             "Super",
             "Logo",
-            "Space",
             "Tab",
             "Enter",
             "Escape",
@@ -167,6 +170,7 @@ impl TradingTerminal {
         match action {
             config::HotkeyAction::AddCandlestickChart => "Add Candlestick Chart".to_string(),
             config::HotkeyAction::ChartTimeframePrefix => "Chart Timeframes".to_string(),
+            config::HotkeyAction::OpenAlfred => "alfred".to_string(),
             config::HotkeyAction::OpenTradingJournal => "Open Trading Journal".to_string(),
             config::HotkeyAction::OpenWalletTracker => "Open Wallet Tracker".to_string(),
             config::HotkeyAction::OpenQuickSymbolSearch => "Quick Symbol Search".to_string(),
@@ -197,6 +201,7 @@ impl TradingTerminal {
                     config::HotkeyAction::ChartTimeframePrefix,
                     format!("Chart Timeframes 1..{}", TIMEFRAME_OPTIONS.len()),
                 ),
+                (config::HotkeyAction::OpenAlfred, "alfred".to_string()),
                 (
                     config::HotkeyAction::OpenTradingJournal,
                     "Open Trading Journal".to_string(),

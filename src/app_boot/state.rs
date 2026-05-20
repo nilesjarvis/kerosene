@@ -281,6 +281,7 @@ impl TradingTerminal {
                 .chart_timeframe_hotkey_prefix
                 .and_then(Self::normalize_chart_timeframe_hotkey_prefix),
             recording_hotkey_for: None,
+            alfred: crate::alfred_state::AlfredState::default(),
         };
         state.sync_chart_display_denominations();
         state.refresh_live_watchlist_row_caches();

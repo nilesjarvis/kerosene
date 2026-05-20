@@ -8,7 +8,9 @@ fn hotkey_matching_rejects_unmodified_printable_and_navigation_keys() {
 
     assert!(TradingTerminal::hotkey_combo_is_assignable("1", ctrl));
     assert!(TradingTerminal::hotkey_combo_is_assignable("F1", none));
+    assert!(TradingTerminal::hotkey_combo_is_assignable("Space", ctrl));
     assert!(!TradingTerminal::hotkey_combo_is_assignable("1", none));
+    assert!(!TradingTerminal::hotkey_combo_is_assignable("Space", none));
     assert!(!TradingTerminal::hotkey_combo_is_assignable("Enter", ctrl));
     assert!(!TradingTerminal::hotkey_combo_is_assignable(
         "ArrowDown",

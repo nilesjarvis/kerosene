@@ -1,6 +1,7 @@
 use crate::account::{AccountData, AssetContext, WalletDetailsData, WalletTrackerSnapshot};
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
+use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
 use crate::annotations::{Annotation, AnnotationId, DrawingTool};
 use crate::api::{self, Candle, ExchangeSymbol, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
@@ -186,6 +187,12 @@ pub(crate) enum Message {
     ExecuteHotkey(config::HotkeyAction),
     StartRecordingHotkey(config::HotkeyAction),
     ClearHotkey(config::HotkeyAction),
+    ToggleAlfred,
+    CloseAlfred,
+    AlfredQueryChanged(String),
+    AlfredSelectionMoved(AlfredSelectionStep),
+    AlfredSubmit,
+    AlfredCommandSelected(AlfredCommandId),
     OpenWalletTrackerWindow,
     OpenWalletDetailsWindow(String),
     RefreshWalletDetails(window::Id),

@@ -10,6 +10,7 @@ impl TradingTerminal {
     pub(crate) fn update(&mut self, message: Message) -> Task<Message> {
         let _theme = self.theme();
         match message_route(&message) {
+            UpdateRoute::Alfred => self.update_alfred(message),
             UpdateRoute::Layout => self.update_layout(message),
             UpdateRoute::PaneInteractions => self.update_pane_interactions(message),
             UpdateRoute::Panes => self.update_panes(message),
