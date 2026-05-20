@@ -111,6 +111,8 @@ impl TradingTerminal {
                 filled_size: 0.0,
                 remaining_size: sz,
                 known_oids: vec![oid],
+                current_cloid: None,
+                place_attempt_count: 0,
                 asset,
                 sz_decimals,
                 is_spot,

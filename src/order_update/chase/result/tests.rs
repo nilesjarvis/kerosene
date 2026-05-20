@@ -1,4 +1,6 @@
 use super::*;
+use crate::api::OrderStatusResult;
+use crate::app_state::TradingTerminal;
 use crate::signing::ChaseOrder;
 use std::time::Instant;
 
@@ -14,6 +16,8 @@ fn chase() -> ChaseOrder {
         filled_size: 0.0,
         remaining_size: 1.0,
         known_oids: Vec::new(),
+        current_cloid: None,
+        place_attempt_count: 0,
         asset: 7,
         sz_decimals: 3,
         is_spot: false,
@@ -81,4 +85,57 @@ fn active_chase_place_result_does_not_request_stop_cancel() {
     })]);
 
     assert_eq!(stopped_chase_cancel_request(&chase, &response), None);
+}
+
+#[test]
+fn chase_place_status_open_recovers_oid_after_unknown_place_response() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    let mut chase = chase();
+    chase.pending_op = Some(ChasePendingOp::Place);
+    chase.current_cloid = Some("0x1234567890abcdef1234567890abcdef".to_string());
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.handle_chase_order_status_result(
+        1,
+        "0x1234567890abcdef1234567890abcdef".to_string(),
+        Ok(OrderStatusResult {
+            status: "open".to_string(),
+            oid: Some(9001),
+            cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
+            raw_summary: "open (oid 9001, cloid 0x1234567890abcdef1234567890abcdef)".to_string(),
+        }),
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.current_oid, Some(9001));
+    assert_eq!(chase.pending_op, None);
+    assert!(chase.known_oids.contains(&9001));
+    assert!(chase.missing_open_order_refresh_requested);
+}
+
+#[test]
+fn chase_place_status_error_archives_failed_chase_as_error() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut chase = chase();
+    chase.pending_op = Some(ChasePendingOp::Place);
+    chase.current_cloid = Some("0x1234567890abcdef1234567890abcdef".to_string());
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.handle_chase_order_status_result(
+        1,
+        "0x1234567890abcdef1234567890abcdef".to_string(),
+        Err("status endpoint down".to_string()),
+    );
+
+    assert!(terminal.chase_orders.is_empty());
+    assert!(
+        terminal
+            .advanced_order_history
+            .front()
+            .is_some_and(|entry| {
+                entry.status == "Error"
+                    && entry.summary.contains("could not confirm placement status")
+            })
+    );
 }

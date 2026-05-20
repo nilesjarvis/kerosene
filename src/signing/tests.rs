@@ -458,6 +458,19 @@ fn action_enum_modify_constructor_matches_direct_builder() {
 }
 
 #[test]
+fn chase_place_cloid_is_stable_unique_128_bit_hex() {
+    let first = super::chase_place_cloid("0xabc", 7, 1_000, 1);
+    let same = super::chase_place_cloid("0xabc", 7, 1_000, 1);
+    let next_attempt = super::chase_place_cloid("0xabc", 7, 1_000, 2);
+
+    assert_eq!(first, same);
+    assert_ne!(first, next_attempt);
+    assert_eq!(first.len(), 34);
+    assert!(first.starts_with("0x"));
+    assert!(first[2..].chars().all(|c| c.is_ascii_hexdigit()));
+}
+
+#[test]
 fn chase_order_debug_redacts_agent_key() {
     let chase = ChaseOrder {
         id: 1,
@@ -469,6 +482,8 @@ fn chase_order_debug_redacts_agent_key() {
         filled_size: 0.0,
         remaining_size: 1.0,
         known_oids: vec![42],
+        current_cloid: None,
+        place_attempt_count: 0,
         asset: 0,
         sz_decimals: 5,
         is_spot: false,
@@ -509,6 +524,8 @@ fn chase_price_moves_only_toward_fill() {
         filled_size: 0.0,
         remaining_size: 1.0,
         known_oids: vec![42],
+        current_cloid: None,
+        place_attempt_count: 0,
         asset: 0,
         sz_decimals: 5,
         is_spot: false,

@@ -5,7 +5,8 @@ use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
 use crate::signing::{
     ChaseOrder, ChasePendingOp, MAX_CHASE_DRIFT_FRACTION, MAX_CHASE_DURATION, MAX_CHASE_REPRICES,
-    OrderKind, cancel_order, float_to_wire, modify_order, place_order,
+    OrderKind, PlaceOrderRequest, cancel_order, chase_place_cloid, float_to_wire, modify_order,
+    place_order_with_cloid,
 };
 use crate::twap_state::ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL;
 use iced::Task;
@@ -245,6 +246,35 @@ impl TradingTerminal {
         Task::batch(tasks)
     }
 
+    pub(crate) fn retry_stopped_chase_cancels(&mut self, now: Instant) -> Task<Message> {
+        if !self.can_send_chase_exchange_request(now) {
+            return Task::none();
+        }
+        let Some((chase_id, reason, is_error)) =
+            self.chase_orders.iter().find_map(|(id, chase)| {
+                if chase.stop_requested
+                    && chase.current_oid.is_some()
+                    && !chase.has_pending_op()
+                    && chase.cancel_retries > 0
+                    && chase.cancel_retries < crate::signing::MAX_CHASE_CANCEL_RETRIES
+                    && chase.can_reprice_now(now)
+                {
+                    let (reason, is_error) = chase
+                        .stop_reason
+                        .clone()
+                        .unwrap_or_else(|| ("Chase stopped".to_string(), false));
+                    Some((*id, reason, is_error))
+                } else {
+                    None
+                }
+            })
+        else {
+            return Task::none();
+        };
+
+        self.stop_chase_by_id_with_reason(chase_id, reason, is_error)
+    }
+
     fn can_send_chase_exchange_request(&self, now: Instant) -> bool {
         !self.account_loading
             && !self.account_reconciliation_required
@@ -259,6 +289,12 @@ impl TradingTerminal {
             && best > 0.0
         {
             chase.pending_best_price = Some(best);
+        }
+    }
+
+    fn clear_chase_pending_best_price(&mut self, chase_id: u64) {
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+            chase.pending_best_price = None;
         }
     }
 
@@ -394,9 +430,11 @@ impl TradingTerminal {
             return self.stop_chase_for_limit(chase_id, ChaseLimitReason::InvalidPrice);
         };
         if price_wire == chase_snapshot.current_price_wire {
+            self.clear_chase_pending_best_price(chase_id);
             return Task::none();
         }
         if !chase_snapshot.price_moves_toward_fill(rounded_best) {
+            self.clear_chase_pending_best_price(chase_id);
             return Task::none();
         }
         if !chase_snapshot.oid_confirmed {
@@ -590,11 +628,20 @@ impl TradingTerminal {
         let asset = chase.asset;
         let is_buy = chase.is_buy;
         let reduce_only = chase.reduce_only;
+        let place_attempt = chase.place_attempt_count.saturating_add(1);
+        let cloid = chase_place_cloid(
+            &chase.account_address,
+            chase.id,
+            chase.started_at_ms,
+            place_attempt,
+        );
         chase.current_price = rounded_best;
         chase.current_price_wire = price_wire.clone();
         if !chase.initial_price.is_finite() || chase.initial_price <= 0.0 {
             chase.initial_price = rounded_best;
         }
+        chase.place_attempt_count = place_attempt;
+        chase.current_cloid = Some(cloid.clone());
         chase.current_oid = None;
         chase.pending_op = Some(ChasePendingOp::Place);
         chase.pending_best_price = None;
@@ -604,14 +651,17 @@ impl TradingTerminal {
         self.last_advanced_exchange_request_at = Some(now);
 
         Task::perform(
-            place_order(
+            place_order_with_cloid(
                 key.into(),
-                asset,
-                is_buy,
-                price_wire,
-                size,
-                OrderKind::Limit,
-                reduce_only,
+                PlaceOrderRequest {
+                    asset,
+                    is_buy,
+                    price: price_wire,
+                    size,
+                    order_kind: OrderKind::Limit,
+                    reduce_only,
+                    cloid: Some(cloid),
+                },
             ),
             move |r| Message::ChasePlaceResult {
                 chase_id,

@@ -4,6 +4,10 @@ Chase orders are Kerosene's client-side execution helper for working a limit ord
 
 > **Risk notice:** Chase orders are automation running from your local Kerosene instance. They are not a native Hyperliquid order type. If Kerosene is closed, disconnected, rate-limited, or unable to sign/cancel/modify, the last resting exchange order may remain open. Always monitor open orders and use small sizes until you understand the behavior.
 
+![Chase order lifecycle](./chase-lifecycle-graphic.png)
+
+The lifecycle graphic is generated from [chase-lifecycle-graphic.html](./chase-lifecycle-graphic.html).
+
 ## When to use a Chase order
 
 Use a Chase order when you want to:
@@ -42,7 +46,7 @@ Active Chase orders appear in the Advanced Orders pane. Each row shows:
 - Current order id when available.
 - Reprice count.
 - `RO` when the order is reduce-only.
-- Status: `Starting`, `Placing`, `Resting`, `Queued`, `Modifying`, `Checking`, `Canceling`, or `Stopping`.
+- Status: `Starting`, `Placing`, `Resting`, `Queued`, `Repricing`, `Checking`, `Canceling`, or `Stopping`.
 
 The order-entry pane also shows the currently selected Chase order and exposes a `Stop Chase` button. The Advanced Orders pane exposes per-order `Stop` controls and `Stop All` when any Chase order is active.
 
@@ -54,7 +58,7 @@ Kerosene maintains a single resting exchange limit order per Chase order.
 - A Chase sell starts at the best ask and only reprices downward when the best ask moves below the current order price.
 - If the market moves away from the order, Kerosene leaves the existing order in place instead of moving it farther from the fill.
 - Reprices are throttled to avoid excessive exchange requests.
-- If a reprice is needed while throttled or while another exchange request is in flight, Kerosene stores the latest observed best price and handles it later.
+- If a reprice is needed while throttled or while another exchange request is in flight, Kerosene stores a queued best price and handles it later. If the book moves away before the modify is sent, the queued target is cleared.
 
 This means the Chase order is aggressive in the direction of getting filled, but conservative about moving away from the current working price.
 
@@ -78,7 +82,7 @@ Expected stop behavior:
 - If a stop is requested while an initial placement later comes back as resting, Kerosene immediately sends a cancel for that newly placed order.
 - After cancel success, Kerosene removes the Chase order and refreshes account data.
 
-If cancel status cannot be confirmed, Kerosene retries status checks/cancel handling up to the configured retry limit, then stops tracking and warns you to check open orders manually.
+If cancel status cannot be confirmed, Kerosene retries status checks/cancel handling up to the configured retry limit, then stops tracking and warns you to check open orders manually. Retryable cancel failures are rearmed by the app status tick so a stopped Chase does not quietly sit in `Stopping`.
 
 ## Limits and safety rails
 
@@ -137,6 +141,7 @@ CREATE LOCAL ChaseOrder
 | Stored immediately after validation:                                |
 | - id, coin, side, target_size, remaining_size, account, agent key   |
 | - current_oid = None                                                |
+| - current_cloid = None, place_attempt_count = 0                     |
 | - current_price = 0, current_price_wire = "", initial_price = 0     |
 | - pending_op = None, pending_best_price = None                      |
 | - pending_order_action = ChaseBuy / ChaseSell                       |
@@ -158,6 +163,7 @@ PLACE INITIAL LIMIT ORDER
 | - verify account still matches captured account                     |
 | - round best price for Hyperliquid wire format                      |
 | - quantize residual size                                           |
+| - derive a deterministic cloid for this place attempt               |
 | - set current_price/current_price_wire and initial_price            |
 | - set pending_op = Place                                            |
 |                                                                    |
@@ -166,12 +172,12 @@ PLACE INITIAL LIMIT ORDER
 +-------------------------------+------------------------------------+
                                 |
                                 v
-place_order(limit)
+place_order_with_cloid(limit)
                                 |
               +-----------------+------------------+
               |                 |                  |
               v                 v                  v
-        error/unknown       full fill        resting response
+        error            full fill        resting response
               |                 |                  |
               |                 |                  v
               |                 |        +-------------------------+
@@ -185,6 +191,10 @@ place_order(limit)
         archive/refresh    archive fill       ACTIVE, UNCONFIRMED
                                                until open-orders
                                                snapshot confirms oid
+
+Unknown transport/parse result:
+  query orderStatus by cloid before deciding whether the order is open,
+  filled, rejected, or missing.
 
 
 ACTIVE RECONCILIATION
@@ -208,6 +218,7 @@ BOOK-DRIVEN REPRICE CANDIDATE
 | - current oid has not been confirmed yet                            |
 |                                                                    |
 | Queue pending_best_price when throttled or waiting for confirmation. |
+| Clear pending_best_price when the book backs away before modifying. |
 +-------------------------------+------------------------------------+
                                 |
                                 v
@@ -306,7 +317,8 @@ No pending op:
 Cancel result handling:
   - success -> archive/remove Chase and refresh account
   - filled/canceled/not found/unknown -> check order status via refresh
-  - other cancel error -> clear pending op, warn, count retry
+  - other cancel error -> clear pending op, warn, count retry,
+    then retry from the app status tick
   - after 5 cancel failures/unknowns -> archive with "check open orders"
 
 
@@ -333,6 +345,7 @@ The core state lives in `ChaseOrder` (`src/signing/model.rs`). It stores:
 - `agent_key`: captured agent key used for lifecycle requests. Debug output redacts it.
 - `is_buy`, `reduce_only`, `remaining_size`: execution settings.
 - `current_oid`: exchange order id of the current resting order.
+- `current_cloid` and `place_attempt_count`: placement identity for initial and replacement Chase limit orders.
 - `current_price` and `current_price_wire`: rounded price Kerosene expects the exchange to have.
 - `initial_price`, `started_at`, `reprice_count`: lifecycle limit tracking.
 - `pending_op`: in-flight exchange request (`Place`, `Modify`, or `Cancel`).
@@ -351,8 +364,8 @@ The start flow is implemented in `src/order_execution/chase.rs` and `src/order_e
 3. Fetch the current book using symbol-aware significant figures.
 4. Choose the best bid for buy or best ask for sell.
 5. Round the price for Hyperliquid wire format.
-6. Submit a normal limit order through `place_order`.
-7. Store the returned order id if resting, or end the Chase immediately if fully filled.
+6. Submit a normal limit order through `place_order_with_cloid`.
+7. Store the returned order id if resting, query `orderStatus` by cloid if the placement response is ambiguous, or end the Chase immediately if fully filled.
 
 Adopting an existing resting order skips the initial book fetch and place request. `handle_chase_resting_order` creates `ChaseOrder` state around the existing order id and marks it confirmed.
 
@@ -370,7 +383,7 @@ Before sending a modify request, Kerosene checks:
 - Per-order and global throttles permit another exchange request.
 - Lifecycle limits have not been reached.
 
-When checks pass, Kerosene stores `pending_best_price` and refreshes account data before modifying. During reconciliation, it sends `modify_order` for the same order id only if the order is still open and the pending price or size correction remains.
+When checks pass, Kerosene stores `pending_best_price` and refreshes account data before modifying. During reconciliation, it sends `modify_order` for the same order id only if the order is still open and the pending price or size correction remains. If a later book update no longer supports moving toward the fill, Kerosene clears the queued price instead of sending a stale modify.
 
 If a complete refresh shows the old order is gone while a pending price exists, Kerosene clears `current_oid` and places the residual size at the pending best price. If checks are temporarily blocked by throttling or an unconfirmed oid, it stores `pending_best_price`; `handle_chase_reprice_tick` later drains that queued price when allowed. `reprice_count` increments when the modify request is actually started.
 
@@ -378,7 +391,7 @@ If a complete refresh shows the old order is gone while a pending price exists, 
 
 Exchange result handling is split under `src/order_update/chase/`:
 
-- `result.rs`: placement results and stopped-while-placing cleanup.
+- `result.rs`: placement results, cloid status checks, and stopped-while-placing cleanup.
 - `modify.rs`: modify results, terminal modify errors, and rate-limit cooldowns.
 - `cancel.rs`: cancel results, cancel retries, and uncertain cancel handling.
 - `resting.rs`: adopting existing resting orders into the Chase lifecycle.

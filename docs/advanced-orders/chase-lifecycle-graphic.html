@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kerosene Chase Order Lifecycle</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #080b10;
+      color: #edf5ff;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .canvas {
+      width: 1600px;
+      height: 980px;
+      padding: 56px;
+      background:
+        linear-gradient(180deg, rgba(95, 179, 255, 0.08), transparent 34%),
+        radial-gradient(circle at 82% 16%, rgba(80, 250, 123, 0.10), transparent 30%),
+        #080b10;
+    }
+
+    header {
+      margin-bottom: 42px;
+      overflow: hidden;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 48px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 10px;
+      color: #91a3b8;
+      font-size: 22px;
+      line-height: 1.35;
+      max-width: 920px;
+    }
+
+    .headline {
+      float: left;
+      width: 1040px;
+    }
+
+    .badge {
+      float: right;
+      border: 1px solid rgba(95, 179, 255, 0.45);
+      color: #5fb3ff;
+      padding: 10px 14px;
+      font-size: 18px;
+      font-weight: 700;
+      border-radius: 8px;
+      white-space: nowrap;
+      background: rgba(95, 179, 255, 0.08);
+      margin-top: 74px;
+    }
+
+    .flow {
+      font-size: 0;
+      white-space: nowrap;
+    }
+
+    .card {
+      display: inline-block;
+      vertical-align: top;
+      white-space: normal;
+      width: 355px;
+      min-height: 196px;
+      border-radius: 8px;
+      padding: 22px;
+      background: #101821;
+      border: 1px solid #2f4358;
+      box-shadow: 0 24px 40px rgba(0, 0, 0, 0.24);
+      position: relative;
+      margin-right: 22px;
+    }
+
+    .card::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -22px;
+      width: 22px;
+      height: 2px;
+      background: #2f4358;
+    }
+
+    .flow .card:last-child {
+      margin-right: 0;
+    }
+
+    .flow .card:last-child::after {
+      display: none;
+    }
+
+    .step {
+      color: #5fb3ff;
+      font-size: 15px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 12px;
+    }
+
+    .title {
+      font-size: 28px;
+      line-height: 1.1;
+      font-weight: 780;
+      margin-bottom: 16px;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      color: #91a3b8;
+      font-size: 18px;
+      line-height: 1.42;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    .rail {
+      margin-top: 38px;
+      font-size: 0;
+      white-space: nowrap;
+    }
+
+    .wide {
+      width: 481px;
+      min-height: 244px;
+    }
+
+    .rail .card {
+      margin-right: 22px;
+    }
+
+    .rail .card:last-child {
+      margin-right: 0;
+    }
+
+    .rail .card::after {
+      display: none;
+    }
+
+    .signal {
+      margin-top: 14px;
+      color: #91a3b8;
+      font-size: 18px;
+      line-height: 1.38;
+      overflow: hidden;
+    }
+
+    .dot {
+      float: left;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      margin-top: 6px;
+      margin-right: 12px;
+      background: #5fb3ff;
+      box-shadow: 0 0 0 6px rgba(95, 179, 255, 0.12);
+    }
+
+    .signal div:last-child {
+      overflow: hidden;
+    }
+
+    .green {
+      color: #50fa7b;
+    }
+
+    .green-dot {
+      background: #50fa7b;
+      box-shadow: 0 0 0 6px rgba(80, 250, 123, 0.12);
+    }
+
+    .amber {
+      color: #ffd166;
+    }
+
+    .amber-dot {
+      background: #ffd166;
+      box-shadow: 0 0 0 6px rgba(255, 209, 102, 0.13);
+    }
+
+    .red {
+      color: #ff5555;
+    }
+
+    .red-dot {
+      background: #ff5555;
+      box-shadow: 0 0 0 6px rgba(255, 85, 85, 0.13);
+    }
+
+    .footer {
+      margin-top: 38px;
+      font-size: 0;
+      white-space: nowrap;
+    }
+
+    .metric {
+      display: inline-block;
+      vertical-align: top;
+      white-space: normal;
+      width: 360px;
+      border-radius: 8px;
+      border: 1px solid rgba(145, 163, 184, 0.28);
+      padding: 18px 20px;
+      background: rgba(16, 24, 33, 0.72);
+      margin-right: 16px;
+      min-height: 106px;
+    }
+
+    .metric:last-child {
+      margin-right: 0;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+
+    .metric span {
+      color: #91a3b8;
+      font-size: 16px;
+      line-height: 1.32;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      color: #edf5ff;
+      font-size: 0.92em;
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <header>
+      <div class="headline">
+        <h1>Chase Orders</h1>
+        <div class="subtitle">
+          A local executor keeps one passive limit order near the top of book, verifies fills before modifying, and stops safely when status is uncertain.
+        </div>
+      </div>
+      <div class="badge">Client-side by design</div>
+    </header>
+
+    <section class="flow" aria-label="Chase order lifecycle">
+      <div class="card">
+        <div class="step">01</div>
+        <div class="title">Capture Context</div>
+        <ul>
+          <li>Account and agent key</li>
+          <li>Symbol metadata and precision</li>
+          <li>Target size and reduce-only flag</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="step">02</div>
+        <div class="title">Place Passive</div>
+        <ul>
+          <li>Buy at best bid</li>
+          <li>Sell at best ask</li>
+          <li>Attach a deterministic <code>cloid</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="step">03</div>
+        <div class="title">Verify First</div>
+        <ul>
+          <li>Confirm open order id</li>
+          <li>Reconcile fills and residual size</li>
+          <li>Pause on incomplete account data</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="step">04</div>
+        <div class="title">Modify or Stop</div>
+        <ul>
+          <li>Move only toward fill</li>
+          <li>Clear stale queued prices</li>
+          <li>Retry safe cancel failures</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="rail">
+      <div class="card wide">
+        <div class="step green">Normal Loop</div>
+        <div class="title">Book update -> account refresh -> modify</div>
+        <div class="signal">
+          <div class="dot green-dot"></div>
+          <div>Best bid or ask improves in the fill direction, so Kerosene queues the rounded price.</div>
+        </div>
+        <div class="signal">
+          <div class="dot green-dot"></div>
+          <div>Account data confirms the order is still open and the residual size is current.</div>
+        </div>
+        <div class="signal">
+          <div class="dot green-dot"></div>
+          <div>The same order id is modified at the verified residual size.</div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="step amber">Ambiguous Status</div>
+        <div class="title">Fail closed, then reconcile</div>
+        <div class="signal">
+          <div class="dot amber-dot"></div>
+          <div>Unknown placement responses are checked by <code>cloid</code> before another place can happen.</div>
+        </div>
+        <div class="signal">
+          <div class="dot amber-dot"></div>
+          <div>Missing or incomplete account snapshots pause replacement instead of guessing.</div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="step red">Stop Path</div>
+        <div class="title">Cancel the live order id</div>
+        <div class="signal">
+          <div class="dot red-dot"></div>
+          <div>Stop requests wait for in-flight place or modify results before cancelling.</div>
+        </div>
+        <div class="signal">
+          <div class="dot red-dot"></div>
+          <div>Retryable cancel failures are rearmed on the app status tick, bounded by the retry cap.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="footer">
+      <div class="metric">
+        <strong>1 resting order</strong>
+        <span>Chase works a single exchange limit order per lifecycle.</span>
+      </div>
+      <div class="metric">
+        <strong>1s per order</strong>
+        <span>Minimum interval between reprices for the same chase.</span>
+      </div>
+      <div class="metric">
+        <strong>250ms global</strong>
+        <span>Shared advanced-order exchange request gate.</span>
+      </div>
+      <div class="metric">
+        <strong>5 cancel tries</strong>
+        <span>Bounded retries before Kerosene tells you to check open orders manually.</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

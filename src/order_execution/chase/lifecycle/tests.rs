@@ -20,6 +20,8 @@ fn chase() -> ChaseOrder {
         filled_size: 0.0,
         remaining_size: 1.0,
         known_oids: vec![42],
+        current_cloid: None,
+        place_attempt_count: 0,
         asset: 0,
         sz_decimals: 5,
         is_spot: false,
@@ -103,6 +105,26 @@ fn stop_chase_waits_for_pending_cancel_result() {
 }
 
 #[test]
+fn retry_stopped_chase_cancels_rearms_retryable_cancel_failure() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase();
+    chase.stop_requested = true;
+    chase.stop_reason = Some(("Chase stopped".to_string(), false));
+    chase.pending_op = None;
+    chase.cancel_retries = 1;
+    chase.last_reprice_at = Some(Instant::now() - Duration::from_secs(2));
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.retry_stopped_chase_cancels(Instant::now());
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.pending_op, Some(ChasePendingOp::Cancel { oid: 42 }));
+}
+
+#[test]
 fn chase_context_allows_same_connected_account() {
     assert!(chase_account_matches(
         &chase(),
@@ -179,6 +201,25 @@ fn chase_reprice_waits_for_open_order_confirmation() {
 }
 
 #[test]
+fn chase_reprice_clears_stale_queued_target_when_book_moves_away() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase();
+    chase.pending_best_price = Some(101.0);
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.chase_reprice_to_best_price(1, 99.5);
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.pending_best_price, None);
+    assert_eq!(chase.pending_op, None);
+    assert_eq!(chase.current_price, 100.0);
+}
+
+#[test]
 fn chase_reconciliation_uses_pending_target_price() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
@@ -252,6 +293,30 @@ fn chase_place_uses_unfilled_residual_size() {
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert_eq!(chase.pending_op, Some(ChasePendingOp::Place));
     assert!((chase.remaining_size - 0.9).abs() < 1e-12);
+}
+
+#[test]
+fn chase_place_assigns_unique_cloid_per_place_attempt() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase();
+    chase.current_oid = None;
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.chase_place_at_best(1, 101.0);
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.pending_op, Some(ChasePendingOp::Place));
+    assert_eq!(chase.place_attempt_count, 1);
+    assert!(
+        chase
+            .current_cloid
+            .as_deref()
+            .is_some_and(|cloid| { cloid.starts_with("0x") && cloid.len() == 34 })
+    );
 }
 
 #[test]

@@ -3,6 +3,7 @@ use crate::message::Message;
 use crate::signing::{self, ChasePendingOp, ExchangeResponse};
 
 use iced::Task;
+use std::time::Instant;
 
 use super::super::results::result_requires_account_refresh;
 
@@ -135,6 +136,7 @@ impl TradingTerminal {
         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.cancel_retries += 1;
             chase.pending_op = None;
+            chase.last_reprice_at = Some(Instant::now());
             if chase.cancel_retries >= signing::MAX_CHASE_CANCEL_RETRIES {
                 let suffix = if include_last_on_stop {
                     format!(" (last: {message})")

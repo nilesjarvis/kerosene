@@ -51,6 +51,8 @@ fn chase_order() -> ChaseOrder {
         filled_size: 0.0,
         remaining_size: 1.0,
         known_oids: vec![42],
+        current_cloid: None,
+        place_attempt_count: 0,
         asset: 0,
         sz_decimals: 5,
         is_spot: false,

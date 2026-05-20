@@ -170,6 +170,8 @@ impl TradingTerminal {
                 filled_size: 0.0,
                 remaining_size: qty,
                 known_oids: Vec::new(),
+                current_cloid: None,
+                place_attempt_count: 0,
                 asset,
                 sz_decimals,
                 is_spot,

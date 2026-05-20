@@ -1,5 +1,7 @@
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+use sha3::{Digest, Keccak256};
+use std::fmt::Write as _;
 use std::time::Duration;
 use zeroize::Zeroizing;
 
@@ -74,6 +76,12 @@ pub struct ChaseOrder {
     pub filled_size: f64,
     pub remaining_size: f64,
     pub known_oids: Vec<u64>,
+    /// Client order id for the currently placed/adopted order when Kerosene
+    /// created it. Adopted resting orders may not have one.
+    pub current_cloid: Option<String>,
+    /// Number of place attempts made by this chase lifecycle. Used to derive
+    /// unique cloids for initial and replacement placements.
+    pub place_attempt_count: u32,
     pub asset: u32,
     pub sz_decimals: u32,
     pub is_spot: bool,
@@ -220,6 +228,28 @@ impl ChaseOrder {
     }
 }
 
+pub fn chase_place_cloid(
+    account_address: &str,
+    chase_id: u64,
+    started_at_ms: u64,
+    place_attempt: u32,
+) -> String {
+    let mut hasher = Keccak256::new();
+    hasher.update(b"kerosene:chase-place");
+    hasher.update(account_address.as_bytes());
+    hasher.update(chase_id.to_be_bytes());
+    hasher.update(started_at_ms.to_be_bytes());
+    hasher.update(place_attempt.to_be_bytes());
+
+    let digest = hasher.finalize();
+    let mut cloid = String::with_capacity(34);
+    cloid.push_str("0x");
+    for byte in digest.iter().take(16) {
+        let _ = write!(cloid, "{byte:02x}");
+    }
+    cloid
+}
+
 impl std::fmt::Debug for ChaseOrder {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -233,6 +263,8 @@ impl std::fmt::Debug for ChaseOrder {
             .field("filled_size", &self.filled_size)
             .field("remaining_size", &self.remaining_size)
             .field("known_oids", &self.known_oids)
+            .field("current_cloid", &self.current_cloid)
+            .field("place_attempt_count", &self.place_attempt_count)
             .field("asset", &self.asset)
             .field("sz_decimals", &self.sz_decimals)
             .field("is_spot", &self.is_spot)

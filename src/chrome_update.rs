@@ -97,6 +97,8 @@ impl TradingTerminal {
                     instance.chart.set_clock_now_ms(now_ms);
                 }
                 let config_save_task = self.flush_config_save_if_due(now);
+                let chase_limit_task = self.stop_chase_if_limits_reached(now);
+                let chase_cancel_retry_task = self.retry_stopped_chase_cancels(now);
                 for status in sound::take_status_messages() {
                     self.push_silent_toast(status.message, status.is_error);
                 }
@@ -107,9 +109,14 @@ impl TradingTerminal {
                         .is_some_and(|retry_at| now >= retry_at)
                 {
                     self.calendar_next_retry = None;
-                    return Task::batch([config_save_task, self.request_calendar_refresh(false)]);
+                    return Task::batch([
+                        config_save_task,
+                        chase_limit_task,
+                        chase_cancel_retry_task,
+                        self.request_calendar_refresh(false),
+                    ]);
                 }
-                return config_save_task;
+                return Task::batch([config_save_task, chase_limit_task, chase_cancel_retry_task]);
             }
             Message::ConfigSaved(result) => {
                 return self.handle_config_save_result(result);
