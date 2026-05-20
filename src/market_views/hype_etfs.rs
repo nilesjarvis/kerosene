@@ -4,13 +4,19 @@ use crate::hype_etf_state::{HypeEtfDailyFlow, HypeEtfFund, HypeEtfTotals, HypeEt
 use crate::message::Message;
 
 use iced::widget::{
-    Column, Space, button, column, container, responsive, row, rule, scrollable, text, tooltip,
+    Column, Space, button, canvas, column, container, responsive, row, rule, scrollable, stack,
+    text, tooltip,
 };
-use iced::{Color, Element, Fill, Length, Theme, color};
+use iced::{Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme, color};
 
 // ---------------------------------------------------------------------------
 // HYPE ETF View
 // ---------------------------------------------------------------------------
+
+const FLOW_BAR_SPACING: u32 = 3;
+const FLOW_CHART_HEIGHT: f32 = 126.0;
+const FLOW_AXIS_HEIGHT: f32 = 1.0;
+const FLOW_CHART_VERTICAL_PADDING: f32 = 8.0;
 
 impl TradingTerminal {
     pub(crate) fn view_hype_etfs(&self) -> Element<'_, Message> {
@@ -250,7 +256,7 @@ fn daily_inflow_chart(
                 .color(theme.extended_palette().background.weak.text),
         );
     } else {
-        section = section.push(flow_bars(theme, &bars));
+        section = section.push(flow_chart(theme, &bars));
         if let Some((first, last)) = bars.first().zip(bars.last()) {
             section = section.push(
                 row![
@@ -319,56 +325,40 @@ fn latest_daily_flows(flows: &[HypeEtfDailyFlow], max_bars: usize) -> Vec<HypeEt
         .collect()
 }
 
-fn flow_bars(theme: &Theme, flows: &[HypeEtfDailyFlow]) -> Element<'static, Message> {
-    let max_abs = flows
-        .iter()
-        .map(|flow| flow.amount_usd.abs())
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
-    let max_bar_height = 42.0;
+fn flow_chart(theme: &Theme, flows: &[HypeEtfDailyFlow]) -> Element<'static, Message> {
+    let cumulative_values = cumulative_inflows(flows);
+    let flow_values = flows.iter().map(|flow| flow.amount_usd).collect::<Vec<_>>();
+    let scale = flow_chart_scale(&flow_values, FLOW_CHART_HEIGHT);
     let axis_color = Color {
         a: 0.24,
         ..theme.palette().text
     };
 
-    let mut chart = row![].spacing(3).width(Fill);
-    for flow in flows.iter().cloned() {
-        let scaled = ((flow.amount_usd.abs() / max_abs) as f32 * max_bar_height).max(0.0);
-        let fill_height = if flow.amount_usd.abs() > 0.0 {
-            scaled.max(2.0)
-        } else {
-            1.0
-        };
-        let positive_height = if flow.amount_usd >= 0.0 {
-            fill_height
-        } else {
-            0.0
-        };
-        let negative_height = if flow.amount_usd < 0.0 {
-            fill_height
-        } else {
-            0.0
-        };
+    let mut bars = row![].spacing(FLOW_BAR_SPACING).width(Fill);
+    for (flow, cumulative) in flows.iter().cloned().zip(cumulative_values.iter().copied()) {
+        let (top_spacer, positive_height, negative_height, bottom_spacer) =
+            flow_bar_layout(flow.amount_usd, scale);
         let bar_color = if flow.amount_usd == 0.0 {
             axis_color
         } else {
             signed_color(theme, flow.amount_usd)
         };
         let tooltip_text = format!(
-            "{}\n{}",
+            "{}\nDaily {}\nCumulative {}",
             flow.date,
-            format_signed_usd_amount(flow.amount_usd)
+            format_signed_usd_amount(flow.amount_usd),
+            format_signed_usd_amount(cumulative),
         );
 
         let bar = column![
-            container(Space::new()).height(Length::Fixed(max_bar_height - positive_height)),
+            container(Space::new()).height(Length::Fixed(top_spacer)),
             flow_bar_segment(positive_height, bar_color),
-            flow_bar_segment(1.0, axis_color),
+            flow_bar_segment(FLOW_AXIS_HEIGHT, axis_color),
             flow_bar_segment(negative_height, bar_color),
-            container(Space::new()).height(Length::Fixed(max_bar_height - negative_height)),
+            container(Space::new()).height(Length::Fixed(bottom_spacer)),
         ]
         .width(Fill)
-        .height(Length::Fixed(max_bar_height * 2.0 + 1.0));
+        .height(Length::Fixed(FLOW_CHART_HEIGHT));
 
         let wrapped_bar = tooltip(
             bar,
@@ -386,12 +376,24 @@ fn flow_bars(theme: &Theme, flows: &[HypeEtfDailyFlow]) -> Element<'static, Mess
             ..Default::default()
         });
 
-        chart = chart.push(wrapped_bar);
+        bars = bars.push(wrapped_bar);
     }
 
-    container(chart)
+    let bar_layer: Element<'static, Message> = container(bars)
         .width(Fill)
-        .height(Length::Fixed(88.0))
+        .height(Length::Fixed(FLOW_CHART_HEIGHT))
+        .into();
+    let line_layer: Element<'static, Message> = canvas(CumulativeInflowLine {
+        values: cumulative_values,
+        scale,
+    })
+    .width(Fill)
+    .height(Length::Fixed(FLOW_CHART_HEIGHT))
+    .into();
+
+    stack(vec![bar_layer, line_layer])
+        .width(Fill)
+        .height(Length::Fixed(FLOW_CHART_HEIGHT))
         .into()
 }
 
@@ -404,6 +406,191 @@ fn flow_bar_segment(height: f32, color: Color) -> Element<'static, Message> {
             ..Default::default()
         })
         .into()
+}
+
+#[derive(Debug, Clone)]
+struct CumulativeInflowLine {
+    values: Vec<f64>,
+    scale: FlowChartScale,
+}
+
+impl canvas::Program<Message> for CumulativeInflowLine {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::TRANSPARENT);
+
+        let points = cumulative_line_points(&self.values, bounds.width, bounds.height, self.scale);
+        if points.is_empty() {
+            return vec![frame.into_geometry()];
+        }
+
+        let line_color = theme.palette().primary;
+        if points.len() == 1 {
+            frame.fill(&canvas::Path::circle(points[0], 2.8), line_color);
+            return vec![frame.into_geometry()];
+        }
+
+        let line = canvas::Path::new(|path| {
+            for (idx, point) in points.iter().copied().enumerate() {
+                if idx == 0 {
+                    path.move_to(point);
+                } else {
+                    path.line_to(point);
+                }
+            }
+        });
+        frame.stroke(
+            &line,
+            canvas::Stroke::default()
+                .with_color(line_color)
+                .with_width(2.0)
+                .with_line_cap(canvas::LineCap::Round)
+                .with_line_join(canvas::LineJoin::Round),
+        );
+
+        for point in points {
+            frame.fill(&canvas::Path::circle(point, 2.2), line_color);
+            frame.stroke(
+                &canvas::Path::circle(point, 2.2),
+                canvas::Stroke::default()
+                    .with_color(theme.extended_palette().background.weak.color)
+                    .with_width(1.0),
+            );
+        }
+
+        vec![frame.into_geometry()]
+    }
+}
+
+fn cumulative_inflows(flows: &[HypeEtfDailyFlow]) -> Vec<f64> {
+    let mut total = 0.0;
+    flows
+        .iter()
+        .map(|flow| {
+            total += flow.amount_usd;
+            total
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlowChartScale {
+    zero_y: f32,
+    positive_height: f32,
+    negative_height: f32,
+    max_positive: f64,
+    max_negative: f64,
+    top_padding: f32,
+    bottom_padding: f32,
+}
+
+fn flow_chart_scale(values: &[f64], height: f32) -> FlowChartScale {
+    let max_positive = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .fold(0.0_f64, f64::max);
+    let max_negative = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite() && *value < 0.0)
+        .map(f64::abs)
+        .fold(0.0_f64, f64::max);
+    let top_padding = FLOW_CHART_VERTICAL_PADDING.min(height * 0.4);
+    let bottom_padding = FLOW_CHART_VERTICAL_PADDING.min(height * 0.4);
+    let usable_height = (height - top_padding - bottom_padding - FLOW_AXIS_HEIGHT).max(1.0);
+
+    let (positive_height, negative_height) = match (max_positive > 0.0, max_negative > 0.0) {
+        (true, true) => {
+            let positive_share = max_positive / (max_positive + max_negative);
+            let positive_height = (usable_height * positive_share as f32).clamp(1.0, usable_height);
+            (positive_height, usable_height - positive_height)
+        }
+        (true, false) => (usable_height, 0.0),
+        (false, true) => (0.0, usable_height),
+        (false, false) => (usable_height * 0.5, usable_height * 0.5),
+    };
+
+    FlowChartScale {
+        zero_y: top_padding + positive_height,
+        positive_height,
+        negative_height,
+        max_positive: max_positive.max(1.0),
+        max_negative: max_negative.max(1.0),
+        top_padding,
+        bottom_padding,
+    }
+}
+
+fn flow_bar_layout(value: f64, scale: FlowChartScale) -> (f32, f32, f32, f32) {
+    let value = if value.is_finite() { value } else { 0.0 };
+    let min_visible_height = 2.0_f32.min(scale.positive_height.max(scale.negative_height));
+    let positive_height = if value > 0.0 {
+        ((value / scale.max_positive) as f32 * scale.positive_height)
+            .max(min_visible_height)
+            .min(scale.positive_height)
+    } else {
+        0.0
+    };
+    let negative_height = if value < 0.0 {
+        ((value.abs() / scale.max_negative) as f32 * scale.negative_height)
+            .max(min_visible_height)
+            .min(scale.negative_height)
+    } else {
+        0.0
+    };
+    let axis_bottom = scale.zero_y + FLOW_AXIS_HEIGHT;
+    let top_spacer = scale.top_padding + (scale.positive_height - positive_height).max(0.0);
+    let bottom_spacer = scale.bottom_padding + (scale.negative_height - negative_height).max(0.0);
+
+    debug_assert!((top_spacer + positive_height - scale.zero_y).abs() < 0.5);
+    debug_assert!((axis_bottom + negative_height + bottom_spacer - FLOW_CHART_HEIGHT).abs() < 0.5);
+
+    (top_spacer, positive_height, negative_height, bottom_spacer)
+}
+
+fn cumulative_line_points(
+    values: &[f64],
+    width: f32,
+    height: f32,
+    scale: FlowChartScale,
+) -> Vec<Point> {
+    if values.is_empty() || width <= 0.0 || height <= 0.0 {
+        return Vec::new();
+    }
+
+    let line_scale = flow_chart_scale(values, height);
+    let count = values.len();
+    let spacing = FLOW_BAR_SPACING as f32;
+    let available_width = (width - spacing * count.saturating_sub(1) as f32).max(count as f32);
+    let bar_width = available_width / count as f32;
+
+    values
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, value)| value.is_finite())
+        .map(|(idx, value)| {
+            let x = bar_width * 0.5 + idx as f32 * (bar_width + spacing);
+            let y = if value >= 0.0 {
+                scale.zero_y - (value / line_scale.max_positive) as f32 * scale.positive_height
+            } else {
+                scale.zero_y
+                    + FLOW_AXIS_HEIGHT
+                    + (value.abs() / line_scale.max_negative) as f32 * scale.negative_height
+            };
+            Point::new(x.clamp(0.0, width), y.clamp(0.0, height))
+        })
+        .collect()
 }
 
 fn fund_section(
@@ -627,4 +814,68 @@ fn format_signed_usd_amount(value: f64) -> String {
 
 fn short_flow_date(date: &str) -> String {
     date.get(5..).unwrap_or(date).replace('-', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn daily_flow(amount_usd: f64) -> HypeEtfDailyFlow {
+        HypeEtfDailyFlow {
+            date: "2026-05-20".to_string(),
+            amount_usd,
+        }
+    }
+
+    #[test]
+    fn cumulative_inflows_tracks_running_total() {
+        let flows = vec![daily_flow(100.0), daily_flow(-25.0), daily_flow(10.0)];
+
+        assert_eq!(cumulative_inflows(&flows), vec![100.0, 75.0, 85.0]);
+    }
+
+    #[test]
+    fn cumulative_line_points_stay_inside_chart_bounds() {
+        let values = [100.0, 50.0, 125.0];
+        let scale = flow_chart_scale(&values, FLOW_CHART_HEIGHT);
+        let points = cumulative_line_points(&values, 300.0, FLOW_CHART_HEIGHT, scale);
+
+        assert_eq!(points.len(), 3);
+        assert!(points[0].x < points[1].x);
+        assert!(points[1].x < points[2].x);
+        assert!(
+            points
+                .iter()
+                .all(|point| point.x >= 0.0 && point.x <= 300.0)
+        );
+        assert!(
+            points
+                .iter()
+                .all(|point| point.y >= 0.0 && point.y <= FLOW_CHART_HEIGHT)
+        );
+    }
+
+    #[test]
+    fn cumulative_line_uses_bar_zero_baseline() {
+        let values = [-100.0, 0.0, 100.0];
+        let scale = flow_chart_scale(&values, FLOW_CHART_HEIGHT);
+        let points = cumulative_line_points(&values, 300.0, FLOW_CHART_HEIGHT, scale);
+        let zero_y = scale.zero_y;
+
+        assert!(points[0].y > zero_y);
+        assert_eq!(points[1].y, zero_y);
+        assert!(points[2].y < zero_y);
+    }
+
+    #[test]
+    fn positive_only_bars_use_most_of_chart_height() {
+        let values = [100.0, 50.0, 25.0];
+        let scale = flow_chart_scale(&values, FLOW_CHART_HEIGHT);
+        let (_top_spacer, positive_height, negative_height, bottom_spacer) =
+            flow_bar_layout(100.0, scale);
+
+        assert!(positive_height > FLOW_CHART_HEIGHT * 0.75);
+        assert_eq!(negative_height, 0.0);
+        assert!((bottom_spacer - scale.bottom_padding).abs() < 0.1);
+    }
 }
