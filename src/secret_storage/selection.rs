@@ -42,37 +42,28 @@ impl TradingTerminal {
                     return;
                 }
 
-                let mut errors = Vec::new();
-                for profile in self.persisted_accounts_snapshot() {
-                    if let Err(error) = config::store_profile_secrets(&profile) {
-                        errors.push(format!("{}: {error}", profile.name));
+                let accounts = self.persisted_accounts_snapshot();
+                match config::store_keychain_secrets(
+                    &accounts,
+                    &self.hydromancer_api_key,
+                    &self.hyperdash_api_key,
+                ) {
+                    Ok(()) => {
+                        self.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+                        self.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+                        self.encrypted_secrets = None;
+                        self.encrypted_secret_password.zeroize();
+                        self.encrypted_secret_confirm.zeroize();
+                        self.encrypted_secrets_unlocked = false;
+                        self.secret_store_status =
+                            Some(("Credentials saved to OS keychain".to_string(), false));
+                        self.persist_config();
                     }
-                }
-                if let Err(error) =
-                    config::store_global_hydromancer_secret(&self.hydromancer_api_key)
-                {
-                    errors.push(format!("Hydromancer: {error}"));
-                }
-                if let Err(error) = config::store_global_hyperdash_secret(&self.hyperdash_api_key) {
-                    errors.push(format!("HyperDash: {error}"));
-                }
-
-                if errors.is_empty() {
-                    self.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
-                    self.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
-                    self.encrypted_secrets = None;
-                    self.encrypted_secret_password.zeroize();
-                    self.encrypted_secret_confirm.zeroize();
-                    self.encrypted_secrets_unlocked = false;
-                    self.secret_store_status =
-                        Some(("Credentials saved to OS keychain".to_string(), false));
-                    self.persist_config();
-                } else {
-                    self.secret_storage_selection = self.secret_storage_mode;
-                    self.secret_store_status = Some((
-                        format!("OS keychain credential save failed: {}", errors.join("; ")),
-                        true,
-                    ));
+                    Err(error) => {
+                        self.secret_storage_selection = self.secret_storage_mode;
+                        self.secret_store_status =
+                            Some((format!("OS keychain credential save failed: {error}"), true));
+                    }
                 }
             }
             config::CredentialStorageMode::EncryptedConfig => {

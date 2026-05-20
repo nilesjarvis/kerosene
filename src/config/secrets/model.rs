@@ -61,7 +61,9 @@ impl SecretPayload {
             schema: SECRET_PAYLOAD_SCHEMA.to_string(),
             profiles: profiles
                 .iter()
-                .filter(|profile| !profile.secret_id.trim().is_empty())
+                .filter(|profile| {
+                    !profile.secret_id.trim().is_empty() && !profile.agent_key.trim().is_empty()
+                })
                 .map(|profile| ProfileSecretPayload {
                     secret_id: profile.secret_id.clone(),
                     agent_key: profile.agent_key.to_string().into(),
@@ -72,5 +74,120 @@ impl SecretPayload {
                 hyperdash_api_key: hyperdash_api_key.to_string().into(),
             },
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.profiles.is_empty()
+            && self.global.hydromancer_api_key.trim().is_empty()
+            && self.global.hyperdash_api_key.trim().is_empty()
+    }
+
+    pub fn profile_agent_key(&self, secret_id: &str) -> Option<&str> {
+        self.profiles
+            .iter()
+            .find(|profile| profile.secret_id == secret_id)
+            .map(|profile| profile.agent_key.as_str())
+    }
+
+    pub fn global_hydromancer_api_key(&self) -> &str {
+        &self.global.hydromancer_api_key
+    }
+
+    pub fn global_hyperdash_api_key(&self) -> &str {
+        &self.global.hyperdash_api_key
+    }
+
+    pub fn upsert_profile_agent_key(&mut self, secret_id: &str, agent_key: &str) -> bool {
+        let secret_id = secret_id.trim();
+        if secret_id.is_empty() {
+            return false;
+        }
+
+        if agent_key.trim().is_empty() {
+            return self.remove_profile(secret_id);
+        }
+
+        if let Some(profile) = self
+            .profiles
+            .iter_mut()
+            .find(|profile| profile.secret_id == secret_id)
+        {
+            if profile.agent_key.as_str() == agent_key {
+                return false;
+            }
+            profile.agent_key = agent_key.to_string().into();
+            return true;
+        }
+
+        self.profiles.push(ProfileSecretPayload {
+            secret_id: secret_id.to_string(),
+            agent_key: agent_key.to_string().into(),
+        });
+        true
+    }
+
+    pub fn remove_profile(&mut self, secret_id: &str) -> bool {
+        let original_len = self.profiles.len();
+        self.profiles
+            .retain(|profile| profile.secret_id != secret_id.trim());
+        self.profiles.len() != original_len
+    }
+
+    pub fn set_global_hydromancer_api_key(&mut self, value: &str) -> bool {
+        if self.global.hydromancer_api_key.as_str() == value {
+            return false;
+        }
+        self.global.hydromancer_api_key = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_hyperdash_api_key(&mut self, value: &str) -> bool {
+        if self.global.hyperdash_api_key.as_str() == value {
+            return false;
+        }
+        self.global.hyperdash_api_key = value.to_string().into();
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(secret_id: &str, agent_key: &str) -> AccountProfile {
+        AccountProfile {
+            secret_id: secret_id.to_string(),
+            name: secret_id.to_string(),
+            wallet_address: String::new(),
+            agent_key: agent_key.to_string().into(),
+            hydromancer_api_key: String::new().into(),
+        }
+    }
+
+    #[test]
+    fn secret_payload_skips_empty_profile_keys() {
+        let profiles = vec![profile("acct-a", "agent-a"), profile("acct-b", "")];
+
+        let payload = SecretPayload::from_credentials(&profiles, "", "hyper");
+
+        assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
+        assert_eq!(payload.profile_agent_key("acct-b"), None);
+        assert_eq!(payload.global_hyperdash_api_key(), "hyper");
+        assert!(!payload.is_empty());
+    }
+
+    #[test]
+    fn secret_payload_mutators_keep_bundle_compact() {
+        let mut payload = SecretPayload::from_credentials(&[], "", "");
+
+        assert!(payload.is_empty());
+        assert!(payload.upsert_profile_agent_key("acct-a", "agent-a"));
+        assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
+        assert!(!payload.upsert_profile_agent_key("acct-a", "agent-a"));
+        assert!(payload.upsert_profile_agent_key("acct-a", ""));
+        assert_eq!(payload.profile_agent_key("acct-a"), None);
+        assert!(payload.set_global_hydromancer_api_key("hydro"));
+        assert!(!payload.set_global_hydromancer_api_key("hydro"));
+        assert!(!payload.is_empty());
     }
 }

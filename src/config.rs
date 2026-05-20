@@ -47,8 +47,7 @@ pub use schema::{
 pub use screenshot::ChartScreenshotSettingsConfig;
 pub use secrets::{
     EncryptedSecretsConfig, SecretPayload, clear_global_secrets, clear_profile_secrets,
-    decrypt_secrets, encrypt_secrets, store_global_hydromancer_secret,
-    store_global_hyperdash_secret, store_profile_secrets, take_secret_warnings,
+    decrypt_secrets, encrypt_secrets, store_keychain_secrets, take_secret_warnings,
 };
 pub(crate) use themes::default_custom_themes;
 pub use themes::{CustomThemeConfig, default_theme};
