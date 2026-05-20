@@ -97,6 +97,14 @@ impl CandlestickChart {
         }
     }
 
+    pub(crate) fn clone_for_chart_id(&self, id: u64) -> Self {
+        let mut chart = self.snapshot_for_export();
+        chart.id = id;
+        chart.surface_id = ChartSurfaceId::Docked(id);
+        chart.candle_cache = canvas::Cache::new();
+        chart
+    }
+
     pub(crate) fn snapshot_for_surface(
         &self,
         surface_id: ChartSurfaceId,

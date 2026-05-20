@@ -267,6 +267,47 @@ impl ChartInstance {
         }
     }
 
+    pub(crate) fn clone_for_detached_window(&self, id: ChartId) -> Self {
+        Self {
+            id,
+            symbol: self.symbol.clone(),
+            symbol_display: self.symbol_display.clone(),
+            interval: self.interval,
+            chart: self.chart.clone_for_chart_id(id),
+            asset_ctx: self.asset_ctx.clone(),
+            editor_open: false,
+            editor_search_query: String::new(),
+            editor_keyboard_selected: false,
+            quick_order: None,
+            last_quick_order_is_limit: self.last_quick_order_is_limit,
+            last_quick_order_symbol: self.last_quick_order_symbol.clone(),
+            last_quick_order_quantity: self.last_quick_order_quantity.clone(),
+            last_quick_order_quantity_is_usd: self.last_quick_order_quantity_is_usd,
+            last_quick_order_percentage: self.last_quick_order_percentage,
+            annotations: self.annotations.clone(),
+            next_annotation_id: self.next_annotation_id,
+            show_liquidations: self.show_liquidations,
+            liquidation_data: self.liquidation_data.clone(),
+            liquidation_fetching: false,
+            liquidation_status: self.liquidation_status.clone(),
+            liquidation_pending_key: None,
+            show_heatmap: self.show_heatmap,
+            heatmap_data: self.heatmap_data.clone(),
+            heatmap_last_fetch: self.heatmap_last_fetch.clone(),
+            heatmap_viewport: self.heatmap_viewport,
+            heatmap_status: self.heatmap_status.clone(),
+            heatmap_fetching: false,
+            candle_fetch_request: None,
+            candle_fetch_error: self.candle_fetch_error.clone(),
+            last_price_flash: None,
+            funding_fetch_request: None,
+            funding_last_attempt_ms: self.funding_last_attempt_ms,
+            macro_indicators: self.macro_indicators.clone(),
+            macro_menu_open: false,
+            open_interest_as_notional: self.open_interest_as_notional,
+        }
+    }
+
     pub(crate) fn quick_order_reopen_values(
         &self,
         fallback_quantity_is_usd: bool,

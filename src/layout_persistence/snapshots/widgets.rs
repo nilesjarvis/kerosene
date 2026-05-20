@@ -12,27 +12,47 @@ impl TradingTerminal {
         chart_instances.sort_by_key(|inst| inst.id);
         chart_instances
             .into_iter()
-            .map(|inst| config::ChartConfig {
-                id: inst.id,
-                symbol: if self.symbol_key_is_hidden(&inst.symbol) {
-                    String::new()
-                } else {
-                    inst.symbol.clone()
-                },
-                timeframe: inst.interval.config_str().to_string(),
-                annotations: inst
-                    .annotations
-                    .iter()
-                    .filter(|annotation| annotation.is_valid())
-                    .map(|annotation| annotation.to_config())
-                    .collect(),
-                inverted: inst.chart.inverted,
-                show_trade_markers: inst.chart.show_trade_markers,
-                funding_panel_height: inst.chart.funding_panel_height_config(),
-                macro_indicators: inst.macro_indicators.clone(),
-                open_interest_as_notional: inst.open_interest_as_notional,
-            })
+            .map(|inst| self.chart_config_for_instance(inst))
             .collect()
+    }
+
+    pub(crate) fn docked_chart_configs_snapshot(&self) -> Vec<config::ChartConfig> {
+        let mut chart_instances: Vec<_> = self
+            .charts
+            .values()
+            .filter(|inst| self.chart_is_docked(inst.id))
+            .collect();
+        chart_instances.sort_by_key(|inst| inst.id);
+        chart_instances
+            .into_iter()
+            .map(|inst| self.chart_config_for_instance(inst))
+            .collect()
+    }
+
+    fn chart_config_for_instance(
+        &self,
+        inst: &crate::chart_state::ChartInstance,
+    ) -> config::ChartConfig {
+        config::ChartConfig {
+            id: inst.id,
+            symbol: if self.symbol_key_is_hidden(&inst.symbol) {
+                String::new()
+            } else {
+                inst.symbol.clone()
+            },
+            timeframe: inst.interval.config_str().to_string(),
+            annotations: inst
+                .annotations
+                .iter()
+                .filter(|annotation| annotation.is_valid())
+                .map(|annotation| annotation.to_config())
+                .collect(),
+            inverted: inst.chart.inverted,
+            show_trade_markers: inst.chart.show_trade_markers,
+            funding_panel_height: inst.chart.funding_panel_height_config(),
+            macro_indicators: inst.macro_indicators.clone(),
+            open_interest_as_notional: inst.open_interest_as_notional,
+        }
     }
 
     pub(crate) fn detached_chart_window_configs_snapshot(
@@ -182,7 +202,7 @@ impl TradingTerminal {
             name,
             pane_layout: self.collect_pane_layout(),
             layout_ratios: self.collect_layout_ratios(),
-            charts: self.chart_configs_snapshot(),
+            charts: self.docked_chart_configs_snapshot(),
             order_books: self.order_book_configs_snapshot(),
             live_watchlists: self.live_watchlist_configs_snapshot(),
             positioning_infos: self.positioning_info_configs_snapshot(),

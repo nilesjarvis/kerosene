@@ -55,7 +55,18 @@ impl TradingTerminal {
             Self::boot_spaghetti_instances(&spaghetti_configs, &muted_tickers);
         boot_tasks.extend(spaghetti_tasks);
 
-        let first_chart_id = charts.keys().copied().min().unwrap_or(0);
+        let detached_chart_ids: std::collections::BTreeSet<_> = cfg
+            .detached_chart_windows
+            .iter()
+            .map(|window| window.chart_id)
+            .collect();
+        let first_chart_id = charts
+            .keys()
+            .copied()
+            .filter(|id| !detached_chart_ids.contains(id))
+            .min()
+            .or_else(|| charts.keys().copied().min())
+            .unwrap_or(0);
 
         let default_pane_config =
             Self::default_boot_pane_configuration(first_chart_id, layout_ratios);
@@ -94,7 +105,7 @@ impl TradingTerminal {
             state.persist_config();
         }
 
-        state.ensure_boot_layout_chart_panes(first_chart_id);
+        state.ensure_boot_layout_chart_panes(first_chart_id, &detached_chart_ids);
         state.boot_order_book_instances(&cfg, &muted_tickers);
         state.boot_positioning_info_instances(&cfg, &muted_tickers);
         let book_task = state.boot_order_book_tasks();

@@ -7,7 +7,11 @@ use iced::widget::pane_grid;
 use std::collections::BTreeSet;
 
 impl TradingTerminal {
-    pub(super) fn ensure_boot_layout_chart_panes(&mut self, first_chart_id: ChartId) {
+    pub(super) fn ensure_boot_layout_chart_panes(
+        &mut self,
+        first_chart_id: ChartId,
+        detached_chart_ids: &BTreeSet<ChartId>,
+    ) {
         let mut chart_ids_in_layout = BTreeSet::new();
         let mut spaghetti_ids_in_layout = BTreeSet::new();
         for (_, kind) in self.panes.iter() {
@@ -34,7 +38,7 @@ impl TradingTerminal {
             }
         }
 
-        self.ensure_loaded_chart_panes(&mut chart_ids_in_layout);
+        self.ensure_loaded_chart_panes(&mut chart_ids_in_layout, detached_chart_ids);
         self.ensure_loaded_spaghetti_panes(&mut spaghetti_ids_in_layout);
 
         self.primary_chart_id = self
@@ -50,12 +54,16 @@ impl TradingTerminal {
             .or_else(|| self.charts.keys().copied().min());
     }
 
-    fn ensure_loaded_chart_panes(&mut self, chart_ids_in_layout: &mut BTreeSet<ChartId>) {
+    fn ensure_loaded_chart_panes(
+        &mut self,
+        chart_ids_in_layout: &mut BTreeSet<ChartId>,
+        detached_chart_ids: &BTreeSet<ChartId>,
+    ) {
         let mut all_chart_ids: Vec<ChartId> = self.charts.keys().copied().collect();
         all_chart_ids.sort_unstable();
 
         for id in all_chart_ids {
-            if chart_ids_in_layout.contains(&id) {
+            if chart_ids_in_layout.contains(&id) || detached_chart_ids.contains(&id) {
                 continue;
             }
 

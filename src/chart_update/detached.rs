@@ -2,6 +2,7 @@ use crate::annotations::DrawingTool;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId, DetachedChartWindowState};
 use crate::message::Message;
+use crate::pane_state::PaneKind;
 use iced::{Task, window};
 use std::collections::HashSet;
 
@@ -14,6 +15,12 @@ impl TradingTerminal {
 
     pub(crate) fn chart_has_detached_window(&self, chart_id: ChartId) -> bool {
         self.detached_chart_window_for(chart_id).is_some()
+    }
+
+    pub(crate) fn chart_is_docked(&self, chart_id: ChartId) -> bool {
+        self.panes
+            .iter()
+            .any(|(_, kind)| matches!(kind, PaneKind::Chart(id) if *id == chart_id))
     }
 
     pub(crate) fn active_chart_surface_tool(
@@ -87,6 +94,9 @@ impl TradingTerminal {
             return false;
         };
         self.clear_chart_surface_state(state.chart_id, ChartSurfaceId::Detached(window_id));
+        if !self.chart_is_docked(state.chart_id) {
+            self.charts.remove(&state.chart_id);
+        }
         true
     }
 
@@ -133,11 +143,22 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if let Some(window_id) = self.detached_chart_window_for(chart_id) {
-            return window::gain_focus(window_id);
-        }
+        let detached_chart_id = self.alloc_chart_id();
+        let (detached_symbol, detached_interval, detached_last_time, detached_instance) = {
+            let source = self
+                .charts
+                .get(&chart_id)
+                .expect("source chart still present");
+            (
+                source.symbol.clone(),
+                source.interval,
+                source.chart.candles.last().map(|candle| candle.open_time),
+                source.clone_for_detached_window(detached_chart_id),
+            )
+        };
+        self.charts.insert(detached_chart_id, detached_instance);
 
-        let state = DetachedChartWindowState::new(chart_id);
+        let state = DetachedChartWindowState::new(detached_chart_id);
         let settings = window::Settings {
             size: state.size(),
             position: state.position(),
@@ -147,7 +168,21 @@ impl TradingTerminal {
         self.detached_chart_windows.insert(window_id, state);
         self.persist_config();
 
-        task.map(Message::WindowOpened)
+        let mut tasks = vec![task.map(Message::WindowOpened)];
+        if !detached_symbol.is_empty() {
+            tasks.push(self.queue_candle_fetch_for(
+                detached_chart_id,
+                &detached_symbol,
+                detached_interval,
+                detached_last_time,
+            ));
+            tasks.extend(Self::fetch_macro_candles_tasks(
+                detached_chart_id,
+                &detached_symbol,
+            ));
+        }
+
+        Task::batch(tasks)
     }
 }
 
@@ -168,15 +203,19 @@ mod tests {
     use crate::chart_state::ChartInstance;
     use crate::order_execution::QuickOrderForm;
     use crate::timeframe::Timeframe;
+    use iced::widget::pane_grid;
 
     fn terminal_with_chart(chart_id: ChartId) -> TradingTerminal {
         let mut terminal = TradingTerminal::boot().0;
+        let (panes, _) = pane_grid::State::new(PaneKind::Chart(chart_id));
+        terminal.panes = panes;
         terminal.charts.clear();
         terminal.detached_chart_windows.clear();
         terminal.chart_surface_reset_epochs.clear();
         terminal.chart_surface_active_tools.clear();
         terminal.chart_surface_viewports.clear();
         terminal.chart_quick_order_surface.clear();
+        terminal.next_chart_id = chart_id + 1;
         terminal.charts.insert(
             chart_id,
             ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1),
@@ -185,22 +224,128 @@ mod tests {
     }
 
     #[test]
-    fn open_detached_chart_window_reuses_existing_window_for_chart() {
+    fn open_detached_chart_window_clones_source_chart() {
         let chart_id = 7;
         let mut terminal = terminal_with_chart(chart_id);
 
         let _task = terminal.open_detached_chart_window(chart_id);
-        let first_window_id = terminal
-            .detached_chart_window_for(chart_id)
-            .expect("detached chart window");
+        let detached_chart_id = terminal
+            .detached_chart_windows
+            .values()
+            .next()
+            .expect("detached chart window")
+            .chart_id;
 
-        let _task = terminal.open_detached_chart_window(chart_id);
-
+        assert_ne!(detached_chart_id, chart_id);
         assert_eq!(terminal.detached_chart_windows.len(), 1);
         assert_eq!(
-            terminal.detached_chart_window_for(chart_id),
-            Some(first_window_id)
+            terminal.charts.get(&chart_id).expect("source").symbol,
+            "BTC"
         );
+        assert_eq!(
+            terminal
+                .charts
+                .get(&detached_chart_id)
+                .expect("detached")
+                .symbol,
+            "BTC"
+        );
+
+        let _task = terminal.update_chart(Message::ChartSymbolSelected(
+            detached_chart_id,
+            "ETH".into(),
+        ));
+
+        assert_eq!(
+            terminal.charts.get(&chart_id).expect("source").symbol,
+            "BTC"
+        );
+        assert_eq!(
+            terminal
+                .charts
+                .get(&detached_chart_id)
+                .expect("detached")
+                .symbol,
+            "ETH"
+        );
+    }
+
+    #[test]
+    fn open_detached_chart_window_can_create_multiple_independent_windows() {
+        let chart_id = 7;
+        let mut terminal = terminal_with_chart(chart_id);
+
+        let _task = terminal.open_detached_chart_window(chart_id);
+        let _task = terminal.open_detached_chart_window(chart_id);
+
+        let detached_ids: HashSet<_> = terminal
+            .detached_chart_windows
+            .values()
+            .map(|state| state.chart_id)
+            .collect();
+
+        assert_eq!(terminal.detached_chart_windows.len(), 2);
+        assert_eq!(detached_ids.len(), 2);
+        assert!(!detached_ids.contains(&chart_id));
+        assert!(
+            detached_ids
+                .iter()
+                .all(|id| terminal.charts.contains_key(id))
+        );
+        assert!(terminal.charts.contains_key(&chart_id));
+    }
+
+    #[test]
+    fn saved_layout_snapshots_exclude_detached_chart_clones() {
+        let chart_id = 7;
+        let mut terminal = terminal_with_chart(chart_id);
+        let _task = terminal.open_detached_chart_window(chart_id);
+        let detached_chart_id = terminal
+            .detached_chart_windows
+            .values()
+            .next()
+            .expect("detached chart window")
+            .chart_id;
+
+        let all_chart_ids: HashSet<_> = terminal
+            .chart_configs_snapshot()
+            .into_iter()
+            .map(|chart| chart.id)
+            .collect();
+        let saved_layout_ids: HashSet<_> = terminal
+            .saved_layout_snapshot("test".to_string())
+            .charts
+            .into_iter()
+            .map(|chart| chart.id)
+            .collect();
+        let detached_window_ids: HashSet<_> = terminal
+            .detached_chart_window_configs_snapshot()
+            .into_iter()
+            .map(|window| window.chart_id)
+            .collect();
+
+        assert!(all_chart_ids.contains(&chart_id));
+        assert!(all_chart_ids.contains(&detached_chart_id));
+        assert_eq!(saved_layout_ids, HashSet::from([chart_id]));
+        assert_eq!(detached_window_ids, HashSet::from([detached_chart_id]));
+    }
+
+    #[test]
+    fn closing_detached_chart_window_removes_only_detached_chart_clone() {
+        let chart_id = 7;
+        let mut terminal = terminal_with_chart(chart_id);
+        let _task = terminal.open_detached_chart_window(chart_id);
+        let (window_id, detached_chart_id) = terminal
+            .detached_chart_windows
+            .iter()
+            .map(|(window_id, state)| (*window_id, state.chart_id))
+            .next()
+            .expect("detached chart window");
+
+        terminal.remove_detached_chart_window_state(window_id);
+
+        assert!(terminal.charts.contains_key(&chart_id));
+        assert!(!terminal.charts.contains_key(&detached_chart_id));
     }
 
     #[test]
@@ -208,11 +353,17 @@ mod tests {
         let chart_id = 7;
         let mut terminal = terminal_with_chart(chart_id);
         let _task = terminal.open_detached_chart_window(chart_id);
-        let window_id = terminal
-            .detached_chart_window_for(chart_id)
+        let (window_id, detached_chart_id) = terminal
+            .detached_chart_windows
+            .iter()
+            .map(|(window_id, state)| (*window_id, state.chart_id))
+            .next()
             .expect("detached chart window");
         let surface_id = ChartSurfaceId::Detached(window_id);
-        let instance = terminal.charts.get_mut(&chart_id).expect("chart instance");
+        let instance = terminal
+            .charts
+            .get_mut(&detached_chart_id)
+            .expect("detached chart instance");
         instance.set_quick_order(QuickOrderForm {
             price: 100.0,
             quantity: "1".to_string(),
@@ -226,18 +377,18 @@ mod tests {
         });
         terminal
             .chart_quick_order_surface
-            .insert(chart_id, surface_id);
+            .insert(detached_chart_id, surface_id);
 
-        assert!(terminal.chart_surface_has_quick_order(chart_id, surface_id));
+        assert!(terminal.chart_surface_has_quick_order(detached_chart_id, surface_id));
 
-        terminal.clear_chart_surface_state(chart_id, surface_id);
+        terminal.clear_chart_surface_state(detached_chart_id, surface_id);
 
-        assert!(!terminal.chart_surface_has_quick_order(chart_id, surface_id));
+        assert!(!terminal.chart_surface_has_quick_order(detached_chart_id, surface_id));
         assert!(
             !terminal
                 .charts
-                .get(&chart_id)
-                .expect("chart instance")
+                .get(&detached_chart_id)
+                .expect("detached chart instance")
                 .chart
                 .quick_order_open
         );
