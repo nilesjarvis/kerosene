@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::pane_state::PaneKind;
 use iced::Task;
 
 mod candles;
@@ -26,6 +27,14 @@ impl TradingTerminal {
                 return self.update_chart_editor(message);
             }
             Message::OpenDetachedChart(id) => return self.open_detached_chart_window(id),
+            Message::ChartFocused(id) if self.charts.contains_key(&id) => {
+                self.primary_chart_id = Some(id);
+                self.focus = self
+                    .panes
+                    .iter()
+                    .find(|(_, kind)| matches!(kind, PaneKind::Chart(chart_id) if *chart_id == id))
+                    .map(|(pane, _)| *pane);
+            }
             message @ (Message::ChartReload(_)
             | Message::ChartSwitchTimeframe(_, _)
             | Message::ChartCandlesLoaded(_, _)

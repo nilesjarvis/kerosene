@@ -176,6 +176,7 @@ impl Default for KeroseneConfig {
             advanced_order_history: Vec::new(),
             preset_is_usd: true,
             hotkeys: Vec::new(),
+            chart_timeframe_hotkey_prefix: None,
         }
     }
 }

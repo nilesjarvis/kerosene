@@ -11,6 +11,7 @@ impl TradingTerminal {
     pub(super) fn push_keyboard_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
         if self.recording_hotkey_for.is_some()
             || !self.hotkeys.is_empty()
+            || self.chart_timeframe_hotkey_prefix.is_some()
             || self.charts.values().any(|inst| inst.editor_open)
         {
             subs.push(iced::event::listen_with(|event, status, _window| {

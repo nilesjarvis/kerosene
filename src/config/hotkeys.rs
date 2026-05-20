@@ -6,6 +6,7 @@ mod tests;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum HotkeyAction {
     AddCandlestickChart,
+    ChartTimeframePrefix,
     OpenTradingJournal,
     OpenWalletTracker,
     OpenQuickSymbolSearch,
@@ -18,6 +19,14 @@ pub enum HotkeyAction {
 pub struct HotkeyConfig {
     pub action: HotkeyAction,
     pub key: String,
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub logo: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HotkeyPrefixConfig {
     pub shift: bool,
     pub ctrl: bool,
     pub alt: bool,

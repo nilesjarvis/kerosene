@@ -20,6 +20,13 @@ impl TradingTerminal {
             self.recording_hotkey_for = None;
         }
 
+        if action == crate::config::HotkeyAction::ChartTimeframePrefix {
+            if self.chart_timeframe_hotkey_prefix.take().is_some() {
+                self.persist_config();
+            }
+            return Task::none();
+        }
+
         let before = self.hotkeys.len();
         self.hotkeys.retain(|hotkey| hotkey.action != action);
         if self.hotkeys.len() != before {

@@ -13,6 +13,7 @@ impl TradingTerminal {
 
         match action {
             config::HotkeyAction::AddCandlestickChart => self.add_chart_from_hotkey(),
+            config::HotkeyAction::ChartTimeframePrefix => Task::none(),
             config::HotkeyAction::OpenTradingJournal => self.update(Message::AddTradingJournal),
             config::HotkeyAction::OpenWalletTracker => {
                 self.update(Message::OpenWalletTrackerWindow)

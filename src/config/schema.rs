@@ -1,4 +1,4 @@
-use super::hotkeys::HotkeyConfig;
+use super::hotkeys::{HotkeyConfig, HotkeyPrefixConfig};
 use super::layouts::{PaneLayoutConfig, SavedLayout};
 use super::live_watchlist::LiveWatchlistConfig;
 use super::order_presets::OrderPresetsConfig;
@@ -326,4 +326,7 @@ pub struct KeroseneConfig {
     /// Global application hotkeys
     #[serde(default)]
     pub hotkeys: Vec<HotkeyConfig>,
+    /// Modifier prefix used with number keys to switch the active chart timeframe.
+    #[serde(default)]
+    pub chart_timeframe_hotkey_prefix: Option<HotkeyPrefixConfig>,
 }

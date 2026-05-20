@@ -182,6 +182,36 @@ fn symbol_search_sort_mode_round_trips_and_legacy_defaults_relevance() {
 }
 
 #[test]
+fn chart_timeframe_hotkey_prefix_round_trips_and_legacy_defaults_none() {
+    let config = KeroseneConfig {
+        chart_timeframe_hotkey_prefix: Some(crate::config::HotkeyPrefixConfig {
+            shift: false,
+            ctrl: false,
+            alt: false,
+            logo: true,
+        }),
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert_eq!(
+        decoded.chart_timeframe_hotkey_prefix,
+        config.chart_timeframe_hotkey_prefix
+    );
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    legacy
+        .as_object_mut()
+        .expect("config should serialize to object")
+        .remove("chart_timeframe_hotkey_prefix");
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert_eq!(decoded_legacy.chart_timeframe_hotkey_prefix, None);
+}
+
+#[test]
 fn chart_screenshot_settings_round_trip_and_legacy_defaults_visible() {
     let config = KeroseneConfig {
         chart_screenshot_settings: ChartScreenshotSettingsConfig {

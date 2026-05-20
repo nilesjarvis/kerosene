@@ -39,9 +39,11 @@ impl TradingTerminal {
                 .iter()
                 .find(|(_, kind)| matches!(kind, PaneKind::Chart(id) if *id == chart_id))
                 .map(|(pane, _)| *pane);
+            if self.charts.contains_key(&chart_id) {
+                self.primary_chart_id = Some(chart_id);
+            }
             if let Some(pane) = target_pane {
                 self.focus = Some(pane);
-                self.primary_chart_id = Some(chart_id);
 
                 let chart_sym = self.charts.get(&chart_id).and_then(|inst| {
                     let sym = inst.symbol.clone();
@@ -80,6 +82,8 @@ impl TradingTerminal {
                         }
                     }
                 }
+            } else {
+                self.focus = None;
             }
         }
 

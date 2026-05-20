@@ -326,7 +326,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::RemoveAnnotation(_, _)
         | Message::ClearDrawingTool(_, _) => UpdateRoute::Annotations,
 
-        Message::ChartReload(_)
+        Message::ChartFocused(_)
+        | Message::ChartReload(_)
         | Message::ChartResetView(_, _)
         | Message::ChartSwitchTimeframe(_, _)
         | Message::ToggleMacroMenu(_)

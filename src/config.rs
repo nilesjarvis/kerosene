@@ -15,7 +15,7 @@ mod wallets;
 
 pub use clear::{ClearConfigSummary, clear_all_configs};
 pub use files::{journal_cache_path, load_config, save_config};
-pub use hotkeys::{HotkeyAction, HotkeyConfig};
+pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};
 pub use layouts::{
     AxisConfig, BottomTabConfig, PaneKindConfig, PaneLayoutConfig, SavedLayout,
     prune_unsupported_pane_layout,
@@ -48,8 +48,7 @@ pub use schema::{
 pub use screenshot::ChartScreenshotSettingsConfig;
 pub use secrets::{
     EncryptedSecretsConfig, SecretPayload, clear_global_secrets, clear_profile_secrets,
-    decrypt_secrets, encrypt_secrets, store_global_hydromancer_secret,
-    store_global_hyperdash_secret, store_profile_secrets, take_secret_warnings,
+    decrypt_secrets, encrypt_secrets, store_keychain_secrets, take_secret_warnings,
 };
 pub(crate) use themes::default_custom_themes;
 pub use themes::{CustomThemeConfig, default_theme};
