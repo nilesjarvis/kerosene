@@ -1,4 +1,3 @@
-use crate::account_metrics::format_signed_usd_value;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::portfolio_state::PnlValueDisplayMode;
@@ -10,6 +9,7 @@ use super::format_signed_percent_value;
 impl TradingTerminal {
     pub(super) fn view_daily_pnl_list(&self, theme: &Theme) -> Column<'static, Message> {
         let value_mode = self.portfolio_pnl_value_display_mode();
+        let denomination = self.display_denomination_context();
         let daily_rows = if value_mode == PnlValueDisplayMode::Percent {
             let daily_source_points = self
                 .daily_source_portfolio_bucket()
@@ -59,7 +59,7 @@ impl TradingTerminal {
                             text(if value_mode == PnlValueDisplayMode::Percent {
                                 format_signed_percent_value(pnl)
                             } else {
-                                format_signed_usd_value(pnl)
+                                denomination.format_signed_value(pnl, 2)
                             })
                             .size(11)
                             .color(pnl_color),

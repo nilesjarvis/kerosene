@@ -2,9 +2,9 @@ use super::TradingOverlayContext;
 use crate::api::Candle;
 use crate::chart::model::{CandlestickChart, TradeMarker};
 use crate::chart::tooltips::{TooltipLine, TooltipSurface};
-use crate::helpers::{format_price, format_timestamp_exact};
+use crate::helpers::format_timestamp_exact;
 use iced::widget::canvas;
-use iced::{Color, Point, Size};
+use iced::{Color, Point};
 use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
@@ -186,7 +186,10 @@ impl CandlestickChart {
                 color: ctx.theme.palette().text,
             },
             TooltipLine {
-                content: format!("VWAP: {}", format_price(group.price)),
+                content: format!(
+                    "VWAP: {}",
+                    self.display_denomination.format_chart_price(group.price)
+                ),
                 color: Color {
                     a: 0.76,
                     ..ctx.theme.palette().text
@@ -201,21 +204,14 @@ impl CandlestickChart {
             },
         ];
 
-        let card_w: f32 = 142.0;
-        let line_h: f32 = 14.0;
-        let pad: f32 = 6.0;
-        let card_h = lines.len() as f32 * line_h + pad * 2.0;
-        let max_card_x = (ctx.chart_w - card_w - 4.0).max(4.0);
-        let max_card_y = (ctx.price_h - card_h).max(0.0);
+        let card_size = TooltipSurface::card_size_for_lines(&lines, 142.0);
+        let max_card_x = (ctx.chart_w - card_size.width - 4.0).max(4.0);
+        let max_card_y = (ctx.price_h - card_size.height).max(0.0);
         let card_x = (pos.x + 14.0).min(max_card_x).max(4.0);
-        let card_y = (pos.y - card_h - 8.0).clamp(0.0, max_card_y);
+        let card_y = (pos.y - card_size.height - 8.0).clamp(0.0, max_card_y);
         let mut tooltip_surface =
             TooltipSurface::new(ctx.frame, ctx.theme, pos, ctx.chart_w, ctx.price_h);
-        tooltip_surface.draw_card(
-            Point::new(card_x, card_y),
-            Size::new(card_w, card_h),
-            &lines,
-        );
+        tooltip_surface.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
 }
 

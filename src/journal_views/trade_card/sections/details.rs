@@ -1,8 +1,9 @@
-use crate::helpers::format_usd;
+use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
 use iced::widget::{Space, button, row, text};
 use iced::{Element, Fill, Theme};
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
     trade_id: String,
     note_key: Option<String>,
@@ -10,6 +11,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
     fill_count: usize,
     fee: f64,
     duration_str: String,
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Element<'static, Message> {
     row![
@@ -35,7 +37,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
             .size(11)
             .color(theme.extended_palette().background.weak.text),
         Space::new().width(4.0),
-        text(format_usd(&fee.to_string()))
+        text(denomination.format_value(fee, 2))
             .font(iced::Font::MONOSPACE)
             .size(11)
             .color(theme.palette().text),

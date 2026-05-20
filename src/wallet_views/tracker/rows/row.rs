@@ -28,7 +28,8 @@ impl TradingTerminal {
             .unwrap_or_default();
         let display = self.wallet_display(address);
         let label_value = self.wallet_label(address).unwrap_or_default().to_string();
-        let metrics = wallet_row_metrics(&row_data, theme);
+        let denomination = self.display_denomination_context();
+        let metrics = wallet_row_metrics(&row_data, &denomination, theme);
         let upnl_color = wallet_upnl_color(&metrics, theme);
         let state_el: Element<'_, Message> = self.view_wallet_tracker_state(&row_data, theme);
 

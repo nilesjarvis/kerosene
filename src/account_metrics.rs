@@ -1,15 +1,9 @@
 use crate::app_state::TradingTerminal;
 
 use crate::account;
-use crate::helpers::format_usd;
 
 #[cfg(test)]
 mod tests;
-
-pub(crate) fn format_signed_usd_value(v: f64) -> String {
-    let base = format_usd(&v.to_string());
-    if v >= 0.0 { format!("+{base}") } else { base }
-}
 
 impl TradingTerminal {
     pub(crate) fn parse_liquidation_px(ap: &account::AssetPosition) -> Option<f64> {

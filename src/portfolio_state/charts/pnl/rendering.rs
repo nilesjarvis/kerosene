@@ -1,4 +1,4 @@
-use crate::account_metrics::format_signed_usd_value;
+use crate::denomination::DisplayDenominationContext;
 
 use super::{
     PnlValueDisplayMode,
@@ -14,6 +14,7 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 pub(super) fn draw_portfolio_pnl_chart(
     points: &[(u64, f64)],
     value_mode: PnlValueDisplayMode,
+    denomination: &DisplayDenominationContext,
     renderer: &Renderer,
     theme: &Theme,
     bounds: Rectangle,
@@ -106,7 +107,9 @@ pub(super) fn draw_portfolio_pnl_chart(
             .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
             .unwrap_or_else(|| "UTC time unavailable".to_string());
         let pnl_label = match value_mode {
-            PnlValueDisplayMode::Usd => format!("PnL {}", format_signed_usd_value(nearest.pnl)),
+            PnlValueDisplayMode::Usd => {
+                format!("PnL {}", denomination.format_signed_value(nearest.pnl, 2))
+            }
             PnlValueDisplayMode::Percent => {
                 format!("Performance {}", format_signed_percent_value(nearest.pnl))
             }

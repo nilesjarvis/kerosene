@@ -30,8 +30,9 @@ fn balance_visibility_keeps_invalid_totals_visible() {
 
 #[test]
 fn balance_amounts_mark_invalid_source_values() {
+    let denomination = crate::denomination::DisplayDenominationContext::default();
     assert_eq!(
-        balance_amounts("USDC", Some(10.0), Some(7.0), Some(3.0)),
+        balance_amounts("USDC", Some(10.0), Some(7.0), Some(3.0), &denomination),
         (
             "$10.00".to_string(),
             "$7.00".to_string(),
@@ -39,7 +40,7 @@ fn balance_amounts_mark_invalid_source_values() {
         )
     );
     assert_eq!(
-        balance_amounts("PURR", Some(10.0), None, Some(3.0)),
+        balance_amounts("PURR", Some(10.0), None, Some(3.0), &denomination),
         (
             "10.000000".to_string(),
             "Invalid data".to_string(),
@@ -47,11 +48,11 @@ fn balance_amounts_mark_invalid_source_values() {
         )
     );
     assert_eq!(
-        balance_amounts("+650", Some(10.9), Some(7.2), Some(3.0)),
+        balance_amounts("+650", Some(10.9), Some(7.2), Some(3.0), &denomination),
         ("10".to_string(), "7".to_string(), "3".to_string())
     );
     assert_eq!(
-        balance_amounts("USDH", Some(10.0), Some(7.0), Some(3.0)),
+        balance_amounts("USDH", Some(10.0), Some(7.0), Some(3.0), &denomination),
         (
             "$10.00".to_string(),
             "$7.00".to_string(),
@@ -62,7 +63,8 @@ fn balance_amounts_mark_invalid_source_values() {
 
 #[test]
 fn entry_notional_marks_invalid_values() {
-    assert_eq!(entry_notional_text(Some(12.5)), "$12.50");
-    assert_eq!(entry_notional_text(Some(0.0)), "\u{2014}");
-    assert_eq!(entry_notional_text(None), "Invalid data");
+    let denomination = crate::denomination::DisplayDenominationContext::default();
+    assert_eq!(entry_notional_text(Some(12.5), &denomination), "$12.50");
+    assert_eq!(entry_notional_text(Some(0.0), &denomination), "\u{2014}");
+    assert_eq!(entry_notional_text(None, &denomination), "Invalid data");
 }

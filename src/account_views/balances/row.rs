@@ -1,5 +1,6 @@
 use crate::account::SpotBalance;
-use crate::helpers::{self, format_usd};
+use crate::denomination::DisplayDenominationContext;
+use crate::helpers;
 use crate::message::Message;
 
 use iced::widget::{Space, button, container, row, text};
@@ -12,6 +13,7 @@ pub(super) fn balance_row(
     balance: &SpotBalance,
     display_coin: String,
     outcome_sell_coin: Option<String>,
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let total = parse_balance_number(&balance.total);
@@ -25,8 +27,9 @@ pub(super) fn balance_row(
     } else {
         theme.palette().success
     };
-    let (total_str, avail_str, hold_str) = balance_amounts(&coin, total, available, hold);
-    let entry_str = entry_notional_text(entry_ntl);
+    let (total_str, avail_str, hold_str) =
+        balance_amounts(&coin, total, available, hold, denomination);
+    let entry_str = entry_notional_text(entry_ntl, denomination);
     let total_color = balance_number_color(total, theme);
     let available_color = balance_number_color(available, theme);
     let hold_color = balance_number_color(hold, theme);
@@ -88,26 +91,34 @@ fn balance_amounts(
     total: Option<f64>,
     available: Option<f64>,
     hold: Option<f64>,
+    denomination: &DisplayDenominationContext,
 ) -> (String, String, String) {
     (
-        balance_amount(coin, total),
-        balance_amount(coin, available),
-        balance_amount(coin, hold),
+        balance_amount(coin, total, denomination),
+        balance_amount(coin, available, denomination),
+        balance_amount(coin, hold, denomination),
     )
 }
 
-fn balance_amount(coin: &str, value: Option<f64>) -> String {
+fn balance_amount(
+    coin: &str,
+    value: Option<f64>,
+    denomination: &DisplayDenominationContext,
+) -> String {
     match value {
-        Some(value) if matches!(coin, "USDC" | "USDH") => format_usd(&format!("{value:.2}")),
+        Some(value) if matches!(coin, "USDC" | "USDH") => denomination.format_value(value, 2),
         Some(value) if coin.starts_with('+') => format!("{:.0}", value.floor()),
         Some(value) => format!("{value:.6}"),
         None => "Invalid data".to_string(),
     }
 }
 
-fn entry_notional_text(entry_ntl: Option<f64>) -> String {
+fn entry_notional_text(
+    entry_ntl: Option<f64>,
+    denomination: &DisplayDenominationContext,
+) -> String {
     match entry_ntl {
-        Some(entry_ntl) if entry_ntl.abs() > 0.0 => format_usd(&format!("{entry_ntl:.2}")),
+        Some(entry_ntl) if entry_ntl.abs() > 0.0 => denomination.format_value(entry_ntl, 2),
         Some(_) => "\u{2014}".to_string(),
         None => "Invalid data".to_string(),
     }

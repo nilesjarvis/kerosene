@@ -79,4 +79,19 @@ impl<'a> TooltipSurface<'a> {
             });
         }
     }
+
+    pub(in crate::chart) fn card_size_for_lines(lines: &[TooltipLine], min_width: f32) -> Size {
+        let pad: f32 = 6.0;
+        let line_h: f32 = 14.0;
+        let char_w: f32 = 6.2;
+        let max_chars = lines
+            .iter()
+            .map(|line| line.content.chars().count())
+            .max()
+            .unwrap_or(0) as f32;
+        Size::new(
+            min_width.max(max_chars * char_w + pad * 2.0),
+            lines.len() as f32 * line_h + pad * 2.0,
+        )
+    }
 }

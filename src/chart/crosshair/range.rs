@@ -2,6 +2,9 @@
 // Range Measurement Layout
 // ---------------------------------------------------------------------------
 
+use crate::denomination::DisplayDenominationContext;
+use iced::Point;
+
 #[cfg(test)]
 mod tests;
 
@@ -23,16 +26,16 @@ pub(super) struct RangeMeasurement {
 }
 
 pub(super) fn calculate_range_measurement(
+    denomination: &DisplayDenominationContext,
     anchor_price: f64,
     hover_price: f64,
     anchor_y: f32,
-    cursor_x: f32,
-    cursor_y: f32,
+    cursor: Point,
     chart_w: f32,
     price_h: f32,
 ) -> RangeMeasurement {
     let anchor_y = anchor_y.clamp(0.0, price_h);
-    let hover_y = cursor_y.clamp(0.0, price_h);
+    let hover_y = cursor.y.clamp(0.0, price_h);
     let top = anchor_y.min(hover_y);
     let bottom = anchor_y.max(hover_y);
     let delta = hover_price - anchor_price;
@@ -41,10 +44,14 @@ pub(super) fn calculate_range_measurement(
     } else {
         0.0
     };
-    let label = format!("{:+.2}% ({:+.2})", pct, delta);
+    let label = format!(
+        "{:+.2}% ({})",
+        pct,
+        denomination.format_signed_chart_price(delta)
+    );
     let label_width = label.len() as f32 * 6.3 + 8.0;
-    let label_x = (cursor_x + 10.0).min(chart_w - label_width - 4.0).max(4.0);
-    let label_y = (cursor_y - 20.0).max(4.0).min(price_h - LABEL_HEIGHT - 2.0);
+    let label_x = (cursor.x + 10.0).min(chart_w - label_width - 4.0).max(4.0);
+    let label_y = (cursor.y - 20.0).max(4.0).min(price_h - LABEL_HEIGHT - 2.0);
 
     RangeMeasurement {
         anchor_y,

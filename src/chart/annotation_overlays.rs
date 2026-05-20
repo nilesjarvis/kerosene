@@ -6,7 +6,6 @@ use super::price_badges::{
 };
 use super::state::ChartState;
 use crate::annotations::{AnnotationKind, DrawingTool};
-use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme};
 
@@ -57,7 +56,7 @@ impl CandlestickChart {
                         kind,
                         ctx.chart_w,
                         y,
-                        format_price(*price),
+                        self.display_denomination.format_chart_price(*price),
                         ann.color,
                         AxisBadgeStyle {
                             char_width: 6.5,

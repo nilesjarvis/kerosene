@@ -3,7 +3,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
 use crate::wallet_views::numbers::{
-    format_wallet_price, format_wallet_signed_usd, format_wallet_usd, invalid_wallet_data,
+    format_wallet_display_signed_usd, format_wallet_display_usd, invalid_wallet_data,
     parse_wallet_number,
 };
 use iced::widget::{button, row, text};
@@ -18,6 +18,7 @@ impl TradingTerminal {
         detail: &'a WalletPositionDetail,
     ) -> Element<'a, Message> {
         let theme = self.theme();
+        let denomination = self.display_denomination_context();
         let pos = &detail.asset_position.position;
         let symbol = Self::wallet_detail_symbol(&detail.dex, &pos.coin);
         let dex_label = if detail.dex.is_empty() {
@@ -70,14 +71,14 @@ impl TradingTerminal {
                 .font(iced::Font::MONOSPACE)
                 .color(wallet_value_color(szi, weak_color, invalid_color))
                 .width(84),
-            text(format_wallet_price(entry_px))
+            text(format_wallet_display_price(&denomination, entry_px))
                 .size(11)
                 .font(iced::Font::MONOSPACE)
                 .color(wallet_value_color(entry_px, weak_color, invalid_color))
                 .width(78),
             text(
                 mark_px
-                    .map(|mark_px| format_wallet_price(Some(mark_px)))
+                    .map(|mark_px| denomination.format_price(mark_px))
                     .unwrap_or_else(|| "-".to_string())
             )
             .size(11)
@@ -85,13 +86,13 @@ impl TradingTerminal {
             .width(78),
             text(
                 liq_px
-                    .map(|liq_px| format_wallet_price(Some(liq_px)))
+                    .map(|liq_px| denomination.format_price(liq_px))
                     .unwrap_or_else(|| "-".to_string())
             )
             .size(11)
             .font(iced::Font::MONOSPACE)
             .width(78),
-            text(format_wallet_usd(position_value, 0))
+            text(format_wallet_display_usd(&denomination, position_value, 0))
                 .size(11)
                 .font(iced::Font::MONOSPACE)
                 .color(wallet_value_color(
@@ -100,14 +101,16 @@ impl TradingTerminal {
                     invalid_color
                 ))
                 .width(84),
-            text(format_wallet_signed_usd(upnl))
+            text(format_wallet_display_signed_usd(&denomination, upnl))
                 .size(11)
                 .font(iced::Font::MONOSPACE)
                 .color(upnl_color)
                 .width(84),
             text(
                 funding
-                    .map(|funding| format_wallet_signed_usd(Some(funding)))
+                    .map(|funding| {
+                        format_wallet_display_signed_usd(&denomination, Some(funding))
+                    })
                     .unwrap_or_else(|| "-".to_string())
             )
             .size(11)
@@ -123,6 +126,15 @@ impl TradingTerminal {
         .align_y(iced::Alignment::Center)
         .into()
     }
+}
+
+fn format_wallet_display_price(
+    denomination: &crate::denomination::DisplayDenominationContext,
+    value: Option<f64>,
+) -> String {
+    value
+        .map(|value| denomination.format_price(value))
+        .unwrap_or_else(invalid_wallet_data)
 }
 
 fn wallet_position_value(

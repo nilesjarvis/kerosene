@@ -1,6 +1,6 @@
 use crate::account::OpenOrder;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{self, format_usd};
+use crate::helpers;
 use crate::message::Message;
 
 use iced::widget::{Space, button, container, row, text};
@@ -110,11 +110,15 @@ impl TradingTerminal {
         row![
             coin_content.width(Fill),
             text(side_str).size(12).color(side_color).width(Fill),
-            text(format_open_order_price(limit_px, is_outcome_order))
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(open_order_value_color(limit_px, weak_color, invalid_color))
-                .width(Fill),
+            text(format_open_order_price(
+                limit_px,
+                is_outcome_order,
+                &self.display_denomination_context(),
+            ))
+            .size(12)
+            .font(iced::Font::MONOSPACE)
+            .color(open_order_value_color(limit_px, weak_color, invalid_color))
+            .width(Fill),
             text(format_open_order_size(sz, &order.sz))
                 .size(12)
                 .font(iced::Font::MONOSPACE)
@@ -157,13 +161,17 @@ fn open_order_side_display(side: &str, theme: &Theme) -> (&'static str, Color) {
     }
 }
 
-fn format_open_order_price(limit_px: Option<f64>, is_outcome: bool) -> String {
+fn format_open_order_price(
+    limit_px: Option<f64>,
+    is_outcome: bool,
+    denomination: &crate::denomination::DisplayDenominationContext,
+) -> String {
     limit_px
         .map(|limit_px| {
             if is_outcome {
                 format!("{limit_px:.4}")
             } else {
-                format_usd(&limit_px.to_string())
+                denomination.format_value(limit_px, 2)
             }
         })
         .unwrap_or_else(|| "Invalid data".to_string())
@@ -213,9 +221,19 @@ mod tests {
 
     #[test]
     fn open_order_formatters_mark_invalid_values() {
-        assert_eq!(format_open_order_price(Some(100.0), false), "$100.00");
-        assert_eq!(format_open_order_price(Some(0.42), true), "0.4200");
-        assert_eq!(format_open_order_price(None, false), "Invalid data");
+        let denomination = crate::denomination::DisplayDenominationContext::default();
+        assert_eq!(
+            format_open_order_price(Some(100.0), false, &denomination),
+            "$100.00"
+        );
+        assert_eq!(
+            format_open_order_price(Some(0.42), true, &denomination),
+            "0.4200"
+        );
+        assert_eq!(
+            format_open_order_price(None, false, &denomination),
+            "Invalid data"
+        );
         assert_eq!(format_open_order_size(Some(2.0), "2.0000"), "2.0000");
         assert_eq!(format_open_order_size(None, "bad"), "Invalid data");
     }

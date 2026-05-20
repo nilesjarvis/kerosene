@@ -1,9 +1,7 @@
 use super::annotation_overlays::AnnotationOverlayContext;
 use super::candle_layer::CandleLayerContext;
 use super::crosshair::CrosshairOverlayContext;
-use super::model::{
-    CANDLE_GAP_RATIO, CandlestickChart, HEATMAP_MAX_RECTS, PRICE_AXIS_WIDTH, VOLUME_REGION_RATIO,
-};
+use super::model::{CANDLE_GAP_RATIO, CandlestickChart, HEATMAP_MAX_RECTS, VOLUME_REGION_RATIO};
 use super::overlays::TradingOverlayContext;
 use super::price_range::visible_price_stats;
 use super::state::ChartState;
@@ -30,7 +28,7 @@ impl CandlestickChart {
             return vec![];
         }
 
-        let chart_w = bounds.width - PRICE_AXIS_WIDTH;
+        let chart_w = bounds.width - self.price_axis_width();
         let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
         if chart_w <= 0.0
             || chart_h <= 0.0

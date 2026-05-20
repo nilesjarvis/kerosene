@@ -1,4 +1,8 @@
 use super::*;
+use crate::config::DisplayDenominationConfig;
+use crate::denomination::DisplayDenominationContext;
+use iced::Point;
+use std::collections::HashMap;
 
 fn assert_near_f32(actual: f32, expected: f32) {
     assert!(
@@ -9,7 +13,16 @@ fn assert_near_f32(actual: f32, expected: f32) {
 
 #[test]
 fn calculates_positive_range_measurement_label_and_bounds() {
-    let measurement = calculate_range_measurement(100.0, 112.5, 120.0, 180.0, 80.0, 320.0, 220.0);
+    let denomination = DisplayDenominationContext::default();
+    let measurement = calculate_range_measurement(
+        &denomination,
+        100.0,
+        112.5,
+        120.0,
+        Point::new(180.0, 80.0),
+        320.0,
+        220.0,
+    );
 
     assert!(measurement.is_up);
     assert_eq!(measurement.label, "+12.50% (+12.50)");
@@ -23,7 +36,16 @@ fn calculates_positive_range_measurement_label_and_bounds() {
 
 #[test]
 fn clamps_lines_and_keeps_label_inside_right_edge() {
-    let measurement = calculate_range_measurement(100.0, 90.0, -40.0, 310.0, 260.0, 320.0, 220.0);
+    let denomination = DisplayDenominationContext::default();
+    let measurement = calculate_range_measurement(
+        &denomination,
+        100.0,
+        90.0,
+        -40.0,
+        Point::new(310.0, 260.0),
+        320.0,
+        220.0,
+    );
 
     assert!(!measurement.is_up);
     assert_eq!(measurement.label, "-10.00% (-10.00)");
@@ -37,7 +59,37 @@ fn clamps_lines_and_keeps_label_inside_right_edge() {
 
 #[test]
 fn zero_anchor_price_uses_zero_percent() {
-    let measurement = calculate_range_measurement(0.0, 25.0, 50.0, 20.0, 60.0, 240.0, 160.0);
+    let denomination = DisplayDenominationContext::default();
+    let measurement = calculate_range_measurement(
+        &denomination,
+        0.0,
+        25.0,
+        50.0,
+        Point::new(20.0, 60.0),
+        240.0,
+        160.0,
+    );
 
     assert_eq!(measurement.label, "+0.00% (+25.00)");
+}
+
+#[test]
+fn non_usd_range_measurement_includes_symbol_and_usd_reference() {
+    let denomination = DisplayDenominationContext::from_mids(
+        DisplayDenominationConfig::eur(),
+        &HashMap::from([("xyz:EUR".to_string(), 1.25)]),
+        &HashMap::from([("xyz:EUR".to_string(), 1_000)]),
+        1_000,
+    );
+    let measurement = calculate_range_measurement(
+        &denomination,
+        100.0,
+        112.5,
+        120.0,
+        Point::new(180.0, 80.0),
+        360.0,
+        220.0,
+    );
+
+    assert_eq!(measurement.label, "+12.50% (+€10.00 (+$12.50))");
 }

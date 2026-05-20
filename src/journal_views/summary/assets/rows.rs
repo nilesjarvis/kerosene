@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_usd;
 use crate::message::Message;
 use iced::widget::{Row, Space, row, text};
 use iced::{Element, Fill, Theme};
@@ -36,6 +35,7 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let display_coin = self.display_coin_for_journal(coin);
         let pnl_color = journal_asset_pnl_color(pnl, theme);
+        let denomination = self.display_denomination_context();
 
         row![
             text(display_coin)
@@ -47,12 +47,12 @@ impl TradingTerminal {
                 .font(iced::Font::MONOSPACE)
                 .color(theme.palette().text)
                 .width(80),
-            text(format_usd(&fees.to_string()))
+            text(denomination.format_value(fees, 2))
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(theme.palette().danger),
             Space::new().width(Fill),
-            text(format_usd(&pnl.to_string()))
+            text(denomination.format_value(pnl, 2))
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(pnl_color),
@@ -70,6 +70,7 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let display_coin = self.display_coin_for_journal(coin);
         let pnl_color = journal_asset_pnl_color(pnl, theme);
+        let denomination = self.display_denomination_context();
 
         row![
             text(display_coin)
@@ -81,7 +82,7 @@ impl TradingTerminal {
                 .font(iced::Font::MONOSPACE)
                 .color(theme.extended_palette().background.weak.text),
             Space::new().width(Fill),
-            text(format_usd(&pnl.to_string()))
+            text(denomination.format_value(pnl, 2))
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(pnl_color),

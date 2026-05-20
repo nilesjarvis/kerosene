@@ -45,7 +45,13 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let sym_col = column![
             self.view_chart_symbol_title(instance, theme),
-            chart_header_price_text(last_close, price_flash, now_ms, theme),
+            chart_header_price_text(
+                last_close,
+                price_flash,
+                now_ms,
+                &instance.chart.display_denomination,
+                theme
+            ),
         ]
         .spacing(2);
 
@@ -103,9 +109,10 @@ fn chart_header_price_text(
     last_close: f64,
     price_flash: Option<PriceFlash>,
     now_ms: u64,
+    denomination: &crate::denomination::DisplayDenominationContext,
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let current = helpers::format_price(last_close);
+    let current = denomination.format_chart_price(last_close);
     let base_color = theme.palette().text;
     let Some(flash_color) = chart_header_price_flash_color(price_flash, now_ms, theme) else {
         return chart_header_price_segment(current, base_color).into();
@@ -113,7 +120,7 @@ fn chart_header_price_text(
     let Some(flash) = price_flash else {
         return chart_header_price_segment(current, base_color).into();
     };
-    let previous = helpers::format_price(flash.previous_close);
+    let previous = denomination.format_chart_price(flash.previous_close);
     let Some(parts) = chart_header_changed_text(&previous, &current) else {
         return chart_header_price_segment(current, base_color).into();
     };

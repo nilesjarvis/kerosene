@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers;
 use crate::ws::TrackedTradeEvent;
 use std::collections::VecDeque;
 
@@ -61,8 +60,8 @@ impl TradingTerminal {
             side,
             row.coin.to_uppercase(),
             unit,
-            helpers::format_usd(&format!("{:.0}", row.notional)),
-            helpers::format_price(row.avg_price)
+            self.format_display_usd_value(row.notional, 0),
+            self.format_display_price(row.avg_price)
         )
     }
 }

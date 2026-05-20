@@ -1,6 +1,7 @@
 use crate::account;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_decimal_with_commas, format_usd};
+use crate::denomination::DisplayDenominationContext;
+use crate::helpers::format_decimal_with_commas;
 use crate::message::Message;
 
 use super::{PositionColumnVisibility, PositionNumberMode};
@@ -30,18 +31,30 @@ impl TradingTerminal {
     }
 }
 
+#[cfg(test)]
 pub(super) fn format_position_usd_value(value: f64, number_mode: PositionNumberMode) -> String {
+    format_position_display_value(&DisplayDenominationContext::default(), value, number_mode)
+}
+
+pub(super) fn format_position_display_value(
+    context: &DisplayDenominationContext,
+    value: f64,
+    number_mode: PositionNumberMode,
+) -> String {
     if !number_mode.is_compact() {
-        return format_usd(&format!("{value:.2}"));
+        return context.format_value(value, 2);
     }
 
-    let compact_value = format_position_compact_number(value.abs());
-    let sign = if value.is_sign_negative() && compact_value != "0" {
+    let Some(display_value) = context.convert_usd_value(value) else {
+        return "Invalid data".to_string();
+    };
+    let compact_value = format_position_compact_number(display_value.abs());
+    let sign = if display_value.is_sign_negative() && compact_value != "0" {
         "-"
     } else {
         ""
     };
-    format!("{sign}${compact_value}")
+    format!("{sign}{}{compact_value}", context.active_symbol())
 }
 
 pub(super) fn format_position_compact_number(value: f64) -> String {

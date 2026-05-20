@@ -29,3 +29,15 @@ pub(super) fn known_mids_dexes(
     }
     dexes
 }
+
+pub(super) fn normalize_mids_dexes(mut dexes: Vec<String>) -> Vec<String> {
+    for dex in &mut dexes {
+        *dex = dex.trim().to_ascii_lowercase();
+    }
+    dexes.sort();
+    dexes.dedup();
+    if let Some(main_idx) = dexes.iter().position(|dex| dex.is_empty()) {
+        dexes.swap(0, main_idx);
+    }
+    dexes
+}

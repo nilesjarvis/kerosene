@@ -1,8 +1,8 @@
 use super::{TooltipLine, TooltipSurface};
-use crate::chart::formatting::{format_compact, format_compact_coins};
-use crate::helpers::format_price;
+use crate::chart::formatting::format_compact_coins;
+use crate::denomination::DisplayDenominationContext;
 use crate::hyperdash_api::HeatmapRect;
-use iced::{Color, Point, Size};
+use iced::{Color, Point};
 
 impl TooltipSurface<'_> {
     pub(in crate::chart) fn draw_heatmap_hover<X, Y>(
@@ -12,6 +12,7 @@ impl TooltipSurface<'_> {
         max_usd: f64,
         mut rect_x_bounds: X,
         price_to_y: &Y,
+        denomination: &DisplayDenominationContext,
     ) where
         X: FnMut(&HeatmapRect) -> Option<(f32, f32)>,
         Y: Fn(f64) -> f32,
@@ -60,9 +61,9 @@ impl TooltipSurface<'_> {
         let lines = vec![
             TooltipLine {
                 content: format!(
-                    "${} - ${}",
-                    format_price(rect.price_lo),
-                    format_price(rect.price_hi)
+                    "{} - {}",
+                    denomination.format_chart_price(rect.price_lo),
+                    denomination.format_chart_price(rect.price_hi)
                 ),
                 color: Color {
                     a: 0.7,
@@ -71,28 +72,22 @@ impl TooltipSurface<'_> {
             },
             TooltipLine {
                 content: format!(
-                    "{}: {} (${})",
+                    "{}: {} ({})",
                     side,
                     format_compact_coins(coins.abs()),
-                    format_compact(usd),
+                    denomination.format_compact_value(usd),
                 ),
                 color: side_color,
             },
         ];
 
-        let line_h: f32 = 14.0;
-        let pad: f32 = 6.0;
-        let card_w: f32 = 170.0;
-        let card_h = lines.len() as f32 * line_h + pad * 2.0;
+        let card_size = Self::card_size_for_lines(&lines, 170.0);
         let card_x = (self.pos.x + 14.0)
-            .min(self.chart_w - card_w - 4.0)
+            .min(self.chart_w - card_size.width - 4.0)
             .max(4.0);
-        let card_y = (self.pos.y - card_h - 8.0).clamp(0.0, self.price_h - card_h);
+        let max_card_y = (self.price_h - card_size.height).max(0.0);
+        let card_y = (self.pos.y - card_size.height - 8.0).clamp(0.0, max_card_y);
 
-        self.draw_card(
-            Point::new(card_x, card_y),
-            Size::new(card_w, card_h),
-            &lines,
-        );
+        self.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
 }

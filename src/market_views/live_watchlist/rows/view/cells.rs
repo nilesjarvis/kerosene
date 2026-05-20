@@ -1,4 +1,5 @@
 use crate::config;
+use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
 use crate::market_state::{LiveWatchlistId, LiveWatchlistRowData};
 use crate::message::Message;
@@ -25,13 +26,14 @@ pub(super) fn live_watchlist_symbol_cell(
 pub(super) fn live_watchlist_column_value(
     column: &config::LiveWatchlistColumn,
     data: &LiveWatchlistRowData,
+    denomination: &DisplayDenominationContext,
     price_color: Color,
     theme: &Theme,
 ) -> (String, Color) {
     match column {
         config::LiveWatchlistColumn::Price => data
             .mid_px
-            .map(|mid_px| (helpers::format_price(mid_px), price_color))
+            .map(|mid_px| (denomination.format_price(mid_px), price_color))
             .unwrap_or_else(|| {
                 (
                     "-".to_string(),
@@ -141,6 +143,7 @@ mod tests {
         let (value, _) = live_watchlist_column_value(
             &config::LiveWatchlistColumn::Price,
             &row_data(None),
+            &DisplayDenominationContext::default(),
             Color::WHITE,
             &Theme::Dark,
         );
@@ -149,6 +152,7 @@ mod tests {
         let (value, _) = live_watchlist_column_value(
             &config::LiveWatchlistColumn::Price,
             &row_data(Some(123.45)),
+            &DisplayDenominationContext::default(),
             Color::WHITE,
             &Theme::Dark,
         );

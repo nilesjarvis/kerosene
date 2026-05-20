@@ -1,4 +1,4 @@
-use crate::account_metrics::format_signed_usd_value;
+use crate::denomination::DisplayDenominationContext;
 
 use super::series::{hovered_income_bar, income_tooltip_layout, prepare_income_chart_layout};
 use iced::widget::canvas;
@@ -6,6 +6,7 @@ use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 
 pub(super) fn draw_income_projection_chart(
     bars: &[(String, f64)],
+    denomination: &DisplayDenominationContext,
     renderer: &Renderer,
     theme: &Theme,
     bounds: Rectangle,
@@ -64,7 +65,7 @@ pub(super) fn draw_income_projection_chart(
     if let Some(pos) = cursor.position_in(bounds)
         && let Some(bar) = hovered_income_bar(&layout, pos)
     {
-        let value_text = format_signed_usd_value(bar.value);
+        let value_text = denomination.format_signed_value(bar.value, 2);
         let tooltip = income_tooltip_layout(bar, &value_text, bounds.width, bounds.height);
 
         frame.fill_rectangle(

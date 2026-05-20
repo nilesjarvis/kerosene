@@ -1,9 +1,10 @@
 use crate::account::WalletOpenOrderDetail;
 use crate::app_state::TradingTerminal;
+use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
 use crate::message::Message;
 use crate::wallet_views::numbers::{
-    format_wallet_price, format_wallet_usd, invalid_wallet_data, parse_wallet_number,
+    format_wallet_display_usd, format_wallet_price, invalid_wallet_data, parse_wallet_number,
 };
 
 use iced::widget::{Row, button, row, text};
@@ -29,6 +30,7 @@ pub(super) fn wallet_orders_header() -> Row<'static, Message> {
 pub(super) fn wallet_order_row(
     detail: &WalletOpenOrderDetail,
     now_ms: u64,
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let order = &detail.order;
@@ -81,7 +83,7 @@ pub(super) fn wallet_order_row(
             .font(iced::Font::MONOSPACE)
             .color(wallet_order_value_color(price, weak_color, invalid_color))
             .width(86),
-        text(format_wallet_usd(notional, 0))
+        text(format_wallet_display_usd(denomination, notional, 0))
             .size(11)
             .font(iced::Font::MONOSPACE)
             .color(wallet_order_value_color(

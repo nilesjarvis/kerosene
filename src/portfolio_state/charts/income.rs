@@ -3,6 +3,7 @@ mod series;
 
 use self::rendering::draw_income_projection_chart;
 
+use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
 
 use iced::widget::canvas;
@@ -14,6 +15,7 @@ use iced::{Point, Rectangle, Renderer, Theme};
 
 pub(crate) struct IncomeProjectionChart {
     pub(crate) bars: Vec<(String, f64)>,
+    pub(crate) denomination: DisplayDenominationContext,
 }
 
 #[derive(Default)]
@@ -55,7 +57,14 @@ impl canvas::Program<Message> for IncomeProjectionChart {
         bounds: Rectangle,
         cursor: iced::mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        draw_income_projection_chart(&self.bars, renderer, theme, bounds, cursor)
+        draw_income_projection_chart(
+            &self.bars,
+            &self.denomination,
+            renderer,
+            theme,
+            bounds,
+            cursor,
+        )
     }
 
     fn mouse_interaction(

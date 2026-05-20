@@ -4,7 +4,7 @@ use crate::chart_screenshot::{
     PixelPoint, Rect, bitmap_text_width, color_to_rgba, draw_bitmap_text, encode_png_rgba,
     fill_rect,
 };
-use crate::helpers::{format_price, format_usd};
+use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
 
 use arboard::{Clipboard, ImageData};
@@ -284,7 +284,13 @@ impl TradingTerminal {
 
         let theme = self.theme();
         let pnl_color = self.direction_color(&theme, metrics.upnl);
-        render_pnl_card_image(&state, metrics, pnl_color, &theme)
+        render_pnl_card_image(
+            &state,
+            metrics,
+            self.display_denomination_context(),
+            pnl_color,
+            &theme,
+        )
     }
 }
 
@@ -350,7 +356,8 @@ impl TradingTerminal {
         let card_palette = pnl_card_palette(theme, pnl_color);
         let text_color = card_palette.text;
         let weak_text = card_palette.weak_text;
-        let render_text = pnl_card_render_text(state, &metrics);
+        let denomination = self.display_denomination_context();
+        let render_text = pnl_card_render_text(state, &metrics, &denomination);
         let ticker = render_text.ticker;
         let leverage_display = render_text.leverage_display;
 
@@ -665,8 +672,8 @@ impl TradingTerminal {
         Some(PnlCardMetrics {
             ticker: pos.coin.clone(),
             leverage_display: format!("{leverage}x"),
-            entry_display: format_price(numbers.entry_px),
-            exit_display: format_price(numbers.mark_px),
+            entry_display: self.format_display_price(numbers.entry_px),
+            exit_display: self.format_display_price(numbers.mark_px),
             context: format!(
                 "{side} {}",
                 self.display_size_for_symbol(&pos.coin, numbers.szi.abs())
@@ -790,6 +797,7 @@ struct PnlCardImage {
 fn render_pnl_card_image(
     state: &PnlCardWindowState,
     metrics: PnlCardMetrics,
+    denomination: DisplayDenominationContext,
     pnl_color: Color,
     theme: &Theme,
 ) -> Result<PnlCardImage, String> {
@@ -802,7 +810,7 @@ fn render_pnl_card_image(
     let card_palette = pnl_card_palette(theme, pnl_color);
     let text_rgba = color_to_rgba(card_palette.text, 255);
     let weak_rgba = color_to_rgba(card_palette.weak_text, 232);
-    let render_text = pnl_card_render_text(state, &metrics);
+    let render_text = pnl_card_render_text(state, &metrics, &denomination);
     let primary_value = export_text(&render_text.primary_value);
     let secondary_value = render_text
         .secondary_value
@@ -1200,7 +1208,11 @@ impl PnlCardPercentMode {
     }
 }
 
-fn pnl_card_render_text(state: &PnlCardWindowState, metrics: &PnlCardMetrics) -> PnlCardRenderText {
+fn pnl_card_render_text(
+    state: &PnlCardWindowState,
+    metrics: &PnlCardMetrics,
+    denomination: &DisplayDenominationContext,
+) -> PnlCardRenderText {
     let percent = state
         .percent_mode
         .select(metrics.asset_move_pct, metrics.leveraged_pct);
@@ -1208,9 +1220,14 @@ fn pnl_card_render_text(state: &PnlCardWindowState, metrics: &PnlCardMetrics) ->
     PnlCardRenderText {
         ticker: metrics.ticker.clone(),
         leverage_display: metrics.leverage_display.clone(),
-        primary_value: pnl_card_primary_value(state.display_mode, percent, metrics.upnl),
+        primary_value: pnl_card_primary_value(
+            state.display_mode,
+            percent,
+            metrics.upnl,
+            denomination,
+        ),
         percent_mode_label: state.percent_mode.label(),
-        secondary_value: pnl_card_secondary_value(state.display_mode, percent, metrics.upnl),
+        secondary_value: pnl_card_secondary_value(state.display_mode, metrics.upnl, denomination),
         entry_display: privacy_price_display(&metrics.entry_display, state.obscure_prices),
         exit_display: privacy_price_display(&metrics.exit_display, state.obscure_prices),
         context: pnl_card_context_display(state, metrics),
@@ -1236,34 +1253,30 @@ fn pnl_card_primary_value(
     display_mode: PnlCardDisplayMode,
     percent: Option<f64>,
     upnl: f64,
+    denomination: &DisplayDenominationContext,
 ) -> String {
     match display_mode {
         PnlCardDisplayMode::PercentOnly | PnlCardDisplayMode::Both => percent
             .map(format_signed_percent)
             .unwrap_or_else(|| "--%".to_string()),
-        PnlCardDisplayMode::UsdOnly => format_signed_usd(upnl),
+        PnlCardDisplayMode::UsdOnly => format_signed_usd(upnl, denomination),
     }
 }
 
 fn pnl_card_secondary_value(
     display_mode: PnlCardDisplayMode,
-    _percent: Option<f64>,
     upnl: f64,
+    denomination: &DisplayDenominationContext,
 ) -> Option<String> {
     match display_mode {
-        PnlCardDisplayMode::Both => Some(format_signed_usd(upnl)),
+        PnlCardDisplayMode::Both => Some(format_signed_usd(upnl, denomination)),
         PnlCardDisplayMode::PercentOnly | PnlCardDisplayMode::UsdOnly => None,
     }
 }
 
-fn format_signed_usd(value: f64) -> String {
+fn format_signed_usd(value: f64, denomination: &DisplayDenominationContext) -> String {
     let display_value = if value.abs() < 0.005 { 0.0 } else { value };
-    let formatted = format_usd(&format!("{display_value:.2}"));
-    if display_value > 0.0 {
-        format!("+{formatted}")
-    } else {
-        formatted
-    }
+    denomination.format_signed_value(display_value, 2)
 }
 
 fn format_signed_percent(value: f64) -> String {
@@ -1643,7 +1656,8 @@ mod tests {
     fn render_text_default_card_uses_leveraged_percent_usd_and_private_context() {
         let state =
             PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
-        let render_text = pnl_card_render_text(&state, &sample_metrics());
+        let denomination = DisplayDenominationContext::default();
+        let render_text = pnl_card_render_text(&state, &sample_metrics(), &denomination);
 
         assert_eq!(render_text.ticker, "BTC");
         assert_eq!(render_text.leverage_display, "20x");
@@ -1664,7 +1678,8 @@ mod tests {
         state.obscure_prices = false;
         state.show_position_size = true;
 
-        let render_text = pnl_card_render_text(&state, &sample_metrics());
+        let denomination = DisplayDenominationContext::default();
+        let render_text = pnl_card_render_text(&state, &sample_metrics(), &denomination);
 
         assert_eq!(render_text.primary_value, "+2.51%");
         assert_eq!(render_text.percent_mode_label, "Asset move");
@@ -1682,7 +1697,8 @@ mod tests {
         state.display_mode = PnlCardDisplayMode::UsdOnly;
         metrics.upnl = -42.5;
 
-        let render_text = pnl_card_render_text(&state, &metrics);
+        let denomination = DisplayDenominationContext::default();
+        let render_text = pnl_card_render_text(&state, &metrics, &denomination);
 
         assert_eq!(render_text.primary_value, "-$42.50");
         assert_eq!(render_text.secondary_value, None);
@@ -1695,7 +1711,8 @@ mod tests {
         metrics.asset_move_pct = None;
         metrics.leveraged_pct = None;
 
-        let render_text = pnl_card_render_text(&state, &metrics);
+        let denomination = DisplayDenominationContext::default();
+        let render_text = pnl_card_render_text(&state, &metrics, &denomination);
 
         assert_eq!(render_text.primary_value, "--%");
         assert_eq!(render_text.secondary_value, Some("+$1,076.19".to_string()));
@@ -1801,6 +1818,7 @@ mod tests {
         let image = render_pnl_card_image(
             &state,
             sample_metrics(),
+            DisplayDenominationContext::default(),
             Color::from_rgb8(0x50, 0xfa, 0x7b),
             &Theme::Dark,
         )
@@ -1821,6 +1839,7 @@ mod tests {
         let positive = render_pnl_card_image(
             &state,
             sample_metrics(),
+            DisplayDenominationContext::default(),
             Color::from_rgb8(0x50, 0xfa, 0x7b),
             &Theme::Dark,
         )
@@ -1828,6 +1847,7 @@ mod tests {
         let negative = render_pnl_card_image(
             &state,
             sample_metrics(),
+            DisplayDenominationContext::default(),
             Color::from_rgb8(0xff, 0x55, 0x55),
             &Theme::Dark,
         )

@@ -3,6 +3,7 @@ mod series;
 
 use self::rendering::draw_portfolio_pnl_chart;
 
+use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
 
 use iced::widget::canvas;
@@ -15,6 +16,7 @@ use iced::{Rectangle, Renderer, Theme};
 pub(crate) struct PortfolioPnlChart {
     pub(crate) points: Vec<(u64, f64)>,
     pub(crate) value_mode: PnlValueDisplayMode,
+    pub(crate) denomination: DisplayDenominationContext,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +39,7 @@ impl canvas::Program<Message> for PortfolioPnlChart {
         draw_portfolio_pnl_chart(
             &self.points,
             self.value_mode,
+            &self.denomination,
             renderer,
             theme,
             bounds,

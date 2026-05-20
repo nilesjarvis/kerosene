@@ -100,6 +100,7 @@ impl TradingTerminal {
                 for instance in self.charts.values_mut() {
                     instance.chart.set_clock_now_ms(now_ms);
                 }
+                self.sync_chart_display_denominations();
                 let config_save_task = self.flush_config_save_if_due(now);
                 let chase_limit_task = self.stop_chase_if_limits_reached(now);
                 let chase_cancel_retry_task = self.retry_stopped_chase_cancels(now);

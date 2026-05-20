@@ -102,6 +102,19 @@ impl TradingTerminal {
                     account_task,
                 ]);
             }
+            Message::DisplayDenominationChanged(denomination) => {
+                let denomination = denomination.normalized();
+                if self.display_denomination == denomination {
+                    return Task::none();
+                }
+
+                self.display_denomination = denomination;
+                self.sync_chart_display_denominations();
+                self.persist_config();
+                let mut tasks = self.mids_bootstrap_tasks();
+                tasks.push(self.request_live_watchlist_refresh(true));
+                return Task::batch(tasks);
+            }
             Message::MarketSlippageInputChanged(value) => {
                 self.market_slippage_input = value;
             }

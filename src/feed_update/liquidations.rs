@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::{helpers, ws};
+use crate::ws;
 use iced::Task;
 
 impl TradingTerminal {
@@ -52,8 +52,8 @@ impl TradingTerminal {
                             ("🩸", "Long")
                         };
 
-                        let formatted_notional = helpers::format_usd(&format!("{notional:.0}"));
-                        let formatted_price = helpers::format_price(liquidation.price);
+                        let formatted_notional = self.format_display_usd_value(notional, 0);
+                        let formatted_price = self.format_display_price(liquidation.price);
 
                         let msg = format!(
                             "{} LIQUIDATED: {} {}\n{} at {}",

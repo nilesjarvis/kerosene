@@ -1,7 +1,6 @@
 use super::model::CandlestickChart;
 use super::state::ChartState;
 use super::tooltips::TooltipSurface;
-use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Theme, alignment};
 
@@ -95,7 +94,7 @@ impl CandlestickChart {
         self.draw_range_measurement(ctx, pos, hover_price);
 
         ctx.frame.fill_text(canvas::Text {
-            content: format_price(hover_price),
+            content: self.display_denomination.format_chart_price(hover_price),
             position: Point::new(ctx.chart_w + 6.0, pos.y),
             color: Color::WHITE,
             size: iced::Pixels(11.0),
@@ -112,6 +111,7 @@ impl CandlestickChart {
             ctx.price_range,
             &self.liquidation_buckets,
             ctx.price_to_y,
+            &self.display_denomination,
         );
         tooltip_surface.draw_heatmap_hover(
             &self.heatmap_rects,
@@ -119,6 +119,7 @@ impl CandlestickChart {
             self.heatmap_max_usd,
             |rect| self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step),
             ctx.price_to_y,
+            &self.display_denomination,
         );
     }
 }

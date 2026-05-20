@@ -30,6 +30,7 @@ impl TradingTerminal {
         } else {
             theme.palette().text
         };
+        let denomination = self.display_denomination_context();
 
         let display_coin = self.display_coin_for_journal(&trade.coin);
         let opened_time_str = helpers::format_timestamp_exact(trade.start_time);
@@ -57,6 +58,7 @@ impl TradingTerminal {
             max_position_label.clone(),
             trade.pnl,
             status_color,
+            &denomination,
             &theme,
         );
         let details = journal_trade_card_details(
@@ -66,6 +68,7 @@ impl TradingTerminal {
             trade.fill_count,
             trade.fee,
             duration_str,
+            &denomination,
             &theme,
         );
 

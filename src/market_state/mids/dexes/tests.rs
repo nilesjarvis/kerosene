@@ -46,3 +46,18 @@ fn mids_dexes_keep_main_dex_first_after_sorting() {
 
     assert_eq!(dexes, vec![String::new(), "a".to_string(), "z".to_string()]);
 }
+
+#[test]
+fn normalized_mids_dexes_keep_main_first_and_dedup() {
+    let dexes = normalize_mids_dexes(vec![
+        "flx".to_string(),
+        "xyz".to_string(),
+        "FLX".to_string(),
+        String::new(),
+    ]);
+
+    assert_eq!(
+        dexes,
+        vec![String::new(), "flx".to_string(), "xyz".to_string()]
+    );
+}

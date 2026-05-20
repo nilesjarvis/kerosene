@@ -15,23 +15,26 @@ use iced::{Element, Fill};
 impl TradingTerminal {
     pub(super) fn view_income_data<'a>(&'a self, data: &'a IncomeSnapshot) -> Element<'a, Message> {
         let theme = self.theme();
+        let denomination = self.display_denomination_context();
         let projection_bars = projected_income_bars(data);
 
         let chart = canvas(IncomeProjectionChart {
             bars: projection_bars,
+            denomination: denomination.clone(),
         })
         .width(Fill)
         .height(180);
 
-        let token_rows = view_income_token_rows(&data.token_rows, &theme);
-        let hourly_rows = view_income_hourly_rows(&data.recent_hourly_payments, &theme);
+        let token_rows = view_income_token_rows(&data.token_rows, &denomination, &theme);
+        let hourly_rows =
+            view_income_hourly_rows(&data.recent_hourly_payments, &denomination, &theme);
 
         let mut content = column![
             self.view_income_title(),
-            summary::income_earned_total_row(data, &theme),
-            summary::income_earned_windows_row(data),
+            summary::income_earned_total_row(data, &denomination, &theme),
+            summary::income_earned_windows_row(data, &denomination),
             summary::income_interest_note(),
-            summary::income_carrying_top_row(data),
+            summary::income_carrying_top_row(data, &denomination),
             summary::income_carrying_bottom_row(data),
             text("Projected Interest By Upcoming Month (current rates)")
                 .size(11)

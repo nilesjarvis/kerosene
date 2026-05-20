@@ -44,6 +44,7 @@ impl TradingTerminal {
     fn view_ticker_tape_bar_sized(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
         let items = self.ticker_tape_items();
+        let denomination = self.display_denomination_context();
         let pane_corner_radius = self.pane_corner_radius;
 
         if items.is_empty() {
@@ -60,7 +61,10 @@ impl TradingTerminal {
             .into();
         }
 
-        let item_widths: Vec<f32> = items.iter().map(ticker_tape_item_width).collect();
+        let item_widths: Vec<f32> = items
+            .iter()
+            .map(|item| ticker_tape_item_width(item, &denomination))
+            .collect();
         let sequence_width: f32 = item_widths
             .iter()
             .map(|width| width + TICKER_TAPE_SEPARATOR_WIDTH)
@@ -80,7 +84,7 @@ impl TradingTerminal {
         for _ in 0..repetitions {
             for (item, item_width) in items.iter().zip(item_widths.iter().copied()) {
                 tape_row = tape_row
-                    .push(ticker_tape_item(item, &theme, item_width))
+                    .push(ticker_tape_item(item, &denomination, &theme, item_width))
                     .push(ticker_tape_separator());
             }
         }
@@ -154,6 +158,7 @@ impl TradingTerminal {
 
 fn ticker_tape_item(
     item: &TickerTapeItem,
+    denomination: &crate::denomination::DisplayDenominationContext,
     theme: &Theme,
     item_width: f32,
 ) -> Element<'static, Message> {
@@ -172,7 +177,7 @@ fn ticker_tape_item(
         text(item.ticker.clone())
             .size(12)
             .font(iced::Font::MONOSPACE),
-        text(price_label(item.price))
+        text(price_label(item.price, denomination))
             .size(12)
             .font(iced::Font::MONOSPACE),
         text(percent_label(item.pct_24h))
@@ -202,9 +207,12 @@ fn ticker_tape_item(
     .into()
 }
 
-fn ticker_tape_item_width(item: &TickerTapeItem) -> f32 {
+fn ticker_tape_item_width(
+    item: &TickerTapeItem,
+    denomination: &crate::denomination::DisplayDenominationContext,
+) -> f32 {
     let text_chars = item.ticker.chars().count()
-        + price_label(item.price).chars().count()
+        + price_label(item.price, denomination).chars().count()
         + percent_label(item.pct_24h).chars().count();
     let text_width = text_chars as f32 * TICKER_TAPE_TEXT_CHAR_WIDTH;
     let padding = f32::from(TICKER_TAPE_ITEM_HORIZONTAL_PADDING) * 2.0;
@@ -266,9 +274,12 @@ fn fallback_ticker_logo(ticker: &str, theme: &Theme) -> Element<'static, Message
     .into()
 }
 
-fn price_label(price: Option<f64>) -> String {
+fn price_label(
+    price: Option<f64>,
+    denomination: &crate::denomination::DisplayDenominationContext,
+) -> String {
     price
-        .map(helpers::format_price)
+        .map(|price| denomination.format_price(price))
         .unwrap_or_else(|| "-".to_string())
 }
 

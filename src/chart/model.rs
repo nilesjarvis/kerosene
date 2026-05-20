@@ -5,6 +5,7 @@
 use crate::annotations::{Annotation, DrawingTool};
 use crate::api::Candle;
 use crate::chart_state::ChartSurfaceId;
+use crate::denomination::DisplayDenominationContext;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::hyperdash_api::{HeatmapRect, LiquidationBucket};
 use crate::timeframe::Timeframe;
@@ -13,6 +14,7 @@ use iced::widget::canvas;
 
 // Layout constants for chart regions.
 pub const PRICE_AXIS_WIDTH: f32 = 70.0;
+pub const DISPLAY_DENOMINATED_PRICE_AXIS_WIDTH: f32 = 180.0;
 pub const TIME_AXIS_HEIGHT: f32 = 24.0;
 pub const DEFAULT_FUNDING_PANEL_HEIGHT: f32 = 56.0;
 pub const MIN_FUNDING_PANEL_HEIGHT: f32 = 44.0;
@@ -99,6 +101,18 @@ pub struct CandlestickChart {
     pub(crate) obscure_position_prices: bool,
     /// Whether active position/liquidation and order overlays should be hidden while rendering.
     pub(crate) hide_positions_and_orders: bool,
+    /// Display-only conversion context for USD-denominated chart labels.
+    pub(crate) display_denomination: DisplayDenominationContext,
+}
+
+impl CandlestickChart {
+    pub(crate) fn price_axis_width(&self) -> f32 {
+        if self.display_denomination.includes_usd_chart_reference() {
+            DISPLAY_DENOMINATED_PRICE_AXIS_WIDTH
+        } else {
+            PRICE_AXIS_WIDTH
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

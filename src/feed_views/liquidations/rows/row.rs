@@ -9,7 +9,7 @@ use crate::feed_state::LiquidationFeedRow;
 use crate::feed_views::liquidations::layout::{
     LiquidationFeedRowLayout, METHOD_WIDTH, NUMBER_WIDTH, ROW_SPACING, SIDE_WIDTH, TIME_WIDTH,
 };
-use crate::helpers::{self, format_usd};
+use crate::helpers;
 use crate::message::Message;
 
 use iced::widget::text::Wrapping;
@@ -66,7 +66,7 @@ impl TradingTerminal {
 
         if row_layout.show_price {
             row_ui = row_ui.push(
-                text(format!("{:.4}", liq.price))
+                text(self.format_display_price(liq.price))
                     .size(12)
                     .font(iced::Font::MONOSPACE)
                     .color(theme.palette().text)
@@ -76,7 +76,7 @@ impl TradingTerminal {
         }
 
         row_ui = row_ui.push(
-            text(format_usd(&format!("{:.0}", liq.notional)))
+            text(self.format_display_usd_value(liq.notional, 0))
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(theme.palette().text)

@@ -8,7 +8,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::OrderKind;
 
-use self::dexes::known_mids_dexes;
+use self::dexes::{known_mids_dexes, normalize_mids_dexes};
 use self::parsing::parse_mids_response;
 use self::updates::apply_mids_update;
 
@@ -20,7 +20,11 @@ impl TradingTerminal {
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
         let market_universe = self.market_universe.clone();
+        let denomination_rate_key = self.display_denomination_rate_symbol_key();
         let is_hidden = |symbol: &str| {
+            if denomination_rate_key.as_deref() == Some(symbol) {
+                return false;
+            }
             Self::symbol_key_is_hidden_with(
                 &exchange_symbols,
                 &muted_tickers,
@@ -37,6 +41,7 @@ impl TradingTerminal {
             Self::now_ms(),
             is_hidden,
         );
+        self.sync_chart_display_denominations();
         if matches!(self.order_kind, OrderKind::Limit | OrderKind::Chase)
             && self.order_price.trim().is_empty()
         {
@@ -60,10 +65,15 @@ impl TradingTerminal {
     }
 
     pub(crate) fn visible_mids_dexes(&self) -> Vec<String> {
-        self.market_universe
+        let mut dexes = self
+            .market_universe
             .selected_hip3_dex()
             .map(|dex| vec![dex.to_string()])
-            .unwrap_or_else(|| Self::known_mids_dexes_from_symbols(&self.exchange_symbols))
+            .unwrap_or_else(|| Self::known_mids_dexes_from_symbols(&self.exchange_symbols));
+        if let Some(dex) = self.display_denomination.selected_hip3_dex() {
+            dexes.push(dex.to_string());
+        }
+        normalize_mids_dexes(dexes)
     }
 
     pub(crate) fn mids_bootstrap_tasks(&self) -> Vec<Task<Message>> {
@@ -73,5 +83,23 @@ impl TradingTerminal {
             tasks.push(Self::fetch_mids_task_for_dex(&dex));
         }
         tasks
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{DisplayDenominationConfig, MarketUniverseConfig};
+
+    #[test]
+    fn visible_mids_dexes_include_display_denomination_dex() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("flx");
+        terminal.display_denomination = DisplayDenominationConfig::eur();
+
+        assert_eq!(
+            terminal.visible_mids_dexes(),
+            vec!["flx".to_string(), "xyz".to_string()]
+        );
     }
 }

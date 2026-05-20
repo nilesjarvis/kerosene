@@ -1,5 +1,5 @@
 use super::super::state::DragKind;
-use super::super::{CandlestickChart, ChartState, PRICE_AXIS_WIDTH};
+use super::super::{CandlestickChart, ChartState};
 use iced::Rectangle;
 use iced::mouse;
 
@@ -17,7 +17,7 @@ impl CandlestickChart {
         let Some(pos) = cursor.position_in(bounds) else {
             return mouse::Interaction::default();
         };
-        let chart_w = bounds.width - PRICE_AXIS_WIDTH;
+        let chart_w = bounds.width - self.price_axis_width();
         let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
         if chart_w <= 0.0
             || chart_h <= 0.0

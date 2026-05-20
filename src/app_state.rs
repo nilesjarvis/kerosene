@@ -120,6 +120,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) outcome_volumes_loading: bool,
     pub(crate) outcome_volumes_error: Option<String>,
     pub(crate) hype_etfs: HypeEtfState,
+    pub(crate) display_denomination: config::DisplayDenominationConfig,
     // L2 order books
     pub(crate) order_books: HashMap<OrderBookId, OrderBookInstance>,
     pub(crate) next_order_book_id: OrderBookId,

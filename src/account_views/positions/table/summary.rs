@@ -7,6 +7,8 @@ use iced::widget::{container, row, text};
 use iced::{Alignment, Color, Element, Fill, Font, Theme};
 
 use super::super::PositionNumberMode;
+use super::format_position_display_value;
+#[cfg(test)]
 use super::format_position_usd_value;
 use super::sort::PositionRowData;
 
@@ -28,29 +30,50 @@ impl TradingTerminal {
             .as_ref()
             .and_then(|data| self.position_summary_account_value(data));
         let total_pnl_pct = position_total_pnl_percent(totals.total_pnl, account_balance);
+        let denomination = self.display_denomination_context();
 
         let summary = row![
             summary_cell(
                 "Funding",
-                format_optional_unsigned_usd(totals.funding_gross, self.hide_pnl, number_mode),
+                format_optional_unsigned_display(
+                    &denomination,
+                    totals.funding_gross,
+                    self.hide_pnl,
+                    number_mode,
+                ),
                 weak_text,
                 neutral_text,
             ),
             summary_cell(
                 "Long Ntl",
-                format_unsigned_usd(totals.long_notional, self.hide_pnl, number_mode),
+                format_unsigned_display(
+                    &denomination,
+                    totals.long_notional,
+                    self.hide_pnl,
+                    number_mode,
+                ),
                 weak_text,
                 long_color,
             ),
             summary_cell(
                 "Short Ntl",
-                format_unsigned_usd(totals.short_notional, self.hide_pnl, number_mode),
+                format_unsigned_display(
+                    &denomination,
+                    totals.short_notional,
+                    self.hide_pnl,
+                    number_mode,
+                ),
                 weak_text,
                 short_color,
             ),
             summary_cell(
                 "Net Fund",
-                format_optional_signed_usd(totals.net_funding, self.hide_pnl, number_mode),
+                format_optional_signed_display(
+                    &denomination,
+                    totals.net_funding,
+                    self.hide_pnl,
+                    number_mode,
+                ),
                 weak_text,
                 totals
                     .net_funding
@@ -60,7 +83,12 @@ impl TradingTerminal {
             ),
             summary_cell_with_action(
                 "uPnL",
-                format_optional_signed_usd(totals.upnl, self.hide_pnl, number_mode),
+                format_optional_signed_display(
+                    &denomination,
+                    totals.upnl,
+                    self.hide_pnl,
+                    number_mode,
+                ),
                 weak_text,
                 totals
                     .upnl
@@ -74,7 +102,8 @@ impl TradingTerminal {
             ),
             summary_cell(
                 "Total PnL",
-                format_optional_total_pnl(
+                format_optional_total_pnl_display(
+                    &denomination,
                     totals.total_pnl,
                     total_pnl_pct,
                     self.hide_pnl,
@@ -281,6 +310,7 @@ fn summary_cell_with_action(
     .into()
 }
 
+#[cfg(test)]
 fn format_unsigned_usd(value: f64, hide_pnl: bool, number_mode: PositionNumberMode) -> String {
     if hide_pnl {
         "$***".to_string()
@@ -289,6 +319,20 @@ fn format_unsigned_usd(value: f64, hide_pnl: bool, number_mode: PositionNumberMo
     }
 }
 
+fn format_unsigned_display(
+    context: &crate::denomination::DisplayDenominationContext,
+    value: f64,
+    hide_pnl: bool,
+    number_mode: PositionNumberMode,
+) -> String {
+    if hide_pnl {
+        context.hidden_mask()
+    } else {
+        format_position_display_value(context, value, number_mode)
+    }
+}
+
+#[cfg(test)]
 fn format_optional_unsigned_usd(
     total: OptionalTotal,
     hide_pnl: bool,
@@ -300,6 +344,19 @@ fn format_optional_unsigned_usd(
     }
 }
 
+fn format_optional_unsigned_display(
+    context: &crate::denomination::DisplayDenominationContext,
+    total: OptionalTotal,
+    hide_pnl: bool,
+    number_mode: PositionNumberMode,
+) -> String {
+    match total.value() {
+        Some(value) => format_unsigned_display(context, value, hide_pnl, number_mode),
+        None => "--".to_string(),
+    }
+}
+
+#[cfg(test)]
 fn format_optional_signed_usd(
     total: OptionalTotal,
     hide_pnl: bool,
@@ -312,6 +369,20 @@ fn format_optional_signed_usd(
     }
 }
 
+fn format_optional_signed_display(
+    context: &crate::denomination::DisplayDenominationContext,
+    total: OptionalTotal,
+    hide_pnl: bool,
+    number_mode: PositionNumberMode,
+) -> String {
+    match total.value() {
+        Some(_) if hide_pnl => context.hidden_mask(),
+        Some(value) => format_signed_display(context, value, number_mode),
+        None => "--".to_string(),
+    }
+}
+
+#[cfg(test)]
 fn format_optional_total_pnl(
     total: OptionalTotal,
     percent: Option<f64>,
@@ -335,6 +406,34 @@ fn format_optional_total_pnl(
     }
 }
 
+fn format_optional_total_pnl_display(
+    context: &crate::denomination::DisplayDenominationContext,
+    total: OptionalTotal,
+    percent: Option<f64>,
+    hide_pnl: bool,
+    number_mode: PositionNumberMode,
+) -> String {
+    match total.value() {
+        Some(_) if hide_pnl => {
+            let percent = percent
+                .map(|percent| format_signed_percent(percent, number_mode))
+                .unwrap_or_else(|| "--%".to_string());
+            format!("{} ({percent})", context.hidden_mask())
+        }
+        Some(value) => {
+            let percent = percent
+                .map(|percent| format_signed_percent(percent, number_mode))
+                .unwrap_or_else(|| "--%".to_string());
+            format!(
+                "{} ({percent})",
+                format_signed_display(context, value, number_mode)
+            )
+        }
+        None => "--".to_string(),
+    }
+}
+
+#[cfg(test)]
 fn format_signed_usd(value: f64, number_mode: PositionNumberMode) -> String {
     let min_display = if number_mode.is_compact() { 0.5 } else { 0.005 };
     let display_value = if value.abs() < min_display {
@@ -343,6 +442,25 @@ fn format_signed_usd(value: f64, number_mode: PositionNumberMode) -> String {
         value
     };
     let formatted = format_position_usd_value(display_value, number_mode);
+    if display_value > 0.0 {
+        format!("+{formatted}")
+    } else {
+        formatted
+    }
+}
+
+fn format_signed_display(
+    context: &crate::denomination::DisplayDenominationContext,
+    value: f64,
+    number_mode: PositionNumberMode,
+) -> String {
+    let min_display = if number_mode.is_compact() { 0.5 } else { 0.005 };
+    let display_value = if value.abs() < min_display {
+        0.0
+    } else {
+        value
+    };
+    let formatted = format_position_display_value(context, display_value, number_mode);
     if display_value > 0.0 {
         format!("+{formatted}")
     } else {

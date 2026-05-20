@@ -1,9 +1,10 @@
-use crate::helpers::format_usd;
+use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme, color};
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::journal_views::trade_card) fn journal_trade_card_header(
     display_coin: String,
     status: String,
@@ -11,6 +12,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_header(
     max_position_label: String,
     pnl: f64,
     status_color: Color,
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Element<'static, Message> {
     row![
@@ -34,7 +36,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_header(
             .size(12)
             .color(theme.palette().text),
         Space::new().width(12.0),
-        text(format!("PnL: {}", format_usd(&pnl.to_string())))
+        text(format!("PnL: {}", denomination.format_value(pnl, 2)))
             .size(12)
             .color(if pnl > 0.0 {
                 theme.palette().success

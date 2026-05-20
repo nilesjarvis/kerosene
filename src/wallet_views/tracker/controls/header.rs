@@ -1,7 +1,5 @@
 use crate::account::WalletTrackerSnapshot;
-use crate::account_metrics::format_signed_usd_value;
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_usd;
 use crate::message::Message;
 use iced::widget::{Space, button, column, row, text};
 use iced::{Element, Fill, Theme};
@@ -41,6 +39,7 @@ impl TradingTerminal {
             .count();
         let has_invalid_snapshot =
             total_equity.is_none() || total_withdrawable.is_none() || total_upnl.is_none();
+        let denomination = self.display_denomination_context();
 
         row![
             column![
@@ -48,9 +47,9 @@ impl TradingTerminal {
                 text(format!(
                     "{} wallets | Equity {} | Available {} | uPnL {}",
                     wallet_count,
-                    money_total_display(total_equity),
-                    money_total_display(total_withdrawable),
-                    signed_money_total_display(total_upnl)
+                    money_total_display(&denomination, total_equity),
+                    money_total_display(&denomination, total_withdrawable),
+                    signed_money_total_display(&denomination, total_upnl)
                 ))
                 .size(11)
                 .font(iced::Font::MONOSPACE)
@@ -87,15 +86,21 @@ fn sum_snapshot_values(values: impl IntoIterator<Item = Option<f64>>) -> Option<
     Some(total)
 }
 
-fn money_total_display(value: Option<f64>) -> String {
+fn money_total_display(
+    denomination: &crate::denomination::DisplayDenominationContext,
+    value: Option<f64>,
+) -> String {
     value
-        .map(|value| format_usd(&format!("{value:.2}")))
+        .map(|value| denomination.format_value(value, 2))
         .unwrap_or_else(invalid_tracker_data)
 }
 
-fn signed_money_total_display(value: Option<f64>) -> String {
+fn signed_money_total_display(
+    denomination: &crate::denomination::DisplayDenominationContext,
+    value: Option<f64>,
+) -> String {
     value
-        .map(format_signed_usd_value)
+        .map(|value| denomination.format_signed_value(value, 2))
         .unwrap_or_else(invalid_tracker_data)
 }
 
@@ -115,8 +120,12 @@ mod tests {
 
     #[test]
     fn tracker_total_formatters_mark_invalid_values() {
-        assert_eq!(money_total_display(Some(12.5)), "$12.50");
-        assert_eq!(money_total_display(None), "Invalid data");
-        assert_eq!(signed_money_total_display(None), "Invalid data");
+        let denomination = crate::denomination::DisplayDenominationContext::default();
+        assert_eq!(money_total_display(&denomination, Some(12.5)), "$12.50");
+        assert_eq!(money_total_display(&denomination, None), "Invalid data");
+        assert_eq!(
+            signed_money_total_display(&denomination, None),
+            "Invalid data"
+        );
     }
 }

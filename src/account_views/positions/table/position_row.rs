@@ -1,11 +1,13 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::{self, format_decimal_with_commas, format_price, format_size};
+use crate::helpers::{self, format_price, format_size};
 use crate::message::Message;
 use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
 
 use super::super::{POSITION_ACTION_WIDTH, PositionColumnVisibility, PositionNumberMode};
+#[cfg(test)]
+use super::format_position_usd_value;
 use super::sort::PositionRowData;
-use super::{format_position_compact_number, format_position_usd_value};
+use super::{format_position_compact_number, format_position_display_value};
 use iced::widget::{Space, button, container, row, text};
 use iced::{Element, Fill, Theme, color};
 
@@ -20,6 +22,7 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let ap = data.ap;
         let pos = &ap.position;
+        let denomination = self.display_denomination_context();
         let (side, side_color) = match data.is_long {
             Some(true) => ("\u{2191} Long", theme.palette().success),
             Some(false) => ("\u{2193} Short", theme.palette().danger),
@@ -92,29 +95,33 @@ impl TradingTerminal {
         let (val_display, upnl_display, fund_display, total_display) = if self.hide_pnl {
             (
                 data.position_value
-                    .map(|_| "$***".to_string())
+                    .map(|_| self.display_pnl_mask())
                     .unwrap_or_else(|| "Invalid".to_string()),
                 data.upnl
-                    .map(|_| "$***".to_string())
+                    .map(|_| self.display_pnl_mask())
                     .unwrap_or_else(|| "Invalid".to_string()),
                 "***".to_string(),
                 data.total_pnl
-                    .map(|_| "$***".to_string())
+                    .map(|_| self.display_pnl_mask())
                     .unwrap_or_else(|| "Invalid".to_string()),
             )
         } else {
             (
                 data.position_value
-                    .map(|value| format_position_usd_value(value, number_mode))
+                    .map(|value| format_position_display_value(&denomination, value, number_mode))
                     .unwrap_or_else(|| "Invalid".to_string()),
                 data.upnl
-                    .map(|upnl| format_position_usd_value(upnl, number_mode))
+                    .map(|upnl| format_position_display_value(&denomination, upnl, number_mode))
                     .unwrap_or_else(|| "Invalid".to_string()),
                 data.funding_since_open
-                    .map(|funding| format_position_signed_amount(funding, number_mode))
+                    .map(|funding| {
+                        format_position_signed_amount(&denomination, funding, number_mode)
+                    })
                     .unwrap_or_else(|| "-".to_string()),
                 data.total_pnl
-                    .map(|total_pnl| format_position_usd_value(total_pnl, number_mode))
+                    .map(|total_pnl| {
+                        format_position_display_value(&denomination, total_pnl, number_mode)
+                    })
                     .unwrap_or_else(|| "Invalid".to_string()),
             )
         };
@@ -240,40 +247,33 @@ impl TradingTerminal {
     }
 }
 
-fn format_position_signed_amount(value: f64, number_mode: PositionNumberMode) -> String {
+fn format_position_signed_amount(
+    context: &crate::denomination::DisplayDenominationContext,
+    value: f64,
+    number_mode: PositionNumberMode,
+) -> String {
     match number_mode {
-        PositionNumberMode::Full => format_signed_grouped_amount(value),
-        PositionNumberMode::Compact => format_signed_compact_amount(value),
+        PositionNumberMode::Full => context.format_signed_value(value, 2),
+        PositionNumberMode::Compact => format_signed_compact_amount(context, value),
     }
 }
 
-fn format_signed_grouped_amount(value: f64) -> String {
-    let display_value = if value.abs() < 0.005 { 0.0 } else { value };
-    let sign = if display_value > 0.0 {
+fn format_signed_compact_amount(
+    context: &crate::denomination::DisplayDenominationContext,
+    value: f64,
+) -> String {
+    let Some(display_value) = context.convert_usd_value(value) else {
+        return "Invalid data".to_string();
+    };
+    let compact_value = format_position_compact_number(display_value.abs());
+    let sign = if display_value > 0.0 && compact_value != "0" {
         "+"
-    } else if display_value < 0.0 {
+    } else if display_value < 0.0 && compact_value != "0" {
         "-"
     } else {
         ""
     };
-    let abs = display_value.abs();
-    if abs >= 1_000_000.0 {
-        format!("{sign}{:.2}M", abs / 1_000_000.0)
-    } else {
-        format!("{sign}{}", format_decimal_with_commas(abs, 2))
-    }
-}
-
-fn format_signed_compact_amount(value: f64) -> String {
-    let compact_value = format_position_compact_number(value.abs());
-    let sign = if value > 0.0 && compact_value != "0" {
-        "+"
-    } else if value < 0.0 && compact_value != "0" {
-        "-"
-    } else {
-        ""
-    };
-    format!("{sign}{compact_value}")
+    format!("{sign}{}{compact_value}", context.active_symbol())
 }
 
 fn trim_decimal_zeros(value: String) -> String {
@@ -390,41 +390,42 @@ mod tests {
 
     #[test]
     fn compact_signed_amount_rounds_to_whole_values() {
+        let denomination = crate::denomination::DisplayDenominationContext::default();
         assert_eq!(
-            format_position_signed_amount(12.34, PositionNumberMode::Full),
-            "+12.34"
+            format_position_signed_amount(&denomination, 12.34, PositionNumberMode::Full),
+            "+$12.34"
         );
         assert_eq!(
-            format_position_signed_amount(12345.67, PositionNumberMode::Full),
-            "+12,345.67"
+            format_position_signed_amount(&denomination, 12345.67, PositionNumberMode::Full),
+            "+$12,345.67"
         );
         assert_eq!(
-            format_position_signed_amount(-1234567.89, PositionNumberMode::Full),
-            "-1.23M"
+            format_position_signed_amount(&denomination, -1234567.89, PositionNumberMode::Full),
+            "-$1,234,567.89"
         );
         assert_eq!(
-            format_position_signed_amount(12.56, PositionNumberMode::Compact),
-            "+13"
+            format_position_signed_amount(&denomination, 12.56, PositionNumberMode::Compact),
+            "+$13"
         );
         assert_eq!(
-            format_position_signed_amount(-12.56, PositionNumberMode::Compact),
-            "-13"
+            format_position_signed_amount(&denomination, -12.56, PositionNumberMode::Compact),
+            "-$13"
         );
         assert_eq!(
-            format_position_signed_amount(12345.67, PositionNumberMode::Compact),
-            "+12k"
+            format_position_signed_amount(&denomination, 12345.67, PositionNumberMode::Compact),
+            "+$12k"
         );
         assert_eq!(
-            format_position_signed_amount(532_023.0, PositionNumberMode::Compact),
-            "+500k"
+            format_position_signed_amount(&denomination, 532_023.0, PositionNumberMode::Compact),
+            "+$500k"
         );
         assert_eq!(
-            format_position_signed_amount(-1234567.89, PositionNumberMode::Compact),
-            "-1.2M"
+            format_position_signed_amount(&denomination, -1234567.89, PositionNumberMode::Compact),
+            "-$1.2M"
         );
         assert_eq!(
-            format_position_signed_amount(-0.49, PositionNumberMode::Compact),
-            "0"
+            format_position_signed_amount(&denomination, -0.49, PositionNumberMode::Compact),
+            "$0"
         );
     }
 

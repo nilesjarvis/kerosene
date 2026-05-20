@@ -28,6 +28,23 @@ impl TradingTerminal {
         .into()
     }
 
+    pub(crate) fn summary_display_denomination_picker(&self) -> Element<'_, Message> {
+        let mut options = self.display_denomination_options();
+        if !options.contains(&self.display_denomination) {
+            options.push(self.display_denomination.clone());
+        }
+
+        pick_list(
+            options,
+            Some(self.display_denomination.clone()),
+            Message::DisplayDenominationChanged,
+        )
+        .padding([4, 8])
+        .text_size(10)
+        .width(Length::Shrink)
+        .into()
+    }
+
     pub(crate) fn summary_widgets_button(&self) -> Element<'_, Message> {
         let chevron = if self.add_widget_menu_open {
             DROPDOWN_CHEVRON_UP

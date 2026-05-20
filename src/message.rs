@@ -180,6 +180,7 @@ pub(crate) enum Message {
     MuteTicker,
     UnmuteTicker(String),
     MarketUniverseChanged(config::MarketUniverseConfig),
+    DisplayDenominationChanged(config::DisplayDenominationConfig),
     MarketSlippageInputChanged(String),
     SaveMarketSlippage,
     ExecuteHotkey(config::HotkeyAction),

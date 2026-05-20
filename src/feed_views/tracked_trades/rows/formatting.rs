@@ -1,3 +1,4 @@
+use crate::denomination::DisplayDenominationContext;
 use crate::feed_state::TrackedTradeIntent;
 use crate::helpers::format_decimal_with_commas;
 
@@ -22,12 +23,18 @@ pub(super) fn tracked_trade_price_label(price: f64) -> String {
     format_trimmed_number(price, 4)
 }
 
-pub(super) fn tracked_trade_notional_label(notional: f64) -> String {
-    format_usd_trimmed(notional, false)
+pub(super) fn tracked_trade_notional_label(
+    denomination: &DisplayDenominationContext,
+    notional: f64,
+) -> String {
+    format_display_trimmed(denomination, notional, false)
 }
 
-pub(super) fn tracked_trade_pnl_label(pnl: f64) -> String {
-    format_usd_trimmed(pnl, true)
+pub(super) fn tracked_trade_pnl_label(
+    denomination: &DisplayDenominationContext,
+    pnl: f64,
+) -> String {
+    format_display_trimmed(denomination, pnl, true)
 }
 
 pub(super) fn tracked_trade_intent_text(
@@ -56,24 +63,35 @@ fn format_trimmed_number(value: f64, decimals: usize) -> String {
     trim_decimal_zeros(format!("{value:.decimals$}"))
 }
 
-fn format_usd_trimmed(value: f64, signed: bool) -> String {
+fn format_display_trimmed(
+    denomination: &DisplayDenominationContext,
+    value: f64,
+    signed: bool,
+) -> String {
     if !value.is_finite() {
         return "-".to_string();
     }
+    let Some(display_value) = denomination.convert_usd_value(value) else {
+        return "-".to_string();
+    };
 
-    let sign = if value < 0.0 {
+    let sign = if display_value < 0.0 {
         "-"
     } else if signed {
         "+"
     } else {
         ""
     };
-    let abs = value.abs();
+    let abs = display_value.abs();
+    let symbol = denomination.active_symbol();
     if abs >= 1_000_000.0 {
-        format!("{sign}${}M", format_trimmed_number(abs / 1_000_000.0, 2))
+        format!(
+            "{sign}{symbol}{}M",
+            format_trimmed_number(abs / 1_000_000.0, 2)
+        )
     } else {
         format!(
-            "{sign}${}",
+            "{sign}{symbol}{}",
             trim_decimal_zeros(format_decimal_with_commas(abs, 2))
         )
     }
@@ -111,9 +129,16 @@ mod tests {
 
     #[test]
     fn tracked_trade_usd_values_trim_zero_cents() {
-        assert_eq!(tracked_trade_notional_label(12_000.0), "$12,000");
-        assert_eq!(tracked_trade_pnl_label(12.0), "+$12");
-        assert_eq!(tracked_trade_pnl_label(-12.5), "-$12.5");
-        assert_eq!(tracked_trade_notional_label(1_500_000.0), "$1.5M");
+        let denomination = DisplayDenominationContext::default();
+        assert_eq!(
+            tracked_trade_notional_label(&denomination, 12_000.0),
+            "$12,000"
+        );
+        assert_eq!(tracked_trade_pnl_label(&denomination, 12.0), "+$12");
+        assert_eq!(tracked_trade_pnl_label(&denomination, -12.5), "-$12.5");
+        assert_eq!(
+            tracked_trade_notional_label(&denomination, 1_500_000.0),
+            "$1.5M"
+        );
     }
 }

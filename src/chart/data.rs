@@ -8,6 +8,7 @@ use super::{
 };
 use crate::api::{Candle, is_valid_candle, normalize_candles};
 use crate::chart_state::ChartSurfaceId;
+use crate::denomination::DisplayDenominationContext;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::timeframe::Timeframe;
 use iced::Color;
@@ -55,6 +56,7 @@ impl CandlestickChart {
             order_line_phase: 0.0,
             obscure_position_prices: false,
             hide_positions_and_orders: false,
+            display_denomination: DisplayDenominationContext::default(),
         }
     }
 
@@ -94,6 +96,7 @@ impl CandlestickChart {
             order_line_phase: self.order_line_phase,
             obscure_position_prices: self.obscure_position_prices,
             hide_positions_and_orders: self.hide_positions_and_orders,
+            display_denomination: self.display_denomination.clone(),
         }
     }
 
@@ -136,6 +139,13 @@ impl CandlestickChart {
         if self.chart_bull_color != bull || self.chart_bear_color != bear {
             self.chart_bull_color = bull;
             self.chart_bear_color = bear;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_display_denomination(&mut self, context: DisplayDenominationContext) {
+        if self.display_denomination != context {
+            self.display_denomination = context;
             self.candle_cache.clear();
         }
     }

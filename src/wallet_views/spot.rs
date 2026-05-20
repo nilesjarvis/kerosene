@@ -42,8 +42,14 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text),
             );
         } else {
+            let denomination = self.display_denomination_context();
             for (balance, display_coin) in spot_rows.into_iter().take(80) {
-                spot_table = spot_table.push(wallet_spot_row(balance, display_coin, &theme));
+                spot_table = spot_table.push(wallet_spot_row(
+                    balance,
+                    display_coin,
+                    &denomination,
+                    &theme,
+                ));
             }
         }
 

@@ -27,7 +27,8 @@ impl TradingTerminal {
 
         let rate_color = signed_funding_color(rate, theme);
 
-        let amount_display = funding_amount_display(usdc, self.hide_pnl);
+        let denomination = self.display_denomination_context();
+        let amount_display = funding_amount_display(&denomination, usdc, self.hide_pnl);
 
         let mut coin_content = row![];
         if let Some(icon) = helpers::symbol_icon(&d.coin, 14, theme.palette().text) {
@@ -79,11 +80,15 @@ fn funding_rate_display(rate: Option<f64>) -> String {
         .unwrap_or_else(invalid_history_data)
 }
 
-fn funding_amount_display(usdc: Option<f64>, hide_pnl: bool) -> String {
+fn funding_amount_display(
+    denomination: &crate::denomination::DisplayDenominationContext,
+    usdc: Option<f64>,
+    hide_pnl: bool,
+) -> String {
     if hide_pnl {
-        "$***".to_string()
+        denomination.hidden_mask()
     } else {
-        usdc.map(|usdc| format!("{}${:.4}", if usdc >= 0.0 { "+" } else { "" }, usdc))
+        usdc.map(|usdc| denomination.format_signed_value(usdc, 4))
             .unwrap_or_else(invalid_history_data)
     }
 }
@@ -100,9 +105,19 @@ mod tests {
 
     #[test]
     fn funding_amount_display_marks_invalid_values() {
-        assert_eq!(funding_amount_display(Some(1.25), false), "+$1.2500");
-        assert_eq!(funding_amount_display(Some(-1.25), false), "$-1.2500");
-        assert_eq!(funding_amount_display(None, false), "Invalid data");
-        assert_eq!(funding_amount_display(None, true), "$***");
+        let denomination = crate::denomination::DisplayDenominationContext::default();
+        assert_eq!(
+            funding_amount_display(&denomination, Some(1.25), false),
+            "+$1.2500"
+        );
+        assert_eq!(
+            funding_amount_display(&denomination, Some(-1.25), false),
+            "-$1.2500"
+        );
+        assert_eq!(
+            funding_amount_display(&denomination, None, false),
+            "Invalid data"
+        );
+        assert_eq!(funding_amount_display(&denomination, None, true), "$***");
     }
 }

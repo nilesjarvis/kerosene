@@ -1,6 +1,6 @@
-use crate::account_metrics::format_signed_usd_value;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_decimal_with_commas, format_usd};
+use crate::denomination::DisplayDenominationContext;
+use crate::helpers::format_decimal_with_commas;
 use crate::journal::{AggregatedTrade, JournalFilter};
 use crate::message::Message;
 
@@ -38,6 +38,7 @@ impl TradingTerminal {
         let pnl_points = journal_cumulative_pnl_points(filtered_trades);
         let account_value_points = self.journal_account_value_chart_points(&pnl_points);
         let show_account_value = self.journal.show_account_value_chart;
+        let denomination = self.display_denomination_context();
 
         let value_color = signed_value_color(total_pnl, &theme);
         let muted = theme.extended_palette().background.weak.text;
@@ -55,6 +56,7 @@ impl TradingTerminal {
                 pnl_points,
                 account_value_points,
                 show_account_value,
+                denomination: denomination.clone(),
             })
             .width(Fill)
             .height(112)
@@ -90,7 +92,7 @@ impl TradingTerminal {
             .align_y(Alignment::Center),
             rule::horizontal(1),
             row![
-                text(format_signed_usd_full(total_pnl))
+                text(format_signed_display_full(total_pnl, &denomination))
                     .size(22)
                     .font(Font::MONOSPACE)
                     .color(value_color),
@@ -100,7 +102,7 @@ impl TradingTerminal {
             .align_y(Alignment::Center),
             chart_body,
             column![
-                journal_outcome_strip(filtered_trades),
+                journal_outcome_strip(filtered_trades, denomination.clone()),
                 column![
                     text(format!("{win_rate:.1}% Win Rate"))
                         .size(11)
@@ -110,7 +112,7 @@ impl TradingTerminal {
                         .size(11)
                         .font(Font::MONOSPACE)
                         .color(muted),
-                    text(format!("Fees {}", format_usd(&total_fees.to_string())))
+                    text(format!("Fees {}", denomination.format_value(total_fees, 2)))
                         .size(11)
                         .font(Font::MONOSPACE)
                         .color(theme.palette().danger),
@@ -280,7 +282,10 @@ pub(super) fn account_value_points_for_range(
     out
 }
 
-fn journal_outcome_strip(filtered_trades: &[&AggregatedTrade]) -> Element<'static, Message> {
+fn journal_outcome_strip(
+    filtered_trades: &[&AggregatedTrade],
+    denomination: DisplayDenominationContext,
+) -> Element<'static, Message> {
     let tiles = journal_recent_trade_outcome_tiles(filtered_trades);
     if tiles.is_empty() {
         return container(text("No closed trades").size(10).font(Font::MONOSPACE))
@@ -288,10 +293,13 @@ fn journal_outcome_strip(filtered_trades: &[&AggregatedTrade]) -> Element<'stati
             .into();
     }
 
-    canvas(JournalOutcomeStrip { tiles })
-        .width(Fill)
-        .height(42)
-        .into()
+    canvas(JournalOutcomeStrip {
+        tiles,
+        denomination,
+    })
+    .width(Fill)
+    .height(42)
+    .into()
 }
 
 fn journal_recent_trade_outcome_tiles(trades: &[&AggregatedTrade]) -> Vec<JournalOutcomeTile> {
@@ -356,8 +364,16 @@ fn signed_value_color(value: f64, theme: &Theme) -> Color {
     }
 }
 
+#[cfg(test)]
 fn format_signed_usd_full(value: f64) -> String {
+    format_signed_display_full(value, &DisplayDenominationContext::default())
+}
+
+fn format_signed_display_full(value: f64, denomination: &DisplayDenominationContext) -> String {
     let display_value = if value.abs() < 0.005 { 0.0 } else { value };
+    if denomination.active_code() != "USD" {
+        return denomination.format_signed_value(display_value, 2);
+    }
     let sign = if display_value > 0.0 {
         "+"
     } else if display_value < 0.0 {
@@ -396,11 +412,13 @@ struct JournalSummaryChart {
     pnl_points: Vec<(u64, f64)>,
     account_value_points: Vec<(u64, f64)>,
     show_account_value: bool,
+    denomination: DisplayDenominationContext,
 }
 
 #[derive(Debug, Clone)]
 struct JournalOutcomeStrip {
     tiles: Vec<JournalOutcomeTile>,
+    denomination: DisplayDenominationContext,
 }
 
 impl canvas::Program<Message> for JournalOutcomeStrip {
@@ -414,7 +432,14 @@ impl canvas::Program<Message> for JournalOutcomeStrip {
         bounds: Rectangle,
         cursor: iced::mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
-        draw_journal_outcome_strip(&self.tiles, renderer, theme, bounds, cursor)
+        draw_journal_outcome_strip(
+            &self.tiles,
+            &self.denomination,
+            renderer,
+            theme,
+            bounds,
+            cursor,
+        )
     }
 }
 
@@ -435,6 +460,7 @@ impl canvas::Program<Message> for JournalSummaryChart {
 
 fn draw_journal_outcome_strip(
     tiles: &[JournalOutcomeTile],
+    denomination: &DisplayDenominationContext,
     renderer: &Renderer,
     theme: &Theme,
     bounds: Rectangle,
@@ -509,7 +535,7 @@ fn draw_journal_outcome_strip(
             content: format!(
                 "{}\nPnL {}",
                 tile.trade_type,
-                format_signed_usd_value(tile.pnl)
+                denomination.format_signed_value(tile.pnl, 2)
             ),
             position: Point::new(origin.x + 7.0, origin.y + 9.0),
             color: theme.palette().text,
@@ -588,6 +614,7 @@ fn draw_journal_summary_chart(
         &mut frame,
         &layout,
         chart.show_account_value,
+        &chart.denomination,
         theme,
         bounds,
         cursor,
@@ -813,6 +840,7 @@ fn draw_hover_state(
     frame: &mut canvas::Frame,
     layout: &ChartLayout,
     show_account_value: bool,
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
     bounds: Rectangle,
     cursor: iced::mouse::Cursor,
@@ -849,7 +877,10 @@ fn draw_hover_state(
 
     let mut lines = vec![
         format_timestamp(nearest_pnl.timestamp_ms),
-        format!("PnL {}", format_signed_usd_value(nearest_pnl.value)),
+        format!(
+            "PnL {}",
+            denomination.format_signed_value(nearest_pnl.value, 2)
+        ),
     ];
 
     if show_account_value
@@ -862,7 +893,7 @@ fn draw_hover_state(
         );
         lines.push(format!(
             "Acct {}",
-            format_usd(&nearest_account.value.to_string())
+            denomination.format_value(nearest_account.value, 2)
         ));
     }
 

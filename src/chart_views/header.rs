@@ -33,6 +33,7 @@ impl TradingTerminal {
         available_width: f32,
     ) -> Element<'a, Message> {
         let theme = self.theme();
+        let denomination = self.display_denomination_context();
         let (Some(last), Some(first)) = (
             instance.chart.candles.last(),
             instance.chart.candles.first(),
@@ -66,10 +67,13 @@ impl TradingTerminal {
         let mut header_row = row![sym_btn].spacing(16).align_y(iced::Alignment::Center);
 
         if metric_visibility.show_24h_change {
-            let chg_val = text(format!("{change:+.2} ({change_pct:+.2}%)"))
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(theme.palette().text);
+            let chg_val = text(format!(
+                "{} ({change_pct:+.2}%)",
+                denomination.format_signed_value(change, 2)
+            ))
+            .size(12)
+            .font(iced::Font::MONOSPACE)
+            .color(theme.palette().text);
             let col_chg = column![
                 text("24h Chg")
                     .size(9)
@@ -89,6 +93,7 @@ impl TradingTerminal {
                 last.close,
                 instance.open_interest_as_notional,
                 metric_visibility,
+                &denomination,
             );
         }
 

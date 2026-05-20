@@ -125,6 +125,7 @@ impl TradingTerminal {
             outcome_volumes_loading: false,
             outcome_volumes_error: None,
             hype_etfs: crate::hype_etf_state::HypeEtfState::default(),
+            display_denomination: cfg.display_denomination.clone().normalized(),
             order_books: HashMap::new(),
             next_order_book_id: 0,
             accounts: cfg.accounts.clone(),
@@ -278,6 +279,7 @@ impl TradingTerminal {
             hotkeys: cfg.hotkeys.clone(),
             recording_hotkey_for: None,
         };
+        state.sync_chart_display_denominations();
         state.refresh_live_watchlist_row_caches();
         state
     }

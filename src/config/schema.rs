@@ -85,6 +85,76 @@ impl fmt::Display for MarketUniverseConfig {
     }
 }
 
+/// Display-only denomination for USD-valued readouts.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum DisplayDenominationConfig {
+    #[default]
+    Usd,
+    Asset {
+        code: String,
+        dex: String,
+        symbol: String,
+    },
+}
+
+impl DisplayDenominationConfig {
+    pub fn eur() -> Self {
+        Self::Asset {
+            code: "EUR".to_string(),
+            dex: "xyz".to_string(),
+            symbol: "EUR".to_string(),
+        }
+    }
+
+    pub fn normalized(self) -> Self {
+        match self {
+            Self::Usd => Self::Usd,
+            Self::Asset { code, dex, symbol } => {
+                let code = code.trim().to_ascii_uppercase();
+                let dex = dex.trim().to_ascii_lowercase();
+                let symbol = symbol.trim().to_ascii_uppercase();
+                if code.is_empty() || dex.is_empty() || symbol.is_empty() {
+                    Self::Usd
+                } else {
+                    Self::Asset { code, dex, symbol }
+                }
+            }
+        }
+    }
+
+    pub fn is_usd(&self) -> bool {
+        matches!(self, Self::Usd)
+    }
+
+    pub fn code(&self) -> &str {
+        match self {
+            Self::Usd => "USD",
+            Self::Asset { code, .. } => code.as_str(),
+        }
+    }
+
+    pub fn selected_hip3_dex(&self) -> Option<&str> {
+        match self {
+            Self::Usd => None,
+            Self::Asset { dex, .. } => Some(dex.as_str()),
+        }
+    }
+
+    pub fn rate_symbol_key(&self) -> Option<String> {
+        match self {
+            Self::Usd => None,
+            Self::Asset { dex, symbol, .. } => Some(format!("{dex}:{symbol}")),
+        }
+    }
+}
+
+impl fmt::Display for DisplayDenominationConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.code())
+    }
+}
+
 /// Persisted application config. Saved as JSON to the platform config directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeroseneConfig {
@@ -150,6 +220,9 @@ pub struct KeroseneConfig {
     /// Global visible market universe.
     #[serde(default)]
     pub market_universe: MarketUniverseConfig,
+    /// Display-only denomination for USD-valued readouts.
+    #[serde(default)]
+    pub display_denomination: DisplayDenominationConfig,
     /// Global settings used for chart screenshots.
     #[serde(default)]
     pub chart_screenshot_settings: ChartScreenshotSettingsConfig,

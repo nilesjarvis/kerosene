@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::helpers::format_usd;
 
 #[cfg(test)]
@@ -21,9 +22,20 @@ pub(super) fn valid_history_wire_value(value: &str) -> String {
         .unwrap_or_else(invalid_history_data)
 }
 
+#[cfg(test)]
 pub(super) fn format_history_usd(value: Option<f64>, decimals: usize) -> String {
     value
         .map(|value| format_usd(&format!("{value:.decimals$}")))
+        .unwrap_or_else(invalid_history_data)
+}
+
+pub(super) fn format_history_display_usd(
+    context: &crate::denomination::DisplayDenominationContext,
+    value: Option<f64>,
+    decimals: usize,
+) -> String {
+    value
+        .map(|value| context.format_value(value, decimals))
         .unwrap_or_else(invalid_history_data)
 }
 

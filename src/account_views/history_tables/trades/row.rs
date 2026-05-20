@@ -1,7 +1,8 @@
 use crate::account;
 use crate::account_views::history::format_history_time_millis;
 use crate::account_views::history_tables::numbers::{
-    format_history_usd, invalid_history_data, parse_history_number, valid_history_wire_value,
+    format_history_display_usd, invalid_history_data, parse_history_number,
+    valid_history_wire_value,
 };
 use crate::app_state::TradingTerminal;
 use crate::helpers;
@@ -46,13 +47,14 @@ impl TradingTerminal {
         let invalid_color = theme.palette().warning;
         let pnl_color = signed_history_color(pnl, theme);
         let fee_color = history_value_color(fee, weak_color, invalid_color);
+        let denomination = self.display_denomination_context();
 
         let pnl_display = if self.hide_pnl {
-            "$***".to_string()
+            denomination.hidden_mask()
         } else {
-            format_history_usd(pnl, 2)
+            format_history_display_usd(&denomination, pnl, 2)
         };
-        let fee_display = history_fee_display(fee, self.hide_pnl);
+        let fee_display = history_fee_display(&denomination, fee, self.hide_pnl);
 
         let mut coin_content = row![];
         if let Some(icon) = helpers::symbol_icon(&fill.coin, 14, theme.palette().text) {
@@ -117,12 +119,21 @@ fn history_value_color(value: Option<f64>, default_color: Color, invalid_color: 
     }
 }
 
-fn history_fee_display(fee: Option<f64>, hide_pnl: bool) -> String {
+fn history_fee_display(
+    denomination: &crate::denomination::DisplayDenominationContext,
+    fee: Option<f64>,
+    hide_pnl: bool,
+) -> String {
     if hide_pnl {
-        "$***".to_string()
+        denomination.hidden_mask()
     } else {
-        fee.map(|fee| format!("-{}", format_history_usd(Some(fee), 2)))
-            .unwrap_or_else(invalid_history_data)
+        fee.map(|fee| {
+            format!(
+                "-{}",
+                format_history_display_usd(denomination, Some(fee), 2)
+            )
+        })
+        .unwrap_or_else(invalid_history_data)
     }
 }
 
@@ -132,8 +143,15 @@ mod tests {
 
     #[test]
     fn trade_fee_display_marks_invalid_values() {
-        assert_eq!(history_fee_display(Some(1.25), false), "-$1.25");
-        assert_eq!(history_fee_display(None, false), "Invalid data");
-        assert_eq!(history_fee_display(None, true), "$***");
+        let denomination = crate::denomination::DisplayDenominationContext::default();
+        assert_eq!(
+            history_fee_display(&denomination, Some(1.25), false),
+            "-$1.25"
+        );
+        assert_eq!(
+            history_fee_display(&denomination, None, false),
+            "Invalid data"
+        );
+        assert_eq!(history_fee_display(&denomination, None, true), "$***");
     }
 }

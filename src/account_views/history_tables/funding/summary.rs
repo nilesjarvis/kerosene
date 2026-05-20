@@ -14,7 +14,8 @@ impl TradingTerminal {
             Some(_) => theme.palette().danger,
             None => theme.palette().warning,
         };
-        let total_display = funding_total_display(total_funding, self.hide_pnl);
+        let denomination = self.display_denomination_context();
+        let total_display = funding_total_display(&denomination, total_funding, self.hide_pnl);
 
         row![
             text("7d Total:")
@@ -24,7 +25,9 @@ impl TradingTerminal {
                 .font(iced::Font::MONOSPACE)
                 .size(11)
                 .color(total_color),
-            text("USDC").size(10).color(color!(0x666666)),
+            text(denomination.active_code().to_string())
+                .size(10)
+                .color(color!(0x666666)),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center)
@@ -32,18 +35,16 @@ impl TradingTerminal {
     }
 }
 
-fn funding_total_display(total_funding: Option<f64>, hide_pnl: bool) -> String {
+fn funding_total_display(
+    denomination: &crate::denomination::DisplayDenominationContext,
+    total_funding: Option<f64>,
+    hide_pnl: bool,
+) -> String {
     if hide_pnl {
         "***".to_string()
     } else {
         total_funding
-            .map(|total_funding| {
-                format!(
-                    "{}{:.4}",
-                    if total_funding >= 0.0 { "+" } else { "" },
-                    total_funding
-                )
-            })
+            .map(|total_funding| denomination.format_signed_value(total_funding, 4))
             .unwrap_or_else(|| "Invalid data".to_string())
     }
 }
@@ -54,9 +55,19 @@ mod tests {
 
     #[test]
     fn funding_total_display_marks_invalid_values() {
-        assert_eq!(funding_total_display(Some(1.25), false), "+1.2500");
-        assert_eq!(funding_total_display(Some(-1.25), false), "-1.2500");
-        assert_eq!(funding_total_display(None, false), "Invalid data");
-        assert_eq!(funding_total_display(None, true), "***");
+        let denomination = crate::denomination::DisplayDenominationContext::default();
+        assert_eq!(
+            funding_total_display(&denomination, Some(1.25), false),
+            "+$1.2500"
+        );
+        assert_eq!(
+            funding_total_display(&denomination, Some(-1.25), false),
+            "-$1.2500"
+        );
+        assert_eq!(
+            funding_total_display(&denomination, None, false),
+            "Invalid data"
+        );
+        assert_eq!(funding_total_display(&denomination, None, true), "***");
     }
 }

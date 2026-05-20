@@ -2,7 +2,7 @@ use super::super::CONNECTED_SUMMARY_ACTION_BREAKPOINT;
 use super::metrics::ConnectedSummaryValues;
 use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_usd, vertical_spacer};
+use crate::helpers::vertical_spacer;
 use crate::message::Message;
 use iced::widget::{Row, Space, column, container, row, text};
 use iced::{Color, Element, Fill, Theme};
@@ -158,6 +158,7 @@ impl TradingTerminal {
     fn connected_summary_actions_row<'a>(&'a self) -> Row<'a, Message> {
         row![
             self.summary_market_universe_picker(),
+            self.summary_display_denomination_picker(),
             self.summary_hide_pnl_button(),
             self.summary_sound_button(),
             self.summary_notifications_button(),
@@ -172,9 +173,9 @@ impl TradingTerminal {
 
     fn mask_connected_summary_usd(&self, value: &str) -> String {
         if self.hide_pnl {
-            "$***".to_string()
+            self.display_pnl_mask()
         } else {
-            format_usd(value)
+            self.format_display_usd_str(value)
         }
     }
 }

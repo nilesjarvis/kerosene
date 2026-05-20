@@ -1,7 +1,6 @@
 mod controls;
 mod daily;
 
-use crate::account_metrics::format_signed_usd_value;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioPnlChart};
@@ -32,12 +31,13 @@ impl TradingTerminal {
             } else {
                 let pnl_points = self.selected_portfolio_points();
                 let total_pnl = portfolio_total_pnl(&pnl_points);
+                let denomination = self.display_denomination_context();
                 (
                     pnl_points,
                     "Total PnL:",
                     total_pnl,
                     total_pnl
-                        .map(format_signed_usd_value)
+                        .map(|value| denomination.format_signed_value(value, 2))
                         .unwrap_or_else(|| "-".to_string()),
                     "No portfolio history available",
                 )
@@ -57,6 +57,7 @@ impl TradingTerminal {
             canvas(PortfolioPnlChart {
                 points: chart_points.clone(),
                 value_mode,
+                denomination: self.display_denomination_context(),
             })
             .width(Fill)
             .height(220)

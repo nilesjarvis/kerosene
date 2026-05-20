@@ -1,7 +1,7 @@
-use crate::account_metrics;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
 use crate::hyperdash_api::{PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions};
 use crate::message::Message;
@@ -522,6 +522,7 @@ impl TradingTerminal {
     ) -> Element<'static, Message> {
         let net_notional = data.total_long_notional - data.total_short_notional;
         let net_color = signed_value_color(net_notional, theme);
+        let denomination = self.display_denomination_context();
         let rows_label = if data.has_more {
             format!("Top {} of {}", POSITIONING_INFO_LIMIT, data.total_count)
         } else {
@@ -540,9 +541,19 @@ impl TradingTerminal {
 
         column![
             row![
-                helpers::label_value("Long", format_usd_number(data.total_long_notional)),
-                helpers::label_value("Short", format_usd_number(data.total_short_notional)),
-                helpers::label_value_colored("Net", format_signed_usd(net_notional), net_color),
+                helpers::label_value(
+                    "Long",
+                    format_usd_number(data.total_long_notional, &denomination)
+                ),
+                helpers::label_value(
+                    "Short",
+                    format_usd_number(data.total_short_notional, &denomination)
+                ),
+                helpers::label_value_colored(
+                    "Net",
+                    format_signed_usd(net_notional, &denomination),
+                    net_color
+                ),
             ]
             .spacing(12)
             .align_y(Alignment::Center),
@@ -616,6 +627,7 @@ impl TradingTerminal {
     ) -> Element<'static, Message> {
         let columns = PositioningInfoColumns::for_width(available_width);
         let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
+        let denomination = self.display_denomination_context();
         let mut rows = Column::new()
             .spacing(3)
             .push(positioning_table_header(
@@ -645,6 +657,7 @@ impl TradingTerminal {
                     columns,
                     theme,
                     live_mark,
+                    &denomination,
                 ));
             }
         }
@@ -661,6 +674,7 @@ impl TradingTerminal {
     ) -> Element<'static, Message> {
         let columns = PositioningChangeColumns::for_width(available_width);
         let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
+        let denomination = self.display_denomination_context();
         let sorted = sorted_change_rows(
             &data.deltas,
             instance.change_sort_field,
@@ -675,6 +689,7 @@ impl TradingTerminal {
                 instance.change_sort_direction,
                 columns,
                 theme,
+                &denomination,
             ))
             .push(rule::horizontal(1));
 
@@ -696,6 +711,7 @@ impl TradingTerminal {
                     columns,
                     theme,
                     live_mark,
+                    &denomination,
                 ));
             }
         }
@@ -1075,6 +1091,7 @@ fn positioning_position_row(
     columns: PositioningInfoColumns,
     theme: &Theme,
     live_mark: Option<f64>,
+    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
     let side = position_side_label(position.size);
     let side_color = position_side_color(position.size, theme);
@@ -1108,13 +1125,13 @@ fn positioning_position_row(
             true,
         ))
         .push(value_cell(
-            format_usd_number(notional.abs()),
+            format_usd_number(notional.abs(), denomination),
             Length::Fixed(columns.notional_width),
             theme.palette().text,
             true,
         ))
         .push(value_cell(
-            format_signed_usd(unrealized_pnl),
+            format_signed_usd(unrealized_pnl, denomination),
             Length::Fixed(columns.upnl_width),
             pnl_color,
             true,
@@ -1122,7 +1139,7 @@ fn positioning_position_row(
 
     if columns.show_entry {
         row = row.push(value_cell(
-            format_price_number(position.entry_price),
+            format_price_number(position.entry_price, denomination),
             Length::Fixed(columns.entry_width),
             theme.palette().text,
             true,
@@ -1132,7 +1149,7 @@ fn positioning_position_row(
         row = row.push(value_cell(
             position
                 .liquidation_price
-                .map(format_price_number)
+                .map(|value| format_price_number(value, denomination))
                 .unwrap_or_else(|| "-".to_string()),
             Length::Fixed(columns.liq_width),
             theme.palette().text,
@@ -1141,7 +1158,7 @@ fn positioning_position_row(
     }
     if columns.show_funding {
         row = row.push(value_cell(
-            format_signed_usd(position.funding_pnl),
+            format_signed_usd(position.funding_pnl, denomination),
             Length::Fixed(columns.funding_width),
             funding_color,
             true,
@@ -1149,7 +1166,7 @@ fn positioning_position_row(
     }
     if columns.show_account {
         row = row.push(value_cell(
-            format_usd_number(position.account_value),
+            format_usd_number(position.account_value, denomination),
             Length::Fixed(columns.account_width),
             theme.palette().text,
             true,
@@ -1186,6 +1203,7 @@ fn positioning_change_table_header(
     sort_direction: config::SortDirection,
     columns: PositioningChangeColumns,
     theme: &Theme,
+    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
     let muted = theme.extended_palette().background.weak.text;
     Row::new()
@@ -1232,7 +1250,7 @@ fn positioning_change_table_header(
             Horizontal::Right,
         ))
         .push(change_sort_header_cell(
-            "Current $",
+            format!("Current {}", denomination.active_symbol()),
             PositioningInfoChangeSortField::CurrentUsd,
             id,
             sort_field,
@@ -1242,7 +1260,7 @@ fn positioning_change_table_header(
             Horizontal::Right,
         ))
         .push(change_sort_header_cell(
-            "Change $",
+            format!("Change {}", denomination.active_symbol()),
             PositioningInfoChangeSortField::ChangeUsd,
             id,
             sort_field,
@@ -1260,6 +1278,7 @@ fn positioning_change_row(
     columns: PositioningChangeColumns,
     theme: &Theme,
     live_mark: Option<f64>,
+    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
     let previous = positioning_previous_change_size(entry);
     let previous_color = previous
@@ -1268,10 +1287,10 @@ fn positioning_change_row(
     let current_color = signed_value_color(entry.current, theme);
     let delta_color = signed_value_color(entry.delta, theme);
     let current_usd = positioning_live_change_usd(entry.current, live_mark)
-        .map(format_signed_usd)
+        .map(|value| format_signed_usd(value, denomination))
         .unwrap_or_else(|| "-".to_string());
     let delta_usd = positioning_live_change_usd(entry.delta, live_mark)
-        .map(format_signed_usd)
+        .map(|value| format_signed_usd(value, denomination))
         .unwrap_or_else(|| "-".to_string());
 
     let row = Row::new()
@@ -1496,7 +1515,7 @@ fn sort_header_cell(
 
 #[allow(clippy::too_many_arguments)]
 fn change_sort_header_cell(
-    label: &'static str,
+    label: impl Into<String>,
     field: PositioningInfoChangeSortField,
     id: PositioningInfoId,
     sort_field: PositioningInfoChangeSortField,
@@ -1506,6 +1525,7 @@ fn change_sort_header_cell(
     alignment: Horizontal,
 ) -> Element<'static, Message> {
     let is_active = sort_field == field;
+    let label = label.into();
     let mut content = Row::new().spacing(2).align_y(Alignment::Center).push(
         text(label)
             .size(10)
@@ -1949,25 +1969,25 @@ fn signed_value_color(value: f64, theme: &Theme) -> Color {
     }
 }
 
-fn format_usd_number(value: f64) -> String {
+fn format_usd_number(value: f64, denomination: &DisplayDenominationContext) -> String {
     if value.is_finite() {
-        helpers::format_usd(&format!("{value:.2}"))
+        denomination.format_value(value, 2)
     } else {
         "-".to_string()
     }
 }
 
-fn format_signed_usd(value: f64) -> String {
+fn format_signed_usd(value: f64, denomination: &DisplayDenominationContext) -> String {
     if value.is_finite() {
-        account_metrics::format_signed_usd_value(value)
+        denomination.format_signed_value(value, 2)
     } else {
         "-".to_string()
     }
 }
 
-fn format_price_number(value: f64) -> String {
+fn format_price_number(value: f64, denomination: &DisplayDenominationContext) -> String {
     if value.is_finite() && value > 0.0 {
-        helpers::format_price(value)
+        denomination.format_price(value)
     } else {
         "-".to_string()
     }
@@ -2070,9 +2090,10 @@ mod tests {
 
     #[test]
     fn numeric_formatters_reject_nonfinite_values() {
-        assert_eq!(format_usd_number(f64::NAN), "-");
-        assert_eq!(format_signed_usd(f64::INFINITY), "-");
-        assert_eq!(format_price_number(0.0), "-");
+        let denomination = DisplayDenominationContext::default();
+        assert_eq!(format_usd_number(f64::NAN, &denomination), "-");
+        assert_eq!(format_signed_usd(f64::INFINITY, &denomination), "-");
+        assert_eq!(format_price_number(0.0, &denomination), "-");
     }
 
     #[test]

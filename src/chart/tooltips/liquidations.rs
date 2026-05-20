@@ -1,8 +1,8 @@
 use super::{TooltipLine, TooltipSurface};
-use crate::chart::formatting::{format_compact, format_compact_coins};
-use crate::helpers::format_price;
+use crate::chart::formatting::format_compact_coins;
+use crate::denomination::DisplayDenominationContext;
 use crate::hyperdash_api::LiquidationBucket;
-use iced::{Color, Point, Size};
+use iced::{Color, Point};
 
 impl TooltipSurface<'_> {
     pub(in crate::chart) fn draw_liquidation_hover<F>(
@@ -11,6 +11,7 @@ impl TooltipSurface<'_> {
         price_range: f64,
         buckets: &[LiquidationBucket],
         price_to_y: &F,
+        denomination: &DisplayDenominationContext,
     ) where
         F: Fn(f64) -> f32,
     {
@@ -42,7 +43,11 @@ impl TooltipSurface<'_> {
         let lo = bucket.price_center - half_w;
         let hi = bucket.price_center + half_w;
         let mut lines = vec![TooltipLine {
-            content: format!("${} - ${}", format_price(lo), format_price(hi)),
+            content: format!(
+                "{} - {}",
+                denomination.format_chart_price(lo),
+                denomination.format_chart_price(hi)
+            ),
             color: Color {
                 a: 0.7,
                 ..self.theme.palette().text
@@ -52,9 +57,9 @@ impl TooltipSurface<'_> {
         if bucket.long_usd > 0.0 {
             lines.push(TooltipLine {
                 content: format!(
-                    "Longs: {} (${})  ",
+                    "Longs: {} ({})  ",
                     format_compact_coins(bucket.long_coins),
-                    format_compact(bucket.long_usd),
+                    denomination.format_compact_value(bucket.long_usd),
                 ),
                 color: self.theme.palette().success,
             });
@@ -62,9 +67,9 @@ impl TooltipSurface<'_> {
         if bucket.short_usd > 0.0 {
             lines.push(TooltipLine {
                 content: format!(
-                    "Shorts: {} (${})  ",
+                    "Shorts: {} ({})  ",
                     format_compact_coins(bucket.short_coins),
-                    format_compact(bucket.short_usd),
+                    denomination.format_compact_value(bucket.short_usd),
                 ),
                 color: self.theme.palette().danger,
             });
@@ -72,22 +77,16 @@ impl TooltipSurface<'_> {
         let total_usd = bucket.long_usd + bucket.short_usd;
         if total_usd > 0.0 && bucket.long_usd > 0.0 && bucket.short_usd > 0.0 {
             lines.push(TooltipLine {
-                content: format!("Total: ${}", format_compact(total_usd)),
+                content: format!("Total: {}", denomination.format_compact_value(total_usd)),
                 color: Color::WHITE,
             });
         }
 
-        let line_h: f32 = 14.0;
-        let pad: f32 = 6.0;
-        let card_w: f32 = 170.0;
-        let card_h = lines.len() as f32 * line_h + pad * 2.0;
-        let card_x = (self.pos.x - card_w - 12.0).max(4.0);
-        let card_y = (self.pos.y - card_h * 0.5).clamp(0.0, self.price_h - card_h);
+        let card_size = Self::card_size_for_lines(&lines, 170.0);
+        let card_x = (self.pos.x - card_size.width - 12.0).max(4.0);
+        let max_card_y = (self.price_h - card_size.height).max(0.0);
+        let card_y = (self.pos.y - card_size.height * 0.5).clamp(0.0, max_card_y);
 
-        self.draw_card(
-            Point::new(card_x, card_y),
-            Size::new(card_w, card_h),
-            &lines,
-        );
+        self.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
 }

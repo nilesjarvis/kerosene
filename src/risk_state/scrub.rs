@@ -42,6 +42,7 @@ impl TradingTerminal {
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
         let market_universe = self.market_universe.clone();
+        let denomination_rate_key = self.display_denomination_rate_symbol_key();
         let is_hidden = |symbol: &str| {
             Self::symbol_key_is_hidden_with(
                 &exchange_symbols,
@@ -49,6 +50,15 @@ impl TradingTerminal {
                 &market_universe,
                 symbol,
             )
+        };
+        let is_hidden_cache = |symbol: &str| {
+            denomination_rate_key.as_deref() != Some(symbol)
+                && Self::symbol_key_is_hidden_with(
+                    &exchange_symbols,
+                    &muted_tickers,
+                    &market_universe,
+                    symbol,
+                )
         };
 
         self.favourite_symbols.retain(|symbol| !is_hidden(symbol));
@@ -63,11 +73,11 @@ impl TradingTerminal {
             .retain(|symbol, _| !is_hidden(symbol));
         self.live_watchlist_history_loaded_at
             .retain(|symbol, _| !is_hidden(symbol));
-        self.all_mids.retain(|symbol, _| !is_hidden(symbol));
+        self.all_mids.retain(|symbol, _| !is_hidden_cache(symbol));
         self.all_mids_updated_at_ms
-            .retain(|symbol, _| !is_hidden(symbol));
+            .retain(|symbol, _| !is_hidden_cache(symbol));
         self.live_watchlist_flashes
-            .retain(|symbol, _| !is_hidden(symbol));
+            .retain(|symbol, _| !is_hidden_cache(symbol));
 
         if let Some(data) = self.account_data.take() {
             self.account_data = Some(Self::filter_account_data_for_hidden_symbols_with(

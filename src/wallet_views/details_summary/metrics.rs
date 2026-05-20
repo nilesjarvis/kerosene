@@ -1,6 +1,5 @@
 use crate::account::WalletDetailsData;
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_usd;
 use crate::wallet_views::numbers::{parse_wallet_number, wallet_has_visible_nonzero};
 
 use super::WalletDetailsSummaryMetrics;
@@ -87,7 +86,7 @@ impl TradingTerminal {
             });
         let pm_available = match pm_available_raw {
             Some(amount) => parse_wallet_number(amount)
-                .map(|amount| format_usd(&amount.to_string()))
+                .map(|amount| self.format_display_usd_value(amount, 2))
                 .unwrap_or_else(|| "Invalid data".to_string()),
             None => "-".to_string(),
         };

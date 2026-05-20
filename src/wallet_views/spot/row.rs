@@ -1,7 +1,9 @@
 use crate::account::SpotBalance;
+use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
 use crate::wallet_views::numbers::{
-    format_wallet_amount, format_wallet_usd, invalid_wallet_data, parse_wallet_number,
+    format_wallet_display_amount, format_wallet_display_usd, invalid_wallet_data,
+    parse_wallet_number,
 };
 
 use iced::widget::{Row, row, text};
@@ -25,13 +27,18 @@ pub(super) fn wallet_spot_header() -> Row<'static, Message> {
 pub(super) fn wallet_spot_row(
     balance: &SpotBalance,
     display_coin: String,
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let total = parse_wallet_number(&balance.total);
     let hold = parse_wallet_number(&balance.hold);
     let available = total.zip(hold).map(|(total, hold)| total - hold);
     let entry_ntl = parse_wallet_number(&balance.entry_ntl);
-    let supplied = wallet_supplied_amount(balance.supplied.as_deref(), balance.coin == "USDC");
+    let supplied = wallet_supplied_amount(
+        denomination,
+        balance.supplied.as_deref(),
+        balance.coin == "USDC",
+    );
     let is_usdc = balance.coin == "USDC";
     let weak_color = theme.extended_palette().background.weak.text;
     let invalid_color = theme.palette().warning;
@@ -46,26 +53,30 @@ pub(super) fn wallet_spot_row(
                 theme.palette().success
             })
             .width(90),
-        text(format_wallet_amount(total, is_usdc))
+        text(format_wallet_display_amount(denomination, total, is_usdc))
             .size(11)
             .font(iced::Font::MONOSPACE)
             .color(wallet_spot_value_color(total, weak_color, invalid_color))
             .width(110),
-        text(format_wallet_amount(hold, is_usdc))
+        text(format_wallet_display_amount(denomination, hold, is_usdc))
             .size(11)
             .font(iced::Font::MONOSPACE)
             .color(wallet_spot_value_color(hold, weak_color, invalid_color))
             .width(110),
-        text(format_wallet_amount(available, is_usdc))
-            .size(11)
-            .font(iced::Font::MONOSPACE)
-            .color(wallet_spot_value_color(
-                available,
-                weak_color,
-                invalid_color
-            ))
-            .width(110),
-        text(wallet_entry_notional(entry_ntl))
+        text(format_wallet_display_amount(
+            denomination,
+            available,
+            is_usdc
+        ))
+        .size(11)
+        .font(iced::Font::MONOSPACE)
+        .color(wallet_spot_value_color(
+            available,
+            weak_color,
+            invalid_color
+        ))
+        .width(110),
+        text(wallet_entry_notional(denomination, entry_ntl))
             .size(11)
             .font(iced::Font::MONOSPACE)
             .color(wallet_spot_value_color(
@@ -89,17 +100,28 @@ pub(super) fn wallet_spot_row(
     .into()
 }
 
-fn wallet_entry_notional(entry_ntl: Option<f64>) -> String {
+fn wallet_entry_notional(
+    denomination: &DisplayDenominationContext,
+    entry_ntl: Option<f64>,
+) -> String {
     match entry_ntl {
-        Some(entry_ntl) if entry_ntl.abs() > 0.0 => format_wallet_usd(Some(entry_ntl), 2),
+        Some(entry_ntl) if entry_ntl.abs() > 0.0 => {
+            format_wallet_display_usd(denomination, Some(entry_ntl), 2)
+        }
         Some(_) => "-".to_string(),
         None => invalid_wallet_data(),
     }
 }
 
-fn wallet_supplied_amount(value: Option<&str>, is_usdc: bool) -> String {
+fn wallet_supplied_amount(
+    denomination: &DisplayDenominationContext,
+    value: Option<&str>,
+    is_usdc: bool,
+) -> String {
     match value {
-        Some(value) => format_wallet_amount(parse_wallet_number(value), is_usdc),
+        Some(value) => {
+            format_wallet_display_amount(denomination, parse_wallet_number(value), is_usdc)
+        }
         None => "-".to_string(),
     }
 }

@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_usd;
 use crate::message::Message;
 
 use iced::widget::container as container_style;
@@ -9,6 +8,7 @@ use iced::{Element, Fill, Theme};
 impl TradingTerminal {
     pub(super) fn view_liquidations_summary(&self, now_ms: u64) -> Element<'_, Message> {
         let theme = self.theme();
+        let denomination = self.display_denomination_context();
         let timeframes = [(1, "1m"), (5, "5m"), (15, "15m"), (60, "1H")];
         let mut summary_row = row![].spacing(16);
         for (mins, label) in timeframes.iter() {
@@ -29,7 +29,7 @@ impl TradingTerminal {
                 (gray_text, gray_text, gray_bar, gray_bar)
             };
 
-            let total_str = format_usd(&format!("{:.0}", total));
+            let total_str = denomination.format_value(total, 0);
             let total_color = if has_data {
                 theme.palette().text
             } else {
@@ -46,11 +46,11 @@ impl TradingTerminal {
                 ]
                 .width(Fill),
                 row![
-                    text(format!("L: {}", format_usd(&format!("{:.0}", l_notional))))
+                    text(format!("L: {}", denomination.format_value(l_notional, 0)))
                         .size(10)
                         .color(text_l_color),
                     Space::new().width(Fill),
-                    text(format!("S: {}", format_usd(&format!("{:.0}", s_notional))))
+                    text(format!("S: {}", denomination.format_value(s_notional, 0)))
                         .size(10)
                         .color(text_s_color),
                 ]

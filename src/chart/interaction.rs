@@ -4,7 +4,7 @@ mod drawing;
 mod press;
 mod zoom;
 
-use super::{CandlestickChart, ChartState, PRICE_AXIS_WIDTH};
+use super::{CandlestickChart, ChartState};
 use crate::message::Message;
 use iced::Rectangle;
 use iced::keyboard;
@@ -24,7 +24,7 @@ impl CandlestickChart {
         cursor: mouse::Cursor,
     ) -> Option<canvas::Action<Message>> {
         let pos = cursor.position_in(bounds);
-        let chart_w = bounds.width - PRICE_AXIS_WIDTH;
+        let chart_w = bounds.width - self.price_axis_width();
         let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
         let needs_redraw_for_cursor = state.cursor_position != pos;
         state.cursor_position = pos;

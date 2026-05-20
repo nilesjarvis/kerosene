@@ -203,6 +203,7 @@ impl TradingTerminal {
             pane_corner_radius: self.pane_corner_radius,
             symbol_search_sort_mode: self.symbol_search_sort_mode.config_value().to_string(),
             market_universe: self.market_universe.clone().normalized(),
+            display_denomination: self.display_denomination.clone().normalized(),
             chart_screenshot_settings: self.chart_screenshot_settings.clone(),
             accounts: persisted_accounts,
             active_account_index,

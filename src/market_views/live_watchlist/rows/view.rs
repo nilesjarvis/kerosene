@@ -19,6 +19,7 @@ impl TradingTerminal {
         theme: &Theme,
     ) -> Element<'static, Message> {
         let price_color = self.live_watchlist_price_color(&data.sym_key, now_ms, theme);
+        let denomination = self.display_denomination_context();
 
         let mut row_content = row![
             cells::live_watchlist_symbol_cell(&data.sym_key, data.display.clone(), theme)
@@ -26,7 +27,7 @@ impl TradingTerminal {
         ];
         for column in display_columns {
             let (value, color) =
-                cells::live_watchlist_column_value(column, data, price_color, theme);
+                cells::live_watchlist_column_value(column, data, &denomination, price_color, theme);
             row_content = row_content.push(cells::live_watchlist_column_cell(column, value, color));
         }
         row_content = row_content

@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::chart::{ChartState, PRICE_AXIS_WIDTH};
+use crate::chart::ChartState;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use arboard::{Clipboard, ImageData};
@@ -684,7 +684,7 @@ async fn render_chart_screenshot(
         width: width as f32,
         height: height as f32,
     };
-    let chart_w = (bounds.width - PRICE_AXIS_WIDTH).max(1.0);
+    let chart_w = (bounds.width - request.chart.price_axis_width()).max(1.0);
     let state = ChartState::for_export_viewport(&request.chart, request.viewport, chart_w);
 
     let layers = request.chart.draw_with_state(

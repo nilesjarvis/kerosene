@@ -19,6 +19,7 @@ impl TradingTerminal {
         row_layout: TrackedTradeRowLayout,
     ) -> Column<'_, Message> {
         let theme = self.theme();
+        let denomination = self.display_denomination_context();
         let mut list = Column::new().spacing(2);
 
         for trade_row in self.visible_tracked_trade_rows() {
@@ -32,7 +33,8 @@ impl TradingTerminal {
             let pnl_color = style::tracked_trade_pnl_color(&theme, trade_row.closed_pnl);
             let fee_label =
                 formatting::tracked_trade_fee_label(trade_row.fee, &trade_row.fee_token);
-            let pnl_label = formatting::tracked_trade_pnl_label(trade_row.closed_pnl);
+            let pnl_label =
+                formatting::tracked_trade_pnl_label(&denomination, trade_row.closed_pnl);
             let intent_text = formatting::tracked_trade_intent_text(
                 trade_row.intent,
                 &trade_row.dir,
@@ -94,12 +96,15 @@ impl TradingTerminal {
 
             if row_layout.show_notional {
                 row_ui = row_ui.push(
-                    text(formatting::tracked_trade_notional_label(notional))
-                        .size(12)
-                        .font(iced::Font::MONOSPACE)
-                        .color(theme.palette().text)
-                        .wrapping(Wrapping::None)
-                        .width(NUMBER_WIDTH),
+                    text(formatting::tracked_trade_notional_label(
+                        &denomination,
+                        notional,
+                    ))
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(theme.palette().text)
+                    .wrapping(Wrapping::None)
+                    .width(NUMBER_WIDTH),
                 );
             }
 

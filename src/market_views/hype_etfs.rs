@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_decimal_with_commas, format_size, format_usd};
+use crate::denomination::DisplayDenominationContext;
+use crate::helpers::{format_decimal_with_commas, format_size};
 use crate::hype_etf_state::{HypeEtfDailyFlow, HypeEtfFund, HypeEtfTotals, HypeEtfView};
 use crate::message::Message;
 
@@ -25,6 +26,7 @@ impl TradingTerminal {
 
     fn view_hype_etfs_sized(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
+        let denomination = self.display_denomination_context();
         let header = row![
             text("HYPE ETFs")
                 .size(13)
@@ -88,6 +90,7 @@ impl TradingTerminal {
                     data.totals_for(self.hype_etfs.view),
                     selected_funds.len(),
                     available_width,
+                    &denomination,
                 ));
 
                 let daily_flows = data.daily_flows_for(self.hype_etfs.view);
@@ -102,10 +105,11 @@ impl TradingTerminal {
                     &daily_flows,
                     &missing_flow_labels,
                     available_width,
+                    &denomination,
                 ));
 
                 for fund in selected_funds {
-                    body = body.push(fund_section(&theme, fund, available_width));
+                    body = body.push(fund_section(&theme, fund, available_width, &denomination));
                 }
             }
         } else if !self.hype_etfs.loading {
@@ -175,6 +179,7 @@ fn summary_section(
     totals: HypeEtfTotals,
     fund_count: usize,
     available_width: f32,
+    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
     let title = if view == HypeEtfView::All {
         format!("All HYPE ETFs ({fund_count})")
@@ -188,7 +193,7 @@ fn summary_section(
             vec![
                 metric(
                     "Total Assets",
-                    format_usd_value(totals.net_assets_usd, 2),
+                    format_usd_value(totals.net_assets_usd, 2, denomination),
                     None
                 ),
                 metric("HYPE Exposure", format_hype(totals.hype_exposure), None),
@@ -224,6 +229,7 @@ fn daily_inflow_chart(
     flows: &[HypeEtfDailyFlow],
     missing_flow_labels: &[&'static str],
     available_width: f32,
+    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
     let max_bars = if available_width >= 560.0 {
         30
@@ -240,7 +246,7 @@ fn daily_inflow_chart(
             .size(11)
             .color(theme.palette().text)
             .width(Fill),
-        text(format_signed_usd_amount(net_flow))
+        text(format_signed_usd_amount(net_flow, denomination))
             .size(11)
             .font(iced::Font::MONOSPACE)
             .color(signed_color(theme, net_flow)),
@@ -256,7 +262,7 @@ fn daily_inflow_chart(
                 .color(theme.extended_palette().background.weak.text),
         );
     } else {
-        section = section.push(flow_chart(theme, &bars));
+        section = section.push(flow_chart(theme, &bars, denomination));
         if let Some((first, last)) = bars.first().zip(bars.last()) {
             section = section.push(
                 row![
@@ -325,7 +331,11 @@ fn latest_daily_flows(flows: &[HypeEtfDailyFlow], max_bars: usize) -> Vec<HypeEt
         .collect()
 }
 
-fn flow_chart(theme: &Theme, flows: &[HypeEtfDailyFlow]) -> Element<'static, Message> {
+fn flow_chart(
+    theme: &Theme,
+    flows: &[HypeEtfDailyFlow],
+    denomination: &DisplayDenominationContext,
+) -> Element<'static, Message> {
     let cumulative_values = cumulative_inflows(flows);
     let flow_values = flows.iter().map(|flow| flow.amount_usd).collect::<Vec<_>>();
     let scale = flow_chart_scale(&flow_values, FLOW_CHART_HEIGHT);
@@ -346,8 +356,8 @@ fn flow_chart(theme: &Theme, flows: &[HypeEtfDailyFlow]) -> Element<'static, Mes
         let tooltip_text = format!(
             "{}\nDaily {}\nCumulative {}",
             flow.date,
-            format_signed_usd_amount(flow.amount_usd),
-            format_signed_usd_amount(cumulative),
+            format_signed_usd_amount(flow.amount_usd, denomination),
+            format_signed_usd_amount(cumulative, denomination),
         );
 
         let bar = column![
@@ -597,6 +607,7 @@ fn fund_section(
     theme: &Theme,
     fund: &HypeEtfFund,
     available_width: f32,
+    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
     let title = row![
         text(fund.ticker.label())
@@ -618,10 +629,22 @@ fn fund_section(
     .align_y(iced::Alignment::Center);
 
     let mut items = vec![
-        metric("Assets", format_usd_value(fund.net_assets_usd, 2), None),
+        metric(
+            "Assets",
+            format_usd_value(fund.net_assets_usd, 2, denomination),
+            None,
+        ),
         metric("HYPE", format_hype(fund.hype_exposure), None),
-        metric("NAV", format_usd_value(fund.nav_per_share, 2), None),
-        metric("Market", format_usd_value(fund.market_price, 2), None),
+        metric(
+            "NAV",
+            format_usd_value(fund.nav_per_share, 2, denomination),
+            None,
+        ),
+        metric(
+            "Market",
+            format_usd_value(fund.market_price, 2, denomination),
+            None,
+        ),
         metric(
             "NAV 1D",
             format_pct(fund.nav_change_pct),
@@ -643,7 +666,7 @@ fn fund_section(
         metric("30D Spread", format_pct(fund.median_spread_pct), None),
         metric(
             "HYPE Px",
-            format_usd_value(fund.hype_reference_price, 2),
+            format_usd_value(fund.hype_reference_price, 2, denomination),
             None,
         ),
     ];
@@ -774,10 +797,14 @@ fn signed_color(theme: &Theme, value: f64) -> Color {
     }
 }
 
-fn format_usd_value(value: Option<f64>, decimals: usize) -> String {
+fn format_usd_value(
+    value: Option<f64>,
+    decimals: usize,
+    denomination: &DisplayDenominationContext,
+) -> String {
     value
         .filter(|value| value.is_finite())
-        .map(|value| format_usd(&format!("{value:.decimals$}")))
+        .map(|value| denomination.format_value(value, decimals))
         .unwrap_or_else(|| "n/a".to_string())
 }
 
@@ -802,14 +829,9 @@ fn format_pct(value: Option<f64>) -> String {
         .unwrap_or_else(|| "n/a".to_string())
 }
 
-fn format_signed_usd_amount(value: f64) -> String {
+fn format_signed_usd_amount(value: f64, denomination: &DisplayDenominationContext) -> String {
     let value = if value.abs() < 0.005 { 0.0 } else { value };
-    let formatted = format_usd(&format!("{value:.2}"));
-    if value > 0.0 {
-        format!("+{formatted}")
-    } else {
-        formatted
-    }
+    denomination.format_signed_value(value, 2)
 }
 
 fn short_flow_date(date: &str) -> String {

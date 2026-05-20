@@ -1,5 +1,5 @@
 use crate::account_analytics::{IncomeHourlyPayment, IncomeTokenRow};
-use crate::account_metrics::format_signed_usd_value;
+use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
 use chrono::{DateTime, Utc};
 use iced::widget::{Column, column, row, text};
@@ -11,6 +11,7 @@ use iced::{Theme, color};
 
 pub(super) fn view_income_token_rows<'a>(
     rows: &'a [IncomeTokenRow],
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Column<'a, Message> {
     if rows.is_empty() {
@@ -34,7 +35,7 @@ pub(super) fn view_income_token_rows<'a>(
                             .size(11)
                             .color(color!(0xaaaaaa))
                             .width(120),
-                        text(format_signed_usd_value(row_data.supply_usd))
+                        text(denomination.format_signed_value(row_data.supply_usd, 2))
                             .size(11)
                             .color(color!(0x8be9fd))
                             .width(90),
@@ -42,11 +43,11 @@ pub(super) fn view_income_token_rows<'a>(
                             .size(11)
                             .color(color!(0x8be9fd))
                             .width(56),
-                        text(format_signed_usd_value(row_data.borrow_usd))
+                        text(denomination.format_signed_value(row_data.borrow_usd, 2))
                             .size(11)
                             .color(color!(0xffb86c))
                             .width(90),
-                        text(format_signed_usd_value(row_data.net_yearly_usd))
+                        text(denomination.format_signed_value(row_data.net_yearly_usd, 2))
                             .size(11)
                             .color(net_color),
                     ]
@@ -59,6 +60,7 @@ pub(super) fn view_income_token_rows<'a>(
 
 pub(super) fn view_income_hourly_rows<'a>(
     rows: &'a [IncomeHourlyPayment],
+    denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Column<'a, Message> {
     if rows.is_empty() {
@@ -89,15 +91,15 @@ pub(super) fn view_income_hourly_rows<'a>(
                         .size(10)
                         .color(color!(0x9ec2ff))
                         .width(70),
-                    text(format_signed_usd_value(row_data.supply))
+                    text(denomination.format_signed_value(row_data.supply, 2))
                         .size(10)
                         .color(color!(0x8be9fd))
                         .width(84),
-                    text(format_signed_usd_value(row_data.borrow))
+                    text(denomination.format_signed_value(row_data.borrow, 2))
                         .size(10)
                         .color(color!(0xffb86c))
                         .width(84),
-                    text(format_signed_usd_value(row_data.net))
+                    text(denomination.format_signed_value(row_data.net, 2))
                         .size(10)
                         .color(net_color),
                 ]

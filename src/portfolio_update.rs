@@ -1,6 +1,5 @@
 use crate::account::AccountData;
 use crate::account_analytics::{fetch_income_data, fetch_portfolio_history};
-use crate::account_metrics::format_signed_usd_value;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use chrono::{DateTime, Utc};
@@ -93,7 +92,7 @@ impl TradingTerminal {
                                     };
                                     let message = format!(
                                         "Hourly interest received: {} ({token_label}, {time_label} UTC)",
-                                        format_signed_usd_value(total_positive)
+                                        self.format_display_signed_usd_value(total_positive)
                                     );
                                     self.push_interest_alert(message);
                                 }

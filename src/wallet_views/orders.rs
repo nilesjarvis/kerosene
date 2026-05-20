@@ -42,8 +42,10 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text),
             );
         } else {
+            let denomination = self.display_denomination_context();
             for detail in order_rows.into_iter().take(80) {
-                orders_table = orders_table.push(wallet_order_row(detail, now_ms, &theme));
+                orders_table =
+                    orders_table.push(wallet_order_row(detail, now_ms, &denomination, &theme));
             }
         }
 

@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_usd;
 use crate::message::Message;
 
 use iced::widget::container as container_style;
@@ -9,6 +8,7 @@ use iced::{Element, Fill, Theme};
 impl TradingTerminal {
     pub(super) fn view_liquidations_chart(&self, now_ms: u64) -> Element<'_, Message> {
         let theme = self.theme();
+        let denomination = self.display_denomination_context();
         let current_sec = now_ms / 1000;
         let mut chart_bars = row![].spacing(2).width(Fill);
         let num_bars = 60;
@@ -69,8 +69,8 @@ impl TradingTerminal {
             let tooltip_text = if l > 0.0 || s > 0.0 {
                 format!(
                     "L: {}\nS: {}",
-                    format_usd(&format!("{:.0}", l)),
-                    format_usd(&format!("{:.0}", s))
+                    denomination.format_value(l, 0),
+                    denomination.format_value(s, 0)
                 )
             } else {
                 "No data".to_string()

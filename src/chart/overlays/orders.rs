@@ -12,7 +12,7 @@ use crate::chart::price_badges::{
     draw_stacked_right_axis_badge, right_axis_line_end_x,
 };
 use crate::chart::state::DragKind;
-use crate::helpers::format_price;
+use crate::denomination::DisplayDenominationContext;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, alignment};
 
@@ -166,7 +166,7 @@ impl CandlestickChart {
                 order_label_position(&label_positions, visible_order.order_index)
             {
                 draw_order_line(ctx, visible_order, position);
-                draw_order_price_badge(ctx, visible_order);
+                draw_order_price_badge(ctx, visible_order, &self.display_denomination);
             }
         }
 
@@ -211,6 +211,7 @@ fn draw_order_line<PriceToY, IdxToCx>(
 fn draw_order_price_badge<PriceToY, IdxToCx>(
     ctx: &mut TradingOverlayContext<'_, PriceToY, IdxToCx>,
     order: &VisibleOrder,
+    denomination: &DisplayDenominationContext,
 ) where
     PriceToY: Fn(f64) -> f32,
     IdxToCx: Fn(usize) -> f32,
@@ -222,7 +223,7 @@ fn draw_order_price_badge<PriceToY, IdxToCx>(
         badge_kind,
         ctx.chart_w,
         order.order_y,
-        format_price(order.display_px),
+        denomination.format_chart_price(order.display_px),
         order.order_color_solid,
         AxisBadgeStyle {
             char_width: 6.5,

@@ -7,7 +7,7 @@ use crate::account::WalletDetailsData;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::wallet_views::numbers::{
-    format_wallet_signed_usd, format_wallet_usd, invalid_wallet_data,
+    format_wallet_display_signed_usd, format_wallet_display_usd, invalid_wallet_data,
 };
 
 use iced::widget::{column, row};
@@ -40,24 +40,25 @@ impl TradingTerminal {
         theme: &Theme,
     ) -> Element<'a, Message> {
         let metrics = self.wallet_details_summary_metrics(data);
+        let denomination = self.display_denomination_context();
 
         column![
             row![
                 summary_metric_card(
                     "Equity",
-                    format_wallet_usd(metrics.account_value, 2),
+                    format_wallet_display_usd(&denomination, metrics.account_value, 2),
                     wallet_metric_color(metrics.account_value, theme.palette().text, theme),
                     theme
                 ),
                 summary_metric_card(
                     "Available",
-                    format_wallet_usd(metrics.withdrawable, 2),
+                    format_wallet_display_usd(&denomination, metrics.withdrawable, 2),
                     wallet_metric_color(metrics.withdrawable, theme.palette().text, theme),
                     theme
                 ),
                 summary_metric_card(
                     "uPnL",
-                    format_wallet_signed_usd(metrics.unrealized_pnl),
+                    format_wallet_display_signed_usd(&denomination, metrics.unrealized_pnl),
                     wallet_signed_metric_color(metrics.unrealized_pnl, theme),
                     theme
                 ),
@@ -75,13 +76,17 @@ impl TradingTerminal {
             row![
                 summary_metric_card(
                     "Notional",
-                    format_wallet_usd(metrics.notional, 2),
+                    format_wallet_display_usd(&denomination, metrics.notional, 2),
                     wallet_metric_color(metrics.notional, theme.palette().text, theme),
                     theme
                 ),
                 summary_metric_card(
                     "Long / Short",
-                    wallet_long_short_text(metrics.long_exposure, metrics.short_exposure),
+                    wallet_long_short_text(
+                        &denomination,
+                        metrics.long_exposure,
+                        metrics.short_exposure,
+                    ),
                     wallet_long_short_color(metrics.long_exposure, metrics.short_exposure, theme),
                     theme
                 ),
@@ -143,12 +148,16 @@ fn wallet_margin_color(value: Option<f64>, theme: &Theme) -> Color {
     }
 }
 
-fn wallet_long_short_text(long_exposure: Option<f64>, short_exposure: Option<f64>) -> String {
+fn wallet_long_short_text(
+    denomination: &crate::denomination::DisplayDenominationContext,
+    long_exposure: Option<f64>,
+    short_exposure: Option<f64>,
+) -> String {
     match (long_exposure, short_exposure) {
         (Some(long_exposure), Some(short_exposure)) => format!(
             "{} / {}",
-            format_wallet_usd(Some(long_exposure), 0),
-            format_wallet_usd(Some(short_exposure), 0)
+            format_wallet_display_usd(denomination, Some(long_exposure), 0),
+            format_wallet_display_usd(denomination, Some(short_exposure), 0)
         ),
         _ => invalid_wallet_data(),
     }

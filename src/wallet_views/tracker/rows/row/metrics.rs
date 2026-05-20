@@ -1,5 +1,4 @@
-use crate::account_metrics::format_signed_usd_value;
-use crate::helpers::format_usd;
+use crate::denomination::DisplayDenominationContext;
 use crate::wallet_state::WalletTrackerRow;
 
 use iced::widget::{Text, text};
@@ -16,7 +15,11 @@ pub(super) struct WalletRowMetrics {
     loaded: bool,
 }
 
-pub(super) fn wallet_row_metrics(row_data: &WalletTrackerRow, theme: &Theme) -> WalletRowMetrics {
+pub(super) fn wallet_row_metrics(
+    row_data: &WalletTrackerRow,
+    denomination: &DisplayDenominationContext,
+    theme: &Theme,
+) -> WalletRowMetrics {
     if let Some(snapshot) = row_data.snapshot.as_ref() {
         let exposure = snapshot
             .long_exposure
@@ -45,9 +48,9 @@ pub(super) fn wallet_row_metrics(row_data: &WalletTrackerRow, theme: &Theme) -> 
             || snapshot.short_exposure.is_none();
 
         return WalletRowMetrics {
-            equity: money_display(snapshot.equity),
-            withdrawable: money_display(snapshot.withdrawable),
-            upnl: signed_money_display(snapshot.unrealized_pnl),
+            equity: money_display(snapshot.equity, denomination),
+            withdrawable: money_display(snapshot.withdrawable, denomination),
+            upnl: signed_money_display(snapshot.unrealized_pnl, denomination),
             margin: snapshot
                 .margin_used_pct
                 .map(|margin| format!("{margin:.1}%"))
@@ -55,7 +58,7 @@ pub(super) fn wallet_row_metrics(row_data: &WalletTrackerRow, theme: &Theme) -> 
             risk: format!(
                 "{trade_count} / {order_count} | {}",
                 exposure
-                    .map(|exposure| format_usd(&format!("{exposure:.0}")))
+                    .map(|exposure| denomination.format_value(exposure, 0))
                     .unwrap_or_else(invalid_tracker_data)
             ),
             data_color: if has_invalid_data {
@@ -97,15 +100,15 @@ pub(super) fn money_text(value: String, color: Color) -> Text<'static> {
         .color(color)
 }
 
-fn money_display(value: Option<f64>) -> String {
+fn money_display(value: Option<f64>, denomination: &DisplayDenominationContext) -> String {
     value
-        .map(|value| format_usd(&format!("{value:.2}")))
+        .map(|value| denomination.format_value(value, 2))
         .unwrap_or_else(invalid_tracker_data)
 }
 
-fn signed_money_display(value: Option<f64>) -> String {
+fn signed_money_display(value: Option<f64>, denomination: &DisplayDenominationContext) -> String {
     value
-        .map(format_signed_usd_value)
+        .map(|value| denomination.format_signed_value(value, 2))
         .unwrap_or_else(invalid_tracker_data)
 }
 
@@ -121,7 +124,8 @@ mod tests {
     #[test]
     fn wallet_row_metrics_show_placeholders_without_snapshot() {
         let row = WalletTrackerRow::default();
-        let metrics = wallet_row_metrics(&row, &Theme::Dark);
+        let denomination = DisplayDenominationContext::default();
+        let metrics = wallet_row_metrics(&row, &denomination, &Theme::Dark);
 
         assert_eq!(metrics.equity, "-");
         assert_eq!(metrics.withdrawable, "-");
@@ -146,7 +150,8 @@ mod tests {
             ..WalletTrackerRow::default()
         };
 
-        let metrics = wallet_row_metrics(&row, &Theme::Dark);
+        let denomination = DisplayDenominationContext::default();
+        let metrics = wallet_row_metrics(&row, &denomination, &Theme::Dark);
 
         assert_eq!(metrics.equity, "Invalid data");
         assert_eq!(metrics.withdrawable, "$10.00");
