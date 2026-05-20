@@ -175,6 +175,9 @@ pub struct KeroseneConfig {
     #[serde(default)]
     pub positioning_infos: Vec<PositioningInfoConfig>,
 
+    /// Whether the favourites ticker tape is visible below the account bar.
+    #[serde(default)]
+    pub ticker_tape_enabled: bool,
     pub favourite_symbols: Vec<String>,
     /// Globally hidden ticker symbols. Matching is intentionally broad for plain
     /// tickers, so muting BTC also hides UBTC and HIP-3 BTC variants.

@@ -3,6 +3,7 @@ mod live_watchlist;
 mod order_book;
 mod positioning_info;
 mod symbols;
+mod ticker_tape;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -27,6 +28,10 @@ impl TradingTerminal {
             | Message::HypeEtfsViewChanged(_)
             | Message::HypeEtfsLoaded(_)) => {
                 return self.update_hype_etfs_market(message);
+            }
+            message
+            @ (Message::TickerTapeRefreshTick | Message::TickerTapeContextsLoaded(_, _)) => {
+                return self.update_ticker_tape_market(message);
             }
             message if is_live_watchlist_market_message(&message) => {
                 return self.update_live_watchlist_market(message);

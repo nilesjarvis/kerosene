@@ -30,6 +30,16 @@ impl TradingTerminal {
                 }
                 self.layout_menu_open = opening;
             }
+            Message::ToggleTickerTape => {
+                self.add_widget_menu_open = false;
+                self.ticker_tape_enabled = !self.ticker_tape_enabled;
+                self.ticker_tape_scroll_px = 0.0;
+                self.persist_config();
+                return Task::batch([
+                    self.request_ticker_tape_context_refresh(true),
+                    self.sync_main_window_min_size(),
+                ]);
+            }
             Message::SetAddWidgetPlacement(placement) => {
                 self.add_widget_placement = placement;
             }

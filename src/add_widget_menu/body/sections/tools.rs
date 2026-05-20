@@ -27,6 +27,17 @@ pub(in crate::add_widget_menu::body) fn add_tool_section(
             theme,
         ))
         .push(menu_item(
+            "Ticker Tape",
+            if context.ticker_tape_open {
+                "Open"
+            } else {
+                "Bar"
+            },
+            Some(Message::ToggleTickerTape),
+            true,
+            theme,
+        ))
+        .push(menu_item(
             "Positioning Information",
             "Pane",
             Some(Message::AddPositioningInfoPane),

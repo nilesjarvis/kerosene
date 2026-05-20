@@ -27,6 +27,13 @@ impl TradingTerminal {
             );
         }
 
+        if self.ticker_tape_enabled && !self.favourite_symbols.is_empty() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(60 * 5))
+                    .map(|_| Message::TickerTapeRefreshTick),
+            );
+        }
+
         self.push_chart_market_subscriptions(subs);
         self.push_spaghetti_market_subscriptions(subs);
         self.push_order_book_subscriptions(subs);

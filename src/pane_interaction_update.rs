@@ -189,11 +189,7 @@ impl TradingTerminal {
         let size = self.main_window_size.unwrap_or(Size::new(1600.0, 960.0));
         Size::new(
             size.width,
-            (size.height
-                - MAIN_STATUS_BAR_RESERVED_HEIGHT
-                - self.account_summary_bar_height()
-                - self.pane_border_thickness * 2.0)
-                .max(1.0),
+            (size.height - self.main_chrome_height()).max(1.0),
         )
     }
 
@@ -215,9 +211,7 @@ impl TradingTerminal {
                 &self.panes,
                 base_min_size,
                 self.pane_border_thickness,
-            ) + self.pane_border_thickness * 2.0
-                + MAIN_STATUS_BAR_RESERVED_HEIGHT
-                + self.account_summary_bar_height(),
+            ) + self.main_chrome_height(),
         )
     }
 
@@ -225,6 +219,21 @@ impl TradingTerminal {
         self.main_window_id
             .map(|id| iced::window::set_min_size(id, Some(self.main_window_min_size())))
             .unwrap_or_else(Task::none)
+    }
+
+    fn main_chrome_height(&self) -> f32 {
+        let ticker_height = self.ticker_tape_bar_height();
+        let ticker_gap = if ticker_height > 0.0 {
+            self.pane_border_thickness
+        } else {
+            0.0
+        };
+
+        MAIN_STATUS_BAR_RESERVED_HEIGHT
+            + self.account_summary_bar_height()
+            + ticker_height
+            + ticker_gap
+            + self.pane_border_thickness * 2.0
     }
 }
 

@@ -90,6 +90,10 @@ impl TradingTerminal {
                     instance.advance_order_line_animation();
                 }
             }
+            Message::TickerTapeTick => {
+                self.ticker_tape_scroll_px =
+                    (self.ticker_tape_scroll_px + 1.2).rem_euclid(100_000.0);
+            }
             Message::StatusBarTick => {
                 let now = Instant::now();
                 let now_ms = Self::now_ms();

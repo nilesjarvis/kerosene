@@ -217,6 +217,7 @@ impl TradingTerminal {
             live_watchlists: layout_snapshot.live_watchlists,
             positioning_infos: layout_snapshot.positioning_infos,
 
+            ticker_tape_enabled: layout_snapshot.ticker_tape_enabled,
             favourite_symbols: layout_snapshot.favourite_symbols,
             muted_tickers: self.sorted_muted_tickers(),
             hydromancer_api_key: String::new().into(),

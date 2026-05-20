@@ -2686,7 +2686,7 @@ dependencies = [
 
 [[package]]
 name = "kerosene"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "arboard",
  "argon2",

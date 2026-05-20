@@ -197,6 +197,8 @@ pub struct SavedLayout {
     pub book_tick_size: f64,
     #[serde(default)]
     pub favourite_symbols: Vec<String>,
+    #[serde(default)]
+    pub ticker_tape_enabled: bool,
 
     #[serde(default = "super::default_theme")]
     pub active_theme: String,

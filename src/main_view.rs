@@ -17,12 +17,15 @@ impl TradingTerminal {
     pub(crate) fn view_main(&self) -> Element<'_, Message> {
         let theme = self.theme();
 
+        let mut main_column = column![self.view_account_summary_bar()]
+            .spacing(self.pane_border_thickness)
+            .width(Fill)
+            .height(Fill);
+        if self.ticker_tape_enabled {
+            main_column = main_column.push(self.view_ticker_tape_bar());
+        }
         let main_content: Element<'_, Message> =
-            column![self.view_account_summary_bar(), self.view_main_pane_grid()]
-                .spacing(self.pane_border_thickness)
-                .width(Fill)
-                .height(Fill)
-                .into();
+            main_column.push(self.view_main_pane_grid()).into();
 
         let mut layers: Vec<Element<'_, Message>> = vec![main_content];
 

@@ -22,6 +22,7 @@ impl TradingTerminal {
             reduce_only: cfg.reduce_only,
             book_tick_size: cfg.book_tick_size,
             favourite_symbols: cfg.favourite_symbols.clone(),
+            ticker_tape_enabled: cfg.ticker_tape_enabled,
             active_theme: cfg.active_theme.clone(),
             custom_themes: cfg.custom_themes.clone(),
             sound_enabled: cfg.sound_enabled,

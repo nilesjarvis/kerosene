@@ -213,6 +213,7 @@ impl TradingTerminal {
             reduce_only: self.order_reduce_only,
             book_tick_size: 0.0,
             favourite_symbols: self.favourite_symbols_config_values(),
+            ticker_tape_enabled: self.ticker_tape_enabled,
             active_theme: self.active_theme.clone(),
             custom_themes: self.custom_themes.clone(),
             sound_enabled: self.sound_enabled,

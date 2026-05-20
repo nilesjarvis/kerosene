@@ -38,6 +38,8 @@ impl TradingTerminal {
         self.order_reduce_only = layout.reduce_only;
         self.order_presets = layout.order_presets.clone();
         self.preset_is_usd = layout.preset_is_usd;
+        self.ticker_tape_enabled = layout.ticker_tape_enabled;
+        self.ticker_tape_scroll_px = 0.0;
         self.favourite_symbols = layout
             .favourite_symbols
             .iter()
@@ -83,7 +85,9 @@ impl TradingTerminal {
             boot_tasks.push(self.request_calendar_refresh(false));
         }
 
+        boot_tasks.push(self.request_ticker_tape_context_refresh(true));
         boot_tasks.push(self.request_live_watchlist_refresh(true));
+        boot_tasks.push(self.sync_main_window_min_size());
         self.apply_chart_theme_colors();
 
         Task::batch(boot_tasks)

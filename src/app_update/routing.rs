@@ -56,6 +56,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CloseAllMenus
         | Message::ToggleAddWidgetMenu
         | Message::ToggleLayoutMenu
+        | Message::ToggleTickerTape
         | Message::SetAddWidgetPlacement(_)
         | Message::AddPortfolioPane
         | Message::AddIncomePane
@@ -68,6 +69,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddHypeEtfsPane => UpdateRoute::Panes,
 
         Message::ToggleHidePnl
+        | Message::TickerTapeTick
         | Message::ToggleIncomeAlerts
         | Message::ToggleLiquidationAlerts
         | Message::ToggleTrackedTradeAlerts
@@ -158,6 +160,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChaseRestingOrder { .. } => UpdateRoute::Order,
 
         Message::ToggleFavourite(_)
+        | Message::TickerTapeRefreshTick
+        | Message::TickerTapeContextsLoaded(_, _)
         | Message::SymbolsLoaded(_)
         | Message::LiveWatchlistSortChanged(_, _)
         | Message::LiveWatchlistColumnToggled(_, _, _)

@@ -72,7 +72,7 @@ impl TradingTerminal {
         toggle_favourite_symbol(&mut self.favourite_symbols, key);
         self.refresh_symbol_search_results();
         self.persist_config();
-        Task::none()
+        self.request_ticker_tape_context_refresh(true)
     }
 
     fn apply_symbols_loaded(
@@ -164,6 +164,7 @@ impl TradingTerminal {
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();
                 tasks.push(self.request_symbol_search_context_refresh(false));
+                tasks.push(self.request_ticker_tape_context_refresh(true));
                 tasks.push(self.request_outcome_volume_refresh());
                 if market_universe_changed {
                     tasks.push(self.refresh_account_data());

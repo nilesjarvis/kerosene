@@ -196,6 +196,12 @@ pub(crate) struct TradingTerminal {
     pub(crate) last_advanced_exchange_request_at: Option<std::time::Instant>,
     // Hide dollar PnL values (trader focus mode)
     pub(crate) hide_pnl: bool,
+    // Optional full-width favourites ticker tape.
+    pub(crate) ticker_tape_enabled: bool,
+    pub(crate) ticker_tape_scroll_px: f32,
+    pub(crate) ticker_tape_ctxs: HashMap<String, crate::api::WatchlistContext>,
+    pub(crate) ticker_tape_contexts_loading: bool,
+    pub(crate) ticker_tape_contexts_last_fetch_ms: Option<u64>,
     // Favourite symbol keys (displayed at top of symbol search)
     pub(crate) favourite_symbols: Vec<String>,
     // Global risk filter for symbols the trader wants hidden everywhere.

@@ -128,6 +128,13 @@ pub(crate) enum Message {
     EditPresetSave(crate::signing::OrderKind, usize),
     ExecutePreset(crate::signing::OrderKind, crate::config::OrderPreset, bool),
     ToggleFavourite(String),
+    ToggleTickerTape,
+    TickerTapeTick,
+    TickerTapeRefreshTick,
+    TickerTapeContextsLoaded(
+        u64,
+        Result<HashMap<String, crate::api::WatchlistContext>, String>,
+    ),
     // Add widget menu
     ToggleAddWidgetMenu,
     ToggleLayoutMenu,

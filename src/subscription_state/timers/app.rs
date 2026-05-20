@@ -24,6 +24,13 @@ impl TradingTerminal {
             );
         }
 
+        if self.ticker_tape_enabled && !self.favourite_symbols.is_empty() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(40))
+                    .map(|_| Message::TickerTapeTick),
+            );
+        }
+
         subs.push(
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::StatusBarTick),
         );

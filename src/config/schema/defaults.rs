@@ -139,6 +139,7 @@ impl Default for KeroseneConfig {
             order_books: Vec::new(),
             live_watchlists: Vec::new(),
             positioning_infos: Vec::new(),
+            ticker_tape_enabled: false,
             favourite_symbols: Vec::new(),
             muted_tickers: Vec::new(),
             hydromancer_api_key: String::new().into(),
