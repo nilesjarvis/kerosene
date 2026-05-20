@@ -2,7 +2,10 @@ use super::hotkeys::HotkeyConfig;
 use super::layouts::{PaneLayoutConfig, SavedLayout};
 use super::live_watchlist::LiveWatchlistConfig;
 use super::order_presets::OrderPresetsConfig;
-use super::panes::{ChartConfig, OrderBookConfig, PositioningInfoConfig, SpaghettiChartConfig};
+use super::panes::{
+    ChartConfig, DetachedChartWindowConfig, OrderBookConfig, PositioningInfoConfig,
+    SpaghettiChartConfig,
+};
 use super::screenshot::ChartScreenshotSettingsConfig;
 use super::secrets::EncryptedSecretsConfig;
 use super::themes::{CustomThemeConfig, default_custom_themes, default_theme};
@@ -161,6 +164,9 @@ pub struct KeroseneConfig {
     /// Per-chart pane configurations. Empty = legacy single-chart.
     #[serde(default)]
     pub charts: Vec<ChartConfig>,
+    /// Detached candlestick chart windows to reopen on startup.
+    #[serde(default)]
+    pub detached_chart_windows: Vec<DetachedChartWindowConfig>,
     #[serde(default)]
     pub order_books: Vec<OrderBookConfig>,
     /// Favourite symbol keys (e.g. ["HYPE", "BTC", "@107"]).

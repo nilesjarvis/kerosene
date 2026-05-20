@@ -12,6 +12,8 @@ mod presets;
 mod quick_order;
 mod results;
 
+use quick_order::QuickOrderOpenRequest;
+
 pub(crate) use nuke::nuke_confirmation_is_armed;
 
 impl TradingTerminal {
@@ -130,9 +132,24 @@ impl TradingTerminal {
                 oid,
                 result,
             } => return self.handle_chase_cancel_result(chase_id, oid, *result),
-            Message::OpenQuickOrder(chart_id, price, click_x, click_y, chart_w, chart_h) => {
-                return self
-                    .handle_open_quick_order(chart_id, price, click_x, click_y, chart_w, chart_h);
+            Message::OpenQuickOrder(
+                chart_id,
+                surface_id,
+                price,
+                click_x,
+                click_y,
+                chart_w,
+                chart_h,
+            ) => {
+                return self.handle_open_quick_order(QuickOrderOpenRequest {
+                    chart_id,
+                    surface_id,
+                    price,
+                    click_x,
+                    click_y,
+                    chart_w,
+                    chart_h,
+                });
             }
             Message::QuickOrderQtyChanged(id, qty) => self.handle_quick_order_qty_changed(id, qty),
             Message::QuickOrderPercentageChanged(id, value) => {

@@ -142,7 +142,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChasePlaceResult { .. }
         | Message::ChaseModifyResult { .. }
         | Message::ChaseCancelResult { .. }
-        | Message::OpenQuickOrder(_, _, _, _, _, _)
+        | Message::OpenQuickOrder(_, _, _, _, _, _, _)
         | Message::QuickOrderQtyChanged(_, _)
         | Message::QuickOrderPercentageChanged(_, _)
         | Message::QuickOrderToggleDenomination(_)
@@ -244,11 +244,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WindowClosed(_)
         | Message::WindowResized(_, _) => UpdateRoute::Window,
 
-        Message::ToggleChartScreenshotMenu(_)
+        Message::ToggleChartScreenshotMenu(_, _)
         | Message::ToggleChartScreenshotObscurePositionEntry(_)
         | Message::ToggleChartScreenshotHidePositionsAndOrders(_)
-        | Message::OpenChartScreenshot(_)
-        | Message::ChartScreenshotBoundsResolved(_, _, _)
+        | Message::OpenChartScreenshot(_, _)
+        | Message::ChartScreenshotBoundsResolved(_, _, _, _)
         | Message::ChartScreenshotCaptured(_, _, _)
         | Message::CopyChartScreenshot
         | Message::ChartScreenshotCopied(_)
@@ -313,13 +313,13 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,
 
-        Message::SetDrawingTool(_, _)
-        | Message::AddAnnotation(_)
-        | Message::RemoveAnnotation(_)
-        | Message::ClearDrawingTool => UpdateRoute::Annotations,
+        Message::SetDrawingTool(_, _, _)
+        | Message::AddAnnotation(_, _)
+        | Message::RemoveAnnotation(_, _)
+        | Message::ClearDrawingTool(_, _) => UpdateRoute::Annotations,
 
         Message::ChartReload(_)
-        | Message::ChartResetView(_)
+        | Message::ChartResetView(_, _)
         | Message::ChartSwitchTimeframe(_, _)
         | Message::ToggleMacroMenu(_)
         | Message::ToggleMacroIndicator(_, _)
@@ -329,7 +329,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartWsCandleUpdate(_, _, _, _)
         | Message::ChartPriceFlashTick
         | Message::ChartWsAssetCtxUpdate(_, _, _)
-        | Message::ChartViewportChanged(_, _)
+        | Message::ChartViewportChanged(_, _, _)
         | Message::ChartFundingPanelHeightChanged(_, _, _)
         | Message::ToggleFundingRateDisplayMode(_)
         | Message::FundingRefreshTick
@@ -341,6 +341,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartCloseEditor(_)
         | Message::ChartEditorSearchChanged(_, _)
         | Message::ChartEditorSubmit(_)
+        | Message::OpenDetachedChart(_)
         | Message::AddChart(_) => UpdateRoute::Chart,
 
         Message::PositionsSortChanged(_)
@@ -509,7 +510,10 @@ mod tests {
             UpdateRoute::PortfolioIncome
         );
         assert_eq!(
-            message_route(&Message::ClearDrawingTool),
+            message_route(&Message::ClearDrawingTool(
+                7,
+                crate::chart_state::ChartSurfaceId::Docked(7),
+            )),
             UpdateRoute::Annotations
         );
         assert_eq!(
@@ -527,6 +531,17 @@ mod tests {
         assert_eq!(
             message_route(&Message::RefreshHeatmap),
             UpdateRoute::Hyperdash
+        );
+        assert_eq!(
+            message_route(&Message::OpenDetachedChart(7)),
+            UpdateRoute::Chart
+        );
+        assert_eq!(
+            message_route(&Message::OpenChartScreenshot(
+                7,
+                crate::chart_state::ChartSurfaceId::Docked(7),
+            )),
+            UpdateRoute::ChartScreenshot
         );
         assert_eq!(
             message_route(&Message::ToggleChartScreenshotObscurePositionEntry(true)),

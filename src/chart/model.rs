@@ -4,6 +4,7 @@
 
 use crate::annotations::{Annotation, DrawingTool};
 use crate::api::Candle;
+use crate::chart_state::ChartSurfaceId;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::hyperdash_api::{HeatmapRect, LiquidationBucket};
 use crate::timeframe::Timeframe;
@@ -40,6 +41,7 @@ pub(super) const HEATMAP_MAX_RECTS: usize = 20_000;
 
 pub struct CandlestickChart {
     pub id: u64,
+    pub(in crate::chart) surface_id: ChartSurfaceId,
     pub(in crate::chart) timeframe: Timeframe,
     pub(in crate::chart) clock_now_ms: u64,
     pub candles: Vec<Candle>,

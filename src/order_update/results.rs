@@ -60,6 +60,8 @@ impl TradingTerminal {
             instance.editor_keyboard_selected = false;
             instance.chart.active_tool = None;
         }
+        self.chart_quick_order_surface.clear();
+        self.chart_surface_active_tools.clear();
     }
 
     fn set_result_status(&mut self, result: Result<ExchangeResponse, String>) {

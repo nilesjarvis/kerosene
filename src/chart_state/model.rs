@@ -6,6 +6,7 @@ use crate::config;
 use crate::hyperdash_api::{HeatmapFetchParams, LiquidationHeatmap, LiquidationLevel};
 use crate::order_execution::QuickOrderForm;
 use crate::timeframe::Timeframe;
+use iced::{Point, Size, window};
 
 pub(crate) type ChartId = u64;
 
@@ -14,6 +15,103 @@ const QUICK_ORDER_LIMIT_LINE_STRIDE: f32 = 12.0;
 const QUICK_ORDER_LIMIT_LINE_PHASE_STEP: f32 = 1.2;
 const ORDER_LINE_STRIDE: f32 = 12.0;
 const ORDER_LINE_PHASE_STEP: f32 = 1.2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ChartSurfaceId {
+    Docked(ChartId),
+    Detached(window::Id),
+}
+
+impl ChartSurfaceId {
+    pub(crate) fn widget_suffix(self) -> String {
+        match self {
+            Self::Docked(chart_id) => format!("docked_{chart_id}"),
+            Self::Detached(window_id) => format!("detached_{window_id:?}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DetachedChartWindowState {
+    pub(crate) chart_id: ChartId,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) x: Option<f32>,
+    pub(crate) y: Option<f32>,
+}
+
+impl DetachedChartWindowState {
+    pub(crate) fn new(chart_id: ChartId) -> Self {
+        Self {
+            chart_id,
+            width: crate::config::default_detached_chart_window_width(),
+            height: crate::config::default_detached_chart_window_height(),
+            x: None,
+            y: None,
+        }
+    }
+
+    pub(crate) fn from_config(config: &crate::config::DetachedChartWindowConfig) -> Self {
+        Self {
+            chart_id: config.chart_id,
+            width: normalize_detached_chart_window_dimension(
+                config.width,
+                crate::config::default_detached_chart_window_width(),
+            ),
+            height: normalize_detached_chart_window_dimension(
+                config.height,
+                crate::config::default_detached_chart_window_height(),
+            ),
+            x: config.x.filter(|value| value.is_finite()),
+            y: config.y.filter(|value| value.is_finite()),
+        }
+    }
+
+    pub(crate) fn to_config(&self) -> crate::config::DetachedChartWindowConfig {
+        crate::config::DetachedChartWindowConfig {
+            chart_id: self.chart_id,
+            width: normalize_detached_chart_window_dimension(
+                self.width,
+                crate::config::default_detached_chart_window_width(),
+            ),
+            height: normalize_detached_chart_window_dimension(
+                self.height,
+                crate::config::default_detached_chart_window_height(),
+            ),
+            x: self.x.filter(|value| value.is_finite()),
+            y: self.y.filter(|value| value.is_finite()),
+        }
+    }
+
+    pub(crate) fn size(&self) -> Size {
+        Size::new(
+            normalize_detached_chart_window_dimension(
+                self.width,
+                crate::config::default_detached_chart_window_width(),
+            ),
+            normalize_detached_chart_window_dimension(
+                self.height,
+                crate::config::default_detached_chart_window_height(),
+            ),
+        )
+    }
+
+    pub(crate) fn position(&self) -> window::Position {
+        self.x
+            .zip(self.y)
+            .filter(|(x, y)| x.is_finite() && y.is_finite())
+            .map(|(x, y)| window::Position::Specific(Point::new(x, y)))
+            .unwrap_or(window::Position::Centered)
+    }
+}
+
+fn normalize_detached_chart_window_dimension(value: f32, fallback: f32) -> f32 {
+    if value.is_finite() {
+        value.max(320.0)
+    } else {
+        fallback
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PriceFlashDirection {
@@ -361,6 +459,14 @@ mod tests {
 
     fn instance() -> ChartInstance {
         ChartInstance::new(1, "BTC".to_string(), Timeframe::H1)
+    }
+
+    #[test]
+    fn chart_surface_widget_suffixes_distinguish_docked_charts() {
+        assert_ne!(
+            ChartSurfaceId::Docked(1).widget_suffix(),
+            ChartSurfaceId::Docked(2).widget_suffix()
+        );
     }
 
     #[test]

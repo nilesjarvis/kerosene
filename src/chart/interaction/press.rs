@@ -128,7 +128,13 @@ impl CandlestickChart {
             let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
             return Some(
                 canvas::Action::publish(Message::OpenQuickOrder(
-                    self.id, price, pos.x, pos.y, chart_w, chart_h,
+                    self.id,
+                    self.surface_id,
+                    price,
+                    pos.x,
+                    pos.y,
+                    chart_w,
+                    chart_h,
                 ))
                 .and_capture(),
             );
@@ -150,7 +156,10 @@ impl CandlestickChart {
         }
 
         if self.active_tool.is_some() && pos.x < chart_w && pos.y < chart_h {
-            return Some(canvas::Action::publish(Message::ClearDrawingTool).and_capture());
+            return Some(
+                canvas::Action::publish(Message::ClearDrawingTool(self.id, self.surface_id))
+                    .and_capture(),
+            );
         }
 
         if pos.x >= chart_w && pos.y < chart_h {
@@ -185,7 +194,13 @@ impl CandlestickChart {
             let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
             return Some(
                 canvas::Action::publish(Message::OpenQuickOrder(
-                    self.id, price, pos.x, pos.y, chart_w, chart_h,
+                    self.id,
+                    self.surface_id,
+                    price,
+                    pos.x,
+                    pos.y,
+                    chart_w,
+                    chart_h,
                 ))
                 .and_capture(),
             );

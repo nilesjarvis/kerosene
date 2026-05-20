@@ -232,6 +232,7 @@ impl TradingTerminal {
             settings_window_id: None,
             chart_screenshot_window_id: None,
             pnl_card_windows: HashMap::new(),
+            detached_chart_windows: HashMap::new(),
             chart_screenshot: None,
             chart_screenshot_error: None,
             chart_screenshot_capture_in_progress: false,
@@ -239,6 +240,10 @@ impl TradingTerminal {
             chart_screenshot_pending_request_id: None,
             chart_screenshot_settings: cfg.chart_screenshot_settings.clone(),
             chart_screenshot_menu_open: None,
+            chart_surface_reset_epochs: HashMap::new(),
+            chart_surface_active_tools: HashMap::new(),
+            chart_surface_viewports: HashMap::new(),
+            chart_quick_order_surface: HashMap::new(),
             main_window_size: cfg
                 .main_window_width
                 .zip(cfg.main_window_height)

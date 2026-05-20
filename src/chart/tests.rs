@@ -136,8 +136,9 @@ fn quick_order_open_right_click_in_chart_area_publishes_replacement_open_message
     let (message, _, status) = action.into_inner();
 
     match message.expect("open quick-order message") {
-        Message::OpenQuickOrder(id, price, click_x, click_y, chart_w, chart_h) => {
+        Message::OpenQuickOrder(id, surface_id, price, click_x, click_y, chart_w, chart_h) => {
             assert_eq!(id, chart.id);
+            assert_eq!(surface_id, chart.surface_id);
             assert!(price.is_finite() && price > 0.0);
             assert_eq!(click_x, 120.0);
             assert_eq!(click_y, 80.0);
@@ -180,8 +181,9 @@ fn quick_order_open_right_click_on_order_line_still_replaces_card_not_cancel_ord
     let (message, _, status) = action.into_inner();
 
     match message.expect("open quick-order message") {
-        Message::OpenQuickOrder(id, price, click_x, click_y, chart_w, chart_h) => {
+        Message::OpenQuickOrder(id, surface_id, price, click_x, click_y, chart_w, chart_h) => {
             assert_eq!(id, chart.id);
+            assert_eq!(surface_id, chart.surface_id);
             assert!(price.is_finite() && price > 0.0);
             assert_eq!(click_x, 120.0);
             assert_eq!(click_y, order_y);

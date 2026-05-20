@@ -87,6 +87,7 @@ impl TradingTerminal {
         for inst in self.charts.values_mut() {
             inst.clear_quick_order();
         }
+        self.chart_quick_order_surface.clear();
         if is_ghost {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(index) {

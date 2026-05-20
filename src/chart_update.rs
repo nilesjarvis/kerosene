@@ -3,6 +3,7 @@ use crate::message::Message;
 use iced::Task;
 
 mod candles;
+mod detached;
 mod editor;
 mod macro_indicators;
 
@@ -24,6 +25,7 @@ impl TradingTerminal {
             | Message::AddChart(_)) => {
                 return self.update_chart_editor(message);
             }
+            Message::OpenDetachedChart(id) => return self.open_detached_chart_window(id),
             message @ (Message::ChartReload(_)
             | Message::ChartSwitchTimeframe(_, _)
             | Message::ChartCandlesLoaded(_, _)
@@ -31,8 +33,16 @@ impl TradingTerminal {
             | Message::ChartWsCandleUpdate(_, _, _, _)) => {
                 return self.update_chart_candles(message);
             }
-            Message::ChartResetView(id) => {
-                if let Some(instance) = self.charts.get_mut(&id) {
+            Message::ChartResetView(id, surface_id) => {
+                let reset_epoch = self
+                    .chart_surface_reset_epochs
+                    .entry(surface_id)
+                    .or_default();
+                *reset_epoch = reset_epoch.saturating_add(1);
+                self.chart_surface_viewports.remove(&surface_id);
+                if !self.chart_has_detached_window(id)
+                    && let Some(instance) = self.charts.get_mut(&id)
+                {
                     instance.chart.request_view_reset();
                     instance.heatmap_viewport = None;
                 }
@@ -61,7 +71,8 @@ impl TradingTerminal {
                     return self.maybe_fetch_liquidations(id);
                 }
             }
-            Message::ChartViewportChanged(id, viewport) => {
+            Message::ChartViewportChanged(id, surface_id, viewport) => {
+                self.chart_surface_viewports.insert(surface_id, viewport);
                 let chart_symbol = self
                     .charts
                     .get(&id)

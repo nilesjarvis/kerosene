@@ -2,9 +2,10 @@ use super::super::pricing::rounded_market_price;
 use super::super::sizing::order_size_from_quantity_input;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartId;
+use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::helpers::parse_number;
 use crate::message::Message;
+use crate::order_execution::QuickOrderForm;
 use crate::signing::{OrderKind, float_to_wire, place_order, round_price};
 
 use iced::Task;
@@ -68,6 +69,7 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        let quick_order_surface = self.chart_quick_order_surface.remove(&chart_id);
         let form = self
             .charts
             .get_mut(&chart_id)
@@ -83,24 +85,18 @@ impl TradingTerminal {
             .unwrap_or_default();
         if self.symbol_key_is_hidden(&chart_symbol) {
             self.order_status = Some(("Chart ticker is hidden in Settings > Risk".into(), true));
-            if let Some(instance) = self.charts.get_mut(&chart_id) {
-                instance.set_quick_order(form);
-            }
+            self.restore_quick_order_form(chart_id, form, quick_order_surface);
             return Task::none();
         }
         let sym = self.exchange_symbols.iter().find(|s| s.key == chart_symbol);
         let Some(sym) = sym else {
             self.order_status = Some((format!("Symbol '{}' not found", chart_symbol), true));
-            if let Some(instance) = self.charts.get_mut(&chart_id) {
-                instance.set_quick_order(form);
-            }
+            self.restore_quick_order_form(chart_id, form, quick_order_surface);
             return Task::none();
         };
         if sym.market_type == MarketType::Outcome {
             self.outcome_read_only_status("trading");
-            if let Some(instance) = self.charts.get_mut(&chart_id) {
-                instance.set_quick_order(form);
-            }
+            self.restore_quick_order_form(chart_id, form, quick_order_surface);
             return Task::none();
         }
 
@@ -113,16 +109,12 @@ impl TradingTerminal {
                 quick_order_limit_price_wire(form.price, sz_decimals, is_spot)
             else {
                 self.order_status = Some(("Invalid price".into(), true));
-                if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.set_quick_order(form);
-                }
+                self.restore_quick_order_form(chart_id, form, quick_order_surface);
                 return Task::none();
             };
             if let Err(e) = self.validate_order_price_band(&chart_symbol, rounded) {
                 self.order_status = Some((e, true));
-                if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.set_quick_order(form);
-                }
+                self.restore_quick_order_form(chart_id, form, quick_order_surface);
                 return Task::none();
             }
             (OrderKind::Limit, price, rounded)
@@ -136,9 +128,7 @@ impl TradingTerminal {
                     ),
                     true,
                 ));
-                if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.set_quick_order(form);
-                }
+                self.restore_quick_order_form(chart_id, form, quick_order_surface);
                 return Task::none();
             };
             let Some((rounded, price)) = quick_order_market_price_wire(
@@ -149,16 +139,12 @@ impl TradingTerminal {
                 is_spot,
             ) else {
                 self.order_status = Some(("Invalid market price".into(), true));
-                if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.set_quick_order(form);
-                }
+                self.restore_quick_order_form(chart_id, form, quick_order_surface);
                 return Task::none();
             };
             if let Err(e) = self.validate_order_price_band(&chart_symbol, rounded) {
                 self.order_status = Some((e, true));
-                if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.set_quick_order(form);
-                }
+                self.restore_quick_order_form(chart_id, form, quick_order_surface);
                 return Task::none();
             }
             (OrderKind::Market, price, mid)
@@ -173,9 +159,7 @@ impl TradingTerminal {
             Some(size) => size,
             None => {
                 self.order_status = Some(("Invalid quantity for asset precision".into(), true));
-                if let Some(instance) = self.charts.get_mut(&chart_id) {
-                    instance.set_quick_order(form);
-                }
+                self.restore_quick_order_form(chart_id, form, quick_order_surface);
                 return Task::none();
             }
         };
@@ -204,5 +188,19 @@ impl TradingTerminal {
             ),
             |r| Message::QuickOrderResult(Box::new(r)),
         )
+    }
+
+    fn restore_quick_order_form(
+        &mut self,
+        chart_id: ChartId,
+        form: QuickOrderForm,
+        surface_id: Option<ChartSurfaceId>,
+    ) {
+        if let Some(instance) = self.charts.get_mut(&chart_id) {
+            instance.set_quick_order(form);
+        }
+        if let Some(surface_id) = surface_id {
+            self.chart_quick_order_surface.insert(chart_id, surface_id);
+        }
     }
 }

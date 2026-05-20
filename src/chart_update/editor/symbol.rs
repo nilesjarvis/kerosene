@@ -46,6 +46,7 @@ impl TradingTerminal {
         }
 
         if self.primary_chart_id == Some(id) {
+            self.clear_all_chart_surface_state(id);
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.annotations.clear();
                 instance.next_annotation_id = 0;
@@ -82,6 +83,7 @@ impl TradingTerminal {
         if let Some((old_tf, old_symbol, old_candles)) = old_cache_data {
             self.cache_candles(&old_symbol, old_tf, old_candles);
         }
+        self.clear_all_chart_surface_state(id);
 
         let mut cached_last_time = None;
         let target_interval = self

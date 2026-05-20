@@ -5,7 +5,7 @@ mod symbol;
 use self::metrics::{ChartHeaderMetricVisibility, push_asset_context_columns};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{
-    CHART_PRICE_FLASH_MS, ChartId, ChartInstance, PriceFlash, PriceFlashDirection,
+    CHART_PRICE_FLASH_MS, ChartId, ChartInstance, ChartSurfaceId, PriceFlash, PriceFlashDirection,
 };
 use crate::message::Message;
 use iced::widget::{Space, column, responsive, row, text};
@@ -16,16 +16,20 @@ impl TradingTerminal {
         &'a self,
         chart_id: ChartId,
         instance: &'a ChartInstance,
+        surface_id: ChartSurfaceId,
     ) -> Element<'a, Message> {
-        responsive(move |size| self.view_chart_header_sized(chart_id, instance, size.width))
-            .height(Length::Shrink)
-            .into()
+        responsive(move |size| {
+            self.view_chart_header_sized(chart_id, instance, surface_id, size.width)
+        })
+        .height(Length::Shrink)
+        .into()
     }
 
     fn view_chart_header_sized<'a>(
         &'a self,
         chart_id: ChartId,
         instance: &'a ChartInstance,
+        surface_id: ChartSurfaceId,
         available_width: f32,
     ) -> Element<'a, Message> {
         let theme = self.theme();
@@ -90,7 +94,7 @@ impl TradingTerminal {
 
         header_row = header_row
             .push(Space::new().width(Fill))
-            .push(self.view_chart_screenshot_button(chart_id));
+            .push(self.view_chart_screenshot_button(chart_id, surface_id));
 
         header_row.into()
     }

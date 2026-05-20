@@ -19,6 +19,10 @@ impl TradingTerminal {
                 } else if Some(id) == self.main_window_id {
                     self.main_window_pos = Some(point);
                     self.persist_config();
+                } else if let Some(state) = self.detached_chart_windows.get_mut(&id) {
+                    state.x = Some(point.x);
+                    state.y = Some(point.y);
+                    self.persist_config();
                 }
             }
             Message::WindowClosed(id) => {
@@ -36,6 +40,9 @@ impl TradingTerminal {
                     self.chart_screenshot_pending_request_id = None;
                 }
                 self.pnl_card_windows.remove(&id);
+                if self.remove_detached_chart_window_state(id) {
+                    self.persist_config();
+                }
                 if Some(id) == self.wallet_tracker.window_id {
                     self.wallet_tracker.window_id = None;
                     self.wallet_tracker.open = false;
@@ -63,6 +70,11 @@ impl TradingTerminal {
                     self.main_window_size = Some(size);
                     self.persist_config();
                     return self.sync_main_window_min_size();
+                }
+                if let Some(state) = self.detached_chart_windows.get_mut(&id) {
+                    state.width = size.width;
+                    state.height = size.height;
+                    self.persist_config();
                 }
                 if let Some(state) = self.wallet_detail_windows.get_mut(&id) {
                     state.width = size.width;

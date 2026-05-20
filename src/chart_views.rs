@@ -6,16 +6,38 @@ mod toolbar;
 
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
-use crate::chart_state::ChartId;
+use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::message::Message;
 use iced::widget::{button, canvas, column, container, rule, stack, text};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
-    pub(crate) fn view_chart(
+    pub(crate) fn view_chart(&self, chart_id: ChartId, chart_count: usize) -> Element<'_, Message> {
+        self.view_chart_surface(chart_id, chart_count, ChartSurfaceId::Docked(chart_id))
+    }
+
+    pub(crate) fn view_detached_chart_window(
+        &self,
+        chart_id: ChartId,
+        surface_id: ChartSurfaceId,
+    ) -> Element<'_, Message> {
+        container(self.view_chart_surface(chart_id, self.charts.len(), surface_id))
+            .width(Fill)
+            .height(Fill)
+            .padding(4)
+            .style(|theme: &Theme| container::Style {
+                background: Some(theme.extended_palette().background.base.color.into()),
+                text_color: Some(theme.palette().text),
+                ..Default::default()
+            })
+            .into()
+    }
+
+    pub(crate) fn view_chart_surface(
         &self,
         chart_id: ChartId,
         _chart_count: usize,
+        surface_id: ChartSurfaceId,
     ) -> Element<'_, Message> {
         let theme = self.theme();
         let Some(instance) = self.charts.get(&chart_id) else {
@@ -114,11 +136,33 @@ impl TradingTerminal {
         // Always use the same 4-element column structure so the canvas
         // stays at the same widget tree position (preserving ChartState).
         {
-            let header = self.view_chart_header(chart_id, instance);
-            let toolbar = self.view_chart_toolbar(chart_id, instance);
+            let header = self.view_chart_header(chart_id, instance, surface_id);
+            let toolbar = self.view_chart_toolbar(chart_id, instance, surface_id);
+            let active_tool = self.active_chart_surface_tool(chart_id, surface_id);
+            let quick_order_on_surface = self.chart_surface_has_quick_order(chart_id, surface_id);
+            let quick_order_limit_price = quick_order_on_surface
+                .then_some(instance.chart.quick_order_limit_price)
+                .flatten();
 
-            let chart_canvas: Element<'_, Message> =
-                canvas(&instance.chart).width(Fill).height(Fill).into();
+            let chart_canvas: Element<'_, Message> = if self.chart_has_detached_window(chart_id) {
+                let reset_epoch = self
+                    .chart_surface_reset_epochs
+                    .get(&surface_id)
+                    .copied()
+                    .unwrap_or_default();
+                canvas(instance.chart.snapshot_for_surface(
+                    surface_id,
+                    reset_epoch,
+                    active_tool,
+                    quick_order_on_surface,
+                    quick_order_limit_price,
+                ))
+                .width(Fill)
+                .height(Fill)
+                .into()
+            } else {
+                canvas(&instance.chart).width(Fill).height(Fill).into()
+            };
             let mut canvas_layers = vec![chart_canvas];
             if let Some(indicator_badges) = self.view_chart_indicator_badges(chart_id, instance) {
                 canvas_layers.push(indicator_badges);
@@ -128,19 +172,20 @@ impl TradingTerminal {
 
             // Always wrap the canvas in a stack to keep the widget tree
             // structure stable.
-            let chart_area: Element<'_, Message> = if let Some(form) = &instance.quick_order {
-                let cid = chart_id;
-                self.view_quick_order_card(cid, form, chart_surface)
-            } else if let Some(overlay) = status_overlay {
-                stack![chart_surface, overlay]
-                    .width(Fill)
-                    .height(Fill)
-                    .into()
-            } else {
-                stack![chart_surface].width(Fill).height(Fill).into()
-            };
+            let chart_area: Element<'_, Message> =
+                if quick_order_on_surface && let Some(form) = &instance.quick_order {
+                    let cid = chart_id;
+                    self.view_quick_order_card(cid, form, chart_surface)
+                } else if let Some(overlay) = status_overlay {
+                    stack![chart_surface, overlay]
+                        .width(Fill)
+                        .height(Fill)
+                        .into()
+                } else {
+                    stack![chart_surface].width(Fill).height(Fill).into()
+                };
             let chart_area = container(chart_area)
-                .id(Self::chart_screenshot_canvas_id(chart_id))
+                .id(Self::chart_screenshot_canvas_id(surface_id))
                 .width(Fill)
                 .height(Fill);
 
@@ -166,8 +211,8 @@ impl TradingTerminal {
             if instance.macro_menu_open {
                 chart_layers.push(self.view_macro_indicator_menu(chart_id, instance));
             }
-            if self.chart_screenshot_menu_open == Some(chart_id) {
-                chart_layers.push(self.view_chart_screenshot_menu(chart_id));
+            if self.chart_screenshot_menu_open == Some(surface_id) {
+                chart_layers.push(self.view_chart_screenshot_menu(surface_id));
             }
 
             container(stack(chart_layers))

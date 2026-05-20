@@ -55,8 +55,12 @@ impl CandlestickChart {
         let (chart_h, _) = self.chart_area_heights(bounds.height);
         self.current_viewport(state, chart_w, chart_h)
             .map(|viewport| {
-                canvas::Action::publish(Message::ChartViewportChanged(self.id, viewport))
-                    .and_capture()
+                canvas::Action::publish(Message::ChartViewportChanged(
+                    self.id,
+                    self.surface_id,
+                    viewport,
+                ))
+                .and_capture()
             })
     }
 }

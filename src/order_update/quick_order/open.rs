@@ -1,6 +1,6 @@
 use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartId;
+use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use crate::order_execution::QuickOrderForm;
@@ -8,16 +8,31 @@ use crate::pane_state::PaneKind;
 
 use iced::Task;
 
+pub(crate) struct QuickOrderOpenRequest {
+    pub(crate) chart_id: ChartId,
+    pub(crate) surface_id: ChartSurfaceId,
+    pub(crate) price: f64,
+    pub(crate) click_x: f32,
+    pub(crate) click_y: f32,
+    pub(crate) chart_w: f32,
+    pub(crate) chart_h: f32,
+}
+
 impl TradingTerminal {
     pub(crate) fn handle_open_quick_order(
         &mut self,
-        chart_id: ChartId,
-        price: f64,
-        click_x: f32,
-        click_y: f32,
-        chart_w: f32,
-        chart_h: f32,
+        request: QuickOrderOpenRequest,
     ) -> Task<Message> {
+        let QuickOrderOpenRequest {
+            chart_id,
+            surface_id,
+            price,
+            click_x,
+            click_y,
+            chart_w,
+            chart_h,
+        } = request;
+
         if self.primary_chart_id != Some(chart_id) {
             let target_pane = self
                 .panes
@@ -109,6 +124,7 @@ impl TradingTerminal {
                 chart_w,
                 chart_h,
             });
+            self.chart_quick_order_surface.insert(chart_id, surface_id);
             return iced::widget::operation::focus(iced::widget::Id::from(format!(
                 "quick_order_qty_{}",
                 chart_id
@@ -160,7 +176,15 @@ mod tests {
         instance.last_quick_order_is_limit = false;
         terminal.charts.insert(chart_id, instance);
 
-        let _task = terminal.handle_open_quick_order(chart_id, 101.0, 10.0, 20.0, 300.0, 200.0);
+        let _task = terminal.handle_open_quick_order(QuickOrderOpenRequest {
+            chart_id,
+            surface_id: ChartSurfaceId::Docked(chart_id),
+            price: 101.0,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        });
 
         let instance = terminal.charts.get(&chart_id).expect("chart instance");
         let form = instance.quick_order.as_ref().expect("quick order form");

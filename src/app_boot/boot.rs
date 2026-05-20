@@ -113,7 +113,7 @@ impl TradingTerminal {
         boot_tasks.push(positioning_task);
         boot_tasks.push(connect_task);
 
-        boot_tasks.extend(state.boot_window_tasks());
+        boot_tasks.extend(state.boot_window_tasks(&cfg));
 
         if state.is_calendar_open() {
             boot_tasks.push(state.request_calendar_refresh(false));

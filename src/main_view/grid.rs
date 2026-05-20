@@ -43,8 +43,12 @@ impl TradingTerminal {
 
             let content = self.view_pane_content(pane, kind, chart_count);
             let close_btn = pane_close_button(pane, pane_count, kind.can_be_closed());
-            let controls_row = if matches!(kind, PaneKind::Chart(_)) {
-                row![self.view_chart_add_button(pane), close_btn]
+            let controls_row = if let PaneKind::Chart(chart_id) = kind {
+                row![
+                    self.view_chart_add_button(pane),
+                    self.view_detach_chart_button(*chart_id),
+                    close_btn
+                ]
             } else {
                 row![close_btn]
             }

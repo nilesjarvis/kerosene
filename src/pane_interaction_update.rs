@@ -1,5 +1,6 @@
 use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartSurfaceId;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -67,6 +68,7 @@ impl TradingTerminal {
                         for inst in self.charts.values_mut() {
                             inst.clear_quick_order();
                         }
+                        self.chart_quick_order_surface.clear();
                         self.persist_config();
 
                         for inst in self.order_books.values_mut() {
@@ -94,9 +96,15 @@ impl TradingTerminal {
                     && let Some((closed_kind, sibling)) = self.panes.close(pane)
                 {
                     self.focus = Some(sibling);
+                    let mut detached_window_to_close = None;
 
                     match closed_kind {
                         PaneKind::Chart(id) => {
+                            self.clear_chart_surface_state(id, ChartSurfaceId::Docked(id));
+                            detached_window_to_close = self.detached_chart_window_for(id);
+                            if let Some(window_id) = detached_window_to_close {
+                                self.remove_detached_chart_window_state(window_id);
+                            }
                             self.charts.remove(&id);
                             if self.primary_chart_id == Some(id) {
                                 self.primary_chart_id = self.charts.keys().next().copied();
@@ -125,7 +133,11 @@ impl TradingTerminal {
                         _ => {}
                     }
                     self.persist_config();
-                    return self.sync_main_window_min_size();
+                    let mut tasks = vec![self.sync_main_window_min_size()];
+                    if let Some(window_id) = detached_window_to_close {
+                        tasks.push(iced::window::close(window_id));
+                    }
+                    return Task::batch(tasks);
                 }
             }
             _ => {}
