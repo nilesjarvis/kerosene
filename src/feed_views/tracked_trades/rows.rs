@@ -5,6 +5,7 @@ use crate::feed_views::tracked_trades::layout::{
 use crate::helpers;
 use crate::message::Message;
 use iced::Fill;
+use iced::widget::text::Wrapping;
 use iced::widget::{Column, Space, container, row, text};
 
 mod cells;
@@ -38,40 +39,69 @@ impl TradingTerminal {
                 trade_row.fill_count,
             );
 
-            let mut row_ui = row![
-                text(helpers::format_relative_time(
-                    trade_row.last_time_ms,
-                    now_ms
-                ))
-                .size(11)
-                .font(iced::Font::MONOSPACE)
-                .color(theme.extended_palette().background.weak.text)
-                .width(TIME_WIDTH),
-                self.view_tracked_trade_wallet_cell(trade_row.address.clone()),
-                self.view_tracked_trade_coin_cell(trade_row.coin.clone()),
-                text(side_str)
-                    .size(12)
+            let mut row_ui = row![].spacing(ROW_SPACING).align_y(iced::Alignment::Center);
+
+            if row_layout.show_time {
+                row_ui = row_ui.push(
+                    text(helpers::format_relative_time(
+                        trade_row.last_time_ms,
+                        now_ms,
+                    ))
+                    .size(11)
                     .font(iced::Font::MONOSPACE)
-                    .color(side_color)
-                    .width(SIDE_WIDTH),
-                text(formatting::tracked_trade_size_label(trade_row.size))
-                    .size(12)
-                    .font(iced::Font::MONOSPACE)
-                    .color(theme.palette().text)
-                    .width(NUMBER_WIDTH),
-                text(formatting::tracked_trade_price_label(trade_row.avg_price))
-                    .size(12)
-                    .font(iced::Font::MONOSPACE)
-                    .color(theme.palette().text)
-                    .width(NUMBER_WIDTH),
-                text(formatting::tracked_trade_notional_label(notional))
-                    .size(12)
-                    .font(iced::Font::MONOSPACE)
-                    .color(theme.palette().text)
-                    .width(NUMBER_WIDTH),
-            ]
-            .spacing(ROW_SPACING)
-            .align_y(iced::Alignment::Center);
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(TIME_WIDTH),
+                );
+            }
+
+            row_ui = row_ui
+                .push(self.view_tracked_trade_wallet_cell(trade_row.address.clone()))
+                .push(self.view_tracked_trade_coin_cell(trade_row.coin.clone()));
+
+            if row_layout.show_side {
+                row_ui = row_ui.push(
+                    text(side_str)
+                        .size(12)
+                        .font(iced::Font::MONOSPACE)
+                        .color(side_color)
+                        .wrapping(Wrapping::None)
+                        .width(SIDE_WIDTH),
+                );
+            }
+
+            if row_layout.show_size {
+                row_ui = row_ui.push(
+                    text(formatting::tracked_trade_size_label(trade_row.size))
+                        .size(12)
+                        .font(iced::Font::MONOSPACE)
+                        .color(theme.palette().text)
+                        .wrapping(Wrapping::None)
+                        .width(NUMBER_WIDTH),
+                );
+            }
+
+            if row_layout.show_price {
+                row_ui = row_ui.push(
+                    text(formatting::tracked_trade_price_label(trade_row.avg_price))
+                        .size(12)
+                        .font(iced::Font::MONOSPACE)
+                        .color(theme.palette().text)
+                        .wrapping(Wrapping::None)
+                        .width(NUMBER_WIDTH),
+                );
+            }
+
+            if row_layout.show_notional {
+                row_ui = row_ui.push(
+                    text(formatting::tracked_trade_notional_label(notional))
+                        .size(12)
+                        .font(iced::Font::MONOSPACE)
+                        .color(theme.palette().text)
+                        .wrapping(Wrapping::None)
+                        .width(NUMBER_WIDTH),
+                );
+            }
 
             if row_layout.show_pnl {
                 row_ui = row_ui.push(
@@ -79,6 +109,7 @@ impl TradingTerminal {
                         .size(12)
                         .font(iced::Font::MONOSPACE)
                         .color(pnl_color)
+                        .wrapping(Wrapping::None)
                         .width(NUMBER_WIDTH),
                 );
             }
@@ -89,6 +120,7 @@ impl TradingTerminal {
                         .size(11)
                         .font(iced::Font::MONOSPACE)
                         .color(theme.extended_palette().background.weak.text)
+                        .wrapping(Wrapping::None)
                         .width(NUMBER_WIDTH),
                 );
             }
@@ -97,7 +129,8 @@ impl TradingTerminal {
                 row_ui = row_ui.push(Space::new().width(Fill)).push(
                     text(intent_text)
                         .size(11)
-                        .color(theme.extended_palette().background.weak.text),
+                        .color(theme.extended_palette().background.weak.text)
+                        .wrapping(Wrapping::None),
                 );
             }
 

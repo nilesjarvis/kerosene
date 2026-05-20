@@ -106,6 +106,13 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             ],
             chart: Some(("#00C853", "#D50032")),
         },
+        ThemeSpec {
+            name: "FTX",
+            colors: [
+                "#101824", "#D8E2EE", "#00A8B8", "#08A67A", "#F0A040", "#F03060",
+            ],
+            chart: Some(("#08A67A", "#F03060")),
+        },
     ]
     .into_iter()
     .map(theme_from_spec)

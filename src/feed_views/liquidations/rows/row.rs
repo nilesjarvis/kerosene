@@ -6,9 +6,13 @@ use self::style::{liquidation_row_color, liquidation_row_style};
 
 use crate::app_state::TradingTerminal;
 use crate::feed_state::LiquidationFeedRow;
+use crate::feed_views::liquidations::layout::{
+    LiquidationFeedRowLayout, METHOD_WIDTH, NUMBER_WIDTH, ROW_SPACING, SIDE_WIDTH, TIME_WIDTH,
+};
 use crate::helpers::{self, format_usd};
 use crate::message::Message;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, container, row, text};
 use iced::{Element, Fill};
 
@@ -17,6 +21,7 @@ impl TradingTerminal {
         &self,
         liq: LiquidationFeedRow,
         now_ms: u64,
+        row_layout: LiquidationFeedRowLayout,
     ) -> Element<'static, Message> {
         let theme = self.theme();
         let (color, opacity) = liquidation_row_color(&theme, liq.is_buy, liq.notional);
@@ -25,41 +30,73 @@ impl TradingTerminal {
         let coin = liq.coin.clone();
         let liquidated_user = liq.liquidated_user.clone();
 
-        let row_ui = row![
+        let mut row_ui = row![
             text(helpers::format_relative_time(liq.time_ms, now_ms))
                 .size(11)
                 .font(iced::Font::MONOSPACE)
                 .color(theme.extended_palette().background.weak.text)
-                .width(60),
+                .wrapping(Wrapping::None)
+                .width(TIME_WIDTH),
             liquidation_symbol_button(coin, &theme),
-            text(side_str)
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(color)
-                .width(50),
-            text(format!("{:.4}", liq.size))
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(theme.palette().text)
-                .width(80),
-            text(format!("{:.4}", liq.price))
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(theme.palette().text)
-                .width(80),
+        ]
+        .spacing(ROW_SPACING)
+        .align_y(iced::Alignment::Center);
+
+        if row_layout.show_side {
+            row_ui = row_ui.push(
+                text(side_str)
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(color)
+                    .wrapping(Wrapping::None)
+                    .width(SIDE_WIDTH),
+            );
+        }
+
+        if row_layout.show_size {
+            row_ui = row_ui.push(
+                text(format!("{:.4}", liq.size))
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(theme.palette().text)
+                    .wrapping(Wrapping::None)
+                    .width(NUMBER_WIDTH),
+            );
+        }
+
+        if row_layout.show_price {
+            row_ui = row_ui.push(
+                text(format!("{:.4}", liq.price))
+                    .size(12)
+                    .font(iced::Font::MONOSPACE)
+                    .color(theme.palette().text)
+                    .wrapping(Wrapping::None)
+                    .width(NUMBER_WIDTH),
+            );
+        }
+
+        row_ui = row_ui.push(
             text(format_usd(&format!("{:.0}", liq.notional)))
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(theme.palette().text)
-                .width(80),
-            self.view_liquidated_user_cell(liquidated_user, &theme),
-            Space::new().width(Fill),
-            text(method_label)
-                .size(11)
-                .color(theme.extended_palette().background.weak.text),
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center);
+                .wrapping(Wrapping::None)
+                .width(NUMBER_WIDTH),
+        );
+
+        if row_layout.show_user {
+            row_ui = row_ui.push(self.view_liquidated_user_cell(liquidated_user, &theme));
+        }
+
+        if row_layout.show_method {
+            row_ui = row_ui.push(Space::new().width(Fill)).push(
+                text(method_label)
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(METHOD_WIDTH),
+            );
+        }
 
         container(row_ui)
             .padding([4, 8])

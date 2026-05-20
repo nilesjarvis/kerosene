@@ -91,6 +91,20 @@ fn default_custom_themes_include_kerosene_chart_colors() {
     assert_eq!(bloomberg.danger, "#B00024");
     assert_eq!(bloomberg.chart_bull.as_deref(), Some("#00C853"));
     assert_eq!(bloomberg.chart_bear.as_deref(), Some("#D50032"));
+
+    let ftx = themes
+        .iter()
+        .find(|theme| theme.name == "FTX")
+        .expect("FTX theme should be present");
+
+    assert_eq!(ftx.background, "#101824");
+    assert_eq!(ftx.text, "#D8E2EE");
+    assert_eq!(ftx.primary, "#00A8B8");
+    assert_eq!(ftx.success, "#08A67A");
+    assert_eq!(ftx.warning, "#F0A040");
+    assert_eq!(ftx.danger, "#F03060");
+    assert_eq!(ftx.chart_bull.as_deref(), Some("#08A67A"));
+    assert_eq!(ftx.chart_bear.as_deref(), Some("#F03060"));
 }
 
 #[test]

@@ -5,6 +5,7 @@ use crate::feed_views::tracked_trades::layout::{
 };
 use crate::message::Message;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, row, text};
 use iced::{Element, Fill};
 
@@ -15,44 +16,80 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         let theme = self.theme();
 
-        let mut header = row![
-            text("Time")
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(TIME_WIDTH),
-            text("Wallet")
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(WALLET_COLUMN_WIDTH),
-            text("Coin")
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(COIN_WIDTH),
-            text("Side")
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(SIDE_WIDTH),
-            text("Size")
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(NUMBER_WIDTH),
-            text("Price")
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(NUMBER_WIDTH),
-            text("Notional")
-                .size(11)
-                .color(theme.extended_palette().background.weak.text)
-                .width(NUMBER_WIDTH),
-        ]
-        .spacing(ROW_SPACING)
-        .align_y(iced::Alignment::Center);
+        let mut header = row![].spacing(ROW_SPACING).align_y(iced::Alignment::Center);
+
+        if row_layout.show_time {
+            header = header.push(
+                text("Time")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(TIME_WIDTH),
+            );
+        }
+
+        header = header
+            .push(
+                text("Wallet")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(WALLET_COLUMN_WIDTH),
+            )
+            .push(
+                text("Coin")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(COIN_WIDTH),
+            );
+
+        if row_layout.show_side {
+            header = header.push(
+                text("Side")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(SIDE_WIDTH),
+            );
+        }
+
+        if row_layout.show_size {
+            header = header.push(
+                text("Size")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(NUMBER_WIDTH),
+            );
+        }
+
+        if row_layout.show_price {
+            header = header.push(
+                text("Price")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(NUMBER_WIDTH),
+            );
+        }
+
+        if row_layout.show_notional {
+            header = header.push(
+                text("Notional")
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
+                    .width(NUMBER_WIDTH),
+            );
+        }
 
         if row_layout.show_pnl {
             header = header.push(
                 text("PnL")
                     .size(11)
                     .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
                     .width(NUMBER_WIDTH),
             );
         }
@@ -62,6 +99,7 @@ impl TradingTerminal {
                 text("Fee")
                     .size(11)
                     .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
                     .width(NUMBER_WIDTH),
             );
         }
@@ -70,7 +108,8 @@ impl TradingTerminal {
             header = header.push(Space::new().width(Fill)).push(
                 text("Intent")
                     .size(11)
-                    .color(theme.extended_palette().background.weak.text),
+                    .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None),
             );
         }
 

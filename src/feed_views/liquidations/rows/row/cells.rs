@@ -1,7 +1,9 @@
 use crate::app_state::TradingTerminal;
+use crate::feed_views::liquidations::layout::{COIN_WIDTH, USER_WIDTH};
 use crate::helpers;
 use crate::message::Message;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, row, text, tooltip};
 use iced::{Element, Theme};
 
@@ -17,7 +19,8 @@ impl TradingTerminal {
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(theme.extended_palette().background.weak.text)
-                .width(90)
+                .wrapping(Wrapping::None)
+                .width(USER_WIDTH)
                 .into();
         }
 
@@ -27,7 +30,8 @@ impl TradingTerminal {
             text(display.primary)
                 .size(12)
                 .font(iced::Font::MONOSPACE)
-                .color(theme.palette().primary),
+                .color(theme.palette().primary)
+                .wrapping(Wrapping::None),
         )
         .on_press(Message::CopyToClipboard(liquidated_user))
         .padding(0)
@@ -35,7 +39,7 @@ impl TradingTerminal {
             background: None,
             ..Default::default()
         })
-        .width(90)
+        .width(USER_WIDTH)
         .into();
 
         tooltip(
@@ -56,13 +60,18 @@ pub(super) fn liquidation_symbol_button(
         coin_content = coin_content.push(icon).push(Space::new().width(4.0));
     }
     coin_content = coin_content
-        .push(text(coin.clone()).size(12).font(iced::Font::MONOSPACE))
+        .push(
+            text(coin.clone())
+                .size(12)
+                .font(iced::Font::MONOSPACE)
+                .wrapping(Wrapping::None),
+        )
         .align_y(iced::Alignment::Center);
 
     button(coin_content)
         .on_press(Message::SymbolSelected(coin))
         .padding(0)
-        .width(80)
+        .width(COIN_WIDTH)
         .style(|theme: &Theme, status| {
             let text_color = match status {
                 button::Status::Hovered => theme.palette().primary,

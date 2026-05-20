@@ -126,3 +126,43 @@ fn kraken_theme_uses_aubergine_panels_and_trade_accents() {
         [0xE3, 0x4A, 0x6F, 255]
     );
 }
+
+#[test]
+fn ftx_theme_uses_screenshot_navy_panels_and_teal_accents() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0x10, 0x18, 0x24),
+        text: Color::from_rgb8(0xD8, 0xE2, 0xEE),
+        primary: Color::from_rgb8(0x00, 0xA8, 0xB8),
+        success: Color::from_rgb8(0x08, 0xA6, 0x7A),
+        warning: Color::from_rgb8(0xF0, 0xA0, 0x40),
+        danger: Color::from_rgb8(0xF0, 0x30, 0x60),
+    };
+
+    assert!(TradingTerminal::palette_matches_ftx_source(source_palette));
+
+    let extended = TradingTerminal::ftx_source_extended_palette();
+    assert_eq!(
+        extended.background.base.color.into_rgba8(),
+        [0x10, 0x18, 0x24, 255]
+    );
+    assert_eq!(
+        extended.background.weak.color.into_rgba8(),
+        [0x12, 0x1A, 0x27, 255]
+    );
+    assert_eq!(
+        extended.background.strong.color.into_rgba8(),
+        [0x18, 0x22, 0x32, 255]
+    );
+    assert_eq!(
+        extended.primary.base.color.into_rgba8(),
+        [0x00, 0xA8, 0xB8, 255]
+    );
+    assert_eq!(
+        extended.success.base.color.into_rgba8(),
+        [0x08, 0xA6, 0x7A, 255]
+    );
+    assert_eq!(
+        extended.danger.base.color.into_rgba8(),
+        [0xF0, 0x30, 0x60, 255]
+    );
+}

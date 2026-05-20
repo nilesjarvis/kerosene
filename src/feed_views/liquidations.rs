@@ -1,10 +1,11 @@
 mod controls;
 mod footer;
+mod layout;
 mod rows;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{column, container, scrollable, text};
+use iced::widget::{column, container, responsive, scrollable, text};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
@@ -23,11 +24,23 @@ impl TradingTerminal {
             return empty_state.into();
         }
 
+        container(responsive(move |size| {
+            self.view_liquidations_sized(now_ms, size.width)
+        }))
+        .width(Fill)
+        .height(Fill)
+        .padding(12)
+        .into()
+    }
+
+    fn view_liquidations_sized(&self, now_ms: u64, available_width: f32) -> Element<'_, Message> {
+        let row_layout = layout::LiquidationFeedRowLayout::from_width(available_width);
+
         let content = column![
             self.view_liquidations_top_bar(now_ms),
-            self.view_liquidations_header(),
+            self.view_liquidations_header(row_layout),
             iced::widget::rule::horizontal(1),
-            scrollable(self.view_liquidation_feed_rows(now_ms))
+            scrollable(self.view_liquidation_feed_rows(now_ms, row_layout))
                 .direction(iced::widget::scrollable::Direction::Vertical(
                     iced::widget::scrollable::Scrollbar::new()
                         .width(4)
@@ -40,10 +53,6 @@ impl TradingTerminal {
         ]
         .spacing(8);
 
-        container(content)
-            .width(Fill)
-            .height(Fill)
-            .padding(12)
-            .into()
+        container(content).width(Fill).height(Fill).into()
     }
 }

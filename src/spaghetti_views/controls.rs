@@ -55,13 +55,16 @@ impl TradingTerminal {
                 .push(spaghetti_controls_separator())
                 .push(reset_view_btn);
 
-            let mode_text = if let Some(tf) = inst.session_granularity {
-                format!("Anchor mode: manual {}", tf.label())
-            } else {
-                "Anchor mode: auto".to_string()
-            };
-            r.push(spaghetti_controls_separator())
-                .push(spaghetti_controls_status_label(mode_text))
+            if let Some(tf) = inst.session_granularity {
+                r = r
+                    .push(spaghetti_controls_separator())
+                    .push(spaghetti_controls_status_label(format!(
+                        "Anchor mode: manual {}",
+                        tf.label()
+                    )));
+            }
+
+            r
         } else {
             let picker = pick_list(TIMEFRAME_OPTIONS, Some(active_tf), move |tf| {
                 Message::SpaghettiSwitchTimeframe(id, tf)

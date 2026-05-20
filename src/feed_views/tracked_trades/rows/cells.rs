@@ -4,6 +4,7 @@ use crate::feed_views::tracked_trades::layout::{
 };
 use crate::helpers;
 use crate::message::Message;
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, row, text, tooltip};
 use iced::{Color, Element, Theme};
 
@@ -19,6 +20,7 @@ impl TradingTerminal {
                 .size(12)
                 .font(iced::Font::MONOSPACE)
                 .color(theme.extended_palette().background.weak.text)
+                .wrapping(Wrapping::None)
                 .width(WALLET_COLUMN_WIDTH)
                 .into();
         }
@@ -28,7 +30,8 @@ impl TradingTerminal {
             text(display.primary)
                 .size(12)
                 .font(iced::Font::MONOSPACE)
-                .color(theme.palette().primary),
+                .color(theme.palette().primary)
+                .wrapping(Wrapping::None),
         )
         .on_press(Message::CopyToClipboard(address_for_message.clone()))
         .padding(0)
@@ -46,28 +49,34 @@ impl TradingTerminal {
         .into();
 
         let ghost_button: Element<'_, Message> = tooltip(
-            button(text("G").size(10).font(iced::Font::MONOSPACE).center())
-                .on_press(Message::GhostWallet(address_for_message.clone()))
-                .padding([0, 4])
-                .style(|theme: &Theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => theme.extended_palette().background.strong.color,
-                        _ => theme.extended_palette().background.weak.color,
-                    };
-                    button::Style {
-                        background: Some(bg.into()),
-                        text_color: theme.palette().primary,
-                        border: iced::Border {
-                            radius: 3.0.into(),
-                            width: 1.0,
-                            color: Color {
-                                a: 0.45,
-                                ..theme.palette().primary
-                            },
+            button(
+                text("G")
+                    .size(10)
+                    .font(iced::Font::MONOSPACE)
+                    .wrapping(Wrapping::None)
+                    .center(),
+            )
+            .on_press(Message::GhostWallet(address_for_message.clone()))
+            .padding([0, 4])
+            .style(|theme: &Theme, status| {
+                let bg = match status {
+                    button::Status::Hovered => theme.extended_palette().background.strong.color,
+                    _ => theme.extended_palette().background.weak.color,
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    text_color: theme.palette().primary,
+                    border: iced::Border {
+                        radius: 3.0.into(),
+                        width: 1.0,
+                        color: Color {
+                            a: 0.45,
+                            ..theme.palette().primary
                         },
-                        ..Default::default()
-                    }
-                }),
+                    },
+                    ..Default::default()
+                }
+            }),
             text("Open in ghost mode").size(10),
             iced::widget::tooltip::Position::Top,
         )
@@ -78,6 +87,7 @@ impl TradingTerminal {
                 text("\u{2197}")
                     .size(12)
                     .font(iced::Font::MONOSPACE)
+                    .wrapping(Wrapping::None)
                     .center(),
             )
             .on_press(Message::OpenWalletDetailsWindow(address_for_message))
@@ -126,7 +136,8 @@ impl TradingTerminal {
             .push(
                 text(display_coin.clone())
                     .size(12)
-                    .font(iced::Font::MONOSPACE),
+                    .font(iced::Font::MONOSPACE)
+                    .wrapping(Wrapping::None),
             )
             .align_y(iced::Alignment::Center);
 
