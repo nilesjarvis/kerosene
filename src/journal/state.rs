@@ -41,6 +41,7 @@ pub struct JournalState {
     pub filter: JournalFilter,
     pub sort: JournalSort,
     pub show_all_assets: bool,
+    pub show_account_value_chart: bool,
     pub error: Option<String>,
     pub warning: Option<String>,
     pub last_refresh_time: Option<u64>,
@@ -62,4 +63,5 @@ pub struct JournalAccountState {
     pub edit_modes: HashMap<String, bool>,
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
+    pub show_account_value_chart: bool,
 }

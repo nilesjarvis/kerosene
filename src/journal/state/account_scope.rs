@@ -56,6 +56,7 @@ impl JournalState {
             filter: JournalFilter::All,
             sort: JournalSort::TimeDesc,
             show_all_assets: false,
+            show_account_value_chart: false,
             error: None,
             warning: None,
             last_refresh_time: None,
@@ -145,6 +146,7 @@ impl JournalState {
             edit_modes: self.edit_modes.clone(),
             edit_source_keys: self.edit_source_keys.clone(),
             edit_buffers: self.edit_buffers.clone(),
+            show_account_value_chart: self.show_account_value_chart,
         }
     }
 
@@ -160,5 +162,6 @@ impl JournalState {
         self.edit_modes = state.edit_modes;
         self.edit_source_keys = state.edit_source_keys;
         self.edit_buffers = state.edit_buffers;
+        self.show_account_value_chart = state.show_account_value_chart;
     }
 }

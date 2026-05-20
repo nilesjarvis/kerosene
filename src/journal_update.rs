@@ -131,6 +131,9 @@ impl TradingTerminal {
             Message::JournalToggleAllAssets => {
                 self.journal.show_all_assets = !self.journal.show_all_assets;
             }
+            Message::JournalToggleAccountValueChart(show) => {
+                self.journal.show_account_value_chart = show;
+            }
             Message::JournalRefresh => {
                 return self.load_journal_for_active_account(true);
             }

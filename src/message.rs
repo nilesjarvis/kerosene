@@ -201,6 +201,7 @@ pub(crate) enum Message {
     JournalFilterChanged(journal::JournalFilter),
     JournalSortChanged(journal::JournalSort),
     JournalToggleAllAssets,
+    JournalToggleAccountValueChart(bool),
     // Spaghetti chart
     SpaghettiSwitchTimeframe(SpaghettiChartId, Timeframe),
     SpaghettiReload(SpaghettiChartId),
