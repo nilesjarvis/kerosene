@@ -15,6 +15,14 @@ use iced::Task;
 mod tests;
 
 impl TradingTerminal {
+    pub(crate) fn positioning_symbol_search_input_id(id: PositioningInfoId) -> iced::widget::Id {
+        iced::widget::Id::from(format!("positioning_symbol_search_{id}"))
+    }
+
+    pub(crate) fn focus_positioning_symbol_search_input(id: PositioningInfoId) -> Task<Message> {
+        iced::widget::operation::focus(Self::positioning_symbol_search_input_id(id))
+    }
+
     pub(crate) fn update_positioning_info_market(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::AddPositioningInfoPane => self.add_positioning_info_pane(),
@@ -24,6 +32,7 @@ impl TradingTerminal {
                         return Task::none();
                     }
                     instance.page = page;
+                    instance.symbol_picker_open = false;
                 }
                 self.persist_config();
                 self.request_positioning_info_refresh(id, false)
@@ -31,8 +40,27 @@ impl TradingTerminal {
             Message::PositioningInfoSearchChanged(id, query) => {
                 if let Some(instance) = self.positioning_infos.get_mut(&id) {
                     instance.search_query = query;
+                    if instance.page == PositioningInfoPage::Change {
+                        instance.symbol_picker_open = true;
+                    }
                 }
                 Task::none()
+            }
+            Message::TogglePositioningInfoSymbolPicker(id) => {
+                let opened = if let Some(instance) = self.positioning_infos.get_mut(&id) {
+                    instance.symbol_picker_open = !instance.symbol_picker_open;
+                    if instance.symbol_picker_open {
+                        instance.search_query.clear();
+                    }
+                    instance.symbol_picker_open
+                } else {
+                    false
+                };
+                if opened {
+                    Self::focus_positioning_symbol_search_input(id)
+                } else {
+                    Task::none()
+                }
             }
             Message::PositioningInfoSymbolSelected(id, symbol) => {
                 self.select_positioning_info_symbol(id, symbol)
@@ -190,6 +218,7 @@ impl TradingTerminal {
         if self.symbol_key_is_hidden(&symbol) {
             if let Some(instance) = self.positioning_infos.get_mut(&id) {
                 let error = "Ticker is hidden in Settings > Risk".to_string();
+                instance.symbol_picker_open = false;
                 instance.error = Some(error.clone());
                 instance.change_error = Some(error);
                 instance.asset_ctx = None;
@@ -206,6 +235,7 @@ impl TradingTerminal {
             if let Some(instance) = self.positioning_infos.get_mut(&id) {
                 let error =
                     "Positioning Information is only available for perp symbols".to_string();
+                instance.symbol_picker_open = false;
                 instance.error = Some(error.clone());
                 instance.change_error = Some(error);
                 instance.asset_ctx = None;
@@ -217,10 +247,12 @@ impl TradingTerminal {
         if let Some(instance) = self.positioning_infos.get_mut(&id) {
             if instance.symbol == symbol {
                 instance.search_query.clear();
+                instance.symbol_picker_open = false;
                 return Task::none();
             }
             instance.symbol = symbol;
             instance.search_query.clear();
+            instance.symbol_picker_open = false;
             instance.loading = false;
             instance.error = None;
             instance.data = None;

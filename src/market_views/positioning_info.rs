@@ -79,7 +79,7 @@ impl TradingTerminal {
         let controls = self.view_positioning_info_controls(instance);
 
         let mut content = column![
-            self.view_positioning_info_title(instance, theme),
+            self.view_positioning_info_title(instance, theme, false),
             search,
             autocomplete,
             controls,
@@ -142,22 +142,14 @@ impl TradingTerminal {
         available_width: f32,
         theme: &Theme,
     ) -> Element<'a, Message> {
-        let search = text_input("Select perp ticker...", &instance.search_query)
-            .style(helpers::text_input_style)
-            .on_input(move |q| Message::PositioningInfoSearchChanged(instance.id, q))
-            .size(12)
-            .padding([5, 8]);
-        let autocomplete =
-            self.view_positioning_info_autocomplete(instance.id, &instance.search_query, theme);
         let controls = self.view_positioning_info_change_controls(instance);
 
-        let mut content = column![
-            self.view_positioning_info_title(instance, theme),
-            search,
-            autocomplete,
-            controls,
-        ]
-        .spacing(8);
+        let mut content =
+            column![self.view_positioning_info_title(instance, theme, true)].spacing(8);
+        if instance.symbol_picker_open {
+            content = content.push(self.view_positioning_info_symbol_dropdown(instance, theme));
+        }
+        content = content.push(controls);
 
         if let Some(error) = &instance.change_error {
             content = content.push(text(error.clone()).size(11).color(
@@ -236,17 +228,68 @@ impl TradingTerminal {
         &'a self,
         instance: &'a PositioningInfoInstance,
         theme: &Theme,
+        compact_symbol_picker: bool,
     ) -> Element<'a, Message> {
         let display = self.positioning_info_symbol_display(&instance.symbol);
         let mut symbol_row = Row::new().spacing(6).align_y(Alignment::Center);
-        if let Some(icon) = helpers::symbol_icon(&instance.symbol, 16, theme.palette().text) {
-            symbol_row = symbol_row.push(icon);
+        if compact_symbol_picker {
+            let mut picker_content = Row::new().spacing(5).align_y(Alignment::Center);
+            if let Some(icon) = helpers::symbol_icon(&instance.symbol, 14, theme.palette().text) {
+                picker_content = picker_content.push(icon);
+            }
+            picker_content = picker_content
+                .push(text(display).size(12).color(theme.palette().text))
+                .push(
+                    text(if instance.symbol_picker_open {
+                        "\u{25b2}"
+                    } else {
+                        "\u{25be}"
+                    })
+                    .size(9)
+                    .color(theme.extended_palette().background.weak.text),
+                );
+
+            symbol_row = symbol_row.push(
+                button(picker_content)
+                    .on_press(Message::TogglePositioningInfoSymbolPicker(instance.id))
+                    .padding([2, 7])
+                    .style(move |theme: &Theme, status| {
+                        let bg = match (instance.symbol_picker_open, status) {
+                            (_, button::Status::Hovered) => {
+                                theme.extended_palette().background.strong.color
+                            }
+                            (true, _) => theme.extended_palette().background.strong.color,
+                            (false, _) => theme.extended_palette().background.weak.color,
+                        };
+                        button::Style {
+                            background: Some(bg.into()),
+                            text_color: theme.palette().text,
+                            border: iced::Border {
+                                radius: 3.0.into(),
+                                width: if instance.symbol_picker_open {
+                                    1.0
+                                } else {
+                                    0.0
+                                },
+                                color: Color {
+                                    a: 0.45,
+                                    ..theme.palette().primary
+                                },
+                            },
+                            ..Default::default()
+                        }
+                    }),
+            );
+        } else {
+            if let Some(icon) = helpers::symbol_icon(&instance.symbol, 16, theme.palette().text) {
+                symbol_row = symbol_row.push(icon);
+            }
+            symbol_row = symbol_row.push(
+                text(format!("Positioning Information ({display})"))
+                    .size(13)
+                    .color(theme.palette().text),
+            );
         }
-        symbol_row = symbol_row.push(
-            text(format!("Positioning Information ({display})"))
-                .size(13)
-                .color(theme.palette().text),
-        );
         if let Some(dex) = helpers::hip3_dex(&instance.symbol) {
             symbol_row = symbol_row.push(
                 text(format!("({dex})"))
@@ -255,7 +298,12 @@ impl TradingTerminal {
             );
         }
 
-        let status: Element<'_, Message> = if instance.loading {
+        let (loading, last_fetch_ms) = match instance.page {
+            PositioningInfoPage::Positions => (instance.loading, instance.last_fetch_ms),
+            PositioningInfoPage::Change => (instance.change_loading, instance.change_last_fetch_ms),
+        };
+
+        let status: Element<'_, Message> = if loading {
             row![
                 self.view_spinner(14),
                 text("Refreshing")
@@ -267,8 +315,7 @@ impl TradingTerminal {
             .into()
         } else {
             text(
-                instance
-                    .last_fetch_ms
+                last_fetch_ms
                     .map(|last| {
                         format!(
                             "{} ago",
@@ -376,6 +423,37 @@ impl TradingTerminal {
         }
 
         autocomplete
+    }
+
+    fn view_positioning_info_symbol_dropdown<'a>(
+        &'a self,
+        instance: &'a PositioningInfoInstance,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        let search = text_input("Search perp ticker...", &instance.search_query)
+            .id(Self::positioning_symbol_search_input_id(instance.id))
+            .style(helpers::text_input_style)
+            .on_input(move |q| Message::PositioningInfoSearchChanged(instance.id, q))
+            .size(12)
+            .padding([5, 8]);
+        let autocomplete =
+            self.view_positioning_info_autocomplete(instance.id, &instance.search_query, theme);
+
+        let content = column![search, autocomplete].spacing(5).padding(6);
+
+        container(content)
+            .width(Fill)
+            .style(|theme: &Theme| iced::widget::container::Style {
+                background: Some(theme.extended_palette().background.strong.color.into()),
+                text_color: Some(theme.palette().text),
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 1.0,
+                    color: theme.extended_palette().background.weak.color,
+                },
+                ..Default::default()
+            })
+            .into()
     }
 
     fn view_positioning_info_controls(
@@ -502,10 +580,23 @@ impl TradingTerminal {
         } else {
             data.deltas.len().to_string()
         };
+        let totals = positioning_change_side_delta_totals(&data.deltas);
+        let long_delta_color = positioning_side_delta_color(totals.long_delta, true, theme);
+        let short_delta_color = positioning_side_delta_color(totals.short_delta, false, theme);
 
         row![
             helpers::label_value("Timeframe", instance.change_timeframe.label().to_string()),
             helpers::label_value("Rows", rows_label),
+            helpers::label_value_colored(
+                "\u{0394} Long",
+                format_signed_size(totals.long_delta, true),
+                long_delta_color
+            ),
+            helpers::label_value_colored(
+                "\u{0394} Short",
+                format_signed_size(totals.short_delta, true),
+                short_delta_color
+            ),
             helpers::label_value("Fetched", last_fetch),
             text(format!("API: {}", data.timeframe))
                 .size(10)
@@ -1657,6 +1748,12 @@ fn truncate_ascii(value: &str, max_chars: usize) -> String {
 
 const POSITIONING_LIVE_MARK_MAX_AGE_MS: u64 = 15_000;
 
+#[derive(Debug, Clone, Copy)]
+struct PositioningChangeSideTotals {
+    long_delta: f64,
+    short_delta: f64,
+}
+
 fn positioning_live_mark(instance: &PositioningInfoInstance, now_ms: u64) -> Option<f64> {
     let updated_at = instance.asset_ctx_updated_at_ms?;
     if now_ms.checked_sub(updated_at)? > POSITIONING_LIVE_MARK_MAX_AGE_MS {
@@ -1717,6 +1814,37 @@ fn positioning_live_change_usd(value: f64, live_mark: Option<f64>) -> Option<f64
 fn positioning_previous_change_size(entry: &PerpDeltaEntry) -> Option<f64> {
     let previous = entry.current - entry.delta;
     previous.is_finite().then_some(previous)
+}
+
+fn positioning_change_side_delta_totals(deltas: &[PerpDeltaEntry]) -> PositioningChangeSideTotals {
+    let mut totals = PositioningChangeSideTotals {
+        long_delta: 0.0,
+        short_delta: 0.0,
+    };
+
+    for entry in deltas {
+        if !entry.current.is_finite() {
+            continue;
+        }
+        let Some(previous) = positioning_previous_change_size(entry) else {
+            continue;
+        };
+
+        totals.long_delta += entry.current.max(0.0) - previous.max(0.0);
+        totals.short_delta += (-entry.current).max(0.0) - (-previous).max(0.0);
+    }
+
+    totals
+}
+
+fn positioning_side_delta_color(value: f64, is_long: bool, theme: &Theme) -> Color {
+    if value == 0.0 || !value.is_finite() {
+        return theme.palette().text;
+    }
+    match (is_long, value > 0.0) {
+        (true, true) | (false, false) => theme.palette().success,
+        (true, false) | (false, true) => theme.palette().danger,
+    }
 }
 
 fn sorted_change_rows(
@@ -2004,6 +2132,21 @@ mod tests {
             positioning_previous_change_size(&delta("0xccc", -100.0, 30.0)),
             Some(-130.0)
         );
+    }
+
+    #[test]
+    fn positioning_change_side_totals_count_flips_by_side_exposure() {
+        let rows = vec![
+            delta("0xaaa", -5.0, -15.0),
+            delta("0xbbb", 2.0, 10.0),
+            delta("0xccc", 7.0, 4.0),
+            delta("0xddd", f64::NAN, 1.0),
+        ];
+
+        let totals = positioning_change_side_delta_totals(&rows);
+
+        assert_eq!(totals.long_delta, -4.0);
+        assert_eq!(totals.short_delta, -3.0);
     }
 
     #[test]

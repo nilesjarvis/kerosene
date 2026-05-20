@@ -167,6 +167,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddPositioningInfoPane
         | Message::PositioningInfoPageChanged(_, _)
         | Message::PositioningInfoSearchChanged(_, _)
+        | Message::TogglePositioningInfoSymbolPicker(_)
         | Message::PositioningInfoSymbolSelected(_, _)
         | Message::PositioningInfoSideChanged(_, _)
         | Message::PositioningInfoSortChanged(_, _)

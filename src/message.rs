@@ -72,6 +72,7 @@ pub(crate) enum Message {
     AddPositioningInfoPane,
     PositioningInfoPageChanged(PositioningInfoId, PositioningInfoPage),
     PositioningInfoSearchChanged(PositioningInfoId, String),
+    TogglePositioningInfoSymbolPicker(PositioningInfoId),
     PositioningInfoSymbolSelected(PositioningInfoId, String),
     PositioningInfoSideChanged(PositioningInfoId, PositioningInfoSide),
     PositioningInfoSortChanged(PositioningInfoId, PositioningInfoSortField),

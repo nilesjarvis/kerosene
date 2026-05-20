@@ -66,6 +66,7 @@ fn is_positioning_info_market_message(message: &Message) -> bool {
         Message::AddPositioningInfoPane
             | Message::PositioningInfoPageChanged(_, _)
             | Message::PositioningInfoSearchChanged(_, _)
+            | Message::TogglePositioningInfoSymbolPicker(_)
             | Message::PositioningInfoSymbolSelected(_, _)
             | Message::PositioningInfoSideChanged(_, _)
             | Message::PositioningInfoSortChanged(_, _)
