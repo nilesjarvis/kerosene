@@ -118,6 +118,21 @@ fn quick_order_open_left_click_in_chart_area_closes_card_without_panning() {
 }
 
 #[test]
+fn normal_left_click_marks_chart_focused_without_capturing_event() {
+    let chart = CandlestickChart::new(7);
+    let mut state = ChartState::default();
+
+    let action = chart
+        .handle_left_press(&mut state, Point::new(120.0, 80.0), 400.0, 240.0, 260.0)
+        .expect("left click should publish chart focus");
+    let (message, _, status) = action.into_inner();
+
+    assert!(matches!(message, Some(Message::ChartFocused(7))));
+    assert_eq!(status, iced::event::Status::Ignored);
+    assert!(matches!(state.drag, Some(DragKind::PanX)));
+}
+
+#[test]
 fn quick_order_open_right_click_in_chart_area_publishes_replacement_open_message() {
     let mut chart = CandlestickChart::new(1);
     chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 110.0)]);

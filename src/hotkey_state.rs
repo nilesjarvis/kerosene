@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 
 use crate::config;
+use crate::timeframe::{TIMEFRAME_OPTIONS, Timeframe};
 
 pub(crate) struct HotkeyActionGroup {
     pub(crate) title: &'static str,
@@ -67,6 +68,60 @@ impl TradingTerminal {
             && Self::hotkey_combo_is_assignable(key_str, modifiers)
     }
 
+    pub(crate) fn hotkey_prefix_has_modifier(prefix: &config::HotkeyPrefixConfig) -> bool {
+        prefix.shift || prefix.ctrl || prefix.alt || prefix.logo
+    }
+
+    pub(crate) fn normalize_chart_timeframe_hotkey_prefix(
+        mut prefix: config::HotkeyPrefixConfig,
+    ) -> Option<config::HotkeyPrefixConfig> {
+        if prefix.ctrl || prefix.alt || prefix.logo {
+            prefix.shift = false;
+        }
+
+        Self::hotkey_prefix_has_modifier(&prefix).then_some(prefix)
+    }
+
+    pub(crate) fn hotkey_prefix_from_modifiers(
+        modifiers: iced::keyboard::Modifiers,
+    ) -> config::HotkeyPrefixConfig {
+        config::HotkeyPrefixConfig {
+            shift: modifiers.shift(),
+            ctrl: modifiers.control(),
+            alt: modifiers.alt(),
+            logo: modifiers.logo(),
+        }
+    }
+
+    pub(crate) fn hotkey_prefix_matches(
+        prefix: &config::HotkeyPrefixConfig,
+        modifiers: iced::keyboard::Modifiers,
+    ) -> bool {
+        Self::normalize_chart_timeframe_hotkey_prefix(*prefix).is_some_and(|prefix| {
+            Self::normalize_chart_timeframe_hotkey_prefix(Self::hotkey_prefix_from_modifiers(
+                modifiers,
+            ))
+            .is_some_and(|event_prefix| prefix == event_prefix)
+        })
+    }
+
+    pub(crate) fn hotkey_has_prefix(
+        hotkey: &config::HotkeyConfig,
+        prefix: &config::HotkeyPrefixConfig,
+    ) -> bool {
+        let hotkey_prefix = config::HotkeyPrefixConfig {
+            shift: hotkey.shift,
+            ctrl: hotkey.ctrl,
+            alt: hotkey.alt,
+            logo: hotkey.logo,
+        };
+
+        Self::normalize_chart_timeframe_hotkey_prefix(*prefix).is_some_and(|prefix| {
+            Self::normalize_chart_timeframe_hotkey_prefix(hotkey_prefix)
+                .is_some_and(|hotkey_prefix| prefix == hotkey_prefix)
+        })
+    }
+
     pub(crate) fn hotkey_display(hotkey: &config::HotkeyConfig) -> String {
         let mut parts = Vec::new();
         if hotkey.ctrl {
@@ -85,9 +140,33 @@ impl TradingTerminal {
         parts.join(" + ")
     }
 
+    pub(crate) fn hotkey_prefix_display(prefix: &config::HotkeyPrefixConfig) -> String {
+        let mut parts = Vec::new();
+        if prefix.ctrl {
+            parts.push("Ctrl".to_string());
+        }
+        if prefix.alt {
+            parts.push("Alt".to_string());
+        }
+        if prefix.shift {
+            parts.push("Shift".to_string());
+        }
+        if prefix.logo {
+            parts.push("Win/Cmd".to_string());
+        }
+        parts.push(format!("1..{}", TIMEFRAME_OPTIONS.len()));
+        parts.join(" + ")
+    }
+
+    pub(crate) fn chart_timeframe_for_hotkey_key(key_str: &str) -> Option<Timeframe> {
+        let index = key_str.parse::<usize>().ok()?.checked_sub(1)?;
+        TIMEFRAME_OPTIONS.get(index).copied()
+    }
+
     pub(crate) fn hotkey_action_label(&self, action: &config::HotkeyAction) -> String {
         match action {
             config::HotkeyAction::AddCandlestickChart => "Add Candlestick Chart".to_string(),
+            config::HotkeyAction::ChartTimeframePrefix => "Chart Timeframes".to_string(),
             config::HotkeyAction::OpenTradingJournal => "Open Trading Journal".to_string(),
             config::HotkeyAction::OpenWalletTracker => "Open Wallet Tracker".to_string(),
             config::HotkeyAction::OpenQuickSymbolSearch => "Quick Symbol Search".to_string(),
@@ -113,6 +192,10 @@ impl TradingTerminal {
                 (
                     config::HotkeyAction::AddCandlestickChart,
                     "Add Candlestick Chart".to_string(),
+                ),
+                (
+                    config::HotkeyAction::ChartTimeframePrefix,
+                    format!("Chart Timeframes 1..{}", TIMEFRAME_OPTIONS.len()),
                 ),
                 (
                     config::HotkeyAction::OpenTradingJournal,

@@ -42,11 +42,20 @@ impl TradingTerminal {
     fn view_hotkey_row(&self, action: config::HotkeyAction, label: String) -> Element<'_, Message> {
         let is_recording = self.recording_hotkey_for.as_ref() == Some(&action);
         let current_hk = self.hotkeys.iter().find(|h| h.action == action);
+        let current_prefix = (action == config::HotkeyAction::ChartTimeframePrefix)
+            .then_some(self.chart_timeframe_hotkey_prefix)
+            .flatten();
 
         let btn_text = if is_recording {
-            "Press any key (Esc to cancel)...".to_string()
+            if action == config::HotkeyAction::ChartTimeframePrefix {
+                "Press prefix (Esc cancels)...".to_string()
+            } else {
+                "Press any key (Esc to cancel)...".to_string()
+            }
         } else if let Some(hk) = current_hk {
             Self::hotkey_display(hk)
+        } else if let Some(prefix) = current_prefix {
+            Self::hotkey_prefix_display(&prefix)
         } else {
             "None".to_string()
         };
@@ -59,7 +68,7 @@ impl TradingTerminal {
             hk_btn = hk_btn.on_press(Message::StartRecordingHotkey(action.clone()));
         }
 
-        let clear_cell: Element<'_, Message> = if current_hk.is_some() {
+        let clear_cell: Element<'_, Message> = if current_hk.is_some() || current_prefix.is_some() {
             button(text("Clear").size(12))
                 .padding([6, 12])
                 .on_press(Message::ClearHotkey(action.clone()))

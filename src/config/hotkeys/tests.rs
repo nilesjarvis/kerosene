@@ -1,4 +1,4 @@
-use super::{HotkeyAction, HotkeyConfig};
+use super::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};
 
 #[test]
 fn switch_account_hotkey_round_trips_secret_id() {
@@ -70,4 +70,20 @@ fn switch_layout_hotkey_round_trips_layout_name() {
     let loaded: HotkeyConfig = serde_json::from_str(&json).expect("hotkey should deserialize");
 
     assert_eq!(loaded, hotkey);
+}
+
+#[test]
+fn chart_timeframe_prefix_round_trips_modifiers() {
+    let prefix = HotkeyPrefixConfig {
+        shift: false,
+        ctrl: false,
+        alt: false,
+        logo: true,
+    };
+
+    let json = serde_json::to_string(&prefix).expect("prefix should serialize");
+    let loaded: HotkeyPrefixConfig =
+        serde_json::from_str(&json).expect("prefix should deserialize");
+
+    assert_eq!(loaded, prefix);
 }

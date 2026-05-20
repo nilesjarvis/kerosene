@@ -15,6 +15,7 @@ impl TradingTerminal {
         self.layout_rename_index = None;
         self.layout_rename_input.clear();
         self.hotkeys.clear();
+        self.chart_timeframe_hotkey_prefix = None;
         self.recording_hotkey_for = None;
         self.secret_storage_mode = config::CredentialStorageMode::default();
         self.secret_storage_selection = self.secret_storage_mode;

@@ -246,6 +246,7 @@ impl TradingTerminal {
             advanced_order_history: self.advanced_order_history.iter().cloned().collect(),
             preset_is_usd: layout_snapshot.preset_is_usd,
             hotkeys: self.hotkeys.clone(),
+            chart_timeframe_hotkey_prefix: self.chart_timeframe_hotkey_prefix,
         }
     }
 }

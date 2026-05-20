@@ -53,6 +53,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) pane_border_thickness: f32,
     pub(crate) pane_corner_radius: f32,
     pub(crate) hotkeys: Vec<config::HotkeyConfig>,
+    pub(crate) chart_timeframe_hotkey_prefix: Option<config::HotkeyPrefixConfig>,
     pub(crate) recording_hotkey_for: Option<config::HotkeyAction>,
     pub(crate) focus: Option<pane_grid::Pane>,
     // Order entry form fields

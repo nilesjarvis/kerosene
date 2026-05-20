@@ -107,7 +107,7 @@ impl CandlestickChart {
             state.drag_start = Some(pos);
             state.drag_start_scroll = state.scroll_offset;
         }
-        None
+        Some(canvas::Action::publish(Message::ChartFocused(self.id)))
     }
 
     pub(in crate::chart) fn handle_right_press(

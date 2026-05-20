@@ -276,6 +276,9 @@ impl TradingTerminal {
             heatmap_pending_charts: HashMap::new(),
             liquidation_pending_charts: HashMap::new(),
             hotkeys: cfg.hotkeys.clone(),
+            chart_timeframe_hotkey_prefix: cfg
+                .chart_timeframe_hotkey_prefix
+                .and_then(Self::normalize_chart_timeframe_hotkey_prefix),
             recording_hotkey_for: None,
         };
         state.refresh_live_watchlist_row_caches();

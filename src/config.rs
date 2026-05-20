@@ -15,7 +15,7 @@ mod wallets;
 
 pub use clear::{ClearConfigSummary, clear_all_configs};
 pub use files::{journal_cache_path, load_config, save_config};
-pub use hotkeys::{HotkeyAction, HotkeyConfig};
+pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};
 pub use layouts::{
     AxisConfig, BottomTabConfig, PaneKindConfig, PaneLayoutConfig, SavedLayout,
     prune_unsupported_pane_layout,

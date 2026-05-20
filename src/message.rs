@@ -374,6 +374,7 @@ pub(crate) enum Message {
         reduce_only: Option<bool>,
     },
     // Per-chart messages (keyed by ChartId)
+    ChartFocused(ChartId),
     ChartSwitchTimeframe(ChartId, Timeframe),
     ChartReload(ChartId),
     ChartResetView(ChartId, ChartSurfaceId),
