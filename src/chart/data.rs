@@ -7,6 +7,7 @@ use super::{
     MAX_FUNDING_PANEL_HEIGHT, MIN_FUNDING_PANEL_HEIGHT, MIN_MAIN_CHART_HEIGHT, TIME_AXIS_HEIGHT,
 };
 use crate::api::{Candle, is_valid_candle, normalize_candles};
+use crate::chart_state::ChartSurfaceId;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::timeframe::Timeframe;
 use iced::Color;
@@ -21,6 +22,7 @@ impl CandlestickChart {
     pub fn new(id: u64) -> Self {
         Self {
             id,
+            surface_id: ChartSurfaceId::Docked(id),
             timeframe: Timeframe::H1,
             clock_now_ms: current_unix_ms(),
             candles: Vec::new(),
@@ -59,6 +61,7 @@ impl CandlestickChart {
     pub(crate) fn snapshot_for_export(&self) -> Self {
         Self {
             id: self.id,
+            surface_id: self.surface_id,
             timeframe: self.timeframe,
             clock_now_ms: self.clock_now_ms,
             candles: self.candles.clone(),
@@ -92,6 +95,30 @@ impl CandlestickChart {
             obscure_position_prices: self.obscure_position_prices,
             hide_positions_and_orders: self.hide_positions_and_orders,
         }
+    }
+
+    pub(crate) fn snapshot_for_surface(
+        &self,
+        surface_id: ChartSurfaceId,
+        surface_reset_epoch: u64,
+        active_tool: Option<crate::annotations::DrawingTool>,
+        quick_order_open: bool,
+        quick_order_limit_price: Option<f64>,
+    ) -> Self {
+        let mut snapshot = self.snapshot_for_export();
+        snapshot.surface_id = surface_id;
+        snapshot.reset_epoch = self.reset_epoch.saturating_add(surface_reset_epoch);
+        snapshot.active_tool = active_tool;
+        snapshot.quick_order_open = quick_order_open;
+        snapshot.quick_order_limit_price = quick_order_limit_price;
+        snapshot.quick_order_line_phase = if quick_order_open {
+            self.quick_order_line_phase
+        } else {
+            0.0
+        };
+        snapshot.obscure_position_prices = self.obscure_position_prices;
+        snapshot.hide_positions_and_orders = self.hide_positions_and_orders;
+        snapshot
     }
 
     pub fn request_view_reset(&mut self) {

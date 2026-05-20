@@ -1,8 +1,8 @@
 use super::super::secrets;
 use super::super::{
     AccountProfile, ChartConfig, ChartScreenshotSettingsConfig, CredentialStorageMode,
-    EncryptedSecretsConfig, KeroseneConfig, MacroIndicatorsConfig, PaneKindConfig,
-    PaneLayoutConfig, default_market_slippage_pct, default_pane_border_thickness,
+    DetachedChartWindowConfig, EncryptedSecretsConfig, KeroseneConfig, MacroIndicatorsConfig,
+    PaneKindConfig, PaneLayoutConfig, default_market_slippage_pct, default_pane_border_thickness,
     default_pane_corner_radius, default_ui_scale,
 };
 use crate::advanced_order_history::{AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind};
@@ -367,6 +367,39 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         serde_json::from_value(legacy_macro).expect("legacy macro indicators should deserialize");
 
     assert!(!decoded_macro.show_volume_profile);
+}
+
+#[test]
+fn detached_chart_windows_round_trip_and_legacy_defaults_empty() {
+    let config = KeroseneConfig {
+        detached_chart_windows: vec![DetachedChartWindowConfig {
+            chart_id: 7,
+            width: 1200.0,
+            height: 760.0,
+            x: Some(1800.0),
+            y: Some(40.0),
+        }],
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+
+    assert_eq!(decoded.detached_chart_windows.len(), 1);
+    assert_eq!(decoded.detached_chart_windows[0].chart_id, 7);
+    assert_eq!(decoded.detached_chart_windows[0].width, 1200.0);
+    assert_eq!(decoded.detached_chart_windows[0].x, Some(1800.0));
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    legacy
+        .as_object_mut()
+        .expect("config should serialize to object")
+        .remove("detached_chart_windows");
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+
+    assert!(decoded_legacy.detached_chart_windows.is_empty());
 }
 
 #[test]

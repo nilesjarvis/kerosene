@@ -147,6 +147,7 @@ impl TradingTerminal {
         if let Some(instance) = self.charts.get_mut(&id) {
             instance.clear_quick_order();
         }
+        self.chart_quick_order_surface.remove(&id);
     }
 
     pub(crate) fn handle_quick_order_result(

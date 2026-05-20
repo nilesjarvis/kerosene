@@ -35,6 +35,18 @@ impl TradingTerminal {
             .collect()
     }
 
+    pub(crate) fn detached_chart_window_configs_snapshot(
+        &self,
+    ) -> Vec<config::DetachedChartWindowConfig> {
+        let mut windows: Vec<_> = self.detached_chart_windows.values().collect();
+        windows.sort_by_key(|state| state.chart_id);
+        windows
+            .into_iter()
+            .filter(|state| self.charts.contains_key(&state.chart_id))
+            .map(|state| state.to_config())
+            .collect()
+    }
+
     pub(crate) fn spaghetti_chart_configs_snapshot(&self) -> Vec<config::SpaghettiChartConfig> {
         let mut spaghetti_instances: Vec<_> = self.spaghetti_charts.values().collect();
         spaghetti_instances.sort_by_key(|inst| inst.id);

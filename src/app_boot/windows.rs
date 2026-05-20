@@ -1,9 +1,11 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_state::DetachedChartWindowState;
+use crate::config::KeroseneConfig;
 use crate::message::Message;
 use iced::{Point, Size, Task, window};
 
 impl TradingTerminal {
-    pub(super) fn boot_window_tasks(&mut self) -> Vec<Task<Message>> {
+    pub(super) fn boot_window_tasks(&mut self, cfg: &KeroseneConfig) -> Vec<Task<Message>> {
         let mut boot_tasks = Vec::new();
         let main_min_size = self.main_window_min_size();
         let requested_main_size = self.main_window_size.unwrap_or(Size::new(1600.0, 960.0));
@@ -40,6 +42,27 @@ impl TradingTerminal {
             boot_tasks.push(wallet_open_task.map(Message::WindowOpened));
             self.queue_wallet_tracker_core_refresh_all();
             boot_tasks.push(self.refresh_next_wallet_tracker_core());
+        }
+
+        for detached_cfg in &cfg.detached_chart_windows {
+            if !self.charts.contains_key(&detached_cfg.chart_id)
+                || self
+                    .detached_chart_windows
+                    .values()
+                    .any(|state| state.chart_id == detached_cfg.chart_id)
+            {
+                continue;
+            }
+
+            let state = DetachedChartWindowState::from_config(detached_cfg);
+            let settings = window::Settings {
+                size: state.size(),
+                position: state.position(),
+                ..crate::window_chrome::settings()
+            };
+            let (window_id, open_task) = window::open(settings);
+            self.detached_chart_windows.insert(window_id, state);
+            boot_tasks.push(open_task.map(Message::WindowOpened));
         }
 
         boot_tasks

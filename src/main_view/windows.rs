@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartSurfaceId;
 use crate::message::Message;
 use iced::{Element, Theme, window};
 
@@ -35,6 +36,10 @@ impl TradingTerminal {
         }
         if self.pnl_card_windows.contains_key(&window_id) {
             return self.view_pnl_card_window(window_id);
+        }
+        if let Some(state) = self.detached_chart_windows.get(&window_id) {
+            return self
+                .view_detached_chart_window(state.chart_id, ChartSurfaceId::Detached(window_id));
         }
         self.view_main()
     }
@@ -78,6 +83,17 @@ impl TradingTerminal {
                     "Kerosene PnL Card - Summary".to_string()
                 }
             }
+        } else if let Some(state) = self.detached_chart_windows.get(&window_id) {
+            self.charts
+                .get(&state.chart_id)
+                .map(|instance| {
+                    format!(
+                        "Kerosene Chart - {} {}",
+                        instance.symbol_display,
+                        instance.interval.label()
+                    )
+                })
+                .unwrap_or_else(|| "Kerosene Chart".to_string())
         } else {
             "Kerosene Trading Terminal".to_string()
         }

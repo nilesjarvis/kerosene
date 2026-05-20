@@ -6,7 +6,7 @@ use crate::api::{self, Candle, ExchangeSymbol, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
-use crate::chart_state::{CandleFetchRequest, ChartId, FundingFetchRequest};
+use crate::chart_state::{CandleFetchRequest, ChartId, ChartSurfaceId, FundingFetchRequest};
 use crate::config;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::hype_etf_state::{HypeEtfData, HypeEtfView};
@@ -250,10 +250,10 @@ pub(crate) enum Message {
     SetPortfolioScope(PortfolioScope),
     SetPortfolioWindow(PortfolioWindow),
     // Drawing tools
-    SetDrawingTool(ChartId, Option<DrawingTool>),
-    AddAnnotation(Annotation),
-    RemoveAnnotation(AnnotationId),
-    ClearDrawingTool,
+    SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
+    AddAnnotation(ChartId, Annotation),
+    RemoveAnnotation(ChartId, AnnotationId),
+    ClearDrawingTool(ChartId, ChartSurfaceId),
     // Notifications
     DismissToast(u64),
     CopyToClipboard(String),
@@ -362,7 +362,7 @@ pub(crate) enum Message {
     // Per-chart messages (keyed by ChartId)
     ChartSwitchTimeframe(ChartId, Timeframe),
     ChartReload(ChartId),
-    ChartResetView(ChartId),
+    ChartResetView(ChartId, ChartSurfaceId),
     ChartCandlesLoaded(CandleFetchRequest, Result<Vec<Candle>, String>),
     ChartFundingHistoryLoaded(
         FundingFetchRequest,
@@ -372,7 +372,7 @@ pub(crate) enum Message {
     ChartWsCandleUpdate(ChartId, String, String, Candle),
     ChartPriceFlashTick,
     ChartWsAssetCtxUpdate(ChartId, String, AssetContext),
-    ChartViewportChanged(ChartId, ChartViewport),
+    ChartViewportChanged(ChartId, ChartSurfaceId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
     ToggleFundingRateDisplayMode(ChartId),
     FundingRefreshTick,
@@ -380,15 +380,16 @@ pub(crate) enum Message {
     ChartSymbolSelected(ChartId, String),
     ToggleChartInvert(ChartId),
     ToggleChartTradeMarkers(ChartId),
+    OpenDetachedChart(ChartId),
     ChartOpenEditor(ChartId),
     ChartCloseEditor(ChartId),
     ChartEditorSearchChanged(ChartId, String),
     ChartEditorSubmit(ChartId),
-    ToggleChartScreenshotMenu(ChartId),
+    ToggleChartScreenshotMenu(ChartId, ChartSurfaceId),
     ToggleChartScreenshotObscurePositionEntry(bool),
     ToggleChartScreenshotHidePositionsAndOrders(bool),
-    OpenChartScreenshot(ChartId),
-    ChartScreenshotBoundsResolved(u64, ChartId, Option<iced::Rectangle>),
+    OpenChartScreenshot(ChartId, ChartSurfaceId),
+    ChartScreenshotBoundsResolved(u64, ChartId, ChartSurfaceId, Option<iced::Rectangle>),
     ChartScreenshotCaptured(u64, ChartId, Result<ChartScreenshotState, String>),
     CopyChartScreenshot,
     ChartScreenshotCopied(Result<(), String>),
@@ -401,7 +402,7 @@ pub(crate) enum Message {
     ClosePane(pane_grid::Pane),
     ToggleHidePnl,
     // Quick order form (right-click on chart)
-    OpenQuickOrder(ChartId, f64, f32, f32, f32, f32),
+    OpenQuickOrder(ChartId, ChartSurfaceId, f64, f32, f32, f32, f32),
     QuickOrderQtyChanged(ChartId, String),
     QuickOrderPercentageChanged(ChartId, f32),
     QuickOrderToggleDenomination(ChartId),

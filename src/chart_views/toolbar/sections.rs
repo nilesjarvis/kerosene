@@ -1,5 +1,5 @@
 use crate::annotations::DrawingTool;
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use iced::widget::{Row, button, container, rule, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
@@ -40,8 +40,15 @@ pub(super) fn chart_reload_button(chart_id: ChartId) -> Element<'static, Message
         .into()
 }
 
-pub(super) fn chart_reset_view_button(chart_id: ChartId) -> Element<'static, Message> {
-    chart_toolbar_button("Reset View", false, Message::ChartResetView(chart_id))
+pub(super) fn chart_reset_view_button(
+    chart_id: ChartId,
+    surface_id: ChartSurfaceId,
+) -> Element<'static, Message> {
+    chart_toolbar_button(
+        "Reset View",
+        false,
+        Message::ChartResetView(chart_id, surface_id),
+    )
 }
 
 pub(super) fn chart_fetch_status_label(
@@ -64,6 +71,7 @@ pub(super) fn chart_fetch_status_label(
 pub(super) fn push_drawing_tool_buttons<'a>(
     toolbar: Row<'a, Message>,
     chart_id: ChartId,
+    surface_id: ChartSurfaceId,
     active_tool: Option<DrawingTool>,
 ) -> Row<'a, Message> {
     toolbar
@@ -71,6 +79,7 @@ pub(super) fn push_drawing_tool_buttons<'a>(
         .push(drawing_tool_button(
             "\u{2014}",
             chart_id,
+            surface_id,
             active_tool,
             DrawingTool::HorizontalLevel,
         ))
@@ -78,6 +87,7 @@ pub(super) fn push_drawing_tool_buttons<'a>(
         .push(drawing_tool_button(
             "\u{2571}",
             chart_id,
+            surface_id,
             active_tool,
             DrawingTool::TrendLine,
         ))
@@ -85,6 +95,7 @@ pub(super) fn push_drawing_tool_buttons<'a>(
         .push(drawing_tool_button(
             "\u{2717}",
             chart_id,
+            surface_id,
             active_tool,
             DrawingTool::Eraser,
         ))
@@ -140,6 +151,7 @@ pub(super) fn chart_toolbar_separator() -> Element<'static, Message> {
 fn drawing_tool_button(
     label: &'static str,
     chart_id: ChartId,
+    surface_id: ChartSurfaceId,
     active_tool: Option<DrawingTool>,
     tool: DrawingTool,
 ) -> Element<'static, Message> {
@@ -148,6 +160,7 @@ fn drawing_tool_button(
         active_tool == Some(tool),
         Message::SetDrawingTool(
             chart_id,
+            surface_id,
             if active_tool == Some(tool) {
                 None
             } else {

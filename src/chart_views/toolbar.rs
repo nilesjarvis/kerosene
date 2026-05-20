@@ -1,7 +1,7 @@
 mod sections;
 
 use crate::app_state::TradingTerminal;
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use crate::timeframe::TIMEFRAME_OPTIONS;
 use iced::widget::{pick_list, row};
@@ -12,11 +12,12 @@ impl TradingTerminal {
         &self,
         chart_id: ChartId,
         instance: &ChartInstance,
+        surface_id: ChartSurfaceId,
     ) -> Element<'_, Message> {
         let theme = self.theme();
         let has_candles = !instance.chart.candles.is_empty();
         let active = instance.interval;
-        let active_tool = instance.chart.active_tool;
+        let active_tool = self.active_chart_surface_tool(chart_id, surface_id);
         let tf_picker = pick_list(TIMEFRAME_OPTIONS, Some(active), move |tf| {
             Message::ChartSwitchTimeframe(chart_id, tf)
         })
@@ -31,7 +32,7 @@ impl TradingTerminal {
             Message::ToggleMacroMenu(chart_id),
         );
         let reload_btn = sections::chart_reload_button(chart_id);
-        let reset_view_btn = sections::chart_reset_view_button(chart_id);
+        let reset_view_btn = sections::chart_reset_view_button(chart_id, surface_id);
 
         let mut tf_row = row![
             tf_picker,
@@ -51,7 +52,7 @@ impl TradingTerminal {
                 .push(status);
         }
 
-        tf_row = sections::push_drawing_tool_buttons(tf_row, chart_id, active_tool);
+        tf_row = sections::push_drawing_tool_buttons(tf_row, chart_id, surface_id, active_tool);
         tf_row = sections::push_chart_mode_buttons(tf_row, chart_id, instance);
 
         sections::chart_toolbar_strip(tf_row)

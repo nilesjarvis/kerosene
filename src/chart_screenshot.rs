@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::{ChartState, PRICE_AXIS_WIDTH};
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use arboard::{Clipboard, ImageData};
 use chrono::{DateTime, Local};
@@ -128,12 +128,12 @@ struct ChartScreenshotRenderRequest {
 impl TradingTerminal {
     pub(crate) fn update_chart_screenshot(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::ToggleChartScreenshotMenu(chart_id) => {
-                if self.chart_screenshot_menu_open == Some(chart_id) {
+            Message::ToggleChartScreenshotMenu(_chart_id, surface_id) => {
+                if self.chart_screenshot_menu_open == Some(surface_id) {
                     self.chart_screenshot_menu_open = None;
                 } else {
                     self.close_chart_header_menus();
-                    self.chart_screenshot_menu_open = Some(chart_id);
+                    self.chart_screenshot_menu_open = Some(surface_id);
                 }
             }
             Message::ToggleChartScreenshotObscurePositionEntry(obscure)
@@ -148,7 +148,7 @@ impl TradingTerminal {
                 self.chart_screenshot_settings.hide_positions_and_orders = hide;
                 self.persist_config();
             }
-            Message::OpenChartScreenshot(chart_id) => {
+            Message::OpenChartScreenshot(chart_id, surface_id) => {
                 self.chart_screenshot_menu_open = None;
                 if self.chart_screenshot_capture_in_progress {
                     self.push_toast("Chart screenshot already in progress".to_string(), false);
@@ -179,14 +179,21 @@ impl TradingTerminal {
                 self.chart_screenshot_error = None;
                 self.chart_screenshot = None;
 
-                let target = Self::chart_screenshot_canvas_id(chart_id);
+                let target = Self::chart_screenshot_canvas_id(surface_id);
                 let bounds_task = iced::advanced::widget::operate(FindWidgetBounds::new(target))
                     .map(move |bounds| {
-                        Message::ChartScreenshotBoundsResolved(request_id, chart_id, bounds)
+                        Message::ChartScreenshotBoundsResolved(
+                            request_id, chart_id, surface_id, bounds,
+                        )
                     });
                 return self.open_or_focus_chart_screenshot_window(bounds_task);
             }
-            Message::ChartScreenshotBoundsResolved(request_id, chart_id, Some(bounds)) => {
+            Message::ChartScreenshotBoundsResolved(
+                request_id,
+                chart_id,
+                surface_id,
+                Some(bounds),
+            ) => {
                 if self.chart_screenshot_pending_request_id != Some(request_id) {
                     return Task::none();
                 }
@@ -199,13 +206,13 @@ impl TradingTerminal {
                     return Task::none();
                 };
 
-                let request = self.chart_screenshot_render_request(instance, bounds);
+                let request = self.chart_screenshot_render_request(instance, surface_id, bounds);
 
                 return Task::perform(render_chart_screenshot(request), move |result| {
                     Message::ChartScreenshotCaptured(request_id, chart_id, result)
                 });
             }
-            Message::ChartScreenshotBoundsResolved(request_id, _, None) => {
+            Message::ChartScreenshotBoundsResolved(request_id, _, _, None) => {
                 self.finish_chart_screenshot_error(
                     request_id,
                     "Chart screenshot unavailable: chart area was not visible".to_string(),
@@ -307,6 +314,7 @@ impl TradingTerminal {
     fn chart_screenshot_render_request(
         &self,
         instance: &ChartInstance,
+        surface_id: ChartSurfaceId,
         logical_bounds: Rectangle,
     ) -> ChartScreenshotRenderRequest {
         let theme = self.theme();
@@ -316,7 +324,11 @@ impl TradingTerminal {
             symbol: instance.symbol_display.clone(),
             timeframe: instance.interval.label().to_string(),
             chart,
-            viewport: instance.heatmap_viewport,
+            viewport: self
+                .chart_surface_viewports
+                .get(&surface_id)
+                .copied()
+                .or(instance.heatmap_viewport),
             label_style: chart_screenshot_label_style(&theme),
             background_color: theme.extended_palette().background.base.color,
             logical_bounds,
@@ -472,11 +484,12 @@ impl TradingTerminal {
     pub(crate) fn view_chart_screenshot_button(
         &self,
         chart_id: ChartId,
+        surface_id: ChartSurfaceId,
     ) -> Element<'static, Message> {
         let capture = tooltip(
             chart_screenshot_icon_button(
                 chart_screenshot_svg_icon(CAMERA_ICON_SVG, 14.0),
-                Message::OpenChartScreenshot(chart_id),
+                Message::OpenChartScreenshot(chart_id, surface_id),
                 false,
                 [3, 6],
             ),
@@ -487,8 +500,8 @@ impl TradingTerminal {
         let settings = tooltip(
             chart_screenshot_icon_button(
                 chart_screenshot_svg_icon(CHEVRON_DOWN_ICON_SVG, 12.0),
-                Message::ToggleChartScreenshotMenu(chart_id),
-                self.chart_screenshot_menu_open == Some(chart_id),
+                Message::ToggleChartScreenshotMenu(chart_id, surface_id),
+                self.chart_screenshot_menu_open == Some(surface_id),
                 [3, 3],
             ),
             text("Screenshot settings")
@@ -503,7 +516,10 @@ impl TradingTerminal {
             .into()
     }
 
-    pub(crate) fn view_chart_screenshot_menu(&self, _chart_id: ChartId) -> Element<'_, Message> {
+    pub(crate) fn view_chart_screenshot_menu(
+        &self,
+        _surface_id: ChartSurfaceId,
+    ) -> Element<'_, Message> {
         let menu_col = column![
             text("Screenshot")
                 .size(10)
@@ -567,8 +583,11 @@ impl TradingTerminal {
         .into()
     }
 
-    pub(crate) fn chart_screenshot_canvas_id(chart_id: ChartId) -> Id {
-        Id::from(format!("chart_screenshot_canvas_{chart_id}"))
+    pub(crate) fn chart_screenshot_canvas_id(surface_id: ChartSurfaceId) -> Id {
+        Id::from(format!(
+            "chart_screenshot_canvas_{}",
+            surface_id.widget_suffix()
+        ))
     }
 }
 

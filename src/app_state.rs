@@ -1,10 +1,12 @@
 use crate::account::AccountData;
 use crate::account_state::PositionsSortColumn;
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
+use crate::annotations::DrawingTool;
 use crate::api::{self, ExchangeSymbol};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
+use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
 use crate::hype_etf_state::HypeEtfState;
 use crate::hyperdash_api::LiquidationHeatmap;
 use crate::market_state::{
@@ -222,13 +224,18 @@ pub(crate) struct TradingTerminal {
     pub(crate) settings_window_id: Option<window::Id>,
     pub(crate) chart_screenshot_window_id: Option<window::Id>,
     pub(crate) pnl_card_windows: HashMap<window::Id, PnlCardWindowState>,
+    pub(crate) detached_chart_windows: HashMap<window::Id, DetachedChartWindowState>,
     pub(crate) chart_screenshot: Option<ChartScreenshotState>,
     pub(crate) chart_screenshot_error: Option<String>,
     pub(crate) chart_screenshot_capture_in_progress: bool,
     pub(crate) chart_screenshot_next_request_id: u64,
     pub(crate) chart_screenshot_pending_request_id: Option<u64>,
     pub(crate) chart_screenshot_settings: config::ChartScreenshotSettingsConfig,
-    pub(crate) chart_screenshot_menu_open: Option<ChartId>,
+    pub(crate) chart_screenshot_menu_open: Option<ChartSurfaceId>,
+    pub(crate) chart_surface_reset_epochs: HashMap<ChartSurfaceId, u64>,
+    pub(crate) chart_surface_active_tools: HashMap<ChartSurfaceId, DrawingTool>,
+    pub(crate) chart_surface_viewports: HashMap<ChartSurfaceId, ChartViewport>,
+    pub(crate) chart_quick_order_surface: HashMap<ChartId, ChartSurfaceId>,
     pub(crate) main_window_size: Option<iced::Size>,
     pub(crate) main_window_pos: Option<iced::Point>,
     pub(crate) wallet_tracker: WalletTrackerState,

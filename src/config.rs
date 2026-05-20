@@ -26,8 +26,10 @@ pub use live_watchlist::{
 };
 pub use order_presets::{OrderPreset, OrderPresetsConfig};
 pub use panes::{
-    ChartConfig, MacroIndicatorsConfig, OrderBookConfig, OrderBookDisplayModeConfig,
-    OrderBookSymbolModeConfig, PositioningInfoConfig, SpaghettiChartConfig,
+    ChartConfig, DetachedChartWindowConfig, MacroIndicatorsConfig, OrderBookConfig,
+    OrderBookDisplayModeConfig, OrderBookSymbolModeConfig, PositioningInfoConfig,
+    SpaghettiChartConfig, default_detached_chart_window_height,
+    default_detached_chart_window_width,
 };
 #[cfg(test)]
 pub use schema::MAX_MARKET_SLIPPAGE_PCT;

@@ -137,6 +137,7 @@ impl TradingTerminal {
         for inst in self.charts.values_mut() {
             inst.clear_quick_order();
         }
+        self.chart_quick_order_surface.clear();
         self.persist_config();
 
         let active_book_ids: Vec<_> = self

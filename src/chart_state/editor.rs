@@ -79,6 +79,9 @@ impl TradingTerminal {
             instance.clear_quick_order();
             instance.chart.active_tool = None;
         }
+        self.chart_quick_order_surface.remove(&chart_id);
+        self.chart_surface_active_tools
+            .remove(&crate::chart_state::ChartSurfaceId::Docked(chart_id));
 
         iced::widget::operation::focus(Self::chart_symbol_search_input_id(chart_id))
     }

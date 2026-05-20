@@ -71,6 +71,8 @@ impl TradingTerminal {
             next_chart_id,
             next_spaghetti_id,
         ));
+        boot_tasks.extend(self.close_detached_windows_for_missing_charts());
+        self.prune_chart_surface_state();
 
         self.restore_layout_panes(&layout);
         boot_tasks.push(self.restore_layout_order_books(&layout));
@@ -85,5 +87,24 @@ impl TradingTerminal {
         self.apply_chart_theme_colors();
 
         Task::batch(boot_tasks)
+    }
+
+    fn close_detached_windows_for_missing_charts(&mut self) -> Vec<Task<Message>> {
+        let stale_window_ids: Vec<_> = self
+            .detached_chart_windows
+            .iter()
+            .filter_map(|(window_id, state)| {
+                (!self.charts.contains_key(&state.chart_id)).then_some(*window_id)
+            })
+            .collect();
+
+        for window_id in &stale_window_ids {
+            self.remove_detached_chart_window_state(*window_id);
+        }
+
+        stale_window_ids
+            .into_iter()
+            .map(iced::window::close)
+            .collect()
     }
 }

@@ -34,7 +34,7 @@ impl CandlestickChart {
                         color: DEFAULT_LEVEL_COLOR,
                     };
                     return Some(
-                        canvas::Action::publish(Message::AddAnnotation(ann)).and_capture(),
+                        canvas::Action::publish(Message::AddAnnotation(self.id, ann)).and_capture(),
                     );
                 }
                 DrawingTool::TrendLine => {
@@ -49,7 +49,8 @@ impl CandlestickChart {
                         };
                         state.pending_anchor = None;
                         return Some(
-                            canvas::Action::publish(Message::AddAnnotation(ann)).and_capture(),
+                            canvas::Action::publish(Message::AddAnnotation(self.id, ann))
+                                .and_capture(),
                         );
                     } else {
                         state.pending_anchor = Some((ts, price));
@@ -59,7 +60,8 @@ impl CandlestickChart {
                 DrawingTool::Eraser => {
                     if let Some(id) = self.hit_test_annotation(state, pos, chart_w, chart_h) {
                         return Some(
-                            canvas::Action::publish(Message::RemoveAnnotation(id)).and_capture(),
+                            canvas::Action::publish(Message::RemoveAnnotation(self.id, id))
+                                .and_capture(),
                         );
                     }
                     return Some(canvas::Action::capture());

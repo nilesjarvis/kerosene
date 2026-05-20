@@ -102,6 +102,26 @@ pub struct ChartConfig {
     pub open_interest_as_notional: bool,
 }
 
+/// Persisted state for a detached candlestick chart window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DetachedChartWindowConfig {
+    /// Chart instance shown in the detached window.
+    #[serde(default)]
+    pub chart_id: u64,
+    /// Last window width in logical pixels.
+    #[serde(default = "default_detached_chart_window_width")]
+    pub width: f32,
+    /// Last window height in logical pixels.
+    #[serde(default = "default_detached_chart_window_height")]
+    pub height: f32,
+    /// Last window X position.
+    #[serde(default)]
+    pub x: Option<f32>,
+    /// Last window Y position.
+    #[serde(default)]
+    pub y: Option<f32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum OrderBookSymbolModeConfig {
     #[default]
@@ -202,6 +222,14 @@ fn default_spread_chart_height() -> f32 {
     60.0
 }
 
+pub fn default_detached_chart_window_width() -> f32 {
+    1100.0
+}
+
+pub fn default_detached_chart_window_height() -> f32 {
+    720.0
+}
+
 fn default_positioning_info_sort_direction() -> super::SortDirection {
     PositioningInfoSortField::default().default_direction()
 }
@@ -212,9 +240,24 @@ fn default_positioning_info_change_sort_direction() -> super::SortDirection {
 
 #[cfg(test)]
 mod tests {
-    use super::{OrderBookConfig, OrderBookDisplayModeConfig, PositioningInfoConfig};
+    use super::{
+        DetachedChartWindowConfig, OrderBookConfig, OrderBookDisplayModeConfig,
+        PositioningInfoConfig,
+    };
     use crate::config::SortDirection;
     use crate::positioning_state::PositioningInfoPage;
+
+    #[test]
+    fn detached_chart_window_config_uses_multi_monitor_defaults() {
+        let config: DetachedChartWindowConfig =
+            serde_json::from_str(r#"{"chart_id":7}"#).expect("config");
+
+        assert_eq!(config.chart_id, 7);
+        assert_eq!(config.width, 1100.0);
+        assert_eq!(config.height, 720.0);
+        assert_eq!(config.x, None);
+        assert_eq!(config.y, None);
+    }
 
     #[test]
     fn order_book_config_defaults_to_depth_list_display_mode() {

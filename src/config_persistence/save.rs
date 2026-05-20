@@ -192,6 +192,7 @@ impl TradingTerminal {
             layout_ratios: layout_snapshot.layout_ratios,
             pane_layout: layout_snapshot.pane_layout,
             charts: layout_snapshot.charts,
+            detached_chart_windows: self.detached_chart_window_configs_snapshot(),
             active_symbol: layout_snapshot.active_symbol,
             active_timeframe: layout_snapshot.active_timeframe,
             order_kind: layout_snapshot.order_kind,

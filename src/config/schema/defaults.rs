@@ -135,6 +135,7 @@ impl Default for KeroseneConfig {
             layout_ratios: default_layout_ratios(),
             pane_layout: None,
             charts: Vec::new(),
+            detached_chart_windows: Vec::new(),
             order_books: Vec::new(),
             live_watchlists: Vec::new(),
             positioning_infos: Vec::new(),
