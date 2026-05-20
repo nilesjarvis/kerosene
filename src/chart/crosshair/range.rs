@@ -2,7 +2,7 @@
 // Range Measurement Layout
 // ---------------------------------------------------------------------------
 
-use crate::denomination::DisplayDenominationContext;
+use crate::helpers::format_price;
 use iced::Point;
 
 #[cfg(test)]
@@ -26,7 +26,6 @@ pub(super) struct RangeMeasurement {
 }
 
 pub(super) fn calculate_range_measurement(
-    denomination: &DisplayDenominationContext,
     anchor_price: f64,
     hover_price: f64,
     anchor_y: f32,
@@ -44,11 +43,8 @@ pub(super) fn calculate_range_measurement(
     } else {
         0.0
     };
-    let label = format!(
-        "{:+.2}% ({})",
-        pct,
-        denomination.format_signed_chart_price(delta)
-    );
+    let sign = if delta.is_sign_negative() { "-" } else { "+" };
+    let label = format!("{:+.2}% ({sign}{})", pct, format_price(delta.abs()));
     let label_width = label.len() as f32 * 6.3 + 8.0;
     let label_x = (cursor.x + 10.0).min(chart_w - label_width - 4.0).max(4.0);
     let label_y = (cursor.y - 20.0).max(4.0).min(price_h - LABEL_HEIGHT - 2.0);

@@ -2,7 +2,7 @@ use super::TradingOverlayContext;
 use crate::api::Candle;
 use crate::chart::model::{CandlestickChart, TradeMarker};
 use crate::chart::tooltips::{TooltipLine, TooltipSurface};
-use crate::helpers::format_timestamp_exact;
+use crate::helpers::{format_price, format_timestamp_exact};
 use iced::widget::canvas;
 use iced::{Color, Point};
 use std::collections::BTreeMap;
@@ -186,10 +186,7 @@ impl CandlestickChart {
                 color: ctx.theme.palette().text,
             },
             TooltipLine {
-                content: format!(
-                    "VWAP: {}",
-                    self.display_denomination.format_chart_price(group.price)
-                ),
+                content: format!("VWAP: {}", format_price(group.price)),
                 color: Color {
                     a: 0.76,
                     ..ctx.theme.palette().text

@@ -22,7 +22,6 @@ impl CandlestickChart {
         };
 
         let measurement = calculate_range_measurement(
-            &self.display_denomination,
             anchor_price,
             hover_price,
             (ctx.price_to_y)(anchor_price),

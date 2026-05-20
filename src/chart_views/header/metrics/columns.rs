@@ -1,6 +1,7 @@
 use crate::account::AssetContext;
 use crate::chart_state::ChartId;
-use crate::denomination::DisplayDenominationContext;
+use crate::denomination::format_compact;
+use crate::helpers::format_price;
 use crate::message::Message;
 
 use chrono::Timelike;
@@ -41,7 +42,6 @@ pub(super) fn push_perp_metric_columns<'a>(
     chart_price: f64,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
-    denomination: &DisplayDenominationContext,
 ) -> Row<'a, Message> {
     let funding = parse_ctx_f64(ctx.funding.as_deref());
     let funding_color = match funding {
@@ -58,8 +58,8 @@ pub(super) fn push_perp_metric_columns<'a>(
             "Mark / Oracle".to_string(),
             format!(
                 "{} / {}",
-                format_metric_price(mark, denomination),
-                format_metric_price(oracle, denomination)
+                format_metric_price(mark),
+                format_metric_price(oracle)
             ),
             theme.palette().text,
             theme,
@@ -77,8 +77,8 @@ pub(super) fn push_perp_metric_columns<'a>(
 
     if visibility.show_open_interest {
         header_row = header_row.push(clickable_metric_column(
-            open_interest_label(open_interest_as_notional, denomination),
-            format_open_interest(oi, chart_price, open_interest_as_notional, denomination),
+            open_interest_label(open_interest_as_notional),
+            format_open_interest(oi, chart_price, open_interest_as_notional),
             theme.palette().text,
             theme,
             Message::ToggleOpenInterestNotional(chart_id),
@@ -92,12 +92,11 @@ pub(super) fn push_spot_metric_columns<'a>(
     mut header_row: Row<'a, Message>,
     theme: &Theme,
     ctx: &'a AssetContext,
-    denomination: &DisplayDenominationContext,
 ) -> Row<'a, Message> {
     let vlm = parse_ctx_f64(ctx.day_ntl_vlm.as_deref());
     header_row = header_row.push(metric_column(
         "24h Vol".to_string(),
-        format_volume(vlm, denomination),
+        format_volume(vlm),
         theme.palette().text,
         theme,
     ));
@@ -105,7 +104,7 @@ pub(super) fn push_spot_metric_columns<'a>(
     if let Some(mid) = &ctx.mid_px {
         header_row = header_row.push(metric_column(
             "Mid".to_string(),
-            format_metric_price(parse_ctx_f64(Some(mid.as_str())), denomination),
+            format_metric_price(parse_ctx_f64(Some(mid.as_str()))),
             theme.palette().text,
             theme,
         ));
@@ -173,25 +172,20 @@ fn funding_countdown() -> String {
     )
 }
 
-fn open_interest_label(as_notional: bool, denomination: &DisplayDenominationContext) -> String {
+fn open_interest_label(as_notional: bool) -> String {
     if as_notional {
-        format!("Open Interest {}", denomination.active_symbol())
+        "Open Interest $".to_string()
     } else {
         "Open Interest".to_string()
     }
 }
 
-fn format_open_interest(
-    oi: Option<f64>,
-    price: f64,
-    as_notional: bool,
-    denomination: &DisplayDenominationContext,
-) -> String {
+fn format_open_interest(oi: Option<f64>, price: f64, as_notional: bool) -> String {
     let Some(oi) = oi else {
         return "Invalid data".to_string();
     };
     if as_notional {
-        return format_open_interest_notional(oi, price, denomination);
+        return format_open_interest_notional(oi, price);
     }
     if oi >= 1_000_000.0 {
         format!("{:.1}M", oi / 1_000_000.0)
@@ -202,31 +196,35 @@ fn format_open_interest(
     }
 }
 
-fn format_open_interest_notional(
-    oi: f64,
-    price: f64,
-    denomination: &DisplayDenominationContext,
-) -> String {
+fn format_open_interest_notional(oi: f64, price: f64) -> String {
     if !oi.is_finite() || !price.is_finite() || oi < 0.0 || price <= 0.0 {
         return "Invalid data".to_string();
     }
-    denomination.format_compact_value(oi * price)
+    format_compact_usd(oi * price)
 }
 
-fn format_volume(vlm: Option<f64>, denomination: &DisplayDenominationContext) -> String {
+fn format_volume(vlm: Option<f64>) -> String {
     let Some(vlm) = vlm else {
         return "Invalid data".to_string();
     };
     if !vlm.is_finite() || vlm < 0.0 {
         return "Invalid data".to_string();
     }
-    denomination.format_compact_value(vlm)
+    format_compact_usd(vlm)
 }
 
-fn format_metric_price(value: Option<f64>, denomination: &DisplayDenominationContext) -> String {
+fn format_metric_price(value: Option<f64>) -> String {
     value
-        .map(|value| denomination.format_chart_price(value))
+        .map(format_price)
         .unwrap_or_else(|| "Invalid data".to_string())
+}
+
+fn format_compact_usd(value: f64) -> String {
+    if !value.is_finite() {
+        return "Invalid data".to_string();
+    }
+    let sign = if value.is_sign_negative() { "-" } else { "" };
+    format!("{sign}${}", format_compact(value.abs()))
 }
 
 fn format_funding_pct(funding: Option<f64>) -> String {
@@ -246,7 +244,6 @@ mod tests {
         ChartHeaderMetricVisibility, format_funding_pct, format_open_interest,
         format_open_interest_notional, format_volume, open_interest_label, parse_ctx_f64,
     };
-    use crate::denomination::DisplayDenominationContext;
 
     #[test]
     fn context_number_parser_rejects_missing_malformed_or_nonfinite_values() {
@@ -259,16 +256,12 @@ mod tests {
 
     #[test]
     fn header_metric_formatters_mark_invalid_values() {
-        let denomination = DisplayDenominationContext::default();
-        assert_eq!(format_volume(None, &denomination), "Invalid data");
-        assert_eq!(
-            format_open_interest(None, 100.0, false, &denomination),
-            "Invalid data"
-        );
+        assert_eq!(format_volume(None), "Invalid data");
+        assert_eq!(format_open_interest(None, 100.0, false), "Invalid data");
         assert_eq!(format_funding_pct(None), "Invalid data");
-        assert_eq!(format_volume(Some(1_500.0), &denomination), "$1.5K");
+        assert_eq!(format_volume(Some(1_500.0)), "$1.5K");
         assert_eq!(
-            format_open_interest(Some(1_500_000.0), 100.0, false, &denomination),
+            format_open_interest(Some(1_500_000.0), 100.0, false),
             "1.5M"
         );
         assert_eq!(format_funding_pct(Some(0.0001)), "0.0100%");
@@ -276,21 +269,17 @@ mod tests {
 
     #[test]
     fn open_interest_notional_formats_from_chart_price() {
-        let denomination = DisplayDenominationContext::default();
+        assert_eq!(format_open_interest(Some(1_500.0), 2_000.0, true), "$3.00M");
         assert_eq!(
-            format_open_interest(Some(1_500.0), 2_000.0, true, &denomination),
-            "$3.00M"
-        );
-        assert_eq!(
-            format_open_interest_notional(2_000_000.0, 2_000.0, &denomination),
+            format_open_interest_notional(2_000_000.0, 2_000.0),
             "$4.00B"
         );
         assert_eq!(
-            format_open_interest(Some(1_500.0), 0.0, true, &denomination),
+            format_open_interest(Some(1_500.0), 0.0, true),
             "Invalid data"
         );
-        assert_eq!(open_interest_label(false, &denomination), "Open Interest");
-        assert_eq!(open_interest_label(true, &denomination), "Open Interest $");
+        assert_eq!(open_interest_label(false), "Open Interest");
+        assert_eq!(open_interest_label(true), "Open Interest $");
     }
 
     #[test]

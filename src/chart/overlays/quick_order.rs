@@ -7,6 +7,7 @@ use crate::chart::price_badges::{
     RIGHT_AXIS_PRIMARY_BADGE_HEIGHT, RightAxisBadgeConnectorStyle, RightAxisBadgeKind,
     draw_stacked_right_axis_badge, right_axis_line_end_x,
 };
+use crate::helpers::format_price;
 use iced::Color;
 
 // ---------------------------------------------------------------------------
@@ -57,7 +58,7 @@ impl CandlestickChart {
             badge_kind,
             ctx.chart_w,
             y,
-            self.display_denomination.format_chart_price(price),
+            format_price(price),
             ctx.theme.palette().primary,
             AxisBadgeStyle {
                 char_width: 6.5,

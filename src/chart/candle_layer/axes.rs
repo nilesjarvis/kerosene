@@ -1,6 +1,6 @@
 use super::CandleLayerContext;
 use crate::chart::model::CandlestickChart;
-use crate::helpers::format_timestamp;
+use crate::helpers::{format_price, format_timestamp};
 use crate::timeframe::Timeframe;
 use iced::alignment;
 use iced::widget::canvas;
@@ -71,7 +71,7 @@ impl CandlestickChart {
                 ctx.price_hi - (frac as f64) * ctx.price_range
             };
             frame.fill_text(canvas::Text {
-                content: self.display_denomination.format_chart_price(price_val),
+                content: format_price(price_val),
                 position: Point::new(ctx.chart_w + 6.0, y),
                 color: Color {
                     a: 0.45,

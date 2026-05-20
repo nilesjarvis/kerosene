@@ -9,7 +9,7 @@ use crate::chart::price_badges::{
     RightAxisBadgeConnectorStyle, RightAxisBadgeKind, draw_stacked_right_axis_badge,
     right_axis_line_end_x,
 };
-use crate::denomination::DisplayDenominationContext;
+use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, alignment};
 
@@ -73,11 +73,7 @@ impl CandlestickChart {
                     badge_kind,
                     ctx.chart_w,
                     entry_y,
-                    position_entry_badge_label(
-                        &self.display_denomination,
-                        pos_overlay.entry_px,
-                        self.obscure_position_prices,
-                    ),
+                    position_entry_badge_label(pos_overlay.entry_px, self.obscure_position_prices),
                     pos_color_solid,
                     AxisBadgeStyle {
                         char_width: 6.5,
@@ -142,11 +138,7 @@ impl CandlestickChart {
                         badge_kind,
                         ctx.chart_w,
                         liq_y,
-                        position_liquidation_badge_label(
-                            &self.display_denomination,
-                            liq_px,
-                            self.obscure_position_prices,
-                        ),
+                        position_liquidation_badge_label(liq_px, self.obscure_position_prices),
                         liq_color,
                         AxisBadgeStyle {
                             char_width: 6.2,
@@ -175,27 +167,19 @@ fn should_draw_position_price_overlays(obscure: bool) -> bool {
     !obscure
 }
 
-fn position_entry_badge_label(
-    denomination: &DisplayDenominationContext,
-    entry_px: f64,
-    obscure: bool,
-) -> String {
+fn position_entry_badge_label(entry_px: f64, obscure: bool) -> String {
     if obscure {
         "ENTRY".to_string()
     } else {
-        denomination.format_chart_price(entry_px)
+        format_price(entry_px)
     }
 }
 
-fn position_liquidation_badge_label(
-    denomination: &DisplayDenominationContext,
-    liq_px: f64,
-    obscure: bool,
-) -> String {
+fn position_liquidation_badge_label(liq_px: f64, obscure: bool) -> String {
     if obscure {
         "LIQ".to_string()
     } else {
-        format!("Liq {}", denomination.format_chart_price(liq_px))
+        format!("Liq {}", format_price(liq_px))
     }
 }
 
@@ -211,26 +195,15 @@ mod tests {
 
     #[test]
     fn position_price_labels_redact_when_obscured() {
-        let denomination = DisplayDenominationContext::default();
-        assert_eq!(
-            position_entry_badge_label(&denomination, 12345.67, true),
-            "ENTRY"
-        );
-        assert_eq!(
-            position_liquidation_badge_label(&denomination, 9800.0, true),
-            "LIQ"
-        );
+        assert_eq!(position_entry_badge_label(12345.67, true), "ENTRY");
+        assert_eq!(position_liquidation_badge_label(9800.0, true), "LIQ");
     }
 
     #[test]
     fn position_price_labels_show_prices_when_not_obscured() {
-        let denomination = DisplayDenominationContext::default();
+        assert_eq!(position_entry_badge_label(12345.67, false), "12,345.7");
         assert_eq!(
-            position_entry_badge_label(&denomination, 12345.67, false),
-            "12,345.7"
-        );
-        assert_eq!(
-            position_liquidation_badge_label(&denomination, 9800.0, false),
+            position_liquidation_badge_label(9800.0, false),
             "Liq 9,800.0"
         );
     }

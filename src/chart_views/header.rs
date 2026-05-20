@@ -7,6 +7,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{
     CHART_PRICE_FLASH_MS, ChartId, ChartInstance, ChartSurfaceId, PriceFlash, PriceFlashDirection,
 };
+use crate::helpers::format_decimal_with_commas;
 use crate::message::Message;
 use iced::widget::{Space, column, responsive, row, text};
 use iced::{Color, Element, Fill, Length, Theme};
@@ -33,7 +34,6 @@ impl TradingTerminal {
         available_width: f32,
     ) -> Element<'a, Message> {
         let theme = self.theme();
-        let denomination = self.display_denomination_context();
         let (Some(last), Some(first)) = (
             instance.chart.candles.last(),
             instance.chart.candles.first(),
@@ -69,7 +69,7 @@ impl TradingTerminal {
         if metric_visibility.show_24h_change {
             let chg_val = text(format!(
                 "{} ({change_pct:+.2}%)",
-                denomination.format_signed_value(change, 2)
+                format_signed_usd_change(change)
             ))
             .size(12)
             .font(iced::Font::MONOSPACE)
@@ -93,7 +93,6 @@ impl TradingTerminal {
                 last.close,
                 instance.open_interest_as_notional,
                 metric_visibility,
-                &denomination,
             );
         }
 
@@ -103,6 +102,14 @@ impl TradingTerminal {
 
         header_row.into()
     }
+}
+
+fn format_signed_usd_change(value: f64) -> String {
+    if !value.is_finite() {
+        return "Invalid data".to_string();
+    }
+    let sign = if value.is_sign_negative() { "-" } else { "+" };
+    format!("{sign}${}", format_decimal_with_commas(value.abs(), 2))
 }
 
 pub(super) fn chart_header_price_flash_color(

@@ -179,21 +179,6 @@ impl DisplayDenominationContext {
         )
     }
 
-    pub(crate) fn format_signed_chart_price(&self, usd_price: f64) -> String {
-        let Some(value) = self.convert_usd_value(usd_price) else {
-            return "Invalid data".to_string();
-        };
-        if !self.includes_usd_chart_reference() {
-            return format_signed_plain_price(value);
-        }
-
-        format!(
-            "{} ({})",
-            format_signed_symbol_price(self.active_symbol(), value),
-            format_signed_symbol_price("$", usd_price)
-        )
-    }
-
     pub(crate) fn includes_usd_chart_reference(&self) -> bool {
         self.active_code() != "USD"
     }
@@ -214,18 +199,6 @@ impl DisplayDenominationContext {
             "{sign}{}{}",
             self.active_symbol(),
             format_decimal_with_commas(display_value, decimals)
-        )
-    }
-
-    pub(crate) fn format_compact_value(&self, usd_value: f64) -> String {
-        let Some(value) = self.convert_usd_value(usd_value) else {
-            return "Invalid data".to_string();
-        };
-        let sign = if value < 0.0 { "-" } else { "" };
-        format!(
-            "{sign}{}{}",
-            self.active_symbol(),
-            format_compact(value.abs())
         )
     }
 
@@ -278,16 +251,6 @@ fn currency_symbol(code: &str) -> &str {
 
 fn format_symbol_price(symbol: &str, value: f64) -> String {
     let sign = if value < 0.0 { "-" } else { "" };
-    format!("{sign}{symbol}{}", format_price(value.abs()))
-}
-
-fn format_signed_plain_price(value: f64) -> String {
-    let sign = if value.is_sign_negative() { "-" } else { "+" };
-    format!("{sign}{}", format_price(value.abs()))
-}
-
-fn format_signed_symbol_price(symbol: &str, value: f64) -> String {
-    let sign = if value.is_sign_negative() { "-" } else { "+" };
     format!("{sign}{symbol}{}", format_price(value.abs()))
 }
 
@@ -369,8 +332,6 @@ mod tests {
         assert_eq!(ctx.format_value(12_345.67, 2), "$12,345.67");
         assert_eq!(ctx.format_value(-12.5, 2), "-$12.50");
         assert_eq!(ctx.format_chart_price(125.0), "125.00");
-        assert_eq!(ctx.format_signed_chart_price(12.5), "+12.50");
-        assert_eq!(ctx.format_compact_value(1_250_000.0), "$1.25M");
     }
 
     #[test]
@@ -380,8 +341,6 @@ mod tests {
         assert_eq!(ctx.format_value(125.0, 2), "€100.00");
         assert_eq!(ctx.format_price(12.5), "10.00");
         assert_eq!(ctx.format_chart_price(125.0), "€100.00 ($125.00)");
-        assert_eq!(ctx.format_signed_chart_price(-125.0), "-€100.00 (-$125.00)");
-        assert_eq!(ctx.format_compact_value(1_250_000.0), "€1.00M");
     }
 
     #[test]

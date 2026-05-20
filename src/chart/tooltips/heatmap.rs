@@ -1,6 +1,7 @@
 use super::{TooltipLine, TooltipSurface};
 use crate::chart::formatting::format_compact_coins;
-use crate::denomination::DisplayDenominationContext;
+use crate::denomination::format_compact;
+use crate::helpers::format_price;
 use crate::hyperdash_api::HeatmapRect;
 use iced::{Color, Point};
 
@@ -12,7 +13,6 @@ impl TooltipSurface<'_> {
         max_usd: f64,
         mut rect_x_bounds: X,
         price_to_y: &Y,
-        denomination: &DisplayDenominationContext,
     ) where
         X: FnMut(&HeatmapRect) -> Option<(f32, f32)>,
         Y: Fn(f64) -> f32,
@@ -62,8 +62,8 @@ impl TooltipSurface<'_> {
             TooltipLine {
                 content: format!(
                     "{} - {}",
-                    denomination.format_chart_price(rect.price_lo),
-                    denomination.format_chart_price(rect.price_hi)
+                    format_price(rect.price_lo),
+                    format_price(rect.price_hi)
                 ),
                 color: Color {
                     a: 0.7,
@@ -75,7 +75,7 @@ impl TooltipSurface<'_> {
                     "{}: {} ({})",
                     side,
                     format_compact_coins(coins.abs()),
-                    denomination.format_compact_value(usd),
+                    format_compact_usd(usd),
                 ),
                 color: side_color,
             },
@@ -90,4 +90,12 @@ impl TooltipSurface<'_> {
 
         self.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
+}
+
+fn format_compact_usd(value: f64) -> String {
+    if !value.is_finite() {
+        return "Invalid data".to_string();
+    }
+    let sign = if value.is_sign_negative() { "-" } else { "" };
+    format!("{sign}${}", format_compact(value.abs()))
 }
