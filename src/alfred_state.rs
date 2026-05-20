@@ -593,6 +593,17 @@ mod tests {
     }
 
     #[test]
+    fn alfred_shows_only_trade_draft_for_chase_queries() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.alfred.query = "chase 1k HYPE".to_string();
+
+        let commands = terminal.alfred_filtered_commands();
+
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].id, AlfredCommandId::NaturalLanguageTrading);
+    }
+
+    #[test]
     fn alfred_shows_only_nuke_command_for_nuke_query() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.alfred.query = "nuke".to_string();

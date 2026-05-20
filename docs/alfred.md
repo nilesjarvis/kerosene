@@ -20,6 +20,8 @@ Examples:
 - `sell 250 HYPE` drafts a market sell for `250` HYPE.
 - `buy $1k HYPE` drafts a `$1,000` USD-notional market buy.
 - `buy $1k HYPE at 43` drafts a `$1,000` USD-notional limit buy at `43`.
+- `chase $1k HYPE` drafts a `$1,000` USD-notional Chase order and leaves the side selection to the order-entry controls.
+- `chase buy $1k HYPE` starts a `$1,000` USD-notional Chase buy.
 
 Supported size suffixes:
 
@@ -29,7 +31,7 @@ Supported size suffixes:
 
 Dollar-prefixed sizes, such as `$1k`, are treated as USD notional for non-outcome markets. Outcome markets force coin-size input.
 
-If the query omits a side, for example `$1k HYPE`, Alfred may still show the interpreted market-order draft, but it remains disabled until the user adds `buy` or `sell`.
+If the query omits a side, for example `$1k HYPE`, Alfred may still show the interpreted market-order draft, but it remains disabled until the user adds `buy` or `sell`. Side-less Chase commands are allowed because they only prepare the Chase order form; the user must still choose `CHASE BUY` or `CHASE SELL`.
 
 ## Close Position
 

@@ -151,7 +151,7 @@ fn alfred_tag(label: &str, theme: &Theme) -> Element<'static, Message> {
     let color = match label {
         "Open" => theme.palette().success,
         "Window" => theme.palette().primary,
-        "Limit" | "Market" | "Trade" => theme.palette().primary,
+        "Limit" | "Market" | "Trade" | "Chase" => theme.palette().primary,
         "Close" | "NUKE" => color!(0xff5555),
         "Requires PM" => color!(0xffb86c),
         _ => theme.extended_palette().background.weak.text,

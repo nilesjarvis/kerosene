@@ -43,9 +43,9 @@ pub(crate) struct AlfredTradeDraft {
 impl AlfredTradeDraft {
     pub(crate) fn can_submit(&self) -> bool {
         self.error.is_none()
-            && self.side.is_some()
             && self.symbol_key.is_some()
             && self.quantity.is_some()
+            && (self.side.is_some() || self.order_kind == OrderKind::Chase)
     }
 
     pub(crate) fn quantity_input(&self) -> String {
@@ -63,13 +63,17 @@ struct ParsedTradeIntent {
     amount: Option<f64>,
     amount_is_usd: bool,
     symbol: Option<String>,
+    explicit_chase: bool,
     explicit_limit: bool,
     limit_price: Option<f64>,
+    error: Option<String>,
 }
 
 impl ParsedTradeIntent {
     fn order_kind(&self) -> OrderKind {
-        if self.explicit_limit || self.limit_price.is_some() {
+        if self.explicit_chase {
+            OrderKind::Chase
+        } else if self.explicit_limit || self.limit_price.is_some() {
             OrderKind::Limit
         } else {
             OrderKind::Market
@@ -85,35 +89,41 @@ impl TradingTerminal {
 
     fn resolve_trade_draft(&self, intent: ParsedTradeIntent) -> AlfredTradeDraft {
         let order_kind = intent.order_kind();
-        let mut error = None;
+        let mut error = intent.error.clone();
 
         let resolved_symbol = match intent.symbol.as_deref() {
-            Some(_symbol) if self.exchange_symbols.is_empty() => {
+            Some(_symbol) if self.exchange_symbols.is_empty() && error.is_none() => {
                 error = Some("Symbols are still loading".to_string());
                 None
             }
             Some(symbol) => match self.resolve_trade_symbol(symbol) {
                 Some(symbol) => {
-                    if let Err(message) = self.validate_exchange_symbol_orderable(symbol, "Trade") {
+                    if error.is_none()
+                        && let Err(message) =
+                            self.validate_exchange_symbol_orderable(symbol, "Trade")
+                    {
                         error = Some(message);
                     }
                     Some(symbol)
                 }
                 None => {
-                    error = Some(format!("Unknown symbol '{}'", symbol.to_ascii_uppercase()));
+                    if error.is_none() {
+                        error = Some(format!("Unknown symbol '{}'", symbol.to_ascii_uppercase()));
+                    }
                     None
                 }
             },
-            None => {
+            None if error.is_none() => {
                 error = Some("Add a symbol".to_string());
                 None
             }
+            None => None,
         };
 
         if intent.amount.is_none() && error.is_none() {
             error = Some("Add an order size".to_string());
         }
-        if intent.side.is_none() && error.is_none() {
+        if intent.side.is_none() && order_kind != OrderKind::Chase && error.is_none() {
             error = Some("Start with buy or sell".to_string());
         }
         if order_kind == OrderKind::Limit && intent.limit_price.is_none() && error.is_none() {
@@ -143,7 +153,8 @@ impl TradingTerminal {
         let tag = match order_kind {
             OrderKind::Limit => "Limit",
             OrderKind::Market => "Market",
-            OrderKind::LimitIoc | OrderKind::Chase | OrderKind::Twap => "Trade",
+            OrderKind::Chase => "Chase",
+            OrderKind::LimitIoc | OrderKind::Twap => "Trade",
         }
         .to_string();
 
@@ -178,9 +189,11 @@ fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
     let mut amount = None;
     let mut amount_is_usd = false;
     let mut symbol = None;
+    let mut explicit_chase = false;
     let mut explicit_limit = false;
     let mut explicit_market = false;
     let mut limit_price = None;
+    let mut error = None;
     let mut consumed = vec![false; tokens.len()];
 
     let mut index = 0;
@@ -193,6 +206,10 @@ fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
             }
             "sell" | "short" | "ask" | "offer" => {
                 side = Some(AlfredTradeSide::Sell);
+                consumed[index] = true;
+            }
+            "chase" | "chasing" => {
+                explicit_chase = true;
                 consumed[index] = true;
             }
             "limit" => {
@@ -240,17 +257,24 @@ fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
         break;
     }
 
+    if explicit_chase && (explicit_market || explicit_limit || limit_price.is_some()) {
+        error = Some("Chase orders do not take a market, limit, or price modifier".to_string());
+    }
+
     let looks_like_trade = side.is_some()
         || explicit_limit
         || explicit_market
+        || (explicit_chase && (side.is_some() || amount.is_some() || symbol.is_some()))
         || (amount.is_some() && symbol.is_some());
     looks_like_trade.then_some(ParsedTradeIntent {
         side,
         amount,
         amount_is_usd,
         symbol,
+        explicit_chase,
         explicit_limit,
         limit_price,
+        error,
     })
 }
 
@@ -366,7 +390,14 @@ fn trade_title(
     order_kind: OrderKind,
     price: Option<&str>,
 ) -> String {
-    let side = side.map(|side| side.label()).unwrap_or("ORDER");
+    let side = match order_kind {
+        OrderKind::Chase => side
+            .map(|side| format!("CHASE {}", side.label()))
+            .unwrap_or_else(|| "CHASE".to_string()),
+        OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc | OrderKind::Twap => side
+            .map(|side| side.label().to_string())
+            .unwrap_or_else(|| "ORDER".to_string()),
+    };
     let mut title = format!("{side} {quantity} {}", symbol.to_ascii_uppercase());
     if order_kind == OrderKind::Limit
         && let Some(price) = price
@@ -386,13 +417,38 @@ fn trade_detail(order_kind: OrderKind, quantity_is_usd: bool) -> String {
     match order_kind {
         OrderKind::Limit => format!("Limit order, {quantity}"),
         OrderKind::Market => format!("Market order, {quantity}"),
-        OrderKind::LimitIoc | OrderKind::Chase | OrderKind::Twap => "Trade draft".to_string(),
+        OrderKind::Chase => format!("Chase order, {quantity}"),
+        OrderKind::LimitIoc | OrderKind::Twap => "Trade draft".to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::MarketType;
+
+    fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 5,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type,
+            outcome: None,
+        }
+    }
+
+    fn terminal_with_hype() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![symbol("HYPE", MarketType::Perp)];
+        terminal
+    }
 
     #[test]
     fn parses_coin_market_order() {
@@ -429,8 +485,69 @@ mod tests {
     }
 
     #[test]
+    fn parses_coin_chase_order_without_side() {
+        let intent = parse_trade_intent("chase 1k HYPE").expect("trade intent");
+
+        assert_eq!(intent.side, None);
+        assert_eq!(intent.amount, Some(1_000.0));
+        assert!(!intent.amount_is_usd);
+        assert_eq!(intent.symbol.as_deref(), Some("HYPE"));
+        assert_eq!(intent.order_kind(), OrderKind::Chase);
+    }
+
+    #[test]
+    fn parses_usd_chase_order_without_side() {
+        let intent = parse_trade_intent("chase $1k hype").expect("trade intent");
+
+        assert_eq!(intent.side, None);
+        assert_eq!(intent.amount, Some(1_000.0));
+        assert!(intent.amount_is_usd);
+        assert_eq!(intent.symbol.as_deref(), Some("hype"));
+        assert_eq!(intent.order_kind(), OrderKind::Chase);
+    }
+
+    #[test]
+    fn parses_chase_order_with_side_before_or_after_keyword() {
+        let buy = parse_trade_intent("buy chase $1k HYPE").expect("buy chase intent");
+        let sell = parse_trade_intent("chase sell 250 HYPE").expect("sell chase intent");
+
+        assert_eq!(buy.side, Some(AlfredTradeSide::Buy));
+        assert_eq!(buy.order_kind(), OrderKind::Chase);
+        assert_eq!(sell.side, Some(AlfredTradeSide::Sell));
+        assert_eq!(sell.order_kind(), OrderKind::Chase);
+    }
+
+    #[test]
+    fn chase_draft_without_side_can_be_applied() {
+        let terminal = terminal_with_hype();
+        let draft = terminal
+            .alfred_trade_draft("chase $1k HYPE")
+            .expect("chase draft");
+
+        assert_eq!(draft.side, None);
+        assert_eq!(draft.symbol_key.as_deref(), Some("HYPE"));
+        assert_eq!(draft.order_kind, OrderKind::Chase);
+        assert_eq!(draft.title, "CHASE $1,000 HYPE");
+        assert_eq!(draft.detail, "Chase order, USD notional");
+        assert_eq!(draft.tag, "Chase");
+        assert!(draft.can_submit());
+    }
+
+    #[test]
+    fn rejects_chase_price_modifiers() {
+        let intent = parse_trade_intent("chase $1k HYPE at 43").expect("trade intent");
+
+        assert_eq!(intent.order_kind(), OrderKind::Chase);
+        assert_eq!(
+            intent.error.as_deref(),
+            Some("Chase orders do not take a market, limit, or price modifier")
+        );
+    }
+
+    #[test]
     fn ignores_non_trade_queries() {
         assert_eq!(parse_trade_intent("portfolio pane"), None);
         assert_eq!(parse_trade_intent("hype"), None);
+        assert_eq!(parse_trade_intent("chase"), None);
     }
 }

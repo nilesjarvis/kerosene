@@ -36,7 +36,7 @@ More screenshots, including alternate themes and focused feature views, are avai
 
 Feature-specific guides live in [`docs/`](docs/):
 
-- [Alfred](docs/alfred.md) — command palette behavior, natural-language order drafts, close-position commands, NUKE, and safety rails.
+- [Alfred](docs/alfred.md) — command palette behavior, natural-language market/limit/Chase order drafts, close-position commands, NUKE, and safety rails.
 - [Chase Orders](docs/advanced-orders/chase-orders.md) — high-level behavior, user expectations, limits, and technical lifecycle details for Kerosene's client-side Chase order automation.
 - [Trading Journal](docs/journal.md) — user-facing behavior, fill loading, trade aggregation, same-millisecond position-chain ordering, diagnostics, and regression coverage.
 - [TWAP Orders](docs/advanced-orders/twap-orders.md) — user behavior, safety rails, slice execution, persistence, and technical lifecycle details for Kerosene's client-side TWAP order automation.
@@ -61,6 +61,7 @@ Feature-specific guides live in [`docs/`](docs/):
 - TWAP orders: client-side scheduled IOC slices with hard price ranges, slice logs, and persisted completed-order history
 - Close-position menu for 25%, 50%, or 100% via market or limit order
 - Nuke button to close all positions at market
+- Alfred command palette for fast trading commands such as `buy $1k HYPE`, `chase $1k HYPE`, and `chase buy $1k HYPE`
 
 **Portfolio**
 - Live positions with real-time PnL calculated from streaming mid prices

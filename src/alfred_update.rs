@@ -167,10 +167,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let Some(side) = draft.side else {
-            self.push_toast("Start with buy or sell".to_string(), true);
-            return Task::none();
-        };
         let Some(symbol_key) = draft.symbol_key.clone() else {
             self.push_toast("Add a symbol".to_string(), true);
             return Task::none();
@@ -198,7 +194,21 @@ impl TradingTerminal {
         self.handle_order_quantity_changed(draft.quantity_input());
         self.persist_config();
 
-        Task::batch([switch_task, self.execute_order(side.is_buy())])
+        if let Some(side) = draft.side {
+            return Task::batch([switch_task, self.execute_order(side.is_buy())]);
+        }
+
+        if draft.order_kind == OrderKind::Chase {
+            self.order_status = Some((
+                format!("Chase draft ready for {symbol_key}: choose CHASE BUY or CHASE SELL"),
+                false,
+            ));
+            self.push_toast(format!("Chase draft ready for {symbol_key}"), false);
+            return switch_task;
+        }
+
+        self.push_toast("Start with buy or sell".to_string(), true);
+        switch_task
     }
 
     fn submit_alfred_nuke(&mut self) -> Task<Message> {
