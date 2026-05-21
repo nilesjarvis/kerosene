@@ -2,8 +2,10 @@ mod editor;
 mod header;
 mod indicator_badges;
 mod indicator_menu;
+mod skeleton;
 mod toolbar;
 
+use self::skeleton::chart_skeleton_overlay;
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::{ChartId, ChartSurfaceId};
@@ -125,7 +127,7 @@ impl TradingTerminal {
         // Determine status message overlay (if any)
         let status_overlay: Option<Element<'_, Message>> = match &instance.chart.status {
             ChartStatus::Loading if instance.chart.candles.is_empty() => {
-                Some(self.loading_overlay("Loading chart data..."))
+                Some(chart_skeleton_overlay(&instance.chart, self.spinner_phase))
             }
             ChartStatus::Error(err) if instance.chart.candles.is_empty() => Some(
                 container(
