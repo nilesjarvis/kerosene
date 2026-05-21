@@ -70,6 +70,8 @@ pub(crate) struct AlfredCommand {
     pub(crate) title: String,
     pub(crate) detail: String,
     pub(crate) tag: String,
+    pub(crate) icon_symbol: Option<String>,
+    pub(crate) icon_title_anchor: Option<String>,
     pub(crate) kind: AlfredCommandKind,
     pub(crate) enabled: bool,
     pub(crate) disabled_reason: Option<String>,
@@ -92,6 +94,8 @@ impl AlfredCommand {
             title: title.to_string(),
             detail: detail.to_string(),
             tag: tag.to_string(),
+            icon_symbol: None,
+            icon_title_anchor: None,
             kind,
             enabled: true,
             disabled_reason: None,
@@ -111,6 +115,16 @@ impl AlfredCommand {
         self.title = title;
         self.detail = detail;
         self.tag = tag;
+        self
+    }
+
+    fn with_title_icon(
+        mut self,
+        icon_symbol: Option<String>,
+        icon_title_anchor: Option<String>,
+    ) -> Self {
+        self.icon_symbol = icon_symbol;
+        self.icon_title_anchor = icon_title_anchor;
         self
     }
 
@@ -265,6 +279,10 @@ impl TradingTerminal {
             ],
         )
         .with_dynamic_text(draft.title.clone(), draft.detail.clone(), draft.tag.clone());
+        command = command.with_title_icon(
+            draft.icon_symbol.clone(),
+            draft.icon_title_anchor.clone(),
+        );
 
         if draft.can_submit() {
             command.message = Some(Message::AlfredSubmit);

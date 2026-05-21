@@ -20,8 +20,8 @@ impl AlfredTradeSide {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Buy => "BUY",
-            Self::Sell => "SELL",
+            Self::Buy => "↑ BUY",
+            Self::Sell => "↓ SELL",
         }
     }
 }
@@ -30,6 +30,8 @@ impl AlfredTradeSide {
 pub(crate) struct AlfredTradeDraft {
     pub(crate) side: Option<AlfredTradeSide>,
     pub(crate) symbol_key: Option<String>,
+    pub(crate) icon_symbol: Option<String>,
+    pub(crate) icon_title_anchor: Option<String>,
     pub(crate) quantity: Option<f64>,
     pub(crate) quantity_is_usd: bool,
     pub(crate) order_kind: OrderKind,
@@ -131,10 +133,12 @@ impl TradingTerminal {
         }
 
         let symbol_key = resolved_symbol.map(|symbol| symbol.key.clone());
+        let icon_symbol = symbol_key.clone().or_else(|| intent.symbol.clone());
         let symbol_display = resolved_symbol
             .map(Self::exchange_symbol_display_name)
             .or_else(|| intent.symbol.clone())
             .unwrap_or_else(|| "symbol".to_string());
+        let icon_title_anchor = Some(symbol_display.to_ascii_uppercase());
         let quantity_label = intent
             .amount
             .map(|amount| trade_amount_label(amount, intent.amount_is_usd))
@@ -161,6 +165,8 @@ impl TradingTerminal {
         AlfredTradeDraft {
             side: intent.side,
             symbol_key,
+            icon_symbol,
+            icon_title_anchor,
             quantity: intent.amount,
             quantity_is_usd: intent.amount_is_usd,
             order_kind,
@@ -515,6 +521,20 @@ mod tests {
         assert_eq!(buy.order_kind(), OrderKind::Chase);
         assert_eq!(sell.side, Some(AlfredTradeSide::Sell));
         assert_eq!(sell.order_kind(), OrderKind::Chase);
+    }
+
+    #[test]
+    fn trade_draft_title_marks_buy_sell_direction() {
+        let terminal = terminal_with_hype();
+        let buy = terminal.alfred_trade_draft("buy $1k HYPE").expect("buy draft");
+        let sell = terminal
+            .alfred_trade_draft("sell $1k HYPE")
+            .expect("sell draft");
+
+        assert_eq!(buy.title, "↑ BUY $1,000 HYPE");
+        assert_eq!(buy.icon_title_anchor.as_deref(), Some("HYPE"));
+        assert_eq!(sell.title, "↓ SELL $1,000 HYPE");
+        assert_eq!(sell.icon_title_anchor.as_deref(), Some("HYPE"));
     }
 
     #[test]

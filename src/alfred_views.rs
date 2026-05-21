@@ -1,6 +1,6 @@
 use crate::alfred_state::AlfredCommand;
 use crate::app_state::TradingTerminal;
-use crate::helpers::text_input_style;
+use crate::helpers::{self, text_input_style};
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Column, Space, button, column, container, row, rule, stack, text, text_input};
@@ -100,11 +100,12 @@ fn alfred_result_row(
     };
     let detail_color = theme.extended_palette().background.weak.text;
     let tag = alfred_tag(&command.tag, theme);
+    let title = alfred_title(command, title_color);
 
     button(
         row![
             column![
-                text(command.title.clone()).size(12).color(title_color),
+                title,
                 text(command.detail.clone()).size(10).color(detail_color),
             ]
             .spacing(2)
@@ -145,6 +146,44 @@ fn alfred_result_row(
         }
     })
     .into()
+}
+
+fn alfred_title(command: &AlfredCommand, title_color: Color) -> Element<'static, Message> {
+    let Some(icon_symbol) = command.icon_symbol.as_deref() else {
+        return text(command.title.clone()).size(12).color(title_color).into();
+    };
+    let Some(anchor) = command.icon_title_anchor.as_deref() else {
+        return text(command.title.clone()).size(12).color(title_color).into();
+    };
+    let Some(icon) = helpers::symbol_icon(icon_symbol, 14, title_color) else {
+        return text(command.title.clone()).size(12).color(title_color).into();
+    };
+    let Some(start) = command.title.rfind(anchor) else {
+        return text(command.title.clone()).size(12).color(title_color).into();
+    };
+
+    let end = start + anchor.len();
+    let before = command.title[..start].trim_end();
+    let ticker = &command.title[start..end];
+    let after = command.title[end..].trim_start();
+
+    let mut title = row![].align_y(iced::Alignment::Center);
+    if !before.is_empty() {
+        title = title
+            .push(text(before.to_string()).size(12).color(title_color))
+            .push(Space::new().width(5.0));
+    }
+    title = title
+        .push(icon)
+        .push(Space::new().width(4.0))
+        .push(text(ticker.to_string()).size(12).color(title_color));
+    if !after.is_empty() {
+        title = title
+            .push(Space::new().width(4.0))
+            .push(text(after.to_string()).size(12).color(title_color));
+    }
+
+    title.into()
 }
 
 fn alfred_tag(label: &str, theme: &Theme) -> Element<'static, Message> {
