@@ -58,6 +58,8 @@ fn normalize_fonts(config: &mut KeroseneConfig) {
     config.custom_fonts = crate::config::normalize_custom_fonts(config.custom_fonts.clone());
     config.display_font =
         crate::config::normalize_display_font(config.display_font.clone(), &config.custom_fonts);
+    config.monospace_font =
+        crate::config::normalize_display_font(config.monospace_font.clone(), &config.custom_fonts);
 }
 
 fn merge_default_themes(config: &mut KeroseneConfig) {

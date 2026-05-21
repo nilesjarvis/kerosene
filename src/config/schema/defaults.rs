@@ -127,6 +127,7 @@ impl Default for KeroseneConfig {
             order_quantity_is_usd: false,
             ui_scale: default_ui_scale(),
             display_font: Default::default(),
+            monospace_font: Default::default(),
             custom_fonts: Vec::new(),
             pane_border_thickness: default_pane_border_thickness(),
             pane_corner_radius: default_pane_corner_radius(),

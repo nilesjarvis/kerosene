@@ -110,7 +110,7 @@ impl TradingTerminal {
                             .width(Fill),
                         text(probability)
                             .size(11)
-                            .font(iced::Font::MONOSPACE)
+                            .font(crate::app_fonts::monospace_font())
                             .color(theme.palette().primary),
                     ]
                     .spacing(6)

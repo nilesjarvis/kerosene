@@ -140,6 +140,6 @@ fn chart_header_price_text(
 fn chart_header_price_segment(content: String, color: Color) -> iced::widget::Text<'static> {
     text(content)
         .size(16)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .color(color)
 }

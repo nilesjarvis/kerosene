@@ -23,7 +23,7 @@ pub(super) fn view_compact_calendar_event_row<'a>(
         column![
             row![
                 text(layout.time_str)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .size(12)
                     .color(layout.event_text_color),
                 layout.country,
@@ -52,7 +52,7 @@ pub(super) fn view_medium_calendar_event_row<'a>(
         row![
             column![
                 text(layout.time_str)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .size(12)
                     .color(layout.event_text_color),
                 text(layout.rel_str).size(10).color(layout.secondary_text),
@@ -83,7 +83,7 @@ pub(super) fn view_full_calendar_event_row<'a>(
         row![
             column![
                 text(layout.time_str)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .size(12)
                     .color(layout.event_text_color),
                 text(layout.rel_str).size(10).color(layout.secondary_text),
@@ -100,7 +100,7 @@ pub(super) fn view_full_calendar_event_row<'a>(
             } else {
                 &layout.event.forecast
             })
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .size(11)
             .color(layout.event_text_color)
             .width(72),
@@ -109,7 +109,7 @@ pub(super) fn view_full_calendar_event_row<'a>(
             } else {
                 &layout.event.previous
             })
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .size(11)
             .color(layout.event_text_color)
             .width(72),

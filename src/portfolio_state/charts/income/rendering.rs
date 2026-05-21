@@ -56,7 +56,7 @@ pub(super) fn draw_income_projection_chart(
                 size: iced::Pixels(10.0),
                 align_x: iced::alignment::Horizontal::Center.into(),
                 align_y: iced::alignment::Vertical::Top,
-                font: iced::Font::MONOSPACE,
+                font: crate::app_fonts::monospace_font(),
                 ..canvas::Text::default()
             });
         }
@@ -95,7 +95,7 @@ pub(super) fn draw_income_projection_chart(
             size: iced::Pixels(10.0),
             align_x: iced::alignment::Horizontal::Left.into(),
             align_y: iced::alignment::Vertical::Top,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
         frame.fill_text(canvas::Text {
@@ -109,7 +109,7 @@ pub(super) fn draw_income_projection_chart(
             size: iced::Pixels(11.0),
             align_x: iced::alignment::Horizontal::Left.into(),
             align_y: iced::alignment::Vertical::Top,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
     }

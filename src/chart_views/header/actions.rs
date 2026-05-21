@@ -37,7 +37,7 @@ impl TradingTerminal {
                 }),
             text("Add candlestick chart")
                 .size(10)
-                .font(iced::Font::MONOSPACE),
+                .font(crate::app_fonts::monospace_font()),
             tooltip::Position::Bottom,
         )
         .into()
@@ -73,7 +73,7 @@ impl TradingTerminal {
                 }),
             text("Open chart in new window")
                 .size(10)
-                .font(iced::Font::MONOSPACE),
+                .font(crate::app_fonts::monospace_font()),
             tooltip::Position::Bottom,
         )
         .into()

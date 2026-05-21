@@ -217,8 +217,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::ThemeChanged(_)
         | Message::UiScaleChanged(_)
         | Message::DisplayFontChanged(_)
+        | Message::MonospaceFontChanged(_)
         | Message::ImportDisplayFont
         | Message::DisplayFontImported(_)
+        | Message::ImportMonospaceFont
+        | Message::MonospaceFontImported(_)
         | Message::PaneBorderThicknessChanged(_)
         | Message::PaneCornerRadiusChanged(_)
         | Message::MutedTickerInputChanged(_)

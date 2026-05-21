@@ -29,7 +29,7 @@ pub(super) fn wallet_identity_cell(
             .width(185),
         text(address_text)
             .size(10)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(secondary_text),
     ]
     .spacing(3)

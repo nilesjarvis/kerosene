@@ -54,7 +54,7 @@ impl TradingTerminal {
                     row![
                         text(ticker)
                             .size(12)
-                            .font(iced::Font::MONOSPACE)
+                            .font(crate::app_fonts::monospace_font())
                             .color(current_theme.palette().text)
                             .width(Fill),
                         button(text("Unmute").size(11))

@@ -25,8 +25,11 @@ impl TradingTerminal {
                 return self.sync_main_window_min_size();
             }
             message @ (Message::DisplayFontChanged(_)
+            | Message::MonospaceFontChanged(_)
             | Message::ImportDisplayFont
-            | Message::DisplayFontImported(_)) => {
+            | Message::DisplayFontImported(_)
+            | Message::ImportMonospaceFont
+            | Message::MonospaceFontImported(_)) => {
                 return self.update_font_preferences(message);
             }
             Message::PaneBorderThicknessChanged(value) => {

@@ -118,7 +118,7 @@ fn price_cell(
             user_order_price_marker(has_user_order.then_some(is_bid)),
             text(format!("{px:.decimals$}"))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .style(move |t: &Theme| text::Style {
                     color: Some(if is_bid {
                         t.palette().success
@@ -137,7 +137,7 @@ fn price_cell(
 fn size_cell(sz: f64, alpha: f32) -> Element<'static, Message> {
     text(format_size(sz))
         .size(12)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .align_x(iced::alignment::Horizontal::Right)
         .style(move |theme: &Theme| text::Style {
             color: Some(Color {
@@ -153,7 +153,7 @@ fn total_cell(cum: f64) -> Element<'static, Message> {
     container(
         text(format_size(cum))
             .size(12)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .align_x(iced::alignment::Horizontal::Right)
             .style(move |theme: &Theme| text::Style {
                 color: Some(theme.extended_palette().background.weak.text),

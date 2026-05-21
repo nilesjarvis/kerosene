@@ -14,7 +14,7 @@ use iced::widget::container as container_style;
 use iced::widget::{
     Column, Space, button, checkbox, column, container, radio, row, rule, scrollable, text, tooltip,
 };
-use iced::{Alignment, Color, Degrees, Element, Fill, Font, Length, Size, Task, Theme, window};
+use iced::{Alignment, Color, Degrees, Element, Fill, Length, Size, Task, Theme, window};
 use std::borrow::Cow;
 use std::path::PathBuf;
 
@@ -366,20 +366,20 @@ impl TradingTerminal {
             .push(
                 text(render_text.primary_value)
                     .size(38)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(text_color),
             )
             .push(
                 text(render_text.percent_mode_label)
                     .size(11)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(weak_text),
             );
         if let Some(secondary) = render_text.secondary_value {
             value_stack = value_stack.push(
                 text(secondary)
                     .size(18)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(text_color),
             );
         }
@@ -394,7 +394,7 @@ impl TradingTerminal {
                 .spacing(10),
                 text(render_text.context)
                     .size(11)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(weak_text),
             ]
             .spacing(8),
@@ -407,12 +407,12 @@ impl TradingTerminal {
             row![
                 text("kerosene")
                     .size(18)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(text_color),
                 Space::new().width(Fill),
                 text(ticker)
                     .size(24)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(text_color),
             ]
             .align_y(Alignment::Center),
@@ -491,7 +491,7 @@ fn view_pnl_card_editor<'a>(
                     .size(12)
                     .spacing(6)
                     .text_size(12)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .width(Fill),
                 checkbox(state.show_position_size)
                     .label("Show position size")
@@ -501,7 +501,7 @@ fn view_pnl_card_editor<'a>(
                     .size(12)
                     .spacing(6)
                     .text_size(12)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .width(Fill),
             ]
             .spacing(6)
@@ -573,7 +573,7 @@ pub(crate) fn pnl_card_icon_button(
 
     tooltip(
         button,
-        text(tooltip_label).size(10).font(Font::MONOSPACE),
+        text(tooltip_label).size(10).font(crate::app_fonts::monospace_font()),
         tooltip::Position::Top,
     )
     .into()
@@ -583,7 +583,7 @@ fn settings_group<'a>(label: &'static str, content: Element<'a, Message>) -> Ele
     column![
         text(label)
             .size(10)
-            .font(Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(Color::from_rgb8(0x88, 0x88, 0x88)),
         content,
     ]
@@ -602,11 +602,11 @@ fn card_metric<'a>(
         column![
             text(label)
                 .size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(label_color),
             text(value)
                 .size(14)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(value_color),
         ]
         .spacing(3),
@@ -618,7 +618,7 @@ fn card_metric<'a>(
 fn missing_pnl_card_view<'a>(theme: &Theme, message: impl Into<String>) -> Element<'a, Message> {
     container(
         column![
-            text("kerosene").size(18).font(Font::MONOSPACE),
+            text("kerosene").size(18).font(crate::app_fonts::monospace_font()),
             text(message.into())
                 .size(12)
                 .color(theme.extended_palette().background.weak.text),

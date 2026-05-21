@@ -38,7 +38,7 @@ pub(super) fn draw_ratio_crosshair(
             size: iced::Pixels(10.0),
             align_x: alignment::Horizontal::Left.into(),
             align_y: alignment::Vertical::Center,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
 
@@ -51,7 +51,7 @@ pub(super) fn draw_ratio_crosshair(
             size: iced::Pixels(10.0),
             align_x: alignment::Horizontal::Center.into(),
             align_y: alignment::Vertical::Top,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
     }

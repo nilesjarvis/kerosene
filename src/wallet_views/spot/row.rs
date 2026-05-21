@@ -46,7 +46,7 @@ pub(super) fn wallet_spot_row(
     row![
         text(display_coin)
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(if is_usdc {
                 theme.palette().text
             } else {
@@ -55,12 +55,12 @@ pub(super) fn wallet_spot_row(
             .width(90),
         text(format_wallet_display_amount(denomination, total, is_usdc))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(wallet_spot_value_color(total, weak_color, invalid_color))
             .width(110),
         text(format_wallet_display_amount(denomination, hold, is_usdc))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(wallet_spot_value_color(hold, weak_color, invalid_color))
             .width(110),
         text(format_wallet_display_amount(
@@ -69,7 +69,7 @@ pub(super) fn wallet_spot_row(
             is_usdc
         ))
         .size(11)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .color(wallet_spot_value_color(
             available,
             weak_color,
@@ -78,7 +78,7 @@ pub(super) fn wallet_spot_row(
         .width(110),
         text(wallet_entry_notional(denomination, entry_ntl))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(wallet_spot_value_color(
                 entry_ntl,
                 weak_color,
@@ -87,7 +87,7 @@ pub(super) fn wallet_spot_row(
             .width(110),
         text(supplied.clone())
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(if supplied == invalid_wallet_data() {
                 invalid_color
             } else {

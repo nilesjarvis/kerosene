@@ -60,7 +60,7 @@ pub(super) fn live_watchlist_column_cell(
 ) -> Element<'static, Message> {
     text(value)
         .size(11)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .color(color)
         .width(column.width())
         .into()

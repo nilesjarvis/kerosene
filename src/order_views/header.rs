@@ -109,12 +109,12 @@ impl TradingTerminal {
         row![
             text(format!("Avail: {}", format_optional_usd(available_margin)))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(available_color),
             Space::new().width(Fill),
             text(format!("Used: {}", format_optional_usd(margin_used)))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(margin_used_color),
         ]
         .spacing(8)

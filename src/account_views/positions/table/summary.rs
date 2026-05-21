@@ -4,7 +4,7 @@ use crate::message::Message;
 use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
 
 use iced::widget::{container, row, text};
-use iced::{Alignment, Color, Element, Fill, Font, Theme};
+use iced::{Alignment, Color, Element, Fill, Theme};
 
 use super::super::PositionNumberMode;
 use super::format_position_display_value;
@@ -277,7 +277,7 @@ fn summary_cell(
             text(label).size(10).color(label_color),
             text(value)
                 .size(11)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(value_color),
         ]
         .spacing(4)
@@ -299,7 +299,7 @@ fn summary_cell_with_action(
             text(label).size(10).color(label_color),
             text(value)
                 .size(11)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(value_color),
             pnl_card_icon_button(action, "Open summary PnL card"),
         ]

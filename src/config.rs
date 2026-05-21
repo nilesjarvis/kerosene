@@ -17,8 +17,9 @@ mod wallets;
 pub use clear::{ClearConfigSummary, clear_all_configs};
 pub use files::{custom_font_path, font_storage_dir, journal_cache_path, load_config, save_config};
 pub(crate) use fonts::{
-    BUNDLED_DISPLAY_FONT_FAMILIES, INTER_FONT_FAMILY, ROBOTO_FONT_FAMILY, ROBOTO_MONO_FONT_FAMILY,
-    bundled_display_font_family, normalize_custom_fonts, normalize_display_font,
+    BUNDLED_DISPLAY_FONT_FAMILIES, DM_SANS_FONT_FAMILY, INTER_FONT_FAMILY, ROBOTO_FONT_FAMILY,
+    ROBOTO_MONO_FONT_FAMILY, bundled_display_font_family, normalize_custom_fonts,
+    normalize_display_font,
 };
 pub use fonts::{CustomFontConfig, DisplayFontConfig};
 pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};

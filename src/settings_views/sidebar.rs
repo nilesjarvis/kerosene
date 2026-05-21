@@ -62,7 +62,7 @@ fn settings_tab_button(
         row![
             text(icon)
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .align_x(iced::alignment::Horizontal::Center)
                 .width(iced::Length::Fixed(20.0)),
             text(label).size(13),

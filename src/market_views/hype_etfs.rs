@@ -248,7 +248,7 @@ fn daily_inflow_chart(
             .width(Fill),
         text(format_signed_usd_amount(net_flow, denomination))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(signed_color(theme, net_flow)),
     ]
     .spacing(8)
@@ -268,12 +268,12 @@ fn daily_inflow_chart(
                 row![
                     text(short_flow_date(&first.date))
                         .size(10)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.extended_palette().background.weak.text)
                         .width(Fill),
                     text(short_flow_date(&last.date))
                         .size(10)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.extended_palette().background.weak.text),
                 ]
                 .width(Fill)
@@ -372,7 +372,7 @@ fn flow_chart(
 
         let wrapped_bar = tooltip(
             bar,
-            text(tooltip_text).size(10).font(iced::Font::MONOSPACE),
+            text(tooltip_text).size(10).font(crate::app_fonts::monospace_font()),
             iced::widget::tooltip::Position::Top,
         )
         .gap(4)
@@ -765,7 +765,7 @@ fn metric_card(metric: Metric) -> Element<'static, Message> {
                 .width(Fill),
             text(metric.value)
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .style(move |theme: &Theme| text::Style {
                     color: Some(value_color.unwrap_or(theme.palette().text)),
                 })

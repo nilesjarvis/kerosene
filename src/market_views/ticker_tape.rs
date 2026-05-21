@@ -176,13 +176,13 @@ fn ticker_tape_item(
         icon,
         text(item.ticker.clone())
             .size(12)
-            .font(iced::Font::MONOSPACE),
+            .font(crate::app_fonts::monospace_font()),
         text(price_label(item.price, denomination))
             .size(12)
-            .font(iced::Font::MONOSPACE),
+            .font(crate::app_fonts::monospace_font()),
         text(percent_label(item.pct_24h))
             .size(12)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(pct_color),
     ]
     .spacing(TICKER_TAPE_ITEM_SPACING)
@@ -251,7 +251,7 @@ fn fallback_ticker_logo(ticker: &str, theme: &Theme) -> Element<'static, Message
     container(
         text(label)
             .size(9)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(color)
             .center(),
     )

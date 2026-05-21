@@ -116,7 +116,7 @@ pub(super) fn push_chart_mode_buttons<'a>(
             ),
             text("Invert price axis")
                 .size(10)
-                .font(iced::Font::MONOSPACE),
+                .font(crate::app_fonts::monospace_font()),
             tooltip::Position::Top,
         ))
         .push(chart_toolbar_separator())
@@ -128,7 +128,7 @@ pub(super) fn push_chart_mode_buttons<'a>(
             ),
             text("Show account buy/sell fills")
                 .size(10)
-                .font(iced::Font::MONOSPACE),
+                .font(crate::app_fonts::monospace_font()),
             tooltip::Position::Top,
         ))
 }

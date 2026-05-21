@@ -43,7 +43,7 @@ impl TradingTerminal {
         let symbol_button = button(
             text(symbol)
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.palette().primary),
         )
         .on_press(Message::SymbolSelected(symbol_for_message))
@@ -58,22 +58,22 @@ impl TradingTerminal {
             symbol_button,
             text(dex_label)
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.extended_palette().background.weak.text)
                 .width(60),
             text(side)
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(side_color)
                 .width(44),
             text(format_wallet_position_size(szi))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(wallet_value_color(szi, weak_color, invalid_color))
                 .width(84),
             text(format_wallet_display_price(&denomination, entry_px))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(wallet_value_color(entry_px, weak_color, invalid_color))
                 .width(78),
             text(
@@ -82,7 +82,7 @@ impl TradingTerminal {
                     .unwrap_or_else(|| "-".to_string())
             )
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .width(78),
             text(
                 liq_px
@@ -90,11 +90,11 @@ impl TradingTerminal {
                     .unwrap_or_else(|| "-".to_string())
             )
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .width(78),
             text(format_wallet_display_usd(&denomination, position_value, 0))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(wallet_value_color(
                     position_value,
                     weak_color,
@@ -103,7 +103,7 @@ impl TradingTerminal {
                 .width(84),
             text(format_wallet_display_signed_usd(&denomination, upnl))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(upnl_color)
                 .width(84),
             text(
@@ -114,12 +114,12 @@ impl TradingTerminal {
                     .unwrap_or_else(|| "-".to_string())
             )
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(theme.extended_palette().background.weak.text)
             .width(84),
             text(format!("{}x", pos.leverage.value))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .width(44),
         ]
         .spacing(8)

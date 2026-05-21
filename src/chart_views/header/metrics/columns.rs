@@ -125,7 +125,7 @@ fn metric_column(
             .color(theme.extended_palette().background.weak.text),
         text(value)
             .size(12)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(value_color)
     ]
     .spacing(2)

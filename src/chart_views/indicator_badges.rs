@@ -4,7 +4,7 @@ use crate::message::Message;
 
 use iced::widget::container as container_style;
 use iced::widget::{Space, button, column, container, row, text, tooltip};
-use iced::{Alignment, Color, Element, Font, Length, Theme};
+use iced::{Alignment, Color, Element, Length, Theme};
 
 const REMOVE_ICON: &str = "X";
 
@@ -248,9 +248,9 @@ fn indicator_badge(chart_id: ChartId, indicator: ActiveIndicator) -> Element<'st
             swatch,
             text(indicator.label)
                 .size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(indicator.color),
-            text(REMOVE_ICON).size(10).font(Font::MONOSPACE),
+            text(REMOVE_ICON).size(10).font(crate::app_fonts::monospace_font()),
         ]
         .spacing(4)
         .align_y(Alignment::Center),
@@ -288,7 +288,7 @@ fn indicator_badge(chart_id: ChartId, indicator: ActiveIndicator) -> Element<'st
         badge,
         text(format!("Remove {}", indicator.label))
             .size(10)
-            .font(Font::MONOSPACE),
+            .font(crate::app_fonts::monospace_font()),
         tooltip::Position::Bottom,
     )
     .into()

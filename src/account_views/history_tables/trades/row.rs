@@ -71,7 +71,7 @@ impl TradingTerminal {
             text(&fill.dir).size(12).width(Fill),
             text(valid_history_wire_value(&fill.px))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(history_value_color(
                     parse_history_number(&fill.px),
                     weak_color,
@@ -80,7 +80,7 @@ impl TradingTerminal {
                 .width(Fill),
             text(valid_history_wire_value(&fill.sz))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(history_value_color(
                     parse_history_number(&fill.sz),
                     weak_color,

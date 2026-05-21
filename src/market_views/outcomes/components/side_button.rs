@@ -37,7 +37,7 @@ impl TradingTerminal {
             side_label,
             text(probability)
                 .size(16)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(accent),
         ]
         .spacing(6)

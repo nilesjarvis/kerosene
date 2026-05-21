@@ -42,14 +42,14 @@ impl TradingTerminal {
                     format_outcome_contract_volume(volume)
                 ))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.extended_palette().background.weak.text),
             );
         } else if self.outcome_volumes_loading {
             market_header = market_header.push(
                 text("24h Vol ...")
                     .size(11)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(theme.extended_palette().background.weak.text),
             );
         }

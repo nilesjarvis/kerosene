@@ -33,7 +33,7 @@ impl TradingTerminal {
         let mut row_ui = row![
             text(helpers::format_relative_time(liq.time_ms, now_ms))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.extended_palette().background.weak.text)
                 .wrapping(Wrapping::None)
                 .width(TIME_WIDTH),
@@ -46,7 +46,7 @@ impl TradingTerminal {
             row_ui = row_ui.push(
                 text(side_str)
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(color)
                     .wrapping(Wrapping::None)
                     .width(SIDE_WIDTH),
@@ -57,7 +57,7 @@ impl TradingTerminal {
             row_ui = row_ui.push(
                 text(format!("{:.4}", liq.size))
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(theme.palette().text)
                     .wrapping(Wrapping::None)
                     .width(NUMBER_WIDTH),
@@ -68,7 +68,7 @@ impl TradingTerminal {
             row_ui = row_ui.push(
                 text(self.format_display_price(liq.price))
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(theme.palette().text)
                     .wrapping(Wrapping::None)
                     .width(NUMBER_WIDTH),
@@ -78,7 +78,7 @@ impl TradingTerminal {
         row_ui = row_ui.push(
             text(self.format_display_usd_value(liq.notional, 0))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.palette().text)
                 .wrapping(Wrapping::None)
                 .width(NUMBER_WIDTH),

@@ -96,7 +96,7 @@ pub(super) fn wallet_upnl_color(metrics: &WalletRowMetrics, theme: &Theme) -> Co
 pub(super) fn money_text(value: String, color: Color) -> Text<'static> {
     text(value)
         .size(11)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .color(color)
 }
 

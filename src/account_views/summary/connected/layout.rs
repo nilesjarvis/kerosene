@@ -203,7 +203,7 @@ fn summary_metric_with_color(
     value_color: Option<Color>,
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let value = text(value.to_string()).size(13).font(iced::Font::MONOSPACE);
+    let value = text(value.to_string()).size(13).font(crate::app_fonts::monospace_font());
     let value = if let Some(value_color) = value_color {
         value.color(value_color)
     } else {

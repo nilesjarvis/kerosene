@@ -116,12 +116,12 @@ impl TradingTerminal {
                 &self.display_denomination_context(),
             ))
             .size(12)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(open_order_value_color(limit_px, weak_color, invalid_color))
             .width(Fill),
             text(format_open_order_size(sz, &order.sz))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(open_order_value_color(sz, weak_color, invalid_color))
                 .width(Fill),
             container(row![chase_cell, cancel_cell].spacing(4)).width(120),

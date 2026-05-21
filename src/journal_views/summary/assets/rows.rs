@@ -44,17 +44,17 @@ impl TradingTerminal {
                 .width(100),
             text(format!("{}", count))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.palette().text)
                 .width(80),
             text(denomination.format_value(fees, 2))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.palette().danger),
             Space::new().width(Fill),
             text(denomination.format_value(pnl, 2))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(pnl_color),
         ]
         .align_y(iced::Alignment::Center)
@@ -79,12 +79,12 @@ impl TradingTerminal {
                 .width(60),
             text(format!("{} trades", count))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.extended_palette().background.weak.text),
             Space::new().width(Fill),
             text(denomination.format_value(pnl, 2))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(pnl_color),
         ]
         .align_y(iced::Alignment::Center)

@@ -132,7 +132,7 @@ pub(super) fn draw_portfolio_pnl_chart(
             position: Point::new(tooltip_origin.x + pad, tooltip_origin.y + 9.0),
             color: theme.palette().text,
             size: iced::Pixels(10.0),
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
     }

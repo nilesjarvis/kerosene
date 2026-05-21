@@ -4,7 +4,7 @@ use crate::market_state::LiveWatchlistId;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{button, checkbox, column, container, text, tooltip};
-use iced::{Color, Element, Fill, Font, Length, Theme};
+use iced::{Color, Element, Fill, Length, Theme};
 
 impl TradingTerminal {
     pub(in crate::market_views::live_watchlist) fn view_live_watchlist_settings_button(
@@ -57,7 +57,7 @@ impl TradingTerminal {
         let mut column_controls = column![
             text("Columns")
                 .size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.extended_palette().background.weak.text)
         ]
         .spacing(6)
@@ -75,7 +75,7 @@ impl TradingTerminal {
                     .spacing(5)
                     .width(Fill)
                     .text_size(10)
-                    .font(Font::MONOSPACE),
+                    .font(crate::app_fonts::monospace_font()),
             );
         }
 

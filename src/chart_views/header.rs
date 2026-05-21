@@ -72,7 +72,7 @@ impl TradingTerminal {
                 format_signed_usd_change(change)
             ))
             .size(12)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(theme.palette().text);
             let col_chg = column![
                 text("24h Chg")

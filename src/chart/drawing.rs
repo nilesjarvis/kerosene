@@ -115,7 +115,7 @@ pub(super) fn fill_right_axis_badge(
         size: iced::Pixels(style.text_size),
         align_x: alignment::Horizontal::Left.into(),
         align_y: alignment::Vertical::Center,
-        font: iced::Font::MONOSPACE,
+        font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
 }

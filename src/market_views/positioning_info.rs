@@ -17,7 +17,7 @@ use iced::widget::{
     Column, Row, Space, button, column, container, row, rule, scrollable, text, tooltip,
 };
 use iced::widget::{responsive, text_input};
-use iced::{Alignment, Color, Element, Fill, Font, Length, Theme, color};
+use iced::{Alignment, Color, Element, Fill, Length, Theme, color};
 
 // ---------------------------------------------------------------------------
 // Positioning Information View
@@ -1413,7 +1413,7 @@ fn positioning_trader_cell(
         identity_button,
         text(format!("Copy {address}"))
             .size(10)
-            .font(Font::MONOSPACE),
+            .font(crate::app_fonts::monospace_font()),
         tooltip::Position::Top,
     )
     .into();
@@ -1561,7 +1561,7 @@ fn value_cell(
 ) -> Element<'static, Message> {
     let cell = text(value.to_string())
         .size(11)
-        .font(Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .color(color)
         .width(width);
     if align_right {
@@ -1579,7 +1579,7 @@ fn positioning_trader_action_button(
 ) -> Element<'static, Message> {
     let button_width = if full { 50.0 } else { 18.0 };
     tooltip(
-        button(text(label).size(10).font(Font::MONOSPACE).center())
+        button(text(label).size(10).font(crate::app_fonts::monospace_font()).center())
             .on_press(msg)
             .padding([0, 4])
             .width(Length::Fixed(button_width))

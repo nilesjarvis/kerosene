@@ -46,17 +46,17 @@ impl TradingTerminal {
                 money_text(metrics.withdrawable, metrics.data_color).width(85),
                 text(metrics.upnl)
                     .size(11)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(upnl_color)
                     .width(75),
                 text(metrics.margin)
                     .size(11)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(metrics.data_color)
                     .width(60),
                 text(metrics.risk)
                     .size(11)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(metrics.data_color)
                     .width(95),
                 container(state_el).width(90),

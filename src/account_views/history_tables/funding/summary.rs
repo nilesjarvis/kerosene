@@ -22,7 +22,7 @@ impl TradingTerminal {
                 .size(11)
                 .color(theme.extended_palette().background.weak.text),
             text(total_display)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .size(11)
                 .color(total_color),
             text(denomination.active_code().to_string())

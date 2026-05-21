@@ -52,7 +52,7 @@ impl TradingTerminal {
                     signed_money_total_display(&denomination, total_upnl)
                 ))
                 .size(11)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(if error_count > 0 {
                     theme.palette().danger
                 } else if has_invalid_snapshot {

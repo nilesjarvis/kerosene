@@ -20,7 +20,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
             .color(theme.extended_palette().background.weak.text),
         Space::new().width(4.0),
         text(max_position_label)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .size(11)
             .color(theme.palette().text),
         Space::new().width(16.0),
@@ -29,7 +29,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
             .color(theme.extended_palette().background.weak.text),
         Space::new().width(4.0),
         text(format!("{}", fill_count))
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .size(11)
             .color(theme.palette().text),
         Space::new().width(16.0),
@@ -38,7 +38,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
             .color(theme.extended_palette().background.weak.text),
         Space::new().width(4.0),
         text(denomination.format_value(fee, 2))
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .size(11)
             .color(theme.palette().text),
         Space::new().width(16.0),

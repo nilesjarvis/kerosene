@@ -26,7 +26,7 @@ impl TradingTerminal {
                 let title_bar = pane_grid::TitleBar::new(
                     text(title)
                         .size(11)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .style(|theme: &Theme| iced::widget::text::Style {
                             color: Some(drag_ghost_title_color(theme)),
                         }),
@@ -59,7 +59,7 @@ impl TradingTerminal {
             let title_text =
                 text(title)
                     .size(11)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .style(|theme: &Theme| iced::widget::text::Style {
                         color: Some(subtle_pane_title_color(theme)),
                     });

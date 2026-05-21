@@ -70,7 +70,7 @@ impl TradingTerminal {
                 text(volume_label)
                     .size(10)
                     .color(theme.extended_palette().background.weak.text)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .align_x(iced::alignment::Horizontal::Right)
                     .width(iced::Length::Fixed(74.0)),
             );

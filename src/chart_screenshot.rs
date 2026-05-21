@@ -434,7 +434,7 @@ impl TradingTerminal {
             state.captured_at.format("%Y-%m-%d %H:%M:%S")
         ))
         .size(11)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .color(theme.extended_palette().background.weak.text);
 
         let actions = row![
@@ -493,7 +493,7 @@ impl TradingTerminal {
                 false,
                 [3, 6],
             ),
-            text("Capture chart").size(10).font(iced::Font::MONOSPACE),
+            text("Capture chart").size(10).font(crate::app_fonts::monospace_font()),
             tooltip::Position::Top,
         );
 
@@ -506,7 +506,7 @@ impl TradingTerminal {
             ),
             text("Screenshot settings")
                 .size(10)
-                .font(iced::Font::MONOSPACE),
+                .font(crate::app_fonts::monospace_font()),
             tooltip::Position::Top,
         );
 
@@ -523,7 +523,7 @@ impl TradingTerminal {
         let menu_col = column![
             text("Screenshot")
                 .size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(Color::from_rgb8(0x88, 0x88, 0x88)),
             screenshot_menu_separator(),
             checkbox(self.chart_screenshot_settings.obscure_position_entry)
@@ -532,7 +532,7 @@ impl TradingTerminal {
                 .size(10)
                 .spacing(4)
                 .text_size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .width(Fill),
             checkbox(self.chart_screenshot_settings.hide_positions_and_orders)
                 .label("Hide positions/orders")
@@ -540,7 +540,7 @@ impl TradingTerminal {
                 .size(10)
                 .spacing(4)
                 .text_size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .width(Fill),
         ]
         .spacing(5)

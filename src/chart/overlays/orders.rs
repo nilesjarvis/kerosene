@@ -479,7 +479,7 @@ fn draw_order_label<PriceToY, IdxToCx>(
         size: iced::Pixels(8.0),
         align_x: alignment::Horizontal::Left.into(),
         align_y: alignment::Vertical::Center,
-        font: iced::Font::MONOSPACE,
+        font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
 
@@ -498,7 +498,7 @@ fn draw_order_label<PriceToY, IdxToCx>(
         size: iced::Pixels(8.0),
         align_x: alignment::Horizontal::Center.into(),
         align_y: alignment::Vertical::Center,
-        font: iced::Font::MONOSPACE,
+        font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
 }

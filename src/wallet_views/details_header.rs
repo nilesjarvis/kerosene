@@ -49,11 +49,11 @@ impl TradingTerminal {
                 row![
                     text(display.primary)
                         .size(12)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.palette().primary),
                     text(display.secondary)
                         .size(11)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.extended_palette().background.weak.text),
                 ]
                 .spacing(8)
@@ -69,7 +69,7 @@ impl TradingTerminal {
                 },
                 text(status_text)
                     .size(11)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(status_color),
             ]
             .spacing(6)

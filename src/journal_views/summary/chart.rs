@@ -7,7 +7,7 @@ use crate::message::Message;
 use chrono::{DateTime, Utc};
 use iced::widget::container as container_style;
 use iced::widget::{Space, canvas, checkbox, column, container, row, rule, text};
-use iced::{Alignment, Color, Element, Fill, Font, Point, Rectangle, Renderer, Size, Theme};
+use iced::{Alignment, Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme};
 
 // ---------------------------------------------------------------------------
 // Journal Summary Chart
@@ -79,7 +79,7 @@ impl TradingTerminal {
             .size(10)
             .spacing(4)
             .text_size(10)
-            .font(Font::MONOSPACE);
+            .font(crate::app_fonts::monospace_font());
 
         let content = column![
             row![
@@ -94,9 +94,9 @@ impl TradingTerminal {
             row![
                 text(format_signed_display_full(total_pnl, &denomination))
                     .size(22)
-                    .font(Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(value_color),
-                text("PNL").size(13).font(Font::MONOSPACE).color(muted),
+                text("PNL").size(13).font(crate::app_fonts::monospace_font()).color(muted),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -106,15 +106,15 @@ impl TradingTerminal {
                 column![
                     text(format!("{win_rate:.1}% Win Rate"))
                         .size(11)
-                        .font(Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(win_rate_color),
                     text(trade_count_label(total_closed))
                         .size(11)
-                        .font(Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(muted),
                     text(format!("Fees {}", denomination.format_value(total_fees, 2)))
                         .size(11)
-                        .font(Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.palette().danger),
                 ]
                 .spacing(2)
@@ -288,7 +288,7 @@ fn journal_outcome_strip(
 ) -> Element<'static, Message> {
     let tiles = journal_recent_trade_outcome_tiles(filtered_trades);
     if tiles.is_empty() {
-        return container(text("No closed trades").size(10).font(Font::MONOSPACE))
+        return container(text("No closed trades").size(10).font(crate::app_fonts::monospace_font()))
             .height(42)
             .into();
     }
@@ -540,7 +540,7 @@ fn draw_journal_outcome_strip(
             position: Point::new(origin.x + 7.0, origin.y + 9.0),
             color: theme.palette().text,
             size: iced::Pixels(9.0),
-            font: Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
     }
@@ -921,7 +921,7 @@ fn draw_hover_state(
         position: Point::new(origin.x + 7.0, origin.y + 9.0),
         color: theme.palette().text,
         size: iced::Pixels(10.0),
-        font: Font::MONOSPACE,
+        font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
 }

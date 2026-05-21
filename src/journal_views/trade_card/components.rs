@@ -30,7 +30,7 @@ pub(super) fn journal_note_block<'a>(
             text(label)
                 .size(12)
                 .color(label_color)
-                .font(iced::Font::MONOSPACE),
+                .font(crate::app_fonts::monospace_font()),
             Space::new().width(8.0),
             text(body).size(12).color(body_color)
         ]

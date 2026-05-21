@@ -94,7 +94,7 @@ impl CandlestickChart {
             size: iced::Pixels(11.0),
             align_x: alignment::Horizontal::Left.into(),
             align_y: alignment::Vertical::Center,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
     }

@@ -52,7 +52,7 @@ impl CandlestickChart {
             size: iced::Pixels(COUNTDOWN_BADGE_TEXT_SIZE),
             align_x: alignment::Horizontal::Right.into(),
             align_y: alignment::Vertical::Center,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
 

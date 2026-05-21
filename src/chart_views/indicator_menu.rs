@@ -5,7 +5,7 @@ use iced::widget::container as container_style;
 use iced::widget::{
     Column, Space, button, checkbox, container, row, rule, scrollable, stack, text,
 };
-use iced::{Alignment, Color, Element, Fill, Font, Length, Theme};
+use iced::{Alignment, Color, Element, Fill, Length, Theme};
 
 // ---------------------------------------------------------------------------
 // Indicator Menu Model
@@ -228,7 +228,7 @@ fn indicator_group<const N: usize>(
         container(
             text(label)
                 .size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(Color::from_rgb8(0x88, 0x88, 0x88))
         )
         .width(24.0),
@@ -263,7 +263,7 @@ fn indicator_checkbox(chart_id: ChartId, option: IndicatorOption) -> Element<'st
         .size(10)
         .spacing(4)
         .text_size(10)
-        .font(Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .width(Length::FillPortion(1))
         .into()
 }
@@ -299,7 +299,7 @@ fn overlay_group(
         container(
             text("OVR")
                 .size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(Color::from_rgb8(0x88, 0x88, 0x88))
         )
         .width(24.0),
@@ -322,7 +322,7 @@ fn overlay_checkbox(
         .size(10)
         .spacing(4)
         .text_size(10)
-        .font(Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .width(Length::FillPortion(1))
         .into()
 }
@@ -362,7 +362,7 @@ fn overlay_status(instance: &ChartInstance, theme: &Theme) -> Option<Element<'st
     Some(
         text(parts.join(" / "))
             .size(9)
-            .font(Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(color)
             .into(),
     )

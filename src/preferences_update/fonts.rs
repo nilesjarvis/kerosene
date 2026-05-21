@@ -21,22 +21,25 @@ impl TradingTerminal {
                     false,
                 );
             }
+            Message::MonospaceFontChanged(monospace_font) => {
+                self.monospace_font =
+                    config::normalize_display_font(monospace_font, &self.custom_fonts);
+                self.persist_config();
+                self.push_toast(
+                    "Monospace font saved. Restart Kerosene to apply it.".to_string(),
+                    false,
+                );
+            }
             Message::ImportDisplayFont => {
-                return Task::perform(import_display_font(), Message::DisplayFontImported);
+                return Task::perform(import_font(), Message::DisplayFontImported);
+            }
+            Message::ImportMonospaceFont => {
+                return Task::perform(import_font(), Message::MonospaceFontImported);
             }
             Message::DisplayFontImported(result) => match result {
                 Ok(font) => {
                     let family = font.family.clone();
-                    if let Some(existing) = self
-                        .custom_fonts
-                        .iter_mut()
-                        .find(|existing| existing.family.eq_ignore_ascii_case(&family))
-                    {
-                        *existing = font;
-                    } else {
-                        self.custom_fonts.push(font);
-                    }
-
+                    upsert_custom_font(&mut self.custom_fonts, font);
                     self.custom_fonts =
                         config::normalize_custom_fonts(std::mem::take(&mut self.custom_fonts));
                     self.display_font = config::DisplayFontConfig::Custom {
@@ -54,6 +57,27 @@ impl TradingTerminal {
                     }
                 }
             },
+            Message::MonospaceFontImported(result) => match result {
+                Ok(font) => {
+                    let family = font.family.clone();
+                    upsert_custom_font(&mut self.custom_fonts, font);
+                    self.custom_fonts =
+                        config::normalize_custom_fonts(std::mem::take(&mut self.custom_fonts));
+                    self.monospace_font = config::DisplayFontConfig::Custom {
+                        family: family.clone(),
+                    };
+                    self.persist_config();
+                    self.push_toast(
+                        format!("Monospace font set to {family}. Restart Kerosene to apply it."),
+                        false,
+                    );
+                }
+                Err(e) => {
+                    if e != "Import cancelled" {
+                        self.push_toast(format!("Font import failed: {e}"), true);
+                    }
+                }
+            },
             _ => {}
         }
 
@@ -61,7 +85,22 @@ impl TradingTerminal {
     }
 }
 
-async fn import_display_font() -> Result<config::CustomFontConfig, String> {
+fn upsert_custom_font(
+    custom_fonts: &mut Vec<config::CustomFontConfig>,
+    font: config::CustomFontConfig,
+) {
+    let family = font.family.clone();
+    if let Some(existing) = custom_fonts
+        .iter_mut()
+        .find(|existing| existing.family.eq_ignore_ascii_case(&family))
+    {
+        *existing = font;
+    } else {
+        custom_fonts.push(font);
+    }
+}
+
+async fn import_font() -> Result<config::CustomFontConfig, String> {
     let Some(file) = rfd::AsyncFileDialog::new()
         .add_filter("Font", &["ttf", "otf", "ttc"])
         .pick_file()

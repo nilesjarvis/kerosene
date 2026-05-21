@@ -32,7 +32,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_header(
         text(opened_time_str).size(12).color(color!(0x888888)),
         Space::new().width(Fill),
         text(format!("Max Pos: {}", max_position_label))
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .size(12)
             .color(theme.palette().text),
         Space::new().width(12.0),

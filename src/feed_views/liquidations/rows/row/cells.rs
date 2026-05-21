@@ -17,7 +17,7 @@ impl TradingTerminal {
         if user.is_empty() {
             return text("-")
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.extended_palette().background.weak.text)
                 .wrapping(Wrapping::None)
                 .width(USER_WIDTH)
@@ -29,7 +29,7 @@ impl TradingTerminal {
         let user_button: Element<'_, Message> = button(
             text(display.primary)
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.palette().primary)
                 .wrapping(Wrapping::None),
         )
@@ -44,7 +44,7 @@ impl TradingTerminal {
 
         tooltip(
             user_button,
-            text(user_tooltip).size(10).font(iced::Font::MONOSPACE),
+            text(user_tooltip).size(10).font(crate::app_fonts::monospace_font()),
             iced::widget::tooltip::Position::Top,
         )
         .into()
@@ -63,7 +63,7 @@ pub(super) fn liquidation_symbol_button(
         .push(
             text(coin.clone())
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .wrapping(Wrapping::None),
         )
         .align_y(iced::Alignment::Center);

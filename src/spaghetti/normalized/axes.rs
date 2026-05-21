@@ -40,7 +40,7 @@ pub(super) fn draw_grid_and_axes(
             size: iced::Pixels(10.0),
             align_x: alignment::Horizontal::Left.into(),
             align_y: alignment::Vertical::Center,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
     }
@@ -96,7 +96,7 @@ fn draw_time_axis(frame: &mut canvas::Frame, ctx: &NormalizedRenderContext<'_>) 
                 size: iced::Pixels(10.0),
                 align_x: alignment::Horizontal::Center.into(),
                 align_y: alignment::Vertical::Top,
-                font: iced::Font::MONOSPACE,
+                font: crate::app_fonts::monospace_font(),
                 ..canvas::Text::default()
             });
         }

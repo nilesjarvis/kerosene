@@ -192,7 +192,7 @@ fn draw_series_label(
         size: iced::Pixels(10.0),
         align_x: alignment::Horizontal::Left.into(),
         align_y: alignment::Vertical::Bottom,
-        font: iced::Font::MONOSPACE,
+        font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
 
@@ -209,7 +209,7 @@ fn draw_series_label(
         size: iced::Pixels(9.0),
         align_x: alignment::Horizontal::Left.into(),
         align_y: alignment::Vertical::Top,
-        font: iced::Font::MONOSPACE,
+        font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
 }
@@ -428,7 +428,7 @@ pub(super) fn draw_legend(
             size: iced::Pixels(10.0),
             align_x: alignment::Horizontal::Left.into(),
             align_y: alignment::Vertical::Center,
-            font: iced::Font::MONOSPACE,
+            font: crate::app_fonts::monospace_font(),
             ..canvas::Text::default()
         });
         legend_y += 14.0;

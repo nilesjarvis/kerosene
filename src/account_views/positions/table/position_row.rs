@@ -50,7 +50,7 @@ impl TradingTerminal {
                 .unwrap_or_else(|| "\u{2014}".to_string()),
         )
         .size(12)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .color(color!(0xff9d66))
         .into();
 
@@ -129,7 +129,7 @@ impl TradingTerminal {
         let upnl_cell = row![
             text(upnl_display)
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(pnl_color),
             pnl_card_icon_button(
                 Some(Message::OpenPnlCard(PnlCardTarget::Position(
@@ -146,11 +146,11 @@ impl TradingTerminal {
             text(side).size(12).color(side_color).width(Fill),
             text(size_str)
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .width(Fill),
             text(entry_str)
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .width(Fill),
         ];
         if columns.liquidation {
@@ -160,13 +160,13 @@ impl TradingTerminal {
             .push(
                 text(mark_str)
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .width(Fill),
             )
             .push(
                 text(val_display)
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .width(Fill),
             )
             .push(container(upnl_cell).width(Fill));
@@ -174,7 +174,7 @@ impl TradingTerminal {
             row_content = row_content.push(
                 text(fund_display)
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(funding_color)
                     .width(Fill),
             );
@@ -183,7 +183,7 @@ impl TradingTerminal {
             row_content = row_content.push(
                 text(total_display)
                     .size(13)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(total_pnl_color)
                     .width(Fill),
             );
@@ -192,7 +192,7 @@ impl TradingTerminal {
             row_content = row_content.push(
                 text(lev_str)
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(theme.extended_palette().background.weak.text)
                     .width(Fill),
             );

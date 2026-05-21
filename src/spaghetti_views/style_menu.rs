@@ -4,7 +4,7 @@ use crate::spaghetti::ComparisonColorMode;
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, checkbox, container, radio, row, rule, stack, text};
-use iced::{Alignment, Color, Element, Fill, Font, Length, Theme};
+use iced::{Alignment, Color, Element, Fill, Length, Theme};
 
 // ---------------------------------------------------------------------------
 // Comparison Style Menu
@@ -24,7 +24,7 @@ impl TradingTerminal {
             .size(10)
             .spacing(4)
             .text_size(10)
-            .font(Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .width(Length::Fill);
 
         let color_options = ComparisonColorMode::ALL.into_iter().fold(
@@ -95,7 +95,7 @@ fn style_group(
         container(
             text(label)
                 .size(10)
-                .font(Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(Color::from_rgb8(0x88, 0x88, 0x88))
         )
         .width(40.0),

@@ -50,7 +50,7 @@ pub(super) fn wallet_order_row(
     let symbol_button = button(
         text(symbol)
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(theme.palette().primary),
     )
     .on_press(Message::SymbolSelected(symbol_for_message))
@@ -65,27 +65,27 @@ pub(super) fn wallet_order_row(
         symbol_button,
         text(dex_label)
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(theme.extended_palette().background.weak.text)
             .width(60),
         text(side)
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(side_color)
             .width(50),
         text(format_wallet_order_size(size))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(wallet_order_value_color(size, weak_color, invalid_color))
             .width(86),
         text(format_wallet_price(price))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(wallet_order_value_color(price, weak_color, invalid_color))
             .width(86),
         text(format_wallet_display_usd(denomination, notional, 0))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(wallet_order_value_color(
                 notional,
                 weak_color,
@@ -94,12 +94,12 @@ pub(super) fn wallet_order_row(
             .width(90),
         text(helpers::format_relative_time(order.timestamp, now_ms))
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(theme.extended_palette().background.weak.text)
             .width(76),
         text(order.oid.to_string())
             .size(11)
-            .font(iced::Font::MONOSPACE)
+            .font(crate::app_fonts::monospace_font())
             .color(theme.extended_palette().background.weak.text)
             .width(86),
     ]

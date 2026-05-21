@@ -18,7 +18,7 @@ impl TradingTerminal {
         if address.is_empty() {
             return text("-")
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.extended_palette().background.weak.text)
                 .wrapping(Wrapping::None)
                 .width(WALLET_COLUMN_WIDTH)
@@ -29,7 +29,7 @@ impl TradingTerminal {
         let wallet_button = button(
             text(display.primary)
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(theme.palette().primary)
                 .wrapping(Wrapping::None),
         )
@@ -43,7 +43,7 @@ impl TradingTerminal {
 
         let wallet_button: Element<'_, Message> = tooltip(
             wallet_button,
-            text(address.clone()).size(10).font(iced::Font::MONOSPACE),
+            text(address.clone()).size(10).font(crate::app_fonts::monospace_font()),
             iced::widget::tooltip::Position::Top,
         )
         .into();
@@ -52,7 +52,7 @@ impl TradingTerminal {
             button(
                 text("G")
                     .size(10)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .wrapping(Wrapping::None)
                     .center(),
             )
@@ -86,7 +86,7 @@ impl TradingTerminal {
             button(
                 text("\u{2197}")
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .wrapping(Wrapping::None)
                     .center(),
             )
@@ -136,7 +136,7 @@ impl TradingTerminal {
             .push(
                 text(display_coin.clone())
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .wrapping(Wrapping::None),
             )
             .align_y(iced::Alignment::Center);
@@ -161,7 +161,7 @@ impl TradingTerminal {
         if display_coin != raw_coin {
             return tooltip(
                 coin_button,
-                text(raw_coin).size(10).font(iced::Font::MONOSPACE),
+                text(raw_coin).size(10).font(crate::app_fonts::monospace_font()),
                 iced::widget::tooltip::Position::Top,
             )
             .into();

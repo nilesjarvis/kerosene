@@ -190,7 +190,7 @@ fn dom_value_cell(
 
     let content = text(label)
         .size(12)
-        .font(iced::Font::MONOSPACE)
+        .font(crate::app_fonts::monospace_font())
         .align_x(iced::alignment::Horizontal::Right)
         .style(move |theme: &Theme| text::Style {
             color: Some(Color {
@@ -232,7 +232,7 @@ fn price_cell(
             user_order_price_marker(user_order_side),
             text(format!("{price:.decimals$}"))
                 .size(12)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .style(move |theme: &Theme| {
                     let color = if is_best_bid {
                         theme.palette().success

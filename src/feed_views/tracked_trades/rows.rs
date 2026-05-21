@@ -50,7 +50,7 @@ impl TradingTerminal {
                         now_ms,
                     ))
                     .size(11)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(theme.extended_palette().background.weak.text)
                     .wrapping(Wrapping::None)
                     .width(TIME_WIDTH),
@@ -65,7 +65,7 @@ impl TradingTerminal {
                 row_ui = row_ui.push(
                     text(side_str)
                         .size(12)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(side_color)
                         .wrapping(Wrapping::None)
                         .width(SIDE_WIDTH),
@@ -76,7 +76,7 @@ impl TradingTerminal {
                 row_ui = row_ui.push(
                     text(formatting::tracked_trade_size_label(trade_row.size))
                         .size(12)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.palette().text)
                         .wrapping(Wrapping::None)
                         .width(NUMBER_WIDTH),
@@ -87,7 +87,7 @@ impl TradingTerminal {
                 row_ui = row_ui.push(
                     text(formatting::tracked_trade_price_label(trade_row.avg_price))
                         .size(12)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.palette().text)
                         .wrapping(Wrapping::None)
                         .width(NUMBER_WIDTH),
@@ -101,7 +101,7 @@ impl TradingTerminal {
                         notional,
                     ))
                     .size(12)
-                    .font(iced::Font::MONOSPACE)
+                    .font(crate::app_fonts::monospace_font())
                     .color(theme.palette().text)
                     .wrapping(Wrapping::None)
                     .width(NUMBER_WIDTH),
@@ -112,7 +112,7 @@ impl TradingTerminal {
                 row_ui = row_ui.push(
                     text(pnl_label)
                         .size(12)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(pnl_color)
                         .wrapping(Wrapping::None)
                         .width(NUMBER_WIDTH),
@@ -123,7 +123,7 @@ impl TradingTerminal {
                 row_ui = row_ui.push(
                     text(fee_label)
                         .size(11)
-                        .font(iced::Font::MONOSPACE)
+                        .font(crate::app_fonts::monospace_font())
                         .color(theme.extended_palette().background.weak.text)
                         .wrapping(Wrapping::None)
                         .width(NUMBER_WIDTH),

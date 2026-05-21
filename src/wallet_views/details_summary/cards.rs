@@ -17,7 +17,7 @@ pub(super) fn summary_metric_card(
                 .color(theme.extended_palette().background.weak.text),
             text(value)
                 .size(13)
-                .font(iced::Font::MONOSPACE)
+                .font(crate::app_fonts::monospace_font())
                 .color(value_color),
         ]
         .spacing(2),
@@ -55,6 +55,6 @@ pub(super) fn summary_pm_status_line(
         pm_available
     ))
     .size(10)
-    .font(iced::Font::MONOSPACE)
+    .font(crate::app_fonts::monospace_font())
     .color(theme.extended_palette().background.weak.text)
 }

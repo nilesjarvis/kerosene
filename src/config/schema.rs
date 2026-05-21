@@ -209,7 +209,10 @@ pub struct KeroseneConfig {
     /// Global display font used by default UI text.
     #[serde(default)]
     pub display_font: DisplayFontConfig,
-    /// User-imported display fonts.
+    /// Global font used where the terminal explicitly aligns text as monospace.
+    #[serde(default)]
+    pub monospace_font: DisplayFontConfig,
+    /// User-imported fonts available to display and monospace font pickers.
     #[serde(default)]
     pub custom_fonts: Vec<CustomFontConfig>,
     /// Width of the divider between pane widgets in pixels.
