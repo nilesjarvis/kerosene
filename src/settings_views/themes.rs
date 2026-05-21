@@ -1,5 +1,6 @@
 mod button;
 mod chrome;
+mod fonts;
 mod lists;
 
 use crate::app_state::TradingTerminal;
@@ -11,6 +12,7 @@ impl TradingTerminal {
     pub(crate) fn view_settings_themes_section(&self) -> Element<'_, Message> {
         let current_theme = self.theme();
         let chrome_controls = self.view_settings_widget_chrome_section();
+        let font_controls = self.view_settings_display_font_section();
         let theme_list = self.view_builtin_theme_list();
         let custom_list = self.view_custom_theme_list();
         let has_custom_themes = !self.custom_themes.is_empty();
@@ -19,8 +21,17 @@ impl TradingTerminal {
             column![
                 text("Theme").size(16).color(current_theme.palette().text),
                 rule::horizontal(1),
-                scrollable(column![chrome_controls, rule::horizontal(1), theme_list].spacing(12))
-                    .height(Fill),
+                scrollable(
+                    column![
+                        chrome_controls,
+                        rule::horizontal(1),
+                        font_controls,
+                        rule::horizontal(1),
+                        theme_list
+                    ]
+                    .spacing(12)
+                )
+                .height(Fill),
             ]
             .spacing(12)
             .into()
@@ -31,6 +42,8 @@ impl TradingTerminal {
                 scrollable(
                     column![
                         chrome_controls,
+                        rule::horizontal(1),
+                        font_controls,
                         rule::horizontal(1),
                         theme_list,
                         text("Custom Themes")

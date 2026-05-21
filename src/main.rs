@@ -15,6 +15,7 @@ mod annotation_update;
 mod annotations;
 mod api;
 mod app_boot;
+mod app_fonts;
 mod app_state;
 mod app_theme;
 mod app_time;
@@ -99,11 +100,15 @@ mod positions_funding_tests;
 // ---------------------------------------------------------------------------
 
 pub fn main() -> iced::Result {
+    let config = config::load_config();
+    let settings = app_fonts::settings_from_config(&config);
+
     iced::daemon(
-        TradingTerminal::boot,
+        move || TradingTerminal::boot_from_config(config.clone()),
         TradingTerminal::update,
         TradingTerminal::view_window,
     )
+    .settings(settings)
     .subscription(TradingTerminal::subscription)
     .title(TradingTerminal::window_title)
     .theme(TradingTerminal::window_theme)

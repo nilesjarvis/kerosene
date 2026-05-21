@@ -7,6 +7,7 @@ use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
 use iced::Task;
 
+mod fonts;
 mod hotkeys;
 mod muted_tickers;
 
@@ -22,6 +23,11 @@ impl TradingTerminal {
                 self.ui_scale = normalize_ui_scale(value);
                 self.persist_config();
                 return self.sync_main_window_min_size();
+            }
+            message @ (Message::DisplayFontChanged(_)
+            | Message::ImportDisplayFont
+            | Message::DisplayFontImported(_)) => {
+                return self.update_font_preferences(message);
             }
             Message::PaneBorderThicknessChanged(value) => {
                 self.pane_border_thickness = normalize_pane_border_thickness(value);

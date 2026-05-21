@@ -2696,6 +2696,7 @@ dependencies = [
  "chrono-tz",
  "dirs",
  "flate2",
+ "fontdb",
  "futures",
  "hex",
  "iced",

@@ -10,6 +10,7 @@ use super::screenshot::ChartScreenshotSettingsConfig;
 use super::secrets::EncryptedSecretsConfig;
 use super::themes::{CustomThemeConfig, default_custom_themes, default_theme};
 use super::wallets::{AddressBookEntryConfig, WalletTrackerConfig};
+use super::{CustomFontConfig, DisplayFontConfig};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
 use serde::{Deserialize, Serialize};
@@ -205,6 +206,12 @@ pub struct KeroseneConfig {
     /// Global UI scale multiplier. Values below 1.0 make the terminal denser.
     #[serde(default = "default_ui_scale")]
     pub ui_scale: f32,
+    /// Global display font used by default UI text.
+    #[serde(default)]
+    pub display_font: DisplayFontConfig,
+    /// User-imported display fonts.
+    #[serde(default)]
+    pub custom_fonts: Vec<CustomFontConfig>,
     /// Width of the divider between pane widgets in pixels.
     #[serde(default = "default_pane_border_thickness")]
     pub pane_border_thickness: f32,

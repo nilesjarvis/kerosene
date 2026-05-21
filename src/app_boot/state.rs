@@ -65,6 +65,8 @@ impl TradingTerminal {
             dragging_pane: None,
             active_theme: cfg.active_theme.clone(),
             ui_scale: cfg.ui_scale,
+            display_font: cfg.display_font.clone(),
+            custom_fonts: cfg.custom_fonts.clone(),
             pane_border_thickness: cfg.pane_border_thickness,
             pane_corner_radius: cfg.pane_corner_radius,
             focus: None,

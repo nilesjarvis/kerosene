@@ -1,6 +1,6 @@
 use crate::api::fetch_exchange_symbols;
 use crate::app_state::TradingTerminal;
-use crate::config::{self, load_config};
+use crate::config;
 use crate::layout_persistence::LayoutWidgetConfigs;
 use crate::message::Message;
 use crate::wallet_state::WalletTrackerState;
@@ -10,8 +10,13 @@ use iced::Task;
 use super::state::BootStateParts;
 
 impl TradingTerminal {
+    #[cfg(test)]
     pub(crate) fn boot() -> (Self, Task<Message>) {
-        let mut cfg = load_config();
+        let cfg = config::load_config();
+        Self::boot_from_config(cfg)
+    }
+
+    pub(crate) fn boot_from_config(mut cfg: config::KeroseneConfig) -> (Self, Task<Message>) {
         let config_warnings = config::take_config_warnings();
         let secret_warnings = config::take_secret_warnings();
         let mut persistence_warnings = config_warnings;

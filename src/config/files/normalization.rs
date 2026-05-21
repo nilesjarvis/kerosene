@@ -16,6 +16,7 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     prune_unsupported_pane_layouts(config);
     normalize_market_slippage(config);
     normalize_pane_chrome(config);
+    normalize_fonts(config);
     migrate_legacy_single_account(config);
     ensure_account_profile(config);
     clamp_active_account(config);
@@ -51,6 +52,12 @@ fn normalize_pane_chrome(config: &mut KeroseneConfig) {
     config.ui_scale = normalize_ui_scale(config.ui_scale);
     config.pane_border_thickness = normalize_pane_border_thickness(config.pane_border_thickness);
     config.pane_corner_radius = normalize_pane_corner_radius(config.pane_corner_radius);
+}
+
+fn normalize_fonts(config: &mut KeroseneConfig) {
+    config.custom_fonts = crate::config::normalize_custom_fonts(config.custom_fonts.clone());
+    config.display_font =
+        crate::config::normalize_display_font(config.display_font.clone(), &config.custom_fonts);
 }
 
 fn merge_default_themes(config: &mut KeroseneConfig) {

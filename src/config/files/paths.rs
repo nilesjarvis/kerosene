@@ -33,3 +33,20 @@ pub fn journal_cache_path(address: &str) -> Option<PathBuf> {
             .join(format!("journal_cache_{}.json", address))
     })
 }
+
+pub fn font_storage_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("kerosene").join("fonts"))
+}
+
+pub fn custom_font_path(file_name: &str) -> Option<PathBuf> {
+    let file_name = file_name.trim();
+    if file_name.is_empty()
+        || file_name.contains('/')
+        || file_name.contains('\\')
+        || file_name.contains("..")
+    {
+        return None;
+    }
+
+    font_storage_dir().map(|dir| dir.join(file_name))
+}

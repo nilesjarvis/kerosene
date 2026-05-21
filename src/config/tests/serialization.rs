@@ -1,9 +1,10 @@
 use super::super::secrets;
 use super::super::{
     AccountProfile, ChartConfig, ChartScreenshotSettingsConfig, CredentialStorageMode,
-    DetachedChartWindowConfig, DisplayDenominationConfig, EncryptedSecretsConfig, KeroseneConfig,
-    MacroIndicatorsConfig, PaneKindConfig, PaneLayoutConfig, default_market_slippage_pct,
-    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
+    CustomFontConfig, DetachedChartWindowConfig, DisplayDenominationConfig, DisplayFontConfig,
+    EncryptedSecretsConfig, KeroseneConfig, MacroIndicatorsConfig, PaneKindConfig,
+    PaneLayoutConfig, default_market_slippage_pct, default_pane_border_thickness,
+    default_pane_corner_radius, default_ui_scale,
 };
 use crate::advanced_order_history::{AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind};
 use std::collections::HashMap;
@@ -157,6 +158,61 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         decoded_legacy.pane_corner_radius,
         default_pane_corner_radius()
     );
+}
+
+#[test]
+fn display_font_round_trips_and_legacy_defaults_system() {
+    let config = KeroseneConfig {
+        display_font: DisplayFontConfig::Custom {
+            family: "Inter".to_string(),
+        },
+        custom_fonts: vec![CustomFontConfig {
+            family: "Inter".to_string(),
+            file_name: "inter.ttf".to_string(),
+        }],
+        ..KeroseneConfig::default()
+    };
+
+    let json = serde_json::to_string(&config).expect("config should serialize");
+    let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
+    assert_eq!(decoded.display_font, config.display_font);
+    assert_eq!(decoded.custom_fonts, config.custom_fonts);
+
+    let mut legacy =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    let object = legacy
+        .as_object_mut()
+        .expect("config should serialize to object");
+    object.remove("display_font");
+    object.remove("custom_fonts");
+
+    let decoded_legacy: KeroseneConfig =
+        serde_json::from_value(legacy).expect("legacy config should deserialize");
+    assert_eq!(decoded_legacy.display_font, DisplayFontConfig::System);
+    assert!(decoded_legacy.custom_fonts.is_empty());
+}
+
+#[test]
+fn bundled_display_fonts_do_not_require_custom_font_entries() {
+    for family in crate::config::BUNDLED_DISPLAY_FONT_FAMILIES {
+        let config = KeroseneConfig {
+            display_font: DisplayFontConfig::Custom {
+                family: family.to_ascii_lowercase(),
+            },
+            custom_fonts: Vec::new(),
+            ..KeroseneConfig::default()
+        };
+        let custom_fonts = crate::config::normalize_custom_fonts(config.custom_fonts);
+        let display_font =
+            crate::config::normalize_display_font(config.display_font, &custom_fonts);
+
+        assert_eq!(
+            display_font,
+            DisplayFontConfig::Custom {
+                family: (*family).to_string()
+            }
+        );
+    }
 }
 
 #[test]
