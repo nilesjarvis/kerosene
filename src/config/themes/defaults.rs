@@ -113,6 +113,20 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             ],
             chart: Some(("#08A67A", "#F03060")),
         },
+        ThemeSpec {
+            name: "IBKR Dark",
+            colors: [
+                "#101018", "#D8DCE6", "#2878F0", "#2EBF7A", "#D0A818", "#F83048",
+            ],
+            chart: Some(("#2EBF7A", "#F83048")),
+        },
+        ThemeSpec {
+            name: "bybit",
+            colors: [
+                "#101014", "#F5F5F5", "#F4B444", "#55AF72", "#E8A838", "#DC5351",
+            ],
+            chart: Some(("#55AF72", "#DC5351")),
+        },
     ]
     .into_iter()
     .map(theme_from_spec)

@@ -105,6 +105,34 @@ fn default_custom_themes_include_kerosene_chart_colors() {
     assert_eq!(ftx.danger, "#F03060");
     assert_eq!(ftx.chart_bull.as_deref(), Some("#08A67A"));
     assert_eq!(ftx.chart_bear.as_deref(), Some("#F03060"));
+
+    let ibkr_dark = themes
+        .iter()
+        .find(|theme| theme.name == "IBKR Dark")
+        .expect("IBKR Dark theme should be present");
+
+    assert_eq!(ibkr_dark.background, "#101018");
+    assert_eq!(ibkr_dark.text, "#D8DCE6");
+    assert_eq!(ibkr_dark.primary, "#2878F0");
+    assert_eq!(ibkr_dark.success, "#2EBF7A");
+    assert_eq!(ibkr_dark.warning, "#D0A818");
+    assert_eq!(ibkr_dark.danger, "#F83048");
+    assert_eq!(ibkr_dark.chart_bull.as_deref(), Some("#2EBF7A"));
+    assert_eq!(ibkr_dark.chart_bear.as_deref(), Some("#F83048"));
+
+    let bybit = themes
+        .iter()
+        .find(|theme| theme.name == "bybit")
+        .expect("bybit theme should be present");
+
+    assert_eq!(bybit.background, "#101014");
+    assert_eq!(bybit.text, "#F5F5F5");
+    assert_eq!(bybit.primary, "#F4B444");
+    assert_eq!(bybit.success, "#55AF72");
+    assert_eq!(bybit.warning, "#E8A838");
+    assert_eq!(bybit.danger, "#DC5351");
+    assert_eq!(bybit.chart_bull.as_deref(), Some("#55AF72"));
+    assert_eq!(bybit.chart_bear.as_deref(), Some("#DC5351"));
 }
 
 #[test]

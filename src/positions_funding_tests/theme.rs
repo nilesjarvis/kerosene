@@ -166,3 +166,87 @@ fn ftx_theme_uses_screenshot_navy_panels_and_teal_accents() {
         [0xF0, 0x30, 0x60, 255]
     );
 }
+
+#[test]
+fn ibkr_dark_theme_uses_tws_blue_panels_and_trade_accents() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0x10, 0x10, 0x18),
+        text: Color::from_rgb8(0xD8, 0xDC, 0xE6),
+        primary: Color::from_rgb8(0x28, 0x78, 0xF0),
+        success: Color::from_rgb8(0x2E, 0xBF, 0x7A),
+        warning: Color::from_rgb8(0xD0, 0xA8, 0x18),
+        danger: Color::from_rgb8(0xF8, 0x30, 0x48),
+    };
+
+    assert!(TradingTerminal::palette_matches_ibkr_dark_source(
+        source_palette
+    ));
+
+    let extended = TradingTerminal::ibkr_dark_source_extended_palette();
+    assert_eq!(
+        extended.background.base.color.into_rgba8(),
+        [0x10, 0x10, 0x18, 255]
+    );
+    assert_eq!(
+        extended.background.weak.color.into_rgba8(),
+        [0x15, 0x17, 0x24, 255]
+    );
+    assert_eq!(
+        extended.background.strong.color.into_rgba8(),
+        [0x20, 0x28, 0x38, 255]
+    );
+    assert_eq!(
+        extended.primary.base.color.into_rgba8(),
+        [0x28, 0x78, 0xF0, 255]
+    );
+    assert_eq!(
+        extended.success.base.color.into_rgba8(),
+        [0x2E, 0xBF, 0x7A, 255]
+    );
+    assert_eq!(
+        extended.danger.base.color.into_rgba8(),
+        [0xF8, 0x30, 0x48, 255]
+    );
+}
+
+#[test]
+fn bybit_theme_uses_charcoal_panels_and_amber_actions() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0x10, 0x10, 0x14),
+        text: Color::from_rgb8(0xF5, 0xF5, 0xF5),
+        primary: Color::from_rgb8(0xF4, 0xB4, 0x44),
+        success: Color::from_rgb8(0x55, 0xAF, 0x72),
+        warning: Color::from_rgb8(0xE8, 0xA8, 0x38),
+        danger: Color::from_rgb8(0xDC, 0x53, 0x51),
+    };
+
+    assert!(TradingTerminal::palette_matches_bybit_source(
+        source_palette
+    ));
+
+    let extended = TradingTerminal::bybit_source_extended_palette();
+    assert_eq!(
+        extended.background.base.color.into_rgba8(),
+        [0x10, 0x10, 0x14, 255]
+    );
+    assert_eq!(
+        extended.background.weak.color.into_rgba8(),
+        [0x17, 0x18, 0x1D, 255]
+    );
+    assert_eq!(
+        extended.background.strong.color.into_rgba8(),
+        [0x20, 0x21, 0x24, 255]
+    );
+    assert_eq!(
+        extended.primary.base.color.into_rgba8(),
+        [0xF4, 0xB4, 0x44, 255]
+    );
+    assert_eq!(
+        extended.success.base.color.into_rgba8(),
+        [0x55, 0xAF, 0x72, 255]
+    );
+    assert_eq!(
+        extended.danger.base.color.into_rgba8(),
+        [0xDC, 0x53, 0x51, 255]
+    );
+}
