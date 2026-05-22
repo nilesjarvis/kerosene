@@ -1,7 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::{
-    CHASE_RETRY_COOLDOWN, ChasePendingOp, ExchangeResponse, MIN_CHASE_REPRICE_INTERVAL,
+    CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason,
+    ExchangeResponse, MIN_CHASE_REPRICE_INTERVAL,
 };
 use crate::twap_state::ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL;
 
@@ -41,14 +42,14 @@ impl TradingTerminal {
         if !self.chase_orders.contains_key(&chase_id) {
             return self.refresh_after_chase_result(should_refresh);
         }
-        let pending_op = self
+        let lifecycle = self
             .chase_orders
             .get(&chase_id)
-            .and_then(|chase| chase.pending_op);
-        let Some(ChasePendingOp::Modify { oid: pending_oid }) = pending_op else {
+            .map(|chase| chase.lifecycle);
+        let Some(lifecycle) = lifecycle else {
             return self.refresh_after_chase_result(false);
         };
-        if pending_oid != oid {
+        if !lifecycle.expects_modify_result(oid) {
             return self.refresh_after_chase_result(false);
         }
 
@@ -106,11 +107,18 @@ impl TradingTerminal {
         let now = Instant::now();
         let mut apply_global_cooldown = false;
         let stop_status = if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-            chase.pending_op = None;
             if chase_retryable_exchange_error(&summary) {
+                let was_stopping = chase.lifecycle.is_stopping();
                 chase.last_reprice_at = Some(cooldown_marker(now, MIN_CHASE_REPRICE_INTERVAL));
+                if was_stopping {
+                    chase.lifecycle = ChaseLifecycle::Resting;
+                } else {
+                    chase.lifecycle = ChaseLifecycle::Queued {
+                        action: ChaseQueuedAction::Reprice,
+                    };
+                }
                 apply_global_cooldown = true;
-                chase.stop_requested.then(|| {
+                was_stopping.then(|| {
                     chase
                         .stop_reason
                         .clone()
@@ -118,8 +126,7 @@ impl TradingTerminal {
                 })
             } else {
                 chase.last_reprice_at = Some(now);
-                chase.pending_best_price = None;
-                chase.pending_size_correction = false;
+                chase.desired_price = None;
                 Some((format!("Chase stopped: modify failed: {summary}"), true))
             }
         } else {
@@ -148,19 +155,12 @@ impl TradingTerminal {
         let chase = self.chase_orders.get_mut(&chase_id)?;
         chase.record_oid(oid);
         chase.current_oid = Some(oid);
-        if let Some(best) = chase.pending_best_price
-            && let Some((rounded_best, price_wire)) = chase.rounded_price(best)
-        {
-            chase.current_price = rounded_best;
-            chase.current_price_wire = price_wire;
-        }
-        chase.pending_op = None;
-        chase.pending_best_price = None;
-        chase.pending_size_correction = false;
+        let was_stopping = chase.lifecycle.is_stopping();
+        chase.lifecycle = ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Modify,
+        };
         chase.cancel_retries = 0;
-        chase.oid_confirmed = false;
-        chase.missing_open_order_refresh_requested = true;
-        chase.stop_requested.then(|| {
+        was_stopping.then(|| {
             chase
                 .stop_reason
                 .clone()

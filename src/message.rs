@@ -380,6 +380,11 @@ pub(crate) enum Message {
         cloid: String,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
+    ChaseOrderOidStatusLoaded {
+        chase_id: u64,
+        oid: u64,
+        result: Box<Result<api::OrderStatusResult, String>>,
+    },
     ChaseRestingOrder {
         coin: String,
         oid: u64,

@@ -4,7 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
 use crate::order_execution::PendingOrderAction;
-use crate::signing::ChaseOrder;
+use crate::signing::{ChaseLifecycle, ChaseOrder};
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::Task;
 
@@ -183,15 +183,11 @@ impl TradingTerminal {
                 started_at,
                 started_at_ms,
                 reprice_count: 0,
-                pending_op: None,
+                lifecycle: ChaseLifecycle::LoadingBook,
                 last_reprice_at: None,
-                pending_best_price: None,
-                pending_size_correction: false,
-                stop_requested: false,
+                desired_price: None,
                 stop_reason: None,
                 cancel_retries: 0,
-                oid_confirmed: false,
-                missing_open_order_refresh_requested: false,
             },
         );
         self.selected_chase_id = Some(chase_id);

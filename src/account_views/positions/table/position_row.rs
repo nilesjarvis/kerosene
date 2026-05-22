@@ -273,7 +273,7 @@ fn format_signed_compact_amount(
     } else {
         ""
     };
-    format!("{sign}{}{compact_value}", context.active_symbol())
+    context.format_active_amount(sign, compact_value)
 }
 
 fn trim_decimal_zeros(value: String) -> String {

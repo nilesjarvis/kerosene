@@ -83,16 +83,15 @@ fn format_display_trimmed(
         ""
     };
     let abs = display_value.abs();
-    let symbol = denomination.active_symbol();
     if abs >= 1_000_000.0 {
-        format!(
-            "{sign}{symbol}{}M",
-            format_trimmed_number(abs / 1_000_000.0, 2)
+        denomination.format_active_amount(
+            sign,
+            format!("{}M", format_trimmed_number(abs / 1_000_000.0, 2)),
         )
     } else {
-        format!(
-            "{sign}{symbol}{}",
-            trim_decimal_zeros(format_decimal_with_commas(abs, 2))
+        denomination.format_active_amount(
+            sign,
+            trim_decimal_zeros(format_decimal_with_commas(abs, 2)),
         )
     }
 }
@@ -112,6 +111,8 @@ fn trim_decimal_zeros(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DisplayDenominationConfig;
+    use std::collections::HashMap;
 
     #[test]
     fn tracked_trade_numbers_drop_empty_decimal_places() {
@@ -139,6 +140,25 @@ mod tests {
         assert_eq!(
             tracked_trade_notional_label(&denomination, 1_500_000.0),
             "$1.5M"
+        );
+    }
+
+    #[test]
+    fn tracked_trade_hype_values_suffix_unit() {
+        let denomination = DisplayDenominationContext::from_mids(
+            DisplayDenominationConfig::hype(),
+            &HashMap::from([("HYPE".to_string(), 25.0)]),
+            &HashMap::from([("HYPE".to_string(), 1_000)]),
+            1_000,
+        );
+
+        assert_eq!(
+            tracked_trade_notional_label(&denomination, 12_500.0),
+            "500 HYPE"
+        );
+        assert_eq!(
+            tracked_trade_pnl_label(&denomination, -2_500.0),
+            "-100 HYPE"
         );
     }
 }

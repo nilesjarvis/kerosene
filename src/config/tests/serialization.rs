@@ -109,6 +109,18 @@ fn display_denomination_round_trips_and_legacy_defaults_usd() {
         DisplayDenominationConfig::eur()
     );
 
+    let hype_config = KeroseneConfig {
+        display_denomination: DisplayDenominationConfig::hype(),
+        ..KeroseneConfig::default()
+    };
+    let hype_json = serde_json::to_string(&hype_config).expect("config should serialize");
+    let decoded_hype: KeroseneConfig =
+        serde_json::from_str(&hype_json).expect("config should deserialize");
+    assert_eq!(
+        decoded_hype.display_denomination,
+        DisplayDenominationConfig::hype()
+    );
+
     let mut legacy =
         serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
     legacy

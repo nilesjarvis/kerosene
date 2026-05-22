@@ -137,6 +137,11 @@ impl TradingTerminal {
                 cloid,
                 result,
             } => return self.handle_chase_order_status_result(chase_id, cloid, *result),
+            Message::ChaseOrderOidStatusLoaded {
+                chase_id,
+                oid,
+                result,
+            } => return self.handle_chase_order_oid_status_result(chase_id, oid, *result),
             Message::OpenQuickOrder(
                 chart_id,
                 surface_id,

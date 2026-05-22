@@ -1,6 +1,6 @@
 use super::*;
 use crate::app_state::TradingTerminal;
-use crate::signing::{ChaseOrder, ChasePendingOp};
+use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseVerificationReason};
 use std::time::{Duration, Instant};
 
 fn chase() -> ChaseOrder {
@@ -28,15 +28,11 @@ fn chase() -> ChaseOrder {
         started_at,
         started_at_ms: 1_000,
         reprice_count: 1,
-        pending_op: Some(ChasePendingOp::Modify { oid: 42 }),
+        lifecycle: ChaseLifecycle::Modifying { oid: 42 },
         last_reprice_at: Some(started_at),
-        pending_best_price: Some(101.0),
-        pending_size_correction: false,
-        stop_requested: false,
+        desired_price: Some(101.0),
         stop_reason: None,
         cancel_retries: 0,
-        oid_confirmed: true,
-        missing_open_order_refresh_requested: false,
     }
 }
 
@@ -54,7 +50,7 @@ fn exchange_response(status: serde_json::Value) -> ExchangeResponse {
 }
 
 #[test]
-fn chase_modify_success_updates_expected_price_and_refreshes_account() {
+fn chase_modify_success_preserves_target_until_account_confirms() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.account_loading = false;
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
@@ -67,14 +63,16 @@ fn chase_modify_success_updates_expected_price_and_refreshes_account() {
     );
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert_eq!(chase.pending_op, None);
-    assert_eq!(chase.pending_best_price, None);
-    assert!(!chase.pending_size_correction);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Modify
+        }
+    );
+    assert_eq!(chase.desired_price, Some(101.0));
     assert_eq!(chase.current_oid, Some(42));
-    assert_eq!(chase.current_price, 101.0);
-    assert_eq!(chase.current_price_wire, "101");
-    assert!(!chase.oid_confirmed);
-    assert!(chase.missing_open_order_refresh_requested);
+    assert_eq!(chase.current_price, 100.0);
+    assert_eq!(chase.current_price_wire, "100");
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
 }
@@ -93,8 +91,13 @@ fn chase_modify_rate_limit_keeps_target_queued_for_retry() {
     );
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert_eq!(chase.pending_op, None);
-    assert_eq!(chase.pending_best_price, Some(101.0));
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Queued {
+            action: ChaseQueuedAction::Reprice
+        }
+    );
+    assert_eq!(chase.desired_price, Some(101.0));
     assert_eq!(chase.current_price, 100.0);
     assert!(!chase.can_reprice_now(Instant::now() + Duration::from_secs(4)));
     assert!(
@@ -112,7 +115,8 @@ fn chase_modify_rate_limit_keeps_target_queued_for_retry() {
 fn chase_modify_rate_limit_keeps_size_correction_queued_for_retry() {
     let mut terminal = TradingTerminal::boot().0;
     let mut chase = chase();
-    chase.pending_size_correction = true;
+    chase.lifecycle = ChaseLifecycle::Modifying { oid: 42 };
+    chase.desired_price = Some(101.0);
     terminal.chase_orders.insert(1, chase);
 
     let _task = terminal.handle_chase_modify_result(
@@ -124,9 +128,13 @@ fn chase_modify_rate_limit_keeps_size_correction_queued_for_retry() {
     );
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert_eq!(chase.pending_op, None);
-    assert!(chase.pending_size_correction);
-    assert_eq!(chase.pending_best_price, Some(101.0));
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Queued {
+            action: ChaseQueuedAction::Reprice
+        }
+    );
+    assert_eq!(chase.desired_price, Some(101.0));
 }
 
 #[test]
@@ -140,8 +148,12 @@ fn chase_modify_unknown_response_preserves_target_for_reconciliation() {
         terminal.handle_chase_modify_result(1, 42, Err("response body timeout".to_string()));
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert_eq!(chase.pending_op, None);
-    assert_eq!(chase.pending_best_price, Some(101.0));
-    assert!(chase.missing_open_order_refresh_requested);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Modify
+        }
+    );
+    assert_eq!(chase.desired_price, Some(101.0));
     assert!(terminal.account_loading);
 }

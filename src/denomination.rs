@@ -92,7 +92,16 @@ impl DisplayDenominationContext {
     }
 
     pub(crate) fn active_symbol(&self) -> &str {
-        currency_symbol(self.active_code())
+        currency_symbol(self.active_code()).unwrap_or_else(|| self.active_code())
+    }
+
+    pub(crate) fn format_active_amount(&self, sign: &str, amount: impl AsRef<str>) -> String {
+        let amount = amount.as_ref();
+        if let Some(symbol) = currency_symbol(self.active_code()) {
+            format!("{sign}{symbol}{amount}")
+        } else {
+            format!("{sign}{amount} {}", self.active_code())
+        }
     }
 
     pub(crate) fn unavailable_status(&self) -> Option<String> {
@@ -142,19 +151,7 @@ impl DisplayDenominationContext {
             return format_usd(&format!("{value:.decimals$}"));
         }
 
-        if decimals == 0 {
-            format!(
-                "{sign}{}{}",
-                self.active_symbol(),
-                format_decimal_with_commas(abs, 0)
-            )
-        } else {
-            format!(
-                "{sign}{}{}",
-                self.active_symbol(),
-                format_decimal_with_commas(abs, decimals)
-            )
-        }
+        self.format_active_amount(sign, format_decimal_with_commas(abs, decimals))
     }
 
     pub(crate) fn format_price(&self, usd_price: f64) -> String {
@@ -174,7 +171,7 @@ impl DisplayDenominationContext {
 
         format!(
             "{} ({})",
-            format_symbol_price(self.active_symbol(), value),
+            self.format_active_price(value),
             format_symbol_price("$", usd_price)
         )
     }
@@ -195,11 +192,7 @@ impl DisplayDenominationContext {
         } else {
             ""
         };
-        format!(
-            "{sign}{}{}",
-            self.active_symbol(),
-            format_decimal_with_commas(display_value, decimals)
-        )
+        self.format_active_amount(sign, format_decimal_with_commas(display_value, decimals))
     }
 
     #[cfg(test)]
@@ -214,15 +207,19 @@ impl DisplayDenominationContext {
         } else {
             ""
         };
-        format!(
-            "{sign}{}{}",
-            self.active_symbol(),
-            format_compact(value.abs())
-        )
+        self.format_active_amount(sign, format_compact(value.abs()))
     }
 
     pub(crate) fn hidden_mask(&self) -> String {
-        format!("{}***", self.active_symbol())
+        self.format_active_amount("", "***")
+    }
+
+    fn format_active_price(&self, value: f64) -> String {
+        if let Some(symbol) = currency_symbol(self.active_code()) {
+            return format_symbol_price(symbol, value);
+        }
+        let sign = if value < 0.0 { "-" } else { "" };
+        format!("{sign}{} {}", format_price(value.abs()), self.active_code())
     }
 }
 
@@ -241,11 +238,11 @@ pub(crate) fn format_compact(value: f64) -> String {
     }
 }
 
-fn currency_symbol(code: &str) -> &str {
+fn currency_symbol(code: &str) -> Option<&str> {
     match code {
-        "EUR" => "€",
-        "USD" => "$",
-        _ => "",
+        "EUR" => Some("€"),
+        "USD" => Some("$"),
+        _ => None,
     }
 }
 
@@ -268,6 +265,7 @@ impl TradingTerminal {
         vec![
             DisplayDenominationConfig::Usd,
             DisplayDenominationConfig::eur(),
+            DisplayDenominationConfig::hype(),
         ]
     }
 
@@ -325,6 +323,15 @@ mod tests {
         )
     }
 
+    fn hype_context(rate: f64) -> DisplayDenominationContext {
+        DisplayDenominationContext::from_mids(
+            DisplayDenominationConfig::hype(),
+            &HashMap::from([("HYPE".to_string(), rate)]),
+            &HashMap::from([("HYPE".to_string(), 1_000)]),
+            1_000,
+        )
+    }
+
     #[test]
     fn usd_default_formats_like_existing_usd_formatter() {
         let ctx = DisplayDenominationContext::usd();
@@ -341,6 +348,28 @@ mod tests {
         assert_eq!(ctx.format_value(125.0, 2), "€100.00");
         assert_eq!(ctx.format_price(12.5), "10.00");
         assert_eq!(ctx.format_chart_price(125.0), "€100.00 ($125.00)");
+    }
+
+    #[test]
+    fn hype_context_uses_main_dex_mid_and_suffixes_unit() {
+        let normalized_hype = DisplayDenominationConfig::Asset {
+            code: " hype ".to_string(),
+            dex: " ".to_string(),
+            symbol: " hype ".to_string(),
+        }
+        .normalized();
+        let ctx = hype_context(25.0);
+
+        assert_eq!(normalized_hype, DisplayDenominationConfig::hype());
+        assert_eq!(
+            DisplayDenominationConfig::hype().rate_symbol_key(),
+            Some("HYPE".to_string())
+        );
+        assert_eq!(ctx.active_symbol(), "HYPE");
+        assert_eq!(ctx.format_value(125.0, 2), "5.00 HYPE");
+        assert_eq!(ctx.format_signed_value(-125.0, 2), "-5.00 HYPE");
+        assert_eq!(ctx.format_chart_price(125.0), "5.00 HYPE ($125.00)");
+        assert_eq!(ctx.hidden_mask(), "*** HYPE");
     }
 
     #[test]

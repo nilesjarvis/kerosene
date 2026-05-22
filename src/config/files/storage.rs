@@ -196,6 +196,16 @@ mod tests {
     use super::*;
     use crate::config::take_secret_warnings;
 
+    use std::sync::{Mutex, MutexGuard};
+
+    static SECRET_WARNING_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn secret_warning_test_lock() -> MutexGuard<'static, ()> {
+        SECRET_WARNING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn test_profile(name: &str, agent_key: &str) -> AccountProfile {
         AccountProfile {
             secret_id: name.to_string(),
@@ -208,6 +218,7 @@ mod tests {
 
     #[test]
     fn legacy_keychain_startup_only_loads_active_missing_agent_key() {
+        let _guard = secret_warning_test_lock();
         let _ = take_secret_warnings();
         let mut config = KeroseneConfig {
             active_account_index: 1,
@@ -234,6 +245,7 @@ mod tests {
 
     #[test]
     fn legacy_keychain_startup_skips_keychain_when_active_key_is_plaintext() {
+        let _guard = secret_warning_test_lock();
         let _ = take_secret_warnings();
         let mut config = KeroseneConfig {
             active_account_index: 0,
@@ -258,6 +270,7 @@ mod tests {
 
     #[test]
     fn legacy_keychain_startup_preserves_plaintext_integration_keys_without_reads() {
+        let _guard = secret_warning_test_lock();
         let _ = take_secret_warnings();
         let mut config = KeroseneConfig {
             accounts: vec![AccountProfile {

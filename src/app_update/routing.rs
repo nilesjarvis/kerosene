@@ -146,6 +146,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChaseModifyResult { .. }
         | Message::ChaseCancelResult { .. }
         | Message::ChaseOrderStatusLoaded { .. }
+        | Message::ChaseOrderOidStatusLoaded { .. }
         | Message::OpenQuickOrder(_, _, _, _, _, _, _)
         | Message::QuickOrderQtyChanged(_, _)
         | Message::QuickOrderPercentageChanged(_, _)

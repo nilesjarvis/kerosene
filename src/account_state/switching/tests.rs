@@ -1,6 +1,6 @@
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::config::AccountProfile;
-use crate::signing::ChaseOrder;
+use crate::signing::{ChaseLifecycle, ChaseOrder};
 
 use std::time::Instant;
 
@@ -38,15 +38,11 @@ fn chase_order(account_address: &str) -> ChaseOrder {
         started_at: Instant::now(),
         started_at_ms: 1,
         reprice_count: 0,
-        pending_op: None,
+        lifecycle: ChaseLifecycle::Resting,
         last_reprice_at: None,
-        pending_best_price: None,
-        pending_size_correction: false,
-        stop_requested: false,
+        desired_price: None,
         stop_reason: None,
         cancel_retries: 0,
-        oid_confirmed: true,
-        missing_open_order_refresh_requested: false,
     }
 }
 

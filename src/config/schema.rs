@@ -109,6 +109,14 @@ impl DisplayDenominationConfig {
         }
     }
 
+    pub fn hype() -> Self {
+        Self::Asset {
+            code: "HYPE".to_string(),
+            dex: String::new(),
+            symbol: "HYPE".to_string(),
+        }
+    }
+
     pub fn normalized(self) -> Self {
         match self {
             Self::Usd => Self::Usd,
@@ -116,7 +124,7 @@ impl DisplayDenominationConfig {
                 let code = code.trim().to_ascii_uppercase();
                 let dex = dex.trim().to_ascii_lowercase();
                 let symbol = symbol.trim().to_ascii_uppercase();
-                if code.is_empty() || dex.is_empty() || symbol.is_empty() {
+                if code.is_empty() || symbol.is_empty() {
                     Self::Usd
                 } else {
                     Self::Asset { code, dex, symbol }
@@ -136,7 +144,7 @@ impl DisplayDenominationConfig {
         }
     }
 
-    pub fn selected_hip3_dex(&self) -> Option<&str> {
+    pub fn mids_dex(&self) -> Option<&str> {
         match self {
             Self::Usd => None,
             Self::Asset { dex, .. } => Some(dex.as_str()),
@@ -146,6 +154,7 @@ impl DisplayDenominationConfig {
     pub fn rate_symbol_key(&self) -> Option<String> {
         match self {
             Self::Usd => None,
+            Self::Asset { dex, symbol, .. } if dex.is_empty() => Some(symbol.clone()),
             Self::Asset { dex, symbol, .. } => Some(format!("{dex}:{symbol}")),
         }
     }

@@ -54,7 +54,7 @@ pub(super) fn format_position_display_value(
     } else {
         ""
     };
-    format!("{sign}{}{compact_value}", context.active_symbol())
+    context.format_active_amount(sign, compact_value)
 }
 
 pub(super) fn format_position_compact_number(value: f64) -> String {

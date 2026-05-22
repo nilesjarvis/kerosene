@@ -46,7 +46,7 @@ pub(super) fn chase_should_reprice(
         && active_symbol == coin
         && chase.current_oid.is_some()
         && !chase.has_pending_op()
-        && !chase.stop_requested
+        && chase.lifecycle.is_book_repriceable()
         && chase.can_reprice_now(now)
         && best_px
             .and_then(|px| chase.rounded_price(px))

@@ -69,7 +69,7 @@ impl TradingTerminal {
             .chase_orders
             .iter()
             .filter_map(|(id, chase)| {
-                (!chase.stop_requested && chase.account_address.as_str() != addr.as_str())
+                (!chase.lifecycle.is_stopping() && chase.account_address.as_str() != addr.as_str())
                     .then_some(*id)
             })
             .collect();
@@ -139,7 +139,7 @@ impl TradingTerminal {
         let stop_chase_ids: Vec<u64> = self
             .chase_orders
             .iter()
-            .filter_map(|(id, chase)| (!chase.stop_requested).then_some(*id))
+            .filter_map(|(id, chase)| (!chase.lifecycle.is_stopping()).then_some(*id))
             .collect();
         let stop_chase_task = Task::batch(stop_chase_ids.into_iter().map(|id| {
             self.stop_chase_by_id_with_reason(id, "Chase stopped: wallet disconnected", false)

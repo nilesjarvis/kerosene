@@ -3,7 +3,7 @@ use crate::account::{
     AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
     SpotClearinghouseState, UserFill,
 };
-use crate::signing::ChaseOrder;
+use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseStopPhase, ChaseVerificationReason};
 use std::time::Instant;
 
 fn open_order(oid: u64, reduce_only: Option<bool>) -> OpenOrder {
@@ -64,15 +64,13 @@ fn chase_order() -> ChaseOrder {
         started_at: Instant::now(),
         started_at_ms: 1_000,
         reprice_count: 0,
-        pending_op: None,
+        lifecycle: ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement,
+        },
         last_reprice_at: None,
-        pending_best_price: None,
-        pending_size_correction: false,
-        stop_requested: false,
+        desired_price: None,
         stop_reason: None,
         cancel_retries: 0,
-        oid_confirmed: false,
-        missing_open_order_refresh_requested: true,
     }
 }
 
@@ -220,16 +218,19 @@ fn open_order_sync_updates_chase_size_price_and_confirmation() {
     order.limit_px = "101.5".to_string();
 
     assert_eq!(
-        apply_open_order_to_chase(&mut chase, &order, ChaseOpenOrderPriceSync::Trust),
+        apply_open_order_to_chase(&mut chase, &order),
         Ok(false)
     );
 
     assert_eq!(chase.remaining_size, 0.25);
     assert_eq!(chase.current_price, 101.5);
     assert_eq!(chase.current_price_wire, "101.5");
-    assert!(chase.oid_confirmed);
-    assert!(!chase.pending_size_correction);
-    assert!(!chase.missing_open_order_refresh_requested);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
 }
 
 #[test]
@@ -240,12 +241,11 @@ fn open_order_sync_clamps_chase_size_to_unfilled_target() {
     order.sz = "0.2".to_string();
 
     assert_eq!(
-        apply_open_order_to_chase(&mut chase, &order, ChaseOpenOrderPriceSync::Trust),
+        apply_open_order_to_chase(&mut chase, &order),
         Ok(true)
     );
 
     assert!((chase.remaining_size - 0.1).abs() < 1e-12);
-    assert!(chase.pending_size_correction);
 }
 
 #[test]
@@ -255,7 +255,7 @@ fn open_order_sync_rejects_invalid_remaining_size() {
     order.sz = "0".to_string();
 
     assert_eq!(
-        apply_open_order_to_chase(&mut chase, &order, ChaseOpenOrderPriceSync::Trust),
+        apply_open_order_to_chase(&mut chase, &order),
         Err(())
     );
     assert_eq!(chase.remaining_size, 1.0);
@@ -362,7 +362,10 @@ fn chase_reprice_reconciliation_pauses_on_incomplete_account_snapshot() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
     let mut chase = chase_order();
-    chase.pending_best_price = Some(101.0);
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::Reprice,
+    };
+    chase.desired_price = Some(101.0);
     terminal.chase_orders.insert(1, chase);
     let mut data = account_data_with_timestamp(1_000);
     data.completeness.fills_complete = false;
@@ -374,7 +377,12 @@ fn chase_reprice_reconciliation_pauses_on_incomplete_account_snapshot() {
         .chase_orders
         .get(&1)
         .expect("chase should remain paused");
-    assert_eq!(chase.pending_op, None);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Reprice
+        }
+    );
     assert_eq!(chase.current_oid, Some(42));
     assert!(
         terminal
@@ -394,9 +402,10 @@ fn chase_reprice_reconciliation_clears_confirmed_pending_target() {
     let mut chase = chase_order();
     chase.current_price = 101.0;
     chase.current_price_wire = "101".to_string();
-    chase.pending_best_price = Some(101.0);
-    chase.oid_confirmed = false;
-    chase.missing_open_order_refresh_requested = true;
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::Reprice,
+    };
+    chase.desired_price = Some(101.0);
     terminal.chase_orders.insert(1, chase);
     let mut data = account_data_with_timestamp(1_000);
     let mut order = open_order(42, Some(false));
@@ -407,62 +416,44 @@ fn chase_reprice_reconciliation_clears_confirmed_pending_target() {
     let _task = terminal.reconcile_chase_after_account_refresh();
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert_eq!(chase.pending_op, None);
-    assert_eq!(chase.pending_best_price, None);
-    assert!(!chase.pending_size_correction);
-    assert!(chase.oid_confirmed);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Resting);
+    assert_eq!(chase.desired_price, None);
 }
 
 #[test]
-fn open_order_sync_preserves_expected_price_until_modify_confirmation_catches_up() {
+fn open_order_sync_keeps_desired_price_until_exchange_price_matches() {
     let mut chase = chase_order();
     chase.current_price = 101.0;
     chase.current_price_wire = "101".to_string();
-    chase.oid_confirmed = false;
-    chase.pending_best_price = Some(101.0);
+    chase.desired_price = Some(101.0);
 
     let mut stale_order = open_order(42, Some(false));
     stale_order.sz = "0.25".to_string();
     stale_order.limit_px = "100".to_string();
 
-    assert_eq!(
-        apply_open_order_to_chase(
-            &mut chase,
-            &stale_order,
-            ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
-        ),
-        Ok(false)
-    );
+    assert_eq!(apply_open_order_to_chase(&mut chase, &stale_order), Ok(false));
 
     assert_eq!(chase.remaining_size, 0.25);
-    assert_eq!(chase.current_price, 101.0);
-    assert_eq!(chase.current_price_wire, "101");
-    assert!(!chase.oid_confirmed);
-    assert!(!chase.pending_size_correction);
-    assert_eq!(chase.pending_best_price, Some(101.0));
+    assert_eq!(chase.current_price, 100.0);
+    assert_eq!(chase.current_price_wire, "100");
+    assert_eq!(chase.desired_price, Some(101.0));
 
     let mut confirmed_order = open_order(42, Some(false));
     confirmed_order.sz = "0.25".to_string();
     confirmed_order.limit_px = "101".to_string();
 
     assert_eq!(
-        apply_open_order_to_chase(
-            &mut chase,
-            &confirmed_order,
-            ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
-        ),
+        apply_open_order_to_chase(&mut chase, &confirmed_order),
         Ok(false)
     );
 
     assert_eq!(chase.current_price, 101.0);
     assert_eq!(chase.current_price_wire, "101");
-    assert!(chase.oid_confirmed);
-    assert!(!chase.pending_size_correction);
-    assert_eq!(chase.pending_best_price, None);
+    assert_eq!(chase.desired_price, None);
 }
 
 #[test]
-fn websocket_open_order_confirmation_clears_refreshing_chase_status() {
+fn websocket_open_order_update_does_not_bypass_account_verification() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000".to_string();
     terminal.connected_address = Some(address.clone());
@@ -475,8 +466,9 @@ fn websocket_open_order_confirmation_clears_refreshing_chase_status() {
     let mut chase = chase_order();
     chase.current_price = 101.0;
     chase.current_price_wire = "101".to_string();
-    chase.oid_confirmed = false;
-    chase.missing_open_order_refresh_requested = true;
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::Reprice,
+    };
     terminal.chase_orders.insert(1, chase);
 
     let mut order = open_order(42, Some(false));
@@ -492,11 +484,18 @@ fn websocket_open_order_confirmation_clears_refreshing_chase_status() {
     );
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert!(chase.oid_confirmed);
-    assert!(!chase.missing_open_order_refresh_requested);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Reprice
+        }
+    );
     assert_eq!(
         terminal.order_status,
-        Some(("Chasing (oid 42)...".to_string(), false))
+        Some((
+            "Chasing (oid 42); refreshing account data...".to_string(),
+            false
+        ))
     );
 }
 
@@ -514,8 +513,9 @@ fn stale_websocket_open_order_keeps_chase_refresh_pending() {
     let mut chase = chase_order();
     chase.current_price = 101.0;
     chase.current_price_wire = "101".to_string();
-    chase.oid_confirmed = false;
-    chase.missing_open_order_refresh_requested = true;
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::Reprice,
+    };
     terminal.chase_orders.insert(1, chase);
 
     let mut stale_order = open_order(42, Some(false));
@@ -531,8 +531,12 @@ fn stale_websocket_open_order_keeps_chase_refresh_pending() {
     );
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
-    assert!(!chase.oid_confirmed);
-    assert!(chase.missing_open_order_refresh_requested);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Reprice
+        }
+    );
     assert_eq!(
         terminal.order_status,
         Some((
@@ -540,6 +544,69 @@ fn stale_websocket_open_order_keeps_chase_refresh_pending() {
             false
         ))
     );
+}
+
+#[test]
+fn websocket_open_order_update_does_not_override_stop_verification() {
+    let mut terminal = TradingTerminal::boot().0;
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Stopping {
+        phase: ChaseStopPhase::VerifyingCancel { oid: 42 },
+    };
+    chase.stop_reason = Some(("Chase stopped".to_string(), false));
+    terminal.chase_orders.insert(1, chase);
+
+    let mut oversized_order = open_order(42, Some(false));
+    oversized_order.sz = "2.0".to_string();
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: vec![oversized_order],
+        },
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::VerifyingCancel { oid: 42 }
+        }
+    );
+}
+
+#[test]
+fn placement_without_oid_does_not_place_replacement_after_refresh() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase_order();
+    chase.current_oid = None;
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::Placement,
+    };
+    chase.desired_price = Some(101.0);
+    terminal.chase_orders.insert(1, chase);
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.current_oid, None);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
+    assert_eq!(chase.desired_price, Some(101.0));
 }
 
 #[test]

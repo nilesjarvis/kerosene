@@ -1,7 +1,9 @@
 use crate::account::{OpenOrder, fetch_account_data_scoped, normalize_dex_open_order_coins};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::signing::ChaseOrder;
+use crate::signing::{
+    ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseVerificationReason,
+};
 use crate::ws::WsUserData;
 
 use iced::Task;
@@ -9,12 +11,6 @@ use std::collections::HashSet;
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ChaseOpenOrderPriceSync {
-    Trust,
-    PreserveExpectedIfUnconfirmed,
-}
 
 fn preserve_open_order_reduce_only(
     order: &mut crate::account::OpenOrder,
@@ -205,7 +201,6 @@ fn chase_fill_summary(fills: &[crate::account::UserFill], oid: u64) -> Option<St
 fn apply_open_order_to_chase(
     chase: &mut ChaseOrder,
     order: &OpenOrder,
-    price_sync: ChaseOpenOrderPriceSync,
 ) -> Result<bool, ()> {
     let sz = order.sz.parse::<f64>().map_err(|_| ())?;
     let oversized = chase.sync_open_remaining_size(sz).ok_or(())?;
@@ -214,44 +209,18 @@ fn apply_open_order_to_chase(
     }
 
     chase.record_oid(order.oid);
-    let mut confirmed_expected_state = true;
-    let mut parsed_price = false;
-    let mut confirmed_pending_price = false;
     if let Ok(px) = order.limit_px.parse::<f64>()
         && let Some((rounded_px, price_wire)) = chase.rounded_price(px)
     {
-        parsed_price = true;
-        let preserve_expected = matches!(
-            price_sync,
-            ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed
-        ) && !chase.oid_confirmed
-            && price_wire != chase.current_price_wire;
-        if !preserve_expected {
-            chase.current_price = rounded_px;
-            chase.current_price_wire = price_wire;
-            confirmed_pending_price = chase
-                .pending_best_price
-                .and_then(|price| chase.rounded_price(price))
-                .is_some_and(|(_, pending_wire)| pending_wire == chase.current_price_wire);
-        } else {
-            confirmed_expected_state = false;
+        chase.current_price = rounded_px;
+        chase.current_price_wire = price_wire;
+        if chase
+            .desired_price
+            .and_then(|price| chase.rounded_price(price))
+            .is_some_and(|(_, desired_wire)| desired_wire == chase.current_price_wire)
+        {
+            chase.desired_price = None;
         }
-    }
-    if matches!(
-        price_sync,
-        ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed
-    ) && !chase.oid_confirmed
-        && !parsed_price
-    {
-        confirmed_expected_state = false;
-    }
-    chase.oid_confirmed = confirmed_expected_state;
-    chase.pending_size_correction = oversized;
-    if confirmed_pending_price {
-        chase.pending_best_price = None;
-    }
-    if confirmed_expected_state {
-        chase.missing_open_order_refresh_requested = false;
     }
     Ok(oversized)
 }
@@ -467,7 +436,7 @@ impl TradingTerminal {
     }
 
     fn handle_chase_order_disappearance(&mut self) -> Task<Message> {
-        let mut refresh_for_missing_order = false;
+        let mut needs_refresh = false;
         let open_orders = self
             .account_data
             .as_ref()
@@ -475,18 +444,12 @@ impl TradingTerminal {
             .unwrap_or_default();
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
         let mut remove_ids = Vec::new();
-        let mut correction_ids = Vec::new();
 
         for chase_id in chase_ids {
-            let Some((oid, confirmed, refresh_requested, has_pending)) =
-                self.chase_orders.get(&chase_id).map(|chase| {
-                    (
-                        chase.current_oid,
-                        chase.oid_confirmed,
-                        chase.missing_open_order_refresh_requested,
-                        chase.has_pending_op(),
-                    )
-                })
+            let Some((oid, lifecycle, has_pending)) = self
+                .chase_orders
+                .get(&chase_id)
+                .map(|chase| (chase.current_oid, chase.lifecycle, chase.has_pending_op()))
             else {
                 continue;
             };
@@ -496,30 +459,29 @@ impl TradingTerminal {
             if has_pending {
                 continue;
             }
+            if lifecycle.is_stopping() {
+                continue;
+            }
             match open_orders.iter().find(|order| order.oid == oid) {
                 Some(order) => {
                     let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                         continue;
                     };
-                    let sync_result = apply_open_order_to_chase(
-                        chase,
-                        order,
-                        ChaseOpenOrderPriceSync::PreserveExpectedIfUnconfirmed,
-                    );
-                    match sync_result {
+                    match apply_open_order_to_chase(chase, order) {
                         Ok(oversized) => {
                             if oversized {
-                                correction_ids.push(chase_id);
-                            } else if (refresh_requested || !confirmed)
-                                && self.chase_orders.get(&chase_id).is_some_and(|chase| {
-                                    chase.oid_confirmed
-                                        && !chase.missing_open_order_refresh_requested
-                                        && !chase.stop_requested
-                                        && !chase.has_pending_op()
-                                })
+                                chase.lifecycle = ChaseLifecycle::Verifying {
+                                    reason: ChaseVerificationReason::SizeCorrection,
+                                };
+                                self.order_status = Some((
+                                    "Chase verifying fills before correcting remaining size".into(),
+                                    false,
+                                ));
+                                needs_refresh = true;
+                            } else if matches!(lifecycle, ChaseLifecycle::Resting)
+                                && !chase.lifecycle.is_stopping()
                             {
-                                self.order_status =
-                                    Some((format!("Chasing (oid {oid})..."), false));
+                                self.order_status = Some((format!("Chasing (oid {oid})..."), false));
                             }
                         }
                         Err(()) => {
@@ -536,16 +498,18 @@ impl TradingTerminal {
                     }
                 }
                 None => {
-                    if confirmed && !refresh_requested {
+                    if matches!(lifecycle, ChaseLifecycle::Resting) {
                         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-                            chase.missing_open_order_refresh_requested = true;
+                            chase.lifecycle = ChaseLifecycle::Verifying {
+                                reason: ChaseVerificationReason::MissingOrder,
+                            };
                         }
                         self.order_status = Some((
                             "Chase checking order status: open-orders stream no longer shows the order"
                                 .into(),
                             false,
                         ));
-                        refresh_for_missing_order = true;
+                        needs_refresh = true;
                     }
                 }
             }
@@ -553,14 +517,11 @@ impl TradingTerminal {
         for (chase_id, summary) in remove_ids {
             self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
-        let mut tasks: Vec<Task<Message>> = correction_ids
-            .into_iter()
-            .map(|chase_id| self.chase_modify_for_current_price_reconciliation(chase_id))
-            .collect();
-        if refresh_for_missing_order {
-            tasks.push(self.refresh_account_data());
+        if needs_refresh {
+            self.refresh_account_data()
+        } else {
+            Task::none()
         }
-        Task::batch(tasks)
     }
 
     pub(crate) fn reconcile_chase_after_account_refresh(&mut self) -> Task<Message> {
@@ -586,15 +547,19 @@ impl TradingTerminal {
                 continue;
             };
             if connected_address.as_deref() != Some(chase_snapshot.account_address.as_str())
-                || !chase_snapshot.missing_open_order_refresh_requested
+                || !chase_snapshot.needs_account_verification()
                 || chase_snapshot.has_pending_op()
             {
                 continue;
             }
-            let wants_replacement = chase_snapshot.pending_best_price.is_some();
-            if wants_replacement && (!open_orders_complete || !fills_complete) {
+            let verification_reason = match chase_snapshot.lifecycle {
+                ChaseLifecycle::Verifying { reason } => reason,
+                _ => continue,
+            };
+            let wants_replacement = chase_snapshot.desired_price.is_some();
+            if !open_orders_complete || !fills_complete {
                 self.order_status = Some((
-                    "Chase paused: account refresh was incomplete; not placing replacement until fills and open orders are verified"
+                    "Chase paused: account refresh was incomplete; not mutating until fills and open orders are verified"
                         .into(),
                     true,
                 ));
@@ -608,6 +573,14 @@ impl TradingTerminal {
             }
 
             let Some(oid) = chase_snapshot.current_oid else {
+                if matches!(verification_reason, ChaseVerificationReason::Placement) {
+                    self.order_status = Some((
+                        "Chase placement status is still uncertain; waiting for orderStatus before placing another order"
+                            .into(),
+                        true,
+                    ));
+                    continue;
+                }
                 if wants_replacement {
                     replacement_ids.push(chase_id);
                 }
@@ -619,22 +592,23 @@ impl TradingTerminal {
                 Some(order) => {
                     let mut stop_after_refresh = None;
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-                        match apply_open_order_to_chase(
-                            chase,
-                            order,
-                            ChaseOpenOrderPriceSync::Trust,
-                        ) {
+                        match apply_open_order_to_chase(chase, order) {
                             Ok(oversized) => {
-                                let needs_reconcile = chase.pending_best_price.is_some()
-                                    || chase.pending_size_correction;
-                                if chase.stop_requested {
+                                let needs_reconcile = chase.desired_price.is_some()
+                                    || oversized
+                                    || matches!(
+                                        verification_reason,
+                                        ChaseVerificationReason::SizeCorrection
+                                    );
+                                if chase.lifecycle.is_stopping() {
                                     stop_after_refresh = chase
                                         .stop_reason
                                         .clone()
                                         .or_else(|| Some(("Chase stopped".to_string(), false)));
-                                } else if oversized || (wants_replacement && needs_reconcile) {
+                                } else if needs_reconcile {
                                     correction_ids.push(chase_id);
                                 } else {
+                                    chase.lifecycle = ChaseLifecycle::Resting;
                                     self.order_status =
                                         Some((format!("Chasing (oid {oid})..."), false));
                                 }
@@ -661,9 +635,9 @@ impl TradingTerminal {
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         chase.record_oid(oid);
                         chase.current_oid = None;
-                        chase.oid_confirmed = false;
-                        chase.pending_size_correction = false;
-                        chase.missing_open_order_refresh_requested = false;
+                        chase.lifecycle = ChaseLifecycle::Queued {
+                            action: ChaseQueuedAction::Place,
+                        };
                     }
                     replacement_ids.push(chase_id);
                 }
@@ -696,7 +670,7 @@ impl TradingTerminal {
             .filter_map(|chase_id| {
                 self.chase_orders
                     .get(&chase_id)
-                    .and_then(|chase| chase.pending_best_price)
+                    .and_then(|chase| chase.desired_price)
                     .map(|best| (chase_id, best))
             })
             .collect();

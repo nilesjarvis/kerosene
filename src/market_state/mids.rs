@@ -70,7 +70,7 @@ impl TradingTerminal {
             .selected_hip3_dex()
             .map(|dex| vec![dex.to_string()])
             .unwrap_or_else(|| Self::known_mids_dexes_from_symbols(&self.exchange_symbols));
-        if let Some(dex) = self.display_denomination.selected_hip3_dex() {
+        if let Some(dex) = self.display_denomination.mids_dex() {
             dexes.push(dex.to_string());
         }
         normalize_mids_dexes(dexes)
@@ -100,6 +100,18 @@ mod tests {
         assert_eq!(
             terminal.visible_mids_dexes(),
             vec!["flx".to_string(), "xyz".to_string()]
+        );
+    }
+
+    #[test]
+    fn visible_mids_dexes_include_main_dex_for_hype_display_denomination() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("flx");
+        terminal.display_denomination = DisplayDenominationConfig::hype();
+
+        assert_eq!(
+            terminal.visible_mids_dexes(),
+            vec![String::new(), "flx".to_string()]
         );
     }
 }

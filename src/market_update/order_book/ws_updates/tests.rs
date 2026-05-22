@@ -1,6 +1,6 @@
 use crate::api::{BookLevel, OrderBook};
 use crate::market_state::OrderBookSymbolMode;
-use crate::signing::{ChaseOrder, ChasePendingOp};
+use crate::signing::{ChaseLifecycle, ChaseOrder};
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -37,15 +37,11 @@ fn chase() -> ChaseOrder {
         started_at,
         started_at_ms: 1_000,
         reprice_count: 0,
-        pending_op: None,
+        lifecycle: ChaseLifecycle::Resting,
         last_reprice_at: None,
-        pending_best_price: None,
-        pending_size_correction: false,
-        stop_requested: false,
+        desired_price: None,
         stop_reason: None,
         cancel_retries: 0,
-        oid_confirmed: true,
-        missing_open_order_refresh_requested: false,
     }
 }
 
@@ -133,7 +129,7 @@ fn sell_chase_reprices_only_toward_lower_prices() {
 #[test]
 fn chase_reprice_waits_while_operation_is_in_flight() {
     let mut chase = chase();
-    chase.pending_op = Some(ChasePendingOp::Modify { oid: 42 });
+    chase.lifecycle = ChaseLifecycle::Modifying { oid: 42 };
 
     assert!(!chase_should_reprice(
         &chase,
@@ -147,7 +143,9 @@ fn chase_reprice_waits_while_operation_is_in_flight() {
 #[test]
 fn chase_reprice_waits_after_stop_is_requested() {
     let mut chase = chase();
-    chase.stop_requested = true;
+    chase.lifecycle = ChaseLifecycle::Stopping {
+        phase: crate::signing::ChaseStopPhase::Canceling { oid: 42 },
+    };
 
     assert!(!chase_should_reprice(
         &chase,

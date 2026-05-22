@@ -134,6 +134,20 @@ fn default_custom_themes_include_kerosene_chart_colors() {
     assert_eq!(bybit.chart_bull.as_deref(), Some("#55AF72"));
     assert_eq!(bybit.chart_bear.as_deref(), Some("#DC5351"));
 
+    let coinbase_dark = themes
+        .iter()
+        .find(|theme| theme.name == "coinbase-dark")
+        .expect("coinbase-dark theme should be present");
+
+    assert_eq!(coinbase_dark.background, "#090B0C");
+    assert_eq!(coinbase_dark.text, "#F5F7F9");
+    assert_eq!(coinbase_dark.primary, "#3474F4");
+    assert_eq!(coinbase_dark.success, "#44C48C");
+    assert_eq!(coinbase_dark.warning, "#F4941C");
+    assert_eq!(coinbase_dark.danger, "#EC6474");
+    assert_eq!(coinbase_dark.chart_bull.as_deref(), Some("#44C48C"));
+    assert_eq!(coinbase_dark.chart_bear.as_deref(), Some("#EC6474"));
+
     let coinbase_light = themes
         .iter()
         .find(|theme| theme.name == "coinbase-light")

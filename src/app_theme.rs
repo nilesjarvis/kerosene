@@ -5,6 +5,7 @@ use iced::{Color, Theme};
 mod bloomberg;
 mod bybit;
 mod chart_colors;
+mod coinbase_dark;
 mod coinbase_light;
 mod color_parse;
 mod ftx;
@@ -85,6 +86,8 @@ impl TradingTerminal {
             theme_name == "Custom: IBKR Dark" && Self::palette_matches_ibkr_dark_source(palette);
         let use_bybit_source_palette =
             theme_name == "Custom: bybit" && Self::palette_matches_bybit_source(palette);
+        let use_coinbase_dark_source_palette = theme_name == "Custom: coinbase-dark"
+            && Self::palette_matches_coinbase_dark_source(palette);
         let use_coinbase_light_source_palette = theme_name == "Custom: coinbase-light"
             && Self::palette_matches_coinbase_light_source(palette);
 
@@ -119,6 +122,11 @@ impl TradingTerminal {
                 }
                 if use_bybit_source_palette && TradingTerminal::palette_matches_bybit_source(p) {
                     return TradingTerminal::bybit_source_extended_palette();
+                }
+                if use_coinbase_dark_source_palette
+                    && TradingTerminal::palette_matches_coinbase_dark_source(p)
+                {
+                    return TradingTerminal::coinbase_dark_source_extended_palette();
                 }
                 if use_coinbase_light_source_palette
                     && TradingTerminal::palette_matches_coinbase_light_source(p)

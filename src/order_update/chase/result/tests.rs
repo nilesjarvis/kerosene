@@ -1,7 +1,7 @@
 use super::*;
 use crate::api::OrderStatusResult;
 use crate::app_state::TradingTerminal;
-use crate::signing::ChaseOrder;
+use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseStopPhase, ChaseVerificationReason};
 use std::time::Instant;
 
 fn chase() -> ChaseOrder {
@@ -29,15 +29,11 @@ fn chase() -> ChaseOrder {
         started_at,
         started_at_ms: 1_000,
         reprice_count: 0,
-        pending_op: None,
+        lifecycle: ChaseLifecycle::LoadingBook,
         last_reprice_at: None,
-        pending_best_price: None,
-        pending_size_correction: false,
-        stop_requested: false,
+        desired_price: None,
         stop_reason: None,
         cancel_retries: 0,
-        oid_confirmed: false,
-        missing_open_order_refresh_requested: false,
     }
 }
 
@@ -57,7 +53,9 @@ fn exchange_response(statuses: Vec<serde_json::Value>) -> ExchangeResponse {
 #[test]
 fn stopped_chase_place_result_requests_cancel_for_late_resting_order() {
     let mut chase = chase();
-    chase.stop_requested = true;
+    chase.lifecycle = ChaseLifecycle::Stopping {
+        phase: ChaseStopPhase::AwaitingPlace,
+    };
     let response = exchange_response(vec![serde_json::json!({
         "resting": {
             "oid": 9001_u64
@@ -92,7 +90,7 @@ fn chase_place_status_open_recovers_oid_after_unknown_place_response() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
     let mut chase = chase();
-    chase.pending_op = Some(ChasePendingOp::Place);
+    chase.lifecycle = ChaseLifecycle::Placing;
     chase.current_cloid = Some("0x1234567890abcdef1234567890abcdef".to_string());
     terminal.chase_orders.insert(1, chase);
 
@@ -109,16 +107,22 @@ fn chase_place_status_open_recovers_oid_after_unknown_place_response() {
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert_eq!(chase.current_oid, Some(9001));
-    assert_eq!(chase.pending_op, None);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
     assert!(chase.known_oids.contains(&9001));
-    assert!(chase.missing_open_order_refresh_requested);
 }
 
 #[test]
-fn chase_place_status_error_archives_failed_chase_as_error() {
+fn chase_place_status_error_keeps_chase_uncertain_for_retry() {
     let mut terminal = TradingTerminal::boot().0;
     let mut chase = chase();
-    chase.pending_op = Some(ChasePendingOp::Place);
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::Placement,
+    };
     chase.current_cloid = Some("0x1234567890abcdef1234567890abcdef".to_string());
     terminal.chase_orders.insert(1, chase);
 
@@ -128,14 +132,52 @@ fn chase_place_status_error_archives_failed_chase_as_error() {
         Err("status endpoint down".to_string()),
     );
 
-    assert!(terminal.chase_orders.is_empty());
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
     assert!(
         terminal
-            .advanced_order_history
-            .front()
-            .is_some_and(|entry| {
-                entry.status == "Error"
-                    && entry.summary.contains("could not confirm placement status")
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, is_error)| {
+                *is_error && message.contains("placement status still uncertain")
+            })
+    );
+}
+
+#[test]
+fn chase_oid_status_error_keeps_chase_uncertain_for_reconciliation() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut chase = chase();
+    chase.current_oid = Some(9001);
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::Modify,
+    };
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.handle_chase_order_oid_status_result(
+        1,
+        9001,
+        Err("status endpoint down".to_string()),
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Modify
+        }
+    );
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, is_error)| {
+                *is_error && message.contains("order status still uncertain")
             })
     );
 }

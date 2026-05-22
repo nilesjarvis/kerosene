@@ -3,7 +3,7 @@ use super::actions::{
     build_order_action, build_order_action_with_cloid,
 };
 use super::crypto::action_hash_bytes;
-use super::{ChaseOrder, ExchangeResponse, OrderKind};
+use super::{ChaseLifecycle, ChaseOrder, ExchangeResponse, OrderKind};
 
 fn exchange_response(status: serde_json::Value) -> ExchangeResponse {
     exchange_response_with_statuses(vec![status])
@@ -495,15 +495,11 @@ fn chase_order_debug_redacts_agent_key() {
         started_at: std::time::Instant::now(),
         started_at_ms: 1_000,
         reprice_count: 0,
-        pending_op: None,
+        lifecycle: ChaseLifecycle::Resting,
         last_reprice_at: None,
-        pending_best_price: None,
-        pending_size_correction: false,
-        stop_requested: false,
+        desired_price: None,
         stop_reason: None,
         cancel_retries: 0,
-        oid_confirmed: true,
-        missing_open_order_refresh_requested: false,
     };
 
     let rendered = format!("{chase:?}");
@@ -537,15 +533,11 @@ fn chase_price_moves_only_toward_fill() {
         started_at: std::time::Instant::now(),
         started_at_ms: 1_000,
         reprice_count: 0,
-        pending_op: None,
+        lifecycle: ChaseLifecycle::Resting,
         last_reprice_at: None,
-        pending_best_price: None,
-        pending_size_correction: false,
-        stop_requested: false,
+        desired_price: None,
         stop_reason: None,
         cancel_retries: 0,
-        oid_confirmed: true,
-        missing_open_order_refresh_requested: false,
     };
 
     assert!(chase.price_moves_toward_fill(100.1));

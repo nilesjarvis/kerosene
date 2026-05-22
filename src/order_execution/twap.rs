@@ -87,7 +87,7 @@ impl TradingTerminal {
     pub(crate) fn active_advanced_order_count(&self) -> usize {
         self.chase_orders
             .values()
-            .filter(|chase| !chase.stop_requested)
+            .filter(|chase| !chase.lifecycle.is_stopping())
             .count()
             + self
                 .twap_orders

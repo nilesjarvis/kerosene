@@ -53,10 +53,113 @@ pub const MIN_CHASE_REPRICE_INTERVAL: Duration = Duration::from_secs(1);
 /// Cooldown after a retryable chase exchange error, such as a rate limit.
 pub const CHASE_RETRY_COOLDOWN: Duration = Duration::from_secs(5);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChasePendingOp {
+pub enum ChaseVerificationReason {
+    Placement,
+    Reprice,
+    SizeCorrection,
+    MissingOrder,
+    Modify,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChaseQueuedAction {
     Place,
-    Modify { oid: u64 },
-    Cancel { oid: u64 },
+    Reprice,
+    SizeCorrection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChaseStopPhase {
+    AwaitingPlace,
+    AwaitingModify { oid: u64 },
+    Canceling { oid: u64 },
+    VerifyingCancel { oid: u64 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChaseLifecycle {
+    LoadingBook,
+    Placing,
+    Resting,
+    Verifying {
+        reason: ChaseVerificationReason,
+    },
+    Queued {
+        action: ChaseQueuedAction,
+    },
+    Modifying {
+        oid: u64,
+    },
+    Stopping {
+        phase: ChaseStopPhase,
+    },
+}
+
+impl ChaseLifecycle {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LoadingBook => "Starting",
+            Self::Placing => "Placing",
+            Self::Resting => "Resting",
+            Self::Verifying { .. } => "Checking",
+            Self::Queued { .. } => "Queued",
+            Self::Modifying { .. } => "Repricing",
+            Self::Stopping {
+                phase: ChaseStopPhase::Canceling { .. },
+            } => "Canceling",
+            Self::Stopping { .. } => "Stopping",
+        }
+    }
+
+    pub fn has_exchange_request(self) -> bool {
+        matches!(
+            self,
+            Self::Placing
+                | Self::Modifying { .. }
+                | Self::Stopping {
+                    phase: ChaseStopPhase::AwaitingPlace
+                        | ChaseStopPhase::AwaitingModify { .. }
+                        | ChaseStopPhase::Canceling { .. }
+                }
+        )
+    }
+
+    pub fn is_stopping(self) -> bool {
+        matches!(self, Self::Stopping { .. })
+    }
+
+    pub fn is_book_repriceable(self) -> bool {
+        matches!(self, Self::Resting | Self::Queued { .. })
+    }
+
+    pub fn expects_place_result(self) -> bool {
+        matches!(
+            self,
+            Self::Placing
+                | Self::Stopping {
+                    phase: ChaseStopPhase::AwaitingPlace
+                }
+        )
+    }
+
+    pub fn expects_modify_result(self, oid: u64) -> bool {
+        matches!(
+            self,
+            Self::Modifying { oid: pending_oid }
+                | Self::Stopping {
+                    phase: ChaseStopPhase::AwaitingModify { oid: pending_oid }
+                } if pending_oid == oid
+        )
+    }
+
+    pub fn expects_cancel_result(self, oid: u64) -> bool {
+        matches!(
+            self,
+            Self::Stopping {
+                phase: ChaseStopPhase::Canceling { oid: pending_oid }
+            } if pending_oid == oid
+        )
+    }
 }
 
 /// Client-side chase order state. Continuously reprices a limit order toward
@@ -101,33 +204,20 @@ pub struct ChaseOrder {
     pub started_at_ms: u64,
     /// Number of attempted cancel/place replacement cycles.
     pub reprice_count: u32,
-    /// The exchange request currently in flight, if any.
-    pub pending_op: Option<ChasePendingOp>,
+    /// Explicit lifecycle state. Chase only sends exchange mutations from
+    /// states that make the previous exchange/account state unambiguous.
+    pub lifecycle: ChaseLifecycle,
     /// Time of the most recent reprice request.
     pub last_reprice_at: Option<std::time::Instant>,
-    /// Latest chase book price queued while waiting to cancel, reconcile, or
-    /// place the next residual-sized order.
-    pub pending_best_price: Option<f64>,
-    /// True when the resting order size must be reduced to match known fills,
-    /// but the exchange request is waiting for the shared chase request gate.
-    pub pending_size_correction: bool,
-    /// True after the user has requested a stop while a place/cancel request is
-    /// still unresolved. The chase keeps its captured key/account context until
-    /// the in-flight request lands so a late resting order can be cancelled.
-    pub stop_requested: bool,
+    /// Latest maker price the chase wants to reach after account state is
+    /// verified. Book updates may refresh this, but it is not enough by itself
+    /// to authorize a place or modify.
+    pub desired_price: Option<f64>,
     /// User-visible reason to show when a requested stop settles.
     pub stop_reason: Option<(String, bool)>,
     /// Number of consecutive cancel failures. Reset on success. The chase
     /// is auto-stopped when this reaches `MAX_CHASE_CANCEL_RETRIES`.
     pub cancel_retries: u32,
-    /// Whether the current `current_oid` has been seen in a WS `openOrders`
-    /// snapshot. Prevents stale WS snapshots from prematurely terminating
-    /// the chase by concluding the order was "filled" when it was actually
-    /// just not yet visible in the WS stream.
-    pub oid_confirmed: bool,
-    /// Set after one WS open-orders snapshot omits the confirmed order. The
-    /// chase waits for an account refresh before concluding the order is gone.
-    pub missing_open_order_refresh_requested: bool,
 }
 
 impl ChaseOrder {
@@ -205,7 +295,11 @@ impl ChaseOrder {
     }
 
     pub fn has_pending_op(&self) -> bool {
-        self.pending_op.is_some()
+        self.lifecycle.has_exchange_request()
+    }
+
+    pub fn needs_account_verification(&self) -> bool {
+        matches!(self.lifecycle, ChaseLifecycle::Verifying { .. })
     }
 
     pub fn can_reprice_now(&self, now: std::time::Instant) -> bool {
@@ -276,18 +370,11 @@ impl std::fmt::Debug for ChaseOrder {
             .field("started_at", &self.started_at)
             .field("started_at_ms", &self.started_at_ms)
             .field("reprice_count", &self.reprice_count)
-            .field("pending_op", &self.pending_op)
+            .field("lifecycle", &self.lifecycle)
             .field("last_reprice_at", &self.last_reprice_at)
-            .field("pending_best_price", &self.pending_best_price)
-            .field("pending_size_correction", &self.pending_size_correction)
-            .field("stop_requested", &self.stop_requested)
+            .field("desired_price", &self.desired_price)
             .field("stop_reason", &self.stop_reason)
             .field("cancel_retries", &self.cancel_retries)
-            .field("oid_confirmed", &self.oid_confirmed)
-            .field(
-                "missing_open_order_refresh_requested",
-                &self.missing_open_order_refresh_requested,
-            )
             .finish()
     }
 }

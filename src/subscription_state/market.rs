@@ -192,7 +192,22 @@ impl TradingTerminal {
         if self
             .chase_orders
             .values()
-            .any(|chase| chase.pending_best_price.is_some() || chase.pending_size_correction)
+            .any(|chase| {
+                matches!(
+                    chase.lifecycle,
+                    crate::signing::ChaseLifecycle::Queued { .. }
+                        | crate::signing::ChaseLifecycle::Verifying {
+                            reason: crate::signing::ChaseVerificationReason::Placement
+                                | crate::signing::ChaseVerificationReason::Modify
+                        }
+                        | crate::signing::ChaseLifecycle::Stopping {
+                            phase: crate::signing::ChaseStopPhase::AwaitingPlace
+                        }
+                        | crate::signing::ChaseLifecycle::Stopping {
+                            phase: crate::signing::ChaseStopPhase::VerifyingCancel { .. }
+                        }
+                )
+            })
         {
             subs.push(
                 iced::time::every(std::time::Duration::from_millis(250))
@@ -203,7 +218,7 @@ impl TradingTerminal {
         for chase in self.chase_orders.values() {
             if chase.coin.is_empty()
                 || chase.current_oid.is_none()
-                || chase.stop_requested
+                || chase.lifecycle.is_stopping()
                 || self.symbol_key_is_hidden(&chase.coin)
                 || self.is_outcome_coin(&chase.coin)
             {

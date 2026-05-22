@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::signing::{self, ChasePendingOp, ExchangeResponse};
+use crate::signing::{self, ChaseLifecycle, ChaseStopPhase, ExchangeResponse};
 
 use iced::Task;
 use std::time::Instant;
@@ -34,17 +34,14 @@ impl TradingTerminal {
         if !self.chase_orders.contains_key(&chase_id) {
             return self.refresh_after_chase_result(should_refresh);
         }
-        let pending_op = self
+        let lifecycle = self
             .chase_orders
             .get(&chase_id)
-            .and_then(|chase| chase.pending_op);
-        let Some(pending_op) = pending_op else {
+            .map(|chase| chase.lifecycle);
+        let Some(lifecycle) = lifecycle else {
             return self.refresh_after_chase_result(should_refresh);
         };
-        let ChasePendingOp::Cancel { oid: pending_oid } = pending_op else {
-            return self.refresh_after_chase_result(should_refresh);
-        };
-        if pending_oid != oid {
+        if !lifecycle.expects_cancel_result(oid) {
             return self.refresh_after_chase_result(should_refresh);
         }
 
@@ -62,7 +59,7 @@ impl TradingTerminal {
                             ),
                         );
                     }
-                    self.handle_chase_cancel_error(chase_id, summary, false);
+                    self.handle_chase_cancel_error(chase_id, oid, summary, false);
                 } else {
                     let stop_status = self.chase_orders.get(&chase_id).and_then(|chase| {
                         chase
@@ -95,19 +92,21 @@ impl TradingTerminal {
         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.cancel_retries += 1;
             retry_count = chase.cancel_retries;
+            chase.lifecycle = ChaseLifecycle::Stopping {
+                phase: ChaseStopPhase::VerifyingCancel { oid },
+            };
             if retry_count >= signing::MAX_CHASE_CANCEL_RETRIES {
                 self.order_status = Some((
                     format!(
                         concat!(
-                            "Chase stopped: cancel status could not be confirmed after {} ",
-                            "attempts; check open orders (last: {})"
+                            "Chase requires manual check: cancel status could not be confirmed ",
+                            "after {} attempts; check open orders (last: {})"
                         ),
                         signing::MAX_CHASE_CANCEL_RETRIES,
                         message
                     ),
                     true,
                 ));
-                self.remove_chase_order(chase_id);
                 return self.refresh_account_data();
             }
         }
@@ -130,12 +129,15 @@ impl TradingTerminal {
     fn handle_chase_cancel_error(
         &mut self,
         chase_id: u64,
+        oid: u64,
         message: String,
         include_last_on_stop: bool,
     ) {
         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.cancel_retries += 1;
-            chase.pending_op = None;
+            chase.lifecycle = ChaseLifecycle::Stopping {
+                phase: ChaseStopPhase::VerifyingCancel { oid },
+            };
             chase.last_reprice_at = Some(Instant::now());
             if chase.cancel_retries >= signing::MAX_CHASE_CANCEL_RETRIES {
                 let suffix = if include_last_on_stop {
@@ -145,12 +147,11 @@ impl TradingTerminal {
                 };
                 self.order_status = Some((
                     format!(
-                        "Chase stopped: cancel failed {} times{}; check open orders",
+                        "Chase requires manual check: cancel failed {} times{}; check open orders",
                         chase.cancel_retries, suffix
                     ),
                     true,
                 ));
-                self.remove_chase_order(chase_id);
             } else {
                 self.order_status = Some((
                     format!(

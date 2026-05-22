@@ -2,7 +2,7 @@ use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{format_price, format_relative_time, format_size};
 use crate::message::Message;
-use crate::signing::{ChaseOrder, ChasePendingOp};
+use crate::signing::{ChaseLifecycle, ChaseOrder};
 use crate::twap_state::{TwapOrder, TwapStatus};
 use iced::widget::canvas;
 use iced::widget::container as container_style;
@@ -103,11 +103,9 @@ fn chase_order_row(
     };
     let weak_text = theme.extended_palette().background.weak.text;
     let status = chase_status(chase);
-    let status_color = if chase.stop_requested {
+    let status_color = if chase.lifecycle.is_stopping() {
         theme.palette().danger
-    } else if chase.pending_op.is_some()
-        || chase.pending_best_price.is_some()
-        || chase.current_oid.is_none()
+    } else if !matches!(chase.lifecycle, ChaseLifecycle::Resting)
     {
         theme.palette().primary
     } else {
@@ -310,20 +308,7 @@ fn history_order_row(
 }
 
 fn chase_status(chase: &ChaseOrder) -> &'static str {
-    if chase.stop_requested {
-        return "Stopping";
-    }
-    if chase.missing_open_order_refresh_requested {
-        return "Checking";
-    }
-    match chase.pending_op {
-        Some(ChasePendingOp::Place) => "Placing",
-        Some(ChasePendingOp::Modify { .. }) => "Repricing",
-        Some(ChasePendingOp::Cancel { .. }) => "Canceling",
-        None if chase.pending_best_price.is_some() => "Queued",
-        None if chase.current_oid.is_none() => "Starting",
-        None => "Resting",
-    }
+    chase.lifecycle.label()
 }
 
 fn compact_summary(summary: &str) -> String {
