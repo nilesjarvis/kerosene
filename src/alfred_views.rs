@@ -10,6 +10,7 @@ use iced::{Color, Element, Fill, Theme, color};
 // Alfred overlay
 // ---------------------------------------------------------------------------
 
+const BASE_ALFRED_WIDTH: f32 = 560.0;
 const ALFRED_MAX_RESULTS: usize = 7;
 
 impl TradingTerminal {
@@ -18,6 +19,7 @@ impl TradingTerminal {
             return None;
         }
 
+        let popup_scale = self.alfred_popup_scale;
         let commands = self.alfred_filtered_commands();
         let selected_index = self
             .alfred
@@ -28,31 +30,36 @@ impl TradingTerminal {
             .id(Self::alfred_input_id())
             .on_input(Message::AlfredQueryChanged)
             .on_submit(Message::AlfredSubmit)
-            .padding([9, 12])
-            .size(14)
+            .padding([scaled_px(9.0, popup_scale), scaled_px(12.0, popup_scale)])
+            .size(scaled_text(14.0, popup_scale))
             .style(text_input_style);
 
         let mut results = Column::new().spacing(2).width(Fill);
         for (index, command) in commands.iter().take(ALFRED_MAX_RESULTS).enumerate() {
-            results = results.push(alfred_result_row(command, index == selected_index, theme));
+            results = results.push(alfred_result_row(
+                command,
+                index == selected_index,
+                theme,
+                popup_scale,
+            ));
         }
 
         if commands.is_empty() {
             results = results.push(
                 container(
                     text("No matches")
-                        .size(11)
+                        .size(scaled_text(11.0, popup_scale))
                         .color(theme.extended_palette().background.weak.text),
                 )
-                .padding([8, 10])
+                .padding([scaled_px(8.0, popup_scale), scaled_px(10.0, popup_scale)])
                 .width(Fill),
             );
         }
 
         let card = container(column![input, rule::horizontal(1), results].spacing(6))
-            .padding(8)
+            .padding(scaled_px(8.0, popup_scale))
             .width(Fill)
-            .max_width(560.0)
+            .max_width(BASE_ALFRED_WIDTH * popup_scale)
             .style(|theme: &Theme| alfred_card_style(theme));
 
         let close_layer = button(Space::new().width(Fill).height(Fill))
@@ -90,6 +97,7 @@ fn alfred_result_row(
     command: &AlfredCommand,
     selected: bool,
     theme: &Theme,
+    popup_scale: f32,
 ) -> Element<'static, Message> {
     let enabled = command.enabled;
     let command_id = command.id;
@@ -99,24 +107,26 @@ fn alfred_result_row(
         theme.extended_palette().background.weak.text
     };
     let detail_color = theme.extended_palette().background.weak.text;
-    let tag = alfred_tag(&command.tag, theme);
-    let title = alfred_title(command, title_color);
+    let tag = alfred_tag(&command.tag, theme, popup_scale);
+    let title = alfred_title(command, title_color, popup_scale);
 
     button(
         row![
             column![
                 title,
-                text(command.detail.clone()).size(10).color(detail_color),
+                text(command.detail.clone())
+                    .size(scaled_text(10.0, popup_scale))
+                    .color(detail_color),
             ]
-            .spacing(2)
+            .spacing(scaled_px(2.0, popup_scale) as f32)
             .width(Fill),
             tag,
         ]
-        .spacing(10)
+        .spacing(scaled_px(10.0, popup_scale) as f32)
         .align_y(iced::Alignment::Center),
     )
     .on_press_maybe(enabled.then_some(Message::AlfredCommandSelected(command_id)))
-    .padding([7, 9])
+    .padding([scaled_px(7.0, popup_scale), scaled_px(9.0, popup_scale)])
     .width(Fill)
     .style(move |theme: &Theme, status| {
         let bg = match (selected, status) {
@@ -148,18 +158,26 @@ fn alfred_result_row(
     .into()
 }
 
-fn alfred_title(command: &AlfredCommand, title_color: Color) -> Element<'static, Message> {
+fn alfred_title(
+    command: &AlfredCommand,
+    title_color: Color,
+    popup_scale: f32,
+) -> Element<'static, Message> {
     let Some(icon_symbol) = command.icon_symbol.as_deref() else {
-        return text(command.title.clone()).size(12).color(title_color).into();
+        return alfred_plain_title(&command.title, title_color, popup_scale);
     };
     let Some(anchor) = command.icon_title_anchor.as_deref() else {
-        return text(command.title.clone()).size(12).color(title_color).into();
+        return alfred_plain_title(&command.title, title_color, popup_scale);
     };
-    let Some(icon) = helpers::symbol_icon(icon_symbol, 14, title_color) else {
-        return text(command.title.clone()).size(12).color(title_color).into();
+    let Some(icon) = helpers::symbol_icon(
+        icon_symbol,
+        scaled_text(14.0, popup_scale) as u16,
+        title_color,
+    ) else {
+        return alfred_plain_title(&command.title, title_color, popup_scale);
     };
     let Some(start) = command.title.rfind(anchor) else {
-        return text(command.title.clone()).size(12).color(title_color).into();
+        return alfred_plain_title(&command.title, title_color, popup_scale);
     };
 
     let end = start + anchor.len();
@@ -170,23 +188,46 @@ fn alfred_title(command: &AlfredCommand, title_color: Color) -> Element<'static,
     let mut title = row![].align_y(iced::Alignment::Center);
     if !before.is_empty() {
         title = title
-            .push(text(before.to_string()).size(12).color(title_color))
-            .push(Space::new().width(5.0));
+            .push(
+                text(before.to_string())
+                    .size(scaled_text(12.0, popup_scale))
+                    .color(title_color),
+            )
+            .push(Space::new().width(scaled_px(5.0, popup_scale) as f32));
     }
     title = title
         .push(icon)
-        .push(Space::new().width(4.0))
-        .push(text(ticker.to_string()).size(12).color(title_color));
+        .push(Space::new().width(scaled_px(4.0, popup_scale) as f32))
+        .push(
+            text(ticker.to_string())
+                .size(scaled_text(12.0, popup_scale))
+                .color(title_color),
+        );
     if !after.is_empty() {
         title = title
-            .push(Space::new().width(4.0))
-            .push(text(after.to_string()).size(12).color(title_color));
+            .push(Space::new().width(scaled_px(4.0, popup_scale) as f32))
+            .push(
+                text(after.to_string())
+                    .size(scaled_text(12.0, popup_scale))
+                    .color(title_color),
+            );
     }
 
     title.into()
 }
 
-fn alfred_tag(label: &str, theme: &Theme) -> Element<'static, Message> {
+fn alfred_plain_title(
+    title: &str,
+    title_color: Color,
+    popup_scale: f32,
+) -> Element<'static, Message> {
+    text(title.to_string())
+        .size(scaled_text(12.0, popup_scale))
+        .color(title_color)
+        .into()
+}
+
+fn alfred_tag(label: &str, theme: &Theme, popup_scale: f32) -> Element<'static, Message> {
     let color = match label {
         "Open" => theme.palette().success,
         "Window" => theme.palette().primary,
@@ -196,18 +237,30 @@ fn alfred_tag(label: &str, theme: &Theme) -> Element<'static, Message> {
         _ => theme.extended_palette().background.weak.text,
     };
 
-    container(text(label.to_string()).size(9).color(color))
-        .padding([1, 5])
-        .style(move |_theme: &Theme| container_style::Style {
-            background: Some(Color { a: 0.12, ..color }.into()),
-            border: iced::Border {
-                radius: 3.0.into(),
-                width: 1.0,
-                color: Color { a: 0.45, ..color },
-            },
-            ..Default::default()
-        })
-        .into()
+    container(
+        text(label.to_string())
+            .size(scaled_text(9.0, popup_scale))
+            .color(color),
+    )
+    .padding([scaled_px(1.0, popup_scale), scaled_px(5.0, popup_scale)])
+    .style(move |_theme: &Theme| container_style::Style {
+        background: Some(Color { a: 0.12, ..color }.into()),
+        border: iced::Border {
+            radius: 3.0.into(),
+            width: 1.0,
+            color: Color { a: 0.45, ..color },
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn scaled_text(size: f32, scale: f32) -> u32 {
+    (size * scale.clamp(0.90, 1.35)).round().clamp(1.0, 48.0) as u32
+}
+
+fn scaled_px(size: f32, scale: f32) -> u16 {
+    (size * scale.clamp(0.85, 1.60)).round().clamp(1.0, 64.0) as u16
 }
 
 fn alfred_card_style(theme: &Theme) -> container_style::Style {

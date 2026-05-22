@@ -1,9 +1,9 @@
 use crate::app_state::TradingTerminal;
-use crate::config;
+use crate::config::{self, MAX_ALFRED_POPUP_SCALE, MIN_ALFRED_POPUP_SCALE};
 use crate::hotkey_state::HotkeyActionGroup;
 use crate::message::Message;
-use iced::widget::{Column, Space, button, column, row, rule, scrollable, text};
-use iced::{Element, Fill};
+use iced::widget::{Column, Space, button, column, row, rule, scrollable, slider, text};
+use iced::{Element, Fill, Length, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_settings_hotkeys_section(&self) -> Element<'_, Message> {
@@ -11,6 +11,8 @@ impl TradingTerminal {
         let mut hotkeys_col: iced::widget::Column<'_, Message> = column![
             text("Hotkeys").size(16).color(current_theme.palette().text),
             Space::new().height(2.0),
+            self.view_alfred_popup_size_setting(&current_theme),
+            rule::horizontal(1),
         ]
         .spacing(14);
 
@@ -19,6 +21,29 @@ impl TradingTerminal {
         }
 
         scrollable(hotkeys_col).into()
+    }
+
+    fn view_alfred_popup_size_setting(&self, theme: &Theme) -> Element<'_, Message> {
+        row![
+            text("Alfred Popup Size")
+                .size(14)
+                .color(theme.palette().text)
+                .width(Fill),
+            slider(
+                MIN_ALFRED_POPUP_SCALE..=MAX_ALFRED_POPUP_SCALE,
+                self.alfred_popup_scale,
+                Message::AlfredPopupScaleChanged,
+            )
+            .step(0.05)
+            .width(Length::Fixed(220.0)),
+            text(format!("{:.0}%", self.alfred_popup_scale * 100.0))
+                .size(12)
+                .color(theme.extended_palette().background.weak.text)
+                .width(Length::Fixed(48.0)),
+        ]
+        .align_y(iced::Alignment::Center)
+        .spacing(12)
+        .into()
     }
 
     fn view_hotkey_group(&self, group: HotkeyActionGroup) -> Element<'_, Message> {

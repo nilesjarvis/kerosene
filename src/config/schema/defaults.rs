@@ -64,6 +64,9 @@ pub fn normalize_market_slippage_pct(value: f64) -> Option<f64> {
 pub const DEFAULT_UI_SCALE: f32 = 1.0;
 pub const MIN_UI_SCALE: f32 = 0.75;
 pub const MAX_UI_SCALE: f32 = 1.10;
+pub const DEFAULT_ALFRED_POPUP_SCALE: f32 = 1.0;
+pub const MIN_ALFRED_POPUP_SCALE: f32 = 0.85;
+pub const MAX_ALFRED_POPUP_SCALE: f32 = 1.60;
 pub const MIN_PANE_BORDER_THICKNESS: f32 = 1.0;
 pub const MAX_PANE_BORDER_THICKNESS: f32 = 12.0;
 pub const MIN_PANE_CORNER_RADIUS: f32 = 0.0;
@@ -78,6 +81,18 @@ pub fn normalize_ui_scale(value: f32) -> f32 {
         value.clamp(MIN_UI_SCALE, MAX_UI_SCALE)
     } else {
         default_ui_scale()
+    }
+}
+
+pub fn default_alfred_popup_scale() -> f32 {
+    DEFAULT_ALFRED_POPUP_SCALE
+}
+
+pub fn normalize_alfred_popup_scale(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_ALFRED_POPUP_SCALE, MAX_ALFRED_POPUP_SCALE)
+    } else {
+        default_alfred_popup_scale()
     }
 }
 
@@ -126,6 +141,7 @@ impl Default for KeroseneConfig {
             reduce_only: false,
             order_quantity_is_usd: false,
             ui_scale: default_ui_scale(),
+            alfred_popup_scale: default_alfred_popup_scale(),
             display_font: Default::default(),
             monospace_font: Default::default(),
             custom_fonts: Vec::new(),

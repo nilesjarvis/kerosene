@@ -175,6 +175,7 @@ pub(crate) enum Message {
     Tick,
     ThemeChanged(String),
     UiScaleChanged(f32),
+    AlfredPopupScaleChanged(f32),
     DisplayFontChanged(config::DisplayFontConfig),
     MonospaceFontChanged(config::DisplayFontConfig),
     ImportDisplayFont,

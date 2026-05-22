@@ -11,28 +11,28 @@ use iced::{Element, Fill, Length, Theme};
 impl TradingTerminal {
     pub(super) fn view_settings_display_font_section(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        let display_font_controls = font_picker_section(
-            &theme,
-            "Display Font",
-            "Restart Kerosene after changing fonts.",
-            "System Default",
-            &self.display_font,
-            &self.custom_fonts,
-            Message::DisplayFontChanged,
-            Message::ImportDisplayFont,
-            "Import Display Font",
-        );
-        let monospace_font_controls = font_picker_section(
-            &theme,
-            "Monospace Font",
-            "Used for prices, tables, chart scales, and other aligned terminal readouts.",
-            "System Monospace",
-            &self.monospace_font,
-            &self.custom_fonts,
-            Message::MonospaceFontChanged,
-            Message::ImportMonospaceFont,
-            "Import Monospace Font",
-        );
+        let display_font_controls = font_picker_section(FontPickerSection {
+            theme: &theme,
+            title: "Display Font",
+            description: "Restart Kerosene after changing fonts.",
+            system_label: "System Default",
+            active_font: &self.display_font,
+            custom_fonts: &self.custom_fonts,
+            change_message: Message::DisplayFontChanged,
+            import_message: Message::ImportDisplayFont,
+            import_label: "Import Display Font",
+        });
+        let monospace_font_controls = font_picker_section(FontPickerSection {
+            theme: &theme,
+            title: "Monospace Font",
+            description: "Used for prices, tables, chart scales, and other aligned terminal readouts.",
+            system_label: "System Monospace",
+            active_font: &self.monospace_font,
+            custom_fonts: &self.custom_fonts,
+            change_message: Message::MonospaceFontChanged,
+            import_message: Message::ImportMonospaceFont,
+            import_label: "Import Monospace Font",
+        });
 
         column![
             display_font_controls,
@@ -44,37 +44,40 @@ impl TradingTerminal {
     }
 }
 
-fn font_picker_section(
-    theme: &Theme,
+struct FontPickerSection<'a> {
+    theme: &'a Theme,
     title: &'static str,
     description: &'static str,
     system_label: &'static str,
-    active_font: &config::DisplayFontConfig,
-    custom_fonts: &[config::CustomFontConfig],
+    active_font: &'a config::DisplayFontConfig,
+    custom_fonts: &'a [config::CustomFontConfig],
     change_message: fn(config::DisplayFontConfig) -> Message,
     import_message: Message,
     import_label: &'static str,
-) -> Element<'static, Message> {
+}
+
+fn font_picker_section(section: FontPickerSection<'_>) -> Element<'static, Message> {
+    let theme = section.theme;
     let weak_text = theme.extended_palette().background.weak.text;
     let mut font_list = Column::new().spacing(4).push(display_font_option_button(
-        system_label.to_string(),
-        change_message(config::DisplayFontConfig::System),
-        matches!(active_font, config::DisplayFontConfig::System),
+        section.system_label.to_string(),
+        (section.change_message)(config::DisplayFontConfig::System),
+        matches!(section.active_font, config::DisplayFontConfig::System),
     ));
 
     for family in config::BUNDLED_DISPLAY_FONT_FAMILIES {
         let selected_font = config::DisplayFontConfig::Custom {
             family: (*family).to_string(),
         };
-        let is_active = active_font == &selected_font;
+        let is_active = section.active_font == &selected_font;
         font_list = font_list.push(display_font_option_button(
             (*family).to_string(),
-            change_message(selected_font),
+            (section.change_message)(selected_font),
             is_active,
         ));
     }
 
-    for font in custom_fonts {
+    for font in section.custom_fonts {
         if config::bundled_display_font_family(&font.family).is_some() {
             continue;
         }
@@ -82,25 +85,25 @@ fn font_picker_section(
         let selected_font = config::DisplayFontConfig::Custom {
             family: font.family.clone(),
         };
-        let is_active = active_font == &selected_font;
+        let is_active = section.active_font == &selected_font;
         font_list = font_list.push(display_font_option_button(
             font.family.clone(),
-            change_message(selected_font),
+            (section.change_message)(selected_font),
             is_active,
         ));
     }
 
     column![
-        text(title).size(14).color(theme.palette().text),
-        text(description).size(11).color(weak_text),
+        text(section.title).size(14).color(theme.palette().text),
+        text(section.description).size(11).color(weak_text),
         font_list,
         row![
-            button(text(import_label).size(12))
+            button(text(section.import_label).size(12))
                 .padding([6, 10])
-                .on_press(import_message),
+                .on_press(section.import_message),
             button(text("Reset").size(12))
                 .padding([6, 10])
-                .on_press(change_message(config::DisplayFontConfig::System)),
+                .on_press((section.change_message)(config::DisplayFontConfig::System)),
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center),

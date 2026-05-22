@@ -41,16 +41,18 @@ pub use panes::{
 #[cfg(test)]
 pub use schema::MAX_MARKET_SLIPPAGE_PCT;
 #[cfg(test)]
+pub use schema::default_alfred_popup_scale;
+#[cfg(test)]
 pub use schema::default_ui_scale;
 pub use schema::{
     AccountProfile, CredentialStorageMode, DEFAULT_MARKET_SLIPPAGE_PCT, DEFAULT_UI_SCALE,
-    DisplayDenominationConfig, KeroseneConfig, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
-    MAX_UI_SCALE, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE,
-    MarketUniverseConfig, default_layout_ratios, default_liquidation_alert_threshold,
-    default_market_slippage_pct, default_order_kind, default_pane_border_thickness,
-    default_pane_corner_radius, default_symbol, default_tick_size, default_timeframe,
-    new_secret_id, normalize_market_slippage_pct, normalize_pane_border_thickness,
-    normalize_pane_corner_radius, normalize_ui_scale,
+    DisplayDenominationConfig, KeroseneConfig, MAX_ALFRED_POPUP_SCALE, MAX_PANE_BORDER_THICKNESS,
+    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE, MIN_PANE_BORDER_THICKNESS,
+    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, MarketUniverseConfig, default_layout_ratios,
+    default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
+    default_pane_border_thickness, default_pane_corner_radius, default_symbol, default_tick_size,
+    default_timeframe, new_secret_id, normalize_alfred_popup_scale, normalize_market_slippage_pct,
+    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
 pub use screenshot::ChartScreenshotSettingsConfig;
 pub(crate) use secrets::load_profile_secrets as load_legacy_profile_secrets;

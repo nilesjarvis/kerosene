@@ -199,6 +199,7 @@ impl TradingTerminal {
             reduce_only: layout_snapshot.reduce_only,
             order_quantity_is_usd: self.order_quantity_is_usd,
             ui_scale: self.ui_scale,
+            alfred_popup_scale: self.alfred_popup_scale,
             display_font: self.display_font.clone(),
             monospace_font: self.monospace_font.clone(),
             custom_fonts: self.custom_fonts.clone(),

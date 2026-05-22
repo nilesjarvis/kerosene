@@ -3,8 +3,8 @@ use super::super::{
     AccountProfile, ChartConfig, ChartScreenshotSettingsConfig, CredentialStorageMode,
     CustomFontConfig, DetachedChartWindowConfig, DisplayDenominationConfig, DisplayFontConfig,
     EncryptedSecretsConfig, KeroseneConfig, MacroIndicatorsConfig, PaneKindConfig,
-    PaneLayoutConfig, default_market_slippage_pct, default_pane_border_thickness,
-    default_pane_corner_radius, default_ui_scale,
+    PaneLayoutConfig, default_alfred_popup_scale, default_market_slippage_pct,
+    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
 };
 use crate::advanced_order_history::{AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind};
 use std::collections::HashMap;
@@ -127,6 +127,7 @@ fn display_denomination_round_trips_and_legacy_defaults_usd() {
 fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let config = KeroseneConfig {
         ui_scale: 0.85,
+        alfred_popup_scale: 1.35,
         pane_border_thickness: 8.0,
         pane_corner_radius: 12.0,
         ..KeroseneConfig::default()
@@ -135,6 +136,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let json = serde_json::to_string(&config).expect("config should serialize");
     let decoded: KeroseneConfig = serde_json::from_str(&json).expect("config should deserialize");
     assert_eq!(decoded.ui_scale, 0.85);
+    assert_eq!(decoded.alfred_popup_scale, 1.35);
     assert_eq!(decoded.pane_border_thickness, 8.0);
     assert_eq!(decoded.pane_corner_radius, 12.0);
 
@@ -144,12 +146,17 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         .as_object_mut()
         .expect("config should serialize to object");
     object.remove("ui_scale");
+    object.remove("alfred_popup_scale");
     object.remove("pane_border_thickness");
     object.remove("pane_corner_radius");
 
     let decoded_legacy: KeroseneConfig =
         serde_json::from_value(legacy).expect("legacy config should deserialize");
     assert_eq!(decoded_legacy.ui_scale, default_ui_scale());
+    assert_eq!(
+        decoded_legacy.alfred_popup_scale,
+        default_alfred_popup_scale()
+    );
     assert_eq!(
         decoded_legacy.pane_border_thickness,
         default_pane_border_thickness()

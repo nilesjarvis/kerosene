@@ -87,6 +87,7 @@ impl TradingTerminal {
 
         self.active_theme = defaults.active_theme;
         self.ui_scale = defaults.ui_scale;
+        self.alfred_popup_scale = defaults.alfred_popup_scale;
         self.custom_themes = defaults.custom_themes;
         self.sound_enabled = defaults.sound_enabled;
         self.desktop_notifications = defaults.desktop_notifications;

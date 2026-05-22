@@ -26,12 +26,13 @@ pub use accounts::{AccountProfile, CredentialStorageMode};
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
 use defaults::default_true;
 pub use defaults::{
-    DEFAULT_MARKET_SLIPPAGE_PCT, DEFAULT_UI_SCALE, MAX_PANE_BORDER_THICKNESS,
-    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
-    MIN_UI_SCALE, default_layout_ratios, default_liquidation_alert_threshold,
-    default_market_slippage_pct, default_order_kind, default_pane_border_thickness,
-    default_pane_corner_radius, default_symbol, default_symbol_search_sort_mode, default_tick_size,
-    default_timeframe, default_ui_scale, new_secret_id, normalize_market_slippage_pct,
+    DEFAULT_MARKET_SLIPPAGE_PCT, DEFAULT_UI_SCALE, MAX_ALFRED_POPUP_SCALE,
+    MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE,
+    MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, default_alfred_popup_scale,
+    default_layout_ratios, default_liquidation_alert_threshold, default_market_slippage_pct,
+    default_order_kind, default_pane_border_thickness, default_pane_corner_radius, default_symbol,
+    default_symbol_search_sort_mode, default_tick_size, default_timeframe, default_ui_scale,
+    new_secret_id, normalize_alfred_popup_scale, normalize_market_slippage_pct,
     normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
 
@@ -206,6 +207,9 @@ pub struct KeroseneConfig {
     /// Global UI scale multiplier. Values below 1.0 make the terminal denser.
     #[serde(default = "default_ui_scale")]
     pub ui_scale: f32,
+    /// User-controlled scale for the Alfred command popup.
+    #[serde(default = "default_alfred_popup_scale")]
+    pub alfred_popup_scale: f32,
     /// Global display font used by default UI text.
     #[serde(default)]
     pub display_font: DisplayFontConfig,

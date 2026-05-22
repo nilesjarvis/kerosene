@@ -51,6 +51,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) dragging_pane: Option<pane_grid::Pane>,
     pub(crate) active_theme: String,
     pub(crate) ui_scale: f32,
+    pub(crate) alfred_popup_scale: f32,
     pub(crate) display_font: config::DisplayFontConfig,
     pub(crate) monospace_font: config::DisplayFontConfig,
     pub(crate) custom_fonts: Vec<config::CustomFontConfig>,
