@@ -42,6 +42,12 @@ impl TradingTerminal {
             .push(rule::horizontal(1))
             .push(sections::add_account_button());
 
+        if self.connected_address.is_some() {
+            menu = menu
+                .push(rule::horizontal(1))
+                .push(sections::disconnect_account_button());
+        }
+
         container(scrollable(menu).height(iced::Length::Shrink))
             .padding(10)
             .width(380)

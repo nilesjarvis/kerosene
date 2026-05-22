@@ -98,22 +98,6 @@ impl TradingTerminal {
             .style(summary_primary_action_style)
             .into()
     }
-
-    pub(crate) fn summary_disconnect_button(&self) -> Element<'_, Message> {
-        button(text("Disconnect").size(10).center())
-            .on_press(Message::DisconnectWallet)
-            .padding([2, 6])
-            .style(|theme: &Theme, _status| button::Style {
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                text_color: theme.palette().text,
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
-            .into()
-    }
 }
 
 fn summary_primary_action_style(theme: &Theme, status: button::Status) -> button::Style {

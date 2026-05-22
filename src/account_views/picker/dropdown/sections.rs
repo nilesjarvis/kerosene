@@ -55,3 +55,26 @@ pub(super) fn add_account_button() -> Element<'static, Message> {
         })
         .into()
 }
+
+pub(super) fn disconnect_account_button() -> Element<'static, Message> {
+    button(text("Disconnect").size(11).center().width(Fill))
+        .on_press(Message::DisconnectWallet)
+        .padding([8, 10])
+        .width(Fill)
+        .style(|theme: &Theme, status| {
+            let bg = match status {
+                button::Status::Hovered => theme.extended_palette().background.strong.color,
+                _ => iced::Color::TRANSPARENT,
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: theme.palette().danger,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}

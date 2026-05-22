@@ -111,7 +111,6 @@ impl TradingTerminal {
             self.summary_layouts_button(),
             self.summary_widgets_button(),
             self.summary_settings_button(),
-            self.summary_disconnect_button(),
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center)

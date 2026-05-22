@@ -134,6 +134,8 @@ impl TradingTerminal {
     }
 
     pub(super) fn disconnect_wallet(&mut self) -> Task<Message> {
+        self.account_picker_open = false;
+        self.account_picker_rename_index = None;
         let stop_chase_ids: Vec<u64> = self
             .chase_orders
             .iter()

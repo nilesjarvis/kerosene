@@ -7,6 +7,12 @@ use crate::message::Message;
 use iced::widget::{Row, Space, column, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
+const HIDE_DISPLAY_DENOMINATION_SELECTOR_WIDTH: f32 = CONNECTED_SUMMARY_ACTION_BREAKPOINT;
+const HIDE_SOUND_SELECTOR_WIDTH: f32 = 1_020.0;
+const HIDE_NOTIFICATION_SELECTOR_WIDTH: f32 = 940.0;
+const HIDE_MARGIN_RATIO_WIDTH: f32 = 840.0;
+const HIDE_MARGIN_USED_WIDTH: f32 = 720.0;
+
 impl TradingTerminal {
     pub(super) fn connected_summary_base_row<'a>(&'a self) -> Row<'a, Message> {
         row![self.summary_account_picker(), vertical_spacer(),]
@@ -21,15 +27,16 @@ impl TradingTerminal {
         theme: &Theme,
         available_width: f32,
     ) -> Element<'a, Message> {
+        let compaction = ConnectedSummaryCompaction::for_width(available_width);
         let summary_values = self.connected_summary_values(data);
-        let metrics = self.connected_summary_metrics_row(data, &summary_values, theme);
+        let metrics = self.connected_summary_metrics_row(data, &summary_values, theme, compaction);
 
         if available_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT {
             column![
                 metrics,
                 row![
                     Space::new().width(Fill),
-                    self.connected_summary_actions_row()
+                    self.connected_summary_actions_row(compaction)
                 ]
                 .width(Fill)
                 .align_y(iced::Alignment::Center),
@@ -38,7 +45,8 @@ impl TradingTerminal {
             .width(Fill)
             .into()
         } else {
-            self.push_connected_summary_actions(metrics).into()
+            self.push_connected_summary_actions(metrics, compaction)
+                .into()
         }
     }
 
@@ -47,25 +55,27 @@ impl TradingTerminal {
         data: &AccountData,
         summary_values: &ConnectedSummaryValues,
         theme: &Theme,
+        compaction: ConnectedSummaryCompaction,
     ) -> Row<'a, Message> {
         let items = self.connected_summary_base_row();
-        self.push_connected_summary_metrics(items, data, summary_values, theme)
+        self.push_connected_summary_metrics(items, data, summary_values, theme, compaction)
             .width(Fill)
     }
 
-    pub(super) fn push_connected_summary_metrics<'a>(
+    fn push_connected_summary_metrics<'a>(
         &self,
         items: Row<'a, Message>,
         data: &AccountData,
         summary_values: &ConnectedSummaryValues,
         theme: &Theme,
+        compaction: ConnectedSummaryCompaction,
     ) -> Row<'a, Message> {
         let avail_color = available_color(summary_values, theme);
 
         if data.is_portfolio_margin() {
             let ratio_color = portfolio_margin_ratio_color(summary_values, theme);
 
-            items
+            let items = items
                 .push(summary_metric_colored(
                     "Mode",
                     "Portfolio",
@@ -96,22 +106,30 @@ impl TradingTerminal {
                     "Eff Lev",
                     &summary_values.effective_leverage_value,
                     theme,
-                ))
-                .push(vertical_spacer())
-                .push(summary_metric(
+                ));
+
+            let items = if compaction.hide_margin_used() {
+                items
+            } else {
+                items.push(vertical_spacer()).push(summary_metric(
                     "Margin Used",
                     self.mask_connected_summary_usd(&summary_values.margin_used_value),
                     theme,
                 ))
-                .push(vertical_spacer())
-                .push(summary_metric_colored(
+            };
+
+            if compaction.hide_margin_ratio() {
+                items
+            } else {
+                items.push(vertical_spacer()).push(summary_metric_colored(
                     "Margin Ratio",
                     &summary_values.portfolio_margin_ratio_value,
                     ratio_color,
                     theme,
                 ))
+            }
         } else {
-            items
+            let items = items
                 .push(summary_metric(
                     "Total Value",
                     self.mask_connected_summary_usd(&summary_values.total_value),
@@ -135,40 +153,60 @@ impl TradingTerminal {
                     "Eff Lev",
                     &summary_values.effective_leverage_value,
                     theme,
-                ))
-                .push(vertical_spacer())
-                .push(summary_metric(
+                ));
+
+            if compaction.hide_margin_used() {
+                items
+            } else {
+                items.push(vertical_spacer()).push(summary_metric(
                     "Margin Used",
                     self.mask_connected_summary_usd(&summary_values.margin_used_value),
                     theme,
                 ))
+            }
         }
     }
 
-    pub(super) fn push_connected_summary_actions<'a>(
+    fn push_connected_summary_actions<'a>(
         &'a self,
         items: Row<'a, Message>,
+        compaction: ConnectedSummaryCompaction,
     ) -> Row<'a, Message> {
         items
             .push(Space::new().width(Fill))
-            .push(self.connected_summary_actions_row())
+            .push(self.connected_summary_actions_row(compaction))
             .width(Fill)
     }
 
-    fn connected_summary_actions_row<'a>(&'a self) -> Row<'a, Message> {
-        row![
-            self.summary_market_universe_picker(),
-            self.summary_display_denomination_picker(),
-            self.summary_hide_pnl_button(),
-            self.summary_sound_button(),
-            self.summary_notifications_button(),
-            self.summary_layouts_button(),
-            self.summary_widgets_button(),
-            self.summary_settings_button(),
-            self.summary_disconnect_button(),
-        ]
-        .spacing(6)
-        .align_y(iced::Alignment::Center)
+    fn connected_summary_actions_row<'a>(
+        &'a self,
+        compaction: ConnectedSummaryCompaction,
+    ) -> Row<'a, Message> {
+        let mut actions = Row::new()
+            .push(self.summary_market_universe_picker())
+            .spacing(6)
+            .align_y(iced::Alignment::Center);
+
+        if !compaction.hide_display_denomination() {
+            actions = actions.push(self.summary_display_denomination_picker());
+        }
+
+        actions = actions.push(self.summary_hide_pnl_button());
+
+        if !compaction.hide_sound() {
+            actions = actions.push(self.summary_sound_button());
+        }
+
+        if !compaction.hide_notifications() {
+            actions = actions.push(self.summary_notifications_button());
+        }
+
+        actions
+            .push(self.summary_layouts_button())
+            .push(self.summary_widgets_button())
+            .push(self.summary_settings_button())
+            .spacing(6)
+            .align_y(iced::Alignment::Center)
     }
 
     fn mask_connected_summary_usd(&self, value: &str) -> String {
@@ -177,6 +215,53 @@ impl TradingTerminal {
         } else {
             self.format_display_usd_str(value)
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ConnectedSummaryCompaction {
+    hidden_priority_count: u8,
+}
+
+impl ConnectedSummaryCompaction {
+    const fn for_width(width: f32) -> Self {
+        let hidden_priority_count = if width < HIDE_MARGIN_USED_WIDTH {
+            5
+        } else if width < HIDE_MARGIN_RATIO_WIDTH {
+            4
+        } else if width < HIDE_NOTIFICATION_SELECTOR_WIDTH {
+            3
+        } else if width < HIDE_SOUND_SELECTOR_WIDTH {
+            2
+        } else if width < HIDE_DISPLAY_DENOMINATION_SELECTOR_WIDTH {
+            1
+        } else {
+            0
+        };
+
+        Self {
+            hidden_priority_count,
+        }
+    }
+
+    const fn hide_display_denomination(self) -> bool {
+        self.hidden_priority_count >= 1
+    }
+
+    const fn hide_sound(self) -> bool {
+        self.hidden_priority_count >= 2
+    }
+
+    const fn hide_notifications(self) -> bool {
+        self.hidden_priority_count >= 3
+    }
+
+    const fn hide_margin_ratio(self) -> bool {
+        self.hidden_priority_count >= 4
+    }
+
+    const fn hide_margin_used(self) -> bool {
+        self.hidden_priority_count >= 5
     }
 }
 
@@ -203,7 +288,9 @@ fn summary_metric_with_color(
     value_color: Option<Color>,
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let value = text(value.to_string()).size(13).font(crate::app_fonts::monospace_font());
+    let value = text(value.to_string())
+        .size(13)
+        .font(crate::app_fonts::monospace_font());
     let value = if let Some(value_color) = value_color {
         value.color(value_color)
     } else {
