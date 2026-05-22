@@ -5,13 +5,52 @@ mod saved_delete;
 mod tests;
 
 use crate::app_state::TradingTerminal;
-use crate::config::AccountProfile;
+use crate::config::{self, AccountProfile};
 use crate::message::Message;
 
 use iced::Task;
 use zeroize::Zeroize;
 
 impl TradingTerminal {
+    fn load_deferred_legacy_account_key(&mut self, index: usize) {
+        if self.secret_storage_mode != config::CredentialStorageMode::OsKeychain
+            || self.account_index_is_ghost(index)
+        {
+            return;
+        }
+
+        let Some(profile) = self.accounts.get(index) else {
+            return;
+        };
+        if !profile.agent_key.trim().is_empty() {
+            return;
+        }
+
+        let mut legacy_profile = profile.clone();
+        match config::load_legacy_profile_secrets(&mut legacy_profile) {
+            Ok(()) if !legacy_profile.agent_key.trim().is_empty() => {
+                let agent_key = legacy_profile.agent_key.clone();
+                if let Some(profile) = self.accounts.get_mut(index) {
+                    profile.agent_key.zeroize();
+                    profile.agent_key = agent_key.clone();
+                }
+                self.wallet_key_input.zeroize();
+                self.wallet_key_input = agent_key;
+                if self.persist_active_profile_secrets() {
+                    self.secret_store_status = Some((
+                        "Legacy account key migrated to the OS keychain bundle".to_string(),
+                        false,
+                    ));
+                }
+            }
+            Ok(()) => {}
+            Err(error) => {
+                self.secret_store_status =
+                    Some((format!("Legacy account key read failed: {error}"), true));
+            }
+        }
+    }
+
     pub(crate) fn account_index_for_secret_id(&self, secret_id: &str) -> Option<usize> {
         self.accounts
             .iter()
@@ -98,6 +137,9 @@ impl TradingTerminal {
             self.wallet_key_input.zeroize();
             self.wallet_key_input = profile.agent_key.clone();
             self.last_persisted_active_account_secret_id = Some(profile.secret_id.clone());
+            if self.wallet_key_input.trim().is_empty() {
+                self.load_deferred_legacy_account_key(index);
+            }
         }
 
         self.reset_account_stream_status();

@@ -53,6 +53,7 @@ pub use schema::{
     normalize_pane_corner_radius, normalize_ui_scale,
 };
 pub use screenshot::ChartScreenshotSettingsConfig;
+pub(crate) use secrets::load_profile_secrets as load_legacy_profile_secrets;
 pub use secrets::{
     EncryptedSecretsConfig, SecretPayload, clear_global_secrets, clear_profile_secrets,
     decrypt_secrets, encrypt_secrets, store_keychain_secrets, take_secret_warnings,

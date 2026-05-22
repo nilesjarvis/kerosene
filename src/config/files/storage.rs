@@ -1,9 +1,9 @@
 use crate::config::secrets::{
-    load_global_hydromancer_secret, load_global_hyperdash_secret, load_keychain_secret_payload,
-    load_profile_hydromancer_secret, load_profile_secrets, push_secret_warning,
-    store_secret_payload,
+    load_keychain_secret_payload, load_profile_secrets, push_secret_warning, store_secret_payload,
 };
-use crate::config::{CredentialStorageMode, KeroseneConfig, SecretPayload, new_secret_id};
+use crate::config::{
+    AccountProfile, CredentialStorageMode, KeroseneConfig, SecretPayload, new_secret_id,
+};
 use zeroize::Zeroize;
 
 // ---------------------------------------------------------------------------
@@ -50,9 +50,16 @@ fn load_os_keychain_secrets(config: &mut KeroseneConfig) {
 }
 
 fn load_legacy_os_keychain_secrets(config: &mut KeroseneConfig) {
+    load_legacy_os_keychain_secrets_with(config, load_profile_secrets);
+}
+
+fn load_legacy_os_keychain_secrets_with(
+    config: &mut KeroseneConfig,
+    mut load_profile: impl FnMut(&mut AccountProfile) -> Result<(), String>,
+) {
     for profile in &mut config.accounts {
-        if let Err(error) = load_profile_secrets(profile) {
-            push_secret_warning(format!("{}: {error}", profile.name));
+        if profile.secret_id.is_empty() {
+            profile.secret_id = new_secret_id();
         }
     }
 
@@ -65,24 +72,45 @@ fn load_legacy_os_keychain_secrets(config: &mut KeroseneConfig) {
             profile.hydromancer_api_key.zeroize();
         }
     }
-    config.hydromancer_api_key =
-        load_global_hydromancer_secret(legacy_hydromancer_key.to_string()).into();
-    if config.hydromancer_api_key.trim().is_empty() {
-        for profile in &config.accounts {
-            match load_profile_hydromancer_secret(profile) {
-                Ok(Some(secret)) if !secret.trim().is_empty() => {
-                    config.hydromancer_api_key = secret.into();
-                    break;
-                }
-                Ok(_) => {}
-                Err(error) => push_secret_warning(format!("{}: {error}", profile.name)),
-            }
+    config.hydromancer_api_key = legacy_hydromancer_key.to_string().into();
+
+    let legacy_hyperdash_key = std::mem::take(&mut config.hyperdash_api_key);
+    config.hyperdash_api_key = legacy_hyperdash_key.to_string().into();
+
+    let Some(active_index) = active_legacy_profile_index(config) else {
+        return;
+    };
+    if config.accounts[active_index].agent_key.trim().is_empty() {
+        let profile = &mut config.accounts[active_index];
+        if let Err(error) = load_profile(profile) {
+            push_secret_warning(format!("{}: {error}", profile.name));
         }
     }
 
-    let legacy_hyperdash_key = std::mem::take(&mut config.hyperdash_api_key);
-    config.hyperdash_api_key =
-        load_global_hyperdash_secret(legacy_hyperdash_key.to_string()).into();
+    if !config.accounts[active_index].agent_key.trim().is_empty()
+        && has_deferred_legacy_keychain_secrets(config, active_index)
+    {
+        push_secret_warning(
+            "Only the active legacy account key was read on startup to avoid repeated macOS Keychain prompts; other legacy account keys will migrate when you switch to them."
+                .to_string(),
+        );
+    }
+}
+
+fn active_legacy_profile_index(config: &KeroseneConfig) -> Option<usize> {
+    if config.accounts.is_empty() {
+        None
+    } else {
+        Some(config.active_account_index.min(config.accounts.len() - 1))
+    }
+}
+
+fn has_deferred_legacy_keychain_secrets(config: &KeroseneConfig, active_index: usize) -> bool {
+    config
+        .accounts
+        .iter()
+        .enumerate()
+        .any(|(index, profile)| index != active_index && profile.agent_key.trim().is_empty())
 }
 
 fn merge_missing_plaintext_secrets_into_payload(
@@ -160,5 +188,96 @@ fn lock_encrypted_config_secrets(config: &mut KeroseneConfig) {
             "Encrypted credential storage is selected but no encrypted credentials are saved"
                 .to_string(),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::take_secret_warnings;
+
+    fn test_profile(name: &str, agent_key: &str) -> AccountProfile {
+        AccountProfile {
+            secret_id: name.to_string(),
+            name: name.to_string(),
+            wallet_address: String::new(),
+            agent_key: agent_key.to_string().into(),
+            hydromancer_api_key: String::new().into(),
+        }
+    }
+
+    #[test]
+    fn legacy_keychain_startup_only_loads_active_missing_agent_key() {
+        let _ = take_secret_warnings();
+        let mut config = KeroseneConfig {
+            active_account_index: 1,
+            accounts: vec![test_profile("one", ""), test_profile("two", "")],
+            ..KeroseneConfig::default()
+        };
+        let mut loaded_profiles = Vec::new();
+
+        load_legacy_os_keychain_secrets_with(&mut config, |profile| {
+            loaded_profiles.push(profile.name.clone());
+            profile.agent_key = format!("{}-agent", profile.name).into();
+            Ok(())
+        });
+
+        assert_eq!(loaded_profiles, vec!["two"]);
+        assert_eq!(config.accounts[0].agent_key.as_str(), "");
+        assert_eq!(config.accounts[1].agent_key.as_str(), "two-agent");
+        assert!(
+            take_secret_warnings()
+                .iter()
+                .any(|warning| warning.contains("Only the active legacy account key"))
+        );
+    }
+
+    #[test]
+    fn legacy_keychain_startup_skips_keychain_when_active_key_is_plaintext() {
+        let _ = take_secret_warnings();
+        let mut config = KeroseneConfig {
+            active_account_index: 0,
+            accounts: vec![test_profile("one", "plain-agent"), test_profile("two", "")],
+            ..KeroseneConfig::default()
+        };
+        let mut load_count = 0;
+
+        load_legacy_os_keychain_secrets_with(&mut config, |_profile| {
+            load_count += 1;
+            Ok(())
+        });
+
+        assert_eq!(load_count, 0);
+        assert_eq!(config.accounts[0].agent_key.as_str(), "plain-agent");
+        assert!(
+            take_secret_warnings()
+                .iter()
+                .any(|warning| warning.contains("Only the active legacy account key"))
+        );
+    }
+
+    #[test]
+    fn legacy_keychain_startup_preserves_plaintext_integration_keys_without_reads() {
+        let _ = take_secret_warnings();
+        let mut config = KeroseneConfig {
+            accounts: vec![AccountProfile {
+                secret_id: "one".to_string(),
+                name: "one".to_string(),
+                wallet_address: String::new(),
+                agent_key: "plain-agent".to_string().into(),
+                hydromancer_api_key: "profile-hydro".to_string().into(),
+            }],
+            hyperdash_api_key: "global-hyper".to_string().into(),
+            ..KeroseneConfig::default()
+        };
+
+        load_legacy_os_keychain_secrets_with(&mut config, |_profile| {
+            panic!("active plaintext agent key should not read the keychain");
+        });
+
+        assert_eq!(config.hydromancer_api_key.as_str(), "profile-hydro");
+        assert_eq!(config.hyperdash_api_key.as_str(), "global-hyper");
+        assert_eq!(config.accounts[0].hydromancer_api_key.as_str(), "");
+        assert!(take_secret_warnings().is_empty());
     }
 }

@@ -1,6 +1,5 @@
 use super::super::{AccountProfile, new_secret_id};
 use super::model::{SECRET_PAYLOAD_SCHEMA, SecretPayload};
-use super::warnings::push_secret_warning;
 
 const KEYCHAIN_SERVICE: &str = "kerosene";
 const GLOBAL_SECRET_ID: &str = "global";
@@ -99,14 +98,6 @@ pub fn load_profile_secrets(profile: &mut AccountProfile) -> Result<(), String> 
     }
 }
 
-pub fn load_profile_hydromancer_secret(profile: &AccountProfile) -> Result<Option<String>, String> {
-    if profile.secret_id.trim().is_empty() {
-        return Ok(None);
-    }
-    keychain_get(&profile.secret_id, "hydromancer_api_key")
-        .map_err(|e| format!("Hydromancer key read failed: {e}"))
-}
-
 pub fn clear_profile_secrets(profile: &AccountProfile) -> Result<(), String> {
     let mut errors = Vec::new();
 
@@ -133,38 +124,6 @@ pub fn clear_profile_secrets(profile: &AccountProfile) -> Result<(), String> {
         Ok(())
     } else {
         Err(errors.join("; "))
-    }
-}
-
-pub fn load_global_hydromancer_secret(legacy_value: String) -> String {
-    match keychain_get(GLOBAL_SECRET_ID, "hydromancer_api_key") {
-        Ok(Some(secret)) => secret,
-        Ok(None) => {
-            if !legacy_value.trim().is_empty() {
-                legacy_value
-            } else {
-                String::new()
-            }
-        }
-        Err(e) => {
-            push_secret_warning(format!("Hydromancer key read failed: {e}"));
-            legacy_value
-        }
-    }
-}
-
-pub fn load_global_hyperdash_secret(legacy_value: String) -> String {
-    if !legacy_value.trim().is_empty() {
-        legacy_value
-    } else {
-        match keychain_get(GLOBAL_SECRET_ID, "hyperdash_api_key") {
-            Ok(Some(secret)) => secret,
-            Ok(None) => String::new(),
-            Err(e) => {
-                push_secret_warning(format!("HyperDash key read failed: {e}"));
-                String::new()
-            }
-        }
     }
 }
 
