@@ -266,6 +266,7 @@ impl TradingTerminal {
             DisplayDenominationConfig::Usd,
             DisplayDenominationConfig::eur(),
             DisplayDenominationConfig::hype(),
+            DisplayDenominationConfig::btc(),
         ]
     }
 
@@ -332,6 +333,15 @@ mod tests {
         )
     }
 
+    fn btc_context(rate: f64) -> DisplayDenominationContext {
+        DisplayDenominationContext::from_mids(
+            DisplayDenominationConfig::btc(),
+            &HashMap::from([("BTC".to_string(), rate)]),
+            &HashMap::from([("BTC".to_string(), 1_000)]),
+            1_000,
+        )
+    }
+
     #[test]
     fn usd_default_formats_like_existing_usd_formatter() {
         let ctx = DisplayDenominationContext::usd();
@@ -370,6 +380,31 @@ mod tests {
         assert_eq!(ctx.format_signed_value(-125.0, 2), "-5.00 HYPE");
         assert_eq!(ctx.format_chart_price(125.0), "5.00 HYPE ($125.00)");
         assert_eq!(ctx.hidden_mask(), "*** HYPE");
+    }
+
+    #[test]
+    fn btc_context_uses_main_dex_mid_and_suffixes_unit() {
+        let normalized_btc = DisplayDenominationConfig::Asset {
+            code: " btc ".to_string(),
+            dex: " ".to_string(),
+            symbol: " btc ".to_string(),
+        }
+        .normalized();
+        let ctx = btc_context(50_000.0);
+
+        assert_eq!(normalized_btc, DisplayDenominationConfig::btc());
+        assert_eq!(
+            DisplayDenominationConfig::btc().rate_symbol_key(),
+            Some("BTC".to_string())
+        );
+        assert_eq!(ctx.active_symbol(), "BTC");
+        assert_eq!(ctx.format_value(100_000.0, 4), "2.0000 BTC");
+        assert_eq!(ctx.format_signed_value(-100_000.0, 4), "-2.0000 BTC");
+        assert_eq!(
+            ctx.format_chart_price(100_000.0),
+            "2.00 BTC ($100,000.0)"
+        );
+        assert_eq!(ctx.hidden_mask(), "*** BTC");
     }
 
     #[test]

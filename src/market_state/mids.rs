@@ -114,4 +114,16 @@ mod tests {
             vec![String::new(), "flx".to_string()]
         );
     }
+
+    #[test]
+    fn visible_mids_dexes_include_main_dex_for_btc_display_denomination() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("flx");
+        terminal.display_denomination = DisplayDenominationConfig::btc();
+
+        assert_eq!(
+            terminal.visible_mids_dexes(),
+            vec![String::new(), "flx".to_string()]
+        );
+    }
 }

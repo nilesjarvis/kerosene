@@ -181,3 +181,67 @@ fn chase_oid_status_error_keeps_chase_uncertain_for_reconciliation() {
             })
     );
 }
+
+#[test]
+fn chase_oid_status_canceled_stops_without_authorizing_replacement() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut chase = chase();
+    chase.current_oid = Some(9001);
+    chase.desired_price = Some(101.0);
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::MissingOrder,
+    };
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.handle_chase_order_oid_status_result(
+        1,
+        9001,
+        Ok(OrderStatusResult {
+            status: "canceled".to_string(),
+            oid: Some(9001),
+            cloid: None,
+            raw_summary: "canceled (oid 9001)".to_string(),
+        }),
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.desired_price, None);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::VerifyingCancel { oid: 9001 }
+        }
+    );
+}
+
+#[test]
+fn chase_oid_status_rejected_authorizes_replacement_after_refresh() {
+    let mut terminal = TradingTerminal::boot().0;
+    let mut chase = chase();
+    chase.current_oid = Some(9001);
+    chase.desired_price = Some(101.0);
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::MissingOrder,
+    };
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.handle_chase_order_oid_status_result(
+        1,
+        9001,
+        Ok(OrderStatusResult {
+            status: "rejected".to_string(),
+            oid: Some(9001),
+            cloid: None,
+            raw_summary: "rejected (oid 9001)".to_string(),
+        }),
+    );
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.desired_price, Some(101.0));
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::MissingOrderResolvedNoFill
+        }
+    );
+}

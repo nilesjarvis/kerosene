@@ -70,7 +70,14 @@ impl TradingTerminal {
                     if let Some((message, is_error)) = stop_status {
                         self.order_status = Some((message, is_error));
                     }
-                    self.remove_chase_order(chase_id);
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                        chase.record_oid(oid);
+                        chase.current_oid = Some(oid);
+                        chase.cancel_retries = 0;
+                        chase.lifecycle = ChaseLifecycle::Stopping {
+                            phase: ChaseStopPhase::VerifyingCancel { oid },
+                        };
+                    }
                     return self.refresh_after_chase_result(true);
                 }
             }

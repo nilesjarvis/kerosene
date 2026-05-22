@@ -56,6 +56,27 @@ impl OrderStatusResult {
                 | "liquidatedcanceled"
         )
     }
+
+    pub(crate) fn is_definitive_no_fill_terminal(&self) -> bool {
+        let status = self.status.to_ascii_lowercase();
+        matches!(
+            status.as_str(),
+            "rejected"
+                | "ioccancelrejected"
+                | "mintradentlrejected"
+                | "tickrejected"
+                | "reduceonlyrejected"
+                | "perpmarginrejected"
+                | "insufficientspotbalancerejected"
+                | "oraclejected"
+                | "oraclerejected"
+                | "positionincreaseatopeninterestcaprejected"
+                | "positionflipatopeninterestcaprejected"
+                | "tooaggressiveatopeninterestcaprejected"
+                | "openinterestincreaserejected"
+                | "perpmaxpositionrejected"
+        )
+    }
 }
 
 pub(crate) async fn fetch_order_status_by_cloid(
@@ -220,6 +241,39 @@ mod tests {
         .expect("missing status should parse");
 
         assert!(parsed.is_missing());
+    }
+
+    #[test]
+    fn canceled_status_is_not_definitive_no_fill() {
+        let parsed = parse_order_status(&serde_json::json!({
+            "status": "order",
+            "order": {
+                "status": "canceled",
+                "order": {
+                    "oid": 42_u64
+                }
+            }
+        }))
+        .expect("order status should parse");
+
+        assert!(parsed.is_no_fill_terminal());
+        assert!(!parsed.is_definitive_no_fill_terminal());
+    }
+
+    #[test]
+    fn rejected_status_is_definitive_no_fill() {
+        let parsed = parse_order_status(&serde_json::json!({
+            "status": "order",
+            "order": {
+                "status": "rejected",
+                "order": {
+                    "oid": 42_u64
+                }
+            }
+        }))
+        .expect("order status should parse");
+
+        assert!(parsed.is_definitive_no_fill_terminal());
     }
 
     #[test]

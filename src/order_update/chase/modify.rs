@@ -63,9 +63,11 @@ impl TradingTerminal {
                         chase.record_oid(oid);
                         let filled_size = resp.filled_total_size().unwrap_or(chase.remaining_size);
                         chase.add_filled_size(filled_size);
+                        chase.lifecycle = ChaseLifecycle::Verifying {
+                            reason: ChaseVerificationReason::MissingOrder,
+                        };
                     }
                     self.order_status = Some((resp.summary(), false));
-                    self.remove_chase_order(chase_id);
                     return self.refresh_after_chase_result(true);
                 }
 

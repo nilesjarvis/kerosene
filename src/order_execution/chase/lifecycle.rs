@@ -285,6 +285,43 @@ impl TradingTerminal {
         Task::batch(tasks)
     }
 
+    pub(crate) fn cancel_known_chase_order_for_safety(
+        &mut self,
+        chase_id: u64,
+        oid: u64,
+        reason: impl Into<String>,
+        is_error: bool,
+    ) -> Task<Message> {
+        let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
+            return Task::none();
+        };
+        let key = chase.agent_key.trim().to_string();
+        let reason = reason.into();
+        chase.record_oid(oid);
+        chase.current_oid = Some(oid);
+        chase.lifecycle = ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::Canceling { oid },
+        };
+        chase.stop_reason = Some((reason.clone(), is_error));
+        if key.is_empty() {
+            self.order_status = Some((
+                format!("{reason}: manual check required; original agent key is unavailable"),
+                true,
+            ));
+            return Task::none();
+        }
+
+        let asset = chase.asset;
+        self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
+        Task::perform(cancel_order(key.into(), asset, oid), move |r| {
+            Message::ChaseCancelResult {
+                chase_id,
+                oid,
+                result: Box::new(r),
+            }
+        })
+    }
+
     pub(crate) fn retry_stopped_chase_cancels(&mut self, now: Instant) -> Task<Message> {
         if !self.can_send_chase_exchange_request(now) {
             return Task::none();
@@ -445,6 +482,9 @@ impl TradingTerminal {
                 }
                 ChaseLifecycle::Verifying {
                     reason: ChaseVerificationReason::Modify,
+                }
+                | ChaseLifecycle::Verifying {
+                    reason: ChaseVerificationReason::MissingOrder,
                 } => chase
                     .current_oid
                     .map(|oid| (*id, ChaseStatusRetry::Oid { oid })),
@@ -639,17 +679,23 @@ impl TradingTerminal {
             residual_size
         };
         let Some(remaining_size) = quantize_order_size(size_source, chase.sz_decimals) else {
-            self.order_status = Some(("Chase completed: target size filled".to_string(), false));
-            self.remove_chase_order(chase_id);
-            return Task::none();
+            return self.cancel_known_chase_order_for_safety(
+                chase_id,
+                oid,
+                "Chase completed: target size filled",
+                false,
+            );
         };
         let key = chase.agent_key.trim().to_string();
         if key.is_empty() {
-            self.order_status = Some((
-                "Chase stopped: original agent key is unavailable".into(),
+            chase.lifecycle = ChaseLifecycle::Stopping {
+                phase: ChaseStopPhase::VerifyingCancel { oid },
+            };
+            chase.stop_reason = Some((
+                "Chase requires manual check: original agent key is unavailable".into(),
                 true,
             ));
-            self.remove_chase_order(chase_id);
+            self.order_status = chase.stop_reason.clone();
             return Task::none();
         }
 
@@ -696,6 +742,14 @@ impl TradingTerminal {
             return Task::none();
         }
         if !chase_account_matches(chase_snapshot, self.connected_address.as_deref()) {
+            if chase_snapshot.has_exchange_identifier() {
+                self.order_status = Some((
+                    "Chase requires manual check: account changed with previous exchange exposure"
+                        .into(),
+                    true,
+                ));
+                return Task::none();
+            }
             self.remove_chase_order(chase_id);
             self.order_status = Some((
                 "Chase stopped: account changed before initial placement".into(),
@@ -703,15 +757,82 @@ impl TradingTerminal {
             ));
             return Task::none();
         }
+        if let Some(oid) = chase_snapshot.current_oid {
+            return self.check_chase_order_status(
+                chase_id,
+                oid,
+                "Chase blocked replacement: verifying previous order before placing",
+            );
+        }
         let Some((rounded_best, price_wire)) = chase_snapshot.rounded_price(best) else {
+            if chase_snapshot.has_exchange_identifier() {
+                self.order_status = Some((
+                    "Chase requires manual check: invalid chase price with previous exchange exposure"
+                        .into(),
+                    true,
+                ));
+                return Task::none();
+            }
             self.order_status = Some(("Chase stopped: invalid chase price".into(), true));
             self.remove_chase_order(chase_id);
             return Task::none();
         };
+        if !chase_snapshot.known_oids.is_empty() {
+            let Some(data) = self.account_data.as_ref() else {
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.desired_price = Some(rounded_best);
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrder,
+                    };
+                }
+                self.order_status = Some((
+                    "Chase paused: verifying previous chase exposure before placing replacement"
+                        .into(),
+                    true,
+                ));
+                return self.refresh_account_data();
+            };
+            if !data.completeness.open_orders_complete || !data.completeness.fills_complete {
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.desired_price = Some(rounded_best);
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrder,
+                    };
+                }
+                self.order_status = Some((
+                    "Chase paused: account snapshot incomplete; not placing replacement".into(),
+                    true,
+                ));
+                return self.refresh_account_data();
+            }
+            if let Some(oid) = data
+                .open_orders
+                .iter()
+                .find(|order| chase_snapshot.tracks_oid(order.oid))
+                .map(|order| order.oid)
+            {
+                return self.cancel_known_chase_order_for_safety(
+                    chase_id,
+                    oid,
+                    "Chase blocked replacement: previous chase order is still open",
+                    true,
+                );
+            }
+        }
         if chase_snapshot.initial_price.is_finite()
             && chase_snapshot.initial_price > 0.0
             && let Some(reason) = chase_reprice_limit_reason(chase_snapshot, rounded_best, now)
         {
+            if chase_snapshot.has_exchange_identifier() {
+                self.order_status = Some((
+                    format!(
+                        "Chase requires manual check: {} with previous exchange exposure",
+                        reason.status_detail()
+                    ),
+                    true,
+                ));
+                return Task::none();
+            }
             self.order_status = Some((format!("Chase stopped: {}", reason.status_detail()), true));
             self.remove_chase_order(chase_id);
             return Task::none();
@@ -736,6 +857,17 @@ impl TradingTerminal {
         };
         let key = chase.agent_key.trim().to_string();
         if key.is_empty() {
+            if chase.has_exchange_identifier() {
+                chase.lifecycle = ChaseLifecycle::Verifying {
+                    reason: ChaseVerificationReason::MissingOrder,
+                };
+                chase.stop_reason = Some((
+                    "Chase requires manual check: original agent key is unavailable".into(),
+                    true,
+                ));
+                self.order_status = chase.stop_reason.clone();
+                return Task::none();
+            }
             self.order_status = Some((
                 "Chase stopped: original agent key is unavailable".into(),
                 true,

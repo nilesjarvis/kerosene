@@ -31,6 +31,16 @@ impl TradingTerminal {
                 ChaseLifecycle::Stopping {
                     phase: ChaseStopPhase::VerifyingCancel { oid },
                 }
+            } else if matches!(
+                chase.lifecycle,
+                ChaseLifecycle::Verifying {
+                    reason: ChaseVerificationReason::MissingOrder
+                        | ChaseVerificationReason::MissingOrderResolvedNoFill
+                }
+            ) {
+                ChaseLifecycle::Verifying {
+                    reason: ChaseVerificationReason::MissingOrder,
+                }
             } else {
                 ChaseLifecycle::Verifying {
                     reason: ChaseVerificationReason::Modify,
@@ -38,25 +48,24 @@ impl TradingTerminal {
             };
             chase.last_reprice_at = Some(Instant::now());
         }
+        let status_task = account_address.map_or_else(Task::none, |account_address| {
+            Task::perform(fetch_order_status_by_oid(account_address, oid), move |result| {
+                Message::ChaseOrderOidStatusLoaded {
+                    chase_id,
+                    oid,
+                    result: Box::new(result),
+                }
+            })
+        });
         if can_refresh_chase_account {
             self.order_status = Some((status, false));
-            let status_task = account_address.map_or_else(Task::none, |account_address| {
-                Task::perform(fetch_order_status_by_oid(account_address, oid), move |result| {
-                    Message::ChaseOrderOidStatusLoaded {
-                        chase_id,
-                        oid,
-                        result: Box::new(result),
-                    }
-                })
-            });
             Task::batch([self.refresh_account_data(), status_task])
         } else {
             self.order_status = Some((
-                format!("{status}; reconnect to verify the previous account's open orders"),
+                format!("{status}; checking previous account order status without clearing chase state"),
                 true,
             ));
-            self.remove_chase_order(chase_id);
-            Task::none()
+            status_task
         }
     }
 }

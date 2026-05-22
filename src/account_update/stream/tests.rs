@@ -269,7 +269,7 @@ fn chase_fill_reconciliation_updates_filled_and_remaining_size() {
     data.fills = vec![fill_with_oid(1_001, 42, "100", "0.1")];
     terminal.account_data = Some(data);
 
-    terminal.reconcile_chase_fills_from_account();
+    let _task = terminal.reconcile_chase_fills_from_account();
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert!((chase.filled_size - 0.1).abs() < f64::EPSILON);
@@ -284,7 +284,7 @@ fn chase_fill_reconciliation_removes_fully_filled_chase() {
     data.fills = vec![fill_with_oid(1_001, 42, "100", "1.0")];
     terminal.account_data = Some(data);
 
-    terminal.reconcile_chase_fills_from_account();
+    let _task = terminal.reconcile_chase_after_account_refresh();
 
     assert!(terminal.chase_orders.is_empty());
     assert!(
@@ -292,6 +292,26 @@ fn chase_fill_reconciliation_removes_fully_filled_chase() {
             .order_status
             .as_ref()
             .is_some_and(|(message, is_error)| !*is_error && message.contains("Chase filled"))
+    );
+}
+
+#[test]
+fn live_fill_reconciliation_waits_for_fresh_open_orders_before_removal() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.chase_orders.insert(1, chase_order());
+    let mut data = account_data_with_timestamp(1_000);
+    data.fills = vec![fill_with_oid(1_001, 42, "100", "1.0")];
+    terminal.account_data = Some(data);
+
+    let _task = terminal.reconcile_chase_fills_from_account();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.filled_size, 1.0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::MissingOrder
+        }
     );
 }
 
@@ -308,7 +328,7 @@ fn chase_fill_reconciliation_sums_known_reprice_oids() {
     ];
     terminal.account_data = Some(data);
 
-    terminal.reconcile_chase_fills_from_account();
+    let _task = terminal.reconcile_chase_fills_from_account();
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert!((chase.filled_size - 0.3).abs() < 1e-12);
@@ -328,7 +348,7 @@ fn chase_fill_reconciliation_counts_matching_oids_before_local_chase_start() {
     ];
     terminal.account_data = Some(data);
 
-    terminal.reconcile_chase_fills_from_account();
+    let _task = terminal.reconcile_chase_fills_from_account();
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert!((chase.filled_size - 0.5).abs() < 1e-12);
@@ -350,7 +370,7 @@ fn chase_fill_reconciliation_deduplicates_matching_oid_fills() {
     ];
     terminal.account_data = Some(data);
 
-    terminal.reconcile_chase_fills_from_account();
+    let _task = terminal.reconcile_chase_fills_from_account();
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert!((chase.filled_size - 0.5).abs() < 1e-12);
@@ -607,6 +627,166 @@ fn placement_without_oid_does_not_place_replacement_after_refresh() {
         }
     );
     assert_eq!(chase.desired_price, Some(101.0));
+}
+
+#[test]
+fn missing_current_order_checks_status_before_replacement() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::MissingOrder,
+    };
+    chase.desired_price = Some(101.0);
+    terminal.chase_orders.insert(1, chase);
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.current_oid, Some(42));
+    assert_eq!(chase.place_attempt_count, 0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::MissingOrder
+        }
+    );
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, _is_error)| message.contains("checking order status"))
+    );
+}
+
+#[test]
+fn no_fill_terminal_status_allows_clean_replacement() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::MissingOrderResolvedNoFill,
+    };
+    chase.desired_price = Some(101.0);
+    terminal.chase_orders.insert(1, chase);
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.current_oid, None);
+    assert_eq!(chase.place_attempt_count, 1);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Placing);
+}
+
+#[test]
+fn completed_chase_cancels_live_known_order_before_removal() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    let mut data = account_data_with_timestamp(1_000);
+    data.fills = vec![fill_with_oid(1_001, 42, "100", "1.0")];
+    data.open_orders = vec![open_order(42, Some(false))];
+    terminal.account_data = Some(data);
+    terminal.chase_orders.insert(1, chase_order());
+
+    let _task = terminal.reconcile_chase_fills_from_account();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.filled_size, 1.0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::Canceling { oid: 42 }
+        }
+    );
+}
+
+#[test]
+fn overfilled_chase_preserves_raw_total_and_cancels_live_known_order() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    let mut chase = chase_order();
+    chase.known_oids.push(43);
+    terminal.chase_orders.insert(1, chase);
+    let mut data = account_data_with_timestamp(1_000);
+    data.fills = vec![fill_with_oid(1_001, 42, "100", "1.2")];
+    data.open_orders = vec![open_order(43, Some(false))];
+    terminal.account_data = Some(data);
+
+    let _task = terminal.reconcile_chase_fills_from_account();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.filled_size, 1.2);
+    assert_eq!(chase.remaining_size, 0.0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::Canceling { oid: 43 }
+        }
+    );
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, is_error)| {
+                *is_error && message.contains("over target")
+            })
+    );
+}
+
+#[test]
+fn stopped_chase_clears_only_after_no_known_open_orders_remain() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Stopping {
+        phase: ChaseStopPhase::VerifyingCancel { oid: 42 },
+    };
+    chase.stop_reason = Some(("Chase stopped".to_string(), false));
+    terminal.chase_orders.insert(1, chase);
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(
+        terminal.order_status,
+        Some(("Chase stopped".to_string(), false))
+    );
+}
+
+#[test]
+fn stopped_chase_cancels_next_known_open_order_before_clearing() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    let mut chase = chase_order();
+    chase.known_oids.push(43);
+    chase.lifecycle = ChaseLifecycle::Stopping {
+        phase: ChaseStopPhase::VerifyingCancel { oid: 42 },
+    };
+    chase.stop_reason = Some(("Chase stopped".to_string(), false));
+    terminal.chase_orders.insert(1, chase);
+    let mut data = account_data_with_timestamp(1_000);
+    data.open_orders = vec![open_order(43, Some(false))];
+    terminal.account_data = Some(data);
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(chase.current_oid, Some(43));
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::Canceling { oid: 43 }
+        }
+    );
 }
 
 #[test]

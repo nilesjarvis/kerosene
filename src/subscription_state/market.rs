@@ -199,6 +199,7 @@ impl TradingTerminal {
                         | crate::signing::ChaseLifecycle::Verifying {
                             reason: crate::signing::ChaseVerificationReason::Placement
                                 | crate::signing::ChaseVerificationReason::Modify
+                                | crate::signing::ChaseVerificationReason::MissingOrder
                         }
                         | crate::signing::ChaseLifecycle::Stopping {
                             phase: crate::signing::ChaseStopPhase::AwaitingPlace

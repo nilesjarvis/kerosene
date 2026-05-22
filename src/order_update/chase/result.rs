@@ -44,14 +44,24 @@ pub(super) fn stopped_chase_cancel_request(
 
 impl TradingTerminal {
     fn fail_chase_order(&mut self, chase_id: u64, summary: String) {
+        let mut keep_for_verification = false;
         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-            chase.lifecycle = ChaseLifecycle::Verifying {
-                reason: ChaseVerificationReason::MissingOrder,
+            keep_for_verification = chase.has_exchange_identifier();
+            chase.lifecycle = if chase.current_oid.is_none() && chase.current_cloid.is_some() {
+                ChaseLifecycle::Verifying {
+                    reason: ChaseVerificationReason::Placement,
+                }
+            } else {
+                ChaseLifecycle::Verifying {
+                    reason: ChaseVerificationReason::MissingOrder,
+                }
             };
             chase.stop_reason = Some((summary.clone(), true));
         }
         self.order_status = Some((summary.clone(), true));
-        self.remove_chase_order_with_summary(chase_id, Some(summary));
+        if !keep_for_verification {
+            self.remove_chase_order_with_summary(chase_id, Some(summary));
+        }
     }
 
     pub(crate) fn check_chase_place_status_by_cloid(
@@ -132,9 +142,12 @@ impl TradingTerminal {
                         }
                         let filled_size = resp.filled_total_size().unwrap_or(chase.remaining_size);
                         chase.add_filled_size(filled_size);
+                        chase.lifecycle = ChaseLifecycle::Verifying {
+                            reason: ChaseVerificationReason::MissingOrder,
+                        };
                     }
                     self.order_status = Some((resp.summary(), false));
-                    self.remove_chase_order(chase_id);
+                    return self.refresh_account_data();
                 } else {
                     let stop_cancel_request = self
                         .chase_orders
@@ -257,21 +270,70 @@ impl TradingTerminal {
                     }
                     let filled_size = chase.remaining_size;
                     chase.add_filled_size(filled_size);
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrder,
+                    };
                 }
                 let summary = format!(
                     "Chase placement filled according to orderStatus: {}; refreshing account data",
                     status.raw_summary
                 );
                 self.order_status = Some((summary.clone(), false));
-                self.remove_chase_order_with_summary(chase_id, Some(summary));
                 self.refresh_account_data()
             }
-            Ok(status) if status.is_missing() || status.is_no_fill_terminal() => {
+            Ok(status) if status.is_definitive_no_fill_terminal() => {
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrderResolvedNoFill,
+                    };
+                }
+                self.order_status = Some((
+                    format!(
+                        "Chase checking account state: placement resolved without fill as {}",
+                        status.raw_summary
+                    ),
+                    false,
+                ));
+                self.refresh_account_data()
+            }
+            Ok(status) if status.is_no_fill_terminal() => {
                 let summary = format!(
-                    "Chase stopped: placement resolved as {}",
+                    "Chase stopped: placement is no longer open ({}); waiting for account reconciliation",
                     status.raw_summary
                 );
-                self.fail_chase_order(chase_id, summary);
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    if let Some(oid) = status.oid {
+                        chase.record_oid(oid);
+                        chase.current_oid = Some(oid);
+                        chase.lifecycle = ChaseLifecycle::Stopping {
+                            phase: ChaseStopPhase::VerifyingCancel { oid },
+                        };
+                    } else {
+                        chase.lifecycle = ChaseLifecycle::Verifying {
+                            reason: ChaseVerificationReason::Placement,
+                        };
+                    }
+                    chase.desired_price = None;
+                    chase.stop_reason = Some((summary.clone(), true));
+                    chase.last_reprice_at = Some(Instant::now());
+                }
+                self.order_status = Some((summary, true));
+                self.refresh_account_data()
+            }
+            Ok(status) if status.is_missing() => {
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::Placement,
+                    };
+                    chase.last_reprice_at = Some(Instant::now());
+                }
+                self.order_status = Some((
+                    format!(
+                        "Chase placement status ambiguous for {cloid}: {}; keeping chase state",
+                        status.raw_summary
+                    ),
+                    true,
+                ));
                 self.refresh_account_data()
             }
             Ok(status) => {
@@ -367,16 +429,18 @@ impl TradingTerminal {
                     chase.record_oid(oid);
                     let filled_size = chase.remaining_size;
                     chase.add_filled_size(filled_size);
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrder,
+                    };
                 }
                 let summary = format!(
                     "Chase order filled according to orderStatus: {}; refreshing account data",
                     status.raw_summary
                 );
                 self.order_status = Some((summary.clone(), false));
-                self.remove_chase_order_with_summary(chase_id, Some(summary));
                 self.refresh_account_data()
             }
-            Ok(status) if status.is_missing() || status.is_no_fill_terminal() => {
+            Ok(status) if status.is_definitive_no_fill_terminal() => {
                 if self
                     .chase_orders
                     .get(&chase_id)
@@ -388,22 +452,83 @@ impl TradingTerminal {
                         .and_then(|chase| chase.stop_reason.clone())
                         .unwrap_or_else(|| ("Chase stopped".to_string(), false));
                     self.order_status = Some((message.clone(), is_error));
-                    self.remove_chase_order_with_summary(chase_id, Some(message));
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                        chase.record_oid(oid);
+                        chase.current_oid = Some(oid);
+                        chase.lifecycle = ChaseLifecycle::Stopping {
+                            phase: ChaseStopPhase::VerifyingCancel { oid },
+                        };
+                    }
+                    return self.refresh_account_data();
+                }
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.lifecycle = ChaseLifecycle::Verifying {
+                        reason: ChaseVerificationReason::MissingOrderResolvedNoFill,
+                    };
+                }
+                self.order_status = Some((
+                    format!(
+                        "Chase checking account state: orderStatus resolved without fill as {}",
+                        status.raw_summary
+                    ),
+                    false,
+                ));
+                self.refresh_account_data()
+            }
+            Ok(status) if status.is_no_fill_terminal() => {
+                let summary = format!(
+                    "Chase stopped: order no longer open ({}); no replacement will be placed",
+                    status.raw_summary
+                );
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    chase.record_oid(oid);
+                    chase.current_oid = Some(oid);
+                    chase.desired_price = None;
+                    chase.stop_reason = Some((summary.clone(), true));
+                    chase.lifecycle = ChaseLifecycle::Stopping {
+                        phase: ChaseStopPhase::VerifyingCancel { oid },
+                    };
+                }
+                self.order_status = Some((summary, true));
+                self.refresh_account_data()
+            }
+            Ok(status) if status.is_missing() => {
+                if self
+                    .chase_orders
+                    .get(&chase_id)
+                    .is_some_and(|chase| chase.lifecycle.is_stopping())
+                {
+                    if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                        chase.record_oid(oid);
+                        chase.current_oid = Some(oid);
+                        chase.lifecycle = ChaseLifecycle::Stopping {
+                            phase: ChaseStopPhase::VerifyingCancel { oid },
+                        };
+                        chase.last_reprice_at = Some(Instant::now());
+                    }
+                    self.order_status = Some((
+                        format!(
+                            "Chase stop status ambiguous for oid {oid}: {}; verifying account state",
+                            status.raw_summary
+                        ),
+                        true,
+                    ));
                     return self.refresh_account_data();
                 }
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.lifecycle = ChaseLifecycle::Verifying {
                         reason: ChaseVerificationReason::MissingOrder,
                     };
+                    chase.last_reprice_at = Some(Instant::now());
                 }
                 self.order_status = Some((
                     format!(
-                        "Chase checking account state: orderStatus resolved as {}",
+                        "Chase order status ambiguous for oid {oid}: {}; keeping chase state",
                         status.raw_summary
                     ),
-                    false,
+                    true,
                 ));
-                self.refresh_account_data()
+                Task::none()
             }
             Ok(status) => {
                 let summary = format!(
@@ -418,6 +543,16 @@ impl TradingTerminal {
                     if chase.lifecycle.is_stopping() {
                         chase.lifecycle = ChaseLifecycle::Stopping {
                             phase: ChaseStopPhase::VerifyingCancel { oid },
+                        };
+                    } else if matches!(
+                        chase.lifecycle,
+                        ChaseLifecycle::Verifying {
+                            reason: ChaseVerificationReason::MissingOrder
+                                | ChaseVerificationReason::MissingOrderResolvedNoFill
+                        }
+                    ) {
+                        chase.lifecycle = ChaseLifecycle::Verifying {
+                            reason: ChaseVerificationReason::MissingOrder,
                         };
                     } else {
                         chase.lifecycle = ChaseLifecycle::Verifying {

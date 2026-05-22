@@ -2,7 +2,7 @@ use crate::account::{OpenOrder, fetch_account_data_scoped, normalize_dex_open_or
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::{
-    ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseVerificationReason,
+    ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseStopPhase, ChaseVerificationReason,
 };
 use crate::ws::WsUserData;
 
@@ -225,6 +225,39 @@ fn apply_open_order_to_chase(
     Ok(oversized)
 }
 
+fn first_open_chase_oid(chase: &ChaseOrder, open_orders: &[OpenOrder]) -> Option<u64> {
+    chase
+        .current_oid
+        .filter(|oid| open_orders.iter().any(|order| order.oid == *oid))
+        .or_else(|| {
+            open_orders
+                .iter()
+                .find(|order| chase.tracks_oid(order.oid))
+                .map(|order| order.oid)
+        })
+}
+
+fn chase_completed_summary(
+    fills: &[crate::account::UserFill],
+    chase: &ChaseOrder,
+    filled_size: f64,
+) -> String {
+    let summary = chase_fill_summary_for_chase(fills, chase)
+        .unwrap_or_else(|| "Chase completed: target size filled".to_string());
+    if chase.target_size.is_finite()
+        && chase.target_size > 0.0
+        && filled_size > chase.target_size + f64::EPSILON
+    {
+        let overfill = filled_size - chase.target_size;
+        format!(
+            "{summary}; over target by {}",
+            format_chase_fill_number(overfill)
+        )
+    } else {
+        summary
+    }
+}
+
 fn format_chase_fill_number(value: f64) -> String {
     let formatted = format!("{value:.8}");
     formatted
@@ -384,8 +417,12 @@ impl TradingTerminal {
         if fills_changed {
             self.sync_all_chart_trade_markers();
             self.reconcile_twap_fills_from_account();
-            self.reconcile_chase_fills_from_account();
         }
+        let fill_reconcile_task = if fills_changed {
+            self.reconcile_chase_fills_from_account()
+        } else {
+            Task::none()
+        };
         let chase_task = if orders_changed {
             self.handle_chase_order_disappearance()
         } else {
@@ -396,23 +433,36 @@ impl TradingTerminal {
         } else {
             self.apply_wallet_details_ws_update(source_address, wallet_details_update)
         };
-        Task::batch([chase_task, mids_task, wallet_task])
+        Task::batch([fill_reconcile_task, chase_task, mids_task, wallet_task])
     }
 
-    pub(crate) fn reconcile_chase_fills_from_account(&mut self) {
+    pub(crate) fn reconcile_chase_fills_from_account(&mut self) -> Task<Message> {
         let Some(data) = self.account_data.as_ref() else {
-            return;
+            return Task::none();
         };
         if !data.completeness.fills_complete {
-            return;
+            return Task::none();
         }
         let fills = data.fills.clone();
-        self.reconcile_chase_fills_from_snapshot(&fills);
+        let open_orders = data.open_orders.clone();
+        let open_orders_complete = data.completeness.open_orders_complete;
+        self.reconcile_chase_fills_from_snapshot(
+            &fills,
+            open_orders_complete.then_some(open_orders.as_slice()),
+            false,
+        )
     }
 
-    fn reconcile_chase_fills_from_snapshot(&mut self, fills: &[crate::account::UserFill]) {
+    fn reconcile_chase_fills_from_snapshot(
+        &mut self,
+        fills: &[crate::account::UserFill],
+        open_orders: Option<&[OpenOrder]>,
+        open_orders_authoritative: bool,
+    ) -> Task<Message> {
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
         let mut remove_ids = Vec::new();
+        let mut cancel_ids = Vec::new();
+        let mut needs_open_order_refresh = false;
         for chase_id in chase_ids {
             let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                 continue;
@@ -423,16 +473,55 @@ impl TradingTerminal {
             };
             chase.set_filled_size(totals.filled_size);
             if chase.residual_size() <= f64::EPSILON {
-                let summary = chase_fill_summary_for_chase(fills, chase)
-                    .unwrap_or_else(|| "Chase completed: target size filled".to_string());
-                remove_ids.push((chase_id, summary));
+                let summary = chase_completed_summary(fills, chase, totals.filled_size);
+                let is_error = chase.target_size.is_finite()
+                    && chase.target_size > 0.0
+                    && totals.filled_size > chase.target_size + f64::EPSILON;
+                match open_orders {
+                    Some(open_orders) => {
+                        if let Some(oid) = first_open_chase_oid(chase, open_orders) {
+                            cancel_ids.push((chase_id, oid, summary, is_error));
+                        } else if open_orders_authoritative {
+                            remove_ids.push((chase_id, summary, is_error));
+                        } else {
+                            chase.lifecycle = ChaseLifecycle::Verifying {
+                                reason: ChaseVerificationReason::MissingOrder,
+                            };
+                            chase.stop_reason = Some((summary.clone(), is_error));
+                            needs_open_order_refresh = true;
+                            self.order_status = Some((
+                                "Chase target filled; refreshing open orders before closing".into(),
+                                is_error,
+                            ));
+                        }
+                    }
+                    None => {
+                        chase.lifecycle = ChaseLifecycle::Verifying {
+                            reason: ChaseVerificationReason::MissingOrder,
+                        };
+                        chase.stop_reason = Some((summary.clone(), is_error));
+                        needs_open_order_refresh = true;
+                        self.order_status = Some((
+                            "Chase target filled; verifying open orders before closing".into(),
+                            is_error,
+                        ));
+                    }
+                }
             }
         }
 
-        for (chase_id, summary) in remove_ids {
-            self.order_status = Some((summary.clone(), false));
+        for (chase_id, summary, is_error) in remove_ids {
+            self.order_status = Some((summary.clone(), is_error));
             self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
+        let mut tasks = Vec::new();
+        for (chase_id, oid, summary, is_error) in cancel_ids {
+            tasks.push(self.cancel_known_chase_order_for_safety(chase_id, oid, summary, is_error));
+        }
+        if needs_open_order_refresh {
+            tasks.push(self.refresh_account_data());
+        }
+        Task::batch(tasks)
     }
 
     fn handle_chase_order_disappearance(&mut self) -> Task<Message> {
@@ -443,7 +532,7 @@ impl TradingTerminal {
             .map(|data| data.open_orders.clone())
             .unwrap_or_default();
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
-        let mut remove_ids = Vec::new();
+        let mut cancel_ids = Vec::new();
 
         for chase_id in chase_ids {
             let Some((oid, lifecycle, has_pending)) = self
@@ -489,10 +578,12 @@ impl TradingTerminal {
                                 "Chase stopped: invalid remaining size from open orders".into(),
                                 true,
                             ));
-                            remove_ids.push((
+                            cancel_ids.push((
                                 chase_id,
+                                oid,
                                 "Chase stopped: invalid remaining size from open orders"
                                     .to_string(),
+                                true,
                             ));
                         }
                     }
@@ -514,14 +605,14 @@ impl TradingTerminal {
                 }
             }
         }
-        for (chase_id, summary) in remove_ids {
-            self.remove_chase_order_with_summary(chase_id, Some(summary));
+        let mut tasks = Vec::new();
+        for (chase_id, oid, summary, is_error) in cancel_ids {
+            tasks.push(self.cancel_known_chase_order_for_safety(chase_id, oid, summary, is_error));
         }
         if needs_refresh {
-            self.refresh_account_data()
-        } else {
-            Task::none()
+            tasks.push(self.refresh_account_data());
         }
+        Task::batch(tasks)
     }
 
     pub(crate) fn reconcile_chase_after_account_refresh(&mut self) -> Task<Message> {
@@ -533,22 +624,59 @@ impl TradingTerminal {
         let open_orders_complete = data.completeness.open_orders_complete;
         let fills_complete = data.completeness.fills_complete;
         let connected_address = self.connected_address.clone();
+        let mut tasks = Vec::new();
         if fills_complete {
-            self.reconcile_chase_fills_from_snapshot(&fills);
+            tasks.push(self.reconcile_chase_fills_from_snapshot(
+                &fills,
+                open_orders_complete.then_some(open_orders.as_slice()),
+                true,
+            ));
         }
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
-        let mut tasks = Vec::new();
         let mut remove_ids = Vec::new();
         let mut correction_ids = Vec::new();
         let mut replacement_ids = Vec::new();
+        let mut status_check_ids = Vec::new();
+        let mut cancel_ids = Vec::new();
 
         for chase_id in chase_ids {
             let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
                 continue;
             };
             if connected_address.as_deref() != Some(chase_snapshot.account_address.as_str())
-                || !chase_snapshot.needs_account_verification()
                 || chase_snapshot.has_pending_op()
+            {
+                continue;
+            }
+            if let ChaseLifecycle::Stopping {
+                phase: ChaseStopPhase::VerifyingCancel { .. },
+            } = chase_snapshot.lifecycle
+            {
+                if !open_orders_complete || !fills_complete {
+                    self.order_status = Some((
+                        "Chase stopping: waiting for complete account snapshot before clearing"
+                            .into(),
+                        true,
+                    ));
+                    continue;
+                }
+                if let Some(oid) = first_open_chase_oid(chase_snapshot, &open_orders) {
+                    let (summary, is_error) = chase_snapshot
+                        .stop_reason
+                        .clone()
+                        .unwrap_or_else(|| ("Chase stopped".to_string(), false));
+                    cancel_ids.push((chase_id, oid, summary, is_error));
+                } else {
+                    let (summary, is_error) = chase_snapshot
+                        .stop_reason
+                        .clone()
+                        .unwrap_or_else(|| ("Chase stopped".to_string(), false));
+                    remove_ids.push((chase_id, summary, is_error));
+                }
+                continue;
+            }
+            if !chase_snapshot.needs_account_verification()
+                || chase_snapshot.lifecycle.is_stopping()
             {
                 continue;
             }
@@ -568,7 +696,14 @@ impl TradingTerminal {
             if chase_snapshot.residual_size() <= f64::EPSILON {
                 let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
                     .unwrap_or_else(|| "Chase completed: target size filled".to_string());
-                remove_ids.push((chase_id, status));
+                let is_error = chase_snapshot.target_size.is_finite()
+                    && chase_snapshot.target_size > 0.0
+                    && chase_snapshot.filled_size > chase_snapshot.target_size + f64::EPSILON;
+                if let Some(oid) = first_open_chase_oid(chase_snapshot, &open_orders) {
+                    cancel_ids.push((chase_id, oid, status, is_error));
+                } else {
+                    remove_ids.push((chase_id, status, is_error));
+                }
                 continue;
             }
 
@@ -581,8 +716,17 @@ impl TradingTerminal {
                     ));
                     continue;
                 }
-                if wants_replacement {
+                if matches!(
+                    verification_reason,
+                    ChaseVerificationReason::MissingOrderResolvedNoFill
+                ) && wants_replacement
+                {
                     replacement_ids.push(chase_id);
+                } else if wants_replacement {
+                    self.order_status = Some((
+                        "Chase replacement blocked: previous order is still unresolved".into(),
+                        true,
+                    ));
                 }
                 continue;
             };
@@ -619,10 +763,12 @@ impl TradingTerminal {
                                         .into(),
                                     true,
                                 ));
-                                remove_ids.push((
+                                cancel_ids.push((
                                     chase_id,
+                                    order.oid,
                                     "Chase stopped: invalid remaining size from account refresh"
                                         .to_string(),
+                                    true,
                                 ));
                             }
                         }
@@ -631,7 +777,14 @@ impl TradingTerminal {
                         tasks.push(self.stop_chase_by_id_with_reason(chase_id, reason, is_error));
                     }
                 }
-                None if open_orders_complete && wants_replacement => {
+                None
+                    if open_orders_complete
+                        && wants_replacement
+                        && matches!(
+                            verification_reason,
+                            ChaseVerificationReason::MissingOrderResolvedNoFill
+                        ) =>
+                {
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         chase.record_oid(oid);
                         chase.current_oid = None;
@@ -641,12 +794,22 @@ impl TradingTerminal {
                     }
                     replacement_ids.push(chase_id);
                 }
+                None if open_orders_complete && wants_replacement => {
+                    status_check_ids.push((chase_id, oid));
+                }
                 None if open_orders_complete => {
-                    let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
-                        .or_else(|| chase_fill_summary(&fills, oid))
-                        .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
-                    self.order_status = Some((status.clone(), false));
-                    remove_ids.push((chase_id, status));
+                    if matches!(
+                        verification_reason,
+                        ChaseVerificationReason::MissingOrderResolvedNoFill
+                    ) {
+                        let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
+                            .or_else(|| chase_fill_summary(&fills, oid))
+                            .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
+                        self.order_status = Some((status.clone(), false));
+                        remove_ids.push((chase_id, status, false));
+                    } else {
+                        status_check_ids.push((chase_id, oid));
+                    }
                 }
                 None => {
                     self.order_status = Some((
@@ -657,9 +820,20 @@ impl TradingTerminal {
             }
         }
 
-        for (chase_id, summary) in remove_ids {
+        for (chase_id, summary, is_error) in remove_ids {
+            self.order_status = Some((summary.clone(), is_error));
             self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
+        for (chase_id, oid, summary, is_error) in cancel_ids {
+            tasks.push(self.cancel_known_chase_order_for_safety(chase_id, oid, summary, is_error));
+        }
+        tasks.extend(status_check_ids.into_iter().map(|(chase_id, oid)| {
+            self.check_chase_order_status(
+                chase_id,
+                oid,
+                "Chase checking order status before replacement",
+            )
+        }));
         tasks.extend(
             correction_ids
                 .into_iter()

@@ -117,6 +117,14 @@ impl DisplayDenominationConfig {
         }
     }
 
+    pub fn btc() -> Self {
+        Self::Asset {
+            code: "BTC".to_string(),
+            dex: String::new(),
+            symbol: "BTC".to_string(),
+        }
+    }
+
     pub fn normalized(self) -> Self {
         match self {
             Self::Usd => Self::Usd,

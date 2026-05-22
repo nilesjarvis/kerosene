@@ -341,6 +341,7 @@ fn chase_place_uses_unfilled_residual_size() {
     terminal.last_advanced_exchange_request_at = None;
     let mut chase = chase();
     chase.current_oid = None;
+    chase.known_oids.clear();
     chase.filled_size = 0.1;
     terminal.chase_orders.insert(1, chase);
 
@@ -360,6 +361,7 @@ fn chase_place_assigns_unique_cloid_per_place_attempt() {
     terminal.last_advanced_exchange_request_at = None;
     let mut chase = chase();
     chase.current_oid = None;
+    chase.known_oids.clear();
     terminal.chase_orders.insert(1, chase);
 
     let _task = terminal.chase_place_at_best(1, 101.0);
@@ -372,6 +374,39 @@ fn chase_place_assigns_unique_cloid_per_place_attempt() {
             .current_cloid
             .as_deref()
             .is_some_and(|cloid| { cloid.starts_with("0x") && cloid.len() == 34 })
+    );
+}
+
+#[test]
+fn missing_order_verification_is_retried_by_tick() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = false;
+    terminal.account_reconciliation_required = false;
+    terminal.last_advanced_exchange_request_at = None;
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Verifying {
+        reason: ChaseVerificationReason::MissingOrder,
+    };
+    chase.last_reprice_at = Some(Instant::now() - Duration::from_secs(10));
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.handle_chase_reprice_tick();
+
+    let chase = terminal.chase_orders.get(&1).expect("chase should remain");
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::MissingOrder
+        }
+    );
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, _is_error)| {
+                message.contains("retrying order status check")
+            })
     );
 }
 

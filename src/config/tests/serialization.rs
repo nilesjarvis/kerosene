@@ -121,6 +121,18 @@ fn display_denomination_round_trips_and_legacy_defaults_usd() {
         DisplayDenominationConfig::hype()
     );
 
+    let btc_config = KeroseneConfig {
+        display_denomination: DisplayDenominationConfig::btc(),
+        ..KeroseneConfig::default()
+    };
+    let btc_json = serde_json::to_string(&btc_config).expect("config should serialize");
+    let decoded_btc: KeroseneConfig =
+        serde_json::from_str(&btc_json).expect("config should deserialize");
+    assert_eq!(
+        decoded_btc.display_denomination,
+        DisplayDenominationConfig::btc()
+    );
+
     let mut legacy =
         serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
     legacy

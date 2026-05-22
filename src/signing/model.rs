@@ -58,6 +58,7 @@ pub enum ChaseVerificationReason {
     Reprice,
     SizeCorrection,
     MissingOrder,
+    MissingOrderResolvedNoFill,
     Modify,
 }
 
@@ -237,6 +238,14 @@ impl ChaseOrder {
         oids
     }
 
+    pub fn tracks_oid(&self, oid: u64) -> bool {
+        self.current_oid == Some(oid) || self.known_oids.contains(&oid)
+    }
+
+    pub fn has_exchange_identifier(&self) -> bool {
+        self.current_oid.is_some() || self.current_cloid.is_some() || !self.known_oids.is_empty()
+    }
+
     pub fn residual_size(&self) -> f64 {
         if !self.target_size.is_finite() || self.target_size <= 0.0 {
             return 0.0;
@@ -253,11 +262,6 @@ impl ChaseOrder {
         if !filled_size.is_finite() || filled_size < 0.0 {
             return false;
         }
-        let filled_size = if self.target_size.is_finite() && self.target_size > 0.0 {
-            filled_size.min(self.target_size)
-        } else {
-            filled_size
-        };
         if filled_size <= self.filled_size + f64::EPSILON {
             return false;
         }
