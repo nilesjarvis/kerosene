@@ -133,6 +133,20 @@ fn default_custom_themes_include_kerosene_chart_colors() {
     assert_eq!(bybit.danger, "#DC5351");
     assert_eq!(bybit.chart_bull.as_deref(), Some("#55AF72"));
     assert_eq!(bybit.chart_bear.as_deref(), Some("#DC5351"));
+
+    let coinbase_light = themes
+        .iter()
+        .find(|theme| theme.name == "coinbase-light")
+        .expect("coinbase-light theme should be present");
+
+    assert_eq!(coinbase_light.background, "#FFFFFF");
+    assert_eq!(coinbase_light.text, "#0A0B0D");
+    assert_eq!(coinbase_light.primary, "#0052FF");
+    assert_eq!(coinbase_light.success, "#098551");
+    assert_eq!(coinbase_light.warning, "#F7931A");
+    assert_eq!(coinbase_light.danger, "#CF202F");
+    assert_eq!(coinbase_light.chart_bull.as_deref(), Some("#098551"));
+    assert_eq!(coinbase_light.chart_bear.as_deref(), Some("#CF202F"));
 }
 
 #[test]

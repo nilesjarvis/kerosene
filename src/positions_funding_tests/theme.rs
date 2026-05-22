@@ -250,3 +250,42 @@ fn bybit_theme_uses_charcoal_panels_and_amber_actions() {
         [0xDC, 0x53, 0x51, 255]
     );
 }
+
+#[test]
+fn coinbase_light_theme_uses_clean_portfolio_surfaces_and_blue_actions() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0xFF, 0xFF, 0xFF),
+        text: Color::from_rgb8(0x0A, 0x0B, 0x0D),
+        primary: Color::from_rgb8(0x00, 0x52, 0xFF),
+        success: Color::from_rgb8(0x09, 0x85, 0x51),
+        warning: Color::from_rgb8(0xF7, 0x93, 0x1A),
+        danger: Color::from_rgb8(0xCF, 0x20, 0x2F),
+    };
+
+    assert!(TradingTerminal::palette_matches_coinbase_light_source(
+        source_palette
+    ));
+
+    let extended = TradingTerminal::coinbase_light_source_extended_palette();
+    assert_eq!(
+        extended.background.base.color.into_rgba8(),
+        [0xFF, 0xFF, 0xFF, 255]
+    );
+    assert_eq!(
+        extended.background.weaker.color.into_rgba8(),
+        [0xF5, 0xF8, 0xFF, 255]
+    );
+    assert_eq!(
+        extended.background.strong.color.into_rgba8(),
+        [0xE0, 0xE4, 0xEA, 255]
+    );
+    assert_eq!(
+        extended.primary.base.color.into_rgba8(),
+        [0x00, 0x52, 0xFF, 255]
+    );
+    assert_eq!(
+        extended.success.base.color.into_rgba8(),
+        [0x09, 0x85, 0x51, 255]
+    );
+    assert_eq!(extended.is_dark, false);
+}
