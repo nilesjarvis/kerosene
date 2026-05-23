@@ -29,15 +29,16 @@ check_free_space() {
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [deb|appimage|macos|all]
+Usage: $(basename "$0") [deb|rpm|appimage|macos|all]
 
 Build distributable packages for Kerosene.
 
 Commands:
   deb        Build a .deb package (requires cargo-deb)
+  rpm        Build a .rpm package (requires rpmbuild)
   appimage   Build an .AppImage (requires appimagetool)
   macos      Build a macOS .dmg (requires macOS built-in tooling)
-  all        Build .deb and .AppImage (default)
+  all        Build .deb, .rpm, and .AppImage (default)
 
 Options:
   -h, --help   Show this help message
@@ -88,6 +89,90 @@ build_deb() {
         info "Done: $DEB ($(du -h "$DEB" | cut -f1))"
     else
         error "Failed to find .deb output"
+        return 1
+    fi
+}
+
+# -----------------------------------------------------------------------
+# .rpm
+# -----------------------------------------------------------------------
+build_rpm() {
+    bold "=== Building .rpm package ==="
+
+    if ! command -v rpmbuild &>/dev/null; then
+        error "rpmbuild not found."
+        error "Install RPM build tools first, then rerun this command."
+        error "Fedora/RHEL: sudo dnf install rpm-build"
+        error "openSUSE:    sudo zypper install rpm-build"
+        error "Debian/Ubuntu: sudo apt install rpm"
+        return 1
+    fi
+
+    ensure_release_binary
+
+    RPM_TOPDIR="$ROOT/target/rpmbuild"
+    RPM_OUTDIR="$ROOT/target/rpm"
+    RPM_SPEC="$RPM_TOPDIR/SPECS/kerosene.spec"
+
+    info "Assembling RPM build tree..."
+    rm -rf "$RPM_TOPDIR/BUILD" "$RPM_TOPDIR/BUILDROOT" "$RPM_TOPDIR/RPMS" "$RPM_TOPDIR/SRPMS"
+    mkdir -p \
+        "$RPM_TOPDIR/BUILD" \
+        "$RPM_TOPDIR/BUILDROOT" \
+        "$RPM_TOPDIR/RPMS" \
+        "$RPM_TOPDIR/SOURCES" \
+        "$RPM_TOPDIR/SPECS" \
+        "$RPM_TOPDIR/SRPMS" \
+        "$RPM_OUTDIR"
+
+    cat > "$RPM_SPEC" <<EOF
+Name:           kerosene
+Version:        $VERSION
+Release:        1%{?dist}
+Summary:        Hyperliquid Trading Terminal
+License:        MIT
+
+%global debug_package %{nil}
+
+%description
+Kerosene is a desktop trading terminal for Hyperliquid.
+
+%prep
+
+%build
+
+%install
+rm -rf "%{buildroot}"
+install -Dm0755 "$ROOT/target/release/kerosene" "%{buildroot}/usr/bin/kerosene"
+install -Dm0644 "$ROOT/assets/kerosene.desktop" "%{buildroot}/usr/share/applications/kerosene.desktop"
+install -Dm0644 "$ROOT/assets/kerosene.png" "%{buildroot}/usr/share/icons/hicolor/256x256/apps/kerosene.png"
+install -Dm0644 "$ROOT/assets/kerosene.svg" "%{buildroot}/usr/share/icons/hicolor/scalable/apps/kerosene.svg"
+install -Dm0644 "$ROOT/LICENSE" "%{buildroot}/usr/share/licenses/kerosene/LICENSE"
+
+%files
+%license /usr/share/licenses/kerosene/LICENSE
+/usr/bin/kerosene
+/usr/share/applications/kerosene.desktop
+/usr/share/icons/hicolor/256x256/apps/kerosene.png
+/usr/share/icons/hicolor/scalable/apps/kerosene.svg
+EOF
+
+    info "Packaging .rpm..."
+    rpmbuild \
+        --define "_topdir $RPM_TOPDIR" \
+        --define "_build_id_links none" \
+        -bb "$RPM_SPEC"
+
+    RPM=$(find "$RPM_TOPDIR/RPMS" -type f -name "*.rpm" -printf "%T@ %p\n" \
+        | sort -nr \
+        | head -1 \
+        | cut -d' ' -f2-)
+    if [ -n "$RPM" ]; then
+        cp "$RPM" "$RPM_OUTDIR/"
+        RPM="$RPM_OUTDIR/$(basename "$RPM")"
+        info "Done: $RPM ($(du -h "$RPM" | cut -f1))"
+    else
+        error "Failed to find .rpm output"
         return 1
     fi
 }
@@ -160,9 +245,10 @@ APPRUN
 case "${1:-all}" in
     -h|--help) usage ;;
     deb)       build_deb ;;
+    rpm)       build_rpm ;;
     appimage)  build_appimage ;;
     macos)     "$ROOT/scripts/package-macos.sh" ;;
-    all)       build_deb; build_appimage ;;
+    all)       build_deb; build_rpm; build_appimage ;;
     *)
         error "Unknown command: $1"
         usage

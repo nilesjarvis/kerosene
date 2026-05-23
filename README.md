@@ -150,11 +150,12 @@ A timeout after the window starts is acceptable; a panic is not.
 A convenience script handles the packaging workflow:
 
 ```sh
-# Build .deb and .AppImage where toolchains are available
+# Build .deb, .rpm, and .AppImage where toolchains are available
 ./scripts/package.sh all
 
 # Or build individually
 ./scripts/package.sh deb
+./scripts/package.sh rpm
 ./scripts/package.sh appimage
 ```
 
@@ -170,6 +171,20 @@ sudo dpkg -i target/debian/kerosene_*_amd64.deb
 
 It installs the binary to `/usr/bin/kerosene`, plus desktop entry and icons.
 
+### .rpm: Fedora / RHEL / openSUSE
+
+The `.rpm` target requires RPM build tools, such as `rpm-build` on
+Fedora/RHEL/openSUSE or `rpm` on Debian/Ubuntu. The package is copied to
+`target/rpm/kerosene-<version>-1*.rpm`. Install with:
+
+```sh
+sudo dnf install ./target/rpm/kerosene-*.rpm
+# or
+sudo zypper install ./target/rpm/kerosene-*.rpm
+```
+
+It installs the binary to `/usr/bin/kerosene`, plus desktop entry and icons.
+
 ### .AppImage
 
 The `.AppImage` is written to `target/Kerosene-<version>-<arch>.AppImage`. Run directly:
@@ -181,7 +196,7 @@ chmod +x target/Kerosene-*-*.AppImage
 
 ### Manual packaging
 
-If you prefer not to use the script, inspect `scripts/package.sh` for the exact commands. It calls `cargo-deb` and `appimagetool` for Linux packaging.
+If you prefer not to use the script, inspect `scripts/package.sh` for the exact commands. It calls `cargo-deb`, `rpmbuild`, and `appimagetool` for Linux packaging.
 
 ## Package for macOS
 
