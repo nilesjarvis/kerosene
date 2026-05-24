@@ -4,14 +4,19 @@ use crate::message::Message;
 use crate::signing::OrderKind;
 
 use iced::widget::canvas as canvas_widget;
-use iced::widget::{Column, Space, button, canvas, checkbox, row, slider, stack, text, text_input};
-use iced::{Color, Event, Fill, Length, Point, Rectangle, Renderer, Theme, mouse};
+use iced::widget::{
+    Column, Space, button, canvas, checkbox, container, row, slider, stack, text, text_input,
+};
+use iced::{Color, Event, Fill, Length, Point, Rectangle, Renderer, Size, Theme, mouse};
 
 const SIZE_PRESET_MARKS: [f32; 4] = [25.0, 50.0, 75.0, 100.0];
-const SIZE_PRESET_DOT_SIZE: f32 = 7.0;
-const SIZE_PRESET_HIT_RADIUS: f32 = 8.0;
-const SIZE_SLIDER_HEIGHT: f32 = 16.0;
-const SIZE_SLIDER_HANDLE_RADIUS: f32 = 7.0;
+const SIZE_PRESET_MARK_WIDTH: f32 = 3.0;
+const SIZE_PRESET_MARK_HEIGHT: f32 = 16.0;
+const SIZE_PRESET_HIT_WIDTH: f32 = 16.0;
+const SIZE_AMOUNT_FIELD_HEIGHT: f32 = 29.0;
+const SIZE_SLIDER_HEIGHT: f32 = SIZE_AMOUNT_FIELD_HEIGHT;
+const SIZE_SLIDER_HANDLE_WIDTH: u16 = 7;
+const SIZE_PERCENT_LABEL_WIDTH: f32 = 38.0;
 
 impl TradingTerminal {
     pub(super) fn push_size_input_controls<'a>(
@@ -68,30 +73,37 @@ impl TradingTerminal {
             Message::OrderPercentageChanged,
         )
         .width(Fill)
+        .height(SIZE_SLIDER_HEIGHT)
         .step(1.0)
-        .style(|theme: &Theme, status| {
-            let palette = theme.palette();
-            let mut style = slider::default(theme, status);
-            style.handle.background = palette.primary.into();
-            style.handle.border_color = palette.primary;
-            style.rail.backgrounds.0 = palette.primary.into();
-            style.rail.backgrounds.1 = Color {
-                a: 0.2,
-                ..palette.text
-            }
-            .into();
-            style
-        });
-        let preset_markers = canvas(SizePresetDots {
+        .style(size_slider_style);
+        let preset_markers = canvas(SizePresetMarks {
             current_pct: self.order_percentage,
         })
         .width(Fill)
         .height(Length::Fixed(SIZE_SLIDER_HEIGHT));
-        let size_slider = stack![percent_slider, preset_markers].width(Fill);
+        let size_slider = stack![percent_slider, preset_markers]
+            .width(Fill)
+            .height(Length::Fixed(SIZE_SLIDER_HEIGHT));
 
-        let slider_label = text(format!("{:.0}%", self.order_percentage))
-            .size(10)
-            .color(theme.extended_palette().background.weak.text);
+        let slider_label = container(
+            text(format!("{:.0}%", self.order_percentage))
+                .size(12)
+                .color(theme.palette().text)
+                .center(),
+        )
+        .width(Length::Fixed(SIZE_PERCENT_LABEL_WIDTH))
+        .height(Length::Fixed(SIZE_SLIDER_HEIGHT))
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .style(|theme: &Theme| container::Style {
+            background: Some(theme.extended_palette().background.weak.color.into()),
+            border: iced::Border {
+                radius: 5.0.into(),
+                width: 1.0,
+                color: theme.extended_palette().background.strong.color,
+            },
+            ..Default::default()
+        });
         let slider_row = row![size_slider, Space::new().width(6.0), slider_label]
             .spacing(4)
             .align_y(iced::Alignment::Center);
@@ -137,6 +149,43 @@ impl TradingTerminal {
 
         (form, notional_val)
     }
+}
+
+fn size_slider_style(theme: &Theme, status: slider::Status) -> slider::Style {
+    let palette = theme.palette();
+    let extended = theme.extended_palette();
+    let mut active = palette.primary;
+    active.a = match status {
+        slider::Status::Active => 0.45,
+        slider::Status::Hovered => 0.55,
+        slider::Status::Dragged => 0.68,
+    };
+
+    let mut inactive = extended.background.weak.color;
+    inactive.a = 0.72;
+
+    let handle_color = match status {
+        slider::Status::Active => palette.primary,
+        slider::Status::Hovered => extended.primary.strong.color,
+        slider::Status::Dragged => extended.primary.weak.color,
+    };
+
+    let mut style = slider::default(theme, status);
+    style.rail.width = SIZE_SLIDER_HEIGHT;
+    style.rail.backgrounds = (active.into(), inactive.into());
+    style.rail.border = iced::Border {
+        radius: 5.0.into(),
+        width: 1.0,
+        color: extended.background.strong.color,
+    };
+    style.handle.shape = slider::HandleShape::Rectangle {
+        width: SIZE_SLIDER_HANDLE_WIDTH,
+        border_radius: 3.0.into(),
+    };
+    style.handle.background = handle_color.into();
+    style.handle.border_width = 0.0;
+    style.handle.border_color = handle_color;
+    style
 }
 
 fn parse_positive_finite(value: &str) -> Option<f64> {
@@ -220,11 +269,11 @@ fn denomination_button<'a>(label: &'static str) -> button::Button<'a, Message> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct SizePresetDots {
+struct SizePresetMarks {
     current_pct: f32,
 }
 
-impl canvas_widget::Program<Message> for SizePresetDots {
+impl canvas_widget::Program<Message> for SizePresetMarks {
     type State = ();
 
     fn update(
@@ -261,33 +310,31 @@ impl canvas_widget::Program<Message> for SizePresetDots {
         for pct in SIZE_PRESET_MARKS {
             let selected = (self.current_pct - pct).abs() < 0.5;
             let hovered = hovered_pct.is_some_and(|hovered_pct| hovered_pct == pct);
-            let center = size_preset_dot_center(bounds, pct);
+            let center = size_preset_mark_center(bounds, pct);
 
             if hovered {
+                let halo_origin = Point::new(center.x - 6.0, center.y - SIZE_PRESET_MARK_HEIGHT);
+                let halo_size = Size::new(12.0, SIZE_PRESET_MARK_HEIGHT * 2.0);
+                let halo =
+                    canvas_widget::Path::rounded_rectangle(halo_origin, halo_size, 4.0.into());
                 let mut halo_color = palette.primary;
-                halo_color.a = if selected { 0.18 } else { 0.12 };
-                frame.fill(
-                    &canvas_widget::Path::circle(center, SIZE_PRESET_HIT_RADIUS - 1.5),
-                    halo_color,
-                );
-
-                let ring = canvas_widget::Path::circle(center, SIZE_PRESET_HIT_RADIUS - 2.0);
-                let mut ring_color = palette.primary;
-                ring_color.a = if selected { 0.55 } else { 0.38 };
-                frame.stroke(
-                    &ring,
-                    canvas_widget::Stroke::default()
-                        .with_width(1.0)
-                        .with_color(ring_color),
-                );
+                halo_color.a = if selected { 0.16 } else { 0.1 };
+                frame.fill(&halo, halo_color);
             }
 
-            let dot_radius = if hovered {
-                SIZE_PRESET_DOT_SIZE / 2.0 + 1.0
+            let mark_height = if hovered {
+                SIZE_PRESET_MARK_HEIGHT + 3.0
             } else {
-                SIZE_PRESET_DOT_SIZE / 2.0
+                SIZE_PRESET_MARK_HEIGHT
             };
-            let dot = canvas_widget::Path::circle(center, dot_radius);
+            let mark = canvas_widget::Path::rounded_rectangle(
+                Point::new(
+                    center.x - SIZE_PRESET_MARK_WIDTH / 2.0,
+                    center.y - mark_height / 2.0,
+                ),
+                Size::new(SIZE_PRESET_MARK_WIDTH, mark_height),
+                1.5.into(),
+            );
             let mut color = if selected || hovered {
                 palette.primary
             } else {
@@ -300,7 +347,7 @@ impl canvas_widget::Program<Message> for SizePresetDots {
                 color.a = 0.82;
             }
 
-            frame.fill(&dot, color);
+            frame.fill(&mark, color);
         }
 
         vec![frame.into_geometry()]
@@ -324,17 +371,21 @@ impl canvas_widget::Program<Message> for SizePresetDots {
     }
 }
 
-fn size_preset_dot_center(bounds: Rectangle, pct: f32) -> Point {
-    let rail_width = (bounds.width - SIZE_SLIDER_HANDLE_RADIUS * 2.0).max(0.0);
+fn size_preset_mark_center(bounds: Rectangle, pct: f32) -> Point {
+    let handle_width = f32::from(SIZE_SLIDER_HANDLE_WIDTH);
+    let rail_width = (bounds.width - handle_width).max(0.0);
     Point::new(
-        SIZE_SLIDER_HANDLE_RADIUS + rail_width * pct / 100.0,
+        handle_width / 2.0 + rail_width * pct / 100.0,
         bounds.height / 2.0,
     )
 }
 
 fn size_preset_pct_at_position(bounds: Rectangle, position: Point) -> Option<f32> {
     SIZE_PRESET_MARKS.into_iter().find(|pct| {
-        position.distance(size_preset_dot_center(bounds, *pct)) <= SIZE_PRESET_HIT_RADIUS
+        let center = size_preset_mark_center(bounds, *pct);
+        (position.x - center.x).abs() <= SIZE_PRESET_HIT_WIDTH / 2.0
+            && position.y >= 0.0
+            && position.y <= bounds.height
     })
 }
 
