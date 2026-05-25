@@ -49,6 +49,7 @@ pub(in crate::chart_views::header) fn push_outcome_volume_column<'a>(
     theme: &Theme,
     chart_id: ChartId,
     volume: OutcomeVolume24h,
+    time_left: Option<String>,
     as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
 ) -> Row<'a, Message> {
@@ -60,6 +61,14 @@ pub(in crate::chart_views::header) fn push_outcome_volume_column<'a>(
             theme,
             Message::ToggleOutcomeVolumeNotional(chart_id),
         ));
+        if let Some(time_left) = time_left {
+            header_row = header_row.push(metric_column(
+                "Time Left".to_string(),
+                time_left,
+                theme.palette().text,
+                theme,
+            ));
+        }
     }
     header_row
 }

@@ -129,7 +129,13 @@ impl TradingTerminal {
                     Some(valid_key) if valid_key != self.active_symbol => {
                         tasks.push(self.switch_active_symbol_internal(valid_key));
                     }
-                    Some(_) => {}
+                    Some(valid_key) => {
+                        if let Some(symbol) =
+                            resolve_exchange_symbol(&self.exchange_symbols, &valid_key)
+                        {
+                            self.active_symbol_display = Self::exchange_symbol_display_name(symbol);
+                        }
+                    }
                     None => {
                         self.apply_active_symbol_selection(String::new(), String::new());
                         self.order_status =
@@ -141,31 +147,32 @@ impl TradingTerminal {
                     let key = inst.symbol.clone();
                     let symbol = resolve_exchange_symbol(&self.exchange_symbols, &key);
 
-                    if let Some(valid) = symbol
-                        && valid.key != inst.symbol
-                    {
-                        inst.symbol = valid.key.clone();
-                        inst.symbol_display = valid
-                            .display_name
-                            .clone()
-                            .unwrap_or_else(|| valid.ticker.clone());
-                        inst.chart.status = ChartStatus::Loading;
-                        inst.chart.candles.clear();
-                        inst.chart.candle_cache.clear();
-                        inst.asset_ctx = None;
-                        inst.candle_fetch_error = None;
-                        inst.last_price_flash = None;
-                        let request = Self::build_candle_fetch_request(
-                            *id,
-                            &valid.key,
-                            inst.interval,
-                            None,
-                            0,
-                        );
-                        inst.candle_fetch_request = Some(request.clone());
-                        let mut chart_tasks = vec![Self::fetch_candles_task(request)];
-                        chart_tasks.extend(Self::fetch_macro_candles_tasks(*id, &valid.key));
-                        tasks.push(Task::batch(chart_tasks));
+                    if let Some(valid) = symbol {
+                        let display = Self::exchange_symbol_display_name(valid);
+                        if inst.symbol_display != display {
+                            inst.symbol_display = display;
+                        }
+
+                        if valid.key != inst.symbol {
+                            inst.symbol = valid.key.clone();
+                            inst.chart.status = ChartStatus::Loading;
+                            inst.chart.candles.clear();
+                            inst.chart.candle_cache.clear();
+                            inst.asset_ctx = None;
+                            inst.candle_fetch_error = None;
+                            inst.last_price_flash = None;
+                            let request = Self::build_candle_fetch_request(
+                                *id,
+                                &valid.key,
+                                inst.interval,
+                                None,
+                                0,
+                            );
+                            inst.candle_fetch_request = Some(request.clone());
+                            let mut chart_tasks = vec![Self::fetch_candles_task(request)];
+                            chart_tasks.extend(Self::fetch_macro_candles_tasks(*id, &valid.key));
+                            tasks.push(Task::batch(chart_tasks));
+                        }
                     }
                 }
 
@@ -200,5 +207,76 @@ impl TradingTerminal {
         }
 
         self.switch_active_symbol_internal(key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
+
+    fn outcome_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "outcome".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 0,
+            max_leverage: 1,
+            only_isolated: true,
+            market_type: MarketType::Outcome,
+            outcome: Some(OutcomeSymbolInfo {
+                outcome_id: 95,
+                question_id: None,
+                question_name: Some("Will BTC close green?".to_string()),
+                question_description: None,
+                question_class: None,
+                question_underlying: None,
+                question_expiry: None,
+                question_price_thresholds: Vec::new(),
+                question_period: None,
+                question_named_outcomes: Vec::new(),
+                question_settled_named_outcomes: Vec::new(),
+                question_fallback_outcome: None,
+                bucket_index: None,
+                is_question_fallback: false,
+                side_index: 0,
+                side_name: "Yes".to_string(),
+                outcome_name: "Recurring".to_string(),
+                description: "Will BTC close green?".to_string(),
+                class: None,
+                underlying: None,
+                expiry: None,
+                target_price: None,
+                period: None,
+                quote_symbol: "USDH".to_string(),
+                quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+                encoding: 950,
+            }),
+        }
+    }
+
+    #[test]
+    fn symbols_loaded_refreshes_existing_outcome_chart_display_without_key_change() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.active_symbol = "#950".to_string();
+        terminal.active_symbol_display = "#950".to_string();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "#950".to_string(), Timeframe::H1));
+
+        let _task = terminal.apply_symbols_loaded(Ok(vec![outcome_symbol("#950")]));
+
+        let expected_display = "YES: Will BTC close green?";
+        assert_eq!(terminal.active_symbol, "#950");
+        assert_eq!(terminal.active_symbol_display, expected_display);
+        let chart = terminal.charts.get(&7).expect("chart");
+        assert_eq!(chart.symbol, "#950");
+        assert_eq!(chart.symbol_display, expected_display);
     }
 }

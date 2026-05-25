@@ -90,11 +90,18 @@ impl TradingTerminal {
         if self.is_outcome_coin(&instance.symbol)
             && let Some(volume) = self.outcome_volumes_24h.get(&instance.symbol)
         {
+            let outcome_time_left = self
+                .exchange_symbols
+                .iter()
+                .find(|symbol| symbol.key == instance.symbol)
+                .and_then(|symbol| symbol.outcome.as_ref())
+                .and_then(|info| info.time_left_label(Self::now_ms()));
             header_row = push_outcome_volume_column(
                 header_row,
                 &theme,
                 chart_id,
                 *volume,
+                outcome_time_left,
                 instance.outcome_volume_as_notional,
                 metric_visibility,
             );
