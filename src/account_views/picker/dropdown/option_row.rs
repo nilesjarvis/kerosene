@@ -5,10 +5,13 @@ use crate::helpers;
 use crate::message::Message;
 
 use iced::widget::{Row, button, column, container, row, text, text_input};
-use iced::{Color, Element, Fill, Length, Theme};
+use iced::{Color, Element, Fill, Theme};
+
+mod components;
+
+use components::{RENAME_ICON, account_action_button, account_option_row_padding};
 
 const ACCOUNT_OPTION_TEXT_LEFT_PADDING: f32 = 6.0;
-const RENAME_ICON: &str = "✎";
 
 impl TradingTerminal {
     pub(super) fn view_account_picker_option_row(
@@ -165,47 +168,4 @@ impl TradingTerminal {
             .find(|hotkey| hotkey.action == action)
             .map(Self::hotkey_display)
     }
-}
-
-fn account_option_row_padding() -> iced::Padding {
-    iced::Padding {
-        top: 9.0,
-        right: 10.0,
-        bottom: 9.0,
-        left: 14.0,
-    }
-}
-
-fn account_action_button(
-    label: &'static str,
-    message: Message,
-    color: Color,
-    active: bool,
-) -> Element<'static, Message> {
-    button(text(label).size(10).center())
-        .on_press(message)
-        .padding([7, 8])
-        .width(if label == RENAME_ICON {
-            Length::Fixed(34.0)
-        } else {
-            Length::Fixed(64.0)
-        })
-        .style(move |theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ if active => theme.extended_palette().background.weak.color,
-                _ => Color::TRANSPARENT,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: color,
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: if active { 1.0 } else { 0.0 },
-                    color: if active { color } else { Color::TRANSPARENT },
-                },
-                ..Default::default()
-            }
-        })
-        .into()
 }

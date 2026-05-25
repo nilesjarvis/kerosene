@@ -1,5 +1,7 @@
 #[cfg(test)]
 use crate::api::OrderBook;
+#[cfg(test)]
+use crate::helpers::positive_finite_value;
 use crate::market_state::OrderBookSymbolMode;
 #[cfg(test)]
 use crate::signing::ChaseOrder;
@@ -31,7 +33,7 @@ pub(super) fn best_chase_price(book: &OrderBook, is_buy: bool) -> Option<f64> {
     } else {
         book.asks.first().map(|level| level.px)
     };
-    price.filter(|px| px.is_finite() && *px > 0.0)
+    price.and_then(positive_finite_value)
 }
 
 #[cfg(test)]

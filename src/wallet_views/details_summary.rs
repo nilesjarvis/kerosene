@@ -5,10 +5,12 @@ use self::cards::{summary_metric_card, summary_pm_status_line};
 
 use crate::account::WalletDetailsData;
 use crate::app_state::TradingTerminal;
+use crate::helpers::optional_value_color;
 use crate::message::Message;
 use crate::wallet_views::numbers::{
     format_wallet_display_signed_usd, format_wallet_display_usd, invalid_wallet_data,
 };
+use crate::wallet_views::style::wallet_signed_value_color;
 
 use iced::widget::{column, row};
 use iced::{Color, Element, Theme};
@@ -47,19 +49,27 @@ impl TradingTerminal {
                 summary_metric_card(
                     "Equity",
                     format_wallet_display_usd(&denomination, metrics.account_value, 2),
-                    wallet_metric_color(metrics.account_value, theme.palette().text, theme),
+                    optional_value_color(
+                        metrics.account_value,
+                        theme.palette().text,
+                        theme.palette().warning
+                    ),
                     theme
                 ),
                 summary_metric_card(
                     "Available",
                     format_wallet_display_usd(&denomination, metrics.withdrawable, 2),
-                    wallet_metric_color(metrics.withdrawable, theme.palette().text, theme),
+                    optional_value_color(
+                        metrics.withdrawable,
+                        theme.palette().text,
+                        theme.palette().warning
+                    ),
                     theme
                 ),
                 summary_metric_card(
                     "uPnL",
                     format_wallet_display_signed_usd(&denomination, metrics.unrealized_pnl),
-                    wallet_signed_metric_color(metrics.unrealized_pnl, theme),
+                    wallet_signed_value_color(metrics.unrealized_pnl, theme),
                     theme
                 ),
                 summary_metric_card(
@@ -77,7 +87,11 @@ impl TradingTerminal {
                 summary_metric_card(
                     "Notional",
                     format_wallet_display_usd(&denomination, metrics.notional, 2),
-                    wallet_metric_color(metrics.notional, theme.palette().text, theme),
+                    optional_value_color(
+                        metrics.notional,
+                        theme.palette().text,
+                        theme.palette().warning
+                    ),
                     theme
                 ),
                 summary_metric_card(
@@ -119,23 +133,6 @@ impl TradingTerminal {
         ]
         .spacing(8)
         .into()
-    }
-}
-
-fn wallet_metric_color(value: Option<f64>, default_color: Color, theme: &Theme) -> Color {
-    if value.is_some() {
-        default_color
-    } else {
-        theme.palette().warning
-    }
-}
-
-fn wallet_signed_metric_color(value: Option<f64>, theme: &Theme) -> Color {
-    match value {
-        Some(value) if value > 0.0 => theme.palette().success,
-        Some(value) if value < 0.0 => theme.palette().danger,
-        Some(_) => theme.extended_palette().background.weak.text,
-        None => theme.palette().warning,
     }
 }
 

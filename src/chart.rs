@@ -16,6 +16,7 @@ mod overlays;
 mod price_badges;
 mod price_range;
 mod program;
+mod segmented_curve;
 mod state;
 mod tooltips;
 mod viewport;

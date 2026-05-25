@@ -118,13 +118,4 @@ fn funding_total<'a>(amounts: impl IntoIterator<Item = &'a str>) -> Option<f64> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn funding_total_marks_any_invalid_amount_unknown() {
-        assert_eq!(funding_total(["1", "-0.25"]), Some(0.75));
-        assert_eq!(funding_total(["1", "bad"]), None);
-        assert_eq!(funding_total(["1", "NaN"]), None);
-    }
-}
+mod tests;

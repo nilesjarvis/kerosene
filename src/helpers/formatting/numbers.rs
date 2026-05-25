@@ -1,3 +1,5 @@
+use serde_json::Value;
+
 /// Format a USD string from the API.
 pub fn format_usd(s: &str) -> String {
     match s.parse::<f64>() {
@@ -43,6 +45,19 @@ pub fn format_decimal_with_commas(value: f64, decimals: usize) -> String {
     }
 }
 
+pub fn normalize_two_decimal_display_value(value: f64) -> f64 {
+    if value.abs() < 0.005 { 0.0 } else { value }
+}
+
+pub fn format_signed_percent_value(value: f64) -> String {
+    let display_value = normalize_two_decimal_display_value(value);
+    if display_value > 0.0 {
+        format!("+{display_value:.2}%")
+    } else {
+        format!("{display_value:.2}%")
+    }
+}
+
 pub fn parse_number(input: &str) -> Option<f64> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -59,7 +74,43 @@ pub fn parse_number(input: &str) -> Option<f64> {
         trimmed.parse::<f64>().ok()?
     };
 
-    parsed.is_finite().then_some(parsed)
+    finite_value(parsed)
+}
+
+pub fn parse_positive_number(input: &str) -> Option<f64> {
+    parse_number(input).filter(|value| *value > 0.0)
+}
+
+pub fn finite_value(value: f64) -> Option<f64> {
+    value.is_finite().then_some(value)
+}
+
+pub fn positive_finite_value(value: f64) -> Option<f64> {
+    finite_value(value).filter(|value| *value > 0.0)
+}
+
+pub fn parse_finite_number(input: &str) -> Option<f64> {
+    finite_value(input.trim().parse::<f64>().ok()?)
+}
+
+pub fn parse_finite_json_number(value: &Value) -> Option<f64> {
+    if let Some(text) = value.as_str() {
+        parse_finite_number(text)
+    } else {
+        value.as_f64().and_then(finite_value)
+    }
+}
+
+pub fn parse_positive_finite_number(input: &str) -> Option<f64> {
+    parse_finite_number(input).filter(|value| *value > 0.0)
+}
+
+pub fn invalid_data_placeholder() -> String {
+    "Invalid data".to_string()
+}
+
+pub fn not_available_placeholder() -> String {
+    "n/a".to_string()
 }
 
 fn has_valid_thousands_grouping(input: &str) -> bool {
@@ -124,52 +175,4 @@ pub fn format_price(price: f64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn price_formatter_groups_large_prices() {
-        assert_eq!(format_price(1_234.56), "1,234.6");
-        assert_eq!(format_price(100_000.0), "100,000.0");
-        assert_eq!(format_price(-12_345.67), "-12,345.7");
-    }
-
-    #[test]
-    fn price_formatter_keeps_existing_precision_bands_below_thousand() {
-        assert_eq!(format_price(999.99), "999.99");
-        assert_eq!(format_price(0.123456), "0.1235");
-    }
-
-    #[test]
-    fn grouped_decimal_formatter_keeps_requested_precision() {
-        assert_eq!(format_decimal_with_commas(12_345.6789, 3), "12,345.679");
-        assert_eq!(format_decimal_with_commas(12_345.0, 0), "12,345");
-    }
-
-    #[test]
-    fn number_parser_accepts_grouped_values() {
-        assert_eq!(parse_number("12,345.67"), Some(12_345.67));
-        assert_eq!(parse_number("1,234,567"), Some(1_234_567.0));
-        assert_eq!(parse_number("-1,234.50"), Some(-1_234.5));
-        assert_eq!(parse_number("+1,234.50"), Some(1_234.5));
-        assert_eq!(parse_number(""), None);
-    }
-
-    #[test]
-    fn number_parser_rejects_malformed_grouped_values() {
-        assert_eq!(parse_number("1,2"), None);
-        assert_eq!(parse_number("1,,000"), None);
-        assert_eq!(parse_number("12,34.56"), None);
-        assert_eq!(parse_number("1234,567"), None);
-        assert_eq!(parse_number(",123"), None);
-        assert_eq!(parse_number("1,234.5,6"), None);
-        assert_eq!(parse_number("1,234e2"), None);
-    }
-
-    #[test]
-    fn number_parser_rejects_nonfinite_values() {
-        assert_eq!(parse_number("NaN"), None);
-        assert_eq!(parse_number("inf"), None);
-        assert_eq!(parse_number("1e309"), None);
-    }
-}
+mod tests;

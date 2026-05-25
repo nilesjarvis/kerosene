@@ -5,7 +5,7 @@ use crate::message::Message;
 use iced::widget::{Row, Space, button, column, row, text};
 use iced::{Alignment, Color, Element, Theme};
 
-use super::{chart_header_changed_text, chart_header_price_flash_color};
+use super::feedback::{chart_header_changed_text, chart_header_price_flash_color};
 
 impl TradingTerminal {
     pub(super) fn view_chart_placeholder_header<'a>(

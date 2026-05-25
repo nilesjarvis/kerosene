@@ -1,13 +1,14 @@
 mod description;
 mod encoding;
+mod questions;
 
 use super::model::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::api::USDH_TOKEN_INDEX;
 
 use description::parse_outcome_description;
 use encoding::{outcome_asset_index, outcome_coin_key, outcome_encoding};
+use questions::questions_by_outcome;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct OutcomeMetaResponse {
@@ -50,21 +51,7 @@ pub(super) fn append_outcome_symbols(
     symbols: &mut Vec<ExchangeSymbol>,
     outcome_meta: OutcomeMetaResponse,
 ) {
-    let mut questions_by_outcome: HashMap<u32, OutcomeQuestionInfo> = HashMap::new();
-    for question in &outcome_meta.questions {
-        let info = OutcomeQuestionInfo::from_entry(question);
-        for outcome_id in question
-            .named_outcomes
-            .iter()
-            .chain(question.settled_named_outcomes.iter())
-            .copied()
-            .chain(question.fallback_outcome)
-        {
-            questions_by_outcome
-                .entry(outcome_id)
-                .or_insert_with(|| info.clone());
-        }
-    }
+    let questions_by_outcome = questions_by_outcome(&outcome_meta.questions);
 
     for outcome in outcome_meta.outcomes {
         let description_parts = parse_outcome_description(&outcome.description);
@@ -156,184 +143,5 @@ pub(super) fn append_outcome_symbols(
     }
 }
 
-#[derive(Debug, Clone)]
-struct OutcomeQuestionInfo {
-    question_id: u32,
-    name: String,
-    description: String,
-    class: Option<String>,
-    underlying: Option<String>,
-    expiry: Option<String>,
-    price_thresholds: Vec<String>,
-    period: Option<String>,
-    named_outcomes: Vec<u32>,
-    settled_named_outcomes: Vec<u32>,
-    fallback_outcome: Option<u32>,
-}
-
-impl OutcomeQuestionInfo {
-    fn from_entry(entry: &OutcomeQuestionEntry) -> Self {
-        let description_parts = parse_outcome_description(&entry.description);
-        let price_thresholds = description_parts
-            .get("priceThresholds")
-            .map(|value| {
-                value
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        Self {
-            question_id: entry.question,
-            name: entry.name.clone(),
-            description: entry.description.clone(),
-            class: description_parts.get("class").cloned(),
-            underlying: description_parts.get("underlying").cloned(),
-            expiry: description_parts.get("expiry").cloned(),
-            price_thresholds,
-            period: description_parts.get("period").cloned(),
-            named_outcomes: entry.named_outcomes.clone(),
-            settled_named_outcomes: entry.settled_named_outcomes.clone(),
-            fallback_outcome: entry.fallback_outcome,
-        }
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn outcome_meta_from_json(value: serde_json::Value) -> OutcomeMetaResponse {
-        serde_json::from_value(value).expect("valid outcome meta fixture")
-    }
-
-    #[test]
-    fn appends_binary_outcome_symbol_metadata() {
-        let mut symbols = Vec::new();
-        append_outcome_symbols(
-            &mut symbols,
-            outcome_meta_from_json(serde_json::json!({
-                "outcomes": [{
-                    "outcome": 65,
-                    "name": "Recurring",
-                    "description": "class:priceBinary|underlying:BTC|expiry:20260520-0600|targetPrice:76886|period:1d",
-                    "sideSpecs": [{"name": "Yes"}, {"name": "No"}]
-                }],
-                "questions": []
-            })),
-        );
-
-        let yes = symbols
-            .iter()
-            .find(|symbol| symbol.key == "#650")
-            .expect("yes side");
-        let info = yes.outcome.as_ref().expect("outcome metadata");
-
-        assert_eq!(yes.asset_index, 100_000_650);
-        assert_eq!(info.encoding, 650);
-        assert_eq!(info.side_index, 0);
-        assert_eq!(info.class.as_deref(), Some("priceBinary"));
-        assert_eq!(info.underlying.as_deref(), Some("BTC"));
-        assert_eq!(info.target_price.as_deref(), Some("76886"));
-        assert!(info.question_id.is_none());
-        assert_eq!(
-            yes.display_name.as_deref(),
-            Some("YES: BTC is above 76,886 at 2026-05-20 06:00 UTC")
-        );
-    }
-
-    #[test]
-    fn skips_non_binary_outcome_sides() {
-        let mut symbols = Vec::new();
-        append_outcome_symbols(
-            &mut symbols,
-            outcome_meta_from_json(serde_json::json!({
-                "outcomes": [{
-                    "outcome": 65,
-                    "name": "Recurring",
-                    "description": "class:priceBinary|underlying:BTC|expiry:20260520-0600|targetPrice:76886|period:1d",
-                    "sideSpecs": [{"name": "Yes"}, {"name": "No"}, {"name": "Maybe"}]
-                }],
-                "questions": []
-            })),
-        );
-
-        assert!(symbols.iter().any(|symbol| symbol.key == "#650"));
-        assert!(symbols.iter().any(|symbol| symbol.key == "#651"));
-        assert!(!symbols.iter().any(|symbol| symbol.key == "#652"));
-    }
-
-    #[test]
-    fn appends_question_bucket_and_fallback_metadata() {
-        let mut symbols = Vec::new();
-        append_outcome_symbols(
-            &mut symbols,
-            outcome_meta_from_json(serde_json::json!({
-                "outcomes": [
-                    {
-                        "outcome": 66,
-                        "name": "Recurring Fallback",
-                        "description": "other",
-                        "sideSpecs": [{"name": "Yes"}, {"name": "No"}]
-                    },
-                    {
-                        "outcome": 67,
-                        "name": "Recurring Named Outcome",
-                        "description": "index:0",
-                        "sideSpecs": [{"name": "Yes"}, {"name": "No"}]
-                    }
-                ],
-                "questions": [{
-                    "question": 12,
-                    "name": "Recurring",
-                    "description": "class:priceBucket|underlying:BTC|expiry:20260520-0600|priceThresholds:75348,78423|period:1d",
-                    "fallbackOutcome": 66,
-                    "namedOutcomes": [67, 68, 69],
-                    "settledNamedOutcomes": []
-                }]
-            })),
-        );
-
-        let fallback = symbols
-            .iter()
-            .find(|symbol| symbol.key == "#660")
-            .and_then(|symbol| symbol.outcome.as_ref())
-            .expect("fallback side");
-        let bucket = symbols
-            .iter()
-            .find(|symbol| symbol.key == "#670")
-            .and_then(|symbol| symbol.outcome.as_ref())
-            .expect("bucket side");
-
-        assert_eq!(fallback.question_id, Some(12));
-        assert!(fallback.is_question_fallback);
-        assert!(
-            !symbols
-                .iter()
-                .find(|symbol| symbol.key == "#660")
-                .expect("fallback symbol")
-                .is_user_selectable_market()
-        );
-        assert_eq!(bucket.bucket_index, Some(0));
-        assert!(!bucket.is_question_fallback);
-        assert_eq!(
-            bucket.question_price_thresholds,
-            vec!["75348".to_string(), "78423".to_string()]
-        );
-        assert_eq!(bucket.question_named_outcomes, vec![67, 68, 69]);
-        assert_eq!(bucket.question_fallback_outcome, Some(66));
-
-        let bucket_symbol = symbols
-            .iter()
-            .find(|symbol| symbol.key == "#670")
-            .expect("bucket symbol");
-        assert!(bucket_symbol.is_user_selectable_market());
-        assert_eq!(
-            bucket_symbol.display_name.as_deref(),
-            Some("YES: BTC is below 75,348 at 2026-05-20 06:00 UTC")
-        );
-    }
-}
+mod tests;

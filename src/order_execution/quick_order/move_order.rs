@@ -1,5 +1,6 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
+use crate::helpers::{finite_value, positive_finite_value};
 use crate::message::Message;
 use crate::order_execution::PendingMoveOrderContext;
 use crate::signing::{float_to_wire, modify_order, round_price};
@@ -15,17 +16,11 @@ fn moved_order_price_wire(
     sz_decimals: u32,
     is_spot: bool,
 ) -> Option<(f64, String)> {
-    if !new_price.is_finite() {
-        return None;
-    }
-    if !original_price.is_finite() || original_price <= 0.0 {
-        return None;
-    }
+    let new_price = finite_value(new_price)?;
+    let original_price = positive_finite_value(original_price)?;
 
     let rounded = round_price(new_price, sz_decimals, is_spot);
-    if !rounded.is_finite() || rounded <= 0.0 {
-        return None;
-    }
+    let rounded = positive_finite_value(rounded)?;
 
     let rounded_original = round_price(original_price, sz_decimals, is_spot);
     if (rounded - rounded_original).abs() < 1e-12 {
@@ -37,7 +32,9 @@ fn moved_order_price_wire(
 
 fn moved_order_size_wire(size: &str) -> Option<String> {
     let size = size.trim().parse::<f64>().ok()?;
-    (size.is_finite() && size > 1e-12).then(|| float_to_wire(size))
+    finite_value(size)
+        .filter(|size| *size > 1e-12)
+        .map(float_to_wire)
 }
 
 fn moved_order_is_buy(side: &str) -> Option<bool> {
@@ -55,9 +52,10 @@ fn moved_order_reduce_only(
     if TradingTerminal::market_type_is_spot_like(market_type) {
         return Ok(false);
     }
-    reduce_only.ok_or(
-        "Move failed: open order reduce-only metadata is unavailable; refresh account data before moving this order",
-    )
+    reduce_only.ok_or(concat!(
+        "Move failed: open order reduce-only metadata is unavailable; ",
+        "refresh account data before moving this order"
+    ))
 }
 
 impl TradingTerminal {
@@ -134,7 +132,7 @@ impl TradingTerminal {
         let Some((rounded_price, new_price_str)) =
             moved_order_price_wire(new_price, original_px, sz_decimals, is_spot)
         else {
-            if !original_px.is_finite() || original_px <= 0.0 {
+            if positive_finite_value(original_px).is_none() {
                 self.order_status =
                     Some(("Move failed: open order has invalid price".into(), true));
             }

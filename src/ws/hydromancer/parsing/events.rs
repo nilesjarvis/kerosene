@@ -1,5 +1,6 @@
 use super::super::{LiquidationEvent, TrackedTradeEvent};
 use super::fills::{fill_address_and_details, hydromancer_str_f64, hydromancer_u64};
+use crate::helpers::parse_finite_number;
 use serde_json::Value;
 
 pub(in crate::ws::hydromancer) fn parse_liquidation_event(
@@ -56,8 +57,7 @@ pub(in crate::ws::hydromancer) fn parse_tracked_trade_event(
         start_position: details
             .get("startPosition")
             .and_then(|v| v.as_str())
-            .and_then(|s| s.trim().parse::<f64>().ok())
-            .filter(|value| value.is_finite()),
+            .and_then(parse_finite_number),
         closed_pnl: hydromancer_str_f64(details, "closedPnl")?,
         fee: hydromancer_str_f64(details, "fee")?,
         fee_token: details

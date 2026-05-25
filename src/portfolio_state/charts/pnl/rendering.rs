@@ -1,4 +1,5 @@
 use crate::denomination::DisplayDenominationContext;
+use crate::helpers::format_signed_percent_value;
 
 use super::{
     PnlValueDisplayMode,
@@ -138,13 +139,4 @@ pub(super) fn draw_portfolio_pnl_chart(
     }
 
     vec![frame.into_geometry()]
-}
-
-fn format_signed_percent_value(value: f64) -> String {
-    let display_value = if value.abs() < 0.005 { 0.0 } else { value };
-    if display_value > 0.0 {
-        format!("+{display_value:.2}%")
-    } else {
-        format!("{display_value:.2}%")
-    }
 }

@@ -1,4 +1,4 @@
-use super::*;
+use super::requests::{positioning_info_change_request_key, positioning_info_request_key};
 
 #[test]
 fn request_key_scopes_positioning_fetch_parameters() {

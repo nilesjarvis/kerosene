@@ -1,0 +1,131 @@
+use super::IndicatorOption;
+use crate::config::MacroIndicatorsConfig;
+
+// ---------------------------------------------------------------------------
+// Indicator Menu Options
+// ---------------------------------------------------------------------------
+
+pub(super) fn timeframe_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 4] {
+    [
+        IndicatorOption {
+            label: "50 SMA",
+            key: "tf_sma_50",
+            checked: indicators.tf_sma_50,
+        },
+        IndicatorOption {
+            label: "50 EMA",
+            key: "tf_ema_50",
+            checked: indicators.tf_ema_50,
+        },
+        IndicatorOption {
+            label: "200 SMA",
+            key: "tf_sma_200",
+            checked: indicators.tf_sma_200,
+        },
+        IndicatorOption {
+            label: "200 EMA",
+            key: "tf_ema_200",
+            checked: indicators.tf_ema_200,
+        },
+    ]
+}
+
+pub(super) fn daily_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 4] {
+    [
+        IndicatorOption {
+            label: "50 SMA",
+            key: "sma_50d",
+            checked: indicators.sma_50d,
+        },
+        IndicatorOption {
+            label: "50 EMA",
+            key: "ema_50d",
+            checked: indicators.ema_50d,
+        },
+        IndicatorOption {
+            label: "200 SMA",
+            key: "sma_200d",
+            checked: indicators.sma_200d,
+        },
+        IndicatorOption {
+            label: "200 EMA",
+            key: "ema_200d",
+            checked: indicators.ema_200d,
+        },
+    ]
+}
+
+pub(super) fn weekly_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 4] {
+    [
+        IndicatorOption {
+            label: "20 SMA",
+            key: "sma_20w",
+            checked: indicators.sma_20w,
+        },
+        IndicatorOption {
+            label: "20 EMA",
+            key: "ema_20w",
+            checked: indicators.ema_20w,
+        },
+        IndicatorOption {
+            label: "50 SMA",
+            key: "sma_50w",
+            checked: indicators.sma_50w,
+        },
+        IndicatorOption {
+            label: "50 EMA",
+            key: "ema_50w",
+            checked: indicators.ema_50w,
+        },
+    ]
+}
+
+pub(super) fn monthly_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 2] {
+    [
+        IndicatorOption {
+            label: "12 SMA",
+            key: "sma_12m",
+            checked: indicators.sma_12m,
+        },
+        IndicatorOption {
+            label: "12 EMA",
+            key: "ema_12m",
+            checked: indicators.ema_12m,
+        },
+    ]
+}
+
+pub(super) fn footer_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 2] {
+    [
+        IndicatorOption {
+            label: "Funding",
+            key: "show_funding_rate",
+            checked: indicators.show_funding_rate,
+        },
+        IndicatorOption {
+            label: "Labels",
+            key: "show_labels",
+            checked: indicators.show_labels,
+        },
+    ]
+}
+
+pub(super) fn volume_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
+    [IndicatorOption {
+        label: "Profile",
+        key: "show_volume_profile",
+        checked: indicators.show_volume_profile,
+    }]
+}
+
+#[cfg(test)]
+pub(super) fn all_indicator_options(indicators: &MacroIndicatorsConfig) -> Vec<IndicatorOption> {
+    let mut options = Vec::new();
+    options.extend(timeframe_options(indicators));
+    options.extend(daily_options(indicators));
+    options.extend(weekly_options(indicators));
+    options.extend(monthly_options(indicators));
+    options.extend(footer_options(indicators));
+    options.extend(volume_options(indicators));
+    options
+}

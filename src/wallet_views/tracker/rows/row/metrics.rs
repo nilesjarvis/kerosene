@@ -1,5 +1,6 @@
 use crate::denomination::DisplayDenominationContext;
 use crate::wallet_state::WalletTrackerRow;
+use crate::wallet_views::numbers::invalid_wallet_data;
 
 use iced::widget::{Text, text};
 use iced::{Color, Theme};
@@ -38,7 +39,7 @@ pub(super) fn wallet_row_metrics(
         let trade_count = snapshot
             .open_trade_count
             .map(|count| format!("{count}p"))
-            .unwrap_or_else(invalid_tracker_data);
+            .unwrap_or_else(invalid_wallet_data);
         let has_invalid_data = snapshot.equity.is_none()
             || snapshot.withdrawable.is_none()
             || snapshot.unrealized_pnl.is_none()
@@ -54,12 +55,12 @@ pub(super) fn wallet_row_metrics(
             margin: snapshot
                 .margin_used_pct
                 .map(|margin| format!("{margin:.1}%"))
-                .unwrap_or_else(invalid_tracker_data),
+                .unwrap_or_else(invalid_wallet_data),
             risk: format!(
                 "{trade_count} / {order_count} | {}",
                 exposure
                     .map(|exposure| denomination.format_value(exposure, 0))
-                    .unwrap_or_else(invalid_tracker_data)
+                    .unwrap_or_else(invalid_wallet_data)
             ),
             data_color: if has_invalid_data {
                 theme.palette().warning
@@ -103,60 +104,14 @@ pub(super) fn money_text(value: String, color: Color) -> Text<'static> {
 fn money_display(value: Option<f64>, denomination: &DisplayDenominationContext) -> String {
     value
         .map(|value| denomination.format_value(value, 2))
-        .unwrap_or_else(invalid_tracker_data)
+        .unwrap_or_else(invalid_wallet_data)
 }
 
 fn signed_money_display(value: Option<f64>, denomination: &DisplayDenominationContext) -> String {
     value
         .map(|value| denomination.format_signed_value(value, 2))
-        .unwrap_or_else(invalid_tracker_data)
-}
-
-fn invalid_tracker_data() -> String {
-    "Invalid data".to_string()
+        .unwrap_or_else(invalid_wallet_data)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::account::WalletTrackerSnapshot;
-
-    #[test]
-    fn wallet_row_metrics_show_placeholders_without_snapshot() {
-        let row = WalletTrackerRow::default();
-        let denomination = DisplayDenominationContext::default();
-        let metrics = wallet_row_metrics(&row, &denomination, &Theme::Dark);
-
-        assert_eq!(metrics.equity, "-");
-        assert_eq!(metrics.withdrawable, "-");
-        assert_eq!(metrics.upnl, "-");
-        assert_eq!(metrics.margin, "-");
-        assert_eq!(metrics.risk, "-");
-    }
-
-    #[test]
-    fn wallet_row_metrics_mark_invalid_snapshot_values() {
-        let row = WalletTrackerRow {
-            snapshot: Some(WalletTrackerSnapshot {
-                equity: None,
-                withdrawable: Some(10.0),
-                unrealized_pnl: None,
-                margin_used_pct: None,
-                open_trade_count: None,
-                open_order_count: 0,
-                long_exposure: None,
-                short_exposure: Some(0.0),
-            }),
-            ..WalletTrackerRow::default()
-        };
-
-        let denomination = DisplayDenominationContext::default();
-        let metrics = wallet_row_metrics(&row, &denomination, &Theme::Dark);
-
-        assert_eq!(metrics.equity, "Invalid data");
-        assert_eq!(metrics.withdrawable, "$10.00");
-        assert_eq!(metrics.upnl, "Invalid data");
-        assert_eq!(metrics.margin, "Invalid data");
-        assert_eq!(metrics.risk, "Invalid data / -o | Invalid data");
-    }
-}
+mod tests;

@@ -1,8 +1,6 @@
 use super::chase_terminal_cancel_error;
 use crate::app_state::TradingTerminal;
-use crate::signing::{
-    ChaseLifecycle, ChaseOrder, ChaseStopPhase, MAX_CHASE_CANCEL_RETRIES,
-};
+use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseStopPhase, MAX_CHASE_CANCEL_RETRIES};
 use std::time::Instant;
 
 #[test]
@@ -63,11 +61,7 @@ fn max_cancel_retry_keeps_chase_for_manual_check() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.chase_orders.insert(1, chase());
 
-    let _task = terminal.handle_chase_cancel_result(
-        1,
-        42,
-        Err("network timeout".to_string()),
-    );
+    let _task = terminal.handle_chase_cancel_result(1, 42, Err("network timeout".to_string()));
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert_eq!(chase.cancel_retries, MAX_CHASE_CANCEL_RETRIES);

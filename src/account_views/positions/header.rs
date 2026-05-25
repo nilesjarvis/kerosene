@@ -2,6 +2,7 @@ use crate::account;
 use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::parse_finite_number;
 use crate::message::Message;
 
 use super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
@@ -19,13 +20,7 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let has_positions = can_close
             && positions.iter().any(|ap| {
-                ap.position
-                    .szi
-                    .trim()
-                    .parse::<f64>()
-                    .ok()
-                    .filter(|szi| szi.is_finite())
-                    .is_some_and(|szi| szi.abs() > 1e-12)
+                position_size_is_nonzero(&ap.position.szi)
                     && !self.is_outcome_coin(&ap.position.coin)
             });
 
@@ -176,3 +171,10 @@ fn nuke_button_style(theme: &Theme, status: button::Status, nuke_armed: bool) ->
         ..Default::default()
     }
 }
+
+fn position_size_is_nonzero(raw: &str) -> bool {
+    parse_finite_number(raw).is_some_and(|szi| szi.abs() > 1e-12)
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::positive_finite_value;
 use crate::message::Message;
 use iced::widget::{Column, container, row, text};
 use iced::{Color, Fill, Theme};
@@ -19,8 +20,7 @@ impl TradingTerminal {
             return form;
         }
 
-        let Some(notional_val) = notional_val.filter(|value| value.is_finite() && *value > 0.0)
-        else {
+        let Some(notional_val) = notional_val.and_then(positive_finite_value) else {
             return form;
         };
 

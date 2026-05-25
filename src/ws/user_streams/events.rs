@@ -2,6 +2,7 @@ use crate::account::{
     AssetPosition, ClearinghouseState, OpenOrder, SpotBalance, UserFill, WalletPositionDetail,
     normalize_dex_asset_position_coins,
 };
+use crate::helpers::positive_finite_value;
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -118,7 +119,7 @@ fn parse_all_mids(data: &Value, source_addr: Option<String>) -> Option<KeyedUser
             price
                 .parse::<f64>()
                 .ok()
-                .filter(|mid| mid.is_finite() && *mid > 0.0)
+                .and_then(positive_finite_value)
                 .map(|mid| (symbol, mid))
         })
         .collect();

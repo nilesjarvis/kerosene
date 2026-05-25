@@ -1,6 +1,7 @@
 use super::super::pricing::{wire_market_price, wire_rounded_price};
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
+use crate::helpers::{finite_value, positive_finite_value};
 use crate::message::Message;
 use crate::signing::{OrderKind, float_to_wire, place_order};
 
@@ -19,7 +20,10 @@ fn close_position_order_side_and_size(
     raw_szi: &str,
     fraction: f64,
 ) -> Result<(bool, String), ClosePositionInputError> {
-    if !fraction.is_finite() || fraction <= 0.0 || fraction > 1.0 {
+    let Some(fraction) = positive_finite_value(fraction) else {
+        return Err(ClosePositionInputError::InvalidFraction);
+    };
+    if fraction > 1.0 {
         return Err(ClosePositionInputError::InvalidFraction);
     }
 
@@ -27,7 +31,10 @@ fn close_position_order_side_and_size(
         .trim()
         .parse::<f64>()
         .map_err(|_| ClosePositionInputError::InvalidPositionSize)?;
-    if !szi.is_finite() || szi.abs() <= 1e-12 {
+    let Some(szi) = finite_value(szi) else {
+        return Err(ClosePositionInputError::InvalidPositionSize);
+    };
+    if szi.abs() <= 1e-12 {
         return Err(ClosePositionInputError::InvalidPositionSize);
     }
 

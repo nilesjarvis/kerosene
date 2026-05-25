@@ -1,5 +1,6 @@
 use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
+use crate::helpers::{finite_value, not_available_placeholder};
 use crate::message::Message;
 
 use iced::widget::container as container_style;
@@ -93,9 +94,9 @@ impl TradingTerminal {
 }
 
 fn outcome_probability_text(mid: Option<f64>) -> String {
-    match mid.filter(|value| value.is_finite()) {
+    match mid.and_then(finite_value) {
         Some(value) => format!("{:.1}%", value * 100.0),
-        None => "n/a".to_string(),
+        None => not_available_placeholder(),
     }
 }
 
@@ -118,3 +119,6 @@ fn outcome_chip(
         })
         .into()
 }
+
+#[cfg(test)]
+mod tests;

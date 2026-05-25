@@ -37,9 +37,7 @@ pub(crate) fn settings_from_config(config: &config::KeroseneConfig) -> Settings 
         if selected_family.is_some_and(|selected| family.eq_ignore_ascii_case(selected)) {
             selected_family_loaded = true;
         }
-        if selected_monospace_family
-            .is_some_and(|selected| family.eq_ignore_ascii_case(selected))
-        {
+        if selected_monospace_family.is_some_and(|selected| family.eq_ignore_ascii_case(selected)) {
             selected_monospace_family_loaded = true;
         }
 
@@ -57,8 +55,7 @@ pub(crate) fn settings_from_config(config: &config::KeroseneConfig) -> Settings 
         if selected_family.is_some_and(|family| font.family.eq_ignore_ascii_case(family)) {
             selected_family_loaded = true;
         }
-        if selected_monospace_family
-            .is_some_and(|family| font.family.eq_ignore_ascii_case(family))
+        if selected_monospace_family.is_some_and(|family| font.family.eq_ignore_ascii_case(family))
         {
             selected_monospace_family_loaded = true;
         }

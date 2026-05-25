@@ -3,9 +3,8 @@ use crate::api::{MarketType, fetch_order_book};
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
-use crate::order_execution::PendingOrderAction;
+use crate::order_execution::{AdvancedOrderKind, PendingOrderAction};
 use crate::signing::{ChaseLifecycle, ChaseOrder};
-use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::Task;
 
 mod lifecycle;
@@ -66,36 +65,13 @@ impl TradingTerminal {
 
     pub(crate) fn start_chase(&mut self, is_buy: bool) -> Task<Message> {
         let _theme = self.theme();
-        if self.active_advanced_order_count() >= MAX_ACTIVE_ADVANCED_ORDERS {
-            self.order_status = Some((
-                format!(
-                    "Cannot start chase: maximum of {MAX_ACTIVE_ADVANCED_ORDERS} active advanced orders reached"
-                ),
-                true,
-            ));
-            return Task::none();
-        }
-        if self.pending_order_action.is_some() {
-            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
-            return Task::none();
-        }
-
-        let key = self.wallet_key_input.trim().to_string();
-        if key.is_empty() || self.connected_address.is_none() {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return Task::none();
-        }
-        let Some(account_address) = self.connected_address.clone() else {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+        let Some(start_context) = self.advanced_order_start_context(AdvancedOrderKind::Chase)
+        else {
             return Task::none();
         };
-        if self.symbol_key_is_hidden(&self.active_symbol) {
-            self.order_status = Some(("Active ticker is hidden in Settings > Risk".into(), true));
-            return Task::none();
-        }
 
-        let raw_qty: f64 = match helpers::parse_number(&self.order_quantity) {
-            Some(v) if v.is_finite() && v > 0.0 => v,
+        let raw_qty: f64 = match helpers::parse_positive_number(&self.order_quantity) {
+            Some(v) => v,
             _ => {
                 self.order_status = Some(("Invalid quantity".into(), true));
                 return Task::none();
@@ -123,7 +99,10 @@ impl TradingTerminal {
             let Some(price) = self.resolve_mid_for_symbol(&self.active_symbol) else {
                 self.order_status = Some((
                     format!(
-                        "Cannot start USD Chase: no fresh mid price for {}. Wait for market data or enter size in coin units.",
+                        concat!(
+                            "Cannot start USD Chase: no fresh mid price for {}. ",
+                            "Wait for market data or enter size in coin units."
+                        ),
                         self.active_symbol
                     ),
                     true,
@@ -163,8 +142,8 @@ impl TradingTerminal {
             ChaseOrder {
                 id: chase_id,
                 coin: self.active_symbol.clone(),
-                account_address,
-                agent_key: key.clone().into(),
+                account_address: start_context.account_address,
+                agent_key: start_context.agent_key,
                 is_buy,
                 target_size: qty,
                 filled_size: 0.0,

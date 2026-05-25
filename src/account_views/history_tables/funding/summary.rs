@@ -1,3 +1,4 @@
+use crate::account_views::invalid_account_data;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::{row, text};
@@ -45,29 +46,9 @@ fn funding_total_display(
     } else {
         total_funding
             .map(|total_funding| denomination.format_signed_value(total_funding, 4))
-            .unwrap_or_else(|| "Invalid data".to_string())
+            .unwrap_or_else(invalid_account_data)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn funding_total_display_marks_invalid_values() {
-        let denomination = crate::denomination::DisplayDenominationContext::default();
-        assert_eq!(
-            funding_total_display(&denomination, Some(1.25), false),
-            "+$1.2500"
-        );
-        assert_eq!(
-            funding_total_display(&denomination, Some(-1.25), false),
-            "-$1.2500"
-        );
-        assert_eq!(
-            funding_total_display(&denomination, None, false),
-            "Invalid data"
-        );
-        assert_eq!(funding_total_display(&denomination, None, true), "***");
-    }
-}
+mod tests;

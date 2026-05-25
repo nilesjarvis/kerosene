@@ -1,6 +1,7 @@
 use super::super::super::{AccountDataFetchScope, AssetPosition, ClearinghouseState, HIP3_DEXES};
 use super::snapshot::parse_tracker_number;
 use crate::api::API_URL;
+use crate::helpers::add_optional_f64;
 
 // ---------------------------------------------------------------------------
 // HIP-3 Snapshot Aggregation
@@ -32,15 +33,11 @@ pub(super) async fn append_hip3_margin_and_positions(
             && let Ok(raw) = response.json::<serde_json::Value>().await
             && let Ok(ch) = serde_json::from_value::<ClearinghouseState>(raw)
         {
-            add_optional(
+            add_optional_f64(
                 margin_used,
                 parse_tracker_number(&ch.margin_summary.total_margin_used),
             );
             asset_positions.extend(ch.asset_positions);
         }
     }
-}
-
-fn add_optional(total: &mut Option<f64>, value: Option<f64>) {
-    *total = total.and_then(|total| value.map(|value| total + value));
 }

@@ -2,6 +2,22 @@ use super::state::DEFAULT_PX_PER_MS;
 use super::{Series, Session};
 use crate::api::Candle;
 
+pub(super) fn has_positive_finite_prices(candle: &Candle) -> bool {
+    candle.open.is_finite()
+        && candle.high.is_finite()
+        && candle.low.is_finite()
+        && candle.close.is_finite()
+        && candle.open > 0.0
+        && candle.high > 0.0
+        && candle.low > 0.0
+        && candle.close > 0.0
+        && candle.low <= candle.high
+        && candle.low <= candle.open
+        && candle.low <= candle.close
+        && candle.high >= candle.open
+        && candle.high >= candle.close
+}
+
 /// Find the candle closest to a given timestamp using binary search.
 pub(super) fn find_candle_at(candles: &[Candle], ts: u64) -> Option<usize> {
     if candles.is_empty() {

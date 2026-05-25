@@ -1,10 +1,16 @@
 use crate::api::USDH_TOKEN_INDEX;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{self, format_usd, order_type_button};
+use crate::helpers::{
+    self, format_usd, invalid_data_placeholder, optional_value_color, order_type_button,
+    parse_finite_number,
+};
 use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme};
+
+#[cfg(test)]
+mod tests;
 
 impl TradingTerminal {
     pub(super) fn view_order_entry_symbol_row(
@@ -95,16 +101,9 @@ impl TradingTerminal {
             })
             .unwrap_or(Some(0.0));
         let weak_color = theme.extended_palette().background.weak.text;
-        let available_color = if available_margin.is_some() {
-            weak_color
-        } else {
-            theme.palette().warning
-        };
-        let margin_used_color = if margin_used.is_some() {
-            weak_color
-        } else {
-            theme.palette().warning
-        };
+        let invalid_color = theme.palette().warning;
+        let available_color = optional_value_color(available_margin, weak_color, invalid_color);
+        let margin_used_color = optional_value_color(margin_used, weak_color, invalid_color);
 
         row![
             text(format!("Avail: {}", format_optional_usd(available_margin)))
@@ -152,16 +151,13 @@ impl TradingTerminal {
 }
 
 fn parse_order_header_number(raw: &str) -> Option<f64> {
-    raw.trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
+    parse_finite_number(raw)
 }
 
 fn format_optional_usd(value: Option<f64>) -> String {
     value
         .map(|value| format_usd(&format!("{value:.2}")))
-        .unwrap_or_else(|| "Invalid data".to_string())
+        .unwrap_or_else(invalid_data_placeholder)
 }
 
 fn order_leverage_label(is_cross: bool, leverage: u32, is_actual: bool) -> String {

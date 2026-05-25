@@ -3,11 +3,12 @@ use crate::account_views::history::format_history_time_millis;
 use crate::account_views::history_tables::numbers::{
     invalid_history_data, parse_history_number, valid_history_wire_value,
 };
+use crate::account_views::history_tables::style::history_signed_value_color;
 use crate::app_state::TradingTerminal;
-use crate::helpers;
+use crate::helpers::{self, optional_value_color};
 use crate::message::Message;
 use iced::widget::{Space, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_funding_history_row<'a>(
@@ -21,11 +22,11 @@ impl TradingTerminal {
         let szi = parse_history_number(&d.szi);
         let weak_color = theme.extended_palette().background.weak.text;
         let invalid_color = theme.palette().warning;
-        let amount_color = signed_funding_color(usdc, theme);
+        let amount_color = history_signed_value_color(usdc, theme);
 
         let time_str = format_history_time_millis(entry.time);
 
-        let rate_color = signed_funding_color(rate, theme);
+        let rate_color = history_signed_value_color(rate, theme);
 
         let denomination = self.display_denomination_context();
         let amount_display = funding_amount_display(&denomination, usdc, self.hide_pnl);
@@ -47,7 +48,7 @@ impl TradingTerminal {
                 .width(Fill),
             text(valid_history_wire_value(&d.szi))
                 .size(12)
-                .color(history_value_color(szi, weak_color, invalid_color))
+                .color(optional_value_color(szi, weak_color, invalid_color))
                 .width(Fill),
             text(amount_display)
                 .size(12)
@@ -56,22 +57,6 @@ impl TradingTerminal {
         ]
         .spacing(4)
         .into()
-    }
-}
-
-fn signed_funding_color(value: Option<f64>, theme: &Theme) -> Color {
-    match value {
-        Some(value) if value >= 0.0 => theme.palette().success,
-        Some(_) => theme.palette().danger,
-        None => theme.palette().warning,
-    }
-}
-
-fn history_value_color(value: Option<f64>, default_color: Color, invalid_color: Color) -> Color {
-    if value.is_some() {
-        default_color
-    } else {
-        invalid_color
     }
 }
 
@@ -94,30 +79,5 @@ fn funding_amount_display(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn funding_rate_display_marks_invalid_values() {
-        assert_eq!(funding_rate_display(Some(0.00125)), "0.1250%");
-        assert_eq!(funding_rate_display(None), "Invalid data");
-    }
-
-    #[test]
-    fn funding_amount_display_marks_invalid_values() {
-        let denomination = crate::denomination::DisplayDenominationContext::default();
-        assert_eq!(
-            funding_amount_display(&denomination, Some(1.25), false),
-            "+$1.2500"
-        );
-        assert_eq!(
-            funding_amount_display(&denomination, Some(-1.25), false),
-            "-$1.2500"
-        );
-        assert_eq!(
-            funding_amount_display(&denomination, None, false),
-            "Invalid data"
-        );
-        assert_eq!(funding_amount_display(&denomination, None, true), "$***");
-    }
-}
+#[path = "row/tests.rs"]
+mod tests;

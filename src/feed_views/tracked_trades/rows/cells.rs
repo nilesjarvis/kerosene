@@ -43,7 +43,9 @@ impl TradingTerminal {
 
         let wallet_button: Element<'_, Message> = tooltip(
             wallet_button,
-            text(address.clone()).size(10).font(crate::app_fonts::monospace_font()),
+            text(address.clone())
+                .size(10)
+                .font(crate::app_fonts::monospace_font()),
             iced::widget::tooltip::Position::Top,
         )
         .into();
@@ -161,7 +163,9 @@ impl TradingTerminal {
         if display_coin != raw_coin {
             return tooltip(
                 coin_button,
-                text(raw_coin).size(10).font(crate::app_fonts::monospace_font()),
+                text(raw_coin)
+                    .size(10)
+                    .font(crate::app_fonts::monospace_font()),
                 iced::widget::tooltip::Position::Top,
             )
             .into();

@@ -1,3 +1,5 @@
+use crate::helpers::{finite_value, positive_finite_value};
+
 use std::{collections::BTreeMap, time::Instant};
 
 // ---------------------------------------------------------------------------
@@ -85,10 +87,10 @@ impl HypeEtfData {
         let mut flows_by_date = BTreeMap::new();
         for fund in self.funds.iter().filter(|fund| view.includes(fund.ticker)) {
             for flow in &fund.daily_flows {
-                if !flow.amount_usd.is_finite() {
+                let Some(amount_usd) = finite_value(flow.amount_usd) else {
                     continue;
-                }
-                *flows_by_date.entry(flow.date.clone()).or_insert(0.0) += flow.amount_usd;
+                };
+                *flows_by_date.entry(flow.date.clone()).or_insert(0.0) += amount_usd;
             }
         }
 
@@ -165,7 +167,7 @@ impl HypeEtfTotals {
 fn sum_options(values: impl Iterator<Item = f64>) -> Option<f64> {
     let mut total = 0.0;
     let mut has_value = false;
-    for value in values.filter(|value| value.is_finite()) {
+    for value in values.filter_map(finite_value) {
         total += value;
         has_value = true;
     }
@@ -182,9 +184,12 @@ fn weighted_average(
         let Some((value, weight)) = value_and_weight(fund) else {
             continue;
         };
-        if !value.is_finite() || !weight.is_finite() || weight <= 0.0 {
+        let Some(value) = finite_value(value) else {
             continue;
-        }
+        };
+        let Some(weight) = positive_finite_value(weight) else {
+            continue;
+        };
         weighted_total += value * weight;
         weight_total += weight;
     }
@@ -193,108 +198,4 @@ fn weighted_average(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn fund(ticker: HypeEtfTicker, net_assets_usd: f64, premium_discount_pct: f64) -> HypeEtfFund {
-        HypeEtfFund {
-            ticker,
-            as_of_date: None,
-            updated_at: None,
-            net_assets_usd: Some(net_assets_usd),
-            hype_exposure: Some(net_assets_usd / 50.0),
-            shares_outstanding: Some(10.0),
-            nav_per_share: None,
-            market_price: None,
-            nav_change_pct: None,
-            market_price_change_pct: None,
-            premium_discount_pct: Some(premium_discount_pct),
-            median_spread_pct: Some(0.2),
-            daily_volume: Some(1_000.0),
-            thirty_day_volume: None,
-            hype_reference_price: None,
-            staking_net_rate_pct: None,
-            staking_current_pct: None,
-            daily_flows: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn totals_sum_values_and_weight_percentages_by_assets() {
-        let data = HypeEtfData {
-            funds: vec![
-                fund(HypeEtfTicker::Thyp, 3_000_000.0, 1.0),
-                fund(HypeEtfTicker::Bhyp, 1_000_000.0, 5.0),
-            ],
-            warnings: Vec::new(),
-        };
-
-        let totals = data.totals_for(HypeEtfView::All);
-
-        assert_eq!(totals.net_assets_usd, Some(4_000_000.0));
-        assert_eq!(totals.hype_exposure, Some(80_000.0));
-        assert_eq!(totals.daily_volume, Some(2_000.0));
-        assert_eq!(totals.weighted_premium_discount_pct, Some(2.0));
-    }
-
-    #[test]
-    fn selected_funds_respects_view() {
-        let data = HypeEtfData {
-            funds: vec![
-                fund(HypeEtfTicker::Thyp, 1.0, 0.0),
-                fund(HypeEtfTicker::Bhyp, 1.0, 0.0),
-            ],
-            warnings: Vec::new(),
-        };
-
-        let selected = data.selected_funds(HypeEtfView::Thyp);
-
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].ticker, HypeEtfTicker::Thyp);
-    }
-
-    #[test]
-    fn daily_flows_sum_by_date_for_selected_view() {
-        let mut thyp = fund(HypeEtfTicker::Thyp, 1.0, 0.0);
-        thyp.daily_flows = vec![
-            HypeEtfDailyFlow {
-                date: "2026-05-15".to_string(),
-                amount_usd: 100.0,
-            },
-            HypeEtfDailyFlow {
-                date: "2026-05-18".to_string(),
-                amount_usd: 50.0,
-            },
-        ];
-        let mut bhyp = fund(HypeEtfTicker::Bhyp, 1.0, 0.0);
-        bhyp.daily_flows = vec![HypeEtfDailyFlow {
-            date: "2026-05-15".to_string(),
-            amount_usd: -25.0,
-        }];
-        let data = HypeEtfData {
-            funds: vec![bhyp, thyp],
-            warnings: Vec::new(),
-        };
-
-        assert_eq!(
-            data.daily_flows_for(HypeEtfView::All),
-            vec![
-                HypeEtfDailyFlow {
-                    date: "2026-05-15".to_string(),
-                    amount_usd: 75.0,
-                },
-                HypeEtfDailyFlow {
-                    date: "2026-05-18".to_string(),
-                    amount_usd: 50.0,
-                },
-            ]
-        );
-        assert_eq!(
-            data.daily_flows_for(HypeEtfView::Bhyp),
-            vec![HypeEtfDailyFlow {
-                date: "2026-05-15".to_string(),
-                amount_usd: -25.0,
-            }]
-        );
-    }
-}
+mod tests;

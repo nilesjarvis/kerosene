@@ -1,6 +1,7 @@
 use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::positive_percent_change as percent_change;
 use crate::market_state::{LiveWatchlistId, LiveWatchlistInstance, LiveWatchlistRowData};
 
 use std::cmp::Ordering;
@@ -105,16 +106,6 @@ fn sort_live_watchlist_rows(
         config::LiveWatchlistSortColumn::Funding => sortable_cmp(a.funding, b.funding, descending),
     });
     rows
-}
-
-fn percent_change(current: Option<f64>, previous: Option<f64>) -> Option<f64> {
-    let current = current?;
-    let previous = previous?;
-    if previous > 0.0 && current > 0.0 {
-        Some((current - previous) / previous * 100.0)
-    } else {
-        None
-    }
 }
 
 fn sortable_cmp(a: Option<f64>, b: Option<f64>, descending: bool) -> Ordering {

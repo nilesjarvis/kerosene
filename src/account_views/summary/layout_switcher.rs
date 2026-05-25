@@ -7,8 +7,14 @@ use iced::widget::container as container_style;
 use iced::widget::{Column, button, container, row, rule, scrollable, text, text_input};
 use iced::{Color, Element, Fill, Length, Theme};
 
-const BUTTON_LABEL_CHARS: usize = 14;
-const ROW_LABEL_CHARS: usize = 24;
+use self::actions::{layout_action_button, layout_header_update_button};
+use self::labels::{
+    BUTTON_LABEL_CHARS, ROW_LABEL_CHARS, layout_switcher_button_label, layout_switcher_label,
+};
+
+mod actions;
+mod labels;
+
 const RENAME_ICON: &str = "✎";
 
 // ---------------------------------------------------------------------------
@@ -197,118 +203,5 @@ impl TradingTerminal {
     }
 }
 
-fn layout_header_update_button(enabled: bool) -> Element<'static, Message> {
-    let button = button(text("Update").size(10).center())
-        .padding([4, 8])
-        .style(layout_action_style);
-
-    if enabled {
-        button.on_press(Message::UpdateActiveLayout).into()
-    } else {
-        button.into()
-    }
-}
-
-fn layout_action_button(
-    label: &'static str,
-    message: Message,
-    color: Color,
-    active: bool,
-    width: f32,
-) -> Element<'static, Message> {
-    button(text(label).size(10).center())
-        .on_press(message)
-        .padding([6, 6])
-        .width(Length::Fixed(width))
-        .style(move |theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ if active => theme.extended_palette().background.weak.color,
-                _ => Color::TRANSPARENT,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: color,
-                border: iced::Border {
-                    radius: 4.0.into(),
-                    width: if active { 1.0 } else { 0.0 },
-                    color: if active { color } else { Color::TRANSPARENT },
-                },
-                ..Default::default()
-            }
-        })
-        .into()
-}
-
-fn layout_action_style(theme: &Theme, status: button::Status) -> button::Style {
-    let bg = match status {
-        button::Status::Hovered => theme.extended_palette().background.strong.color,
-        _ => theme.extended_palette().background.weak.color,
-    };
-
-    button::Style {
-        background: Some(bg.into()),
-        text_color: theme.palette().text,
-        border: iced::Border {
-            radius: 4.0.into(),
-            width: 1.0,
-            color: theme.extended_palette().background.strong.color,
-        },
-        ..Default::default()
-    }
-}
-
-fn layout_switcher_label(name: Option<&str>, max_chars: usize) -> String {
-    let label = name
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .unwrap_or("Layouts");
-    truncate_label(label, max_chars)
-}
-
-fn layout_switcher_button_label(name: Option<&str>, max_chars: usize) -> String {
-    let Some(label) = name.map(str::trim).filter(|name| !name.is_empty()) else {
-        return "Layout".to_string();
-    };
-    format!("Layout: {}", truncate_label(label, max_chars))
-}
-
-fn truncate_label(value: &str, max_chars: usize) -> String {
-    let char_count = value.chars().count();
-    if char_count <= max_chars {
-        return value.to_string();
-    }
-    if max_chars <= 3 {
-        return value.chars().take(max_chars).collect();
-    }
-    let prefix: String = value.chars().take(max_chars - 3).collect();
-    format!("{prefix}...")
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn layout_switcher_label_falls_back_for_missing_or_empty_names() {
-        assert_eq!(layout_switcher_label(None, 14), "Layouts");
-        assert_eq!(layout_switcher_label(Some("   "), 14), "Layouts");
-    }
-
-    #[test]
-    fn layout_switcher_label_truncates_long_names() {
-        assert_eq!(
-            layout_switcher_label(Some("Very Long Trading Layout"), 14),
-            "Very Long T..."
-        );
-    }
-
-    #[test]
-    fn layout_switcher_button_label_identifies_the_dropdown() {
-        assert_eq!(layout_switcher_button_label(None, 14), "Layout");
-        assert_eq!(
-            layout_switcher_button_label(Some("Scalp"), 14),
-            "Layout: Scalp"
-        );
-    }
-}
+mod tests;

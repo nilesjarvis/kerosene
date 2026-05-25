@@ -44,7 +44,9 @@ impl TradingTerminal {
 
         tooltip(
             user_button,
-            text(user_tooltip).size(10).font(crate::app_fonts::monospace_font()),
+            text(user_tooltip)
+                .size(10)
+                .font(crate::app_fonts::monospace_font()),
             iced::widget::tooltip::Position::Top,
         )
         .into()

@@ -1,4 +1,5 @@
 mod active_symbol;
+mod advanced;
 mod chase;
 mod position_actions;
 pub(crate) mod pricing;
@@ -8,6 +9,7 @@ mod submit;
 mod symbols;
 mod twap;
 
+pub(crate) use advanced::AdvancedOrderKind;
 pub(crate) use position_actions::NukePlan;
 pub(crate) use sizing::order_size_from_quantity_input;
 

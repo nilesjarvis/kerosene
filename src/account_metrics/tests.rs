@@ -35,6 +35,10 @@ fn liquidation_price_parser_rejects_nonpositive_or_nonfinite_values() {
         TradingTerminal::parse_liquidation_px(&asset_position(Some("0"), None)),
         None
     );
+    assert_eq!(
+        TradingTerminal::parse_liquidation_px(&asset_position(Some("-1"), None)),
+        None
+    );
 }
 
 #[test]
@@ -54,6 +58,12 @@ fn funding_pnl_rejects_nonfinite_values() {
     assert_eq!(
         TradingTerminal::position_funding_pnl(Some(&CumFunding {
             since_open: "inf".to_string()
+        })),
+        None
+    );
+    assert_eq!(
+        TradingTerminal::position_funding_pnl(Some(&CumFunding {
+            since_open: "1,234".to_string()
         })),
         None
     );

@@ -1,6 +1,6 @@
-use crate::helpers::format_price;
 #[cfg(test)]
 use crate::helpers::format_usd;
+use crate::helpers::{format_price, invalid_data_placeholder, parse_finite_number};
 
 #[cfg(test)]
 mod tests;
@@ -10,11 +10,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 pub(super) fn parse_wallet_number(value: &str) -> Option<f64> {
-    value
-        .trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
+    parse_finite_number(value)
 }
 
 pub(super) fn wallet_has_visible_nonzero(value: &str) -> bool {
@@ -75,5 +71,5 @@ pub(super) fn format_wallet_display_amount(
 }
 
 pub(super) fn invalid_wallet_data() -> String {
-    "Invalid data".to_string()
+    invalid_data_placeholder()
 }

@@ -15,11 +15,12 @@ use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
 use zeroize::Zeroizing;
 
 mod accounts;
 mod defaults;
+mod denomination;
+mod market_universe;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
 #[cfg(test)]
@@ -35,144 +36,12 @@ pub use defaults::{
     new_secret_id, normalize_alfred_popup_scale, normalize_market_slippage_pct,
     normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
+pub use denomination::DisplayDenominationConfig;
+pub use market_universe::MarketUniverseConfig;
 
 // ---------------------------------------------------------------------------
 // Config Schema
 // ---------------------------------------------------------------------------
-
-/// Global market universe shown by the terminal.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "mode", rename_all = "snake_case")]
-pub enum MarketUniverseConfig {
-    #[default]
-    All,
-    Hip3Dex {
-        dex: String,
-    },
-}
-
-impl MarketUniverseConfig {
-    pub fn hip3_dex(dex: impl Into<String>) -> Self {
-        Self::Hip3Dex { dex: dex.into() }.normalized()
-    }
-
-    pub fn normalized(self) -> Self {
-        match self {
-            Self::All => Self::All,
-            Self::Hip3Dex { dex } => {
-                let dex = dex.trim().to_ascii_lowercase();
-                if dex.is_empty() {
-                    Self::All
-                } else {
-                    Self::Hip3Dex { dex }
-                }
-            }
-        }
-    }
-
-    pub fn selected_hip3_dex(&self) -> Option<&str> {
-        match self {
-            Self::All => None,
-            Self::Hip3Dex { dex } => Some(dex.as_str()),
-        }
-    }
-}
-
-impl fmt::Display for MarketUniverseConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::All => f.write_str("All Markets"),
-            Self::Hip3Dex { dex } => write!(f, "HIP-3: {dex}"),
-        }
-    }
-}
-
-/// Display-only denomination for USD-valued readouts.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "mode", rename_all = "snake_case")]
-pub enum DisplayDenominationConfig {
-    #[default]
-    Usd,
-    Asset {
-        code: String,
-        dex: String,
-        symbol: String,
-    },
-}
-
-impl DisplayDenominationConfig {
-    pub fn eur() -> Self {
-        Self::Asset {
-            code: "EUR".to_string(),
-            dex: "xyz".to_string(),
-            symbol: "EUR".to_string(),
-        }
-    }
-
-    pub fn hype() -> Self {
-        Self::Asset {
-            code: "HYPE".to_string(),
-            dex: String::new(),
-            symbol: "HYPE".to_string(),
-        }
-    }
-
-    pub fn btc() -> Self {
-        Self::Asset {
-            code: "BTC".to_string(),
-            dex: String::new(),
-            symbol: "BTC".to_string(),
-        }
-    }
-
-    pub fn normalized(self) -> Self {
-        match self {
-            Self::Usd => Self::Usd,
-            Self::Asset { code, dex, symbol } => {
-                let code = code.trim().to_ascii_uppercase();
-                let dex = dex.trim().to_ascii_lowercase();
-                let symbol = symbol.trim().to_ascii_uppercase();
-                if code.is_empty() || symbol.is_empty() {
-                    Self::Usd
-                } else {
-                    Self::Asset { code, dex, symbol }
-                }
-            }
-        }
-    }
-
-    pub fn is_usd(&self) -> bool {
-        matches!(self, Self::Usd)
-    }
-
-    pub fn code(&self) -> &str {
-        match self {
-            Self::Usd => "USD",
-            Self::Asset { code, .. } => code.as_str(),
-        }
-    }
-
-    pub fn mids_dex(&self) -> Option<&str> {
-        match self {
-            Self::Usd => None,
-            Self::Asset { dex, .. } => Some(dex.as_str()),
-        }
-    }
-
-    pub fn rate_symbol_key(&self) -> Option<String> {
-        match self {
-            Self::Usd => None,
-            Self::Asset { dex, symbol, .. } if dex.is_empty() => Some(symbol.clone()),
-            Self::Asset { dex, symbol, .. } => Some(format!("{dex}:{symbol}")),
-        }
-    }
-}
-
-impl fmt::Display for DisplayDenominationConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.code())
-    }
-}
 
 /// Persisted application config. Saved as JSON to the platform config directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,6 +1,10 @@
 use crate::account::WalletDetailsData;
 use crate::app_state::TradingTerminal;
-use crate::wallet_views::numbers::{parse_wallet_number, wallet_has_visible_nonzero};
+use crate::helpers::add_optional_f64;
+use crate::wallet_views::numbers::{
+    invalid_wallet_data, parse_wallet_number, wallet_has_visible_nonzero,
+};
+use crate::wallet_views::position_metrics::{wallet_position_upnl, wallet_position_value};
 
 use super::WalletDetailsSummaryMetrics;
 
@@ -24,10 +28,9 @@ impl TradingTerminal {
         let mut active_position_count = 0usize;
         for detail in &data.positions {
             let pos = &detail.asset_position.position;
-            let symbol = Self::wallet_detail_symbol(&detail.dex, &pos.coin);
-            if self.symbol_key_is_hidden(&symbol) || self.symbol_key_is_hidden(&pos.coin) {
+            let Some(symbol) = self.visible_wallet_detail_symbol(&detail.dex, &pos.coin) else {
                 continue;
-            }
+            };
             if !wallet_has_visible_nonzero(&pos.szi) {
                 continue;
             }
@@ -39,10 +42,10 @@ impl TradingTerminal {
                 .or_else(|| self.resolve_mid_for_symbol(&pos.coin));
             let position_value = wallet_position_value(szi, &pos.position_value, mark_px);
             let row_upnl = wallet_position_upnl(szi, entry_px, &pos.unrealized_pnl, mark_px);
-            add_optional(&mut unrealized_pnl, row_upnl);
+            add_optional_f64(&mut unrealized_pnl, row_upnl);
             match szi {
-                Some(szi) if szi > 0.0 => add_optional(&mut long_exposure, position_value),
-                Some(_) => add_optional(&mut short_exposure, position_value),
+                Some(szi) if szi > 0.0 => add_optional_f64(&mut long_exposure, position_value),
+                Some(_) => add_optional_f64(&mut short_exposure, position_value),
                 None => {
                     long_exposure = None;
                     short_exposure = None;
@@ -54,9 +57,8 @@ impl TradingTerminal {
             .open_orders
             .iter()
             .filter(|detail| {
-                let symbol = Self::wallet_detail_symbol(&detail.dex, &detail.order.coin);
-                !self.symbol_key_is_hidden(&symbol)
-                    && !self.symbol_key_is_hidden(&detail.order.coin)
+                self.visible_wallet_detail_symbol(&detail.dex, &detail.order.coin)
+                    .is_some()
             })
             .count();
 
@@ -87,7 +89,7 @@ impl TradingTerminal {
         let pm_available = match pm_available_raw {
             Some(amount) => parse_wallet_number(amount)
                 .map(|amount| self.format_display_usd_value(amount, 2))
-                .unwrap_or_else(|| "Invalid data".to_string()),
+                .unwrap_or_else(invalid_wallet_data),
             None => "-".to_string(),
         };
 
@@ -121,31 +123,4 @@ fn wallet_margin_pct(account_value: Option<f64>, margin_used: Option<f64>) -> Op
         }
         _ => None,
     }
-}
-
-fn wallet_position_value(
-    szi: Option<f64>,
-    wire_position_value: &str,
-    mark_px: Option<f64>,
-) -> Option<f64> {
-    match (szi, mark_px) {
-        (Some(szi), Some(mark_px)) => Some(szi.abs() * mark_px),
-        _ => parse_wallet_number(wire_position_value).map(f64::abs),
-    }
-}
-
-fn wallet_position_upnl(
-    szi: Option<f64>,
-    entry_px: Option<f64>,
-    wire_upnl: &str,
-    mark_px: Option<f64>,
-) -> Option<f64> {
-    match (szi, entry_px, mark_px) {
-        (Some(szi), Some(entry_px), Some(mark_px)) => Some(szi * (mark_px - entry_px)),
-        _ => parse_wallet_number(wire_upnl),
-    }
-}
-
-fn add_optional(total: &mut Option<f64>, value: Option<f64>) {
-    *total = total.and_then(|total| value.map(|value| total + value));
 }

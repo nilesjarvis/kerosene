@@ -24,9 +24,8 @@ impl TradingTerminal {
         let mut order_rows: Vec<&WalletOpenOrderDetail> = orders
             .iter()
             .filter(|detail| {
-                let symbol = Self::wallet_detail_symbol(&detail.dex, &detail.order.coin);
-                !self.symbol_key_is_hidden(&symbol)
-                    && !self.symbol_key_is_hidden(&detail.order.coin)
+                self.visible_wallet_detail_symbol(&detail.dex, &detail.order.coin)
+                    .is_some()
             })
             .collect();
         order_rows.sort_by_key(|detail| Reverse(detail.order.timestamp));

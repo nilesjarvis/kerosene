@@ -1,6 +1,7 @@
 mod actions;
 mod advanced;
 mod advanced_history_details;
+mod details;
 mod header;
 mod inputs;
 mod presets;

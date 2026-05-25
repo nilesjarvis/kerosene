@@ -1,12 +1,19 @@
 use crate::account::AssetContext;
 use crate::chart_state::ChartId;
-use crate::denomination::format_compact;
-use crate::helpers::format_price;
 use crate::message::Message;
 
 use chrono::Timelike;
 use iced::Theme;
 use iced::widget::{Row, button, column, text};
+
+mod formatting;
+
+#[cfg(test)]
+use formatting::format_open_interest_notional;
+use formatting::{
+    format_funding_pct, format_metric_price, format_open_interest, format_volume,
+    open_interest_label, parse_ctx_f64,
+};
 
 const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
 const HIDE_OPEN_INTEREST_BELOW: f32 = 560.0;
@@ -172,162 +179,5 @@ fn funding_countdown() -> String {
     )
 }
 
-fn open_interest_label(as_notional: bool) -> String {
-    if as_notional {
-        "Open Interest $".to_string()
-    } else {
-        "Open Interest".to_string()
-    }
-}
-
-fn format_open_interest(oi: Option<f64>, price: f64, as_notional: bool) -> String {
-    let Some(oi) = oi else {
-        return "Invalid data".to_string();
-    };
-    if as_notional {
-        return format_open_interest_notional(oi, price);
-    }
-    if oi >= 1_000_000.0 {
-        format!("{:.1}M", oi / 1_000_000.0)
-    } else if oi >= 1_000.0 {
-        format!("{:.0}K", oi / 1_000.0)
-    } else {
-        format!("{oi:.0}")
-    }
-}
-
-fn format_open_interest_notional(oi: f64, price: f64) -> String {
-    if !oi.is_finite() || !price.is_finite() || oi < 0.0 || price <= 0.0 {
-        return "Invalid data".to_string();
-    }
-    format_compact_usd(oi * price)
-}
-
-fn format_volume(vlm: Option<f64>) -> String {
-    let Some(vlm) = vlm else {
-        return "Invalid data".to_string();
-    };
-    if !vlm.is_finite() || vlm < 0.0 {
-        return "Invalid data".to_string();
-    }
-    format_compact_usd(vlm)
-}
-
-fn format_metric_price(value: Option<f64>) -> String {
-    value
-        .map(format_price)
-        .unwrap_or_else(|| "Invalid data".to_string())
-}
-
-fn format_compact_usd(value: f64) -> String {
-    if !value.is_finite() {
-        return "Invalid data".to_string();
-    }
-    let sign = if value.is_sign_negative() { "-" } else { "" };
-    format!("{sign}${}", format_compact(value.abs()))
-}
-
-fn format_funding_pct(funding: Option<f64>) -> String {
-    funding
-        .map(|funding| format!("{:.4}%", funding * 100.0))
-        .unwrap_or_else(|| "Invalid data".to_string())
-}
-
-fn parse_ctx_f64(value: Option<&str>) -> Option<f64> {
-    let parsed = value?.trim().parse::<f64>().ok()?;
-    parsed.is_finite().then_some(parsed)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::{
-        ChartHeaderMetricVisibility, format_funding_pct, format_open_interest,
-        format_open_interest_notional, format_volume, open_interest_label, parse_ctx_f64,
-    };
-
-    #[test]
-    fn context_number_parser_rejects_missing_malformed_or_nonfinite_values() {
-        assert_eq!(parse_ctx_f64(Some("12.5")), Some(12.5));
-        assert_eq!(parse_ctx_f64(None), None);
-        assert_eq!(parse_ctx_f64(Some("bad")), None);
-        assert_eq!(parse_ctx_f64(Some("NaN")), None);
-        assert_eq!(parse_ctx_f64(Some("inf")), None);
-    }
-
-    #[test]
-    fn header_metric_formatters_mark_invalid_values() {
-        assert_eq!(format_volume(None), "Invalid data");
-        assert_eq!(format_open_interest(None, 100.0, false), "Invalid data");
-        assert_eq!(format_funding_pct(None), "Invalid data");
-        assert_eq!(format_volume(Some(1_500.0)), "$1.5K");
-        assert_eq!(
-            format_open_interest(Some(1_500_000.0), 100.0, false),
-            "1.5M"
-        );
-        assert_eq!(format_funding_pct(Some(0.0001)), "0.0100%");
-    }
-
-    #[test]
-    fn open_interest_notional_formats_from_chart_price() {
-        assert_eq!(format_open_interest(Some(1_500.0), 2_000.0, true), "$3.00M");
-        assert_eq!(
-            format_open_interest_notional(2_000_000.0, 2_000.0),
-            "$4.00B"
-        );
-        assert_eq!(
-            format_open_interest(Some(1_500.0), 0.0, true),
-            "Invalid data"
-        );
-        assert_eq!(open_interest_label(false), "Open Interest");
-        assert_eq!(open_interest_label(true), "Open Interest $");
-    }
-
-    #[test]
-    fn metric_visibility_collapses_in_priority_order() {
-        assert_eq!(
-            ChartHeaderMetricVisibility::for_width(760.0),
-            ChartHeaderMetricVisibility {
-                show_24h_change: true,
-                show_mark_oracle: true,
-                show_open_interest: true,
-                show_funding: true,
-            }
-        );
-        assert_eq!(
-            ChartHeaderMetricVisibility::for_width(680.0),
-            ChartHeaderMetricVisibility {
-                show_24h_change: true,
-                show_mark_oracle: false,
-                show_open_interest: true,
-                show_funding: true,
-            }
-        );
-        assert_eq!(
-            ChartHeaderMetricVisibility::for_width(520.0),
-            ChartHeaderMetricVisibility {
-                show_24h_change: true,
-                show_mark_oracle: false,
-                show_open_interest: false,
-                show_funding: true,
-            }
-        );
-        assert_eq!(
-            ChartHeaderMetricVisibility::for_width(420.0),
-            ChartHeaderMetricVisibility {
-                show_24h_change: true,
-                show_mark_oracle: false,
-                show_open_interest: false,
-                show_funding: false,
-            }
-        );
-        assert_eq!(
-            ChartHeaderMetricVisibility::for_width(320.0),
-            ChartHeaderMetricVisibility {
-                show_24h_change: false,
-                show_mark_oracle: false,
-                show_open_interest: false,
-                show_funding: false,
-            }
-        );
-    }
-}
+mod tests;

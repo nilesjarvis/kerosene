@@ -1,17 +1,20 @@
+mod compaction;
+mod metrics_display;
+#[cfg(test)]
+mod tests;
+
 use super::super::CONNECTED_SUMMARY_ACTION_BREAKPOINT;
 use super::metrics::ConnectedSummaryValues;
 use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::helpers::vertical_spacer;
 use crate::message::Message;
-use iced::widget::{Row, Space, column, container, row, text};
-use iced::{Color, Element, Fill, Theme};
-
-const HIDE_DISPLAY_DENOMINATION_SELECTOR_WIDTH: f32 = CONNECTED_SUMMARY_ACTION_BREAKPOINT;
-const HIDE_SOUND_SELECTOR_WIDTH: f32 = 1_020.0;
-const HIDE_NOTIFICATION_SELECTOR_WIDTH: f32 = 940.0;
-const HIDE_MARGIN_RATIO_WIDTH: f32 = 840.0;
-const HIDE_MARGIN_USED_WIDTH: f32 = 720.0;
+use compaction::ConnectedSummaryCompaction;
+use iced::widget::{Row, Space, column, row};
+use iced::{Element, Fill, Theme};
+use metrics_display::{
+    available_color, portfolio_margin_ratio_color, summary_metric, summary_metric_colored,
+};
 
 impl TradingTerminal {
     pub(super) fn connected_summary_base_row<'a>(&'a self) -> Row<'a, Message> {
@@ -215,128 +218,5 @@ impl TradingTerminal {
         } else {
             self.format_display_usd_str(value)
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ConnectedSummaryCompaction {
-    hidden_priority_count: u8,
-}
-
-impl ConnectedSummaryCompaction {
-    const fn for_width(width: f32) -> Self {
-        let hidden_priority_count = if width < HIDE_MARGIN_USED_WIDTH {
-            5
-        } else if width < HIDE_MARGIN_RATIO_WIDTH {
-            4
-        } else if width < HIDE_NOTIFICATION_SELECTOR_WIDTH {
-            3
-        } else if width < HIDE_SOUND_SELECTOR_WIDTH {
-            2
-        } else if width < HIDE_DISPLAY_DENOMINATION_SELECTOR_WIDTH {
-            1
-        } else {
-            0
-        };
-
-        Self {
-            hidden_priority_count,
-        }
-    }
-
-    const fn hide_display_denomination(self) -> bool {
-        self.hidden_priority_count >= 1
-    }
-
-    const fn hide_sound(self) -> bool {
-        self.hidden_priority_count >= 2
-    }
-
-    const fn hide_notifications(self) -> bool {
-        self.hidden_priority_count >= 3
-    }
-
-    const fn hide_margin_ratio(self) -> bool {
-        self.hidden_priority_count >= 4
-    }
-
-    const fn hide_margin_used(self) -> bool {
-        self.hidden_priority_count >= 5
-    }
-}
-
-fn summary_metric(
-    label: &'static str,
-    value: impl ToString,
-    theme: &Theme,
-) -> Element<'static, Message> {
-    summary_metric_with_color(label, value, None, theme)
-}
-
-fn summary_metric_colored(
-    label: &'static str,
-    value: impl ToString,
-    value_color: Color,
-    theme: &Theme,
-) -> Element<'static, Message> {
-    summary_metric_with_color(label, value, Some(value_color), theme)
-}
-
-fn summary_metric_with_color(
-    label: &'static str,
-    value: impl ToString,
-    value_color: Option<Color>,
-    theme: &Theme,
-) -> Element<'static, Message> {
-    let value = text(value.to_string())
-        .size(13)
-        .font(crate::app_fonts::monospace_font());
-    let value = if let Some(value_color) = value_color {
-        value.color(value_color)
-    } else {
-        value
-    };
-
-    container(
-        column![
-            text(label)
-                .size(10)
-                .color(theme.extended_palette().background.weak.text),
-            value,
-        ]
-        .spacing(1)
-        .align_x(iced::Alignment::Start),
-    )
-    .into()
-}
-
-fn portfolio_margin_ratio_color(
-    summary_values: &ConnectedSummaryValues,
-    theme: &Theme,
-) -> iced::Color {
-    let Some(margin_ratio) = summary_values.portfolio_margin_ratio else {
-        return theme.palette().warning;
-    };
-    if margin_ratio < 0.5 {
-        theme.palette().success
-    } else if margin_ratio < 0.8 {
-        theme.palette().primary
-    } else {
-        theme.palette().danger
-    }
-}
-
-fn available_color(summary_values: &ConnectedSummaryValues, theme: &Theme) -> iced::Color {
-    let (Some(margin_used), Some(available)) =
-        (summary_values.margin_used, summary_values.available)
-    else {
-        return theme.palette().warning;
-    };
-    if margin_used < 1e-6 || available > margin_used * 2.0 {
-        theme.palette().success
-    } else if available > margin_used * 0.5 {
-        theme.palette().primary
-    } else {
-        theme.palette().danger
     }
 }

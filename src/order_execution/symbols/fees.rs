@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::positive_finite_value;
 
 impl TradingTerminal {
     /// Estimate the fee for a trade. Returns `(fee_amount, fee_rate)` or None
@@ -14,9 +15,7 @@ impl TradingTerminal {
         let rates = &self.account_data.as_ref()?.fee_rates;
         let rate = rates.rate_for(is_limit, is_spot)?;
         let notional = price * qty;
-        if !notional.is_finite() || notional <= 0.0 {
-            return None;
-        }
+        let notional = positive_finite_value(notional)?;
         Some((notional * rate, rate))
     }
 }
