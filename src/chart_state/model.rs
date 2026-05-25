@@ -112,6 +112,8 @@ pub(crate) struct ChartInstance {
     pub(crate) macro_menu_open: bool,
     /// Whether the header open-interest metric is shown as USD notional for this chart.
     pub(crate) open_interest_as_notional: bool,
+    /// Whether the HIP-4 volume metric is shown as USD notional for this chart.
+    pub(crate) outcome_volume_as_notional: bool,
 }
 
 impl TradingTerminal {

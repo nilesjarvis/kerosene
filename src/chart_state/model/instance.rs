@@ -49,6 +49,7 @@ impl ChartInstance {
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
             open_interest_as_notional: false,
+            outcome_volume_as_notional: false,
         }
     }
 
@@ -90,6 +91,7 @@ impl ChartInstance {
             macro_indicators: self.macro_indicators.clone(),
             macro_menu_open: false,
             open_interest_as_notional: self.open_interest_as_notional,
+            outcome_volume_as_notional: self.outcome_volume_as_notional,
         }
     }
 
@@ -132,6 +134,7 @@ impl ChartInstance {
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
             open_interest_as_notional: false,
+            outcome_volume_as_notional: false,
         }
     }
 }

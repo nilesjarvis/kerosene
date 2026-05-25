@@ -1,7 +1,9 @@
 use super::{
     ChartHeaderMetricVisibility, format_funding_pct, format_open_interest,
-    format_open_interest_notional, format_volume, open_interest_label, parse_ctx_f64,
+    format_open_interest_notional, format_outcome_volume, format_volume, open_interest_label,
+    outcome_volume_label, parse_ctx_f64,
 };
+use crate::api::OutcomeVolume24h;
 
 #[test]
 fn context_number_parser_rejects_missing_malformed_or_nonfinite_values() {
@@ -42,11 +44,25 @@ fn open_interest_notional_formats_from_chart_price() {
 }
 
 #[test]
+fn outcome_volume_formats_contracts_and_notional() {
+    let volume = OutcomeVolume24h {
+        contract: 18_055.0,
+        notional: 4_513.75,
+    };
+
+    assert_eq!(format_outcome_volume(volume, false), "18.1K contracts");
+    assert_eq!(format_outcome_volume(volume, true), "$4.5K");
+    assert_eq!(outcome_volume_label(false), "24h Vol");
+    assert_eq!(outcome_volume_label(true), "24h Vol $");
+}
+
+#[test]
 fn metric_visibility_collapses_in_priority_order() {
     assert_eq!(
         ChartHeaderMetricVisibility::for_width(760.0),
         ChartHeaderMetricVisibility {
             show_24h_change: true,
+            show_24h_volume: true,
             show_mark_oracle: true,
             show_open_interest: true,
             show_funding: true,
@@ -56,6 +72,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility::for_width(680.0),
         ChartHeaderMetricVisibility {
             show_24h_change: true,
+            show_24h_volume: true,
             show_mark_oracle: false,
             show_open_interest: true,
             show_funding: true,
@@ -65,6 +82,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility::for_width(520.0),
         ChartHeaderMetricVisibility {
             show_24h_change: true,
+            show_24h_volume: true,
             show_mark_oracle: false,
             show_open_interest: false,
             show_funding: true,
@@ -74,6 +92,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility::for_width(420.0),
         ChartHeaderMetricVisibility {
             show_24h_change: true,
+            show_24h_volume: true,
             show_mark_oracle: false,
             show_open_interest: false,
             show_funding: false,
@@ -83,6 +102,7 @@ fn metric_visibility_collapses_in_priority_order() {
         ChartHeaderMetricVisibility::for_width(320.0),
         ChartHeaderMetricVisibility {
             show_24h_change: false,
+            show_24h_volume: false,
             show_mark_oracle: false,
             show_open_interest: false,
             show_funding: false,

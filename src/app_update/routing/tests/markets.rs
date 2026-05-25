@@ -24,4 +24,8 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::ToggleChartScreenshotHidePositionsAndOrders(true),
         UpdateRoute::ChartScreenshot,
     );
+    assert_route(
+        Message::OutcomeMarketGroupToggled("question:19".to_string()),
+        UpdateRoute::Market,
+    );
 }

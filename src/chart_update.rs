@@ -121,6 +121,12 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ToggleOutcomeVolumeNotional(id) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.outcome_volume_as_notional = !instance.outcome_volume_as_notional;
+                    self.persist_config();
+                }
+            }
             Message::FundingRefreshTick => return self.refresh_due_funding_charts(),
             _ => {}
         }

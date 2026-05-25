@@ -1,20 +1,103 @@
-use crate::api::ExchangeSymbol;
+use crate::api::{ExchangeSymbol, OutcomeVolume24h};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
-use iced::widget::{Column, column, container, row, text};
-use iced::{Element, Fill, Theme};
-use std::collections::HashMap;
+use super::OutcomeMarketSet;
+use iced::widget::container as container_style;
+use iced::widget::{Column, button, column, container, row, rule, text};
+use iced::{Color, Element, Fill, Theme};
+use std::collections::{BTreeMap, HashMap};
 
 #[cfg(test)]
 mod tests;
 
 impl TradingTerminal {
+    pub(in crate::market_views::outcomes) fn view_outcome_market_set<'a>(
+        &'a self,
+        theme: &Theme,
+        group: OutcomeMarketSet<'a>,
+        available_width: f32,
+    ) -> Element<'a, Message> {
+        let collapsed = self.outcome_collapsed_market_groups.contains(&group.key);
+        let toggle_label = if collapsed { "+" } else { "-" };
+        let toggle_button = button(text(toggle_label).size(12).center())
+            .on_press(Message::OutcomeMarketGroupToggled(group.key.clone()))
+            .padding([2, 0])
+            .width(24.0)
+            .style(outcome_collapse_button_style);
+
+        let summary = outcome_market_set_summary(&group);
+        let mut header = row![
+            toggle_button,
+            column![
+                text(group.title.clone())
+                    .size(13)
+                    .color(theme.palette().text)
+                    .width(Fill),
+                text(summary)
+                    .size(10)
+                    .color(theme.extended_palette().background.weak.text)
+                    .width(Fill),
+            ]
+            .spacing(1)
+            .width(Fill),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center)
+        .width(Fill);
+
+        if let Some(volume) = outcome_market_set_volume(&group.outcomes, &self.outcome_volumes_24h)
+        {
+            header = header.push(
+                text(format!(
+                    "24h Vol {}",
+                    format_outcome_contract_volume(volume)
+                ))
+                .size(11)
+                .font(crate::app_fonts::monospace_font())
+                .color(theme.extended_palette().background.weak.text),
+            );
+        } else if self.outcome_volumes_loading {
+            header = header.push(
+                text("24h Vol ...")
+                    .size(11)
+                    .font(crate::app_fonts::monospace_font())
+                    .color(theme.extended_palette().background.weak.text),
+            );
+        }
+
+        let mut content = column![header].spacing(8).width(Fill);
+        if !collapsed {
+            let nested = group.is_question_group;
+            let mut outcomes = Column::new().spacing(6).width(Fill);
+            let mut is_first = true;
+            for sides in group.outcomes.values() {
+                if !is_first {
+                    outcomes = outcomes.push(rule::horizontal(1));
+                }
+                is_first = false;
+                if let Some(outcome) =
+                    self.view_outcome_market_group(theme, sides.clone(), available_width, nested)
+                {
+                    outcomes = outcomes.push(outcome);
+                }
+            }
+            content = content.push(outcomes);
+        }
+
+        container(content)
+            .width(Fill)
+            .padding([7, 8])
+            .style(outcome_market_set_style)
+            .into()
+    }
+
     pub(in crate::market_views::outcomes) fn view_outcome_market_group<'a>(
         &'a self,
         theme: &Theme,
         mut sides: Vec<&'a ExchangeSymbol>,
         available_width: f32,
+        nested: bool,
     ) -> Option<Element<'a, Message>> {
         sides.sort_by_key(|sym| {
             sym.outcome
@@ -24,7 +107,7 @@ impl TradingTerminal {
         });
 
         let info = sides.iter().find_map(|sym| sym.outcome.as_ref())?;
-        let market = info.market_label_with_countdown(Self::now_ms());
+        let market = outcome_market_title(info, nested);
 
         let mut market_header = row![
             text(market)
@@ -143,10 +226,56 @@ impl TradingTerminal {
     }
 }
 
-fn outcome_group_volume(sides: &[&ExchangeSymbol], volumes: &HashMap<String, f64>) -> Option<f64> {
+fn outcome_market_set_summary(group: &OutcomeMarketSet<'_>) -> String {
+    let outcome_label = if group.outcome_count == 1 {
+        "outcome"
+    } else {
+        "outcomes"
+    };
+    let coin_label = if group.trade_coin_count == 1 {
+        "trade coin"
+    } else {
+        "trade coins"
+    };
+    format!(
+        "{} {} | {} {} | {}",
+        group.outcome_count, outcome_label, group.trade_coin_count, coin_label, group.quote_symbol
+    )
+}
+
+fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool) -> String {
+    if nested {
+        let label = info.side_condition_short_label();
+        if !label.trim().is_empty() {
+            return label;
+        }
+    }
+
+    info.market_label_with_countdown(TradingTerminal::now_ms())
+}
+
+fn outcome_market_set_volume(
+    outcomes: &BTreeMap<u32, Vec<&ExchangeSymbol>>,
+    volumes: &HashMap<String, OutcomeVolume24h>,
+) -> Option<f64> {
+    let mut total = 0.0;
+    let mut found = false;
+    for sides in outcomes.values() {
+        if let Some(volume) = outcome_group_volume(sides, volumes) {
+            total += volume;
+            found = true;
+        }
+    }
+    found.then_some(total)
+}
+
+fn outcome_group_volume(
+    sides: &[&ExchangeSymbol],
+    volumes: &HashMap<String, OutcomeVolume24h>,
+) -> Option<f64> {
     sides
         .iter()
-        .filter_map(|symbol| volumes.get(&symbol.key).copied())
+        .filter_map(|symbol| volumes.get(&symbol.key).map(|volume| volume.contract))
         .filter(|volume| volume.is_finite() && *volume >= 0.0)
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
 }
@@ -163,5 +292,38 @@ fn format_outcome_contract_volume(value: f64) -> String {
         format!("{value:.0} contracts")
     } else {
         format!("{value:.2} contracts")
+    }
+}
+
+fn outcome_market_set_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: iced::Border {
+            radius: 5.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
+        },
+        ..Default::default()
+    }
+}
+
+fn outcome_collapse_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let background = match status {
+        button::Status::Hovered => theme.extended_palette().background.strong.color,
+        _ => theme.extended_palette().background.base.color,
+    };
+
+    button::Style {
+        background: Some(background.into()),
+        text_color: theme.palette().text,
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: Color {
+                a: 0.50,
+                ..theme.extended_palette().background.strong.text
+            },
+        },
+        ..Default::default()
     }
 }

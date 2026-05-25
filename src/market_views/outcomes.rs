@@ -18,7 +18,7 @@ impl TradingTerminal {
 
     fn view_outcomes_sized(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
-        let grouped = self.grouped_outcome_symbols();
+        let grouped = self.grouped_outcome_markets();
         let searching = !self.outcome_search_query.trim().is_empty();
 
         let status = if self.symbols_loading {
@@ -40,15 +40,14 @@ impl TradingTerminal {
 
         let mut market_groups = Column::new().spacing(8);
         let mut is_first_group = true;
-        for (_outcome_id, sides) in grouped {
+        for group in grouped {
             if !is_first_group {
-                market_groups = market_groups.push(iced::widget::rule::horizontal(1));
+                market_groups = market_groups.push(iced::widget::Space::new().height(2.0));
             }
             is_first_group = false;
 
-            if let Some(group) = self.view_outcome_market_group(&theme, sides, available_width) {
-                market_groups = market_groups.push(group);
-            }
+            market_groups =
+                market_groups.push(self.view_outcome_market_set(&theme, group, available_width));
         }
 
         let mut content = column![].spacing(8);

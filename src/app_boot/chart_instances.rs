@@ -29,6 +29,7 @@ impl TradingTerminal {
             instance.macro_indicators = chart_cfg.macro_indicators.clone();
             instance.chart.macro_indicators = chart_cfg.macro_indicators.clone();
             instance.open_interest_as_notional = chart_cfg.open_interest_as_notional;
+            instance.outcome_volume_as_notional = chart_cfg.outcome_volume_as_notional;
 
             let mut ann_id: AnnotationId = 0;
             for acfg in &chart_cfg.annotations {

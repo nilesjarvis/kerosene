@@ -4,7 +4,9 @@ mod metrics;
 mod symbol;
 
 use self::feedback::format_signed_usd_change;
-use self::metrics::{ChartHeaderMetricVisibility, push_asset_context_columns};
+use self::metrics::{
+    ChartHeaderMetricVisibility, push_asset_context_columns, push_outcome_volume_column,
+};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::helpers::parse_finite_number;
@@ -83,6 +85,19 @@ impl TradingTerminal {
             ]
             .spacing(2);
             header_row = header_row.push(Space::new().width(8)).push(col_chg);
+        }
+
+        if self.is_outcome_coin(&instance.symbol)
+            && let Some(volume) = self.outcome_volumes_24h.get(&instance.symbol)
+        {
+            header_row = push_outcome_volume_column(
+                header_row,
+                &theme,
+                chart_id,
+                *volume,
+                instance.outcome_volume_as_notional,
+                metric_visibility,
+            );
         }
 
         if let Some(ctx) = &instance.asset_ctx {

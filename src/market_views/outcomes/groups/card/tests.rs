@@ -1,5 +1,6 @@
 use super::*;
-use crate::api::{ExchangeSymbol, MarketType};
+use crate::api::{ExchangeSymbol, MarketType, OutcomeVolume24h};
+use std::collections::BTreeMap;
 
 fn symbol(key: &str) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -24,8 +25,20 @@ fn outcome_group_volume_uses_largest_side_volume_to_avoid_double_counting_pairs(
     let no = symbol("#671");
     let sides = vec![&yes, &no];
     let volumes = HashMap::from([
-        ("#670".to_string(), 18_055.0),
-        ("#671".to_string(), 18_054.0),
+        (
+            "#670".to_string(),
+            OutcomeVolume24h {
+                contract: 18_055.0,
+                notional: 4_500.0,
+            },
+        ),
+        (
+            "#671".to_string(),
+            OutcomeVolume24h {
+                contract: 18_054.0,
+                notional: 4_499.0,
+            },
+        ),
     ]);
 
     assert_eq!(outcome_group_volume(&sides, &volumes), Some(18_055.0));
@@ -36,9 +49,59 @@ fn outcome_group_volume_ignores_missing_and_invalid_values() {
     let yes = symbol("#670");
     let no = symbol("#671");
     let sides = vec![&yes, &no];
-    let volumes = HashMap::from([("#670".to_string(), f64::NAN)]);
+    let volumes = HashMap::from([(
+        "#670".to_string(),
+        OutcomeVolume24h {
+            contract: f64::NAN,
+            notional: 0.0,
+        },
+    )]);
 
     assert_eq!(outcome_group_volume(&sides, &volumes), None);
+}
+
+#[test]
+fn outcome_market_set_volume_sums_distinct_outcome_pair_volume() {
+    let below_yes = symbol("#1010");
+    let below_no = symbol("#1011");
+    let above_yes = symbol("#1030");
+    let above_no = symbol("#1031");
+    let outcomes = BTreeMap::from([
+        (101, vec![&below_yes, &below_no]),
+        (103, vec![&above_yes, &above_no]),
+    ]);
+    let volumes = HashMap::from([
+        (
+            "#1010".to_string(),
+            OutcomeVolume24h {
+                contract: 5.0,
+                notional: 2.0,
+            },
+        ),
+        (
+            "#1011".to_string(),
+            OutcomeVolume24h {
+                contract: 4.0,
+                notional: 2.0,
+            },
+        ),
+        (
+            "#1030".to_string(),
+            OutcomeVolume24h {
+                contract: 3.0,
+                notional: 1.0,
+            },
+        ),
+        (
+            "#1031".to_string(),
+            OutcomeVolume24h {
+                contract: 8.0,
+                notional: 4.0,
+            },
+        ),
+    ]);
+
+    assert_eq!(outcome_market_set_volume(&outcomes, &volumes), Some(13.0));
 }
 
 #[test]

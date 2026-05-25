@@ -26,6 +26,7 @@ impl TradingTerminal {
                 funding_panel_height: 56,
                 macro_indicators: config::MacroIndicatorsConfig::default(),
                 open_interest_as_notional: false,
+                outcome_volume_as_notional: false,
             }]
         } else {
             layout.charts.clone()
@@ -42,6 +43,7 @@ impl TradingTerminal {
                 funding_panel_height: 56,
                 macro_indicators: config::MacroIndicatorsConfig::default(),
                 open_interest_as_notional: false,
+                outcome_volume_as_notional: false,
             });
         }
 
@@ -93,6 +95,7 @@ impl TradingTerminal {
                         funding_panel_height: 56,
                         macro_indicators: config::MacroIndicatorsConfig::default(),
                         open_interest_as_notional: false,
+                        outcome_volume_as_notional: false,
                     });
                     next_chart_id = next_chart_id.max(id.saturating_add(1));
                 }

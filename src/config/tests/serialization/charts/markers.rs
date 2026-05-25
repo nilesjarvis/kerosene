@@ -20,6 +20,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
             funding_panel_height: 56,
             macro_indicators,
             open_interest_as_notional: true,
+            outcome_volume_as_notional: true,
         }],
         ..KeroseneConfig::default()
     };
@@ -29,6 +30,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
 
     assert!(decoded.charts[0].show_trade_markers);
     assert!(decoded.charts[0].open_interest_as_notional);
+    assert!(decoded.charts[0].outcome_volume_as_notional);
     assert!(decoded.charts[0].macro_indicators.show_volume_profile);
 
     let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
@@ -45,6 +47,13 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         value_from_json(older_chart, "older chart config should deserialize");
 
     assert!(!decoded_older_chart.open_interest_as_notional);
+
+    let mut older_chart = json_value(&config.charts[0], "chart serializes");
+    object_mut(&mut older_chart, "chart config is an object").remove("outcome_volume_as_notional");
+    let decoded_older_chart: ChartConfig =
+        value_from_json(older_chart, "older chart config should deserialize");
+
+    assert!(!decoded_older_chart.outcome_volume_as_notional);
 
     let mut legacy_macro = json_value(
         &config.charts[0].macro_indicators,

@@ -61,6 +61,12 @@ impl TradingTerminal {
                 self.outcome_search_query = query;
                 Task::none()
             }
+            Message::OutcomeMarketGroupToggled(key) => {
+                if !self.outcome_collapsed_market_groups.insert(key.clone()) {
+                    self.outcome_collapsed_market_groups.remove(&key);
+                }
+                Task::none()
+            }
             Message::OutcomeVolumesLoaded(result) => self.apply_outcome_volumes_loaded(result),
             Message::SymbolSelected(key) => self.select_market_symbol(key),
             _ => Task::none(),

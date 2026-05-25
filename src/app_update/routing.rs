@@ -197,6 +197,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolSearchHip3DexFilterChanged(_)
         | Message::SymbolSearchContextsLoaded(_, _)
         | Message::OutcomeSearchChanged(_)
+        | Message::OutcomeMarketGroupToggled(_)
         | Message::OutcomeVolumesLoaded(_)
         | Message::RefreshHypeEtfs
         | Message::HypeEtfsRefreshTick
@@ -362,6 +363,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleFundingRateDisplayMode(_)
         | Message::FundingRefreshTick
         | Message::ToggleOpenInterestNotional(_)
+        | Message::ToggleOutcomeVolumeNotional(_)
         | Message::ChartSymbolSelected(_, _)
         | Message::ToggleChartInvert(_)
         | Message::ToggleChartTradeMarkers(_)

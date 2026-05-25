@@ -45,6 +45,7 @@ impl TradingTerminal {
             funding_panel_height: inst.chart.funding_panel_height_config(),
             macro_indicators: inst.macro_indicators.clone(),
             open_interest_as_notional: inst.open_interest_as_notional,
+            outcome_volume_as_notional: inst.outcome_volume_as_notional,
         }
     }
 

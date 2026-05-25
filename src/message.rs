@@ -420,6 +420,7 @@ pub(crate) enum Message {
     ToggleFundingRateDisplayMode(ChartId),
     FundingRefreshTick,
     ToggleOpenInterestNotional(ChartId),
+    ToggleOutcomeVolumeNotional(ChartId),
     ChartSymbolSelected(ChartId, String),
     ToggleChartInvert(ChartId),
     ToggleChartTradeMarkers(ChartId),
@@ -481,7 +482,8 @@ pub(crate) enum Message {
         Result<HashMap<String, crate::api::WatchlistContext>, String>,
     ),
     OutcomeSearchChanged(String),
-    OutcomeVolumesLoaded(Result<HashMap<String, f64>, String>),
+    OutcomeMarketGroupToggled(String),
+    OutcomeVolumesLoaded(Result<HashMap<String, crate::api::OutcomeVolume24h>, String>),
     SymbolSelected(String),
     BookLoaded {
         id: OrderBookId,

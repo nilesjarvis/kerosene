@@ -13,6 +13,7 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         funding_panel_height: 56,
         macro_indicators: MacroIndicatorsConfig::default(),
         open_interest_as_notional: false,
+        outcome_volume_as_notional: false,
     }];
 
     let (charts, tasks) =

@@ -1,4 +1,5 @@
 use crate::account::AssetContext;
+use crate::api::OutcomeVolume24h;
 use crate::chart_state::ChartId;
 use crate::message::Message;
 
@@ -11,18 +12,20 @@ mod formatting;
 #[cfg(test)]
 use formatting::format_open_interest_notional;
 use formatting::{
-    format_funding_pct, format_metric_price, format_open_interest, format_volume,
-    open_interest_label, parse_ctx_f64,
+    format_funding_pct, format_metric_price, format_open_interest, format_outcome_volume,
+    format_volume, open_interest_label, outcome_volume_label, parse_ctx_f64,
 };
 
 const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
 const HIDE_OPEN_INTEREST_BELOW: f32 = 560.0;
 const HIDE_FUNDING_BELOW: f32 = 460.0;
+const HIDE_24H_VOLUME_BELOW: f32 = 420.0;
 const HIDE_24H_CHANGE_BELOW: f32 = 340.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChartHeaderMetricVisibility {
     pub(crate) show_24h_change: bool,
+    pub(crate) show_24h_volume: bool,
     pub(crate) show_mark_oracle: bool,
     pub(crate) show_open_interest: bool,
     pub(crate) show_funding: bool,
@@ -33,11 +36,32 @@ impl ChartHeaderMetricVisibility {
         let width = if width.is_finite() { width } else { 0.0 };
         Self {
             show_24h_change: width >= HIDE_24H_CHANGE_BELOW,
+            show_24h_volume: width >= HIDE_24H_VOLUME_BELOW,
             show_mark_oracle: width >= HIDE_MARK_ORACLE_BELOW,
             show_open_interest: width >= HIDE_OPEN_INTEREST_BELOW,
             show_funding: width >= HIDE_FUNDING_BELOW,
         }
     }
+}
+
+pub(in crate::chart_views::header) fn push_outcome_volume_column<'a>(
+    mut header_row: Row<'a, Message>,
+    theme: &Theme,
+    chart_id: ChartId,
+    volume: OutcomeVolume24h,
+    as_notional: bool,
+    visibility: ChartHeaderMetricVisibility,
+) -> Row<'a, Message> {
+    if visibility.show_24h_volume {
+        header_row = header_row.push(clickable_metric_column(
+            outcome_volume_label(as_notional),
+            format_outcome_volume(volume, as_notional),
+            theme.palette().text,
+            theme,
+            Message::ToggleOutcomeVolumeNotional(chart_id),
+        ));
+    }
+    header_row
 }
 
 #[allow(clippy::too_many_arguments)]

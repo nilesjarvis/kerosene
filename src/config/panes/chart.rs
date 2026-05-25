@@ -95,6 +95,9 @@ pub struct ChartConfig {
     /// Whether open interest is displayed as USD notional instead of coin amount.
     #[serde(default)]
     pub open_interest_as_notional: bool,
+    /// Whether HIP-4 volume is displayed as USD notional instead of contracts.
+    #[serde(default)]
+    pub outcome_volume_as_notional: bool,
 }
 
 /// Persisted state for a detached candlestick chart window.

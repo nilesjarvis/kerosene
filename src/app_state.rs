@@ -127,10 +127,11 @@ pub(crate) struct TradingTerminal {
     pub(crate) symbol_search_contexts_loading: bool,
     pub(crate) symbol_search_contexts_last_fetch_ms: Option<u64>,
     pub(crate) symbol_search_status: Option<(String, bool)>,
-    pub(crate) outcome_volumes_24h: HashMap<String, f64>,
+    pub(crate) outcome_volumes_24h: HashMap<String, api::OutcomeVolume24h>,
     pub(crate) outcome_volumes_loading: bool,
     pub(crate) outcome_volumes_error: Option<String>,
     pub(crate) outcome_search_query: String,
+    pub(crate) outcome_collapsed_market_groups: HashSet<String>,
     pub(crate) hype_etfs: HypeEtfState,
     pub(crate) display_denomination: config::DisplayDenominationConfig,
     // L2 order books

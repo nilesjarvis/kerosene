@@ -33,7 +33,7 @@ impl TradingTerminal {
 
     pub(super) fn apply_outcome_volumes_loaded(
         &mut self,
-        result: Result<HashMap<String, f64>, String>,
+        result: Result<HashMap<String, api::OutcomeVolume24h>, String>,
     ) -> Task<Message> {
         self.outcome_volumes_loading = false;
         match result {
