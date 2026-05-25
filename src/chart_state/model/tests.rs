@@ -17,6 +17,7 @@ fn moving_order_overlay() -> crate::chart::OrderOverlay {
         is_buy: true,
         oid: 42,
         is_moving: true,
+        pending_state: None,
     }
 }
 

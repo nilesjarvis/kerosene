@@ -7,8 +7,8 @@ use iced::widget::{button, text};
 // Size Input Components
 // ---------------------------------------------------------------------------
 
-pub(super) fn denomination_button<'a>(label: &'static str) -> button::Button<'a, Message> {
-    button(text(label).size(10).center())
+pub(super) fn denomination_button<'a>(label: impl ToString) -> button::Button<'a, Message> {
+    button(text(label.to_string()).size(10).center())
         .on_press(Message::ToggleOrderDenomination)
         .padding([2, 6])
         .style(|theme: &Theme, status| {

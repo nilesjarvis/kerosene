@@ -87,16 +87,10 @@ impl TradingTerminal {
     }
 
     fn open_position_tab_count(&self) -> usize {
-        self.account_data
-            .as_ref()
-            .map(|data| {
-                data.clearinghouse
-                    .asset_positions
-                    .iter()
-                    .filter(|position| !self.symbol_key_is_hidden(&position.position.coin))
-                    .count()
-            })
-            .unwrap_or_default()
+        self.projected_positions()
+            .into_iter()
+            .filter(|position| !self.symbol_key_is_hidden(&position.asset_position.position.coin))
+            .count()
     }
 
     fn open_order_tab_count(&self) -> usize {
@@ -255,8 +249,9 @@ mod tests {
     use super::*;
     use crate::account::{
         AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
-        OpenOrder, Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
+        OpenOrder, Position, PositionLeverage, SpotBalance, SpotClearinghouseState, UserFeeRates,
     };
+    use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
     use crate::config::MarketUniverseConfig;
 
     fn account_data(positions: Vec<AssetPosition>, open_orders: Vec<OpenOrder>) -> AccountData {
@@ -323,6 +318,61 @@ mod tests {
         }
     }
 
+    fn spot_balance(coin: &str, total: &str) -> SpotBalance {
+        SpotBalance {
+            coin: coin.to_string(),
+            token: None,
+            total: total.to_string(),
+            hold: "0".to_string(),
+            entry_ntl: "0".to_string(),
+            supplied: None,
+        }
+    }
+
+    fn outcome_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: "OUT95-YES".to_string(),
+            category: "outcome".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 100_000_950,
+            collateral_token: None,
+            sz_decimals: 0,
+            max_leverage: 1,
+            only_isolated: true,
+            market_type: MarketType::Outcome,
+            outcome: Some(OutcomeSymbolInfo {
+                outcome_id: 95,
+                question_id: None,
+                question_name: None,
+                question_description: None,
+                question_class: None,
+                question_underlying: None,
+                question_expiry: None,
+                question_price_thresholds: Vec::new(),
+                question_period: None,
+                question_named_outcomes: Vec::new(),
+                question_settled_named_outcomes: Vec::new(),
+                question_fallback_outcome: None,
+                bucket_index: None,
+                is_question_fallback: false,
+                side_index: 0,
+                side_name: "Yes".to_string(),
+                outcome_name: "Recurring".to_string(),
+                description: String::new(),
+                class: None,
+                underlying: None,
+                expiry: None,
+                target_price: None,
+                period: None,
+                quote_symbol: "USDC".to_string(),
+                quote_token_index: Some(crate::api::USDC_TOKEN_INDEX),
+                encoding: 950,
+            }),
+        }
+    }
+
     #[test]
     fn bottom_tab_counts_reflect_open_positions_and_orders() {
         let mut terminal = TradingTerminal::boot().0;
@@ -346,5 +396,16 @@ mod tests {
 
         assert_eq!(terminal.open_position_tab_count(), 1);
         assert_eq!(terminal.open_order_tab_count(), 1);
+    }
+
+    #[test]
+    fn bottom_tab_counts_include_outcome_spot_positions() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![outcome_symbol("#950")];
+        let mut data = account_data(Vec::new(), Vec::new());
+        data.spot.balances = vec![spot_balance("+950", "30")];
+        terminal.account_data = Some(data);
+
+        assert_eq!(terminal.open_position_tab_count(), 1);
     }
 }

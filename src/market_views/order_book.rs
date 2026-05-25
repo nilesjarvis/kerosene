@@ -166,10 +166,8 @@ impl TradingTerminal {
     }
 
     fn user_order_book_levels(&self, symbol: &str, tick: f64) -> UserOrderBookLevels {
-        self.account_data
-            .as_ref()
-            .map(|data| UserOrderBookLevels::from_orders(&data.open_orders, symbol, tick))
-            .unwrap_or_default()
+        let orders = self.merged_open_orders();
+        UserOrderBookLevels::from_orders(&orders, symbol, tick)
     }
 }
 

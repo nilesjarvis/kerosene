@@ -12,8 +12,15 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
-        self.pending_move_order_contexts.remove(&oid);
-        self.sync_all_chart_orders();
+        let pending_id = self
+            .pending_move_order_contexts
+            .remove(&oid)
+            .and_then(|context| context.pending_id());
+        if matches!(&result, Ok(response) if response.is_error()) {
+            self.clear_pending_order_change(pending_id);
+        } else {
+            self.sync_all_chart_orders();
+        }
         match result {
             Ok(resp) => {
                 let is_error = resp.is_error();

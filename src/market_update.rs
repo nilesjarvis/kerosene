@@ -19,6 +19,7 @@ impl TradingTerminal {
             | Message::SymbolSearchMarketFilterChanged(_)
             | Message::SymbolSearchHip3DexFilterChanged(_)
             | Message::SymbolSearchContextsLoaded(_, _)
+            | Message::OutcomeSearchChanged(_)
             | Message::OutcomeVolumesLoaded(_)
             | Message::SymbolSelected(_)) => {
                 return self.update_symbol_search_market(message);

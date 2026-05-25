@@ -1,8 +1,9 @@
 use super::super::TradingOverlayContext;
+use crate::chart::OrderOverlayPendingState;
 use crate::chart::model::CandlestickChart;
 use crate::chart::order_labels::{
     ORDER_CANCEL_GAP, ORDER_CANCEL_WIDTH, ORDER_LABEL_X, order_side_label,
-    order_side_label_width_for_label,
+    order_side_label_width_for_order,
 };
 use crate::chart::state::DragKind;
 
@@ -31,6 +32,7 @@ pub(super) struct VisibleOrder {
     pub(super) side_label_width: f32,
     pub(super) cancel_x: f32,
     pub(super) label_right_x: f32,
+    pub(super) pending_state: Option<OrderOverlayPendingState>,
 }
 
 pub(super) fn collect_visible_orders<PriceToY, IdxToCx>(
@@ -50,7 +52,12 @@ where
 
     for (order_index, order) in chart.active_orders.iter().enumerate() {
         let is_dragging = dragging_oid == Some(order.oid);
-        let is_animating = is_dragging || order.is_moving;
+        let is_pending = order.pending_state.is_some();
+        let pending_animates = matches!(
+            order.pending_state,
+            Some(OrderOverlayPendingState::Cancelling | OrderOverlayPendingState::Modifying)
+        );
+        let is_animating = is_dragging || order.is_moving || pending_animates;
         let display_px = if is_dragging {
             ctx.state.drag_order_new_price.unwrap_or(order.limit_px)
         } else {
@@ -65,12 +72,19 @@ where
             continue;
         }
 
-        let (order_color, order_color_solid, line_width) =
-            visible_order_style(ctx, is_dragging, order.is_buy);
+        let (order_color, order_color_solid, line_width) = visible_order_style(
+            ctx,
+            is_dragging || order.is_moving || pending_animates,
+            order.is_buy,
+        );
         let side_label = order_side_label(order);
-        let side_label_width = order_side_label_width_for_label(&side_label);
+        let side_label_width = order_side_label_width_for_order(order, &side_label);
         let cancel_x = ORDER_LABEL_X + side_label_width + ORDER_CANCEL_GAP;
-        let label_right_x = cancel_x + ORDER_CANCEL_WIDTH;
+        let label_right_x = if is_pending {
+            ORDER_LABEL_X + side_label_width
+        } else {
+            cancel_x + ORDER_CANCEL_WIDTH
+        };
 
         visible_orders.push(VisibleOrder {
             order_index,
@@ -86,6 +100,7 @@ where
             side_label_width,
             cancel_x,
             label_right_x,
+            pending_state: order.pending_state,
         });
     }
 

@@ -52,10 +52,13 @@ impl TradingTerminal {
         let theme = self.theme();
         let mut presets_col = Column::new().spacing(12);
         let denomination_label = match (active_is_outcome, self.preset_is_usd) {
-            (true, true) => "$ USDH",
-            (true, false) => "Contracts",
-            (false, true) => "$ USD",
-            (false, false) => "Coin",
+            (true, true) => format!(
+                "$ {}",
+                self.outcome_quote_symbol_for_coin(&self.active_symbol)
+            ),
+            (true, false) => "Contracts".to_string(),
+            (false, true) => "$ USD".to_string(),
+            (false, false) => "Coin".to_string(),
         };
 
         let currency_toggle = row![

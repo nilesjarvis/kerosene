@@ -2,8 +2,9 @@ mod components;
 mod groups;
 
 use crate::app_state::TradingTerminal;
+use crate::helpers;
 use crate::message::Message;
-use iced::widget::{Column, column, container, responsive, scrollable, text};
+use iced::widget::{Column, column, container, responsive, scrollable, text, text_input};
 use iced::{Element, Fill};
 
 // ---------------------------------------------------------------------------
@@ -18,9 +19,15 @@ impl TradingTerminal {
     fn view_outcomes_sized(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
         let grouped = self.grouped_outcome_symbols();
+        let searching = !self.outcome_search_query.trim().is_empty();
 
         let status = if self.symbols_loading {
             Some("Loading outcome metadata from Hyperliquid outcomeMeta".to_string())
+        } else if grouped.is_empty() && searching {
+            Some(format!(
+                "No outcome contracts match \"{}\"",
+                self.outcome_search_query.trim()
+            ))
         } else if grouped.is_empty() {
             Some("No outcome contracts returned by Hyperliquid outcomeMeta".to_string())
         } else if self.outcome_volumes_loading {
@@ -45,6 +52,14 @@ impl TradingTerminal {
         }
 
         let mut content = column![].spacing(8);
+        content = content.push(
+            text_input("Search outcome markets...", &self.outcome_search_query)
+                .style(helpers::text_input_style)
+                .on_input(Message::OutcomeSearchChanged)
+                .size(12)
+                .padding([5, 8])
+                .width(Fill),
+        );
         if let Some(status) = status {
             content = content.push(
                 text(status)

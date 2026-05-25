@@ -14,7 +14,9 @@ impl TradingTerminal {
     fn account_refresh_backoff_remaining_ms(&self) -> Option<u64> {
         let until_ms = self.account_refresh_backoff_until_ms?;
         let now_ms = Self::now_ms();
-        (until_ms > now_ms).then_some(until_ms - now_ms)
+        until_ms
+            .checked_sub(now_ms)
+            .filter(|remaining_ms| *remaining_ms > 0)
     }
 
     fn account_refresh_rate_limited(error: &str) -> bool {
@@ -60,6 +62,8 @@ impl TradingTerminal {
                 self.account_reconciliation_required = false;
                 let data = self.filter_account_data_for_muted_tickers(data);
                 let is_pm = data.is_portfolio_margin();
+                self.optimistic_account
+                    .reconcile_with_account_data(&data, Self::now_ms());
                 self.account_data = Some(data);
                 self.account_error = None;
                 self.sync_all_chart_overlays();
@@ -82,7 +86,8 @@ impl TradingTerminal {
             }
             Err(e) => {
                 if Self::account_refresh_rate_limited(&e) {
-                    self.account_refresh_backoff_until_ms = Some(Self::now_ms() + 60_000);
+                    self.account_refresh_backoff_until_ms =
+                        Some(Self::now_ms().saturating_add(60_000));
                 }
                 self.account_error = Some(e);
             }
@@ -138,5 +143,18 @@ impl TradingTerminal {
         Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
             Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expired_account_refresh_backoff_does_not_overflow() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.account_refresh_backoff_until_ms = Some(1);
+
+        assert_eq!(terminal.account_refresh_backoff_remaining_ms(), None);
     }
 }

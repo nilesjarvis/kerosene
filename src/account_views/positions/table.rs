@@ -1,9 +1,9 @@
-use crate::account;
 use crate::account_views::invalid_account_data;
 use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::format_decimal_with_commas;
 use crate::message::Message;
+use crate::optimistic_updates::ProjectedAssetPosition;
 
 use super::{PositionColumnVisibility, PositionNumberMode};
 use iced::Theme;
@@ -17,7 +17,7 @@ mod summary;
 impl TradingTerminal {
     pub(super) fn view_position_rows<'a>(
         &'a self,
-        positions: &[&'a account::AssetPosition],
+        positions: &[ProjectedAssetPosition],
         can_close: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,

@@ -45,7 +45,7 @@ pub struct OutcomeSymbolInfo {
 ///   - Main perp dex: "BTC", "ETH", "HYPE"
 ///   - HIP-3 dexes:   "xyz:NVDA", "flx:BTC", "km:US500"
 ///   - Spot pairs:     "@1" (PURR/USDC), "@107" (HYPE/USDC)
-///   - Outcomes:       "#0", "#1" (USDH-denominated prediction contracts)
+///   - Outcomes:       "#0", "#1" (quote-token-denominated prediction contracts)
 #[derive(Debug, Clone)]
 pub struct ExchangeSymbol {
     /// Coin name for API calls (e.g. "HYPE", "xyz:NVDA", or "@107")
@@ -73,7 +73,7 @@ pub struct ExchangeSymbol {
     pub only_isolated: bool,
     /// Whether this is a perpetual, spot, or outcome market.
     pub market_type: MarketType,
-    /// Outcome-specific metadata for USDH prediction market contracts.
+    /// Outcome-specific metadata for prediction market contracts.
     pub outcome: Option<OutcomeSymbolInfo>,
 }
 

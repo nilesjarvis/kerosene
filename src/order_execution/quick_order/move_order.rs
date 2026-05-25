@@ -83,6 +83,7 @@ impl TradingTerminal {
             self.order_status = Some(("Order no longer exists".into(), true));
             return Task::none();
         };
+        let order = order.clone();
 
         let coin = order.coin.clone();
         if self.symbol_key_is_hidden(&coin) {
@@ -153,7 +154,7 @@ impl TradingTerminal {
             format!("Moving {} order to ${}...", coin, new_price_str),
             false,
         ));
-        let Ok(context) = PendingMoveOrderContext::new(account_address, key) else {
+        let Ok(mut context) = PendingMoveOrderContext::new(account_address.clone(), key) else {
             self.order_status = Some(("Move failed: no agent key".into(), true));
             return Task::none();
         };
@@ -164,6 +165,9 @@ impl TradingTerminal {
                 return Task::none();
             }
         };
+        let pending_id =
+            self.add_pending_order_modification(&account_address, &order, new_price_str.clone());
+        context.set_pending_id(pending_id);
         self.pending_move_order_contexts.insert(oid, context);
         self.sync_all_chart_orders();
 

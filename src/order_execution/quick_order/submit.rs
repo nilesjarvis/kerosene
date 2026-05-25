@@ -5,6 +5,9 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::helpers::{parse_number, positive_finite_value};
 use crate::message::Message;
+use crate::optimistic_updates::{
+    OptimisticOrderContext, OptimisticOrderSource, OrderSubmissionResult,
+};
 use crate::order_execution::QuickOrderForm;
 use crate::signing::{OrderKind, float_to_wire, place_order, round_price};
 
@@ -54,7 +57,11 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let _theme = self.theme();
         let key = self.wallet_key_input.trim().to_string();
-        if key.is_empty() || self.connected_address.is_none() {
+        let Some(account_address) = self.connected_address.clone() else {
+            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+            return Task::none();
+        };
+        if key.is_empty() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return Task::none();
         }
@@ -165,6 +172,19 @@ impl TradingTerminal {
             format!("Placing {kind_str} {side_str} {size} {chart_symbol}..."),
             false,
         ));
+        let mut optimistic_context = OptimisticOrderContext {
+            account_address,
+            symbol: chart_symbol,
+            is_buy,
+            size: size.clone(),
+            price: price.clone(),
+            order_kind,
+            reduce_only,
+            submitted_at_ms: Self::now_ms(),
+            pending_id: None,
+            source: OptimisticOrderSource::QuickOrder { chart_id },
+        };
+        self.add_pending_order_submission(&mut optimistic_context);
 
         Task::perform(
             place_order(
@@ -176,7 +196,12 @@ impl TradingTerminal {
                 order_kind,
                 reduce_only,
             ),
-            |r| Message::QuickOrderResult(Box::new(r)),
+            move |r| {
+                Message::QuickOrderResult(Box::new(OrderSubmissionResult {
+                    context: optimistic_context.clone(),
+                    result: r,
+                }))
+            },
         )
     }
 

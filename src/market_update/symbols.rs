@@ -57,6 +57,10 @@ impl TradingTerminal {
                 self.refresh_symbol_search_results();
                 Task::none()
             }
+            Message::OutcomeSearchChanged(query) => {
+                self.outcome_search_query = query;
+                Task::none()
+            }
             Message::OutcomeVolumesLoaded(result) => self.apply_outcome_volumes_loaded(result),
             Message::SymbolSelected(key) => self.select_market_symbol(key),
             _ => Task::none(),

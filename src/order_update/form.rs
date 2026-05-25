@@ -1,5 +1,4 @@
 use crate::account::AccountData;
-use crate::api::USDH_TOKEN_INDEX;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{format_price, parse_number, positive_finite_value};
 use crate::signing::OrderKind;
@@ -163,7 +162,9 @@ impl TradingTerminal {
         }
 
         let available_margin = if self.is_outcome_coin(&self.active_symbol) {
-            data.available_margin_for_token(USDH_TOKEN_INDEX)?
+            data.available_margin_for_token(
+                self.outcome_quote_token_index_for_coin(&self.active_symbol),
+            )?
         } else {
             self.visible_available_margin_usdc(data)?
         };

@@ -1,5 +1,5 @@
 use super::{action_or_panic, candle_at, chart_bounds, message_or_panic};
-use crate::chart::{CandlestickChart, OrderOverlay};
+use crate::chart::{CandlestickChart, OrderOverlay, OrderOverlayPendingState};
 use crate::message::Message;
 use iced::Point;
 
@@ -31,6 +31,14 @@ fn btc_buy_order(oid: u64) -> OrderOverlay {
         is_buy: true,
         oid,
         is_moving: false,
+        pending_state: None,
+    }
+}
+
+fn pending_btc_buy_order(oid: u64) -> OrderOverlay {
+    OrderOverlay {
+        pending_state: Some(OrderOverlayPendingState::Cancelling),
+        ..btc_buy_order(oid)
     }
 }
 

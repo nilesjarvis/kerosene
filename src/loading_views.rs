@@ -77,6 +77,7 @@ impl TradingTerminal {
             || self.live_watchlist_history_loading
             || self.active_move_order_drag.is_some()
             || !self.pending_move_order_contexts.is_empty()
+            || self.has_pending_order_changes()
             || !self.chase_orders.is_empty()
             || self.charts.values().any(|inst| {
                 matches!(inst.chart.status, ChartStatus::Loading)

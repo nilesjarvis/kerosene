@@ -1,6 +1,7 @@
 use super::ChartId;
 use crate::app_state::TradingTerminal;
-use crate::chart::{OrderOverlay, PositionOverlay};
+use crate::chart::{OrderOverlay, OrderOverlayPendingState, PositionOverlay};
+use crate::optimistic_updates::PendingOrderChangeKind;
 
 mod trades;
 
@@ -21,18 +22,14 @@ impl TradingTerminal {
             return;
         }
         let pos_overlay = self
-            .account_data
-            .as_ref()
-            .and_then(|data| {
-                data.clearinghouse
-                    .asset_positions
-                    .iter()
-                    .find(|ap| ap.position.coin == symbol)
-            })
-            .and_then(|ap| {
+            .projected_positions()
+            .into_iter()
+            .find(|row| row.asset_position.position.coin == symbol)
+            .and_then(|row| {
+                let ap = row.asset_position;
                 let szi: f64 = ap.position.szi.parse().ok()?;
                 let entry_px: f64 = ap.position.entry_px.parse().ok()?;
-                let liquidation_px = Self::parse_liquidation_px(ap);
+                let liquidation_px = Self::parse_liquidation_px(&ap);
                 if szi.abs() < 1e-12 {
                     return None;
                 }
@@ -75,6 +72,7 @@ impl TradingTerminal {
                     is_buy: chase.is_buy,
                     oid,
                     is_moving: self.pending_move_order_contexts.contains_key(&oid),
+                    pending_state: None,
                 })
             })
             .filter(|order| {
@@ -85,27 +83,25 @@ impl TradingTerminal {
             })
             .collect();
         let mut order_overlays: Vec<OrderOverlay> = self
-            .account_data
-            .as_ref()
-            .map(|data| {
-                data.open_orders
-                    .iter()
-                    .filter(|o| o.coin == symbol)
-                    .filter_map(|o| {
-                        let limit_px: f64 = o.limit_px.parse().ok()?;
-                        let sz: f64 = o.sz.parse().ok()?;
-                        Some(OrderOverlay {
-                            coin: o.coin.clone(),
-                            limit_px,
-                            sz,
-                            is_buy: o.side == "B",
-                            oid: o.oid,
-                            is_moving: self.pending_move_order_contexts.contains_key(&o.oid),
-                        })
-                    })
-                    .collect()
+            .projected_open_orders()
+            .into_iter()
+            .filter(|row| row.order.coin == symbol)
+            .filter_map(|row| {
+                let limit_px: f64 = row.order.limit_px.parse().ok()?;
+                let sz: f64 = row.order.sz.parse().ok()?;
+                Some(OrderOverlay {
+                    coin: row.order.coin.clone(),
+                    limit_px,
+                    sz,
+                    is_buy: row.order.side == "B",
+                    oid: row.order.oid,
+                    is_moving: self
+                        .pending_move_order_contexts
+                        .contains_key(&row.order.oid),
+                    pending_state: None,
+                })
             })
-            .unwrap_or_default();
+            .collect();
         for chase_order in chase_overlays {
             if let Some(existing) = order_overlays
                 .iter_mut()
@@ -115,6 +111,48 @@ impl TradingTerminal {
             } else {
                 order_overlays.push(chase_order);
             }
+        }
+        for pending in self.projected_pending_order_changes() {
+            if pending.symbol != symbol {
+                continue;
+            }
+            let Some(limit_px) = pending.price.parse::<f64>().ok() else {
+                continue;
+            };
+            let Some(sz) = pending.size.parse::<f64>().ok() else {
+                continue;
+            };
+            if !limit_px.is_finite() || limit_px <= 0.0 || !sz.is_finite() || sz <= 0.0 {
+                continue;
+            }
+
+            let pending_state = Some(match pending.kind {
+                PendingOrderChangeKind::Placing => OrderOverlayPendingState::Placing,
+                PendingOrderChangeKind::Cancelling => OrderOverlayPendingState::Cancelling,
+                PendingOrderChangeKind::Modifying => OrderOverlayPendingState::Modifying,
+            });
+            if let Some(oid) = pending.oid
+                && let Some(existing) = order_overlays.iter_mut().find(|order| order.oid == oid)
+            {
+                if pending.kind == PendingOrderChangeKind::Modifying {
+                    existing.limit_px = limit_px;
+                    existing.sz = sz;
+                    existing.is_buy = pending.is_buy;
+                }
+                existing.pending_state = pending_state;
+                existing.is_moving = false;
+                continue;
+            }
+
+            order_overlays.push(OrderOverlay {
+                coin: pending.symbol,
+                limit_px,
+                sz,
+                is_buy: pending.is_buy,
+                oid: pending.oid.unwrap_or(pending.pending_id),
+                is_moving: false,
+                pending_state,
+            });
         }
         if let Some(inst) = self.charts.get_mut(&chart_id) {
             inst.chart.active_orders = order_overlays;
@@ -133,11 +171,8 @@ impl TradingTerminal {
             return;
         }
 
-        let mut trade_markers = self
-            .account_data
-            .as_ref()
-            .map(|data| trade_markers_for_symbol(&data.fills, &symbol))
-            .unwrap_or_default();
+        let fills = self.merged_user_fills();
+        let mut trade_markers = trade_markers_for_symbol(&fills, &symbol);
         trade_markers.sort_by_key(|marker| marker.time_ms);
 
         if let Some(inst) = self.charts.get_mut(&chart_id) {

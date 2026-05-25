@@ -21,6 +21,9 @@ impl OutcomeSymbolInfo {
             };
             return format!("{label} at {}", Self::format_expiry_at(expiry, now_ms));
         }
+        if let Some(label) = self.named_outcome_label() {
+            return format!("not {label}");
+        }
 
         format!("not {}", self.market_label_at(now_ms, include_expiry))
     }

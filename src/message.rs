@@ -17,6 +17,7 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
+use crate::optimistic_updates::{OrderCancellationResult, OrderSubmissionResult};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
@@ -290,13 +291,13 @@ pub(crate) enum Message {
     ToggleDesktopNotifications,
     PlaceBuy,
     PlaceSell,
-    OrderResult(Box<Result<ExchangeResponse, String>>),
+    OrderResult(Box<OrderSubmissionResult>),
     DismissOrderStatus,
     CancelOrder {
         coin: String,
         oid: u64,
     },
-    CancelResult(Box<Result<ExchangeResponse, String>>),
+    CancelResult(Box<OrderCancellationResult>),
     ToggleCloseMenu(String),
     ToggleHiddenPosition(String),
     ToggleShowHiddenPositions,
@@ -444,7 +445,7 @@ pub(crate) enum Message {
     QuickOrderToggleType(ChartId),
     CloseQuickOrder(ChartId),
     SubmitQuickOrder(ChartId, bool),
-    QuickOrderResult(Box<Result<ExchangeResponse, String>>),
+    QuickOrderResult(Box<OrderSubmissionResult>),
     EscapePressed,
     // Order drag-to-move (from chart canvas)
     MoveOrderDragStarted {
@@ -468,6 +469,7 @@ pub(crate) enum Message {
         u64,
         Result<HashMap<String, crate::api::WatchlistContext>, String>,
     ),
+    OutcomeSearchChanged(String),
     OutcomeVolumesLoaded(Result<HashMap<String, f64>, String>),
     SymbolSelected(String),
     BookLoaded {

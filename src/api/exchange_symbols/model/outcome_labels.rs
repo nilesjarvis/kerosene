@@ -77,6 +77,25 @@ impl OutcomeSymbolInfo {
         if self.is_no_side() {
             return self.complement_label(now_ms, include_expiry);
         }
+        if let Some(label) = self.named_outcome_label() {
+            return label;
+        }
         self.market_label_at(now_ms, include_expiry)
+    }
+
+    pub(super) fn named_outcome_label(&self) -> Option<String> {
+        if self.question_id.is_none()
+            || self.is_question_fallback
+            || self.question_class.as_deref() == Some("priceBucket")
+        {
+            return None;
+        }
+
+        let label = self.outcome_name.trim();
+        if label.is_empty() || self.question_name.as_deref() == Some(label) {
+            None
+        } else {
+            Some(label.to_string())
+        }
     }
 }

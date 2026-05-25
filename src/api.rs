@@ -44,4 +44,5 @@ const KEROSENE_USER_AGENT: &str = concat!("Kerosene/", env!("CARGO_PKG_VERSION")
 
 pub const API_URL: &str = "https://api.hyperliquid.xyz/info";
 pub const OUTCOME_ASSET_ID_OFFSET: u32 = 100_000_000;
+pub const USDC_TOKEN_INDEX: u32 = 0;
 pub const USDH_TOKEN_INDEX: u32 = 360;

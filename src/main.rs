@@ -54,6 +54,7 @@ mod market_update;
 mod market_views;
 mod message;
 mod notification_state;
+mod optimistic_updates;
 mod order_execution;
 mod order_update;
 mod order_views;

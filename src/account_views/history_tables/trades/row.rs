@@ -36,6 +36,7 @@ impl TradingTerminal {
     pub(super) fn view_trade_history_row<'a>(
         &'a self,
         fill: &'a account::UserFill,
+        is_optimistic: bool,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let (side_str, side_color) = trade_side_display(&fill.side, theme);
@@ -50,12 +51,25 @@ impl TradingTerminal {
         let fee_color = optional_value_color(fee, weak_color, invalid_color);
         let denomination = self.display_denomination_context();
 
-        let pnl_display = if self.hide_pnl {
+        let pnl_display = if is_optimistic {
+            "Pending".to_string()
+        } else if self.hide_pnl {
             denomination.hidden_mask()
         } else {
             format_history_display_usd(&denomination, pnl, 2)
         };
-        let fee_display = history_fee_display(&denomination, fee, self.hide_pnl);
+        let fee_display = if is_optimistic {
+            "Pending".to_string()
+        } else {
+            history_fee_display(&denomination, fee, self.hide_pnl)
+        };
+        let dir_display = if is_optimistic {
+            "Pending"
+        } else {
+            fill.dir.as_str()
+        };
+        let pnl_color = if is_optimistic { weak_color } else { pnl_color };
+        let fee_color = if is_optimistic { weak_color } else { fee_color };
 
         let mut coin_content = row![];
         if let Some(icon) = helpers::symbol_icon(&fill.coin, 14, theme.palette().text) {
@@ -69,7 +83,7 @@ impl TradingTerminal {
             text(time_str).size(12).width(Fill),
             coin_content.width(Fill),
             text(side_str).size(12).color(side_color).width(Fill),
-            text(&fill.dir).size(12).width(Fill),
+            text(dir_display).size(12).width(Fill),
             text(valid_history_wire_value(&fill.px))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())

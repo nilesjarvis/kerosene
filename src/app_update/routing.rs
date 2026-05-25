@@ -196,6 +196,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SymbolSearchMarketFilterChanged(_)
         | Message::SymbolSearchHip3DexFilterChanged(_)
         | Message::SymbolSearchContextsLoaded(_, _)
+        | Message::OutcomeSearchChanged(_)
         | Message::OutcomeVolumesLoaded(_)
         | Message::RefreshHypeEtfs
         | Message::HypeEtfsRefreshTick

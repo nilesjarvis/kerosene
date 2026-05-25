@@ -18,7 +18,7 @@ pub(super) struct PositionRowPnlDisplays {
 impl TradingTerminal {
     pub(super) fn position_row_pnl_displays(
         &self,
-        data: &PositionRowData<'_>,
+        data: &PositionRowData,
         denomination: &DisplayDenominationContext,
         number_mode: PositionNumberMode,
     ) -> PositionRowPnlDisplays {

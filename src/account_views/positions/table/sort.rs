@@ -3,13 +3,15 @@ use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::parse_finite_number;
+use crate::optimistic_updates::ProjectedAssetPosition;
 
 #[cfg(test)]
 mod tests;
 
-pub(in crate::account_views::positions::table) struct PositionRowData<'a> {
-    pub(in crate::account_views::positions::table) ap: &'a account::AssetPosition,
-    pub(in crate::account_views::positions::table) coin: &'a str,
+pub(in crate::account_views::positions::table) struct PositionRowData {
+    pub(in crate::account_views::positions::table) ap: account::AssetPosition,
+    pub(in crate::account_views::positions::table) coin: String,
+    pub(in crate::account_views::positions::table) is_optimistic: bool,
     pub(in crate::account_views::positions::table) szi: Option<f64>,
     pub(in crate::account_views::positions::table) entry_px: Option<f64>,
     pub(in crate::account_views::positions::table) is_long: Option<bool>,
@@ -23,20 +25,20 @@ pub(in crate::account_views::positions::table) struct PositionRowData<'a> {
 }
 
 impl TradingTerminal {
-    pub(super) fn sorted_position_rows<'a>(
+    pub(super) fn sorted_position_rows(
         &self,
-        positions: &[&'a account::AssetPosition],
-    ) -> Vec<PositionRowData<'a>> {
-        let mut row_data: Vec<PositionRowData<'_>> = positions
+        positions: &[ProjectedAssetPosition],
+    ) -> Vec<PositionRowData> {
+        let mut row_data: Vec<PositionRowData> = positions
             .iter()
-            .map(|ap| self.position_row_data(ap))
+            .map(|ap| self.projected_position_row_data(ap))
             .collect();
 
         row_data.sort_by(|a, b| {
             let cmp = match self.positions_sort_column {
-                PositionsSortColumn::Symbol => a.coin.cmp(b.coin),
+                PositionsSortColumn::Symbol => a.coin.cmp(&b.coin),
                 PositionsSortColumn::Side => {
-                    a.is_long.cmp(&b.is_long).then_with(|| a.coin.cmp(b.coin))
+                    a.is_long.cmp(&b.is_long).then_with(|| a.coin.cmp(&b.coin))
                 }
                 PositionsSortColumn::Size => {
                     optional_numeric_cmp(a.szi.map(f64::abs), b.szi.map(f64::abs))
@@ -56,19 +58,31 @@ impl TradingTerminal {
             };
 
             if self.positions_sort_direction == config::SortDirection::Descending {
-                cmp.reverse().then_with(|| a.coin.cmp(b.coin))
+                cmp.reverse().then_with(|| a.coin.cmp(&b.coin))
             } else {
-                cmp.then_with(|| a.coin.cmp(b.coin))
+                cmp.then_with(|| a.coin.cmp(&b.coin))
             }
         });
 
         row_data
     }
 
-    pub(in crate::account_views::positions::table) fn position_row_data<'a>(
+    pub(in crate::account_views::positions::table) fn position_row_data(
         &self,
-        ap: &'a account::AssetPosition,
-    ) -> PositionRowData<'a> {
+        ap: &account::AssetPosition,
+    ) -> PositionRowData {
+        self.position_row_data_with_optimism(ap, false)
+    }
+
+    fn projected_position_row_data(&self, ap: &ProjectedAssetPosition) -> PositionRowData {
+        self.position_row_data_with_optimism(&ap.asset_position, ap.is_optimistic)
+    }
+
+    fn position_row_data_with_optimism(
+        &self,
+        ap: &account::AssetPosition,
+        is_optimistic: bool,
+    ) -> PositionRowData {
         let pos = &ap.position;
         let szi = parse_position_row_number(&pos.szi);
         let entry_px = parse_position_row_number(&pos.entry_px);
@@ -85,8 +99,9 @@ impl TradingTerminal {
         let total_pnl = upnl.map(|upnl| funding_since_open.map_or(upnl, |funding| upnl + funding));
 
         PositionRowData {
-            ap,
-            coin: &pos.coin,
+            ap: ap.clone(),
+            coin: pos.coin.clone(),
+            is_optimistic,
             szi,
             entry_px,
             is_long: szi.map(|szi| szi >= 0.0),

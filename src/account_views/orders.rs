@@ -31,15 +31,10 @@ impl TradingTerminal {
         .spacing(4);
 
         let orders: Vec<_> = self
-            .account_data
-            .as_ref()
-            .map(|d| {
-                d.open_orders
-                    .iter()
-                    .filter(|order| !self.symbol_key_is_hidden(&order.coin))
-                    .collect()
-            })
-            .unwrap_or_default();
+            .projected_open_orders()
+            .into_iter()
+            .filter(|row| !self.symbol_key_is_hidden(&row.order.coin))
+            .collect();
         let warning = self.account_data.as_ref().and_then(|data| {
             data.completeness
                 .section_warning(AccountDataSection::OpenOrders)
@@ -77,7 +72,7 @@ impl TradingTerminal {
         }
 
         let rows = orders.iter().fold(Column::new().spacing(2), |col, order| {
-            col.push(self.view_open_order_row(order, can_cancel, &theme))
+            col.push(self.view_open_order_row(order.order, can_cancel, order.is_optimistic, &theme))
         });
 
         let mut content = column![header].spacing(4);

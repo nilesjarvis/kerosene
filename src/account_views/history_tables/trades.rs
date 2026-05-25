@@ -17,15 +17,10 @@ impl TradingTerminal {
         let header = trade_row::view_trade_history_header(&theme);
 
         let fills: Vec<_> = self
-            .account_data
-            .as_ref()
-            .map(|d| {
-                d.fills
-                    .iter()
-                    .filter(|fill| !self.symbol_key_is_hidden(&fill.coin))
-                    .collect()
-            })
-            .unwrap_or_default();
+            .projected_user_fills()
+            .into_iter()
+            .filter(|row| !self.symbol_key_is_hidden(&row.fill.coin))
+            .collect();
         let warning = self
             .account_data
             .as_ref()
@@ -66,7 +61,7 @@ impl TradingTerminal {
             .iter()
             .take(50)
             .fold(Column::new().spacing(2), |col, fill| {
-                col.push(self.view_trade_history_row(fill, &theme))
+                col.push(self.view_trade_history_row(fill.fill, fill.is_optimistic, &theme))
             });
 
         let mut content = column![header].spacing(4);

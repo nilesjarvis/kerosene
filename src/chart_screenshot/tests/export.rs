@@ -15,6 +15,7 @@ fn screenshot_export_chart_applies_privacy_settings_without_mutating_live_chart(
         is_buy: true,
         oid: 42,
         is_moving: false,
+        pending_state: None,
     });
     let settings = crate::config::ChartScreenshotSettingsConfig {
         obscure_position_entry: true,

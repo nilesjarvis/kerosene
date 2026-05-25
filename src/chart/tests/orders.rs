@@ -17,6 +17,7 @@ fn btc_buy_order(oid: u64, sz: f64) -> OrderOverlay {
         is_buy: true,
         oid,
         is_moving: false,
+        pending_state: None,
     }
 }
 

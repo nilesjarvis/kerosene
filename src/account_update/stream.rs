@@ -61,6 +61,7 @@ impl TradingTerminal {
 
         let mut orders_changed = false;
         let mut fills_changed = false;
+        let mut positions_changed = false;
         let mut mids_task = Task::none();
         let mut fill_toast_msgs: Vec<String> = Vec::new();
         let exchange_symbols = self.exchange_symbols.clone();
@@ -102,7 +103,7 @@ impl TradingTerminal {
                         .filter(|position| !is_hidden(&position.position.coin))
                         .collect();
                     data.clearinghouses_by_dex = states_by_dex;
-                    self.sync_all_chart_overlays();
+                    positions_changed = true;
                 }
                 WsUserData::OpenOrders { dex, orders } => {
                     let mut orders = orders;
@@ -173,11 +174,26 @@ impl TradingTerminal {
         for msg in fill_toast_msgs {
             self.push_toast(msg, false);
         }
-        if orders_changed {
+        let optimistic_changed = if orders_changed || fills_changed || positions_changed {
+            self.account_data
+                .as_ref()
+                .map(|data| {
+                    self.optimistic_account
+                        .reconcile_with_account_data(data, Self::now_ms())
+                })
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        if positions_changed || optimistic_changed {
+            self.sync_all_chart_overlays();
+        } else if orders_changed {
             self.sync_all_chart_orders();
         }
-        if fills_changed {
+        if fills_changed && !positions_changed && !optimistic_changed {
             self.sync_all_chart_trade_markers();
+        }
+        if fills_changed {
             self.reconcile_twap_fills_from_account();
         }
         let fill_reconcile_task = if fills_changed {

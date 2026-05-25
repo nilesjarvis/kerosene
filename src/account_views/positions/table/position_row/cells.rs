@@ -9,14 +9,18 @@ use iced::{Color, Element, Theme};
 // Position Row Cells
 // ---------------------------------------------------------------------------
 
-pub(super) fn position_symbol_button<'a>(coin: &'a str, theme: &Theme) -> Element<'a, Message> {
+pub(super) fn position_symbol_button(
+    coin: &str,
+    label: String,
+    theme: &Theme,
+) -> Element<'static, Message> {
     let coin_key = coin.to_string();
     let mut coin_content = row![];
     if let Some(icon) = helpers::symbol_icon(coin, 14, theme.palette().text) {
         coin_content = coin_content.push(icon).push(Space::new().width(4.0));
     }
     coin_content = coin_content
-        .push(text(coin).size(12))
+        .push(text(label).size(12))
         .align_y(iced::Alignment::Center);
 
     button(coin_content)
@@ -36,11 +40,11 @@ pub(super) fn position_symbol_button<'a>(coin: &'a str, theme: &Theme) -> Elemen
         .into()
 }
 
-pub(super) fn position_upnl_cell<'a>(
+pub(super) fn position_upnl_cell(
     coin: &str,
     upnl: String,
     color: Color,
-) -> Element<'a, Message> {
+) -> Element<'static, Message> {
     row![
         text(upnl)
             .size(12)

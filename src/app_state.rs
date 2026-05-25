@@ -15,6 +15,7 @@ use crate::market_state::{
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::notification_state::Toast;
+use crate::optimistic_updates::OptimisticAccountEffects;
 use crate::order_execution::{PendingMoveOrderContext, PendingOrderAction};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
@@ -126,6 +127,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) outcome_volumes_24h: HashMap<String, f64>,
     pub(crate) outcome_volumes_loading: bool,
     pub(crate) outcome_volumes_error: Option<String>,
+    pub(crate) outcome_search_query: String,
     pub(crate) hype_etfs: HypeEtfState,
     pub(crate) display_denomination: config::DisplayDenominationConfig,
     // L2 order books
@@ -174,6 +176,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_chart_buckets: BTreeMap<u64, (f64, f64)>,
     pub(crate) connected_address: Option<String>,
     pub(crate) account_data: Option<AccountData>,
+    pub(crate) optimistic_account: OptimisticAccountEffects,
     pub(crate) account_loading: bool,
     pub(crate) account_reconciliation_required: bool,
     pub(crate) account_error: Option<String>,

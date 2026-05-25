@@ -4,9 +4,10 @@ mod table;
 use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::optimistic_updates::ProjectedAssetPosition;
 
-use iced::widget::{column, container, responsive, rule, scrollable, text};
-use iced::{Element, Fill};
+use iced::widget::{Column, column, container, responsive, row, rule, scrollable, text};
+use iced::{Color, Element, Fill, Theme};
 
 pub(super) const POSITION_ACTION_WIDTH: f32 = 152.0;
 
@@ -70,24 +71,26 @@ impl TradingTerminal {
         let can_close =
             self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
 
-        let all_positions: Vec<&account::AssetPosition> = self
-            .account_data
-            .as_ref()
-            .map(|d| {
-                d.clearinghouse
-                    .asset_positions
-                    .iter()
-                    .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let all_positions: Vec<ProjectedAssetPosition> = self
+            .projected_positions()
+            .into_iter()
+            .filter(|ap| !self.symbol_key_is_hidden(&ap.asset_position.position.coin))
+            .collect();
         let hidden_count = all_positions
             .iter()
-            .filter(|ap| self.position_is_hidden(&ap.position.coin))
+            .filter(|ap| self.position_is_hidden(&ap.asset_position.position.coin))
             .count();
-        let positions: Vec<&account::AssetPosition> = all_positions
+        let positions: Vec<ProjectedAssetPosition> = all_positions
             .into_iter()
-            .filter(|ap| self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
+            .filter(|ap| {
+                self.show_hidden_positions
+                    || !self.position_is_hidden(&ap.asset_position.position.coin)
+            })
+            .collect();
+        let summary_positions: Vec<account::AssetPosition> = positions
+            .iter()
+            .filter(|ap| !ap.is_optimistic)
+            .map(|ap| ap.asset_position.clone())
             .collect();
         let warning = self.account_data.as_ref().and_then(|data| {
             data.completeness
@@ -121,7 +124,7 @@ impl TradingTerminal {
             return positions_scrollable(content);
         }
 
-        let rows = self.view_position_rows(&positions, can_close, &theme, columns, number_mode);
+        let rows = self.view_position_sections(&positions, can_close, &theme, columns, number_mode);
         let mut content = column![header].spacing(4);
         if let Some(warning) = warning {
             content = content.push(text(warning).size(11).color(theme.palette().warning));
@@ -129,7 +132,7 @@ impl TradingTerminal {
         let content = content.push(rule::horizontal(1)).push(rows);
         column![
             positions_scrollable(content),
-            self.view_position_summary_bar(&positions, &theme, number_mode),
+            self.view_position_summary_bar(&summary_positions, &theme, number_mode),
         ]
         .spacing(0)
         .width(Fill)
@@ -143,6 +146,100 @@ impl TradingTerminal {
             .and_then(|profile| self.hidden_positions_by_account.get(&profile.secret_id))
             .is_some_and(|hidden| hidden.contains(coin))
     }
+
+    fn view_position_sections<'a>(
+        &'a self,
+        positions: &[ProjectedAssetPosition],
+        can_close: bool,
+        theme: &Theme,
+        columns: PositionColumnVisibility,
+        number_mode: PositionNumberMode,
+    ) -> Column<'a, Message> {
+        let mut perp_positions = Vec::new();
+        let mut outcome_positions = Vec::new();
+        for position in positions {
+            if self.is_outcome_coin(&position.asset_position.position.coin) {
+                outcome_positions.push(position.clone());
+            } else {
+                perp_positions.push(position.clone());
+            }
+        }
+
+        let mut content = Column::new().spacing(4);
+        if !perp_positions.is_empty() {
+            content = content.push(self.view_position_rows(
+                &perp_positions,
+                can_close,
+                theme,
+                columns,
+                number_mode,
+            ));
+        }
+
+        if !outcome_positions.is_empty() {
+            if !perp_positions.is_empty() {
+                content = content.push(rule::horizontal(1));
+            }
+            content = content
+                .push(position_section_header(
+                    "Outcomes",
+                    outcome_positions.len(),
+                    theme,
+                ))
+                .push(self.view_position_rows(
+                    &outcome_positions,
+                    can_close,
+                    theme,
+                    columns,
+                    number_mode,
+                ));
+        }
+
+        content
+    }
+}
+
+fn position_section_header<'a>(
+    label: &'static str,
+    count: usize,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let text_color = theme.extended_palette().background.weak.text;
+    let badge_color = theme.palette().primary;
+    container(
+        row![
+            text(label).size(11).color(text_color),
+            container(text(count.to_string()).size(10).color(badge_color))
+                .padding([1, 5])
+                .style(move |_theme: &Theme| iced::widget::container::Style {
+                    background: Some(
+                        Color {
+                            a: 0.12,
+                            ..badge_color
+                        }
+                        .into(),
+                    ),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 1.0,
+                        color: Color {
+                            a: 0.28,
+                            ..badge_color
+                        },
+                    },
+                    ..Default::default()
+                }),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding(iced::Padding {
+        top: 4.0,
+        right: 8.0,
+        bottom: 0.0,
+        left: 8.0,
+    })
+    .into()
 }
 
 fn positions_scrollable<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {

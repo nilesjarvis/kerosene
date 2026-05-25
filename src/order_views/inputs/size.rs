@@ -55,7 +55,8 @@ impl TradingTerminal {
             Space::new().width(6.0),
             denomination_button(denomination_label(
                 self.order_quantity_is_usd,
-                active_is_outcome
+                active_is_outcome,
+                &self.outcome_quote_symbol_for_coin(&self.active_symbol),
             )),
             Space::new().width(Fill),
             text(notional_text)

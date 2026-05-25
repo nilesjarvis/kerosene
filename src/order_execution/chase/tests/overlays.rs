@@ -17,6 +17,7 @@ fn removing_chase_order_resyncs_chart_order_overlays() {
             is_buy: true,
             oid: 42,
             is_moving: false,
+            pending_state: None,
         });
 
     let _task =

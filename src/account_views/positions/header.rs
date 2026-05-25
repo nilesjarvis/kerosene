@@ -1,9 +1,9 @@
-use crate::account;
 use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::parse_finite_number;
 use crate::message::Message;
+use crate::optimistic_updates::ProjectedAssetPosition;
 
 use super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
 use iced::widget::{button, container, row, text, tooltip};
@@ -13,15 +13,16 @@ impl TradingTerminal {
     pub(super) fn view_positions_header<'a>(
         &'a self,
         can_close: bool,
-        positions: &[&account::AssetPosition],
+        positions: &[ProjectedAssetPosition],
         hidden_count: usize,
         theme: &Theme,
         columns: PositionColumnVisibility,
     ) -> Element<'a, Message> {
         let has_positions = can_close
             && positions.iter().any(|ap| {
-                position_size_is_nonzero(&ap.position.szi)
-                    && !self.is_outcome_coin(&ap.position.coin)
+                !ap.is_optimistic
+                    && position_size_is_nonzero(&ap.asset_position.position.szi)
+                    && !self.is_outcome_coin(&ap.asset_position.position.coin)
             });
 
         let hidden_toggle: Element<'a, Message> = if hidden_count > 0 {

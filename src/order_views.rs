@@ -32,10 +32,13 @@ impl TradingTerminal {
         let mut form = column![symbol_row, context_row, type_row].spacing(8);
 
         if active_is_outcome {
+            let quote_symbol = self.outcome_quote_symbol_for_coin(&self.active_symbol);
             form = form.push(
-                text("USDH outcome contract. Prices are probabilities; size is whole contracts.")
-                    .size(10)
-                    .color(theme.palette().primary),
+                text(format!(
+                    "{quote_symbol} outcome contract. Prices are probabilities; size is whole contracts."
+                ))
+                .size(10)
+                .color(theme.palette().primary),
             );
         }
 

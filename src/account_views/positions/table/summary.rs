@@ -19,12 +19,12 @@ use formatting::*;
 use totals::*;
 
 impl TradingTerminal {
-    pub(in crate::account_views::positions) fn view_position_summary_bar<'a>(
-        &'a self,
-        positions: &[&'a account::AssetPosition],
+    pub(in crate::account_views::positions) fn view_position_summary_bar(
+        &self,
+        positions: &[account::AssetPosition],
         theme: &Theme,
         number_mode: PositionNumberMode,
-    ) -> Element<'a, Message> {
+    ) -> Element<'static, Message> {
         let totals =
             PositionSummaryTotals::from_rows(positions.iter().map(|ap| self.position_row_data(ap)));
         let weak_text = theme.extended_palette().background.weak.text;

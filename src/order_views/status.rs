@@ -46,10 +46,13 @@ impl TradingTerminal {
         can_trade: bool,
     ) -> Column<'a, Message> {
         if active_is_outcome {
+            let quote_symbol = self.outcome_quote_symbol_for_coin(&self.active_symbol);
             form.push(
-                text("Outcome orders use USDH, probability prices, and whole-contract sizes")
-                    .size(10)
-                    .color(color!(0x666666)),
+                text(format!(
+                    "Outcome orders use {quote_symbol}, probability prices, and whole-contract sizes"
+                ))
+                .size(10)
+                .color(color!(0x666666)),
             )
         } else if !can_trade {
             form.push(

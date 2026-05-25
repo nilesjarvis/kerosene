@@ -50,16 +50,17 @@ pub(in crate::order_views::inputs::size) fn order_notional_text(
 pub(in crate::order_views::inputs::size) fn denomination_label(
     order_quantity_is_usd: bool,
     active_is_outcome: bool,
-) -> &'static str {
+    outcome_quote_symbol: &str,
+) -> String {
     if active_is_outcome {
         if order_quantity_is_usd {
-            "USDH"
+            outcome_quote_symbol.to_string()
         } else {
-            "CONTRACTS"
+            "CONTRACTS".to_string()
         }
     } else if order_quantity_is_usd {
-        "USD"
+        "USD".to_string()
     } else {
-        "COIN"
+        "COIN".to_string()
     }
 }

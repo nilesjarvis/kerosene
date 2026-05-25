@@ -56,6 +56,7 @@ impl CandlestickChart {
                     self.active_orders
                         .iter()
                         .enumerate()
+                        .filter(|(_, order)| order.pending_state.is_none())
                         .filter_map(|(order_index, order)| {
                             let order_y = price_to_y(order.limit_px);
                             (order_y >= -10.0 && order_y <= price_h + 10.0).then_some(
@@ -78,6 +79,10 @@ impl CandlestickChart {
             .iter()
             .enumerate()
             .find_map(|(order_index, order)| {
+                if order.pending_state.is_some() {
+                    return None;
+                }
+
                 let order_y = price_to_y(order.limit_px);
                 if order_y < -10.0 || order_y > price_h + 10.0 || !order_y.is_finite() {
                     return None;

@@ -13,7 +13,8 @@ fn appends_binary_outcome_symbol_metadata() {
                     "class:priceBinary|underlying:BTC|expiry:20260520-0600|",
                     "targetPrice:76886|period:1d"
                 ),
-                "sideSpecs": [{"name": "Yes"}, {"name": "No"}]
+                "sideSpecs": [{"name": "Yes"}, {"name": "No"}],
+                "quoteToken": "USDC"
             }],
             "questions": []
         })),
@@ -28,11 +29,34 @@ fn appends_binary_outcome_symbol_metadata() {
     assert_eq!(info.class.as_deref(), Some("priceBinary"));
     assert_eq!(info.underlying.as_deref(), Some("BTC"));
     assert_eq!(info.target_price.as_deref(), Some("76886"));
+    assert_eq!(info.quote_symbol, "USDC");
+    assert_eq!(info.quote_token_index, Some(crate::api::USDC_TOKEN_INDEX));
     assert!(info.question_id.is_none());
     assert_eq!(
         yes.display_name.as_deref(),
         Some("YES: BTC is above 76,886 at 2026-05-20 06:00 UTC")
     );
+}
+
+#[test]
+fn outcome_quote_token_defaults_to_usdc_for_older_fixtures() {
+    let mut symbols = Vec::new();
+    append_outcome_symbols(
+        &mut symbols,
+        outcome_meta_from_json(serde_json::json!({
+            "outcomes": [{
+                "outcome": 65,
+                "name": "Recurring",
+                "description": "class:priceBinary|underlying:BTC|targetPrice:76886",
+                "sideSpecs": [{"name": "Yes"}]
+            }],
+            "questions": []
+        })),
+    );
+
+    let info = outcome_by_key_or_panic(&symbols, "#650");
+    assert_eq!(info.quote_symbol, "USDC");
+    assert_eq!(info.quote_token_index, Some(crate::api::USDC_TOKEN_INDEX));
 }
 
 #[test]

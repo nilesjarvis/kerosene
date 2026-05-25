@@ -143,6 +143,14 @@ pub struct OrderOverlay {
     pub is_buy: bool,
     pub oid: u64,
     pub is_moving: bool,
+    pub pending_state: Option<OrderOverlayPendingState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderOverlayPendingState {
+    Placing,
+    Cancelling,
+    Modifying,
 }
 
 /// Lightweight user fill info passed to the chart for marker rendering.

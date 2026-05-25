@@ -3,7 +3,7 @@ mod encoding;
 mod questions;
 
 use super::model::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
-use crate::api::USDH_TOKEN_INDEX;
+use crate::api::{USDC_TOKEN_INDEX, USDH_TOKEN_INDEX};
 
 use description::parse_outcome_description;
 use encoding::{outcome_asset_index, outcome_coin_key, outcome_encoding};
@@ -26,6 +26,8 @@ struct OutcomeMetaEntry {
     description: String,
     #[serde(default, rename = "sideSpecs")]
     side_specs: Vec<OutcomeSideSpec>,
+    #[serde(default = "default_outcome_quote_token", rename = "quoteToken")]
+    quote_token: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,6 +64,7 @@ pub(super) fn append_outcome_symbols(
             }
 
             let side_index = side_index as u32;
+            let quote_symbol = normalized_outcome_quote_symbol(&outcome.quote_token);
             let side_name = if side.name.trim().is_empty() {
                 format!("Side {side_index}")
             } else {
@@ -72,7 +75,7 @@ pub(super) fn append_outcome_symbols(
             let mut keywords = vec![
                 "outcome".to_string(),
                 "prediction".to_string(),
-                "usdh".to_string(),
+                quote_symbol.to_ascii_lowercase(),
                 side_name.to_lowercase(),
                 outcome.name.to_lowercase(),
                 outcome.description.to_lowercase(),
@@ -114,8 +117,8 @@ pub(super) fn append_outcome_symbols(
                 expiry: description_parts.get("expiry").cloned(),
                 target_price: description_parts.get("targetPrice").cloned(),
                 period: description_parts.get("period").cloned(),
-                quote_symbol: "USDH".to_string(),
-                quote_token_index: Some(USDH_TOKEN_INDEX),
+                quote_symbol: quote_symbol.clone(),
+                quote_token_index: outcome_quote_token_index(&quote_symbol),
                 encoding,
             };
             let display_name = info.display_label();
@@ -140,6 +143,27 @@ pub(super) fn append_outcome_symbols(
                 outcome: Some(info),
             });
         }
+    }
+}
+
+fn default_outcome_quote_token() -> String {
+    "USDC".to_string()
+}
+
+fn normalized_outcome_quote_symbol(raw: &str) -> String {
+    let quote = raw.trim();
+    if quote.is_empty() {
+        default_outcome_quote_token()
+    } else {
+        quote.to_ascii_uppercase()
+    }
+}
+
+fn outcome_quote_token_index(quote_symbol: &str) -> Option<u32> {
+    match quote_symbol {
+        "USDC" => Some(USDC_TOKEN_INDEX),
+        "USDH" => Some(USDH_TOKEN_INDEX),
+        _ => None,
     }
 }
 

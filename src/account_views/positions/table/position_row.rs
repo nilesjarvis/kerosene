@@ -21,19 +21,24 @@ use iced::{Element, Fill, Theme, color};
 impl TradingTerminal {
     pub(super) fn view_position_row<'a>(
         &'a self,
-        data: PositionRowData<'a>,
+        data: PositionRowData,
         can_close: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,
         number_mode: PositionNumberMode,
     ) -> Element<'a, Message> {
-        let ap = data.ap;
+        let ap = &data.ap;
         let pos = &ap.position;
         let denomination = self.display_denomination_context();
         let (side, side_color) = match data.is_long {
             Some(true) => ("\u{2191} Long", theme.palette().success),
             Some(false) => ("\u{2193} Short", theme.palette().danger),
             None => ("Invalid", theme.palette().warning),
+        };
+        let side_label = if data.is_optimistic {
+            format!("{side} pending")
+        } else {
+            side.to_string()
         };
 
         let mark_str = data
@@ -50,9 +55,15 @@ impl TradingTerminal {
             .upnl
             .map(|upnl| self.direction_color(theme, upnl))
             .unwrap_or_else(|| theme.palette().warning);
-        let lev_str = format!("{}x {}", pos.leverage.value, pos.leverage.leverage_type);
+        let lev_str = if data.is_optimistic {
+            "\u{2014}".to_string()
+        } else {
+            format!("{}x {}", pos.leverage.value, pos.leverage.leverage_type)
+        };
         let liq_element: Element<'a, Message> = text(
-            data.liq_px
+            (!data.is_optimistic)
+                .then_some(data.liq_px)
+                .flatten()
                 .map(format_price)
                 .unwrap_or_else(|| "\u{2014}".to_string()),
         )
@@ -72,16 +83,19 @@ impl TradingTerminal {
             .map(|total_pnl| self.direction_color(theme, total_pnl))
             .unwrap_or_else(|| theme.palette().warning);
 
-        let row_can_close = can_close && data.szi.is_some_and(|szi| szi.abs() > 1e-12);
+        let row_can_close =
+            can_close && !data.is_optimistic && data.szi.is_some_and(|szi| szi.abs() > 1e-12);
         let is_hidden = self.position_is_hidden(&pos.coin);
-        let close_cell = self.view_position_close_cell(&pos.coin, row_can_close, is_hidden, theme);
+        let close_cell =
+            self.view_position_close_cell(pos.coin.clone(), row_can_close, is_hidden, theme);
         let pnl_displays = self.position_row_pnl_displays(&data, &denomination, number_mode);
-        let symbol_btn = position_symbol_button(&pos.coin, theme);
+        let symbol_btn =
+            position_symbol_button(&pos.coin, self.position_row_symbol_label(&pos.coin), theme);
         let upnl_cell = position_upnl_cell(&pos.coin, pnl_displays.upnl, pnl_color);
 
         let mut row_content = row![
             container(symbol_btn).width(Fill),
-            text(side).size(12).color(side_color).width(Fill),
+            text(side_label).size(12).color(side_color).width(Fill),
             text(size_str)
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
@@ -182,5 +196,18 @@ impl TradingTerminal {
         } else {
             trim_decimal_zeros(format_size(size))
         }
+    }
+
+    fn position_row_symbol_label(&self, coin: &str) -> String {
+        if self.is_outcome_coin(coin)
+            && let Some(symbol) = self
+                .exchange_symbols
+                .iter()
+                .find(|symbol| symbol.key == coin)
+        {
+            return symbol.ticker.clone();
+        }
+
+        coin.to_string()
     }
 }

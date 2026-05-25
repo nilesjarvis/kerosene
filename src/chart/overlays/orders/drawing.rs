@@ -7,7 +7,8 @@ use super::visible::{MOVING_ORDER_LINE_DASH, ORDER_LINE_DASH, VisibleOrder};
 use crate::chart::drawing::{AxisBadgeStyle, SegmentedHLineStyle};
 use crate::chart::order_labels::{
     ORDER_CANCEL_WIDTH, ORDER_LABEL_CONNECTOR_SPAN, ORDER_LABEL_HEIGHT, ORDER_LABEL_TEXT_X,
-    ORDER_LABEL_X, OrderLabelPosition, order_label_y_range,
+    ORDER_LABEL_X, ORDER_PENDING_SPINNER_X, ORDER_PENDING_TEXT_X, OrderLabelPosition,
+    order_label_y_range,
 };
 use crate::chart::price_badges::{
     RIGHT_AXIS_SECONDARY_BADGE_HEIGHT, RightAxisBadgeConnectorStyle, RightAxisBadgeKind,
@@ -16,7 +17,7 @@ use crate::chart::price_badges::{
 use crate::helpers::format_price;
 
 use iced::widget::canvas;
-use iced::{Color, Point, Size, alignment};
+use iced::{Color, Point, Radians, Size, alignment};
 
 // ---------------------------------------------------------------------------
 // Order Drawing
@@ -160,7 +161,7 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
     );
     ctx.frame.fill_text(canvas::Text {
         content: order.side_label.clone(),
-        position: Point::new(ORDER_LABEL_TEXT_X, position.label_y),
+        position: Point::new(order_label_text_x(order), position.label_y),
         color: order.order_color_solid,
         size: iced::Pixels(8.0),
         align_x: alignment::Horizontal::Left.into(),
@@ -168,6 +169,10 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
         font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
+    if order.pending_state.is_some() {
+        draw_order_pending_spinner(ctx, order, position.label_y);
+        return;
+    }
 
     ctx.frame.fill_rectangle(
         Point::new(order.cancel_x, label_top),
@@ -187,4 +192,42 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
         font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
+}
+
+fn order_label_text_x(order: &VisibleOrder) -> f32 {
+    if order.pending_state.is_some() {
+        ORDER_PENDING_TEXT_X
+    } else {
+        ORDER_LABEL_TEXT_X
+    }
+}
+
+fn draw_order_pending_spinner<PriceToY, IdxToCx>(
+    ctx: &mut TradingOverlayContext<'_, PriceToY, IdxToCx>,
+    order: &VisibleOrder,
+    center_y: f32,
+) where
+    PriceToY: Fn(f64) -> f32,
+    IdxToCx: Fn(usize) -> f32,
+{
+    let phase = if order.line_offset.is_finite() {
+        order.line_offset * 0.5
+    } else {
+        0.0
+    };
+    let spinner = canvas::Path::new(|path| {
+        path.arc(canvas::path::Arc {
+            center: Point::new(ORDER_PENDING_SPINNER_X, center_y),
+            radius: 3.0,
+            start_angle: Radians(phase),
+            end_angle: Radians(phase + std::f32::consts::PI * 1.45),
+        });
+    });
+    ctx.frame.stroke(
+        &spinner,
+        canvas::Stroke::default()
+            .with_color(order.order_color_solid)
+            .with_width(1.15)
+            .with_line_cap(canvas::LineCap::Round),
+    );
 }

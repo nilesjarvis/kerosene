@@ -11,9 +11,12 @@ pub(super) use stacking::{
 
 pub(super) const ORDER_LABEL_X: f32 = 4.0;
 pub(super) const ORDER_LABEL_TEXT_X: f32 = 6.0;
+pub(super) const ORDER_PENDING_TEXT_X: f32 = 17.0;
+pub(super) const ORDER_PENDING_SPINNER_X: f32 = 10.0;
 pub(super) const ORDER_LABEL_HEIGHT: f32 = 12.0;
 pub(super) const ORDER_LABEL_CHAR_WIDTH: f32 = 5.5;
 pub(super) const ORDER_LABEL_PADDING_WIDTH: f32 = 8.0;
+pub(super) const ORDER_PENDING_LABEL_PADDING_WIDTH: f32 = 19.0;
 pub(super) const ORDER_CANCEL_GAP: f32 = 3.0;
 pub(super) const ORDER_CANCEL_WIDTH: f32 = 12.0;
 pub(super) const ORDER_LABEL_STACK_GAP: f32 = 2.0;
@@ -52,16 +55,35 @@ impl CandlestickChart {
 }
 
 pub(super) fn order_side_label(order: &OrderOverlay) -> String {
+    if matches!(
+        order.pending_state,
+        Some(super::OrderOverlayPendingState::Cancelling)
+    ) {
+        return format!("CXL {:.4}", order.sz);
+    }
+    if matches!(
+        order.pending_state,
+        Some(super::OrderOverlayPendingState::Modifying)
+    ) {
+        return format!("MOD {:.4}", order.sz);
+    }
+
     let side_str = if order.is_buy { "BUY" } else { "SELL" };
     format!("{side_str} {:.4}", order.sz)
 }
 
 pub(super) fn order_side_label_width(order: &OrderOverlay) -> f32 {
-    order_side_label_width_for_label(&order_side_label(order))
+    let label = order_side_label(order);
+    order_side_label_width_for_order(order, &label)
 }
 
-pub(super) fn order_side_label_width_for_label(label: &str) -> f32 {
-    label.len() as f32 * ORDER_LABEL_CHAR_WIDTH + ORDER_LABEL_PADDING_WIDTH
+pub(super) fn order_side_label_width_for_order(order: &OrderOverlay, label: &str) -> f32 {
+    let padding = if order.pending_state.is_some() {
+        ORDER_PENDING_LABEL_PADDING_WIDTH
+    } else {
+        ORDER_LABEL_PADDING_WIDTH
+    };
+    label.len() as f32 * ORDER_LABEL_CHAR_WIDTH + padding
 }
 
 pub(super) fn order_cancel_x_range(order: &OrderOverlay) -> (f32, f32) {
