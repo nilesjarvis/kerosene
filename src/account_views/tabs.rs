@@ -87,17 +87,22 @@ impl TradingTerminal {
     }
 
     fn open_position_tab_count(&self) -> usize {
-        self.projected_positions()
+        self.account_positions_with_outcomes()
             .into_iter()
-            .filter(|position| !self.symbol_key_is_hidden(&position.asset_position.position.coin))
+            .filter(|position| !self.symbol_key_is_hidden(&position.position.coin))
             .count()
     }
 
     fn open_order_tab_count(&self) -> usize {
-        self.projected_open_orders()
-            .into_iter()
-            .filter(|row| !self.symbol_key_is_hidden(&row.order.coin))
-            .count()
+        self.account_data
+            .as_ref()
+            .map(|data| {
+                data.open_orders
+                    .iter()
+                    .filter(|order| !self.symbol_key_is_hidden(&order.coin))
+                    .count()
+            })
+            .unwrap_or_default()
     }
 }
 

@@ -15,8 +15,8 @@ use crate::market_state::{
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::notification_state::Toast;
-use crate::optimistic_updates::OptimisticAccountEffects;
 use crate::order_execution::{PendingMoveOrderContext, PendingOrderAction};
+use crate::order_pending_indicators::PendingOrderIndicator;
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
@@ -52,6 +52,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) dragging_pane: Option<pane_grid::Pane>,
     pub(crate) active_theme: String,
     pub(crate) ui_scale: f32,
+    pub(crate) chart_dotted_background: bool,
+    pub(crate) chart_dotted_background_opacity: f32,
     pub(crate) alfred_popup_scale: f32,
     pub(crate) display_font: config::DisplayFontConfig,
     pub(crate) monospace_font: config::DisplayFontConfig,
@@ -74,6 +76,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) order_status: Option<(String, bool)>,
     pub(crate) pending_order_action: Option<PendingOrderAction>,
     pub(crate) pending_move_order_contexts: HashMap<u64, PendingMoveOrderContext>,
+    pub(crate) pending_order_indicators: BTreeMap<u64, PendingOrderIndicator>,
     pub(crate) active_move_order_drag: Option<u64>,
     // Order presets
     pub(crate) order_presets: crate::config::OrderPresetsConfig,
@@ -176,7 +179,6 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_chart_buckets: BTreeMap<u64, (f64, f64)>,
     pub(crate) connected_address: Option<String>,
     pub(crate) account_data: Option<AccountData>,
-    pub(crate) optimistic_account: OptimisticAccountEffects,
     pub(crate) account_loading: bool,
     pub(crate) account_reconciliation_required: bool,
     pub(crate) account_error: Option<String>,

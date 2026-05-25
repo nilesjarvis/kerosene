@@ -4,7 +4,6 @@ mod table;
 use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::optimistic_updates::ProjectedAssetPosition;
 
 use iced::widget::{Column, column, container, responsive, row, rule, scrollable, text};
 use iced::{Color, Element, Fill, Theme};
@@ -71,26 +70,18 @@ impl TradingTerminal {
         let can_close =
             self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
 
-        let all_positions: Vec<ProjectedAssetPosition> = self
-            .projected_positions()
+        let all_positions: Vec<account::AssetPosition> = self
+            .account_positions_with_outcomes()
             .into_iter()
-            .filter(|ap| !self.symbol_key_is_hidden(&ap.asset_position.position.coin))
+            .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
             .collect();
         let hidden_count = all_positions
             .iter()
-            .filter(|ap| self.position_is_hidden(&ap.asset_position.position.coin))
+            .filter(|ap| self.position_is_hidden(&ap.position.coin))
             .count();
-        let positions: Vec<ProjectedAssetPosition> = all_positions
+        let positions: Vec<account::AssetPosition> = all_positions
             .into_iter()
-            .filter(|ap| {
-                self.show_hidden_positions
-                    || !self.position_is_hidden(&ap.asset_position.position.coin)
-            })
-            .collect();
-        let summary_positions: Vec<account::AssetPosition> = positions
-            .iter()
-            .filter(|ap| !ap.is_optimistic)
-            .map(|ap| ap.asset_position.clone())
+            .filter(|ap| self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
             .collect();
         let warning = self.account_data.as_ref().and_then(|data| {
             data.completeness
@@ -132,7 +123,7 @@ impl TradingTerminal {
         let content = content.push(rule::horizontal(1)).push(rows);
         column![
             positions_scrollable(content),
-            self.view_position_summary_bar(&summary_positions, &theme, number_mode),
+            self.view_position_summary_bar(&positions, &theme, number_mode),
         ]
         .spacing(0)
         .width(Fill)
@@ -149,7 +140,7 @@ impl TradingTerminal {
 
     fn view_position_sections<'a>(
         &'a self,
-        positions: &[ProjectedAssetPosition],
+        positions: &[account::AssetPosition],
         can_close: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,
@@ -158,7 +149,7 @@ impl TradingTerminal {
         let mut perp_positions = Vec::new();
         let mut outcome_positions = Vec::new();
         for position in positions {
-            if self.is_outcome_coin(&position.asset_position.position.coin) {
+            if self.is_outcome_coin(&position.position.coin) {
                 outcome_positions.push(position.clone());
             } else {
                 perp_positions.push(position.clone());

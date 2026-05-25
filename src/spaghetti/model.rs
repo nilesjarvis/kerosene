@@ -64,6 +64,10 @@ pub struct SpaghettiCanvas {
     pub pair_ratio_mode: bool,
     /// In pair ratio mode, render as candlesticks when true.
     pub pair_candle_mode: bool,
+    /// Whether chart plot backgrounds use a dotted pattern instead of grid lines.
+    pub(crate) dotted_background: bool,
+    /// Opacity applied to dotted chart plot backgrounds.
+    pub(crate) dotted_background_opacity: f32,
     /// Monotonic token used to request viewport reset.
     pub reset_epoch: u64,
     /// Session-based normalization start time (ms). If None, uses the
@@ -82,6 +86,8 @@ impl SpaghettiCanvas {
             show_labels: false,
             pair_ratio_mode: false,
             pair_candle_mode: false,
+            dotted_background: false,
+            dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
             reset_epoch: 0,
             base_timestamp: None,
             active_session: None,
@@ -126,6 +132,16 @@ impl SpaghettiCanvas {
 
     pub fn single_color(theme: &Theme) -> Color {
         theme.palette().primary
+    }
+
+    pub(crate) fn set_dotted_background(&mut self, enabled: bool, opacity: f32) {
+        if self.dotted_background != enabled
+            || (self.dotted_background_opacity - opacity).abs() > f32::EPSILON
+        {
+            self.dotted_background = enabled;
+            self.dotted_background_opacity = opacity;
+            self.cache.clear();
+        }
     }
 
     /// Push or update a candle for a specific series, maintaining sorted order.

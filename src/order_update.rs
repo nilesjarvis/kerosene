@@ -54,9 +54,15 @@ impl TradingTerminal {
                     | crate::signing::OrderKind::LimitIoc => self.execute_order(is_buy),
                 };
             }
-            Message::OrderResult(result) => return self.handle_order_result(*result),
+            Message::OrderResult {
+                pending_indicator_id,
+                result,
+            } => return self.handle_order_result(pending_indicator_id, *result),
             Message::CancelOrder { coin, oid } => return self.execute_cancel(&coin, oid),
-            Message::CancelResult(result) => return self.handle_cancel_result(*result),
+            Message::CancelResult {
+                pending_indicator_id,
+                result,
+            } => return self.handle_cancel_result(pending_indicator_id, *result),
             Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin),
             Message::ClosePosition {
                 coin,
@@ -173,7 +179,10 @@ impl TradingTerminal {
             Message::SubmitQuickOrder(chart_id, is_buy) => {
                 return self.handle_submit_quick_order(chart_id, is_buy);
             }
-            Message::QuickOrderResult(result) => return self.handle_quick_order_result(*result),
+            Message::QuickOrderResult {
+                pending_indicator_id,
+                result,
+            } => return self.handle_quick_order_result(pending_indicator_id, *result),
             Message::EscapePressed => self.clear_transient_order_ui(),
             Message::MoveOrderDragStarted { oid } => {
                 self.active_move_order_drag = Some(oid);
@@ -182,8 +191,12 @@ impl TradingTerminal {
                 self.active_move_order_drag = None;
                 return self.handle_move_order(oid, new_price);
             }
-            Message::MoveOrderModifyResult { oid, result } => {
-                return self.handle_move_order_modify_result(oid, *result);
+            Message::MoveOrderModifyResult {
+                oid,
+                pending_indicator_id,
+                result,
+            } => {
+                return self.handle_move_order_modify_result(oid, pending_indicator_id, *result);
             }
             Message::ChaseRestingOrder {
                 coin,

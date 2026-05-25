@@ -8,6 +8,7 @@ use self::series::{draw_ratio_candles, draw_ratio_line};
 use super::helpers::has_positive_finite_prices;
 use super::{PRICE_PADDING_PCT, Series, SpaghettiCanvas, SpaghettiChartState};
 use crate::api::Candle;
+use crate::chart_background::draw_dotted_background;
 use iced::alignment;
 use iced::widget::canvas;
 use iced::{Point, Rectangle, Renderer, Theme};
@@ -95,7 +96,22 @@ impl SpaghettiCanvas {
         let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
         frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), iced::Color::TRANSPARENT);
 
-        draw_ratio_grid(&mut frame, &ctx, ratio_hi, ratio_range);
+        if self.dotted_background {
+            draw_dotted_background(
+                &mut frame,
+                ctx.theme,
+                ctx.chart_w,
+                ctx.chart_h,
+                self.dotted_background_opacity,
+            );
+        }
+        draw_ratio_grid(
+            &mut frame,
+            &ctx,
+            ratio_hi,
+            ratio_range,
+            !self.dotted_background,
+        );
         draw_ratio_time_axis(&mut frame, &ctx);
         draw_ratio_base_line(&mut frame, &ctx, &ts_to_x);
 

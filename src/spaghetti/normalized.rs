@@ -1,5 +1,6 @@
 use super::helpers::find_candle_at;
 use super::{PRICE_PADDING_PCT, Series, SpaghettiCanvas, SpaghettiChartState};
+use crate::chart_background::draw_dotted_background;
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Renderer, Theme};
 
@@ -89,7 +90,23 @@ impl SpaghettiCanvas {
         let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
         frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), Color::TRANSPARENT);
 
-        axes::draw_grid_and_axes(&mut frame, &ctx, pct_hi, pct_range, &pct_to_y);
+        if self.dotted_background {
+            draw_dotted_background(
+                &mut frame,
+                ctx.theme,
+                ctx.chart_w,
+                ctx.chart_h,
+                self.dotted_background_opacity,
+            );
+        }
+        axes::draw_grid_and_axes(
+            &mut frame,
+            &ctx,
+            pct_hi,
+            pct_range,
+            &pct_to_y,
+            !self.dotted_background,
+        );
         series::draw_session_start_line(&mut frame, &ctx, &ts_to_x, self.base_timestamp);
         series::draw_series_lines(&mut frame, &ctx, &series_data, &pct_to_y, self.color_mode);
         if self.effective_show_labels() {

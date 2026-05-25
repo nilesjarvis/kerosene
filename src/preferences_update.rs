@@ -1,7 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{
-    normalize_alfred_popup_scale, normalize_market_slippage_pct, normalize_pane_border_thickness,
-    normalize_pane_corner_radius, normalize_ui_scale,
+    normalize_alfred_popup_scale, normalize_chart_dotted_background_opacity,
+    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
+    normalize_ui_scale,
 };
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
@@ -23,6 +24,21 @@ impl TradingTerminal {
                 self.ui_scale = normalize_ui_scale(value);
                 self.persist_config();
                 return self.sync_main_window_min_size();
+            }
+            Message::ToggleChartDottedBackground(enabled)
+                if self.chart_dotted_background != enabled =>
+            {
+                self.chart_dotted_background = enabled;
+                self.sync_chart_dotted_background();
+                self.persist_config();
+            }
+            Message::ChartDottedBackgroundOpacityChanged(value) => {
+                let opacity = normalize_chart_dotted_background_opacity(value);
+                if (self.chart_dotted_background_opacity - opacity).abs() > f32::EPSILON {
+                    self.chart_dotted_background_opacity = opacity;
+                    self.sync_chart_dotted_background();
+                    self.persist_config();
+                }
             }
             Message::AlfredPopupScaleChanged(value) => {
                 self.alfred_popup_scale = normalize_alfred_popup_scale(value);

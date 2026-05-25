@@ -154,7 +154,7 @@ impl TradingTerminal {
             format!("Moving {} order to ${}...", coin, new_price_str),
             false,
         ));
-        let Ok(mut context) = PendingMoveOrderContext::new(account_address.clone(), key) else {
+        let Ok(context) = PendingMoveOrderContext::new(account_address.clone(), key) else {
             self.order_status = Some(("Move failed: no agent key".into(), true));
             return Task::none();
         };
@@ -165,9 +165,11 @@ impl TradingTerminal {
                 return Task::none();
             }
         };
-        let pending_id =
-            self.add_pending_order_modification(&account_address, &order, new_price_str.clone());
-        context.set_pending_id(pending_id);
+        let pending_indicator_id = self.add_pending_order_modification_indicator(
+            account_address.clone(),
+            &order,
+            new_price_str.clone(),
+        );
         self.pending_move_order_contexts.insert(oid, context);
         self.sync_all_chart_orders();
 
@@ -175,6 +177,7 @@ impl TradingTerminal {
             modify_order(key, oid, asset, is_buy, new_price_str, size, reduce_only),
             move |r| Message::MoveOrderModifyResult {
                 oid,
+                pending_indicator_id,
                 result: Box::new(r),
             },
         )

@@ -89,6 +89,7 @@ impl TradingTerminal {
         boot_tasks.push(self.request_live_watchlist_refresh(true));
         boot_tasks.push(self.sync_main_window_min_size());
         self.apply_chart_theme_colors();
+        self.sync_chart_dotted_background();
 
         Task::batch(boot_tasks)
     }

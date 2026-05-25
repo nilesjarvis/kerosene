@@ -113,9 +113,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::DismissOrderStatus
         | Message::PlaceBuy
         | Message::PlaceSell
-        | Message::OrderResult(_)
+        | Message::OrderResult { .. }
         | Message::CancelOrder { .. }
-        | Message::CancelResult(_)
+        | Message::CancelResult { .. }
         | Message::ToggleCloseMenu(_)
         | Message::ClosePosition { .. }
         | Message::ClosePositionResult(_)
@@ -154,7 +154,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::QuickOrderToggleType(_)
         | Message::CloseQuickOrder(_)
         | Message::SubmitQuickOrder(_, _)
-        | Message::QuickOrderResult(_)
+        | Message::QuickOrderResult { .. }
         | Message::EscapePressed
         | Message::MoveOrderDragStarted { .. }
         | Message::MoveOrder { .. }
@@ -218,6 +218,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
 
         Message::ThemeChanged(_)
         | Message::UiScaleChanged(_)
+        | Message::ToggleChartDottedBackground(_)
+        | Message::ChartDottedBackgroundOpacityChanged(_)
         | Message::AlfredPopupScaleChanged(_)
         | Message::DisplayFontChanged(_)
         | Message::MonospaceFontChanged(_)

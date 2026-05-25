@@ -17,7 +17,6 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
-use crate::optimistic_updates::{OrderCancellationResult, OrderSubmissionResult};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
@@ -176,6 +175,8 @@ pub(crate) enum Message {
     Tick,
     ThemeChanged(String),
     UiScaleChanged(f32),
+    ToggleChartDottedBackground(bool),
+    ChartDottedBackgroundOpacityChanged(f32),
     AlfredPopupScaleChanged(f32),
     DisplayFontChanged(config::DisplayFontConfig),
     MonospaceFontChanged(config::DisplayFontConfig),
@@ -291,13 +292,19 @@ pub(crate) enum Message {
     ToggleDesktopNotifications,
     PlaceBuy,
     PlaceSell,
-    OrderResult(Box<OrderSubmissionResult>),
+    OrderResult {
+        pending_indicator_id: Option<u64>,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
     DismissOrderStatus,
     CancelOrder {
         coin: String,
         oid: u64,
     },
-    CancelResult(Box<OrderCancellationResult>),
+    CancelResult {
+        pending_indicator_id: Option<u64>,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
     ToggleCloseMenu(String),
     ToggleHiddenPosition(String),
     ToggleShowHiddenPositions,
@@ -445,7 +452,10 @@ pub(crate) enum Message {
     QuickOrderToggleType(ChartId),
     CloseQuickOrder(ChartId),
     SubmitQuickOrder(ChartId, bool),
-    QuickOrderResult(Box<OrderSubmissionResult>),
+    QuickOrderResult {
+        pending_indicator_id: Option<u64>,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
     EscapePressed,
     // Order drag-to-move (from chart canvas)
     MoveOrderDragStarted {
@@ -457,6 +467,7 @@ pub(crate) enum Message {
     },
     MoveOrderModifyResult {
         oid: u64,
+        pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
     },
     // Global messages

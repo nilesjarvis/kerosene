@@ -14,21 +14,24 @@ pub(super) fn draw_ratio_grid(
     ctx: &PairRatioRenderContext<'_>,
     ratio_hi: f64,
     ratio_range: f64,
+    show_grid: bool,
 ) {
     let grid_steps = 6usize;
     for i in 0..=grid_steps {
         let frac = i as f32 / grid_steps as f32;
         let y = frac * ctx.chart_h;
-        let line = canvas::Path::line(Point::new(0.0, y), Point::new(ctx.chart_w, y));
-        frame.stroke(
-            &line,
-            canvas::Stroke::default()
-                .with_color(Color {
-                    a: 0.06,
-                    ..ctx.theme.palette().text
-                })
-                .with_width(1.0),
-        );
+        if show_grid {
+            let line = canvas::Path::line(Point::new(0.0, y), Point::new(ctx.chart_w, y));
+            frame.stroke(
+                &line,
+                canvas::Stroke::default()
+                    .with_color(Color {
+                        a: 0.06,
+                        ..ctx.theme.palette().text
+                    })
+                    .with_width(1.0),
+            );
+        }
         let ratio_val = ratio_hi - (frac as f64) * ratio_range;
         frame.fill_text(canvas::Text {
             content: format_ratio_value(ratio_val),

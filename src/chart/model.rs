@@ -57,6 +57,10 @@ pub struct CandlestickChart {
     pub trade_markers: Vec<TradeMarker>,
     /// Whether recent user fills should be rendered as trade dots.
     pub show_trade_markers: bool,
+    /// Whether chart plot backgrounds use a dotted pattern instead of grid lines.
+    pub(crate) dotted_background: bool,
+    /// Opacity applied to dotted chart plot backgrounds.
+    pub(crate) dotted_background_opacity: f32,
     /// User-drawn annotations (levels, trend lines).
     pub annotations: Vec<Annotation>,
     /// Currently active drawing tool (None = normal pan/zoom mode).

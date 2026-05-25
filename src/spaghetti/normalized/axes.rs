@@ -14,21 +14,24 @@ pub(super) fn draw_grid_and_axes(
     pct_hi: f64,
     pct_range: f64,
     pct_to_y: &impl Fn(f64) -> f32,
+    show_grid: bool,
 ) {
     let grid_steps = 6usize;
     for i in 0..=grid_steps {
         let frac = i as f32 / grid_steps as f32;
         let y = frac * ctx.chart_h;
-        let line = canvas::Path::line(Point::new(0.0, y), Point::new(ctx.chart_w, y));
-        frame.stroke(
-            &line,
-            canvas::Stroke::default()
-                .with_color(Color {
-                    a: 0.06,
-                    ..ctx.theme.palette().text
-                })
-                .with_width(1.0),
-        );
+        if show_grid {
+            let line = canvas::Path::line(Point::new(0.0, y), Point::new(ctx.chart_w, y));
+            frame.stroke(
+                &line,
+                canvas::Stroke::default()
+                    .with_color(Color {
+                        a: 0.06,
+                        ..ctx.theme.palette().text
+                    })
+                    .with_width(1.0),
+            );
+        }
         let pct_val = pct_hi - (frac as f64) * pct_range;
         frame.fill_text(canvas::Text {
             content: format!("{pct_val:+.1}%"),

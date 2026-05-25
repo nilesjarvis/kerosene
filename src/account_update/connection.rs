@@ -14,7 +14,7 @@ impl TradingTerminal {
             if !self.wallet_address_input.trim().is_empty() {
                 self.connected_address = None;
                 self.account_data = None;
-                self.optimistic_account.clear();
+                self.pending_order_indicators.clear();
                 self.account_loading = false;
                 self.account_reconciliation_required = false;
                 self.account_error = Some("Invalid wallet address".to_string());
@@ -71,7 +71,7 @@ impl TradingTerminal {
         }
         self.connected_address = Some(addr.clone());
         self.account_data = None;
-        self.optimistic_account.clear();
+        self.pending_order_indicators.clear();
         self.account_loading = true;
         self.account_reconciliation_required = false;
         self.account_error = None;
@@ -126,7 +126,7 @@ impl TradingTerminal {
         }
         self.connected_address = None;
         self.account_data = None;
-        self.optimistic_account.clear();
+        self.pending_order_indicators.clear();
         self.account_loading = false;
         self.account_reconciliation_required = false;
         self.account_error = None;

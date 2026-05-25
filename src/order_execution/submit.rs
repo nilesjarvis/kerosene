@@ -4,9 +4,6 @@ use super::sizing::order_size_from_quantity_input;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::optimistic_updates::{
-    OptimisticOrderContext, OptimisticOrderSource, OrderSubmissionResult,
-};
 use crate::signing::{OrderKind, float_to_wire, place_order, round_price};
 
 use iced::Task;
@@ -38,11 +35,7 @@ impl TradingTerminal {
 
         let _theme = self.theme();
         let key = self.wallet_key_input.trim().to_string();
-        let Some(account_address) = self.connected_address.clone() else {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return Task::none();
-        };
-        if key.is_empty() {
+        if key.is_empty() || self.connected_address.is_none() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return Task::none();
         }
@@ -81,19 +74,13 @@ impl TradingTerminal {
         } else {
             PendingOrderAction::Sell
         });
-        let mut optimistic_context = OptimisticOrderContext {
-            account_address,
-            symbol: active_symbol,
-            is_buy: prepared.is_buy,
-            size: prepared.size.clone(),
-            price: prepared.price.clone(),
-            order_kind: prepared.order_kind,
-            reduce_only: prepared.reduce_only,
-            submitted_at_ms: Self::now_ms(),
-            pending_id: None,
-            source: OptimisticOrderSource::OrderForm,
-        };
-        self.add_pending_order_submission(&mut optimistic_context);
+        let pending_indicator_id = self.add_pending_order_placement_indicator(
+            self.connected_address.clone().unwrap_or_default(),
+            active_symbol,
+            prepared.is_buy,
+            prepared.size.clone(),
+            prepared.price.clone(),
+        );
 
         Task::perform(
             place_order(
@@ -105,11 +92,9 @@ impl TradingTerminal {
                 prepared.order_kind,
                 prepared.reduce_only,
             ),
-            move |r| {
-                Message::OrderResult(Box::new(OrderSubmissionResult {
-                    context: optimistic_context.clone(),
-                    result: r,
-                }))
+            move |result| Message::OrderResult {
+                pending_indicator_id,
+                result: Box::new(result),
             },
         )
     }

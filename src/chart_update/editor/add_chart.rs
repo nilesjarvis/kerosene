@@ -15,6 +15,10 @@ impl TradingTerminal {
         let mut instance = ChartInstance::new_empty(id);
         let (bull, bear) = self.active_chart_theme_colors();
         instance.chart.set_chart_colors(bull, bear);
+        instance.chart.set_dotted_background(
+            self.chart_dotted_background,
+            self.chart_dotted_background_opacity,
+        );
         self.charts.insert(id, instance);
         if self
             .add_pane_to_target(

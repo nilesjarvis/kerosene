@@ -87,6 +87,8 @@ impl TradingTerminal {
 
         self.active_theme = defaults.active_theme;
         self.ui_scale = defaults.ui_scale;
+        self.chart_dotted_background = defaults.chart_dotted_background;
+        self.chart_dotted_background_opacity = defaults.chart_dotted_background_opacity;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
         self.custom_themes = defaults.custom_themes;
         self.sound_enabled = defaults.sound_enabled;
@@ -113,6 +115,7 @@ impl TradingTerminal {
         self.muted_ticker_input.clear();
         self.muted_ticker_status = None;
         self.apply_chart_theme_colors();
+        self.sync_chart_dotted_background();
 
         let file_label = if summary.files_removed == 1 {
             "file"

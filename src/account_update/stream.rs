@@ -174,23 +174,12 @@ impl TradingTerminal {
         for msg in fill_toast_msgs {
             self.push_toast(msg, false);
         }
-        let optimistic_changed = if orders_changed || fills_changed || positions_changed {
-            self.account_data
-                .as_ref()
-                .map(|data| {
-                    self.optimistic_account
-                        .reconcile_with_account_data(data, Self::now_ms())
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        if positions_changed || optimistic_changed {
+        if positions_changed {
             self.sync_all_chart_overlays();
         } else if orders_changed {
             self.sync_all_chart_orders();
         }
-        if fills_changed && !positions_changed && !optimistic_changed {
+        if fills_changed && !positions_changed {
             self.sync_all_chart_trade_markers();
         }
         if fills_changed {

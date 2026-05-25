@@ -22,7 +22,11 @@ impl TradingTerminal {
         self.add_widget_menu_open = false;
         let id = self.next_spaghetti_id;
         self.next_spaghetti_id += 1;
-        let instance = build_instance(id);
+        let mut instance = build_instance(id);
+        instance.canvas.set_dotted_background(
+            self.chart_dotted_background,
+            self.chart_dotted_background_opacity,
+        );
         self.spaghetti_charts.insert(id, instance);
         if self
             .add_pane_next_to_focus(self.add_widget_axis(), PaneKind::SpaghettiChart(id), title)

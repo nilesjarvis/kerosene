@@ -3,7 +3,6 @@ use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::helpers::parse_finite_number;
-use crate::optimistic_updates::ProjectedAssetPosition;
 
 #[cfg(test)]
 mod tests;
@@ -11,7 +10,6 @@ mod tests;
 pub(in crate::account_views::positions::table) struct PositionRowData {
     pub(in crate::account_views::positions::table) ap: account::AssetPosition,
     pub(in crate::account_views::positions::table) coin: String,
-    pub(in crate::account_views::positions::table) is_optimistic: bool,
     pub(in crate::account_views::positions::table) szi: Option<f64>,
     pub(in crate::account_views::positions::table) entry_px: Option<f64>,
     pub(in crate::account_views::positions::table) is_long: Option<bool>,
@@ -27,11 +25,11 @@ pub(in crate::account_views::positions::table) struct PositionRowData {
 impl TradingTerminal {
     pub(super) fn sorted_position_rows(
         &self,
-        positions: &[ProjectedAssetPosition],
+        positions: &[account::AssetPosition],
     ) -> Vec<PositionRowData> {
         let mut row_data: Vec<PositionRowData> = positions
             .iter()
-            .map(|ap| self.projected_position_row_data(ap))
+            .map(|ap| self.position_row_data(ap))
             .collect();
 
         row_data.sort_by(|a, b| {
@@ -71,18 +69,6 @@ impl TradingTerminal {
         &self,
         ap: &account::AssetPosition,
     ) -> PositionRowData {
-        self.position_row_data_with_optimism(ap, false)
-    }
-
-    fn projected_position_row_data(&self, ap: &ProjectedAssetPosition) -> PositionRowData {
-        self.position_row_data_with_optimism(&ap.asset_position, ap.is_optimistic)
-    }
-
-    fn position_row_data_with_optimism(
-        &self,
-        ap: &account::AssetPosition,
-        is_optimistic: bool,
-    ) -> PositionRowData {
         let pos = &ap.position;
         let szi = parse_position_row_number(&pos.szi);
         let entry_px = parse_position_row_number(&pos.entry_px);
@@ -101,7 +87,6 @@ impl TradingTerminal {
         PositionRowData {
             ap: ap.clone(),
             coin: pos.coin.clone(),
-            is_optimistic,
             szi,
             entry_px,
             is_long: szi.map(|szi| szi >= 0.0),

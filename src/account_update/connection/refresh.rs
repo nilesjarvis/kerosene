@@ -62,8 +62,6 @@ impl TradingTerminal {
                 self.account_reconciliation_required = false;
                 let data = self.filter_account_data_for_muted_tickers(data);
                 let is_pm = data.is_portfolio_margin();
-                self.optimistic_account
-                    .reconcile_with_account_data(&data, Self::now_ms());
                 self.account_data = Some(data);
                 self.account_error = None;
                 self.sync_all_chart_overlays();

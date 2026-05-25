@@ -27,6 +27,8 @@ impl CandlestickChart {
             active_orders: Vec::new(),
             trade_markers: Vec::new(),
             show_trade_markers: false,
+            dotted_background: false,
+            dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
             annotations: Vec::new(),
             active_tool: None,
             liquidation_buckets: Vec::new(),
@@ -67,6 +69,8 @@ impl CandlestickChart {
             active_orders: self.active_orders.clone(),
             trade_markers: self.trade_markers.clone(),
             show_trade_markers: self.show_trade_markers,
+            dotted_background: self.dotted_background,
+            dotted_background_opacity: self.dotted_background_opacity,
             annotations: self.annotations.clone(),
             active_tool: None,
             liquidation_buckets: self.liquidation_buckets.clone(),
@@ -132,6 +136,16 @@ impl CandlestickChart {
         if self.chart_bull_color != bull || self.chart_bear_color != bear {
             self.chart_bull_color = bull;
             self.chart_bear_color = bear;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_dotted_background(&mut self, enabled: bool, opacity: f32) {
+        if self.dotted_background != enabled
+            || (self.dotted_background_opacity - opacity).abs() > f32::EPSILON
+        {
+            self.dotted_background = enabled;
+            self.dotted_background_opacity = opacity;
             self.candle_cache.clear();
         }
     }

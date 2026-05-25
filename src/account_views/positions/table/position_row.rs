@@ -35,11 +35,6 @@ impl TradingTerminal {
             Some(false) => ("\u{2193} Short", theme.palette().danger),
             None => ("Invalid", theme.palette().warning),
         };
-        let side_label = if data.is_optimistic {
-            format!("{side} pending")
-        } else {
-            side.to_string()
-        };
 
         let mark_str = data
             .mark_px
@@ -55,15 +50,9 @@ impl TradingTerminal {
             .upnl
             .map(|upnl| self.direction_color(theme, upnl))
             .unwrap_or_else(|| theme.palette().warning);
-        let lev_str = if data.is_optimistic {
-            "\u{2014}".to_string()
-        } else {
-            format!("{}x {}", pos.leverage.value, pos.leverage.leverage_type)
-        };
+        let lev_str = format!("{}x {}", pos.leverage.value, pos.leverage.leverage_type);
         let liq_element: Element<'a, Message> = text(
-            (!data.is_optimistic)
-                .then_some(data.liq_px)
-                .flatten()
+            data.liq_px
                 .map(format_price)
                 .unwrap_or_else(|| "\u{2014}".to_string()),
         )
@@ -83,8 +72,7 @@ impl TradingTerminal {
             .map(|total_pnl| self.direction_color(theme, total_pnl))
             .unwrap_or_else(|| theme.palette().warning);
 
-        let row_can_close =
-            can_close && !data.is_optimistic && data.szi.is_some_and(|szi| szi.abs() > 1e-12);
+        let row_can_close = can_close && data.szi.is_some_and(|szi| szi.abs() > 1e-12);
         let is_hidden = self.position_is_hidden(&pos.coin);
         let close_cell =
             self.view_position_close_cell(pos.coin.clone(), row_can_close, is_hidden, theme);
@@ -95,7 +83,7 @@ impl TradingTerminal {
 
         let mut row_content = row![
             container(symbol_btn).width(Fill),
-            text(side_label).size(12).color(side_color).width(Fill),
+            text(side).size(12).color(side_color).width(Fill),
             text(size_str)
                 .size(12)
                 .font(crate::app_fonts::monospace_font())

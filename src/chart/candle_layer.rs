@@ -8,6 +8,7 @@ pub(in crate::chart) use funding::format_funding_rate_percent;
 use super::model::CandlestickChart;
 use super::moving_averages::MovingAverageLayer;
 use super::state::ChartState;
+use crate::chart_background::draw_dotted_background;
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Renderer, Theme};
 
@@ -65,8 +66,19 @@ impl CandlestickChart {
                     height: ctx.chart_h,
                 };
                 frame.with_clip(chart_region, |frame| {
-                    self.draw_price_grid(ctx, frame);
-                    self.draw_time_grid(ctx, frame);
+                    if self.dotted_background {
+                        draw_dotted_background(
+                            frame,
+                            ctx.theme,
+                            ctx.chart_w,
+                            ctx.chart_h,
+                            self.dotted_background_opacity,
+                        );
+                    } else {
+                        self.draw_price_grid(ctx, frame);
+                        self.draw_time_grid(ctx, frame);
+                    }
+                    self.draw_price_volume_separator(ctx, frame);
                     self.draw_historical_heatmap(ctx, frame);
                     self.draw_candles_and_volume(ctx, frame);
                     self.draw_volume_profile(ctx, frame);

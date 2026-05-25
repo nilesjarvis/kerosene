@@ -47,7 +47,6 @@ impl MoveOrderContextError {
 pub(crate) struct PendingMoveOrderContext {
     account_address: String,
     agent_key: Zeroizing<String>,
-    pending_id: Option<u64>,
 }
 
 impl PendingMoveOrderContext {
@@ -65,7 +64,6 @@ impl PendingMoveOrderContext {
         Ok(Self {
             account_address: account_address.into(),
             agent_key: agent_key.into(),
-            pending_id: None,
         })
     }
 
@@ -77,14 +75,6 @@ impl PendingMoveOrderContext {
             Some(current) if current == self.account_address => Ok(self.agent_key.clone()),
             _ => Err(MoveOrderContextError::AccountChanged),
         }
-    }
-
-    pub(crate) fn set_pending_id(&mut self, pending_id: Option<u64>) {
-        self.pending_id = pending_id;
-    }
-
-    pub(crate) fn pending_id(&self) -> Option<u64> {
-        self.pending_id
     }
 }
 

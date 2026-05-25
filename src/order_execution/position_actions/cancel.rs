@@ -1,6 +1,5 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::optimistic_updates::{OrderCancellationContext, OrderCancellationResult};
 use crate::signing::cancel_order;
 
 use iced::Task;
@@ -24,32 +23,21 @@ impl TradingTerminal {
             return Task::none();
         };
         let asset = sym.asset_index;
-        let account_address = self.connected_address.clone().unwrap_or_default();
-        let pending_id = if account_address.is_empty() {
-            None
-        } else {
+        let pending_indicator_id = self.connected_address.clone().and_then(|account_address| {
             let order = self
-                .projected_open_orders()
-                .into_iter()
-                .find(|row| row.order.coin == coin && row.order.oid == oid)
-                .map(|row| row.order.clone());
-            order
+                .account_data
                 .as_ref()
-                .and_then(|order| self.add_pending_order_cancellation(&account_address, order))
-        };
-        let context = OrderCancellationContext {
-            account_address,
-            symbol: coin.to_string(),
-            oid,
-            pending_id,
-        };
+                .and_then(|data| data.open_orders.iter().find(|order| order.oid == oid))
+                .cloned()?;
+            self.add_pending_order_cancellation_indicator(account_address, &order)
+        });
 
         self.order_status = Some(("Cancelling order...".into(), false));
         Task::perform(cancel_order(key.into(), asset, oid), move |result| {
-            Message::CancelResult(Box::new(OrderCancellationResult {
-                context: context.clone(),
-                result,
-            }))
+            Message::CancelResult {
+                pending_indicator_id,
+                result: Box::new(result),
+            }
         })
     }
 }

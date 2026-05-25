@@ -13,13 +13,12 @@ impl TradingTerminal {
         &'a self,
         order: &'a OpenOrder,
         can_cancel: bool,
-        is_optimistic: bool,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let (side_str, side_color) = open_order_side_display(&order.side, theme);
         let is_outcome_order = self.is_outcome_coin(&order.coin);
 
-        let cancel_cell: Element<'_, Message> = if can_cancel && !is_optimistic {
+        let cancel_cell: Element<'_, Message> = if can_cancel {
             compact_action_button(
                 "Cancel",
                 theme.palette().danger,
@@ -38,8 +37,7 @@ impl TradingTerminal {
         let weak_color = theme.extended_palette().background.weak.text;
         let invalid_color = theme.palette().warning;
 
-        let chase_cell: Element<'_, Message> = if can_cancel && !is_outcome_order && !is_optimistic
-        {
+        let chase_cell: Element<'_, Message> = if can_cancel && !is_outcome_order {
             if let Some((is_buy, sz, limit_px)) = chase_inputs {
                 compact_action_button(
                     "Chase",
@@ -69,23 +67,13 @@ impl TradingTerminal {
         } else {
             order.coin.clone()
         };
-        let coin_label = if is_optimistic {
-            format!("{coin_label} pending")
-        } else {
-            coin_label
-        };
-        let side_label = if is_optimistic {
-            format!("{side_str} pending")
-        } else {
-            side_str.to_string()
-        };
         coin_content = coin_content
             .push(text(coin_label).size(12))
             .align_y(iced::Alignment::Center);
 
         row![
             coin_content.width(Fill),
-            text(side_label).size(12).color(side_color).width(Fill),
+            text(side_str).size(12).color(side_color).width(Fill),
             text(format_open_order_price(
                 limit_px,
                 is_outcome_order,

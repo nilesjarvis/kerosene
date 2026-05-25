@@ -33,7 +33,16 @@ impl CandlestickChart {
                     .with_width(1.0),
             );
         }
+    }
 
+    pub(in crate::chart::candle_layer) fn draw_price_volume_separator<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+        frame: &mut canvas::Frame,
+    ) where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
         let sep = canvas::Path::line(
             Point::new(0.0, ctx.price_h),
             Point::new(ctx.chart_w, ctx.price_h),
