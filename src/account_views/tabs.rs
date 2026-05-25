@@ -10,33 +10,40 @@ use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_bottom_tabs(&self, active_tab: BottomTab) -> Element<'_, Message> {
+        let position_count = self.open_position_tab_count();
+        let open_order_count = self.open_order_tab_count();
         let tabs = Row::new()
             .push(bottom_tab_button(
                 "Positions",
+                Some(position_count),
                 active_tab == BottomTab::Positions,
                 Message::SwitchBottomTab(BottomTab::Positions),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Open Orders",
+                Some(open_order_count),
                 active_tab == BottomTab::OpenOrders,
                 Message::SwitchBottomTab(BottomTab::OpenOrders),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Balances",
+                None,
                 active_tab == BottomTab::Balances,
                 Message::SwitchBottomTab(BottomTab::Balances),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Trade History",
+                None,
                 active_tab == BottomTab::TradeHistory,
                 Message::SwitchBottomTab(BottomTab::TradeHistory),
             ))
             .push(bottom_tab_separator())
             .push(bottom_tab_button(
                 "Funding",
+                None,
                 active_tab == BottomTab::FundingHistory,
                 Message::SwitchBottomTab(BottomTab::FundingHistory),
             ))
@@ -78,6 +85,26 @@ impl TradingTerminal {
 
         container(content).width(Fill).height(Fill).into()
     }
+
+    fn open_position_tab_count(&self) -> usize {
+        self.account_data
+            .as_ref()
+            .map(|data| {
+                data.clearinghouse
+                    .asset_positions
+                    .iter()
+                    .filter(|position| !self.symbol_key_is_hidden(&position.position.coin))
+                    .count()
+            })
+            .unwrap_or_default()
+    }
+
+    fn open_order_tab_count(&self) -> usize {
+        self.projected_open_orders()
+            .into_iter()
+            .filter(|row| !self.symbol_key_is_hidden(&row.order.coin))
+            .count()
+    }
 }
 
 fn bottom_tab_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
@@ -96,8 +123,20 @@ fn bottom_tab_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
         .into()
 }
 
-fn bottom_tab_button(label: &'static str, active: bool, msg: Message) -> Element<'static, Message> {
-    button(text(label).size(11).center())
+fn bottom_tab_button(
+    label: &'static str,
+    count: Option<usize>,
+    active: bool,
+    msg: Message,
+) -> Element<'static, Message> {
+    let mut content = row![text(label).size(11).center()]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+    if let Some(count) = count.filter(|count| *count > 0) {
+        content = content.push(bottom_tab_count_badge(count, active));
+    }
+
+    button(content)
         .on_press(msg)
         .padding([4, 10])
         .style(move |theme: &Theme, status| {
@@ -117,6 +156,37 @@ fn bottom_tab_button(label: &'static str, active: bool, msg: Message) -> Element
                     radius: 0.0.into(),
                     width: 0.0,
                     color: Color::TRANSPARENT,
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
+fn bottom_tab_count_badge(count: usize, active: bool) -> Element<'static, Message> {
+    container(text(count.to_string()).size(10).center())
+        .padding([1, 5])
+        .style(move |theme: &Theme| {
+            let text_color = if active {
+                theme.palette().primary
+            } else {
+                theme.extended_palette().background.weak.text
+            };
+            let background = Color {
+                a: if active { 0.16 } else { 0.08 },
+                ..text_color
+            };
+            let border_color = Color {
+                a: if active { 0.28 } else { 0.14 },
+                ..text_color
+            };
+            container::Style {
+                background: Some(background.into()),
+                text_color: Some(text_color),
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    width: 1.0,
+                    color: border_color,
                 },
                 ..Default::default()
             }
@@ -178,4 +248,103 @@ fn bottom_tab_bottom_separator() -> Element<'static, Message> {
             snap: true,
         })
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account::{
+        AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
+        OpenOrder, Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
+    };
+    use crate::config::MarketUniverseConfig;
+
+    fn account_data(positions: Vec<AssetPosition>, open_orders: Vec<OpenOrder>) -> AccountData {
+        AccountData {
+            fetch_scope: Default::default(),
+            request_weight_estimate: 0,
+            account_abstraction: Default::default(),
+            clearinghouse: ClearinghouseState {
+                margin_summary: MarginSummary {
+                    account_value: "0".to_string(),
+                    total_ntl_pos: "0".to_string(),
+                    total_margin_used: "0".to_string(),
+                },
+                cross_margin_summary: None,
+                cross_maintenance_margin_used: None,
+                withdrawable: "0".to_string(),
+                asset_positions: positions,
+            },
+            clearinghouses_by_dex: std::collections::HashMap::new(),
+            spot: SpotClearinghouseState {
+                balances: Vec::new(),
+                portfolio_margin_enabled: false,
+                portfolio_margin_ratio: None,
+                token_to_available_after_maintenance: None,
+            },
+            open_orders,
+            fills: Vec::new(),
+            funding_history: Vec::new(),
+            fee_rates: UserFeeRates::default(),
+            completeness: AccountDataCompleteness::default(),
+            fetched_at_ms: 1_000,
+        }
+    }
+
+    fn position(coin: &str) -> AssetPosition {
+        AssetPosition {
+            position: Position {
+                coin: coin.to_string(),
+                szi: "1".to_string(),
+                entry_px: "100".to_string(),
+                position_value: "100".to_string(),
+                unrealized_pnl: "0".to_string(),
+                liquidation_px: None,
+                leverage: PositionLeverage {
+                    leverage_type: "cross".to_string(),
+                    value: 1,
+                },
+                margin_used: "0".to_string(),
+                cum_funding: None,
+            },
+            liquidation_px: None,
+        }
+    }
+
+    fn open_order(coin: &str, oid: u64) -> OpenOrder {
+        OpenOrder {
+            coin: coin.to_string(),
+            side: "B".to_string(),
+            limit_px: "100".to_string(),
+            sz: "1".to_string(),
+            oid,
+            timestamp: 1,
+            reduce_only: None,
+        }
+    }
+
+    #[test]
+    fn bottom_tab_counts_reflect_open_positions_and_orders() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.account_data = Some(account_data(
+            vec![position("BTC"), position("ETH")],
+            vec![open_order("BTC", 1), open_order("ETH", 2)],
+        ));
+
+        assert_eq!(terminal.open_position_tab_count(), 2);
+        assert_eq!(terminal.open_order_tab_count(), 2);
+    }
+
+    #[test]
+    fn bottom_tab_counts_follow_market_universe_visibility() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.market_universe = MarketUniverseConfig::hip3_dex("xyz");
+        terminal.account_data = Some(account_data(
+            vec![position("xyz:NVDA"), position("flx:NVDA")],
+            vec![open_order("xyz:NVDA", 1), open_order("flx:NVDA", 2)],
+        ));
+
+        assert_eq!(terminal.open_position_tab_count(), 1);
+        assert_eq!(terminal.open_order_tab_count(), 1);
+    }
 }
