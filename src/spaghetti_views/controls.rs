@@ -8,7 +8,7 @@ use crate::timeframe::TIMEFRAME_OPTIONS;
 use components::{
     reload_button, reset_view_button, spaghetti_controls_button,
     spaghetti_controls_pick_list_style, spaghetti_controls_separator,
-    spaghetti_controls_status_label, spaghetti_controls_strip,
+    spaghetti_controls_status_label, spaghetti_controls_strip, style_button,
 };
 use iced::widget::{pick_list, row};
 use iced::{Element, Length};
@@ -93,6 +93,10 @@ impl TradingTerminal {
         };
 
         if !inst.pair_mode {
+            tf_row = tf_row
+                .push(spaghetti_controls_separator())
+                .push(style_button(id, inst.style_menu_open));
+
             let active_session = inst.canvas.active_session;
 
             for &session in spaghetti::SESSION_OPTIONS {

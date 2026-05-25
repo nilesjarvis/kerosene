@@ -43,6 +43,10 @@ pub(super) fn reset_view_button(id: SpaghettiChartId) -> Element<'static, Messag
     spaghetti_controls_button("Reset View", false, Message::SpaghettiResetView(id))
 }
 
+pub(super) fn style_button(id: SpaghettiChartId, open: bool) -> Element<'static, Message> {
+    spaghetti_controls_button("STYLE", open, Message::ToggleSpaghettiStyleMenu(id))
+}
+
 pub(super) fn spaghetti_controls_separator() -> Element<'static, Message> {
     container(rule::vertical(1).style(|theme: &Theme| rule::Style {
         color: Color {
