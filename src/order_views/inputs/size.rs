@@ -4,10 +4,12 @@ use crate::message::Message;
 use crate::signing::OrderKind;
 use calculations::{denomination_label, order_notional_text, parse_positive_finite};
 use components::denomination_button;
-use presets::{SIZE_SLIDER_HEIGHT, SizePresetDots};
+use presets::{SIZE_PERCENT_LABEL_WIDTH, SIZE_SLIDER_HEIGHT, SizePresetMarks, size_slider_style};
 
-use iced::widget::{Column, Space, canvas, checkbox, row, slider, stack, text, text_input};
-use iced::{Color, Fill, Length, Theme};
+use iced::widget::{
+    Column, Space, canvas, checkbox, container, row, slider, stack, text, text_input,
+};
+use iced::{Fill, Length, Theme};
 
 mod calculations;
 mod components;
@@ -68,30 +70,37 @@ impl TradingTerminal {
             Message::OrderPercentageChanged,
         )
         .width(Fill)
+        .height(SIZE_SLIDER_HEIGHT)
         .step(1.0)
-        .style(|theme: &Theme, status| {
-            let palette = theme.palette();
-            let mut style = slider::default(theme, status);
-            style.handle.background = palette.primary.into();
-            style.handle.border_color = palette.primary;
-            style.rail.backgrounds.0 = palette.primary.into();
-            style.rail.backgrounds.1 = Color {
-                a: 0.2,
-                ..palette.text
-            }
-            .into();
-            style
-        });
-        let preset_markers = canvas(SizePresetDots {
+        .style(size_slider_style);
+        let preset_markers = canvas(SizePresetMarks {
             current_pct: self.order_percentage,
         })
         .width(Fill)
         .height(Length::Fixed(SIZE_SLIDER_HEIGHT));
-        let size_slider = stack![percent_slider, preset_markers].width(Fill);
+        let size_slider = stack![percent_slider, preset_markers]
+            .width(Fill)
+            .height(Length::Fixed(SIZE_SLIDER_HEIGHT));
 
-        let slider_label = text(format!("{:.0}%", self.order_percentage))
-            .size(10)
-            .color(theme.extended_palette().background.weak.text);
+        let slider_label = container(
+            text(format!("{:.0}%", self.order_percentage))
+                .size(12)
+                .color(theme.palette().text)
+                .center(),
+        )
+        .width(Length::Fixed(SIZE_PERCENT_LABEL_WIDTH))
+        .height(Length::Fixed(SIZE_SLIDER_HEIGHT))
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center)
+        .style(|theme: &Theme| container::Style {
+            background: Some(theme.extended_palette().background.weak.color.into()),
+            border: iced::Border {
+                radius: 5.0.into(),
+                width: 1.0,
+                color: theme.extended_palette().background.strong.color,
+            },
+            ..Default::default()
+        });
         let slider_row = row![size_slider, Space::new().width(6.0), slider_label]
             .spacing(4)
             .align_y(iced::Alignment::Center);
