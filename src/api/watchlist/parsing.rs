@@ -1,4 +1,5 @@
 use super::model::WatchlistContext;
+use crate::helpers::parse_finite_json_number;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
@@ -72,11 +73,8 @@ pub(super) fn append_spot_contexts(resp: Value, map: &mut HashMap<String, Watchl
 }
 
 fn parse_optional_f64(ctx: &Map<String, Value>, key: &str) -> Option<f64> {
-    let value = match ctx.get(key)? {
-        Value::String(s) => s.parse::<f64>().ok(),
-        Value::Number(n) => n.as_f64(),
-        _ => None,
-    }?;
-
-    value.is_finite().then_some(value)
+    ctx.get(key).and_then(parse_finite_json_number)
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,8 +1,13 @@
-use super::*;
 use crate::account::{
     AccountAbstractionMode, AccountData, ClearinghouseState, MarginSummary, SpotClearinghouseState,
 };
-use crate::api::OutcomeSymbolInfo;
+use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
+use crate::app_state::TradingTerminal;
+use crate::config::MarketUniverseConfig;
+
+mod account_visibility;
+mod collateral;
+mod market_universe;
 
 fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -105,95 +110,4 @@ fn account_data_with_mode(
         completeness: Default::default(),
         fetched_at_ms: 1,
     }
-}
-
-#[test]
-fn hip3_market_universe_matches_only_selected_perp_dex() {
-    let universe = MarketUniverseConfig::hip3_dex("xyz");
-    let xyz_nvda = symbol("xyz:NVDA", "NVDA", MarketType::Perp);
-    let flx_nvda = symbol("flx:NVDA", "NVDA", MarketType::Perp);
-    let spot = symbol("@107", "HYPE", MarketType::Spot);
-
-    assert!(TradingTerminal::symbol_matches_market_universe(
-        &xyz_nvda, &universe
-    ));
-    assert!(!TradingTerminal::symbol_matches_market_universe(
-        &flx_nvda, &universe
-    ));
-    assert!(!TradingTerminal::symbol_matches_market_universe(
-        &spot, &universe
-    ));
-}
-
-#[test]
-fn hip3_market_universe_matches_raw_dex_prefixed_keys_without_symbol_metadata() {
-    let symbols = Vec::new();
-    let universe = MarketUniverseConfig::hip3_dex("xyz");
-
-    assert!(TradingTerminal::key_matches_market_universe(
-        &symbols, &universe, "xyz:NVDA"
-    ));
-    assert!(!TradingTerminal::key_matches_market_universe(
-        &symbols, &universe, "NVDA"
-    ));
-    assert!(!TradingTerminal::key_matches_market_universe(
-        &symbols, &universe, "flx:NVDA"
-    ));
-}
-
-#[test]
-fn market_universe_options_include_discovered_dexes_not_only_known_constants() {
-    let mut terminal = TradingTerminal::boot().0;
-    terminal.exchange_symbols = vec![perp_symbol_with_collateral("newdex:ABC", Some(404))];
-
-    assert!(
-        terminal
-            .market_universe_options()
-            .contains(&MarketUniverseConfig::hip3_dex("newdex"))
-    );
-}
-
-#[test]
-fn selected_hip3_collateral_token_requires_symbol_metadata() {
-    let mut terminal = TradingTerminal::boot().0;
-    terminal.market_universe = MarketUniverseConfig::hip3_dex("newdex");
-    terminal.exchange_symbols = vec![perp_symbol_with_collateral("newdex:ABC", Some(404))];
-
-    assert_eq!(terminal.visible_collateral_token(), Some(404));
-
-    terminal.exchange_symbols.clear();
-    assert_eq!(terminal.visible_collateral_token(), None);
-}
-
-#[test]
-fn portfolio_margin_keeps_spot_balances_visible_in_selected_hip3_universe() {
-    let mut terminal = TradingTerminal::boot().0;
-    terminal.market_universe = MarketUniverseConfig::hip3_dex("xyz");
-    let data = account_data_with_mode(AccountAbstractionMode::PortfolioMargin, true);
-
-    assert!(terminal.account_view_includes_spot_balances(&data));
-    assert!(!terminal.account_spot_balance_is_hidden(&data, "USDC"));
-
-    terminal.muted_tickers.insert("USDC".to_string());
-    assert!(terminal.account_spot_balance_is_hidden(&data, "USDC"));
-}
-
-#[test]
-fn non_portfolio_selected_hip3_still_hides_spot_balances() {
-    let mut terminal = TradingTerminal::boot().0;
-    terminal.market_universe = MarketUniverseConfig::hip3_dex("xyz");
-    let data = account_data_with_mode(AccountAbstractionMode::DexAbstraction, false);
-
-    assert!(!terminal.account_view_includes_spot_balances(&data));
-    assert!(terminal.account_spot_balance_is_hidden(&data, "USDC"));
-}
-
-#[test]
-fn fallback_outcome_balances_are_hidden_even_when_all_markets_are_visible() {
-    let mut terminal = TradingTerminal::boot().0;
-    terminal.exchange_symbols = vec![outcome_symbol("#660", true), outcome_symbol("#670", false)];
-    let data = account_data_with_mode(AccountAbstractionMode::UnifiedAccount, false);
-
-    assert!(terminal.account_spot_balance_is_hidden(&data, "+660"));
-    assert!(!terminal.account_spot_balance_is_hidden(&data, "+670"));
 }

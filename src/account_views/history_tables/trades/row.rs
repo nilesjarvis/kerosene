@@ -4,8 +4,9 @@ use crate::account_views::history_tables::numbers::{
     format_history_display_usd, invalid_history_data, parse_history_number,
     valid_history_wire_value,
 };
+use crate::account_views::history_tables::style::history_signed_value_color;
 use crate::app_state::TradingTerminal;
-use crate::helpers;
+use crate::helpers::{self, optional_value_color};
 use crate::message::Message;
 use iced::widget::{Row, Space, row, text};
 use iced::{Color, Element, Fill, Theme};
@@ -45,8 +46,8 @@ impl TradingTerminal {
         let fee = parse_history_number(&fill.fee);
         let weak_color = theme.extended_palette().background.weak.text;
         let invalid_color = theme.palette().warning;
-        let pnl_color = signed_history_color(pnl, theme);
-        let fee_color = history_value_color(fee, weak_color, invalid_color);
+        let pnl_color = history_signed_value_color(pnl, theme);
+        let fee_color = optional_value_color(fee, weak_color, invalid_color);
         let denomination = self.display_denomination_context();
 
         let pnl_display = if self.hide_pnl {
@@ -72,7 +73,7 @@ impl TradingTerminal {
             text(valid_history_wire_value(&fill.px))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
-                .color(history_value_color(
+                .color(optional_value_color(
                     parse_history_number(&fill.px),
                     weak_color,
                     invalid_color
@@ -81,7 +82,7 @@ impl TradingTerminal {
             text(valid_history_wire_value(&fill.sz))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
-                .color(history_value_color(
+                .color(optional_value_color(
                     parse_history_number(&fill.sz),
                     weak_color,
                     invalid_color
@@ -100,22 +101,6 @@ fn trade_side_display(side: &str, theme: &Theme) -> (&'static str, Color) {
         "B" => ("+ Buy", theme.palette().success),
         "A" => ("- Sell", theme.palette().danger),
         _ => ("Invalid", theme.palette().warning),
-    }
-}
-
-fn signed_history_color(value: Option<f64>, theme: &Theme) -> Color {
-    match value {
-        Some(value) if value >= 0.0 => theme.palette().success,
-        Some(_) => theme.palette().danger,
-        None => theme.palette().warning,
-    }
-}
-
-fn history_value_color(value: Option<f64>, default_color: Color, invalid_color: Color) -> Color {
-    if value.is_some() {
-        default_color
-    } else {
-        invalid_color
     }
 }
 
@@ -138,20 +123,4 @@ fn history_fee_display(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn trade_fee_display_marks_invalid_values() {
-        let denomination = crate::denomination::DisplayDenominationContext::default();
-        assert_eq!(
-            history_fee_display(&denomination, Some(1.25), false),
-            "-$1.25"
-        );
-        assert_eq!(
-            history_fee_display(&denomination, None, false),
-            "Invalid data"
-        );
-        assert_eq!(history_fee_display(&denomination, None, true), "$***");
-    }
-}
+mod tests;

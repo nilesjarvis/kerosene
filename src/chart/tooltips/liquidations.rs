@@ -1,6 +1,6 @@
 use super::{TooltipLine, TooltipSurface};
 use crate::chart::formatting::format_compact_coins;
-use crate::denomination::format_compact;
+use crate::denomination::format_compact_usd;
 use crate::helpers::format_price;
 use crate::hyperdash_api::LiquidationBucket;
 use iced::{Color, Point};
@@ -85,12 +85,4 @@ impl TooltipSurface<'_> {
 
         self.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
-}
-
-fn format_compact_usd(value: f64) -> String {
-    if !value.is_finite() {
-        return "Invalid data".to_string();
-    }
-    let sign = if value.is_sign_negative() { "-" } else { "" };
-    format!("{sign}${}", format_compact(value.abs()))
 }

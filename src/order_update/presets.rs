@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::OrderPreset;
-use crate::helpers::parse_number;
+use crate::helpers::{parse_number, positive_finite_value};
 use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::Task;
@@ -87,18 +87,18 @@ impl TradingTerminal {
 
         let Some(mid) = self
             .resolve_mid_for_symbol(&self.active_symbol)
-            .filter(|mid| mid.is_finite() && *mid > 0.0)
+            .and_then(positive_finite_value)
         else {
             self.order_status =
                 Some(("No mid price available for preset calculation".into(), true));
             return Task::none();
         };
 
-        if preset.size.is_finite() && preset.size > 0.0 {
+        if let Some(preset_size) = positive_finite_value(preset.size) {
             let qty = if self.preset_is_usd {
-                preset.size / mid
+                preset_size / mid
             } else {
-                preset.size
+                preset_size
             };
             self.order_quantity = format!("{qty:.6}");
 

@@ -1,4 +1,5 @@
 use crate::api::{ExchangeSymbol, WatchlistContext};
+use crate::helpers::finite_value;
 
 use std::collections::HashMap;
 
@@ -17,7 +18,7 @@ pub(super) fn symbol_search_volume(
         .get(&symbol.key)
         .or_else(|| contexts.get(&symbol.ticker))
         .and_then(|ctx| ctx.day_vlm)
-        .filter(|value| value.is_finite())
+        .and_then(finite_value)
 }
 
 pub(super) fn format_symbol_search_volume(value: f64) -> String {

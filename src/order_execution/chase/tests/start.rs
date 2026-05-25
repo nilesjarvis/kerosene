@@ -1,0 +1,95 @@
+use super::*;
+
+#[test]
+fn start_chase_keeps_base_size_when_quantity_is_not_usd() {
+    let mut terminal = chase_ready_terminal();
+
+    let _task = terminal.start_chase(true);
+
+    let chase = selected_chase(&terminal);
+    assert_eq!(chase.target_size, 2.5);
+    assert_eq!(chase.remaining_size, 2.5);
+}
+
+#[test]
+fn start_chase_quantizes_base_size_to_asset_precision() {
+    let mut terminal = chase_ready_terminal();
+    terminal.order_quantity = "1.239".to_string();
+    if let Some(symbol) = terminal.exchange_symbols.first_mut() {
+        symbol.sz_decimals = 2;
+    }
+
+    let _task = terminal.start_chase(true);
+
+    let chase = selected_chase(&terminal);
+    assert_eq!(chase.target_size, 1.23);
+    assert_eq!(chase.remaining_size, 1.23);
+}
+
+#[test]
+fn start_chase_converts_usd_notional_to_base_size_using_fresh_mid() {
+    let mut terminal = chase_ready_terminal();
+    terminal.order_quantity = "1000".to_string();
+    terminal.order_quantity_is_usd = true;
+    terminal.all_mids.insert("BTC".to_string(), 50_000.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+    let _task = terminal.start_chase(true);
+
+    let chase = selected_chase(&terminal);
+    assert!((chase.target_size - 0.02).abs() < f64::EPSILON);
+    assert!((chase.remaining_size - 0.02).abs() < f64::EPSILON);
+}
+
+#[test]
+fn start_chase_converts_usd_notional_using_mid_candidates() {
+    let mut terminal = chase_ready_terminal();
+    terminal.active_symbol = "UBTC".to_string();
+    terminal.active_symbol_display = "UBTC".to_string();
+    terminal.exchange_symbols = vec![symbol("UBTC", MarketType::Perp)];
+    terminal.order_quantity = "1000".to_string();
+    terminal.order_quantity_is_usd = true;
+    terminal.all_mids.insert("BTC".to_string(), 50_000.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+    let _task = terminal.start_chase(true);
+
+    let chase = selected_chase(&terminal);
+    assert!((chase.target_size - 0.02).abs() < f64::EPSILON);
+    assert!((chase.remaining_size - 0.02).abs() < f64::EPSILON);
+}
+
+#[test]
+fn start_chase_rejects_usd_notional_without_fresh_mid() {
+    let mut terminal = chase_ready_terminal();
+    terminal.order_quantity = "1000".to_string();
+    terminal.order_quantity_is_usd = true;
+
+    let _task = terminal.start_chase(true);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(terminal.pending_order_action, None);
+    assert!(
+        order_status_error_contains(&terminal, "no fresh mid price"),
+        "status should explain the missing fresh mid: {:?}",
+        terminal.order_status
+    );
+}
+
+#[test]
+fn start_chase_rejects_usd_notional_with_stale_mid() {
+    let mut terminal = chase_ready_terminal();
+    terminal.order_quantity = "1000".to_string();
+    terminal.order_quantity_is_usd = true;
+    terminal.all_mids.insert("BTC".to_string(), 50_000.0);
+    terminal.all_mids_updated_at_ms.insert("BTC".to_string(), 0);
+
+    let _task = terminal.start_chase(true);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(terminal.pending_order_action, None);
+}

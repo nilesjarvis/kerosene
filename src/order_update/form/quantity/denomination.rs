@@ -2,7 +2,7 @@
 // Denomination Quantity Math
 // ---------------------------------------------------------------------------
 
-use crate::helpers::format_decimal_with_commas;
+use crate::helpers::{format_decimal_with_commas, positive_finite_value};
 
 pub(in crate::order_update::form) fn toggled_order_quantity_text(
     quantity: f64,
@@ -10,13 +10,8 @@ pub(in crate::order_update::form) fn toggled_order_quantity_text(
     reference_price: f64,
     decimals: usize,
 ) -> Option<String> {
-    if !quantity.is_finite()
-        || quantity <= 0.0
-        || !reference_price.is_finite()
-        || reference_price <= 0.0
-    {
-        return None;
-    }
+    let quantity = positive_finite_value(quantity)?;
+    let reference_price = positive_finite_value(reference_price)?;
 
     let new_quantity = if now_quantity_is_usd {
         quantity * reference_price
@@ -24,9 +19,7 @@ pub(in crate::order_update::form) fn toggled_order_quantity_text(
         quantity / reference_price
     };
 
-    if !new_quantity.is_finite() {
-        return None;
-    }
+    let new_quantity = positive_finite_value(new_quantity)?;
 
     if now_quantity_is_usd {
         Some(format_decimal_with_commas(new_quantity, 2))

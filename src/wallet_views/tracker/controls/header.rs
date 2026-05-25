@@ -1,6 +1,8 @@
 use crate::account::WalletTrackerSnapshot;
 use crate::app_state::TradingTerminal;
+use crate::helpers::sum_optional_f64;
 use crate::message::Message;
+use crate::wallet_views::numbers::invalid_wallet_data;
 use iced::widget::{Space, button, column, row, text};
 use iced::{Element, Fill, Theme};
 
@@ -21,11 +23,10 @@ impl TradingTerminal {
                     .and_then(|row| row.snapshot.as_ref())
             })
             .collect();
-        let total_equity = sum_snapshot_values(snapshots.iter().map(|snapshot| snapshot.equity));
+        let total_equity = sum_optional_f64(snapshots.iter().map(|snapshot| snapshot.equity));
         let total_withdrawable =
-            sum_snapshot_values(snapshots.iter().map(|snapshot| snapshot.withdrawable));
-        let total_upnl =
-            sum_snapshot_values(snapshots.iter().map(|snapshot| snapshot.unrealized_pnl));
+            sum_optional_f64(snapshots.iter().map(|snapshot| snapshot.withdrawable));
+        let total_upnl = sum_optional_f64(snapshots.iter().map(|snapshot| snapshot.unrealized_pnl));
         let error_count = self
             .wallet_tracker
             .tracked_addresses
@@ -78,21 +79,13 @@ impl TradingTerminal {
     }
 }
 
-fn sum_snapshot_values(values: impl IntoIterator<Item = Option<f64>>) -> Option<f64> {
-    let mut total = 0.0;
-    for value in values {
-        total += value?;
-    }
-    Some(total)
-}
-
 fn money_total_display(
     denomination: &crate::denomination::DisplayDenominationContext,
     value: Option<f64>,
 ) -> String {
     value
         .map(|value| denomination.format_value(value, 2))
-        .unwrap_or_else(invalid_tracker_data)
+        .unwrap_or_else(invalid_wallet_data)
 }
 
 fn signed_money_total_display(
@@ -101,31 +94,8 @@ fn signed_money_total_display(
 ) -> String {
     value
         .map(|value| denomination.format_signed_value(value, 2))
-        .unwrap_or_else(invalid_tracker_data)
-}
-
-fn invalid_tracker_data() -> String {
-    "Invalid data".to_string()
+        .unwrap_or_else(invalid_wallet_data)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn snapshot_totals_mark_any_invalid_value_unknown() {
-        assert_eq!(sum_snapshot_values([Some(1.0), Some(2.0)]), Some(3.0));
-        assert_eq!(sum_snapshot_values([Some(1.0), None]), None);
-    }
-
-    #[test]
-    fn tracker_total_formatters_mark_invalid_values() {
-        let denomination = crate::denomination::DisplayDenominationContext::default();
-        assert_eq!(money_total_display(&denomination, Some(12.5)), "$12.50");
-        assert_eq!(money_total_display(&denomination, None), "Invalid data");
-        assert_eq!(
-            signed_money_total_display(&denomination, None),
-            "Invalid data"
-        );
-    }
-}
+mod tests;

@@ -1,0 +1,15 @@
+use super::*;
+use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
+use crate::portfolio_state::PnlValueDisplayMode;
+
+mod account;
+mod chrome_layout;
+mod markets;
+
+fn assert_route(message: Message, expected: UpdateRoute) {
+    assert_eq!(message_route(&message), expected);
+}
+
+fn window_id() -> iced::window::Id {
+    iced::window::Id::unique()
+}

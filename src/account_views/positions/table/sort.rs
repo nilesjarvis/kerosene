@@ -2,6 +2,7 @@ use crate::account;
 use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::parse_finite_number;
 
 #[cfg(test)]
 mod tests;
@@ -101,10 +102,7 @@ impl TradingTerminal {
 }
 
 fn parse_position_row_number(raw: &str) -> Option<f64> {
-    raw.trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
+    parse_finite_number(raw)
 }
 
 fn position_value_from(

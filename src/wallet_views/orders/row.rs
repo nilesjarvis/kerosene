@@ -1,13 +1,15 @@
 use crate::account::WalletOpenOrderDetail;
 use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
-use crate::helpers;
+use crate::helpers::{self, optional_value_color};
 use crate::message::Message;
 use crate::wallet_views::numbers::{
     format_wallet_display_usd, format_wallet_price, invalid_wallet_data, parse_wallet_number,
 };
+use crate::wallet_views::style::wallet_symbol_button;
+use crate::wallet_views::wallet_dex_label;
 
-use iced::widget::{Row, button, row, text};
+use iced::widget::{Row, row, text};
 use iced::{Color, Element, Theme};
 
 #[cfg(test)]
@@ -35,31 +37,14 @@ pub(super) fn wallet_order_row(
 ) -> Element<'static, Message> {
     let order = &detail.order;
     let symbol = TradingTerminal::wallet_detail_symbol(&detail.dex, &order.coin);
-    let dex_label = if detail.dex.is_empty() {
-        "main".to_string()
-    } else {
-        detail.dex.clone()
-    };
+    let dex_label = wallet_dex_label(&detail.dex);
     let (side, side_color) = wallet_order_side(&order.side, theme);
     let size = parse_wallet_number(&order.sz);
     let price = parse_wallet_number(&order.limit_px);
     let notional = wallet_order_notional(size, price);
     let weak_color = theme.extended_palette().background.weak.text;
     let invalid_color = theme.palette().warning;
-    let symbol_for_message = symbol.clone();
-    let symbol_button = button(
-        text(symbol)
-            .size(11)
-            .font(crate::app_fonts::monospace_font())
-            .color(theme.palette().primary),
-    )
-    .on_press(Message::SymbolSelected(symbol_for_message))
-    .padding(0)
-    .width(110)
-    .style(|_theme: &Theme, _status| button::Style {
-        background: None,
-        ..Default::default()
-    });
+    let symbol_button = wallet_symbol_button(symbol, 110.0, theme);
 
     row![
         symbol_button,
@@ -76,21 +61,17 @@ pub(super) fn wallet_order_row(
         text(format_wallet_order_size(size))
             .size(11)
             .font(crate::app_fonts::monospace_font())
-            .color(wallet_order_value_color(size, weak_color, invalid_color))
+            .color(optional_value_color(size, weak_color, invalid_color))
             .width(86),
         text(format_wallet_price(price))
             .size(11)
             .font(crate::app_fonts::monospace_font())
-            .color(wallet_order_value_color(price, weak_color, invalid_color))
+            .color(optional_value_color(price, weak_color, invalid_color))
             .width(86),
         text(format_wallet_display_usd(denomination, notional, 0))
             .size(11)
             .font(crate::app_fonts::monospace_font())
-            .color(wallet_order_value_color(
-                notional,
-                weak_color,
-                invalid_color
-            ))
+            .color(optional_value_color(notional, weak_color, invalid_color))
             .width(90),
         text(helpers::format_relative_time(order.timestamp, now_ms))
             .size(11)
@@ -123,16 +104,4 @@ fn wallet_order_notional(size: Option<f64>, price: Option<f64>) -> Option<f64> {
 fn format_wallet_order_size(size: Option<f64>) -> String {
     size.map(|size| format!("{size:.4}"))
         .unwrap_or_else(invalid_wallet_data)
-}
-
-fn wallet_order_value_color(
-    value: Option<f64>,
-    default_color: Color,
-    invalid_color: Color,
-) -> Color {
-    if value.is_some() {
-        default_color
-    } else {
-        invalid_color
-    }
 }

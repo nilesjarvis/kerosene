@@ -2,8 +2,10 @@ mod details_header;
 mod details_summary;
 mod numbers;
 mod orders;
+mod position_metrics;
 mod positions;
 mod spot;
+mod style;
 mod tracker;
 mod warnings;
 
@@ -13,7 +15,27 @@ use iced::widget::container as container_style;
 use iced::widget::{Column, container, rule, scrollable, text};
 use iced::{Element, Fill, Theme, window};
 
+#[cfg(test)]
+mod tests;
+
+pub(in crate::wallet_views) fn wallet_dex_label(dex: &str) -> String {
+    if dex.is_empty() {
+        "main".to_string()
+    } else {
+        dex.to_string()
+    }
+}
+
 impl TradingTerminal {
+    fn visible_wallet_detail_symbol(&self, dex: &str, coin: &str) -> Option<String> {
+        let symbol = Self::wallet_detail_symbol(dex, coin);
+        if self.symbol_key_is_hidden(&symbol) || self.symbol_key_is_hidden(coin) {
+            None
+        } else {
+            Some(symbol)
+        }
+    }
+
     pub(crate) fn view_wallet_details(&self, window_id: window::Id) -> Element<'_, Message> {
         let theme = self.theme();
         let Some(state) = self.wallet_detail_windows.get(&window_id) else {

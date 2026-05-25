@@ -1,5 +1,7 @@
+use crate::account_views::invalid_account_data;
 #[cfg(test)]
 use crate::helpers::format_usd;
+use crate::helpers::parse_finite_number;
 
 #[cfg(test)]
 mod tests;
@@ -9,11 +11,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 pub(super) fn parse_history_number(value: &str) -> Option<f64> {
-    value
-        .trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
+    parse_finite_number(value)
 }
 
 pub(super) fn valid_history_wire_value(value: &str) -> String {
@@ -40,5 +38,5 @@ pub(super) fn format_history_display_usd(
 }
 
 pub(super) fn invalid_history_data() -> String {
-    "Invalid data".to_string()
+    invalid_account_data()
 }

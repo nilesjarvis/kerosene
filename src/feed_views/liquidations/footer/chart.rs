@@ -78,7 +78,9 @@ impl TradingTerminal {
 
             let wrapped_bar = tooltip(
                 bar,
-                text(tooltip_text).size(10).font(crate::app_fonts::monospace_font()),
+                text(tooltip_text)
+                    .size(10)
+                    .font(crate::app_fonts::monospace_font()),
                 iced::widget::tooltip::Position::Top,
             )
             .gap(4)

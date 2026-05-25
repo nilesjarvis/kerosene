@@ -5,6 +5,8 @@ use crate::sound;
 use iced::{Task, clipboard};
 use std::time::Instant;
 
+mod menus;
+
 impl TradingTerminal {
     pub(crate) fn update_chrome(&mut self, message: Message) -> Task<Message> {
         match message {

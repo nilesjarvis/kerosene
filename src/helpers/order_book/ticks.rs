@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests;
 
+use super::super::formatting::positive_finite_value;
+
 pub fn valid_book_tick_size(tick: f64) -> bool {
-    tick.is_finite() && tick > 0.0
+    positive_finite_value(tick).is_some()
 }
 
 /// Number of decimal places needed to display a given tick size.
@@ -17,7 +19,7 @@ pub fn tick_decimals(tick: f64) -> usize {
 /// Compute a sensible default tick size for a given mid price.
 /// Aims for ~0.01% of the price, rounded to a clean power of 10.
 pub fn default_tick_for_price(mid_price: f64) -> f64 {
-    if !mid_price.is_finite() || mid_price <= 0.0 {
+    if positive_finite_value(mid_price).is_none() {
         return 0.01;
     }
     let raw = mid_price * 0.0001;
@@ -33,7 +35,7 @@ pub fn book_tick_options(mid_price: f64) -> Vec<f64> {
 }
 
 pub fn compute_sigfigs(tick_size: f64, mid_price: f64) -> (Option<u8>, Option<u8>) {
-    if !mid_price.is_finite() || mid_price <= 0.0 || !valid_book_tick_size(tick_size) {
+    if positive_finite_value(mid_price).is_none() || !valid_book_tick_size(tick_size) {
         return (None, None);
     }
 
@@ -64,9 +66,7 @@ pub fn compute_sigfigs(tick_size: f64, mid_price: f64) -> (Option<u8>, Option<u8
 
 pub fn sigfig_server_tick(sigfigs: (Option<u8>, Option<u8>), mid_price: f64) -> Option<f64> {
     let n = sigfigs.0?;
-    if !mid_price.is_finite() || mid_price <= 0.0 {
-        return None;
-    }
+    positive_finite_value(mid_price)?;
 
     let mantissa = sigfigs.1.unwrap_or(1) as f64;
     let exponent = mid_price.log10().floor() as i32 - n as i32 + 1;

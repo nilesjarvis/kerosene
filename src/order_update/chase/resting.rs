@@ -1,5 +1,6 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
+use crate::helpers::positive_finite_value;
 use crate::message::Message;
 use crate::signing::{ChaseLifecycle, ChaseOrder, float_to_wire, round_price};
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
@@ -44,14 +45,14 @@ impl TradingTerminal {
             self.order_status = Some(("Order ticker is hidden in Settings > Risk".into(), true));
             return Task::none();
         }
-        if !sz.is_finite() || sz <= 0.0 {
+        let Some(sz) = positive_finite_value(sz) else {
             self.order_status = Some(("Cannot chase order with invalid size".into(), true));
             return Task::none();
-        }
-        if !limit_px.is_finite() || limit_px <= 0.0 {
+        };
+        let Some(limit_px) = positive_finite_value(limit_px) else {
             self.order_status = Some(("Cannot chase order with invalid price".into(), true));
             return Task::none();
-        }
+        };
 
         if self
             .chase_orders
@@ -63,7 +64,11 @@ impl TradingTerminal {
         if self.active_advanced_order_count() >= MAX_ACTIVE_ADVANCED_ORDERS {
             self.order_status = Some((
                 format!(
-                    "Cannot start chase: maximum of {MAX_ACTIVE_ADVANCED_ORDERS} active advanced orders reached"
+                    concat!(
+                        "Cannot start chase: maximum of ",
+                        "{} active advanced orders reached"
+                    ),
+                    MAX_ACTIVE_ADVANCED_ORDERS
                 ),
                 true,
             ));
@@ -91,10 +96,10 @@ impl TradingTerminal {
             }
         };
         let rounded_px = round_price(limit_px, sz_decimals, is_spot);
-        if !rounded_px.is_finite() || rounded_px <= 0.0 {
+        let Some(rounded_px) = positive_finite_value(rounded_px) else {
             self.order_status = Some(("Cannot chase order with invalid price".into(), true));
             return Task::none();
-        }
+        };
         let chase_id = self.next_chase_id();
         let started_at = std::time::Instant::now();
         let started_at_ms = Self::now_ms();

@@ -49,20 +49,23 @@ impl TradingTerminal {
             chase.last_reprice_at = Some(Instant::now());
         }
         let status_task = account_address.map_or_else(Task::none, |account_address| {
-            Task::perform(fetch_order_status_by_oid(account_address, oid), move |result| {
-                Message::ChaseOrderOidStatusLoaded {
+            Task::perform(
+                fetch_order_status_by_oid(account_address, oid),
+                move |result| Message::ChaseOrderOidStatusLoaded {
                     chase_id,
                     oid,
                     result: Box::new(result),
-                }
-            })
+                },
+            )
         });
         if can_refresh_chase_account {
             self.order_status = Some((status, false));
             Task::batch([self.refresh_account_data(), status_task])
         } else {
             self.order_status = Some((
-                format!("{status}; checking previous account order status without clearing chase state"),
+                format!(
+                    "{status}; checking previous account order status without clearing chase state"
+                ),
                 true,
             ));
             status_task

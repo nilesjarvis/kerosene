@@ -3,6 +3,8 @@ use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::signing::OrderKind;
 
+mod outcomes;
+
 fn outcome_info(is_question_fallback: bool) -> OutcomeSymbolInfo {
     OutcomeSymbolInfo {
         outcome_id: 65,
@@ -73,37 +75,27 @@ fn terminal_for_outcome_order(symbol: ExchangeSymbol) -> TradingTerminal {
     terminal
 }
 
-#[test]
-fn outcome_order_preparation_builds_spot_like_probability_payload() {
-    let terminal = terminal_for_outcome_order(outcome_symbol("#650", 100_000_650, false));
-    let sym = terminal.exchange_symbols.first().expect("symbol");
-
-    let prepared = terminal
-        .prepare_order_submission(sym, true)
-        .expect("valid outcome order");
-
-    assert_eq!(
-        prepared,
-        PreparedOrderSubmission {
-            asset: 100_000_650,
-            is_buy: true,
-            price: "0.42123".to_string(),
-            size: "3".to_string(),
-            order_kind: OrderKind::Limit,
-            reduce_only: false,
-            is_outcome: true,
-        }
-    );
+fn first_symbol_or_panic(terminal: &TradingTerminal) -> &ExchangeSymbol {
+    match terminal.exchange_symbols.first() {
+        Some(symbol) => symbol,
+        None => panic!("missing symbol"),
+    }
 }
 
-#[test]
-fn execute_order_rejects_non_tradable_fallback_outcome_before_signing() {
-    let mut terminal = terminal_for_outcome_order(outcome_symbol("#660", 100_000_660, true));
+fn prepared_order_or_panic(
+    terminal: &TradingTerminal,
+    symbol: &ExchangeSymbol,
+    is_buy: bool,
+) -> PreparedOrderSubmission {
+    match terminal.prepare_order_submission(symbol, is_buy) {
+        Ok(prepared) => prepared,
+        Err(error) => panic!("valid outcome order: {error}"),
+    }
+}
 
-    let _task = terminal.execute_order(true);
-
-    let (message, is_error) = terminal.order_status.as_ref().expect("status");
-    assert!(*is_error);
-    assert!(message.contains("not a tradable market"));
-    assert!(terminal.pending_order_action.is_none());
+fn order_status_or_panic(terminal: &TradingTerminal) -> (&str, bool) {
+    match terminal.order_status.as_ref() {
+        Some((message, is_error)) => (message.as_str(), *is_error),
+        None => panic!("missing order status"),
+    }
 }

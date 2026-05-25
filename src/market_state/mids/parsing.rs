@@ -1,3 +1,5 @@
+use crate::helpers::positive_finite_value;
+
 use std::collections::HashMap;
 
 #[cfg(test)]
@@ -13,7 +15,7 @@ pub(super) fn parse_mids_response(raw: HashMap<String, String>) -> HashMap<Strin
             value
                 .parse::<f64>()
                 .ok()
-                .filter(|price| price.is_finite() && *price > 0.0)
+                .and_then(positive_finite_value)
                 .map(|price| (key, price))
         })
         .collect()

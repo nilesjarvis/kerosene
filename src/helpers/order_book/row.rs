@@ -1,15 +1,14 @@
-use crate::helpers::format_size;
+mod cells;
+mod marker;
+
 use crate::message::Message;
+use cells::{price_cell, size_cell, total_cell};
+pub use marker::user_order_price_marker;
 
 use iced::widget::button;
-use iced::widget::canvas;
 use iced::widget::container as container_style;
-use iced::widget::{Space, container, row, text};
-use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Theme};
-
-const USER_ORDER_MARKER_WIDTH: f32 = 10.0;
-const USER_ORDER_MARKER_HEIGHT: f32 = 10.0;
-const USER_ORDER_MARKER_RADIUS: f32 = 3.1;
+use iced::widget::{container, row};
+use iced::{Color, Element, Fill, Theme};
 
 #[derive(Debug, Clone, Copy)]
 pub struct BookRowData {
@@ -106,78 +105,6 @@ pub fn book_row(
     clickable_book_row(row_element, on_press)
 }
 
-fn price_cell(
-    px: f64,
-    decimals: usize,
-    has_user_order: bool,
-    is_bid: bool,
-) -> Element<'static, Message> {
-    container(
-        row![
-            Space::new().width(Fill),
-            user_order_price_marker(has_user_order.then_some(is_bid)),
-            text(format!("{px:.decimals$}"))
-                .size(12)
-                .font(crate::app_fonts::monospace_font())
-                .style(move |t: &Theme| text::Style {
-                    color: Some(if is_bid {
-                        t.palette().success
-                    } else {
-                        t.palette().danger
-                    })
-                }),
-        ]
-        .spacing(2)
-        .align_y(iced::Alignment::Center),
-    )
-    .width(Fill)
-    .into()
-}
-
-fn size_cell(sz: f64, alpha: f32) -> Element<'static, Message> {
-    text(format_size(sz))
-        .size(12)
-        .font(crate::app_fonts::monospace_font())
-        .align_x(iced::alignment::Horizontal::Right)
-        .style(move |theme: &Theme| text::Style {
-            color: Some(Color {
-                a: alpha,
-                ..theme.palette().text
-            }),
-        })
-        .width(Fill)
-        .into()
-}
-
-fn total_cell(cum: f64) -> Element<'static, Message> {
-    container(
-        text(format_size(cum))
-            .size(12)
-            .font(crate::app_fonts::monospace_font())
-            .align_x(iced::alignment::Horizontal::Right)
-            .style(move |theme: &Theme| text::Style {
-                color: Some(theme.extended_palette().background.weak.text),
-            })
-            .width(Fill),
-    )
-    .width(Fill)
-    .into()
-}
-
-pub fn user_order_price_marker(user_order_side: Option<bool>) -> Element<'static, Message> {
-    let Some(is_bid) = user_order_side else {
-        return Space::new()
-            .width(USER_ORDER_MARKER_WIDTH)
-            .height(USER_ORDER_MARKER_HEIGHT)
-            .into();
-    };
-
-    canvas(UserOrderPriceMarker { is_bid })
-        .width(USER_ORDER_MARKER_WIDTH)
-        .height(USER_ORDER_MARKER_HEIGHT)
-        .into()
-}
-
 pub fn clickable_book_row(
     content: Element<'static, Message>,
     on_press: Message,
@@ -205,37 +132,4 @@ pub fn clickable_book_row(
         })
         .on_press(on_press)
         .into()
-}
-
-struct UserOrderPriceMarker {
-    is_bid: bool,
-}
-
-impl canvas::Program<Message> for UserOrderPriceMarker {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &Self::State,
-        renderer: &Renderer,
-        theme: &Theme,
-        bounds: Rectangle,
-        _cursor: iced::mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
-        let radius = USER_ORDER_MARKER_RADIUS.min((bounds.width.min(bounds.height) / 2.0).max(0.0));
-        if radius <= 0.0 {
-            return vec![frame.into_geometry()];
-        }
-
-        let color = if self.is_bid {
-            theme.palette().success
-        } else {
-            theme.palette().danger
-        };
-        let path =
-            canvas::Path::circle(Point::new(bounds.width / 2.0, bounds.height / 2.0), radius);
-        frame.fill(&path, color);
-        vec![frame.into_geometry()]
-    }
 }

@@ -26,8 +26,12 @@ fn user_fills_parser_accepts_live_multi_address_payload() {
         ]]
     });
 
-    let fills = hydromancer_fill_items(&payload, "userFills").expect("live fills");
-    let trade = parse_tracked_trade_event(&fills[0]).expect("tracked trade");
+    let Some(fills) = hydromancer_fill_items(&payload, "userFills") else {
+        panic!("expected live fills");
+    };
+    let Some(trade) = parse_tracked_trade_event(&fills[0]) else {
+        panic!("expected tracked trade");
+    };
 
     assert_eq!(trade.address, "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
     assert_eq!(trade.coin, "HYPE");
@@ -62,6 +66,53 @@ fn user_fills_parser_rejects_malformed_numeric_fields() {
     ]);
 
     assert!(parse_tracked_trade_event(&fill).is_none());
+}
+
+#[test]
+fn user_fills_parser_rejects_grouped_required_numeric_fields() {
+    let fill = serde_json::json!([
+        "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        {
+            "coin": "HYPE",
+            "px": "1,234",
+            "sz": "2.25",
+            "side": "B",
+            "time": 1710000000000_u64,
+            "startPosition": "0",
+            "dir": "Open Long",
+            "closedPnl": "1.23",
+            "fee": "0.01",
+            "feeToken": "USDC",
+            "txIndex": 3_u64
+        }
+    ]);
+
+    assert!(parse_tracked_trade_event(&fill).is_none());
+}
+
+#[test]
+fn user_fills_parser_drops_grouped_optional_start_position() {
+    let fill = serde_json::json!([
+        "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        {
+            "coin": "HYPE",
+            "px": "10.5",
+            "sz": "2.25",
+            "side": "B",
+            "time": 1710000000000_u64,
+            "startPosition": "1,234",
+            "dir": "Open Long",
+            "closedPnl": "1.23",
+            "fee": "0.01",
+            "feeToken": "USDC",
+            "txIndex": 3_u64
+        }
+    ]);
+
+    let Some(trade) = parse_tracked_trade_event(&fill) else {
+        panic!("expected tracked trade");
+    };
+    assert_eq!(trade.start_position, None);
 }
 
 #[test]

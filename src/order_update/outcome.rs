@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::OrderPreset;
-use crate::helpers::{format_price, parse_number};
+use crate::helpers::{format_price, parse_number, positive_finite_value};
 use crate::message::Message;
 use crate::signing::OrderKind;
 
@@ -21,7 +21,7 @@ impl TradingTerminal {
 
         let Some(mid) = self
             .resolve_mid_for_symbol(&self.active_symbol)
-            .filter(|mid| mid.is_finite() && *mid > 0.0)
+            .and_then(positive_finite_value)
         else {
             self.order_status = Some((
                 "No mid price available for outcome preset calculation".into(),
@@ -37,14 +37,14 @@ impl TradingTerminal {
             preset.size
         };
         let contracts = raw_contracts.floor();
-        if !contracts.is_finite() || contracts <= 0.0 {
+        let Some(contracts) = positive_finite_value(contracts) else {
             self.order_status = Some((
                 "Outcome preset resolves to less than one contract".into(),
                 true,
             ));
             self.presets_menu_expanded = false;
             return Task::none();
-        }
+        };
 
         self.order_kind = kind;
         self.order_quantity_is_usd = false;
@@ -132,32 +132,8 @@ fn outcome_available_contracts(balance: &crate::account::SpotBalance) -> Option<
     let total = parse_number(&balance.total)?;
     let hold = parse_number(&balance.hold)?;
     let available = (total - hold).floor();
-    (available.is_finite() && available > 0.0).then_some(available)
+    positive_finite_value(available)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::account::SpotBalance;
-
-    fn balance(total: &str, hold: &str) -> SpotBalance {
-        SpotBalance {
-            coin: "+650".to_string(),
-            token: None,
-            total: total.to_string(),
-            hold: hold.to_string(),
-            entry_ntl: "0".to_string(),
-            supplied: None,
-        }
-    }
-
-    #[test]
-    fn available_outcome_contracts_floor_available_balance() {
-        assert_eq!(
-            outcome_available_contracts(&balance("10.9", "0.2")),
-            Some(10.0)
-        );
-        assert_eq!(outcome_available_contracts(&balance("1.9", "1.0")), None);
-        assert_eq!(outcome_available_contracts(&balance("bad", "0")), None);
-    }
-}
+mod tests;

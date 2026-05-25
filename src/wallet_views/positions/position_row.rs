@@ -1,12 +1,16 @@
 use crate::account::WalletPositionDetail;
 use crate::app_state::TradingTerminal;
+use crate::helpers::optional_value_color;
 use crate::message::Message;
+use crate::wallet_views::position_metrics::{wallet_position_upnl, wallet_position_value};
+use crate::wallet_views::style::{wallet_signed_value_color, wallet_symbol_button};
+use crate::wallet_views::wallet_dex_label;
 
 use crate::wallet_views::numbers::{
     format_wallet_display_signed_usd, format_wallet_display_usd, invalid_wallet_data,
     parse_wallet_number,
 };
-use iced::widget::{button, row, text};
+use iced::widget::{row, text};
 use iced::{Color, Element, Theme};
 
 #[cfg(test)]
@@ -21,11 +25,7 @@ impl TradingTerminal {
         let denomination = self.display_denomination_context();
         let pos = &detail.asset_position.position;
         let symbol = Self::wallet_detail_symbol(&detail.dex, &pos.coin);
-        let dex_label = if detail.dex.is_empty() {
-            "main".to_string()
-        } else {
-            detail.dex.clone()
-        };
+        let dex_label = wallet_dex_label(&detail.dex);
         let szi = parse_wallet_number(&pos.szi);
         let entry_px = parse_wallet_number(&pos.entry_px);
         let mark_px = self
@@ -39,20 +39,7 @@ impl TradingTerminal {
         let invalid_color = theme.palette().warning;
         let weak_color = theme.extended_palette().background.weak.text;
         let liq_px = Self::parse_liquidation_px(&detail.asset_position);
-        let symbol_for_message = symbol.clone();
-        let symbol_button = button(
-            text(symbol)
-                .size(11)
-                .font(crate::app_fonts::monospace_font())
-                .color(theme.palette().primary),
-        )
-        .on_press(Message::SymbolSelected(symbol_for_message))
-        .padding(0)
-        .width(95)
-        .style(|_theme: &Theme, _status| button::Style {
-            background: None,
-            ..Default::default()
-        });
+        let symbol_button = wallet_symbol_button(symbol, 95.0, &theme);
 
         row![
             symbol_button,
@@ -69,12 +56,12 @@ impl TradingTerminal {
             text(format_wallet_position_size(szi))
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
-                .color(wallet_value_color(szi, weak_color, invalid_color))
+                .color(optional_value_color(szi, weak_color, invalid_color))
                 .width(84),
             text(format_wallet_display_price(&denomination, entry_px))
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
-                .color(wallet_value_color(entry_px, weak_color, invalid_color))
+                .color(optional_value_color(entry_px, weak_color, invalid_color))
                 .width(78),
             text(
                 mark_px
@@ -95,7 +82,7 @@ impl TradingTerminal {
             text(format_wallet_display_usd(&denomination, position_value, 0))
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
-                .color(wallet_value_color(
+                .color(optional_value_color(
                     position_value,
                     weak_color,
                     invalid_color
@@ -137,51 +124,11 @@ fn format_wallet_display_price(
         .unwrap_or_else(invalid_wallet_data)
 }
 
-fn wallet_position_value(
-    szi: Option<f64>,
-    wire_position_value: &str,
-    mark_px: Option<f64>,
-) -> Option<f64> {
-    match (szi, mark_px) {
-        (Some(szi), Some(mark_px)) => Some(szi.abs() * mark_px),
-        _ => parse_wallet_number(wire_position_value).map(f64::abs),
-    }
-}
-
-fn wallet_position_upnl(
-    szi: Option<f64>,
-    entry_px: Option<f64>,
-    wire_upnl: &str,
-    mark_px: Option<f64>,
-) -> Option<f64> {
-    match (szi, entry_px, mark_px) {
-        (Some(szi), Some(entry_px), Some(mark_px)) => Some(szi * (mark_px - entry_px)),
-        _ => parse_wallet_number(wire_upnl),
-    }
-}
-
 fn wallet_position_side(szi: Option<f64>, theme: &Theme) -> (&'static str, Color) {
     match szi {
         Some(szi) if szi >= 0.0 => ("Long", theme.palette().success),
         Some(_) => ("Short", theme.palette().danger),
         None => ("Invalid", theme.palette().warning),
-    }
-}
-
-fn wallet_signed_value_color(value: Option<f64>, theme: &Theme) -> Color {
-    match value {
-        Some(value) if value > 0.0 => theme.palette().success,
-        Some(value) if value < 0.0 => theme.palette().danger,
-        Some(_) => theme.extended_palette().background.weak.text,
-        None => theme.palette().warning,
-    }
-}
-
-fn wallet_value_color(value: Option<f64>, default_color: Color, invalid_color: Color) -> Color {
-    if value.is_some() {
-        default_color
-    } else {
-        invalid_color
     }
 }
 

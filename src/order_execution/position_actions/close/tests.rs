@@ -5,6 +5,9 @@ use crate::account::{
 };
 use crate::app_state::{TradingTerminal, sensitive_string};
 
+mod inputs;
+mod stale_account;
+
 fn account_data_with_position(coin: &str, fetched_at_ms: u64) -> AccountData {
     AccountData {
         fetch_scope: Default::default(),
@@ -62,59 +65,9 @@ fn terminal_with_stale_account() -> TradingTerminal {
     terminal
 }
 
-#[test]
-fn close_position_refuses_stale_account_snapshot_and_requests_refresh() {
-    let mut terminal = terminal_with_stale_account();
-
-    let _task = terminal.execute_close_position("BTC", 1.0, true);
-
-    let (message, is_error) = terminal.order_status.as_ref().expect("status");
-    assert!(*is_error);
-    assert!(message.contains("Account data is stale"));
-    assert!(message.contains("refresh before closing positions"));
-    assert!(terminal.account_loading);
-}
-
-#[test]
-fn close_position_inputs_build_reduce_only_side_and_fractional_size() {
-    assert_eq!(
-        close_position_order_side_and_size("2.5", 0.5),
-        Ok((false, "1.25".to_string()))
-    );
-    assert_eq!(
-        close_position_order_side_and_size("-2.5", 1.0),
-        Ok((true, "2.5".to_string()))
-    );
-}
-
-#[test]
-fn close_position_inputs_reject_invalid_position_sizes() {
-    assert_eq!(
-        close_position_order_side_and_size("abc", 0.5),
-        Err(ClosePositionInputError::InvalidPositionSize)
-    );
-    assert_eq!(
-        close_position_order_side_and_size("0", 0.5),
-        Err(ClosePositionInputError::InvalidPositionSize)
-    );
-    assert_eq!(
-        close_position_order_side_and_size("NaN", 0.5),
-        Err(ClosePositionInputError::InvalidPositionSize)
-    );
-}
-
-#[test]
-fn close_position_inputs_reject_invalid_fractions() {
-    assert_eq!(
-        close_position_order_side_and_size("1", 0.0),
-        Err(ClosePositionInputError::InvalidFraction)
-    );
-    assert_eq!(
-        close_position_order_side_and_size("1", 1.25),
-        Err(ClosePositionInputError::InvalidFraction)
-    );
-    assert_eq!(
-        close_position_order_side_and_size("1", f64::NAN),
-        Err(ClosePositionInputError::InvalidFraction)
-    );
+fn order_status_or_panic(terminal: &TradingTerminal) -> (&str, bool) {
+    match terminal.order_status.as_ref() {
+        Some((message, is_error)) => (message.as_str(), *is_error),
+        None => panic!("missing order status"),
+    }
 }

@@ -1,9 +1,11 @@
 use crate::account::SpotBalance;
+use crate::account_views::invalid_account_data;
+use crate::account_views::style::compact_action_button;
 use crate::denomination::DisplayDenominationContext;
-use crate::helpers;
+use crate::helpers::{self, optional_value_color, parse_finite_number};
 use crate::message::Message;
 
-use iced::widget::{Space, button, container, row, text};
+use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
 #[cfg(test)]
@@ -37,27 +39,11 @@ pub(super) fn balance_row(
     let action_cell: Element<'static, Message> = match (outcome_sell_coin, available) {
         (Some(_), Some(available)) if available.floor() <= 0.0 => text("").size(12).into(),
         (Some(_), None) => text("").size(12).into(),
-        (Some(_trade_coin), Some(_)) => {
-            button(text("Sell").size(10).center().color(theme.palette().danger))
-                .on_press(Message::PrefillOutcomeSell(coin.clone()))
-                .padding([1, 6])
-                .style(|theme: &Theme, _status| button::Style {
-                    background: Some(
-                        Color {
-                            a: 0.15,
-                            ..theme.palette().danger
-                        }
-                        .into(),
-                    ),
-                    text_color: theme.palette().danger,
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                })
-                .into()
-        }
+        (Some(_trade_coin), Some(_)) => compact_action_button(
+            "Sell",
+            theme.palette().danger,
+            Message::PrefillOutcomeSell(coin.clone()),
+        ),
         (None, _) => text("").size(12).into(),
     };
 
@@ -80,10 +66,7 @@ pub(super) fn balance_has_visible_total(balance: &SpotBalance) -> bool {
 }
 
 fn parse_balance_number(raw: &str) -> Option<f64> {
-    raw.trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite())
+    parse_finite_number(raw)
 }
 
 fn balance_amounts(
@@ -109,7 +92,7 @@ fn balance_amount(
         Some(value) if matches!(coin, "USDC" | "USDH") => denomination.format_value(value, 2),
         Some(value) if coin.starts_with('+') => format!("{:.0}", value.floor()),
         Some(value) => format!("{value:.6}"),
-        None => "Invalid data".to_string(),
+        None => invalid_account_data(),
     }
 }
 
@@ -120,16 +103,16 @@ fn entry_notional_text(
     match entry_ntl {
         Some(entry_ntl) if entry_ntl.abs() > 0.0 => denomination.format_value(entry_ntl, 2),
         Some(_) => "\u{2014}".to_string(),
-        None => "Invalid data".to_string(),
+        None => invalid_account_data(),
     }
 }
 
 fn balance_number_color(value: Option<f64>, theme: &Theme) -> Color {
-    if value.is_some() {
-        theme.extended_palette().background.weak.text
-    } else {
-        theme.palette().warning
-    }
+    optional_value_color(
+        value,
+        theme.extended_palette().background.weak.text,
+        theme.palette().warning,
+    )
 }
 
 fn balance_coin_cell(coin: String, coin_color: Color) -> iced::widget::Row<'static, Message> {

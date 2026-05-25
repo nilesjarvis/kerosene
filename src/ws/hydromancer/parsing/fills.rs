@@ -1,3 +1,4 @@
+use crate::helpers::parse_finite_number;
 use serde_json::Value;
 
 pub(in crate::ws::hydromancer) fn hydromancer_fill_items<'a>(
@@ -21,11 +22,10 @@ pub(super) fn fill_address_and_details(fill_tuple: &Value) -> Option<(String, &V
 }
 
 pub(super) fn hydromancer_str_f64(details: &Value, key: &str) -> Option<f64> {
-    let parsed = details
+    details
         .get(key)
         .and_then(|v| v.as_str())
-        .and_then(|s| s.trim().parse::<f64>().ok())?;
-    parsed.is_finite().then_some(parsed)
+        .and_then(parse_finite_number)
 }
 
 pub(super) fn hydromancer_u64(details: &Value, key: &str) -> u64 {

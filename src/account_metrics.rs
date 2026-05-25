@@ -1,6 +1,8 @@
-use crate::app_state::TradingTerminal;
-
-use crate::account;
+use crate::{
+    account,
+    app_state::TradingTerminal,
+    helpers::{parse_finite_number, parse_positive_finite_number},
+};
 
 #[cfg(test)]
 mod tests;
@@ -11,14 +13,12 @@ impl TradingTerminal {
             .liquidation_px
             .as_deref()
             .or(ap.liquidation_px.as_deref())
-            .and_then(|s| s.parse::<f64>().ok())
-            .filter(|v| v.is_finite() && *v > 0.0)
+            .and_then(parse_positive_finite_number)
     }
 
     pub(crate) fn position_funding_pnl(cum_funding: Option<&account::CumFunding>) -> Option<f64> {
         cum_funding
-            .and_then(|cf| cf.since_open.trim().parse::<f64>().ok())
-            .filter(|value| value.is_finite())
+            .and_then(|cf| parse_finite_number(&cf.since_open))
             .map(|raw_payment| -raw_payment)
     }
 }

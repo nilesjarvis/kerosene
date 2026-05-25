@@ -19,6 +19,8 @@ fn watchlist_percent_change_requires_current_and_previous_prices() {
     assert_eq!(percent_change(None, Some(100.0)), None);
     assert_eq!(percent_change(Some(110.0), None), None);
     assert_eq!(percent_change(Some(110.0), Some(0.0)), None);
+    assert_eq!(percent_change(Some(f64::NAN), Some(100.0)), None);
+    assert_eq!(percent_change(Some(100.0), Some(f64::INFINITY)), None);
 }
 
 #[test]

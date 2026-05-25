@@ -1,125 +1,31 @@
 use crate::api::{OrderBook, fetch_order_book};
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::market_state::{OrderBookId, OrderBookSymbolMode};
+use crate::market_state::OrderBookId;
 use crate::message::Message;
 use iced::Task;
+use planning::{
+    order_book_needs_precision_refresh, order_book_response_matches_expected_precision,
+    plan_order_book_fetch,
+};
+
+mod availability;
+mod planning;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, PartialEq)]
-pub(in crate::market_update::order_book) struct OrderBookFetchPlan {
-    pub(in crate::market_update::order_book) id: OrderBookId,
-    pub(in crate::market_update::order_book) symbol: String,
-    pub(in crate::market_update::order_book) tick_size: f64,
-    pub(in crate::market_update::order_book) sigfigs: (Option<u8>, Option<u8>),
-}
-
-pub(in crate::market_update::order_book) fn plan_order_book_fetch(
-    id: OrderBookId,
-    mode: &OrderBookSymbolMode,
-    active_symbol: &str,
-    tick_size: f64,
-    book_mid: f64,
-    fallback_mid: Option<f64>,
-    unavailable: bool,
-) -> Option<OrderBookFetchPlan> {
-    let symbol = match mode {
-        OrderBookSymbolMode::Active => active_symbol.to_string(),
-        OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
-    };
-    if symbol.is_empty() || unavailable {
-        return None;
-    }
-
-    let mid = positive_finite(book_mid).or_else(|| fallback_mid.and_then(positive_finite));
-    let sigfigs = mid
-        .map(|mid| helpers::compute_sigfigs(tick_size, mid))
-        .unwrap_or((None, None));
-
-    Some(OrderBookFetchPlan {
-        id,
-        symbol,
-        tick_size,
-        sigfigs,
-    })
-}
-
-fn positive_finite(value: f64) -> Option<f64> {
-    (value.is_finite() && value > 0.0).then_some(value)
-}
-
-pub(in crate::market_update::order_book) fn order_book_needs_precision_refresh(
-    selected_tick: f64,
-    source_tick: Option<f64>,
-    pending_sigfigs: Option<(Option<u8>, Option<u8>)>,
-    book_loading: bool,
-    mid: Option<f64>,
-) -> bool {
-    if book_loading {
-        return false;
-    }
-
-    let Some(mid) = mid.and_then(positive_finite) else {
-        return false;
-    };
-    if !saved_tick_requires_aggregated_fetch(selected_tick, mid) {
-        return false;
-    }
-
-    let expected_sigfigs = helpers::compute_sigfigs(selected_tick, mid);
-    if pending_sigfigs == Some(expected_sigfigs) {
-        return false;
-    }
-
-    let Some(expected_source_tick) = helpers::sigfig_server_tick(expected_sigfigs, mid) else {
-        return false;
-    };
-    !source_tick.is_some_and(|actual| helpers::tick_sizes_match(actual, expected_source_tick))
-}
-
-fn saved_tick_requires_aggregated_fetch(selected_tick: f64, mid: f64) -> bool {
-    if !helpers::valid_book_tick_size(selected_tick) {
-        return false;
-    }
-    let default_tick = helpers::default_tick_for_price(mid);
-    selected_tick > default_tick && !helpers::tick_sizes_match(selected_tick, default_tick)
-}
-
-fn order_book_response_matches_expected_precision(
-    tick_size: f64,
-    sigfigs: (Option<u8>, Option<u8>),
-    mid: Option<f64>,
-) -> bool {
-    let Some(mid) = mid.and_then(positive_finite) else {
-        return true;
-    };
-    if !saved_tick_requires_aggregated_fetch(tick_size, mid) {
-        return true;
-    }
-
-    sigfigs == helpers::compute_sigfigs(tick_size, mid)
-}
-
 impl TradingTerminal {
-    pub(crate) fn order_book_symbol_for_mode(&self, mode: &OrderBookSymbolMode) -> String {
-        match mode {
-            OrderBookSymbolMode::Active => self.active_symbol.clone(),
-            OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
-        }
-    }
-
     pub(crate) fn canonical_l2_book_sigfigs(&self, symbol: &str) -> (Option<u8>, Option<u8>) {
         let Some(mid) = self
             .order_books
             .values()
             .filter(|book| self.order_book_symbol_for_mode(&book.mode) == symbol)
-            .filter_map(|book| positive_finite(book.book.mid_price()))
+            .filter_map(|book| helpers::positive_finite_value(book.book.mid_price()))
             .next()
             .or_else(|| {
                 self.resolve_mid_for_symbol(symbol)
-                    .and_then(positive_finite)
+                    .and_then(helpers::positive_finite_value)
             })
         else {
             return (None, None);
@@ -305,28 +211,5 @@ impl TradingTerminal {
                 .then_some(id)
             })
             .collect()
-    }
-
-    pub(crate) fn order_book_unavailable_reason(&self, symbol: &str) -> Option<String> {
-        if symbol.is_empty() {
-            return Some("No order-book symbol selected".to_string());
-        }
-        if self.symbol_key_is_hidden(symbol) {
-            return Some("Order book ticker is hidden in Settings > Risk".to_string());
-        }
-        None
-    }
-
-    pub(in crate::market_update::order_book) fn order_book_instance_is_muted(
-        &self,
-        id: OrderBookId,
-    ) -> bool {
-        self.order_books.get(&id).is_some_and(|inst| {
-            let symbol = match &inst.mode {
-                OrderBookSymbolMode::Active => self.active_symbol.clone(),
-                OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
-            };
-            self.symbol_key_is_hidden(&symbol)
-        })
     }
 }

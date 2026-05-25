@@ -3,7 +3,7 @@ use super::super::sizing::order_size_from_quantity_input;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId};
-use crate::helpers::parse_number;
+use crate::helpers::{parse_number, positive_finite_value};
 use crate::message::Message;
 use crate::order_execution::QuickOrderForm;
 use crate::signing::{OrderKind, float_to_wire, place_order, round_price};
@@ -29,16 +29,10 @@ fn quick_order_limit_price_wire(
     sz_decimals: u32,
     is_spot: bool,
 ) -> Option<(f64, String)> {
-    if !price.is_finite() || price <= 0.0 {
-        return None;
-    }
+    let price = positive_finite_value(price)?;
 
     let rounded = round_price(price, sz_decimals, is_spot);
-    if rounded.is_finite() && rounded > 0.0 {
-        Some((rounded, float_to_wire(rounded)))
-    } else {
-        None
-    }
+    positive_finite_value(rounded).map(|rounded| (rounded, float_to_wire(rounded)))
 }
 
 fn quick_order_market_price_wire(
@@ -49,11 +43,7 @@ fn quick_order_market_price_wire(
     is_spot: bool,
 ) -> Option<(f64, String)> {
     let rounded = rounded_market_price(mid, is_buy, slippage, sz_decimals, is_spot);
-    if rounded.is_finite() && rounded > 0.0 {
-        Some((rounded, float_to_wire(rounded)))
-    } else {
-        None
-    }
+    positive_finite_value(rounded).map(|rounded| (rounded, float_to_wire(rounded)))
 }
 
 impl TradingTerminal {

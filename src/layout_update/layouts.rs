@@ -2,6 +2,11 @@ use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::message::Message;
 use iced::Task;
+use io::{export_layout_task, import_layout_task};
+use names::normalized_layout_name;
+
+mod io;
+mod names;
 
 impl TradingTerminal {
     pub(super) fn update_saved_layouts(&mut self, message: Message) -> Task<Message> {
@@ -77,50 +82,10 @@ impl TradingTerminal {
                 self.rename_saved_layout(index);
             }
             Message::ExportLayout(layout) => {
-                return Task::perform(
-                    async move {
-                        let json =
-                            serde_json::to_string_pretty(&layout).map_err(|e| e.to_string())?;
-
-                        let path = rfd::AsyncFileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .set_file_name(format!(
-                                "{}.json",
-                                layout.name.replace(" ", "_").to_lowercase()
-                            ))
-                            .save_file()
-                            .await;
-
-                        if let Some(path) = path {
-                            std::fs::write(path.path(), json).map_err(|e| e.to_string())?;
-                            Ok(())
-                        } else {
-                            Err("Export cancelled".to_string())
-                        }
-                    },
-                    Message::LayoutExported,
-                );
+                return export_layout_task(layout);
             }
             Message::ImportLayout => {
-                return Task::perform(
-                    async {
-                        let path = rfd::AsyncFileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .pick_file()
-                            .await;
-
-                        if let Some(path) = path {
-                            let content =
-                                std::fs::read_to_string(path.path()).map_err(|e| e.to_string())?;
-                            let layout: config::SavedLayout =
-                                serde_json::from_str(&content).map_err(|e| e.to_string())?;
-                            Ok(layout)
-                        } else {
-                            Err("Import cancelled".to_string())
-                        }
-                    },
-                    Message::LayoutImported,
-                );
+                return import_layout_task();
             }
             Message::LayoutExported(result) => match result {
                 Ok(_) => self.push_toast("Layout exported successfully".to_string(), false),
@@ -162,115 +127,7 @@ impl TradingTerminal {
 
         Task::none()
     }
-
-    fn update_saved_layout_snapshot(&mut self, name: String) {
-        let new_layout = self.saved_layout_snapshot(name.clone());
-        if let Some(pos) = self
-            .saved_layouts
-            .iter()
-            .position(|layout| layout.name == name)
-        {
-            self.saved_layouts[pos] = new_layout;
-        } else {
-            self.saved_layouts.push(new_layout);
-        }
-        self.active_layout_name = Some(name);
-    }
-
-    fn reconcile_layout_rename_after_delete(&mut self, removed_index: Option<usize>) {
-        let Some(removed_index) = removed_index else {
-            return;
-        };
-        match self.layout_rename_index {
-            Some(index) if index == removed_index => {
-                self.layout_rename_index = None;
-                self.layout_rename_input.clear();
-            }
-            Some(index) if index > removed_index => {
-                self.layout_rename_index = Some(index - 1);
-            }
-            _ => {}
-        }
-    }
-
-    fn rename_saved_layout(&mut self, index: usize) {
-        let Some(new_name) = normalized_layout_name(&self.layout_rename_input) else {
-            self.push_toast("Layout name cannot be empty".to_string(), true);
-            return;
-        };
-        let Some(layout) = self.saved_layouts.get(index) else {
-            self.layout_rename_index = None;
-            self.layout_rename_input.clear();
-            return;
-        };
-        let old_name = layout.name.clone();
-        if self
-            .saved_layouts
-            .iter()
-            .enumerate()
-            .any(|(pos, layout)| pos != index && layout.name == new_name)
-        {
-            self.push_toast(format!("Layout '{}' already exists", new_name), true);
-            return;
-        }
-
-        self.saved_layouts[index].name = new_name.clone();
-        if self.active_layout_name.as_deref() == Some(old_name.as_str()) {
-            self.active_layout_name = Some(new_name.clone());
-        }
-        self.rename_layout_hotkeys(&old_name, &new_name);
-        self.layout_rename_index = None;
-        self.layout_rename_input.clear();
-        self.persist_config();
-    }
-
-    fn remove_layout_hotkeys(&mut self, name: &str) {
-        self.hotkeys.retain(|hotkey| match &hotkey.action {
-            config::HotkeyAction::SwitchLayout { name: layout_name } => layout_name != name,
-            _ => true,
-        });
-        if self.recording_hotkey_for.as_ref().is_some_and(|action| {
-            matches!(
-                action,
-                config::HotkeyAction::SwitchLayout { name: layout_name }
-                    if layout_name == name
-            )
-        }) {
-            self.recording_hotkey_for = None;
-        }
-    }
-
-    fn rename_layout_hotkeys(&mut self, old_name: &str, new_name: &str) {
-        for hotkey in &mut self.hotkeys {
-            if let config::HotkeyAction::SwitchLayout { name } = &mut hotkey.action
-                && name == old_name
-            {
-                *name = new_name.to_string();
-            }
-        }
-        if let Some(config::HotkeyAction::SwitchLayout { name }) = &mut self.recording_hotkey_for
-            && name == old_name
-        {
-            *name = new_name.to_string();
-        }
-    }
-}
-
-fn normalized_layout_name(name: &str) -> Option<String> {
-    let trimmed = name.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::normalized_layout_name;
-
-    #[test]
-    fn normalized_layout_name_trims_and_rejects_empty_names() {
-        assert_eq!(
-            normalized_layout_name("  Trading  "),
-            Some("Trading".to_string())
-        );
-        assert_eq!(normalized_layout_name("   "), None);
-    }
-}
+mod tests;

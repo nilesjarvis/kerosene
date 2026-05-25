@@ -23,10 +23,10 @@ impl TradingTerminal {
             .iter()
             .filter(|detail| {
                 let pos = &detail.asset_position.position;
-                let symbol = Self::wallet_detail_symbol(&detail.dex, &pos.coin);
                 wallet_has_visible_nonzero(&pos.szi)
-                    && !self.symbol_key_is_hidden(&symbol)
-                    && !self.symbol_key_is_hidden(&pos.coin)
+                    && self
+                        .visible_wallet_detail_symbol(&detail.dex, &pos.coin)
+                        .is_some()
             })
             .collect();
         position_rows.sort_by(|a, b| {

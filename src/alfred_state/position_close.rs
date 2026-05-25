@@ -1,6 +1,10 @@
 use crate::account::Position;
 use crate::app_state::TradingTerminal;
 
+mod parse;
+
+use parse::{ParsedClosePositionIntent, parse_close_position_intent};
+
 // ---------------------------------------------------------------------------
 // Natural Language Position Close
 // ---------------------------------------------------------------------------
@@ -19,13 +23,6 @@ impl AlfredClosePositionDraft {
     pub(crate) fn can_submit(&self) -> bool {
         self.error.is_none() && self.coin.is_some() && self.fraction > 0.0
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct ParsedClosePositionIntent {
-    symbol: Option<String>,
-    fraction: Option<f64>,
-    error: Option<String>,
 }
 
 impl TradingTerminal {
@@ -119,87 +116,6 @@ impl TradingTerminal {
     }
 }
 
-fn parse_close_position_intent(query: &str) -> Option<ParsedClosePositionIntent> {
-    let tokens = close_tokens(query);
-    let close = tokens.first()?;
-    if !close.eq_ignore_ascii_case("close") {
-        return None;
-    }
-
-    let mut symbol = None;
-    let mut fraction = None;
-    let mut error = None;
-
-    for token in tokens.iter().skip(1) {
-        if is_close_filler(token) || is_close_percent_label(token) {
-            continue;
-        }
-
-        if is_close_fraction_candidate(token) {
-            if fraction.is_some() {
-                error = Some("Use one close percentage".to_string());
-                continue;
-            }
-            match parse_close_fraction(token) {
-                Some(value) => fraction = Some(value),
-                None => error = Some("Use a close percentage from 1 to 100".to_string()),
-            }
-            continue;
-        }
-
-        if symbol.is_none() {
-            symbol = Some(token.clone());
-        } else if error.is_none() {
-            error = Some("Use one ticker to close".to_string());
-        }
-    }
-
-    Some(ParsedClosePositionIntent {
-        symbol,
-        fraction,
-        error,
-    })
-}
-
-fn close_tokens(query: &str) -> Vec<String> {
-    query
-        .split_whitespace()
-        .map(trim_close_token)
-        .filter(|token| !token.is_empty())
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn trim_close_token(token: &str) -> &str {
-    token.trim_matches(|ch: char| {
-        matches!(
-            ch,
-            '\'' | '"' | '(' | ')' | '[' | ']' | '{' | '}' | ';' | ','
-        )
-    })
-}
-
-fn parse_close_fraction(token: &str) -> Option<f64> {
-    let value = token.trim().trim_end_matches('%').parse::<f64>().ok()?;
-    (value.is_finite() && value > 0.0 && value <= 100.0).then_some(value / 100.0)
-}
-
-fn is_close_fraction_candidate(token: &str) -> bool {
-    let token = token.trim();
-    token.ends_with('%') || token.parse::<f64>().is_ok()
-}
-
-fn is_close_filler(token: &str) -> bool {
-    matches!(token.to_ascii_lowercase().as_str(), "of" | "position")
-}
-
-fn is_close_percent_label(token: &str) -> bool {
-    matches!(
-        token.to_ascii_lowercase().as_str(),
-        "percent" | "pct" | "percentage"
-    )
-}
-
 fn normalize_close_symbol_input(symbol: &str) -> String {
     if symbol.starts_with('@') || symbol.starts_with('#') || symbol.starts_with('+') {
         return symbol.to_string();
@@ -241,66 +157,4 @@ fn close_position_side_label(raw_szi: &str) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_full_position_close() {
-        let intent = parse_close_position_intent("close HYPE").expect("close intent");
-
-        assert_eq!(intent.symbol.as_deref(), Some("HYPE"));
-        assert_eq!(intent.fraction, None);
-        assert_eq!(intent.error, None);
-    }
-
-    #[test]
-    fn parses_fractional_position_close() {
-        let intent = parse_close_position_intent("close hype 25").expect("close intent");
-
-        assert_eq!(intent.symbol.as_deref(), Some("hype"));
-        assert_eq!(intent.fraction, Some(0.25));
-        assert_eq!(intent.error, None);
-    }
-
-    #[test]
-    fn parses_percent_sign_position_close() {
-        let intent = parse_close_position_intent("close hype 12.5%").expect("close intent");
-
-        assert_eq!(intent.fraction, Some(0.125));
-        assert_eq!(intent.error, None);
-    }
-
-    #[test]
-    fn parses_fraction_before_ticker_position_close() {
-        let intent = parse_close_position_intent("close 100 hype").expect("close intent");
-
-        assert_eq!(intent.symbol.as_deref(), Some("hype"));
-        assert_eq!(intent.fraction, Some(1.0));
-        assert_eq!(intent.error, None);
-    }
-
-    #[test]
-    fn parses_percent_sign_before_ticker_position_close() {
-        let intent = parse_close_position_intent("close 100% HYPE").expect("close intent");
-
-        assert_eq!(intent.symbol.as_deref(), Some("HYPE"));
-        assert_eq!(intent.fraction, Some(1.0));
-        assert_eq!(intent.error, None);
-    }
-
-    #[test]
-    fn rejects_invalid_close_percentages() {
-        let intent = parse_close_position_intent("close hype 125").expect("close intent");
-
-        assert_eq!(
-            intent.error.as_deref(),
-            Some("Use a close percentage from 1 to 100")
-        );
-    }
-
-    #[test]
-    fn ignores_non_close_queries() {
-        assert_eq!(parse_close_position_intent("buy HYPE"), None);
-        assert_eq!(parse_close_position_intent("nuke"), None);
-    }
-}
+mod tests;

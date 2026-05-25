@@ -1,4 +1,5 @@
 use crate::account;
+use crate::account_views::invalid_account_data;
 use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::format_decimal_with_commas;
@@ -46,7 +47,7 @@ pub(super) fn format_position_display_value(
     }
 
     let Some(display_value) = context.convert_usd_value(value) else {
-        return "Invalid data".to_string();
+        return invalid_account_data();
     };
     let compact_value = format_position_compact_number(display_value.abs());
     let sign = if display_value.is_sign_negative() && compact_value != "0" {

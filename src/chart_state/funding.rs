@@ -4,13 +4,13 @@ use crate::hydromancer_api::{FundingRatePoint, fetch_funding_history};
 use crate::message::Message;
 use iced::Task;
 
+mod planning;
+
+use self::planning::{FundingRequestPlan, plan_funding_request};
+
 // ---------------------------------------------------------------------------
 // Funding History Fetching
 // ---------------------------------------------------------------------------
-
-const FUNDING_HISTORY_INCREMENT_MS: u64 = 60 * 60 * 1_000;
-const FUNDING_INCREMENTAL_RETRY_MS: u64 = 5 * 60 * 1_000;
-const FUNDING_EMPTY_SNAPSHOT_RETRY_MS: u64 = 15 * 60 * 1_000;
 
 impl TradingTerminal {
     pub(crate) fn maybe_fetch_chart_funding(&mut self, chart_id: ChartId) -> Task<Message> {
@@ -174,153 +174,5 @@ impl TradingTerminal {
     }
 }
 
-enum FundingRequestPlan {
-    Fetch(FundingFetchRequest),
-    Wait,
-    Status(String, bool),
-}
-
-fn plan_funding_request(
-    instance: &ChartInstance,
-    muted: bool,
-    coin: Option<String>,
-    now_ms: u64,
-    api_key_missing: bool,
-) -> FundingRequestPlan {
-    if muted {
-        return FundingRequestPlan::Status("Ticker is hidden in Settings > Risk".to_string(), true);
-    }
-    if api_key_missing {
-        return FundingRequestPlan::Status(
-            "Add Hydromancer key in Settings > Integrations".to_string(),
-            true,
-        );
-    }
-    let Some(coin) = coin else {
-        return FundingRequestPlan::Status("Funding requires a perp symbol".to_string(), true);
-    };
-    let Some((start_ms, end_ms)) = funding_time_range(
-        &instance.chart.candles,
-        instance.interval.duration_ms(),
-        now_ms,
-    ) else {
-        return FundingRequestPlan::Wait;
-    };
-
-    if let Some(latest_time_ms) = instance
-        .chart
-        .funding_rates
-        .iter()
-        .map(|point| point.time_ms)
-        .max()
-    {
-        if !funding_incremental_due(latest_time_ms, end_ms)
-            || !funding_attempt_allowed(
-                instance.funding_last_attempt_ms,
-                now_ms,
-                FUNDING_INCREMENTAL_RETRY_MS,
-            )
-        {
-            return FundingRequestPlan::Wait;
-        }
-
-        return FundingRequestPlan::Fetch(FundingFetchRequest {
-            chart_id: instance.id,
-            symbol: instance.symbol.clone(),
-            coin,
-            start_ms: latest_time_ms,
-            end_ms,
-            mode: FundingFetchMode::Incremental,
-        });
-    }
-
-    if !funding_attempt_allowed(
-        instance.funding_last_attempt_ms,
-        now_ms,
-        FUNDING_EMPTY_SNAPSHOT_RETRY_MS,
-    ) {
-        return FundingRequestPlan::Wait;
-    }
-
-    FundingRequestPlan::Fetch(FundingFetchRequest {
-        chart_id: instance.id,
-        symbol: instance.symbol.clone(),
-        coin,
-        start_ms,
-        end_ms,
-        mode: FundingFetchMode::Snapshot,
-    })
-}
-
-fn funding_time_range(
-    candles: &[crate::api::Candle],
-    interval_ms: u64,
-    now_ms: u64,
-) -> Option<(u64, u64)> {
-    let first = candles.first()?.open_time;
-    let last = candles.last()?.open_time;
-    let end = last.saturating_add(interval_ms).min(now_ms.max(last));
-    (end > first).then_some((first, end))
-}
-
-fn funding_incremental_due(latest_time_ms: u64, target_end_ms: u64) -> bool {
-    target_end_ms >= latest_time_ms.saturating_add(FUNDING_HISTORY_INCREMENT_MS)
-}
-
-fn funding_attempt_allowed(
-    last_attempt_ms: Option<u64>,
-    now_ms: u64,
-    min_interval_ms: u64,
-) -> bool {
-    match last_attempt_ms {
-        Some(last) => now_ms.saturating_sub(last) >= min_interval_ms,
-        None => true,
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::{funding_attempt_allowed, funding_incremental_due, funding_time_range};
-    use crate::api::Candle;
-
-    fn candle(open_time: u64) -> Candle {
-        Candle {
-            open_time,
-            close_time: open_time,
-            open: 1.0,
-            high: 1.0,
-            low: 1.0,
-            close: 1.0,
-            volume: 1.0,
-        }
-    }
-
-    #[test]
-    fn funding_range_uses_first_candle_and_caps_end_at_now() {
-        let candles = [candle(1_000), candle(2_000)];
-
-        assert_eq!(
-            funding_time_range(&candles, 3_600_000, 3_000),
-            Some((1_000, 3_000))
-        );
-    }
-
-    #[test]
-    fn funding_range_waits_without_candles_or_duration() {
-        assert_eq!(funding_time_range(&[], 3_600_000, 3_000), None);
-        assert_eq!(funding_time_range(&[candle(1_000)], 0, 1_000), None);
-    }
-
-    #[test]
-    fn incremental_funding_waits_until_next_hourly_bucket() {
-        assert!(!funding_incremental_due(1_000, 3_600_999));
-        assert!(funding_incremental_due(1_000, 3_601_000));
-    }
-
-    #[test]
-    fn funding_attempts_are_throttled() {
-        assert!(funding_attempt_allowed(None, 10_000, 5_000));
-        assert!(!funding_attempt_allowed(Some(8_000), 10_000, 5_000));
-        assert!(funding_attempt_allowed(Some(5_000), 10_000, 5_000));
-    }
-}
+mod tests;

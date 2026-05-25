@@ -1,16 +1,21 @@
+mod components;
+mod styles;
+
 use crate::app_state::TradingTerminal;
 use crate::helpers::pane_title;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use iced::widget::container as container_style;
-use iced::widget::{Space, button, container, pane_grid, row, text};
-use iced::{Color, Element, Fill, Theme};
+use components::{pane_close_button, pane_drag_ghost_body};
+use iced::widget::{container, pane_grid, row, text};
+use iced::{Element, Fill, Theme};
+use styles::{
+    PANE_BORDER_WIDTH, drag_ghost_title_color, pane_content_style, pane_drag_ghost_style,
+    pane_drag_ghost_title_bar_style, pane_title_bar_style, subtle_pane_title_color,
+};
 
 // ---------------------------------------------------------------------------
 // Pane Chrome
 // ---------------------------------------------------------------------------
-
-const PANE_BORDER_WIDTH: f32 = 1.0;
 
 impl TradingTerminal {
     pub(super) fn view_main_pane_grid(&self) -> Element<'_, Message> {
@@ -56,13 +61,12 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center);
             let controls = pane_grid::Controls::new(controls_row);
 
-            let title_text =
-                text(title)
-                    .size(11)
-                    .font(crate::app_fonts::monospace_font())
-                    .style(|theme: &Theme| iced::widget::text::Style {
-                        color: Some(subtle_pane_title_color(theme)),
-                    });
+            let title_text = text(title)
+                .size(11)
+                .font(crate::app_fonts::monospace_font())
+                .style(|theme: &Theme| iced::widget::text::Style {
+                    color: Some(subtle_pane_title_color(theme)),
+                });
             let title_bar = pane_grid::TitleBar::new(title_text)
                 .controls(controls)
                 .always_show_controls()
@@ -103,137 +107,5 @@ impl TradingTerminal {
         });
 
         container(pane_grid_widget).width(Fill).height(Fill).into()
-    }
-}
-
-fn pane_drag_ghost_body() -> Element<'static, Message> {
-    container(Space::new().width(Fill).height(Fill))
-        .width(Fill)
-        .height(Fill)
-        .into()
-}
-
-fn pane_drag_ghost_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
-    let mut background = theme.palette().primary;
-    background.a = 0.12;
-
-    let mut border_color = theme.palette().primary;
-    border_color.a = 0.85;
-
-    container_style::Style {
-        background: Some(background.into()),
-        border: iced::Border {
-            width: PANE_BORDER_WIDTH,
-            color: border_color,
-            radius: corner_radius.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn pane_drag_ghost_title_bar_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
-    let mut background = theme.palette().primary;
-    background.a = 0.18;
-
-    let mut border_color = theme.palette().primary;
-    border_color.a = 0.35;
-
-    container_style::Style {
-        background: Some(background.into()),
-        border: iced::Border {
-            width: 0.0,
-            color: border_color,
-            radius: iced::border::Radius::default().top(corner_radius),
-        },
-        ..Default::default()
-    }
-}
-
-fn drag_ghost_title_color(theme: &Theme) -> Color {
-    let mut color = theme.palette().text;
-    color.a = 0.72;
-    color
-}
-
-fn pane_title_bar_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
-    use iced::gradient;
-
-    let background = theme.extended_palette().background.strong.color;
-    let mut separator = theme.extended_palette().background.strong.text;
-    separator.a = 0.08;
-
-    container_style::Style {
-        background: Some(
-            gradient::Linear::new(iced::Degrees(180.0))
-                .add_stop(0.00, background)
-                .add_stop(0.97, background)
-                .add_stop(0.985, separator)
-                .add_stop(1.00, separator)
-                .into(),
-        ),
-        border: iced::Border {
-            radius: iced::border::Radius::default().top(corner_radius),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn pane_content_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
-    let mut border_color = theme.extended_palette().background.strong.text;
-    border_color.a = 0.10;
-
-    container_style::Style {
-        background: Some(theme.extended_palette().background.strong.color.into()),
-        border: iced::Border {
-            width: PANE_BORDER_WIDTH,
-            color: border_color,
-            radius: corner_radius.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn subtle_pane_title_color(theme: &Theme) -> iced::Color {
-    let mut color = theme.extended_palette().background.strong.text;
-    color.a = 0.46;
-    color
-}
-
-fn pane_close_button(
-    pane: pane_grid::Pane,
-    pane_count: usize,
-    can_close_pane: bool,
-) -> button::Button<'static, Message> {
-    if pane_count > 1 && can_close_pane {
-        button(text("x").size(10).center())
-            .on_press(Message::ClosePane(pane))
-            .padding([2, 5])
-            .style(|theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ => iced::Color::TRANSPARENT,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().text,
-                    border: iced::Border {
-                        width: 1.0,
-                        color: match status {
-                            button::Status::Hovered => theme.palette().danger,
-                            _ => iced::Color::TRANSPARENT,
-                        },
-                        radius: 2.0.into(),
-                    },
-                    ..Default::default()
-                }
-            })
-    } else {
-        button(Space::new().width(10.0).height(10.0)).style(|_theme: &Theme, _status| {
-            button::Style {
-                background: None,
-                ..Default::default()
-            }
-        })
     }
 }

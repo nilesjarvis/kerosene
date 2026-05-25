@@ -1,5 +1,6 @@
 use crate::account::SpotBalance;
 use crate::denomination::DisplayDenominationContext;
+use crate::helpers::optional_value_color;
 use crate::message::Message;
 use crate::wallet_views::numbers::{
     format_wallet_display_amount, format_wallet_display_usd, invalid_wallet_data,
@@ -7,7 +8,7 @@ use crate::wallet_views::numbers::{
 };
 
 use iced::widget::{Row, row, text};
-use iced::{Color, Element, Theme};
+use iced::{Element, Theme};
 
 #[cfg(test)]
 mod tests;
@@ -56,12 +57,12 @@ pub(super) fn wallet_spot_row(
         text(format_wallet_display_amount(denomination, total, is_usdc))
             .size(11)
             .font(crate::app_fonts::monospace_font())
-            .color(wallet_spot_value_color(total, weak_color, invalid_color))
+            .color(optional_value_color(total, weak_color, invalid_color))
             .width(110),
         text(format_wallet_display_amount(denomination, hold, is_usdc))
             .size(11)
             .font(crate::app_fonts::monospace_font())
-            .color(wallet_spot_value_color(hold, weak_color, invalid_color))
+            .color(optional_value_color(hold, weak_color, invalid_color))
             .width(110),
         text(format_wallet_display_amount(
             denomination,
@@ -70,20 +71,12 @@ pub(super) fn wallet_spot_row(
         ))
         .size(11)
         .font(crate::app_fonts::monospace_font())
-        .color(wallet_spot_value_color(
-            available,
-            weak_color,
-            invalid_color
-        ))
+        .color(optional_value_color(available, weak_color, invalid_color))
         .width(110),
         text(wallet_entry_notional(denomination, entry_ntl))
             .size(11)
             .font(crate::app_fonts::monospace_font())
-            .color(wallet_spot_value_color(
-                entry_ntl,
-                weak_color,
-                invalid_color
-            ))
+            .color(optional_value_color(entry_ntl, weak_color, invalid_color))
             .width(110),
         text(supplied.clone())
             .size(11)
@@ -123,17 +116,5 @@ fn wallet_supplied_amount(
             format_wallet_display_amount(denomination, parse_wallet_number(value), is_usdc)
         }
         None => "-".to_string(),
-    }
-}
-
-fn wallet_spot_value_color(
-    value: Option<f64>,
-    default_color: Color,
-    invalid_color: Color,
-) -> Color {
-    if value.is_some() {
-        default_color
-    } else {
-        invalid_color
     }
 }
