@@ -208,6 +208,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::HypeUnstakingQueueRefreshTick
         | Message::HypeUnstakingWindowChanged(_)
         | Message::HypeUnstakingAmountFilterChanged(_)
+        | Message::HypeUnstakingSortChanged(_)
         | Message::ToggleHypeUnstakingMineOnly
         | Message::ClearHypeUnstakingFilters
         | Message::HypeUnstakingQueueLoaded(_)

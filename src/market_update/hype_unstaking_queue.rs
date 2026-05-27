@@ -35,6 +35,10 @@ impl TradingTerminal {
                 self.hype_unstaking_queue.amount_filter = filter;
                 Task::none()
             }
+            Message::HypeUnstakingSortChanged(field) => {
+                self.hype_unstaking_queue.apply_sort_change(field);
+                Task::none()
+            }
             Message::ToggleHypeUnstakingMineOnly => {
                 self.hype_unstaking_queue.mine_only = !self.hype_unstaking_queue.mine_only;
                 Task::none()

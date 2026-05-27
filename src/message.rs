@@ -12,7 +12,8 @@ use crate::config;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::hype_etf_state::{HypeEtfData, HypeEtfView};
 use crate::hype_unstaking_state::{
-    HypeUnstakingAmountFilter, HypeUnstakingQueueData, HypeUnstakingWindowFilter,
+    HypeUnstakingAmountFilter, HypeUnstakingQueueData, HypeUnstakingSortField,
+    HypeUnstakingWindowFilter,
 };
 use crate::hyperdash_api::{LiquidationHeatmap, LiquidationLevel};
 use crate::journal;
@@ -178,6 +179,7 @@ pub(crate) enum Message {
     HypeUnstakingQueueRefreshTick,
     HypeUnstakingWindowChanged(HypeUnstakingWindowFilter),
     HypeUnstakingAmountFilterChanged(HypeUnstakingAmountFilter),
+    HypeUnstakingSortChanged(HypeUnstakingSortField),
     ToggleHypeUnstakingMineOnly,
     ClearHypeUnstakingFilters,
     HypeUnstakingQueueLoaded(Box<Result<HypeUnstakingQueueData, String>>),

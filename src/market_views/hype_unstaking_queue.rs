@@ -1,14 +1,16 @@
 use crate::app_state::TradingTerminal;
+use crate::config::SortDirection;
 use crate::denomination::{DISPLAY_DENOMINATION_RATE_STALE_MS, DisplayDenominationContext};
 use crate::helpers::format_decimal_with_commas;
 use crate::hype_unstaking_state::{
     HYPE_CORE_WEI_PER_TOKEN, HypeUnstakingAmountFilter, HypeUnstakingEvent, HypeUnstakingFilter,
-    HypeUnstakingQueueState, HypeUnstakingWindowFilter, format_countdown, format_hype_wei,
-    summarize_unstaking_events,
+    HypeUnstakingQueueState, HypeUnstakingSortField, HypeUnstakingWindowFilter, format_countdown,
+    format_hype_wei, sort_unstaking_events, summarize_unstaking_events,
 };
 use crate::message::Message;
 use crate::wallet_state::address_book::WalletDisplay;
 
+use iced::alignment::Horizontal;
 use iced::widget::text::Wrapping;
 use iced::widget::{
     Column, Row, Space, button, column, container, responsive, row, rule, scrollable,
@@ -78,12 +80,17 @@ impl TradingTerminal {
             } else {
                 None
             };
-            let filtered = data.filtered_events(HypeUnstakingFilter {
+            let mut filtered = data.filtered_events(HypeUnstakingFilter {
                 now_ms,
                 window: self.hype_unstaking_queue.window_filter,
                 amount: self.hype_unstaking_queue.amount_filter,
                 mine_address,
             });
+            sort_unstaking_events(
+                filtered.as_mut_slice(),
+                self.hype_unstaking_queue.sort_field,
+                self.hype_unstaking_queue.sort_direction,
+            );
             let summary = summarize_unstaking_events(&filtered);
             content = content.push(hype_unstaking_summary_grid(
                 &summary,
@@ -243,7 +250,11 @@ impl TradingTerminal {
 
         let mut rows = Column::new().spacing(3).width(Fill);
         if !compact {
-            rows = rows.push(hype_unstaking_table_header(theme));
+            rows = rows.push(hype_unstaking_table_header(
+                theme,
+                self.hype_unstaking_queue.sort_field,
+                self.hype_unstaking_queue.sort_direction,
+            ));
         }
 
         let row_context = HypeUnstakingRowContext {
@@ -272,6 +283,8 @@ impl TradingTerminal {
 
         scrollable(rows)
             .id(iced::widget::Id::new("hype_unstaking_queue_scroll"))
+            .direction(hype_unstaking_scroll_direction())
+            .width(Fill)
             .height(Fill)
             .into()
     }
@@ -352,6 +365,16 @@ impl TradingTerminal {
             })
             .into()
     }
+}
+
+fn hype_unstaking_scroll_direction() -> iced::widget::scrollable::Direction {
+    iced::widget::scrollable::Direction::Vertical(
+        iced::widget::scrollable::Scrollbar::new()
+            .width(4)
+            .margin(0)
+            .scroller_width(4)
+            .spacing(8),
+    )
 }
 
 fn hype_unstaking_status_text(state: &HypeUnstakingQueueState) -> String {
@@ -478,17 +501,83 @@ fn metric_card(metric: Metric, theme: &Theme) -> Element<'static, Message> {
     .into()
 }
 
-fn hype_unstaking_table_header(theme: &Theme) -> Element<'static, Message> {
+fn hype_unstaking_table_header(
+    theme: &Theme,
+    sort_field: HypeUnstakingSortField,
+    sort_direction: SortDirection,
+) -> Element<'static, Message> {
     let color = theme.extended_palette().background.weak.text;
     row![
-        text("ETA").size(10).color(color).width(88),
-        text("Unlock").size(10).color(color).width(132),
+        hype_unstaking_sort_header_cell(
+            "ETA",
+            HypeUnstakingSortField::UnlockTime,
+            sort_field,
+            sort_direction,
+            88.0,
+            color,
+            Horizontal::Left,
+        ),
+        hype_unstaking_sort_header_cell(
+            "Unlock",
+            HypeUnstakingSortField::UnlockTime,
+            sort_field,
+            sort_direction,
+            132.0,
+            color,
+            Horizontal::Left,
+        ),
         text("Address").size(10).color(color).width(Fill),
-        text("Amount (Notional)").size(10).color(color).width(220),
+        hype_unstaking_sort_header_cell(
+            "Amount (Notional)",
+            HypeUnstakingSortField::Amount,
+            sort_field,
+            sort_direction,
+            220.0,
+            color,
+            Horizontal::Right,
+        ),
     ]
     .spacing(8)
     .padding([0, 6])
     .into()
+}
+
+fn hype_unstaking_sort_header_cell(
+    label: &'static str,
+    field: HypeUnstakingSortField,
+    sort_field: HypeUnstakingSortField,
+    sort_direction: SortDirection,
+    width: f32,
+    color: Color,
+    alignment: Horizontal,
+) -> Element<'static, Message> {
+    let is_active = sort_field == field;
+    let mut content = Row::new().spacing(2).align_y(iced::Alignment::Center).push(
+        text(label)
+            .size(10)
+            .color(color)
+            .width(Fill)
+            .align_x(alignment),
+    );
+
+    if is_active {
+        let icon = if sort_direction == SortDirection::Ascending {
+            "\u{2191}"
+        } else {
+            "\u{2193}"
+        };
+        content = content.push(text(icon).size(10).color(color));
+    }
+
+    button(content)
+        .on_press(Message::HypeUnstakingSortChanged(field))
+        .style(|_theme: &Theme, _status| button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .padding(0)
+        .width(width)
+        .into()
 }
 
 fn hype_unstaking_row_style(
@@ -542,7 +631,6 @@ fn hype_unstaking_row_base_background(theme: &Theme, index: usize) -> Color {
 fn hype_unstaking_amount_scale(events: &[&HypeUnstakingEvent]) -> HypeUnstakingAmountScale {
     let (min_ln, max_ln) = events
         .iter()
-        .take(HYPE_UNSTAKING_ROW_LIMIT)
         .map(|event| hype_amount_ln(event.amount_wei))
         .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), value| {
             (min.min(value), max.max(value))
@@ -925,6 +1013,30 @@ mod tests {
         let scale = hype_unstaking_amount_scale(&[&small, &large]);
         let small_heat = scale.heat(small.amount_wei);
         let large_heat = scale.heat(large.amount_wei);
+
+        assert!(large_heat.fill_pct > small_heat.fill_pct);
+        assert!(large_heat.alpha > small_heat.alpha);
+    }
+
+    #[test]
+    fn amount_scale_uses_rows_beyond_render_limit() {
+        let mut events: Vec<_> = (0..HYPE_UNSTAKING_ROW_LIMIT)
+            .map(|index| HypeUnstakingEvent {
+                unlock_time_ms: index as u64,
+                user: format!("0xsmall{index}"),
+                amount_wei: HYPE_CORE_WEI_PER_TOKEN as u64,
+            })
+            .collect();
+        events.push(HypeUnstakingEvent {
+            unlock_time_ms: HYPE_UNSTAKING_ROW_LIMIT as u64,
+            user: "0xlarge".to_string(),
+            amount_wei: 100_000 * HYPE_CORE_WEI_PER_TOKEN as u64,
+        });
+        let refs: Vec<_> = events.iter().collect();
+
+        let scale = hype_unstaking_amount_scale(&refs);
+        let small_heat = scale.heat(events[0].amount_wei);
+        let large_heat = scale.heat(events[HYPE_UNSTAKING_ROW_LIMIT].amount_wei);
 
         assert!(large_heat.fill_pct > small_heat.fill_pct);
         assert!(large_heat.alpha > small_heat.alpha);

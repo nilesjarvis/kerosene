@@ -1,5 +1,7 @@
+use crate::config::SortDirection;
 use crate::helpers::format_decimal_with_commas;
 
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::time::Instant;
 
@@ -79,6 +81,22 @@ impl HypeUnstakingAmountFilter {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum HypeUnstakingSortField {
+    #[default]
+    UnlockTime,
+    Amount,
+}
+
+impl HypeUnstakingSortField {
+    pub(crate) fn default_direction(self) -> SortDirection {
+        match self {
+            Self::UnlockTime => SortDirection::Ascending,
+            Self::Amount => SortDirection::Descending,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct HypeUnstakingQueueState {
     pub(crate) data: Option<HypeUnstakingQueueData>,
@@ -88,6 +106,8 @@ pub(crate) struct HypeUnstakingQueueState {
     pub(crate) window_filter: HypeUnstakingWindowFilter,
     pub(crate) amount_filter: HypeUnstakingAmountFilter,
     pub(crate) mine_only: bool,
+    pub(crate) sort_field: HypeUnstakingSortField,
+    pub(crate) sort_direction: SortDirection,
 }
 
 impl HypeUnstakingQueueState {
@@ -95,6 +115,18 @@ impl HypeUnstakingQueueState {
         self.window_filter = HypeUnstakingWindowFilter::default();
         self.amount_filter = HypeUnstakingAmountFilter::default();
         self.mine_only = false;
+    }
+
+    pub(crate) fn apply_sort_change(&mut self, field: HypeUnstakingSortField) {
+        if self.sort_field == field {
+            self.sort_direction = match self.sort_direction {
+                SortDirection::Ascending => SortDirection::Descending,
+                SortDirection::Descending => SortDirection::Ascending,
+            };
+        } else {
+            self.sort_field = field;
+            self.sort_direction = field.default_direction();
+        }
     }
 }
 
@@ -181,6 +213,38 @@ pub(crate) fn summarize_unstaking_events(events: &[&HypeUnstakingEvent]) -> Hype
         next_unlock_time_ms,
         largest_amount_wei,
     }
+}
+
+pub(crate) fn sort_unstaking_events(
+    events: &mut [&HypeUnstakingEvent],
+    field: HypeUnstakingSortField,
+    direction: SortDirection,
+) {
+    events.sort_by(|a, b| {
+        let primary = match field {
+            HypeUnstakingSortField::UnlockTime => a.unlock_time_ms.cmp(&b.unlock_time_ms),
+            HypeUnstakingSortField::Amount => a.amount_wei.cmp(&b.amount_wei),
+        };
+
+        let ordered = match direction {
+            SortDirection::Ascending => primary,
+            SortDirection::Descending => primary.reverse(),
+        };
+        if ordered != Ordering::Equal {
+            return ordered;
+        }
+
+        match field {
+            HypeUnstakingSortField::UnlockTime => b
+                .amount_wei
+                .cmp(&a.amount_wei)
+                .then_with(|| a.user.cmp(&b.user)),
+            HypeUnstakingSortField::Amount => a
+                .unlock_time_ms
+                .cmp(&b.unlock_time_ms)
+                .then_with(|| a.user.cmp(&b.user)),
+        }
+    });
 }
 
 pub(crate) fn format_hype_wei(wei: u128) -> String {
@@ -329,6 +393,40 @@ mod tests {
                 next_unlock_time_ms: Some(2_000),
                 largest_amount_wei: Some(25 * HYPE_CORE_WEI_PER_TOKEN as u64),
             }
+        );
+    }
+
+    #[test]
+    fn sort_change_amount_defaults_descending_and_toggles() {
+        let mut state = HypeUnstakingQueueState::default();
+
+        state.apply_sort_change(HypeUnstakingSortField::Amount);
+        assert_eq!(state.sort_field, HypeUnstakingSortField::Amount);
+        assert_eq!(state.sort_direction, SortDirection::Descending);
+
+        state.apply_sort_change(HypeUnstakingSortField::Amount);
+        assert_eq!(state.sort_direction, SortDirection::Ascending);
+    }
+
+    #[test]
+    fn amount_sort_orders_full_filtered_set() {
+        let small = event(2_000, "0xsmall", 10);
+        let large = event(4_000, "0xlarge", 1_000);
+        let mid = event(3_000, "0xmid", 100);
+        let mut events = vec![&small, &mid, &large];
+
+        sort_unstaking_events(
+            events.as_mut_slice(),
+            HypeUnstakingSortField::Amount,
+            SortDirection::Descending,
+        );
+
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.user.as_str())
+                .collect::<Vec<_>>(),
+            vec!["0xlarge", "0xmid", "0xsmall"]
         );
     }
 

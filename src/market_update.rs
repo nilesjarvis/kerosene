@@ -62,6 +62,7 @@ fn is_hype_unstaking_queue_market_message(message: &Message) -> bool {
             | Message::HypeUnstakingQueueRefreshTick
             | Message::HypeUnstakingWindowChanged(_)
             | Message::HypeUnstakingAmountFilterChanged(_)
+            | Message::HypeUnstakingSortChanged(_)
             | Message::ToggleHypeUnstakingMineOnly
             | Message::ClearHypeUnstakingFilters
             | Message::HypeUnstakingQueueLoaded(_)
