@@ -27,6 +27,7 @@ pub(crate) enum PaneKind {
     TrackedTrades,
     Outcomes,
     HypeEtfs,
+    HypeUnstakingQueue,
 }
 
 impl PaneKind {

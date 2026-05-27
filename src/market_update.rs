@@ -1,4 +1,5 @@
 mod hype_etfs;
+mod hype_unstaking_queue;
 mod live_watchlist;
 mod order_book;
 mod positioning_info;
@@ -31,6 +32,9 @@ impl TradingTerminal {
             | Message::HypeEtfsLoaded(_)) => {
                 return self.update_hype_etfs_market(message);
             }
+            message if is_hype_unstaking_queue_market_message(&message) => {
+                return self.update_hype_unstaking_queue_market(message);
+            }
             message
             @ (Message::TickerTapeRefreshTick | Message::TickerTapeContextsLoaded(_, _)) => {
                 return self.update_ticker_tape_market(message);
@@ -49,6 +53,19 @@ impl TradingTerminal {
 
         Task::none()
     }
+}
+
+fn is_hype_unstaking_queue_market_message(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::RefreshHypeUnstakingQueue
+            | Message::HypeUnstakingQueueRefreshTick
+            | Message::HypeUnstakingWindowChanged(_)
+            | Message::HypeUnstakingAmountFilterChanged(_)
+            | Message::ToggleHypeUnstakingMineOnly
+            | Message::ClearHypeUnstakingFilters
+            | Message::HypeUnstakingQueueLoaded(_)
+    )
 }
 
 fn is_live_watchlist_market_message(message: &Message) -> bool {

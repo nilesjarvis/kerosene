@@ -67,7 +67,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddAdvancedOrdersPane
         | Message::AddTrackedTradesPane
         | Message::AddOutcomesPane
-        | Message::AddHypeEtfsPane => UpdateRoute::Panes,
+        | Message::AddHypeEtfsPane
+        | Message::AddHypeUnstakingQueuePane => UpdateRoute::Panes,
 
         Message::ToggleHidePnl
         | Message::TickerTapeTick
@@ -203,6 +204,13 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::HypeEtfsRefreshTick
         | Message::HypeEtfsViewChanged(_)
         | Message::HypeEtfsLoaded(_)
+        | Message::RefreshHypeUnstakingQueue
+        | Message::HypeUnstakingQueueRefreshTick
+        | Message::HypeUnstakingWindowChanged(_)
+        | Message::HypeUnstakingAmountFilterChanged(_)
+        | Message::ToggleHypeUnstakingMineOnly
+        | Message::ClearHypeUnstakingFilters
+        | Message::HypeUnstakingQueueLoaded(_)
         | Message::SymbolSelected(_)
         | Message::BookLoaded { .. }
         | Message::OrderBookWsAssetCtxUpdate(_, _)

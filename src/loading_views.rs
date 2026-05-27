@@ -64,6 +64,7 @@ impl TradingTerminal {
             || self.income.loading
             || self.calendar_loading
             || self.hype_etfs.loading
+            || self.hype_unstaking_queue.loading
             || self
                 .wallet_tracker
                 .rows

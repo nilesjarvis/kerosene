@@ -26,5 +26,6 @@ pub fn pane_title(kind: &PaneKind) -> String {
         PaneKind::TrackedTrades => "Wallet Tracker".to_string(),
         PaneKind::Outcomes => "Outcomes".to_string(),
         PaneKind::HypeEtfs => "HYPE ETFs".to_string(),
+        PaneKind::HypeUnstakingQueue => "HYPE Unstaking Queue".to_string(),
     }
 }

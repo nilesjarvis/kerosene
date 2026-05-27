@@ -48,6 +48,7 @@ pub(super) fn pane_kind_to_config(kind: &PaneKind) -> PaneKindConfig {
         PaneKind::TrackedTrades => PaneKindConfig::TrackedTrades,
         PaneKind::Outcomes => PaneKindConfig::Outcomes,
         PaneKind::HypeEtfs => PaneKindConfig::HypeEtfs,
+        PaneKind::HypeUnstakingQueue => PaneKindConfig::HypeUnstakingQueue,
     }
 }
 
@@ -76,6 +77,7 @@ pub(super) fn pane_kind_from_config(kind: &PaneKindConfig) -> Option<PaneKind> {
         PaneKindConfig::TrackedTrades => Some(PaneKind::TrackedTrades),
         PaneKindConfig::Outcomes => Some(PaneKind::Outcomes),
         PaneKindConfig::HypeEtfs => Some(PaneKind::HypeEtfs),
+        PaneKindConfig::HypeUnstakingQueue => Some(PaneKind::HypeUnstakingQueue),
         PaneKindConfig::Unsupported => None,
     }
 }

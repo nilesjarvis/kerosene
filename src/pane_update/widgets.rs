@@ -138,6 +138,20 @@ impl TradingTerminal {
                     return self.request_hype_etfs_refresh(false);
                 }
             }
+            Message::AddHypeUnstakingQueuePane => {
+                self.add_widget_menu_open = false;
+                let outcome = self.add_or_focus_singleton_pane(
+                    self.add_widget_axis(),
+                    PaneKind::HypeUnstakingQueue,
+                    "HYPE Unstaking Queue",
+                    |kind| matches!(kind, PaneKind::HypeUnstakingQueue),
+                );
+                if !matches!(outcome, AddPaneOutcome::Failed)
+                    && self.hype_unstaking_queue.data.is_none()
+                {
+                    return self.request_hype_unstaking_queue_refresh(false);
+                }
+            }
             _ => {}
         }
 

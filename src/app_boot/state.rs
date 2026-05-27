@@ -134,6 +134,7 @@ impl TradingTerminal {
             outcome_search_query: String::new(),
             outcome_collapsed_market_groups: HashSet::new(),
             hype_etfs: crate::hype_etf_state::HypeEtfState::default(),
+            hype_unstaking_queue: crate::hype_unstaking_state::HypeUnstakingQueueState::default(),
             display_denomination: cfg.display_denomination.clone().normalized(),
             order_books: HashMap::new(),
             next_order_book_id: 0,

@@ -135,6 +135,7 @@ impl TradingTerminal {
             boot_tasks.push(state.request_calendar_refresh(false));
         }
         boot_tasks.push(state.request_hype_etfs_boot_refresh());
+        boot_tasks.push(state.request_hype_unstaking_queue_boot_refresh());
 
         boot_tasks.push(state.request_live_watchlist_refresh(true));
         boot_tasks.push(state.request_ticker_tape_context_refresh(true));

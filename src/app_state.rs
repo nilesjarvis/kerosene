@@ -9,6 +9,7 @@ use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWindowState};
 use crate::hype_etf_state::HypeEtfState;
+use crate::hype_unstaking_state::HypeUnstakingQueueState;
 use crate::hyperdash_api::LiquidationHeatmap;
 use crate::market_state::{
     LiveWatchlistId, LiveWatchlistInstance, OrderBookId, OrderBookInstance,
@@ -133,6 +134,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) outcome_search_query: String,
     pub(crate) outcome_collapsed_market_groups: HashSet<String>,
     pub(crate) hype_etfs: HypeEtfState,
+    pub(crate) hype_unstaking_queue: HypeUnstakingQueueState,
     pub(crate) display_denomination: config::DisplayDenominationConfig,
     // L2 order books
     pub(crate) order_books: HashMap<OrderBookId, OrderBookInstance>,

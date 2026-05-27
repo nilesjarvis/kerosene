@@ -59,6 +59,7 @@ pub enum PaneKindConfig {
     TrackedTrades,
     Outcomes,
     HypeEtfs,
+    HypeUnstakingQueue,
     /// Legacy or unknown persisted panes that no longer have runtime support.
     Unsupported,
 }

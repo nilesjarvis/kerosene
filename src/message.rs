@@ -11,6 +11,9 @@ use crate::chart_state::{CandleFetchRequest, ChartId, ChartSurfaceId, FundingFet
 use crate::config;
 use crate::hydromancer_api::FundingRatePoint;
 use crate::hype_etf_state::{HypeEtfData, HypeEtfView};
+use crate::hype_unstaking_state::{
+    HypeUnstakingAmountFilter, HypeUnstakingQueueData, HypeUnstakingWindowFilter,
+};
 use crate::hyperdash_api::{LiquidationHeatmap, LiquidationLevel};
 use crate::journal;
 use crate::market_state::{
@@ -163,6 +166,7 @@ pub(crate) enum Message {
     AddTrackedTradesPane,
     AddOutcomesPane,
     AddHypeEtfsPane,
+    AddHypeUnstakingQueuePane,
     AddTradingJournal,
     RefreshCalendar,
     CalendarLoaded(Result<Vec<api::CalendarEvent>, String>),
@@ -170,6 +174,13 @@ pub(crate) enum Message {
     HypeEtfsRefreshTick,
     HypeEtfsViewChanged(HypeEtfView),
     HypeEtfsLoaded(Box<Result<HypeEtfData, String>>),
+    RefreshHypeUnstakingQueue,
+    HypeUnstakingQueueRefreshTick,
+    HypeUnstakingWindowChanged(HypeUnstakingWindowFilter),
+    HypeUnstakingAmountFilterChanged(HypeUnstakingAmountFilter),
+    ToggleHypeUnstakingMineOnly,
+    ClearHypeUnstakingFilters,
+    HypeUnstakingQueueLoaded(Box<Result<HypeUnstakingQueueData, String>>),
     CalendarImpactFilterChanged(CalendarImpactFilter),
     CalendarWindowFilterChanged(CalendarWindowFilter),
     Tick,

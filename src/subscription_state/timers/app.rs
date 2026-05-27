@@ -58,6 +58,13 @@ impl TradingTerminal {
             );
         }
 
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::HypeUnstakingQueue)) {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(60 * 5))
+                    .map(|_| Message::HypeUnstakingQueueRefreshTick),
+            );
+        }
+
         if !self.hydromancer_api_key.trim().is_empty()
             && self
                 .charts

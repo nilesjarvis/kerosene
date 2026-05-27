@@ -24,6 +24,8 @@ impl TradingTerminal {
         let income_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Income));
         let outcomes_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Outcomes));
         let hype_etfs_open = self.pane_is_open(|kind| matches!(kind, PaneKind::HypeEtfs));
+        let hype_unstaking_queue_open =
+            self.pane_is_open(|kind| matches!(kind, PaneKind::HypeUnstakingQueue));
         let liquidations_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Liquidations));
         let tracked_trades_open = self.pane_is_open(|kind| matches!(kind, PaneKind::TrackedTrades));
         let calendar_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Calendar));
@@ -101,6 +103,25 @@ impl TradingTerminal {
                 AlfredCommandKind::AddWidget,
                 Some(Message::AddHypeEtfsPane),
                 &["etf", "flow", "feed", "widget", "add"],
+            )
+            .disabled_if(!can_add_pane, no_pane_reason),
+            AlfredCommand::new(
+                AlfredCommandId::AddHypeUnstakingQueuePane,
+                "HYPE Unstaking Queue",
+                "Upcoming HYPE unlocks pane",
+                open_tag(hype_unstaking_queue_open, "Pane"),
+                AlfredCommandKind::AddWidget,
+                Some(Message::AddHypeUnstakingQueuePane),
+                &[
+                    "unstake",
+                    "unstaking",
+                    "queue",
+                    "hype",
+                    "staking",
+                    "unlock",
+                    "widget",
+                    "add",
+                ],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
             AlfredCommand::new(

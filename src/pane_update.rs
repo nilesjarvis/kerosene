@@ -23,7 +23,8 @@ impl TradingTerminal {
             | Message::AddTrackedTradesPane
             | Message::AddAdvancedOrdersPane
             | Message::AddOutcomesPane
-            | Message::AddHypeEtfsPane => self.add_widget_pane(message),
+            | Message::AddHypeEtfsPane
+            | Message::AddHypeUnstakingQueuePane => self.add_widget_pane(message),
             _ => Task::none(),
         }
     }

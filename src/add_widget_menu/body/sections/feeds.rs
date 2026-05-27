@@ -35,6 +35,17 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             theme,
         ))
         .push(menu_item(
+            "HYPE Unstaking Queue",
+            if context.hype_unstaking_queue_open {
+                "Open"
+            } else {
+                "Pane"
+            },
+            Some(Message::AddHypeUnstakingQueuePane),
+            context.can_add_pane,
+            theme,
+        ))
+        .push(menu_item(
             "Liquidations Feed",
             if context.liquidations_open {
                 "Open"

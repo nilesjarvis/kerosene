@@ -23,6 +23,7 @@ enum KnownPaneKindConfig {
     TrackedTrades,
     Outcomes,
     HypeEtfs,
+    HypeUnstakingQueue,
 }
 
 #[derive(Deserialize)]
@@ -55,6 +56,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::TrackedTrades => Self::TrackedTrades,
             KnownPaneKindConfig::Outcomes => Self::Outcomes,
             KnownPaneKindConfig::HypeEtfs => Self::HypeEtfs,
+            KnownPaneKindConfig::HypeUnstakingQueue => Self::HypeUnstakingQueue,
         }
     }
 }

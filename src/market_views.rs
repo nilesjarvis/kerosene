@@ -1,4 +1,5 @@
 mod hype_etfs;
+mod hype_unstaking_queue;
 mod live_watchlist;
 mod order_book;
 mod outcomes;

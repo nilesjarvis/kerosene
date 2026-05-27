@@ -34,6 +34,7 @@ pub(crate) enum AlfredCommandId {
     AddIncomePane,
     AddOutcomesPane,
     AddHypeEtfsPane,
+    AddHypeUnstakingQueuePane,
     AddLiquidationsPane,
     AddTrackedTradesPane,
     AddCalendarPane,
