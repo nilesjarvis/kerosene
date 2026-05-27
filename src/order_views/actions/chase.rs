@@ -35,9 +35,14 @@ impl TradingTerminal {
             } else {
                 "loading".to_string()
             };
+            let order_id = chase
+                .current_oid
+                .map(|oid| format!(" order #{oid}"))
+                .unwrap_or_default();
             let chase_info = text(format!(
-                "Chasing {side_str} {} {:.4}/{:.4} rem {:.4} @ {} ({} active)",
+                "Chasing {side_str} {}{} {:.4}/{:.4} rem {:.4} @ {} ({} active)",
                 chase.coin.as_str(),
+                order_id,
                 chase.filled_size,
                 chase.target_size,
                 chase.remaining_size,

@@ -86,6 +86,14 @@ pub(crate) struct AdvancedOrderHistoryEntry {
     #[serde(default)]
     pub(crate) average_price: Option<f64>,
     #[serde(default)]
+    pub(crate) last_working_price: Option<f64>,
+    #[serde(default)]
+    pub(crate) gross_notional: f64,
+    #[serde(default)]
+    pub(crate) total_fee: f64,
+    #[serde(default)]
+    pub(crate) closed_pnl: f64,
+    #[serde(default)]
     pub(crate) min_price: Option<f64>,
     #[serde(default)]
     pub(crate) max_price: Option<f64>,
@@ -111,4 +119,23 @@ pub(crate) struct AdvancedOrderHistoryEntry {
     pub(crate) logs: Vec<AdvancedOrderHistoryLog>,
     #[serde(default)]
     pub(crate) children: Vec<AdvancedOrderHistoryChild>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct ChaseHistoryFillMetrics {
+    pub(crate) filled_size: f64,
+    pub(crate) gross_notional: f64,
+    pub(crate) total_fee: f64,
+    pub(crate) closed_pnl: f64,
+}
+
+impl ChaseHistoryFillMetrics {
+    pub(crate) fn average_price(self) -> Option<f64> {
+        if self.filled_size.is_finite() && self.filled_size > 0.0 && self.gross_notional.is_finite()
+        {
+            Some(self.gross_notional / self.filled_size)
+        } else {
+            None
+        }
+    }
 }

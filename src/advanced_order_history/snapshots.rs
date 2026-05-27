@@ -1,11 +1,13 @@
+use crate::account::UserFill;
 use crate::helpers::positive_finite_value;
 use crate::signing::ChaseOrder;
 use crate::twap_state::{TwapOrder, TwapStatus, twap_weighted_average_fill_price};
 
 use super::{
     AdvancedOrderHistoryChild, AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind,
-    AdvancedOrderHistoryLog,
+    AdvancedOrderHistoryLog, ChaseHistoryFillMetrics,
 };
+use std::collections::HashSet;
 
 // ---------------------------------------------------------------------------
 // Advanced Order History Snapshots
@@ -15,6 +17,58 @@ const ADVANCED_ORDER_HISTORY_LOG_LIMIT: usize = 200;
 const ADVANCED_ORDER_HISTORY_CHILD_LIMIT: usize = 200;
 
 impl AdvancedOrderHistoryEntry {
+    pub(crate) fn chase_fill_metrics(
+        fills: &[UserFill],
+        chase: &ChaseOrder,
+    ) -> Option<ChaseHistoryFillMetrics> {
+        let oids = chase.known_oids_with_current();
+        if oids.is_empty() {
+            return None;
+        }
+
+        let mut metrics = ChaseHistoryFillMetrics::default();
+        let mut seen = HashSet::new();
+        let mut matched = false;
+        for fill in fills {
+            let Some(oid) = fill.oid else {
+                continue;
+            };
+            if !oids.contains(&oid) {
+                continue;
+            }
+            let fill_key = (
+                oid,
+                fill.time,
+                fill.px.as_str(),
+                fill.sz.as_str(),
+                fill.side.as_str(),
+                fill.dir.as_str(),
+                fill.closed_pnl.as_str(),
+                fill.fee.as_str(),
+            );
+            if !seen.insert(fill_key) {
+                continue;
+            }
+            matched = true;
+
+            if let (Some(size), Some(price)) = (
+                parse_positive_fill_number(&fill.sz),
+                parse_positive_fill_number(&fill.px),
+            ) {
+                metrics.filled_size += size;
+                metrics.gross_notional += size * price;
+            }
+            if let Some(fee) = parse_finite_fill_number(&fill.fee) {
+                metrics.total_fee += fee;
+            }
+            if let Some(closed_pnl) = parse_finite_fill_number(&fill.closed_pnl) {
+                metrics.closed_pnl += closed_pnl;
+            }
+        }
+
+        matched.then_some(metrics)
+    }
+
     pub(crate) fn from_twap(twap: &TwapOrder, completed_at_ms: u64) -> Self {
         let logs = twap
             .events
@@ -76,6 +130,14 @@ impl AdvancedOrderHistoryEntry {
             filled_size: finite_or_zero(twap.filled_size),
             remaining_size: finite_or_zero(twap.remaining_size),
             average_price: twap_weighted_average_fill_price(twap),
+            last_working_price: None,
+            gross_notional: 0.0,
+            total_fee: twap
+                .child_orders
+                .iter()
+                .map(|child| finite_or_zero(child.fee))
+                .sum(),
+            closed_pnl: 0.0,
             min_price: positive_finite_value(twap.min_price),
             max_price: positive_finite_value(twap.max_price),
             reduce_only: twap.reduce_only,
@@ -92,7 +154,12 @@ impl AdvancedOrderHistoryEntry {
         }
     }
 
-    pub(crate) fn from_chase(chase: &ChaseOrder, completed_at_ms: u64, summary: String) -> Self {
+    pub(crate) fn from_chase_with_fill_metrics(
+        chase: &ChaseOrder,
+        completed_at_ms: u64,
+        summary: String,
+        fill_metrics: Option<ChaseHistoryFillMetrics>,
+    ) -> Self {
         let status = chase
             .stop_reason
             .as_ref()
@@ -104,7 +171,9 @@ impl AdvancedOrderHistoryEntry {
             summary
         };
         let target_size = finite_or_zero(chase.target_size);
-        let filled_size = if let Some(filled_size) = positive_finite_value(chase.filled_size) {
+        let filled_size = if let Some(metrics) = fill_metrics {
+            finite_non_negative_or_zero(metrics.filled_size)
+        } else if let Some(filled_size) = positive_finite_value(chase.filled_size) {
             if target_size > 0.0 {
                 filled_size.min(target_size)
             } else {
@@ -118,10 +187,20 @@ impl AdvancedOrderHistoryEntry {
             0.0
         };
         let remaining_size = if target_size > 0.0 {
-            (target_size - filled_size).max(0.0)
+            (target_size - filled_size.min(target_size)).max(0.0)
         } else {
             finite_or_zero(chase.remaining_size)
         };
+        let average_price = fill_metrics.and_then(ChaseHistoryFillMetrics::average_price);
+        let gross_notional = fill_metrics
+            .map(|metrics| finite_or_zero(metrics.gross_notional))
+            .unwrap_or_default();
+        let total_fee = fill_metrics
+            .map(|metrics| finite_or_zero(metrics.total_fee))
+            .unwrap_or_default();
+        let closed_pnl = fill_metrics
+            .map(|metrics| finite_or_zero(metrics.closed_pnl))
+            .unwrap_or_default();
 
         Self {
             id: format!(
@@ -137,7 +216,11 @@ impl AdvancedOrderHistoryEntry {
             target_size,
             filled_size,
             remaining_size,
-            average_price: positive_finite_value(chase.current_price),
+            average_price,
+            last_working_price: positive_finite_value(chase.current_price),
+            gross_notional,
+            total_fee,
+            closed_pnl,
             min_price: None,
             max_price: None,
             reduce_only: chase.reduce_only,
@@ -173,6 +256,18 @@ impl AdvancedOrderHistoryEntry {
     }
 }
 
+fn parse_positive_fill_number(value: &str) -> Option<f64> {
+    parse_finite_fill_number(value).filter(|value| *value > 0.0)
+}
+
+fn parse_finite_fill_number(value: &str) -> Option<f64> {
+    value
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+}
+
 fn twap_history_status(status: TwapStatus) -> &'static str {
     match status {
         TwapStatus::Running
@@ -188,4 +283,12 @@ fn twap_history_status(status: TwapStatus) -> &'static str {
 
 fn finite_or_zero(value: f64) -> f64 {
     if value.is_finite() { value } else { 0.0 }
+}
+
+fn finite_non_negative_or_zero(value: f64) -> f64 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        0.0
+    }
 }

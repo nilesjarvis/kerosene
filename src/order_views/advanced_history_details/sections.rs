@@ -1,5 +1,7 @@
-use crate::advanced_order_history::{AdvancedOrderHistoryChild, AdvancedOrderHistoryEntry};
-use crate::helpers::{format_duration, format_price, format_size};
+use crate::advanced_order_history::{
+    AdvancedOrderHistoryChild, AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind,
+};
+use crate::helpers::{format_duration, format_price, format_size, format_usd};
 use crate::message::Message;
 
 use super::super::details::{metric, section_title};
@@ -47,8 +49,12 @@ pub(super) fn history_summary<'a>(
         .average_price
         .map(format_price)
         .unwrap_or_else(|| "-".to_string());
+    let last_working = entry
+        .last_working_price
+        .map(format_price)
+        .unwrap_or_else(|| "-".to_string());
 
-    column![
+    let base = column![
         section_title("Summary", theme),
         row![
             metric("Filled", format_size(entry.filled_size), weak),
@@ -60,14 +66,44 @@ pub(super) fn history_summary<'a>(
         row![
             metric("Completed", history_completed_text(entry), weak),
             metric("Runtime", history_runtime_text(entry), weak),
-            metric("Range", history_price_range_text(entry), weak),
+            metric(
+                if entry.kind == AdvancedOrderHistoryKind::Chase {
+                    "Last Working"
+                } else {
+                    "Range"
+                },
+                if entry.kind == AdvancedOrderHistoryKind::Chase {
+                    last_working
+                } else {
+                    history_price_range_text(entry)
+                },
+                weak,
+            ),
             metric(
                 "Reduce Only",
                 if entry.reduce_only { "Yes" } else { "No" }.to_string(),
                 weak,
             ),
         ]
-        .spacing(8),
+        .spacing(8)
+    ]
+    .spacing(6);
+
+    if entry.kind == AdvancedOrderHistoryKind::Chase {
+        return base
+            .push(
+                row![
+                    metric("Reprices", entry.reprice_count.to_string(), weak),
+                    metric("Notional", format_history_usd(entry.gross_notional), weak),
+                    metric("Fees", format_history_usd(entry.total_fee), weak),
+                    metric("Closed PnL", format_history_usd(entry.closed_pnl), weak),
+                ]
+                .spacing(8),
+            )
+            .into();
+    }
+
+    base.push(
         row![
             metric("Slices", entry.slices_sent.to_string(), weak),
             metric("Reprices", entry.reprice_count.to_string(), weak),
@@ -79,9 +115,16 @@ pub(super) fn history_summary<'a>(
             metric("Last", entry.summary.clone(), weak),
         ]
         .spacing(8),
-    ]
-    .spacing(6)
+    )
     .into()
+}
+
+fn format_history_usd(value: f64) -> String {
+    if value.is_finite() {
+        format_usd(&format!("{value:.2}"))
+    } else {
+        "-".to_string()
+    }
 }
 
 pub(super) fn history_children<'a>(

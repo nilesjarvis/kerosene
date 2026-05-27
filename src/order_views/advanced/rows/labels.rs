@@ -12,9 +12,16 @@ pub(super) fn chase_price_label(current_price: f64) -> String {
         .unwrap_or_else(|| "Loading".to_string())
 }
 
-pub(super) fn chase_meta_label(reprice_count: u32, reduce_only: bool) -> String {
+pub(super) fn chase_meta_label(
+    reprice_count: u32,
+    reduce_only: bool,
+    current_oid: Option<u64>,
+) -> String {
+    let oid = current_oid
+        .map(|oid| format!("#{oid} | "))
+        .unwrap_or_default();
     let reduce_only = if reduce_only { " | RO" } else { "" };
-    format!("{reprice_count} reprices{reduce_only}")
+    format!("{oid}{reprice_count} reprices{reduce_only}")
 }
 
 pub(super) fn chase_size_label(filled_size: f64, target_size: f64, remaining_size: f64) -> String {

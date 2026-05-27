@@ -10,7 +10,7 @@ mod tests;
 
 pub(crate) use model::{
     AdvancedOrderHistoryChild, AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind,
-    AdvancedOrderHistoryLog,
+    AdvancedOrderHistoryLog, ChaseHistoryFillMetrics,
 };
 
 // ---------------------------------------------------------------------------
@@ -59,7 +59,17 @@ impl TradingTerminal {
     }
 
     pub(crate) fn archive_chase_order(&mut self, chase: &ChaseOrder, summary: String) {
-        let entry = AdvancedOrderHistoryEntry::from_chase(chase, Self::now_ms(), summary);
+        let fill_metrics = self
+            .account_data
+            .as_ref()
+            .filter(|data| data.completeness.fills_complete)
+            .and_then(|data| AdvancedOrderHistoryEntry::chase_fill_metrics(&data.fills, chase));
+        let entry = AdvancedOrderHistoryEntry::from_chase_with_fill_metrics(
+            chase,
+            Self::now_ms(),
+            summary,
+            fill_metrics,
+        );
         upsert_advanced_order_history(&mut self.advanced_order_history, entry);
         self.persist_config();
     }

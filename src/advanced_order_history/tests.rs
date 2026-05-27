@@ -8,6 +8,7 @@ use crate::twap_state::{
 
 use std::time::{Duration, Instant};
 
+mod chase_snapshot;
 mod pruning;
 mod twap_snapshot;
 
@@ -70,6 +71,10 @@ fn minimal_entry(id: &str) -> AdvancedOrderHistoryEntry {
         filled_size: 0.0,
         remaining_size: 1.0,
         average_price: None,
+        last_working_price: None,
+        gross_notional: 0.0,
+        total_fee: 0.0,
+        closed_pnl: 0.0,
         min_price: None,
         max_price: None,
         reduce_only: false,

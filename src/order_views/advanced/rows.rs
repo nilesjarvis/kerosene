@@ -44,7 +44,7 @@ pub(super) fn chase_order_row(
         weak_text
     };
     let price = chase_price_label(chase.current_price);
-    let meta = chase_meta_label(chase.reprice_count, chase.reduce_only);
+    let meta = chase_meta_label(chase.reprice_count, chase.reduce_only, chase.current_oid);
     let size = chase_size_label(chase.filled_size, chase.target_size, chase.remaining_size);
 
     container(

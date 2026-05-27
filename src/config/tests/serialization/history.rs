@@ -17,6 +17,10 @@ fn advanced_order_history_round_trips_and_legacy_defaults_empty() {
             filled_size: 1.0,
             remaining_size: 0.0,
             average_price: Some(100.0),
+            last_working_price: Some(100.0),
+            gross_notional: 100.0,
+            total_fee: 0.05,
+            closed_pnl: 0.0,
             min_price: Some(99.0),
             max_price: Some(101.0),
             reduce_only: false,
@@ -38,6 +42,11 @@ fn advanced_order_history_round_trips_and_legacy_defaults_empty() {
     let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
     assert_eq!(decoded.advanced_order_history.len(), 1);
     assert_eq!(decoded.advanced_order_history[0].status, "Completed");
+    assert_eq!(
+        decoded.advanced_order_history[0].last_working_price,
+        Some(100.0)
+    );
+    assert_eq!(decoded.advanced_order_history[0].gross_notional, 100.0);
 
     let mut legacy = default_config_value();
     remove_field(

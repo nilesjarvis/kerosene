@@ -5,7 +5,8 @@ fn chase_labels_preserve_price_size_and_reduce_only_text() {
     assert_eq!(chase_price_label(100.5), "100.50");
     assert_eq!(chase_price_label(0.0), "Loading");
     assert_eq!(chase_price_label(f64::INFINITY), "Loading");
-    assert_eq!(chase_meta_label(3, true), "3 reprices | RO");
+    assert_eq!(chase_meta_label(3, true, None), "3 reprices | RO");
+    assert_eq!(chase_meta_label(3, false, Some(42)), "#42 | 3 reprices");
     assert_eq!(chase_size_label(0.25, 1.0, 0.75), "0.2500/1.00 rem 0.7500");
     assert_eq!(chase_size_label(0.25, f64::NAN, 0.75), "0.7500");
 }
