@@ -55,6 +55,8 @@ pub(crate) struct ChartInstance {
     pub(crate) asset_ctx: Option<AssetContext>,
     /// Whether the inline symbol editor is open.
     pub(crate) editor_open: bool,
+    /// Whether the chart header is collapsed to a ticker-only strip.
+    pub(crate) header_collapsed: bool,
     /// Search query text for the symbol editor.
     pub(crate) editor_search_query: String,
     /// Search result index currently highlighted for keyboard selection.

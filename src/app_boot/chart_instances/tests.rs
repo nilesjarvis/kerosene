@@ -10,6 +10,7 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         annotations: Vec::new(),
         inverted: false,
         show_trade_markers: true,
+        header_collapsed: true,
         funding_panel_height: 56,
         macro_indicators: MacroIndicatorsConfig::default(),
         open_interest_as_notional: false,
@@ -27,4 +28,5 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
             .chart
             .show_trade_markers
     );
+    assert!(charts.get(&3).expect("chart instance").header_collapsed);
 }

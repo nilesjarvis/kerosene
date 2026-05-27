@@ -49,7 +49,12 @@ impl TradingTerminal {
             let content = self.view_pane_content(pane, kind, chart_count);
             let close_btn = pane_close_button(pane, pane_count, kind.can_be_closed());
             let controls_row = if let PaneKind::Chart(chart_id) = kind {
+                let header_collapsed = self
+                    .charts
+                    .get(chart_id)
+                    .is_some_and(|instance| instance.header_collapsed);
                 row![
+                    self.view_chart_header_collapse_button(*chart_id, header_collapsed),
                     self.view_chart_add_button(pane),
                     self.view_detach_chart_button(*chart_id),
                     close_btn

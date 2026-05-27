@@ -367,6 +367,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartSymbolSelected(_, _)
         | Message::ToggleChartInvert(_)
         | Message::ToggleChartTradeMarkers(_)
+        | Message::ToggleChartHeaderCollapsed(_)
         | Message::ChartOpenEditor(_)
         | Message::ChartCloseEditor(_)
         | Message::ChartEditorSearchChanged(_, _)

@@ -27,6 +27,12 @@ impl TradingTerminal {
                 return self.update_chart_editor(message);
             }
             Message::OpenDetachedChart(id) => return self.open_detached_chart_window(id),
+            Message::ToggleChartHeaderCollapsed(id) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.header_collapsed = !instance.header_collapsed;
+                    self.persist_config();
+                }
+            }
             Message::ChartFocused(id) if self.charts.contains_key(&id) => {
                 self.primary_chart_id = Some(id);
                 self.focus = self

@@ -8,6 +8,32 @@ use iced::{Alignment, Color, Element, Theme};
 use super::feedback::{chart_header_changed_text, chart_header_price_flash_color};
 
 impl TradingTerminal {
+    pub(super) fn view_chart_collapsed_header<'a>(
+        &'a self,
+        chart_id: ChartId,
+        instance: &'a ChartInstance,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        button(self.view_chart_symbol_title_compact(instance, theme))
+            .on_press(Message::ChartOpenEditor(chart_id))
+            .padding([2, 6])
+            .style(|theme: &Theme, status| {
+                let bg = match status {
+                    button::Status::Hovered => theme.extended_palette().background.weak.color,
+                    _ => Color::TRANSPARENT,
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            })
+            .into()
+    }
+
     pub(super) fn view_chart_placeholder_header<'a>(
         &'a self,
         chart_id: ChartId,
@@ -80,23 +106,44 @@ impl TradingTerminal {
         instance: &'a ChartInstance,
         theme: &Theme,
     ) -> Element<'a, Message> {
+        self.view_chart_symbol_title_sized(instance, theme, 18, 14, 10)
+    }
+
+    fn view_chart_symbol_title_compact<'a>(
+        &self,
+        instance: &'a ChartInstance,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        self.view_chart_symbol_title_sized(instance, theme, 14, 12, 9)
+    }
+
+    fn view_chart_symbol_title_sized<'a>(
+        &self,
+        instance: &'a ChartInstance,
+        theme: &Theme,
+        icon_size: u16,
+        symbol_size: u32,
+        dex_size: u32,
+    ) -> Element<'a, Message> {
         let mut title = row![];
-        if let Some(icon) = helpers::symbol_icon(&instance.symbol, 18, theme.palette().text)
-            .or_else(|| helpers::symbol_icon(&instance.symbol_display, 18, theme.palette().text))
+        if let Some(icon) = helpers::symbol_icon(&instance.symbol, icon_size, theme.palette().text)
+            .or_else(|| {
+                helpers::symbol_icon(&instance.symbol_display, icon_size, theme.palette().text)
+            })
         {
             title = title.push(icon).push(Space::new().width(6.0));
         }
 
         title = title.push(
             text(&instance.symbol_display)
-                .size(14)
+                .size(symbol_size)
                 .color(theme.palette().text),
         );
 
         if let Some(dex) = helpers::hip3_dex(&instance.symbol) {
             title = title.push(Space::new().width(4.0)).push(
                 text(format!("({dex})"))
-                    .size(10)
+                    .size(dex_size)
                     .color(theme.extended_palette().background.weak.text),
             );
         }

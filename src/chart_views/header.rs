@@ -36,6 +36,10 @@ impl TradingTerminal {
         available_width: f32,
     ) -> Element<'a, Message> {
         let theme = self.theme();
+        if instance.header_collapsed {
+            return self.view_chart_collapsed_header(chart_id, instance, &theme);
+        }
+
         let (Some(last), Some(first)) = (
             instance.chart.candles.last(),
             instance.chart.candles.first(),

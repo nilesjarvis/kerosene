@@ -86,6 +86,9 @@ pub struct ChartConfig {
     /// Whether user fills are shown as buy/sell trade dots.
     #[serde(default)]
     pub show_trade_markers: bool,
+    /// Whether the chart header is collapsed to a ticker-only strip.
+    #[serde(default)]
+    pub header_collapsed: bool,
     /// Desired funding-rate sub-panel height in pixels.
     #[serde(default = "default_funding_panel_height")]
     pub funding_panel_height: u16,

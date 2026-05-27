@@ -23,6 +23,7 @@ impl TradingTerminal {
             let mut instance = ChartInstance::new(id, chart_cfg.symbol.clone(), tf);
             instance.chart.inverted = chart_cfg.inverted;
             instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
+            instance.header_collapsed = chart_cfg.header_collapsed;
             instance
                 .chart
                 .set_funding_panel_height(chart_cfg.funding_panel_height as f32);
