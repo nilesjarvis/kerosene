@@ -34,3 +34,20 @@ pub struct SpaghettiChartConfig {
     #[serde(default)]
     pub anchor_granularity: Option<String>,
 }
+
+impl SpaghettiChartConfig {
+    #[inline]
+    pub(crate) fn empty(id: u64) -> Self {
+        Self {
+            id,
+            symbols: Vec::new(),
+            timeframe: default_timeframe(),
+            pair_mode: false,
+            pair_candle_mode: false,
+            color_mode: ComparisonColorMode::default(),
+            show_labels: false,
+            anchor: None,
+            anchor_granularity: None,
+        }
+    }
+}

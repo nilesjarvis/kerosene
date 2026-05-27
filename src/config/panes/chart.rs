@@ -103,6 +103,25 @@ pub struct ChartConfig {
     pub outcome_volume_as_notional: bool,
 }
 
+impl ChartConfig {
+    #[inline]
+    pub(crate) fn empty(id: u64, symbol: impl Into<String>, timeframe: impl Into<String>) -> Self {
+        Self {
+            id,
+            symbol: symbol.into(),
+            timeframe: timeframe.into(),
+            annotations: Vec::new(),
+            inverted: false,
+            show_trade_markers: false,
+            header_collapsed: false,
+            funding_panel_height: default_funding_panel_height(),
+            macro_indicators: MacroIndicatorsConfig::default(),
+            open_interest_as_notional: false,
+            outcome_volume_as_notional: false,
+        }
+    }
+}
+
 /// Persisted state for a detached candlestick chart window.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DetachedChartWindowConfig {

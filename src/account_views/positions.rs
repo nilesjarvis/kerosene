@@ -1,11 +1,12 @@
 mod header;
 mod table;
 
+use super::table_helpers::{account_table_scroll, empty_account_table};
 use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
-use iced::widget::{Column, column, container, responsive, row, rule, scrollable, text};
+use iced::widget::{Column, column, container, responsive, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
 
 pub(super) const POSITION_ACTION_WIDTH: f32 = 152.0;
@@ -101,18 +102,7 @@ impl TradingTerminal {
             } else {
                 "Connect wallet to view positions".to_string()
             };
-            let content = column![
-                header,
-                rule::horizontal(1),
-                container(
-                    text(msg)
-                        .size(12)
-                        .color(theme.extended_palette().background.weak.text)
-                )
-                .padding([8, 0]),
-            ]
-            .spacing(4);
-            return positions_scrollable(content);
+            return empty_account_table(header, msg, &theme);
         }
 
         let rows = self.view_position_sections(&positions, can_close, &theme, columns, number_mode);
@@ -122,7 +112,7 @@ impl TradingTerminal {
         }
         let content = content.push(rule::horizontal(1)).push(rows);
         column![
-            positions_scrollable(content),
+            account_table_scroll(content),
             self.view_position_summary_bar(&positions, &theme, number_mode),
         ]
         .spacing(0)
@@ -231,19 +221,6 @@ fn position_section_header<'a>(
         left: 8.0,
     })
     .into()
-}
-
-fn positions_scrollable<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    scrollable(content)
-        .direction(iced::widget::scrollable::Direction::Vertical(
-            iced::widget::scrollable::Scrollbar::new()
-                .width(4)
-                .margin(0)
-                .scroller_width(4),
-        ))
-        .width(Fill)
-        .height(Fill)
-        .into()
 }
 
 #[cfg(test)]

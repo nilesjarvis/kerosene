@@ -8,6 +8,7 @@ mod portfolio;
 mod positions;
 mod style;
 mod summary;
+pub(in crate::account_views) mod table_helpers;
 mod tabs;
 
 use crate::helpers::invalid_data_placeholder;

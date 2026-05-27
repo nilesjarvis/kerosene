@@ -16,37 +16,21 @@ impl TradingTerminal {
         layout: &config::SavedLayout,
     ) -> LayoutWidgetConfigs {
         let mut chart_configs = if layout.charts.is_empty() {
-            vec![config::ChartConfig {
-                id: 0,
-                symbol: self.active_symbol.clone(),
-                timeframe: layout.active_timeframe.clone(),
-                annotations: Vec::new(),
-                inverted: false,
-                show_trade_markers: false,
-                header_collapsed: false,
-                funding_panel_height: 56,
-                macro_indicators: config::MacroIndicatorsConfig::default(),
-                open_interest_as_notional: false,
-                outcome_volume_as_notional: false,
-            }]
+            vec![config::ChartConfig::empty(
+                0,
+                self.active_symbol.clone(),
+                layout.active_timeframe.clone(),
+            )]
         } else {
             layout.charts.clone()
         };
 
         if chart_configs.is_empty() {
-            chart_configs.push(config::ChartConfig {
-                id: 0,
-                symbol: self.active_symbol.clone(),
-                timeframe: layout.active_timeframe.clone(),
-                annotations: Vec::new(),
-                inverted: false,
-                show_trade_markers: false,
-                header_collapsed: false,
-                funding_panel_height: 56,
-                macro_indicators: config::MacroIndicatorsConfig::default(),
-                open_interest_as_notional: false,
-                outcome_volume_as_notional: false,
-            });
+            chart_configs.push(config::ChartConfig::empty(
+                0,
+                self.active_symbol.clone(),
+                layout.active_timeframe.clone(),
+            ));
         }
 
         let mut used_chart_ids = std::collections::BTreeSet::new();
@@ -87,36 +71,14 @@ impl TradingTerminal {
 
             for id in layout_chart_ids {
                 if used_chart_ids.insert(id) {
-                    chart_configs.push(config::ChartConfig {
-                        id,
-                        symbol: String::new(),
-                        timeframe: "H1".to_string(),
-                        annotations: Vec::new(),
-                        inverted: false,
-                        show_trade_markers: false,
-                        header_collapsed: false,
-                        funding_panel_height: 56,
-                        macro_indicators: config::MacroIndicatorsConfig::default(),
-                        open_interest_as_notional: false,
-                        outcome_volume_as_notional: false,
-                    });
+                    chart_configs.push(config::ChartConfig::empty(id, String::new(), "H1"));
                     next_chart_id = next_chart_id.max(id.saturating_add(1));
                 }
             }
 
             for id in layout_spaghetti_ids {
                 if used_spaghetti_ids.insert(id) {
-                    spaghetti_configs.push(config::SpaghettiChartConfig {
-                        id,
-                        symbols: Vec::new(),
-                        timeframe: "H1".to_string(),
-                        pair_mode: false,
-                        pair_candle_mode: false,
-                        color_mode: crate::spaghetti::ComparisonColorMode::default(),
-                        show_labels: false,
-                        anchor: None,
-                        anchor_granularity: None,
-                    });
+                    spaghetti_configs.push(config::SpaghettiChartConfig::empty(id));
                     next_spaghetti_id = next_spaghetti_id.max(id.saturating_add(1));
                 }
             }

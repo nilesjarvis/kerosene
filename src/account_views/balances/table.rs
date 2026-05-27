@@ -1,6 +1,7 @@
+use crate::account_views::table_helpers::account_table_scroll;
 use crate::message::Message;
 
-use iced::widget::{Column, column, container, row, rule, scrollable, text};
+use iced::widget::{Column, column, container, row, rule, text};
 use iced::{Element, Fill, Theme};
 
 pub(super) fn empty_balances_table(msg: &'static str, theme: &Theme) -> Element<'static, Message> {
@@ -16,11 +17,11 @@ pub(super) fn empty_balances_table(msg: &'static str, theme: &Theme) -> Element<
     ]
     .spacing(4);
 
-    balances_scroll(content)
+    account_table_scroll(content)
 }
 
 pub(super) fn balances_rows_table(rows: Column<'static, Message>) -> Element<'static, Message> {
-    balances_scroll(column![balances_header(), rule::horizontal(1), rows].spacing(4))
+    account_table_scroll(column![balances_header(), rule::horizontal(1), rows].spacing(4))
 }
 
 fn balances_header() -> Element<'static, Message> {
@@ -34,17 +35,4 @@ fn balances_header() -> Element<'static, Message> {
     ]
     .spacing(4)
     .into()
-}
-
-fn balances_scroll(content: Column<'static, Message>) -> Element<'static, Message> {
-    scrollable(content)
-        .direction(iced::widget::scrollable::Direction::Vertical(
-            iced::widget::scrollable::Scrollbar::new()
-                .width(4)
-                .margin(0)
-                .scroller_width(4),
-        ))
-        .width(Fill)
-        .height(Fill)
-        .into()
 }

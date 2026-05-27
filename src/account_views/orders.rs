@@ -1,7 +1,8 @@
 use crate::account::AccountDataSection;
+use crate::account_views::table_helpers::{account_table_scroll, empty_account_table};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{Column, column, container, row, rule, scrollable, text};
+use iced::widget::{Column, column, row, rule, text};
 use iced::{Element, Fill};
 
 #[path = "orders/row.rs"]
@@ -53,27 +54,7 @@ impl TradingTerminal {
             } else {
                 "Connect wallet to view orders".to_string()
             };
-            let content = column![
-                header,
-                rule::horizontal(1),
-                container(
-                    text(msg)
-                        .size(12)
-                        .color(theme.extended_palette().background.weak.text)
-                )
-                .padding([8, 0]),
-            ]
-            .spacing(4);
-            return scrollable(content)
-                .direction(iced::widget::scrollable::Direction::Vertical(
-                    iced::widget::scrollable::Scrollbar::new()
-                        .width(4)
-                        .margin(0)
-                        .scroller_width(4),
-                ))
-                .width(Fill)
-                .height(Fill)
-                .into();
+            return empty_account_table(header, msg, &theme);
         }
 
         let rows = orders.iter().fold(Column::new().spacing(2), |col, order| {
@@ -85,15 +66,6 @@ impl TradingTerminal {
             content = content.push(text(warning).size(11).color(theme.palette().warning));
         }
         let content = content.push(rule::horizontal(1)).push(rows);
-        scrollable(content)
-            .direction(iced::widget::scrollable::Direction::Vertical(
-                iced::widget::scrollable::Scrollbar::new()
-                    .width(4)
-                    .margin(0)
-                    .scroller_width(4),
-            ))
-            .width(Fill)
-            .height(Fill)
-            .into()
+        account_table_scroll(content)
     }
 }
