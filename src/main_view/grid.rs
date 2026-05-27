@@ -111,6 +111,10 @@ impl TradingTerminal {
             }
         });
 
-        container(pane_grid_widget).width(Fill).height(Fill).into()
+        container(pane_grid_widget)
+            .width(Fill)
+            .height(Fill)
+            .padding([0.0, self.outer_widget_border_padding()])
+            .into()
     }
 }

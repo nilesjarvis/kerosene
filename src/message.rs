@@ -199,6 +199,7 @@ pub(crate) enum Message {
     MonospaceFontImported(Result<config::CustomFontConfig, String>),
     PaneBorderThicknessChanged(f32),
     PaneCornerRadiusChanged(f32),
+    ToggleOuterWidgetBorder(bool),
     MutedTickerInputChanged(String),
     MuteTicker,
     UnmuteTicker(String),

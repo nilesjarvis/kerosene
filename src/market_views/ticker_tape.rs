@@ -33,9 +33,14 @@ impl TradingTerminal {
     }
 
     pub(crate) fn view_ticker_tape_bar(&self) -> Element<'_, Message> {
-        responsive(|size| self.view_ticker_tape_bar_sized(size.width))
-            .height(Length::Fixed(TICKER_TAPE_HEIGHT))
-            .into()
+        container(
+            responsive(|size| self.view_ticker_tape_bar_sized(size.width))
+                .height(Length::Fixed(TICKER_TAPE_HEIGHT)),
+        )
+        .width(Fill)
+        .height(Length::Fixed(TICKER_TAPE_HEIGHT))
+        .padding([0.0, self.outer_widget_border_padding()])
+        .into()
     }
 
     fn view_ticker_tape_bar_sized(&self, available_width: f32) -> Element<'_, Message> {

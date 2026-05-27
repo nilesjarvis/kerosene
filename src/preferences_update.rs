@@ -61,6 +61,13 @@ impl TradingTerminal {
                 self.pane_corner_radius = normalize_pane_corner_radius(value);
                 self.persist_config();
             }
+            Message::ToggleOuterWidgetBorder(enabled)
+                if self.outer_widget_border_enabled != enabled =>
+            {
+                self.outer_widget_border_enabled = enabled;
+                self.persist_config();
+                return self.sync_main_window_min_size();
+            }
             Message::MutedTickerInputChanged(value) => {
                 self.muted_ticker_input = value;
                 self.muted_ticker_status = None;

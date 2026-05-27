@@ -41,6 +41,13 @@ impl TradingTerminal {
                 MIN_PANE_CORNER_RADIUS..=MAX_PANE_CORNER_RADIUS,
                 Message::PaneCornerRadiusChanged,
             ),
+            checkbox(self.outer_widget_border_enabled)
+                .label("Outer widget border")
+                .on_toggle(Message::ToggleOuterWidgetBorder)
+                .size(12)
+                .spacing(8)
+                .text_size(12)
+                .font(crate::app_fonts::monospace_font()),
             checkbox(self.chart_dotted_background)
                 .label("Dotted chart background")
                 .on_toggle(Message::ToggleChartDottedBackground)

@@ -90,6 +90,7 @@ impl TradingTerminal {
         self.chart_dotted_background = defaults.chart_dotted_background;
         self.chart_dotted_background_opacity = defaults.chart_dotted_background_opacity;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
+        self.outer_widget_border_enabled = defaults.outer_widget_border_enabled;
         self.custom_themes = defaults.custom_themes;
         self.sound_enabled = defaults.sound_enabled;
         self.desktop_notifications = defaults.desktop_notifications;

@@ -167,6 +167,7 @@ impl Default for KeroseneConfig {
             custom_fonts: Vec::new(),
             pane_border_thickness: default_pane_border_thickness(),
             pane_corner_radius: default_pane_corner_radius(),
+            outer_widget_border_enabled: true,
             book_tick_size: default_tick_size(),
             symbol_search_sort_mode: default_symbol_search_sort_mode(),
             market_universe: Default::default(),

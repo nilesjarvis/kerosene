@@ -120,6 +120,9 @@ pub struct KeroseneConfig {
     /// Corner radius applied to pane widgets in pixels.
     #[serde(default = "default_pane_corner_radius")]
     pub pane_corner_radius: f32,
+    /// Whether the main window has an exterior gutter matching pane dividers.
+    #[serde(default = "default_true")]
+    pub outer_widget_border_enabled: bool,
     /// Order book tick size.
     #[serde(default = "default_tick_size")]
     pub book_tick_size: f64,

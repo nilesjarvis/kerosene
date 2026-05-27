@@ -73,6 +73,7 @@ impl TradingTerminal {
             custom_fonts: cfg.custom_fonts.clone(),
             pane_border_thickness: cfg.pane_border_thickness,
             pane_corner_radius: cfg.pane_corner_radius,
+            outer_widget_border_enabled: cfg.outer_widget_border_enabled,
             focus: None,
             order_price: String::new(),
             order_quantity: String::new(),

@@ -59,8 +59,9 @@ impl TradingTerminal {
 
     fn main_pane_grid_size(&self) -> Size {
         let size = self.main_window_size.unwrap_or(Size::new(1600.0, 960.0));
+        let exterior_padding = self.outer_widget_border_padding() * 2.0;
         Size::new(
-            size.width,
+            (size.width - exterior_padding).max(1.0),
             (size.height - self.main_chrome_height()).max(1.0),
         )
     }
@@ -76,7 +77,7 @@ impl TradingTerminal {
                 &self.panes,
                 base_min_size,
                 self.pane_border_thickness,
-            ),
+            ) + self.outer_widget_border_padding() * 2.0,
             subtree_min_length(
                 layout,
                 pane_grid::Axis::Horizontal,
@@ -106,5 +107,63 @@ impl TradingTerminal {
             + ticker_height
             + ticker_gap
             + self.pane_border_thickness * 2.0
+    }
+
+    pub(crate) fn outer_widget_border_padding(&self) -> f32 {
+        if self.outer_widget_border_enabled {
+            self.pane_border_thickness
+        } else {
+            0.0
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app_state::TradingTerminal;
+    use crate::config::KeroseneConfig;
+
+    fn terminal_with_outer_widget_border(enabled: bool) -> TradingTerminal {
+        let config = KeroseneConfig {
+            main_window_width: Some(1600.0),
+            main_window_height: Some(960.0),
+            outer_widget_border_enabled: enabled,
+            ..KeroseneConfig::default()
+        };
+        let (terminal, _task) = TradingTerminal::boot_from_config(config);
+        terminal
+    }
+
+    #[test]
+    fn outer_widget_border_padding_tracks_toggle() {
+        let disabled = terminal_with_outer_widget_border(false);
+        let enabled = terminal_with_outer_widget_border(true);
+
+        assert_eq!(disabled.outer_widget_border_padding(), 0.0);
+        assert_eq!(
+            enabled.outer_widget_border_padding(),
+            enabled.pane_border_thickness
+        );
+    }
+
+    #[test]
+    fn outer_widget_border_updates_main_window_width_sizing() {
+        let disabled = terminal_with_outer_widget_border(false);
+        let enabled = terminal_with_outer_widget_border(true);
+        let exterior_padding = enabled.pane_border_thickness * 2.0;
+
+        assert_eq!(
+            enabled.main_pane_grid_size().width,
+            disabled.main_pane_grid_size().width - exterior_padding
+        );
+        assert_eq!(enabled.main_chrome_height(), disabled.main_chrome_height());
+        assert_eq!(
+            enabled.main_window_min_size().width,
+            disabled.main_window_min_size().width + exterior_padding
+        );
+        assert_eq!(
+            enabled.main_window_min_size().height,
+            disabled.main_window_min_size().height
+        );
     }
 }
