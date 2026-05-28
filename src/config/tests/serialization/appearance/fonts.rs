@@ -40,6 +40,9 @@ fn display_and_monospace_fonts_round_trip_and_legacy_default_system() {
 
 #[test]
 fn bundled_display_and_monospace_fonts_do_not_require_custom_font_entries() {
+    assert!(crate::config::BUNDLED_DISPLAY_FONT_FAMILIES.contains(&"Ubuntu Sans"));
+    assert!(crate::config::BUNDLED_DISPLAY_FONT_FAMILIES.contains(&"Ubuntu Sans Mono"));
+
     for family in crate::config::BUNDLED_DISPLAY_FONT_FAMILIES {
         let config = KeroseneConfig {
             display_font: DisplayFontConfig::Custom {

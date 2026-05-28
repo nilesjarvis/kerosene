@@ -332,3 +332,56 @@ fn coinbase_light_theme_uses_clean_portfolio_surfaces_and_blue_actions() {
     );
     assert_eq!(extended.is_dark, false);
 }
+
+#[test]
+fn ubuntu_theme_flips_aubergine_background_and_widget_surfaces() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0x56, 0x33, 0x4B),
+        text: Color::from_rgb8(0xF6, 0xF6, 0xF5),
+        primary: Color::from_rgb8(0xE9, 0x54, 0x20),
+        success: Color::from_rgb8(0x2E, 0xC2, 0x7E),
+        warning: Color::from_rgb8(0xF9, 0x9B, 0x11),
+        danger: Color::from_rgb8(0xC7, 0x16, 0x2B),
+    };
+
+    assert!(TradingTerminal::palette_matches_ubuntu_source(
+        source_palette
+    ));
+    assert!(TradingTerminal::palette_matches_ubuntu_source(
+        iced::theme::Palette {
+            background: Color::from_rgb8(0x2C, 0x00, 0x1E),
+            text: Color::from_rgb8(0xF6, 0xF6, 0xF5),
+            primary: Color::from_rgb8(0xE9, 0x54, 0x20),
+            success: Color::from_rgb8(0x2E, 0xC2, 0x7E),
+            warning: Color::from_rgb8(0xF9, 0x9B, 0x11),
+            danger: Color::from_rgb8(0xC7, 0x16, 0x2B),
+        }
+    ));
+
+    let extended = TradingTerminal::ubuntu_source_extended_palette();
+    assert_eq!(
+        extended.background.base.color.into_rgba8(),
+        [0x56, 0x33, 0x4B, 255]
+    );
+    assert_eq!(
+        extended.background.weak.color.into_rgba8(),
+        [0x36, 0x12, 0x2C, 255]
+    );
+    assert_eq!(
+        extended.background.strong.color.into_rgba8(),
+        [0x21, 0x0A, 0x1C, 255]
+    );
+    assert_eq!(
+        extended.primary.base.color.into_rgba8(),
+        [0xE9, 0x54, 0x20, 255]
+    );
+    assert_eq!(
+        extended.success.base.color.into_rgba8(),
+        [0x2E, 0xC2, 0x7E, 255]
+    );
+    assert_eq!(
+        extended.danger.base.color.into_rgba8(),
+        [0xC7, 0x16, 0x2B, 255]
+    );
+    assert!(extended.is_dark);
+}

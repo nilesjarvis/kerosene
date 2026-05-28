@@ -12,11 +12,15 @@ const ROBOTO_BYTES: &[u8] = include_bytes!("../assets/fonts/Roboto-Variable.ttf"
 const INTER_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Variable.ttf");
 const DM_SANS_BYTES: &[u8] = include_bytes!("../assets/fonts/DMSans-Variable.ttf");
 const ROBOTO_MONO_BYTES: &[u8] = include_bytes!("../assets/fonts/RobotoMono-Variable.ttf");
+const UBUNTU_SANS_BYTES: &[u8] = include_bytes!("../assets/fonts/UbuntuSans-Variable.ttf");
+const UBUNTU_SANS_MONO_BYTES: &[u8] = include_bytes!("../assets/fonts/UbuntuSansMono-Variable.ttf");
 const BUNDLED_FONT_BYTES: &[(&str, &[u8])] = &[
     (config::INTER_FONT_FAMILY, INTER_BYTES),
     (config::DM_SANS_FONT_FAMILY, DM_SANS_BYTES),
     (config::ROBOTO_FONT_FAMILY, ROBOTO_BYTES),
     (config::ROBOTO_MONO_FONT_FAMILY, ROBOTO_MONO_BYTES),
+    (config::UBUNTU_SANS_FONT_FAMILY, UBUNTU_SANS_BYTES),
+    (config::UBUNTU_SANS_MONO_FONT_FAMILY, UBUNTU_SANS_MONO_BYTES),
 ];
 static MONOSPACE_FONT: OnceLock<RwLock<Font>> = OnceLock::new();
 

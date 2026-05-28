@@ -1,0 +1,8 @@
+# Bundled Fonts
+
+Kerosene embeds these font files so users can choose them from Settings.
+
+- `UbuntuSans-Variable.ttf` and `UbuntuSansMono-Variable.ttf` are from Canonical's Ubuntu Sans repositories:
+  - https://github.com/canonical/Ubuntu-Sans-fonts
+  - https://github.com/canonical/Ubuntu-Sans-Mono-fonts
+- The Ubuntu font files are licensed under the Ubuntu Font Licence 1.0; see `Ubuntu-Font-Licence-1.0.txt`.

@@ -1,9 +1,11 @@
 use super::{
     CustomThemeConfig, default_custom_themes, default_theme, is_known_default_hyperliquid_theme,
+    is_known_default_ubuntu_theme,
 };
 
 mod defaults;
 mod hyperliquid_refresh;
+mod ubuntu_refresh;
 
 struct ThemeExpectation<'a> {
     name: &'a str,

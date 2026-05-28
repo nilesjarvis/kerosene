@@ -3,7 +3,7 @@ use super::state::ChartState;
 use super::tooltips::TooltipSurface;
 use crate::helpers::format_price;
 use iced::widget::canvas;
-use iced::{Color, Point, Theme, alignment};
+use iced::{Color, Point, Size, Theme, alignment};
 
 mod measurement;
 mod range;
@@ -58,6 +58,8 @@ impl CandlestickChart {
             .with_width(0.5);
         ctx.frame.stroke(&h_line, stroke);
         ctx.frame.stroke(&v_line, stroke);
+
+        self.draw_crosshair_time_label(ctx, pos, drawable_h);
 
         if ctx.funding_panel_h > 0.0 && pos.y >= ctx.chart_h {
             let mut tooltip_surface =
@@ -120,6 +122,101 @@ impl CandlestickChart {
             |rect| self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step),
             ctx.price_to_y,
         );
+    }
+
+    fn draw_crosshair_time_label<PriceToY>(
+        &self,
+        ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
+        pos: Point,
+        drawable_h: f32,
+    ) where
+        PriceToY: Fn(f64) -> f32,
+    {
+        let Some(timestamp_ms) = self.x_to_timestamp(pos.x, ctx.state, ctx.chart_w) else {
+            return;
+        };
+
+        let label = format_crosshair_relative_time(timestamp_ms, self.clock_now_ms);
+        let label_width = label.len() as f32 * 6.5 + 12.0;
+        let label_height = 17.0;
+        if label_width + 8.0 > ctx.chart_w {
+            return;
+        }
+
+        let label_x = (pos.x - label_width * 0.5)
+            .max(4.0)
+            .min(ctx.chart_w - label_width - 4.0);
+        let label_y = drawable_h + 3.0;
+
+        ctx.frame.fill_rectangle(
+            Point::new(label_x, label_y),
+            Size::new(label_width, label_height),
+            Color {
+                a: 0.92,
+                ..ctx.theme.extended_palette().background.strong.color
+            },
+        );
+        ctx.frame.fill_text(canvas::Text {
+            content: label,
+            position: Point::new(label_x + label_width * 0.5, label_y + label_height * 0.5),
+            color: ctx.theme.palette().text,
+            size: iced::Pixels(11.0),
+            align_x: alignment::Horizontal::Center.into(),
+            align_y: alignment::Vertical::Center,
+            font: crate::app_fonts::monospace_font(),
+            ..canvas::Text::default()
+        });
+    }
+}
+
+pub(super) fn format_crosshair_relative_time(timestamp_ms: u64, now_ms: u64) -> String {
+    let (is_future, diff_ms) = if timestamp_ms > now_ms {
+        (true, timestamp_ms - now_ms)
+    } else {
+        (false, now_ms - timestamp_ms)
+    };
+
+    let seconds = diff_ms / 1_000;
+    if seconds < 5 {
+        return "now".to_string();
+    }
+
+    let (value, unit) = if seconds < 60 {
+        (seconds, "second")
+    } else {
+        let minutes = seconds / 60;
+        if minutes < 60 {
+            (minutes, "minute")
+        } else {
+            let hours = minutes / 60;
+            if hours < 24 {
+                (hours, "hour")
+            } else {
+                let days = hours / 24;
+                if days < 14 {
+                    (days, "day")
+                } else {
+                    let weeks = days / 7;
+                    if weeks < 8 {
+                        (weeks, "week")
+                    } else {
+                        let months = days / 30;
+                        if months < 12 {
+                            (months.max(1), "month")
+                        } else {
+                            ((days / 365).max(1), "year")
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    let suffix = if value == 1 { "" } else { "s" };
+    if is_future {
+        format!("in {value} {unit}{suffix}")
+    } else {
+        format!("{value} {unit}{suffix} ago")
     }
 }
 

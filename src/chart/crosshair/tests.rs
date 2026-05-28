@@ -1,4 +1,47 @@
-use super::format_volume_compact;
+use super::{format_crosshair_relative_time, format_volume_compact};
+
+#[test]
+fn format_crosshair_relative_time_handles_past_values() {
+    let now_ms = 1_000_000_000;
+
+    assert_eq!(
+        format_crosshair_relative_time(now_ms - 10_000, now_ms),
+        "10 seconds ago"
+    );
+    assert_eq!(
+        format_crosshair_relative_time(now_ms - 60_000, now_ms),
+        "1 minute ago"
+    );
+    assert_eq!(
+        format_crosshair_relative_time(now_ms - 10 * 86_400_000, now_ms),
+        "10 days ago"
+    );
+}
+
+#[test]
+fn format_crosshair_relative_time_handles_future_values() {
+    let now_ms = 1_000_000_000;
+
+    assert_eq!(
+        format_crosshair_relative_time(now_ms + 3_600_000, now_ms),
+        "in 1 hour"
+    );
+    assert_eq!(
+        format_crosshair_relative_time(now_ms + 14 * 86_400_000, now_ms),
+        "in 2 weeks"
+    );
+}
+
+#[test]
+fn format_crosshair_relative_time_treats_nearby_values_as_now() {
+    let now_ms = 1_000_000_000;
+
+    assert_eq!(format_crosshair_relative_time(now_ms, now_ms), "now");
+    assert_eq!(
+        format_crosshair_relative_time(now_ms.saturating_sub(4_999), now_ms),
+        "now"
+    );
+}
 
 #[test]
 fn format_volume_compact_handles_zero_and_invalid_inputs() {

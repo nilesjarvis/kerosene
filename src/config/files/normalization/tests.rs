@@ -94,3 +94,24 @@ fn prunes_unsupported_panes_from_loaded_layouts() {
     );
     assert_eq!(config.saved_layouts[0].pane_layout, None);
 }
+
+#[test]
+fn refreshes_known_default_ubuntu_theme() {
+    let mut config = KeroseneConfig::default();
+    let theme = config
+        .custom_themes
+        .iter_mut()
+        .find(|theme| theme.name == "ubuntu")
+        .expect("ubuntu theme should be present");
+    theme.background = "#2C001E".to_string();
+
+    normalize_loaded_config(&mut config);
+
+    let theme = config
+        .custom_themes
+        .iter()
+        .find(|theme| theme.name == "ubuntu")
+        .expect("ubuntu theme should still be present");
+
+    assert_eq!(theme.background, "#56334B");
+}
