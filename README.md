@@ -213,7 +213,7 @@ compressed DMG.
 ```
 
 The DMG is written to `target/Kerosene-<version>-macos-<arch>.dmg`, for example
-`target/Kerosene-0.1.3-macos-arm64.dmg` on Apple Silicon.
+`target/Kerosene-0.1.7-macos-arm64.dmg` on Apple Silicon.
 
 No Apple Developer account is required for this packaging path. The output is
 ad-hoc signed, but it is not Developer ID signed or notarized. Macs receiving
