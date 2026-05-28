@@ -1,8 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{
-    normalize_alfred_popup_scale, normalize_chart_dotted_background_opacity,
-    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
-    normalize_ui_scale,
+    normalize_alfred_popup_scale, normalize_chart_crosshair_scale,
+    normalize_chart_dotted_background_opacity, normalize_market_slippage_pct,
+    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
@@ -37,6 +37,29 @@ impl TradingTerminal {
                 if (self.chart_dotted_background_opacity - opacity).abs() > f32::EPSILON {
                     self.chart_dotted_background_opacity = opacity;
                     self.sync_chart_dotted_background();
+                    self.persist_config();
+                }
+            }
+            Message::ChartCrosshairStyleChanged(style)
+                if self.chart_crosshair_style != style.normalized() =>
+            {
+                let style = style.normalized();
+                self.chart_crosshair_style = style;
+                self.sync_chart_crosshair_style();
+                self.persist_config();
+            }
+            Message::ToggleChartCrosshairGuides(enabled)
+                if self.chart_crosshair_guides_enabled != enabled =>
+            {
+                self.chart_crosshair_guides_enabled = enabled;
+                self.sync_chart_crosshair_guides();
+                self.persist_config();
+            }
+            Message::ChartCrosshairScaleChanged(value) => {
+                let scale = normalize_chart_crosshair_scale(value);
+                if (self.chart_crosshair_scale - scale).abs() > f32::EPSILON {
+                    self.chart_crosshair_scale = scale;
+                    self.sync_chart_crosshair_scale();
                     self.persist_config();
                 }
             }

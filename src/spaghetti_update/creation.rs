@@ -27,6 +27,15 @@ impl TradingTerminal {
             self.chart_dotted_background,
             self.chart_dotted_background_opacity,
         );
+        instance
+            .canvas
+            .set_crosshair_style(self.chart_crosshair_style);
+        instance
+            .canvas
+            .set_crosshair_guides_enabled(self.chart_crosshair_guides_enabled);
+        instance
+            .canvas
+            .set_crosshair_scale(self.chart_crosshair_scale);
         self.spaghetti_charts.insert(id, instance);
         if self
             .add_pane_next_to_focus(self.add_widget_axis(), PaneKind::SpaghettiChart(id), title)

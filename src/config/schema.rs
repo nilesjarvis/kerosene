@@ -18,26 +18,30 @@ use std::collections::HashMap;
 use zeroize::Zeroizing;
 
 mod accounts;
+mod crosshair;
 mod defaults;
 mod denomination;
 mod market_universe;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
+pub use crosshair::ChartCrosshairStyle;
 #[cfg(test)]
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
 use defaults::default_true;
 pub use defaults::{
-    DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY, DEFAULT_MARKET_SLIPPAGE_PCT, DEFAULT_UI_SCALE,
-    MAX_ALFRED_POPUP_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_PANE_BORDER_THICKNESS,
-    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE,
+    DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
+    DEFAULT_MARKET_SLIPPAGE_PCT, DEFAULT_UI_SCALE, MAX_ALFRED_POPUP_SCALE,
+    MAX_CHART_CROSSHAIR_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_PANE_BORDER_THICKNESS,
+    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE, MIN_CHART_CROSSHAIR_SCALE,
     MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
-    MIN_UI_SCALE, default_alfred_popup_scale, default_chart_dotted_background_opacity,
-    default_layout_ratios, default_liquidation_alert_threshold, default_market_slippage_pct,
-    default_order_kind, default_pane_border_thickness, default_pane_corner_radius, default_symbol,
+    MIN_UI_SCALE, default_alfred_popup_scale, default_chart_crosshair_scale,
+    default_chart_dotted_background_opacity, default_layout_ratios,
+    default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
+    default_pane_border_thickness, default_pane_corner_radius, default_symbol,
     default_symbol_search_sort_mode, default_tick_size, default_timeframe, default_ui_scale,
-    new_secret_id, normalize_alfred_popup_scale, normalize_chart_dotted_background_opacity,
-    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
-    normalize_ui_scale,
+    new_secret_id, normalize_alfred_popup_scale, normalize_chart_crosshair_scale,
+    normalize_chart_dotted_background_opacity, normalize_market_slippage_pct,
+    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
 pub use denomination::DisplayDenominationConfig;
 pub use market_universe::MarketUniverseConfig;
@@ -102,6 +106,15 @@ pub struct KeroseneConfig {
     /// Opacity for dotted chart plot backgrounds.
     #[serde(default = "default_chart_dotted_background_opacity")]
     pub chart_dotted_background_opacity: f32,
+    /// Crosshair reticle style used by chart canvases.
+    #[serde(default)]
+    pub chart_crosshair_style: ChartCrosshairStyle,
+    /// Whether chart crosshairs draw full-width/full-height guide lines.
+    #[serde(default = "default_true")]
+    pub chart_crosshair_guides_enabled: bool,
+    /// User-controlled multiplier for local chart crosshair reticle size.
+    #[serde(default = "default_chart_crosshair_scale")]
+    pub chart_crosshair_scale: f32,
     /// User-controlled scale for the Alfred command popup.
     #[serde(default = "default_alfred_popup_scale")]
     pub alfred_popup_scale: f32,

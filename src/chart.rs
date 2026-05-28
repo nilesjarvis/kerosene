@@ -2,6 +2,7 @@ mod annotation_overlays;
 mod candle_layer;
 mod countdown;
 mod crosshair;
+pub(crate) mod crosshair_style;
 mod data;
 mod drawing;
 mod formatting;

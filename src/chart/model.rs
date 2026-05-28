@@ -61,6 +61,12 @@ pub struct CandlestickChart {
     pub(crate) dotted_background: bool,
     /// Opacity applied to dotted chart plot backgrounds.
     pub(crate) dotted_background_opacity: f32,
+    /// Reticle style used for the chart crosshair.
+    pub(crate) crosshair_style: crate::config::ChartCrosshairStyle,
+    /// Whether the chart crosshair draws full-span guide lines.
+    pub(crate) crosshair_guides_enabled: bool,
+    /// Multiplier applied to local crosshair reticle geometry.
+    pub(crate) crosshair_scale: f32,
     /// User-drawn annotations (levels, trend lines).
     pub annotations: Vec<Annotation>,
     /// Currently active drawing tool (None = normal pan/zoom mode).

@@ -1,6 +1,7 @@
 use super::model::CandlestickChart;
 use super::state::ChartState;
 use super::tooltips::TooltipSurface;
+use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme, alignment};
@@ -48,16 +49,18 @@ impl CandlestickChart {
             return;
         }
 
-        let h_line = canvas::Path::line(Point::new(0.0, pos.y), Point::new(ctx.chart_w, pos.y));
-        let v_line = canvas::Path::line(Point::new(pos.x, 0.0), Point::new(pos.x, drawable_h));
-        let stroke = canvas::Stroke::default()
-            .with_color(Color {
-                a: 0.25,
-                ..ctx.theme.palette().text
-            })
-            .with_width(0.5);
-        ctx.frame.stroke(&h_line, stroke);
-        ctx.frame.stroke(&v_line, stroke);
+        draw_crosshair_style(
+            ctx.frame,
+            ctx.theme,
+            CrosshairStyleRender {
+                style: self.crosshair_style,
+                guide_lines_enabled: self.crosshair_guides_enabled,
+                crosshair_scale: self.crosshair_scale,
+                position: pos,
+                width: ctx.chart_w,
+                height: drawable_h,
+            },
+        );
 
         self.draw_crosshair_time_label(ctx, pos, drawable_h);
 

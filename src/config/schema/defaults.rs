@@ -70,6 +70,9 @@ pub const MAX_ALFRED_POPUP_SCALE: f32 = 1.60;
 pub const DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.14;
 pub const MIN_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.04;
 pub const MAX_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.35;
+pub const DEFAULT_CHART_CROSSHAIR_SCALE: f32 = 1.0;
+pub const MIN_CHART_CROSSHAIR_SCALE: f32 = 0.5;
+pub const MAX_CHART_CROSSHAIR_SCALE: f32 = 2.0;
 pub const MIN_PANE_BORDER_THICKNESS: f32 = 1.0;
 pub const MAX_PANE_BORDER_THICKNESS: f32 = 12.0;
 pub const MIN_PANE_CORNER_RADIUS: f32 = 0.0;
@@ -111,6 +114,18 @@ pub fn normalize_chart_dotted_background_opacity(value: f32) -> f32 {
         )
     } else {
         default_chart_dotted_background_opacity()
+    }
+}
+
+pub fn default_chart_crosshair_scale() -> f32 {
+    DEFAULT_CHART_CROSSHAIR_SCALE
+}
+
+pub fn normalize_chart_crosshair_scale(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_CHART_CROSSHAIR_SCALE, MAX_CHART_CROSSHAIR_SCALE)
+    } else {
+        default_chart_crosshair_scale()
     }
 }
 
@@ -161,6 +176,9 @@ impl Default for KeroseneConfig {
             ui_scale: default_ui_scale(),
             chart_dotted_background: false,
             chart_dotted_background_opacity: default_chart_dotted_background_opacity(),
+            chart_crosshair_style: Default::default(),
+            chart_crosshair_guides_enabled: true,
+            chart_crosshair_scale: default_chart_crosshair_scale(),
             alfred_popup_scale: default_alfred_popup_scale(),
             display_font: Default::default(),
             monospace_font: Default::default(),

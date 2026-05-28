@@ -90,6 +90,9 @@ impl TradingTerminal {
         boot_tasks.push(self.sync_main_window_min_size());
         self.apply_chart_theme_colors();
         self.sync_chart_dotted_background();
+        self.sync_chart_crosshair_style();
+        self.sync_chart_crosshair_guides();
+        self.sync_chart_crosshair_scale();
 
         Task::batch(boot_tasks)
     }

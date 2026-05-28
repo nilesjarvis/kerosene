@@ -89,6 +89,9 @@ impl TradingTerminal {
         self.ui_scale = defaults.ui_scale;
         self.chart_dotted_background = defaults.chart_dotted_background;
         self.chart_dotted_background_opacity = defaults.chart_dotted_background_opacity;
+        self.chart_crosshair_style = defaults.chart_crosshair_style;
+        self.chart_crosshair_guides_enabled = defaults.chart_crosshair_guides_enabled;
+        self.chart_crosshair_scale = defaults.chart_crosshair_scale;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
         self.outer_widget_border_enabled = defaults.outer_widget_border_enabled;
         self.custom_themes = defaults.custom_themes;
@@ -117,6 +120,9 @@ impl TradingTerminal {
         self.muted_ticker_status = None;
         self.apply_chart_theme_colors();
         self.sync_chart_dotted_background();
+        self.sync_chart_crosshair_style();
+        self.sync_chart_crosshair_guides();
+        self.sync_chart_crosshair_scale();
 
         let file_label = if summary.files_removed == 1 {
             "file"

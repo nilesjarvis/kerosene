@@ -44,13 +44,15 @@ impl CandlestickChart {
             Some(DragKind::MoveOrder { .. }) => mouse::Interaction::Grabbing,
             None => {
                 if self.active_tool.is_some() && pos.x < chart_w && pos.y < chart_h {
-                    mouse::Interaction::Crosshair
+                    // Custom reticles are drawn on the canvas; hide the OS cursor over the plot.
+                    mouse::Interaction::Hidden
                 } else if state.hover_order_oid.is_some() && pos.x < chart_w && pos.y < chart_h {
                     mouse::Interaction::Grab
                 } else if on_funding_resize || on_price_axis {
                     mouse::Interaction::ResizingVertically
                 } else if pos.x < chart_w && pos.y < drawable_h {
-                    mouse::Interaction::Crosshair
+                    // Custom reticles are drawn on the canvas; hide the OS cursor over the plot.
+                    mouse::Interaction::Hidden
                 } else {
                     mouse::Interaction::default()
                 }

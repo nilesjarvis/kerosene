@@ -1,4 +1,5 @@
 use super::NormalizedRenderContext;
+use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::spaghetti::helpers::format_relative_time;
 use iced::alignment;
 use iced::widget::canvas;
@@ -18,16 +19,18 @@ pub(super) fn draw_crosshair_overlay(
         && pos.x < ctx.chart_w
         && pos.y < ctx.chart_h
     {
-        let h = canvas::Path::line(Point::new(0.0, pos.y), Point::new(ctx.chart_w, pos.y));
-        let v = canvas::Path::line(Point::new(pos.x, 0.0), Point::new(pos.x, ctx.chart_h));
-        let stroke = canvas::Stroke::default()
-            .with_color(Color {
-                a: 0.25,
-                ..ctx.theme.palette().text
-            })
-            .with_width(0.5);
-        overlay.stroke(&h, stroke);
-        overlay.stroke(&v, stroke);
+        draw_crosshair_style(
+            &mut overlay,
+            ctx.theme,
+            CrosshairStyleRender {
+                style: ctx.crosshair_style,
+                guide_lines_enabled: ctx.crosshair_guides_enabled,
+                crosshair_scale: ctx.crosshair_scale,
+                position: pos,
+                width: ctx.chart_w,
+                height: ctx.chart_h,
+            },
+        );
 
         if pct_range > 0.0 {
             let hover_pct = pct_hi - (pos.y as f64 / ctx.chart_h as f64) * pct_range;

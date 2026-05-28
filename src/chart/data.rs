@@ -29,6 +29,9 @@ impl CandlestickChart {
             show_trade_markers: false,
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
+            crosshair_style: Default::default(),
+            crosshair_guides_enabled: true,
+            crosshair_scale: crate::config::default_chart_crosshair_scale(),
             annotations: Vec::new(),
             active_tool: None,
             liquidation_buckets: Vec::new(),
@@ -71,6 +74,9 @@ impl CandlestickChart {
             show_trade_markers: self.show_trade_markers,
             dotted_background: self.dotted_background,
             dotted_background_opacity: self.dotted_background_opacity,
+            crosshair_style: self.crosshair_style,
+            crosshair_guides_enabled: self.crosshair_guides_enabled,
+            crosshair_scale: self.crosshair_scale,
             annotations: self.annotations.clone(),
             active_tool: None,
             liquidation_buckets: self.liquidation_buckets.clone(),
@@ -146,6 +152,29 @@ impl CandlestickChart {
         {
             self.dotted_background = enabled;
             self.dotted_background_opacity = opacity;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_crosshair_style(&mut self, style: crate::config::ChartCrosshairStyle) {
+        let style = style.normalized();
+        if self.crosshair_style != style {
+            self.crosshair_style = style;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_crosshair_guides_enabled(&mut self, enabled: bool) {
+        if self.crosshair_guides_enabled != enabled {
+            self.crosshair_guides_enabled = enabled;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_crosshair_scale(&mut self, scale: f32) {
+        let scale = crate::config::normalize_chart_crosshair_scale(scale);
+        if (self.crosshair_scale - scale).abs() > f32::EPSILON {
+            self.crosshair_scale = scale;
             self.candle_cache.clear();
         }
     }

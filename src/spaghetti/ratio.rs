@@ -31,6 +31,9 @@ pub(super) struct PairRatioRenderContext<'a> {
     pub(super) time_px_per_ms: f64,
     pub(super) effective_max: u64,
     pub(super) base_timestamp: Option<u64>,
+    pub(super) crosshair_style: crate::config::ChartCrosshairStyle,
+    pub(super) crosshair_guides_enabled: bool,
+    pub(super) crosshair_scale: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

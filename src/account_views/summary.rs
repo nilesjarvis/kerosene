@@ -21,12 +21,10 @@ const PANE_GRID_MIN_SIZE: f32 = 50.0;
 
 impl TradingTerminal {
     pub(crate) fn view_account_summary_bar(&self) -> Element<'_, Message> {
-        let pane_corner_radius = self.pane_corner_radius;
-
         container(self.view_account_summary())
             .width(Fill)
             .height(Length::Fixed(self.account_summary_bar_height()))
-            .style(move |theme: &Theme| account_summary_bar_style(theme, pane_corner_radius))
+            .style(account_summary_bar_style)
             .into()
     }
 
@@ -67,7 +65,7 @@ impl TradingTerminal {
     }
 }
 
-fn account_summary_bar_style(theme: &Theme, corner_radius: f32) -> container_style::Style {
+fn account_summary_bar_style(theme: &Theme) -> container_style::Style {
     let mut border_color = theme.extended_palette().background.strong.text;
     border_color.a = 0.10;
 
@@ -77,7 +75,7 @@ fn account_summary_bar_style(theme: &Theme, corner_radius: f32) -> container_sty
         border: iced::Border {
             width: ACCOUNT_SUMMARY_BORDER_WIDTH,
             color: border_color,
-            radius: corner_radius.into(),
+            radius: 0.0.into(),
         },
         ..Default::default()
     }

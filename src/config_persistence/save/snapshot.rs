@@ -40,6 +40,11 @@ impl TradingTerminal {
             ui_scale: self.ui_scale,
             chart_dotted_background: self.chart_dotted_background,
             chart_dotted_background_opacity: self.chart_dotted_background_opacity,
+            chart_crosshair_style: self.chart_crosshair_style.normalized(),
+            chart_crosshair_guides_enabled: self.chart_crosshair_guides_enabled,
+            chart_crosshair_scale: config::normalize_chart_crosshair_scale(
+                self.chart_crosshair_scale,
+            ),
             alfred_popup_scale: self.alfred_popup_scale,
             display_font: self.display_font.clone(),
             monospace_font: self.monospace_font.clone(),

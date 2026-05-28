@@ -1,7 +1,8 @@
 use super::{
-    KeroseneConfig, default_alfred_popup_scale, default_chart_dotted_background_opacity,
-    default_config_value, default_pane_border_thickness, default_pane_corner_radius,
-    default_ui_scale, json_string, object_mut, value_from_json, value_from_str,
+    ChartCrosshairStyle, KeroseneConfig, default_alfred_popup_scale, default_chart_crosshair_scale,
+    default_chart_dotted_background_opacity, default_config_value, default_pane_border_thickness,
+    default_pane_corner_radius, default_ui_scale, json_string, object_mut, value_from_json,
+    value_from_str,
 };
 
 #[test]
@@ -10,6 +11,9 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         ui_scale: 0.85,
         chart_dotted_background: true,
         chart_dotted_background_opacity: 0.27,
+        chart_crosshair_style: ChartCrosshairStyle::Rangefinder,
+        chart_crosshair_guides_enabled: false,
+        chart_crosshair_scale: 1.55,
         alfred_popup_scale: 1.35,
         pane_border_thickness: 8.0,
         pane_corner_radius: 12.0,
@@ -22,6 +26,12 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.ui_scale, 0.85);
     assert!(decoded.chart_dotted_background);
     assert_eq!(decoded.chart_dotted_background_opacity, 0.27);
+    assert_eq!(
+        decoded.chart_crosshair_style,
+        ChartCrosshairStyle::Rangefinder
+    );
+    assert!(!decoded.chart_crosshair_guides_enabled);
+    assert_eq!(decoded.chart_crosshair_scale, 1.55);
     assert_eq!(decoded.alfred_popup_scale, 1.35);
     assert_eq!(decoded.pane_border_thickness, 8.0);
     assert_eq!(decoded.pane_corner_radius, 12.0);
@@ -32,6 +42,9 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("ui_scale");
     object.remove("chart_dotted_background");
     object.remove("chart_dotted_background_opacity");
+    object.remove("chart_crosshair_style");
+    object.remove("chart_crosshair_guides_enabled");
+    object.remove("chart_crosshair_scale");
     object.remove("alfred_popup_scale");
     object.remove("pane_border_thickness");
     object.remove("pane_corner_radius");
@@ -44,6 +57,15 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(
         decoded_legacy.chart_dotted_background_opacity,
         default_chart_dotted_background_opacity()
+    );
+    assert_eq!(
+        decoded_legacy.chart_crosshair_style,
+        ChartCrosshairStyle::default()
+    );
+    assert!(decoded_legacy.chart_crosshair_guides_enabled);
+    assert_eq!(
+        decoded_legacy.chart_crosshair_scale,
+        default_chart_crosshair_scale()
     );
     assert_eq!(
         decoded_legacy.alfred_popup_scale,

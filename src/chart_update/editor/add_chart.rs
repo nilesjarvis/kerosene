@@ -19,6 +19,15 @@ impl TradingTerminal {
             self.chart_dotted_background,
             self.chart_dotted_background_opacity,
         );
+        instance
+            .chart
+            .set_crosshair_style(self.chart_crosshair_style);
+        instance
+            .chart
+            .set_crosshair_guides_enabled(self.chart_crosshair_guides_enabled);
+        instance
+            .chart
+            .set_crosshair_scale(self.chart_crosshair_scale);
         self.charts.insert(id, instance);
         if self
             .add_pane_to_target(

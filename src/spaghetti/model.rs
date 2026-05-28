@@ -68,6 +68,12 @@ pub struct SpaghettiCanvas {
     pub(crate) dotted_background: bool,
     /// Opacity applied to dotted chart plot backgrounds.
     pub(crate) dotted_background_opacity: f32,
+    /// Reticle style used for the chart crosshair.
+    pub(crate) crosshair_style: crate::config::ChartCrosshairStyle,
+    /// Whether the chart crosshair draws full-span guide lines.
+    pub(crate) crosshair_guides_enabled: bool,
+    /// Multiplier applied to local crosshair reticle geometry.
+    pub(crate) crosshair_scale: f32,
     /// Monotonic token used to request viewport reset.
     pub reset_epoch: u64,
     /// Session-based normalization start time (ms). If None, uses the
@@ -88,6 +94,9 @@ impl SpaghettiCanvas {
             pair_candle_mode: false,
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
+            crosshair_style: Default::default(),
+            crosshair_guides_enabled: true,
+            crosshair_scale: crate::config::default_chart_crosshair_scale(),
             reset_epoch: 0,
             base_timestamp: None,
             active_session: None,
@@ -140,6 +149,29 @@ impl SpaghettiCanvas {
         {
             self.dotted_background = enabled;
             self.dotted_background_opacity = opacity;
+            self.cache.clear();
+        }
+    }
+
+    pub(crate) fn set_crosshair_style(&mut self, style: crate::config::ChartCrosshairStyle) {
+        let style = style.normalized();
+        if self.crosshair_style != style {
+            self.crosshair_style = style;
+            self.cache.clear();
+        }
+    }
+
+    pub(crate) fn set_crosshair_guides_enabled(&mut self, enabled: bool) {
+        if self.crosshair_guides_enabled != enabled {
+            self.crosshair_guides_enabled = enabled;
+            self.cache.clear();
+        }
+    }
+
+    pub(crate) fn set_crosshair_scale(&mut self, scale: f32) {
+        let scale = crate::config::normalize_chart_crosshair_scale(scale);
+        if (self.crosshair_scale - scale).abs() > f32::EPSILON {
+            self.crosshair_scale = scale;
             self.cache.clear();
         }
     }

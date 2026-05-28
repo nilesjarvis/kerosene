@@ -97,6 +97,37 @@ impl TradingTerminal {
             instance.canvas.set_dotted_background(enabled, opacity);
         }
     }
+
+    pub(crate) fn sync_chart_crosshair_style(&mut self) {
+        let style = self.chart_crosshair_style.normalized();
+        self.chart_crosshair_style = style;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_crosshair_style(style);
+        }
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.canvas.set_crosshair_style(style);
+        }
+    }
+
+    pub(crate) fn sync_chart_crosshair_guides(&mut self) {
+        let enabled = self.chart_crosshair_guides_enabled;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_crosshair_guides_enabled(enabled);
+        }
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.canvas.set_crosshair_guides_enabled(enabled);
+        }
+    }
+
+    pub(crate) fn sync_chart_crosshair_scale(&mut self) {
+        let scale = self.chart_crosshair_scale;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_crosshair_scale(scale);
+        }
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.canvas.set_crosshair_scale(scale);
+        }
+    }
 }
 
 #[cfg(test)]

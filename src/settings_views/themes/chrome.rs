@@ -1,13 +1,15 @@
 use crate::app_state::TradingTerminal;
+use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::config::{
-    DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY, DEFAULT_UI_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY,
-    MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE,
+    ChartCrosshairStyle, DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
+    DEFAULT_UI_SCALE, MAX_CHART_CROSSHAIR_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY,
+    MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_CHART_CROSSHAIR_SCALE,
     MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
     MIN_UI_SCALE, default_pane_border_thickness, default_pane_corner_radius,
 };
 use crate::message::Message;
-use iced::widget::{checkbox, column, row, slider, text};
-use iced::{Element, Fill, Length, Theme};
+use iced::widget::{Column, Row, button, checkbox, column, row, slider, text};
+use iced::{Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
 use std::ops::RangeInclusive;
 
 // ---------------------------------------------------------------------------
@@ -66,12 +68,39 @@ impl TradingTerminal {
             ));
         }
 
+        content = content
+            .push(text("Crosshair").size(12).color(theme.palette().text))
+            .push(
+                checkbox(self.chart_crosshair_guides_enabled)
+                    .label("Full-span guide lines")
+                    .on_toggle(Message::ToggleChartCrosshairGuides)
+                    .size(12)
+                    .spacing(8)
+                    .text_size(12)
+                    .font(crate::app_fonts::monospace_font()),
+            )
+            .push(scale_slider_row(
+                &theme,
+                "Size",
+                self.chart_crosshair_scale,
+                MIN_CHART_CROSSHAIR_SCALE..=MAX_CHART_CROSSHAIR_SCALE,
+                Message::ChartCrosshairScaleChanged,
+            ))
+            .push(crosshair_style_grid(
+                &theme,
+                self.chart_crosshair_style,
+                self.chart_crosshair_guides_enabled,
+                self.chart_crosshair_scale,
+            ));
+
         content
             .push(
                 text(format!(
-                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}px divider, {:.0}px corners",
+                    "Defaults: {:.0}% scale, {:.0}% dots, {} crosshair, {:.0}% size, {:.0}px divider, {:.0}px corners",
                     DEFAULT_UI_SCALE * 100.0,
                     DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY * 100.0,
+                    ChartCrosshairStyle::default().label(),
+                    DEFAULT_CHART_CROSSHAIR_SCALE * 100.0,
                     default_pane_border_thickness(),
                     default_pane_corner_radius()
                 ))
@@ -104,6 +133,158 @@ fn scale_slider_row<'a>(
     .spacing(10)
     .align_y(iced::Alignment::Center)
     .into()
+}
+
+fn crosshair_style_grid(
+    theme: &Theme,
+    selected: ChartCrosshairStyle,
+    guide_lines_enabled: bool,
+    crosshair_scale: f32,
+) -> Element<'static, Message> {
+    let mut grid = Column::new().spacing(6).width(Fill);
+
+    for styles in ChartCrosshairStyle::ALL.chunks(2) {
+        let mut style_row = Row::new().spacing(6).width(Fill);
+        for style in styles {
+            style_row = style_row.push(crosshair_style_card(
+                theme,
+                *style,
+                selected,
+                guide_lines_enabled,
+                crosshair_scale,
+            ));
+        }
+        grid = grid.push(style_row);
+    }
+
+    grid.into()
+}
+
+fn crosshair_style_card(
+    theme: &Theme,
+    style: ChartCrosshairStyle,
+    selected: ChartCrosshairStyle,
+    guide_lines_enabled: bool,
+    crosshair_scale: f32,
+) -> Element<'static, Message> {
+    let is_selected = style == selected;
+    let label_color = if is_selected {
+        theme.palette().primary
+    } else {
+        theme.extended_palette().background.weak.text
+    };
+
+    let preview: Element<'static, Message> = iced::widget::canvas(CrosshairStylePreview {
+        style,
+        guide_lines_enabled,
+        crosshair_scale,
+    })
+    .width(Fill)
+    .height(Length::Fixed(38.0))
+    .into();
+
+    let content = column![
+        preview,
+        text(style.label())
+            .size(10)
+            .color(label_color)
+            .font(crate::app_fonts::monospace_font())
+    ]
+    .spacing(4)
+    .align_x(Alignment::Center)
+    .width(Fill);
+
+    button(content)
+        .on_press(Message::ChartCrosshairStyleChanged(style))
+        .padding([6, 7])
+        .width(Fill)
+        .style(move |theme: &Theme, status| {
+            let background = match status {
+                button::Status::Hovered => theme.extended_palette().background.strong.color,
+                _ if is_selected => Color {
+                    a: 0.38,
+                    ..theme.extended_palette().background.strong.color
+                },
+                _ => Color {
+                    a: 0.22,
+                    ..theme.extended_palette().background.weak.color
+                },
+            };
+            let border_color = if is_selected {
+                theme.palette().primary
+            } else {
+                Color {
+                    a: 0.28,
+                    ..theme.extended_palette().background.weak.text
+                }
+            };
+
+            button::Style {
+                background: Some(background.into()),
+                text_color: theme.palette().text,
+                border: iced::Border {
+                    color: border_color,
+                    width: if is_selected { 1.0 } else { 0.5 },
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
+struct CrosshairStylePreview {
+    style: ChartCrosshairStyle,
+    guide_lines_enabled: bool,
+    crosshair_scale: f32,
+}
+
+impl iced::widget::canvas::Program<Message> for CrosshairStylePreview {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        let mut frame = iced::widget::canvas::Frame::new(renderer, bounds.size());
+        if bounds.width <= 0.0 || bounds.height <= 0.0 {
+            return vec![frame.into_geometry()];
+        }
+
+        let border_size = Size::new(
+            (bounds.width - 1.0).max(0.0),
+            (bounds.height - 1.0).max(0.0),
+        );
+        let border = iced::widget::canvas::Path::rectangle(Point::new(0.5, 0.5), border_size);
+        frame.stroke(
+            &border,
+            iced::widget::canvas::Stroke::default()
+                .with_color(Color {
+                    a: 0.14,
+                    ..theme.extended_palette().background.weak.text
+                })
+                .with_width(1.0),
+        );
+
+        draw_crosshair_style(
+            &mut frame,
+            theme,
+            CrosshairStyleRender {
+                style: self.style,
+                guide_lines_enabled: self.guide_lines_enabled,
+                crosshair_scale: self.crosshair_scale,
+                position: Point::new(bounds.width * 0.5, bounds.height * 0.5),
+                width: bounds.width,
+                height: bounds.height,
+            },
+        );
+
+        vec![frame.into_geometry()]
+    }
 }
 
 fn chrome_slider_row<'a>(

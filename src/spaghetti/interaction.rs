@@ -125,7 +125,8 @@ impl SpaghettiCanvas {
                 if pos.x >= chart_w && pos.y < chart_h {
                     mouse::Interaction::ResizingVertically
                 } else if pos.x < chart_w && pos.y < chart_h {
-                    mouse::Interaction::Crosshair
+                    // Custom reticles are drawn on the canvas; hide the OS cursor over the plot.
+                    mouse::Interaction::Hidden
                 } else {
                     mouse::Interaction::default()
                 }

@@ -67,6 +67,11 @@ impl TradingTerminal {
             ui_scale: cfg.ui_scale,
             chart_dotted_background: cfg.chart_dotted_background,
             chart_dotted_background_opacity: cfg.chart_dotted_background_opacity,
+            chart_crosshair_style: cfg.chart_crosshair_style.normalized(),
+            chart_crosshair_guides_enabled: cfg.chart_crosshair_guides_enabled,
+            chart_crosshair_scale: config::normalize_chart_crosshair_scale(
+                cfg.chart_crosshair_scale,
+            ),
             alfred_popup_scale: cfg.alfred_popup_scale,
             display_font: cfg.display_font.clone(),
             monospace_font: cfg.monospace_font.clone(),

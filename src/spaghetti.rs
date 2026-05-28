@@ -101,6 +101,9 @@ impl canvas::Program<Message> for SpaghettiCanvas {
                     time_px_per_ms,
                     effective_max,
                     base_timestamp: self.base_timestamp,
+                    crosshair_style: self.crosshair_style,
+                    crosshair_guides_enabled: self.crosshair_guides_enabled,
+                    crosshair_scale: self.crosshair_scale,
                 },
                 &loaded_series,
             );
@@ -120,6 +123,9 @@ impl canvas::Program<Message> for SpaghettiCanvas {
                 time_px_per_ms,
                 effective_max,
                 base_ts: self.base_timestamp.unwrap_or(global_min_ts),
+                crosshair_style: self.crosshair_style,
+                crosshair_guides_enabled: self.crosshair_guides_enabled,
+                crosshair_scale: self.crosshair_scale,
             },
             &loaded_series,
         )
