@@ -37,8 +37,10 @@ pub(in crate::market_views::positioning_info) fn positioning_table_header(
             Length::Fixed(columns.side_width),
             muted,
             Horizontal::Left,
-        ))
-        .push(sort_header_cell(
+        ));
+
+    if columns.show_size {
+        header = header.push(sort_header_cell(
             "Size",
             PositioningInfoSortField::Size,
             id,
@@ -46,7 +48,10 @@ pub(in crate::market_views::positioning_info) fn positioning_table_header(
             sort_direction,
             Length::Fixed(columns.size_width),
             muted,
-        ))
+        ));
+    }
+
+    header = header
         .push(sort_header_cell(
             "Notional",
             PositioningInfoSortField::NotionalSize,

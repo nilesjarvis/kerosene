@@ -32,5 +32,26 @@ fn numeric_formatters_reject_nonfinite_values() {
     let denomination = DisplayDenominationContext::default();
     assert_eq!(format_usd_number(f64::NAN, &denomination), "-");
     assert_eq!(format_signed_usd(f64::INFINITY, &denomination), "-");
+    assert_eq!(format_signed_usd_compact(f64::NAN, &denomination), "-");
     assert_eq!(format_price_number(0.0, &denomination), "-");
+}
+
+#[test]
+fn compact_signed_usd_shortens_large_positioning_values() {
+    let denomination = DisplayDenominationContext::default();
+
+    assert_eq!(
+        format_signed_usd_compact(30_232_434.0, &denomination),
+        "+$30m"
+    );
+    assert_eq!(
+        format_signed_usd_compact(-30_232_434.0, &denomination),
+        "-$30m"
+    );
+    assert_eq!(
+        format_signed_usd_compact(532_023.0, &denomination),
+        "+$500k"
+    );
+    assert_eq!(format_signed_usd_compact(995.0, &denomination), "+$995");
+    assert_eq!(format_signed_usd_compact(-0.49, &denomination), "$0");
 }

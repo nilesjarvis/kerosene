@@ -19,10 +19,12 @@ pub(super) struct PositioningInfoColumns {
     pub(super) liq_width: f32,
     pub(super) funding_width: f32,
     pub(super) account_width: f32,
+    pub(super) show_size: bool,
     pub(super) show_entry: bool,
     pub(super) show_liq: bool,
     pub(super) show_funding: bool,
     pub(super) show_account: bool,
+    pub(super) compact_money: bool,
 }
 
 const POSITIONING_TABLE_CONTENT_PADDING: f32 = 20.0;
@@ -54,13 +56,11 @@ pub(super) const POSITIONING_TRADER_FULL_ACTIONS_WIDTH: f32 = 106.0;
 impl PositioningInfoColumns {
     pub(super) fn for_width(width: f32) -> Self {
         let content_width = Self::available_content_width(width);
-        let base_fixed_width = POSITIONING_SIDE_WIDTH
-            + POSITIONING_SIZE_WIDTH
-            + POSITIONING_NOTIONAL_WIDTH
-            + POSITIONING_UPNL_WIDTH;
+        let base_fixed_width =
+            POSITIONING_SIDE_WIDTH + POSITIONING_NOTIONAL_WIDTH + POSITIONING_UPNL_WIDTH;
         let base_width_without_trader = POSITIONING_TABLE_CELL_PADDING
             + base_fixed_width
-            + POSITIONING_TABLE_COLUMN_SPACING * 4.0;
+            + POSITIONING_TABLE_COLUMN_SPACING * 3.0;
         let available_for_trader = (content_width - base_width_without_trader).max(0.0);
         let trader_width = if available_for_trader < POSITIONING_TRADER_MIN_WIDTH {
             available_for_trader
@@ -79,9 +79,11 @@ impl PositioningInfoColumns {
         };
 
         let show_entry = include_column(POSITIONING_ENTRY_WIDTH);
+        let show_size = include_column(POSITIONING_SIZE_WIDTH);
         let show_liq = include_column(POSITIONING_LIQ_WIDTH);
         let show_funding = include_column(POSITIONING_FUNDING_WIDTH);
         let show_account = include_column(POSITIONING_ACCOUNT_WIDTH);
+        let compact_money = !show_size || !show_liq || !show_funding || !show_account;
 
         let mut columns = Self {
             trader_width,
@@ -93,10 +95,12 @@ impl PositioningInfoColumns {
             liq_width: POSITIONING_LIQ_WIDTH,
             funding_width: POSITIONING_FUNDING_WIDTH,
             account_width: POSITIONING_ACCOUNT_WIDTH,
+            show_size,
             show_entry,
             show_liq,
             show_funding,
             show_account,
+            compact_money,
         };
         columns.distribute_extra_width((content_width - columns.total_width()).max(0.0));
         columns
@@ -112,7 +116,8 @@ impl PositioningInfoColumns {
     }
 
     fn visible_column_count(self) -> usize {
-        5 + usize::from(self.show_entry)
+        4 + usize::from(self.show_size)
+            + usize::from(self.show_entry)
             + usize::from(self.show_liq)
             + usize::from(self.show_funding)
             + usize::from(self.show_account)
@@ -120,6 +125,9 @@ impl PositioningInfoColumns {
 
     pub(super) fn total_width(self) -> f32 {
         let mut optional_width = 0.0;
+        if self.show_size {
+            optional_width += self.size_width;
+        }
         if self.show_entry {
             optional_width += self.entry_width;
         }
@@ -136,7 +144,6 @@ impl PositioningInfoColumns {
         POSITIONING_TABLE_CELL_PADDING
             + self.trader_width
             + self.side_width
-            + self.size_width
             + self.notional_width
             + self.upnl_width
             + optional_width
@@ -150,9 +157,13 @@ impl PositioningInfoColumns {
 
         let total_weight = POSITIONING_TRADER_WEIGHT
             + POSITIONING_SIDE_WEIGHT
-            + POSITIONING_SIZE_WEIGHT
             + POSITIONING_NOTIONAL_WEIGHT
             + POSITIONING_UPNL_WEIGHT
+            + if self.show_size {
+                POSITIONING_SIZE_WEIGHT
+            } else {
+                0.0
+            }
             + if self.show_entry {
                 POSITIONING_ENTRY_WEIGHT
             } else {
@@ -176,9 +187,11 @@ impl PositioningInfoColumns {
 
         self.trader_width += extra * POSITIONING_TRADER_WEIGHT / total_weight;
         self.side_width += extra * POSITIONING_SIDE_WEIGHT / total_weight;
-        self.size_width += extra * POSITIONING_SIZE_WEIGHT / total_weight;
         self.notional_width += extra * POSITIONING_NOTIONAL_WEIGHT / total_weight;
         self.upnl_width += extra * POSITIONING_UPNL_WEIGHT / total_weight;
+        if self.show_size {
+            self.size_width += extra * POSITIONING_SIZE_WEIGHT / total_weight;
+        }
         if self.show_entry {
             self.entry_width += extra * POSITIONING_ENTRY_WEIGHT / total_weight;
         }

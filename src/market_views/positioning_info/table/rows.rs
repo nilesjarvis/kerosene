@@ -29,6 +29,16 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
         positioning_live_unrealized_pnl(position, live_mark).unwrap_or(position.unrealized_pnl);
     let pnl_color = signed_value_color(unrealized_pnl, theme);
     let funding_color = signed_value_color(position.funding_pnl, theme);
+    let pnl_text = if columns.compact_money {
+        format_signed_usd_compact(unrealized_pnl, denomination)
+    } else {
+        format_signed_usd(unrealized_pnl, denomination)
+    };
+    let funding_text = if columns.compact_money {
+        format_signed_usd_compact(position.funding_pnl, denomination)
+    } else {
+        format_signed_usd(position.funding_pnl, denomination)
+    };
 
     let mut row = Row::new()
         .spacing(POSITIONING_TABLE_COLUMN_SPACING)
@@ -46,13 +56,18 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
             Length::Fixed(columns.side_width),
             side_color,
             false,
-        ))
-        .push(value_cell(
+        ));
+
+    if columns.show_size {
+        row = row.push(value_cell(
             helpers::format_size(position.size.abs()),
             Length::Fixed(columns.size_width),
             theme.palette().text,
             true,
-        ))
+        ));
+    }
+
+    row = row
         .push(value_cell(
             format_usd_number(notional.abs(), denomination),
             Length::Fixed(columns.notional_width),
@@ -60,7 +75,7 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
             true,
         ))
         .push(value_cell(
-            format_signed_usd(unrealized_pnl, denomination),
+            pnl_text,
             Length::Fixed(columns.upnl_width),
             pnl_color,
             true,
@@ -87,7 +102,7 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
     }
     if columns.show_funding {
         row = row.push(value_cell(
-            format_signed_usd(position.funding_pnl, denomination),
+            funding_text,
             Length::Fixed(columns.funding_width),
             funding_color,
             true,
