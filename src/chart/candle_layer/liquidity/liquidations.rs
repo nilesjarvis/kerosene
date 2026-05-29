@@ -42,7 +42,8 @@ impl CandlestickChart {
             if bucket.long_usd > 0.0 {
                 let frac = (bucket.long_usd / max_usd) as f32;
                 let bar_w = frac * max_bar_w;
-                frame.fill_rectangle(
+                ctx.fisheye.fill_projected_rect(
+                    frame,
                     Point::new(ctx.chart_w - bar_w, y - bucket_h * 0.5),
                     Size::new(bar_w, bucket_h.max(1.5)),
                     Color {
@@ -55,7 +56,8 @@ impl CandlestickChart {
             if bucket.short_usd > 0.0 {
                 let frac = (bucket.short_usd / max_usd) as f32;
                 let bar_w = frac * max_bar_w;
-                frame.fill_rectangle(
+                ctx.fisheye.fill_projected_rect(
+                    frame,
                     Point::new(ctx.chart_w - bar_w, y - bucket_h * 0.5),
                     Size::new(bar_w, bucket_h.max(1.5)),
                     Color {

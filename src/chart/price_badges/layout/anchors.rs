@@ -10,6 +10,8 @@ use super::{
     RIGHT_AXIS_PRIMARY_BADGE_HEIGHT, RIGHT_AXIS_SECONDARY_BADGE_HEIGHT, RightAxisBadgeKind,
 };
 use crate::annotations::AnnotationKind;
+use crate::chart::fisheye::ChartFisheye;
+use iced::Point;
 
 // ---------------------------------------------------------------------------
 // Right Axis Badge Anchors
@@ -19,6 +21,8 @@ pub(super) fn right_axis_badge_anchors<PriceToY>(
     chart: &CandlestickChart,
     state: &ChartState,
     price_h: f32,
+    chart_w: f32,
+    fisheye: ChartFisheye,
     price_to_y: &PriceToY,
 ) -> Vec<RightAxisBadgeAnchor>
 where
@@ -30,7 +34,7 @@ where
         push_visible_badge(
             &mut anchors,
             RightAxisBadgeKind::CurrentPrice,
-            price_to_y(last_candle.close),
+            visual_badge_source_y(price_to_y(last_candle.close), chart_w, price_h, fisheye),
             RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
             RIGHT_AXIS_CURRENT_PRICE_SORT_RANK,
             None,
@@ -45,7 +49,7 @@ where
         push_visible_badge(
             &mut anchors,
             RightAxisBadgeKind::QuickOrder,
-            price_to_y(price),
+            visual_badge_source_y(price_to_y(price), chart_w, price_h, fisheye),
             RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
             RIGHT_AXIS_QUICK_ORDER_SORT_RANK,
             None,
@@ -60,7 +64,7 @@ where
         push_visible_badge(
             &mut anchors,
             RightAxisBadgeKind::PositionEntry,
-            price_to_y(position.entry_px),
+            visual_badge_source_y(price_to_y(position.entry_px), chart_w, price_h, fisheye),
             RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
             RIGHT_AXIS_POSITION_ENTRY_SORT_RANK,
             None,
@@ -71,7 +75,7 @@ where
             push_visible_badge(
                 &mut anchors,
                 RightAxisBadgeKind::PositionLiquidation,
-                price_to_y(liq_px),
+                visual_badge_source_y(price_to_y(liq_px), chart_w, price_h, fisheye),
                 RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
                 RIGHT_AXIS_LIQUIDATION_SORT_RANK,
                 None,
@@ -103,7 +107,7 @@ where
             push_visible_badge(
                 &mut anchors,
                 RightAxisBadgeKind::ActiveOrder(order_index),
-                price_to_y(display_px),
+                visual_badge_source_y(price_to_y(display_px), chart_w, price_h, fisheye),
                 RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
                 sort_rank,
                 Some(if order.is_buy {
@@ -121,7 +125,7 @@ where
             push_visible_badge(
                 &mut anchors,
                 RightAxisBadgeKind::HorizontalAnnotation(annotation_index),
-                price_to_y(*price),
+                visual_badge_source_y(price_to_y(*price), chart_w, price_h, fisheye),
                 RIGHT_AXIS_SECONDARY_BADGE_HEIGHT,
                 RIGHT_AXIS_ANNOTATION_SORT_BASE + annotation_index,
                 None,
@@ -131,4 +135,15 @@ where
     }
 
     anchors
+}
+
+fn visual_badge_source_y(raw_y: f32, chart_w: f32, price_h: f32, fisheye: ChartFisheye) -> f32 {
+    if !raw_y.is_finite() {
+        return raw_y;
+    }
+
+    fisheye
+        .project(Point::new(chart_w, raw_y))
+        .y
+        .clamp(0.0, price_h)
 }

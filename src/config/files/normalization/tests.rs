@@ -35,6 +35,8 @@ fn normalizes_out_of_range_pane_chrome() {
         ui_scale: 99.0,
         alfred_popup_scale: 99.0,
         chart_dotted_background_opacity: 99.0,
+        chart_fisheye_strength: 99.0,
+        chart_chromatic_aberration_strength: 99.0,
         pane_border_thickness: 99.0,
         pane_corner_radius: f32::NAN,
         ..KeroseneConfig::default()
@@ -50,6 +52,14 @@ fn normalizes_out_of_range_pane_chrome() {
     assert_eq!(
         config.chart_dotted_background_opacity,
         crate::config::normalize_chart_dotted_background_opacity(99.0)
+    );
+    assert_eq!(
+        config.chart_fisheye_strength,
+        crate::config::normalize_chart_fisheye_strength(99.0)
+    );
+    assert_eq!(
+        config.chart_chromatic_aberration_strength,
+        crate::config::normalize_chart_chromatic_aberration_strength(99.0)
     );
     assert_eq!(
         config.pane_border_thickness,

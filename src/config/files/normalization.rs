@@ -3,7 +3,8 @@ use crate::config::themes::{
 };
 use crate::config::{
     AccountProfile, KeroseneConfig, default_layout_ratios, default_market_slippage_pct,
-    new_secret_id, normalize_alfred_popup_scale, normalize_chart_dotted_background_opacity,
+    new_secret_id, normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
+    normalize_chart_dotted_background_opacity, normalize_chart_fisheye_strength,
     normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
     normalize_ui_scale, prune_unsupported_pane_layout,
 };
@@ -56,6 +57,9 @@ fn normalize_pane_chrome(config: &mut KeroseneConfig) {
     config.alfred_popup_scale = normalize_alfred_popup_scale(config.alfred_popup_scale);
     config.chart_dotted_background_opacity =
         normalize_chart_dotted_background_opacity(config.chart_dotted_background_opacity);
+    config.chart_fisheye_strength = normalize_chart_fisheye_strength(config.chart_fisheye_strength);
+    config.chart_chromatic_aberration_strength =
+        normalize_chart_chromatic_aberration_strength(config.chart_chromatic_aberration_strength);
     config.pane_border_thickness = normalize_pane_border_thickness(config.pane_border_thickness);
     config.pane_corner_radius = normalize_pane_corner_radius(config.pane_corner_radius);
 }

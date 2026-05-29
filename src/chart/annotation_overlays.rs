@@ -1,4 +1,7 @@
-use super::drawing::{AxisBadgeStyle, SegmentedHLineStyle, stroke_segmented_hline};
+use super::drawing::{
+    AxisBadgeStyle, SegmentedHLineStyle, stroke_projected_segmented_hline_with_offset,
+};
+use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
 use super::price_badges::{
     RIGHT_AXIS_SECONDARY_BADGE_HEIGHT, RightAxisBadgeConnectorStyle, RightAxisBadgeKind,
@@ -26,6 +29,7 @@ where
     pub(super) price_h: f32,
     pub(super) price_range: f64,
     pub(super) right_axis_badges: &'a RightAxisBadgeLayout,
+    pub(super) fisheye: ChartFisheye,
     pub(super) price_to_y: &'a PriceToY,
 }
 
@@ -49,8 +53,20 @@ impl CandlestickChart {
                     }
                     let kind = RightAxisBadgeKind::HorizontalAnnotation(annotation_index);
                     let line_end_x =
-                        right_axis_line_end_x(ctx.right_axis_badges, kind, y, ctx.chart_w);
-                    stroke_segmented_hline(ctx.frame, line_end_x, y, 6.0, 4.0, ann.color, 1.0);
+                        right_axis_line_end_x(ctx.right_axis_badges, kind, ctx.chart_w);
+                    stroke_projected_segmented_hline_with_offset(
+                        ctx.frame,
+                        ctx.fisheye,
+                        line_end_x,
+                        y,
+                        SegmentedHLineStyle {
+                            segment_len: 6.0,
+                            gap_len: 4.0,
+                            offset: 0.0,
+                            color: ann.color,
+                            width: 1.0,
+                        },
+                    );
                     draw_stacked_right_axis_badge(
                         ctx.frame,
                         ctx.right_axis_badges,
@@ -75,6 +91,7 @@ impl CandlestickChart {
                                 width: 1.0,
                             },
                         },
+                        ctx.fisheye,
                     );
                 }
                 AnnotationKind::TrendLine { start, end } => {
@@ -87,9 +104,10 @@ impl CandlestickChart {
                     };
                     let y2 = (ctx.price_to_y)(end.1);
 
-                    let line = canvas::Path::line(Point::new(x1, y1), Point::new(x2, y2));
-                    ctx.frame.stroke(
-                        &line,
+                    ctx.fisheye.stroke_projected_line(
+                        ctx.frame,
+                        Point::new(x1, y1),
+                        Point::new(x2, y2),
                         canvas::Stroke::default()
                             .with_color(ann.color)
                             .with_width(1.5),
@@ -101,7 +119,8 @@ impl CandlestickChart {
                             && ay >= -5.0
                             && ay <= ctx.price_h + 5.0
                         {
-                            ctx.frame.fill_rectangle(
+                            ctx.fisheye.fill_projected_rect(
+                                ctx.frame,
                                 Point::new(ax - 2.5, ay - 2.5),
                                 Size::new(5.0, 5.0),
                                 ann.color,
@@ -131,9 +150,10 @@ impl CandlestickChart {
                 return;
             };
             let y1 = (ctx.price_to_y)(price);
-            let preview = canvas::Path::line(Point::new(x1, y1), Point::new(pos.x, pos.y));
-            ctx.frame.stroke(
-                &preview,
+            ctx.fisheye.stroke_projected_line(
+                ctx.frame,
+                Point::new(x1, y1),
+                Point::new(pos.x, pos.y),
                 canvas::Stroke::default()
                     .with_color(Color {
                         a: 0.5,

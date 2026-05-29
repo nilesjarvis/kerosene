@@ -1,7 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{
-    normalize_alfred_popup_scale, normalize_chart_crosshair_scale,
-    normalize_chart_dotted_background_opacity, normalize_market_slippage_pct,
+    normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
+    normalize_chart_crosshair_scale, normalize_chart_dotted_background_opacity,
+    normalize_chart_fisheye_strength, normalize_market_slippage_pct,
     normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
 use crate::market_state::SymbolSearchMarketFilter;
@@ -37,6 +38,34 @@ impl TradingTerminal {
                 if (self.chart_dotted_background_opacity - opacity).abs() > f32::EPSILON {
                     self.chart_dotted_background_opacity = opacity;
                     self.sync_chart_dotted_background();
+                    self.persist_config();
+                }
+            }
+            Message::ToggleChartFisheye(enabled) if self.chart_fisheye_enabled != enabled => {
+                self.chart_fisheye_enabled = enabled;
+                self.sync_chart_fisheye();
+                self.persist_config();
+            }
+            Message::ChartFisheyeStrengthChanged(value) => {
+                let strength = normalize_chart_fisheye_strength(value);
+                if (self.chart_fisheye_strength - strength).abs() > f32::EPSILON {
+                    self.chart_fisheye_strength = strength;
+                    self.sync_chart_fisheye();
+                    self.persist_config();
+                }
+            }
+            Message::ToggleChartChromaticAberration(enabled)
+                if self.chart_chromatic_aberration_enabled != enabled =>
+            {
+                self.chart_chromatic_aberration_enabled = enabled;
+                self.sync_chart_chromatic_aberration();
+                self.persist_config();
+            }
+            Message::ChartChromaticAberrationStrengthChanged(value) => {
+                let strength = normalize_chart_chromatic_aberration_strength(value);
+                if (self.chart_chromatic_aberration_strength - strength).abs() > f32::EPSILON {
+                    self.chart_chromatic_aberration_strength = strength;
+                    self.sync_chart_chromatic_aberration();
                     self.persist_config();
                 }
             }

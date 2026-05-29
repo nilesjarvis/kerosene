@@ -1,11 +1,15 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::config::{
-    ChartCrosshairStyle, DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
-    DEFAULT_UI_SCALE, MAX_CHART_CROSSHAIR_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY,
-    MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_CHART_CROSSHAIR_SCALE,
-    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
-    MIN_UI_SCALE, default_pane_border_thickness, default_pane_corner_radius,
+    ChartCrosshairStyle, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
+    DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
+    DEFAULT_CHART_FISHEYE_STRENGTH, DEFAULT_UI_SCALE, MAX_CHART_CHROMATIC_ABERRATION_STRENGTH,
+    MAX_CHART_CROSSHAIR_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_FISHEYE_STRENGTH,
+    MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE,
+    MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
+    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_FISHEYE_STRENGTH, MIN_PANE_BORDER_THICKNESS,
+    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, default_pane_border_thickness,
+    default_pane_corner_radius,
 };
 use crate::message::Message;
 use iced::widget::{Column, Row, button, checkbox, column, row, slider, text};
@@ -56,6 +60,20 @@ impl TradingTerminal {
                 .spacing(8)
                 .text_size(12)
                 .font(crate::app_fonts::monospace_font()),
+            checkbox(self.chart_fisheye_enabled)
+                .label("Chart fisheye lens")
+                .on_toggle(Message::ToggleChartFisheye)
+                .size(12)
+                .spacing(8)
+                .text_size(12)
+                .font(crate::app_fonts::monospace_font()),
+            checkbox(self.chart_chromatic_aberration_enabled)
+                .label("Chart chromatic aberration")
+                .on_toggle(Message::ToggleChartChromaticAberration)
+                .size(12)
+                .spacing(8)
+                .text_size(12)
+                .font(crate::app_fonts::monospace_font()),
         ];
 
         if self.chart_dotted_background {
@@ -67,12 +85,34 @@ impl TradingTerminal {
             ));
         }
 
+        if self.chart_fisheye_enabled {
+            content = content.push(scale_slider_row(
+                &theme,
+                "Lens",
+                self.chart_fisheye_strength,
+                MIN_CHART_FISHEYE_STRENGTH..=MAX_CHART_FISHEYE_STRENGTH,
+                Message::ChartFisheyeStrengthChanged,
+            ));
+        }
+
+        if self.chart_chromatic_aberration_enabled {
+            content = content.push(scale_slider_row(
+                &theme,
+                "Fringe",
+                self.chart_chromatic_aberration_strength,
+                MIN_CHART_CHROMATIC_ABERRATION_STRENGTH..=MAX_CHART_CHROMATIC_ABERRATION_STRENGTH,
+                Message::ChartChromaticAberrationStrengthChanged,
+            ));
+        }
+
         content
             .push(
                 text(format!(
-                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}px divider, {:.0}px corners",
+                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}% lens, {:.0}% fringe, {:.0}px divider, {:.0}px corners",
                     DEFAULT_UI_SCALE * 100.0,
                     DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY * 100.0,
+                    DEFAULT_CHART_FISHEYE_STRENGTH * 100.0,
+                    DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH * 100.0,
                     default_pane_border_thickness(),
                     default_pane_corner_radius()
                 ))
@@ -288,6 +328,7 @@ impl iced::widget::canvas::Program<Message> for CrosshairStylePreview {
                 position: Point::new(bounds.width * 0.5, bounds.height * 0.5),
                 width: bounds.width,
                 height: bounds.height,
+                fisheye: crate::chart::fisheye::ChartFisheye::disabled(),
             },
         );
 

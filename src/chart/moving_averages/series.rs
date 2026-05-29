@@ -1,5 +1,6 @@
 use super::super::indicators::{calculate_ema, calculate_sma};
 use crate::api::Candle;
+use crate::chart::fisheye::{ChartFisheye, ProjectedPathPoint};
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme, alignment};
 
@@ -24,6 +25,7 @@ where
     pub(in crate::chart) last_vis: usize,
     pub(in crate::chart) chart_w: f32,
     pub(in crate::chart) candle_w: f32,
+    pub(in crate::chart) fisheye: ChartFisheye,
     pub(in crate::chart) idx_to_cx: &'a X,
     pub(in crate::chart) price_to_y: &'a Y,
 }
@@ -142,15 +144,14 @@ where
             idx_to_cx: self.idx_to_cx,
             price_to_y: self.price_to_y,
         });
-        let mut path = canvas::path::Builder::new();
+        let mut projected_points = Vec::new();
         let mut last_pt = None;
 
         for path_point in path_points {
-            if path_point.starts_segment {
-                path.move_to(path_point.point);
-            } else {
-                path.line_to(path_point.point);
-            }
+            projected_points.push(ProjectedPathPoint {
+                point: path_point.point,
+                starts_segment: path_point.starts_segment,
+            });
             last_pt = Some(path_point.point);
         }
 
@@ -165,9 +166,11 @@ where
             };
         }
 
-        self.frame.stroke(&path.build(), stroke);
+        self.fisheye
+            .stroke_projected_path_points(self.frame, &projected_points, stroke);
 
         if show_labels && let Some(pt) = last_pt {
+            let pt = self.fisheye.project(pt);
             let label_w = label.len() as f32 * 6.0 + 4.0;
             let label_h = 14.0;
             let label_x = pt.x - label_w;

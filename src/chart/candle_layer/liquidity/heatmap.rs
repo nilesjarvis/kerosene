@@ -60,7 +60,12 @@ impl CandlestickChart {
                 }
             };
 
-            frame.fill_rectangle(Point::new(x_left, y_top), Size::new(cell_w, cell_h), color);
+            ctx.fisheye.fill_projected_rect_flat(
+                frame,
+                Point::new(x_left, y_top),
+                Size::new(cell_w, cell_h),
+                color,
+            );
         }
     }
 }

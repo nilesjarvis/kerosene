@@ -12,7 +12,8 @@ impl CandlestickChart {
     pub(super) fn draw_range_measurement<PriceToY>(
         &self,
         ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
-        pos: Point,
+        data_pos: Point,
+        visual_pos: Point,
         hover_price: f64,
     ) where
         PriceToY: Fn(f64) -> f32,
@@ -25,7 +26,7 @@ impl CandlestickChart {
             anchor_price,
             hover_price,
             (ctx.price_to_y)(anchor_price),
-            pos,
+            data_pos,
             ctx.chart_w,
             ctx.price_h,
         );
@@ -47,30 +48,27 @@ impl CandlestickChart {
         };
 
         if measurement.bottom > measurement.top {
-            ctx.frame.fill_rectangle(
+            ctx.fisheye.fill_projected_rect(
+                ctx.frame,
                 Point::new(0.0, measurement.top),
                 Size::new(ctx.chart_w, measurement.bottom - measurement.top),
                 fill_color,
             );
         }
 
-        let anchor_line = canvas::Path::line(
+        ctx.fisheye.stroke_projected_line(
+            ctx.frame,
             Point::new(0.0, measurement.anchor_y),
             Point::new(ctx.chart_w, measurement.anchor_y),
-        );
-        ctx.frame.stroke(
-            &anchor_line,
             canvas::Stroke::default()
                 .with_color(line_color)
                 .with_width(1.0),
         );
 
-        let hover_line = canvas::Path::line(
+        ctx.fisheye.stroke_projected_line(
+            ctx.frame,
             Point::new(0.0, measurement.hover_y),
             Point::new(ctx.chart_w, measurement.hover_y),
-        );
-        ctx.frame.stroke(
-            &hover_line,
             canvas::Stroke::default()
                 .with_color(Color {
                     a: 0.28,
@@ -79,8 +77,15 @@ impl CandlestickChart {
                 .with_width(1.0),
         );
 
+        let label_x = (visual_pos.x + 10.0)
+            .min(ctx.chart_w - measurement.label_width - 4.0)
+            .max(4.0);
+        let label_y = (visual_pos.y - 20.0)
+            .max(4.0)
+            .min(ctx.price_h - measurement.label_height - 2.0);
+
         ctx.frame.fill_rectangle(
-            Point::new(measurement.label_x, measurement.label_y),
+            Point::new(label_x, label_y),
             Size::new(measurement.label_width, measurement.label_height),
             Color {
                 a: 0.92,
@@ -89,7 +94,7 @@ impl CandlestickChart {
         );
         ctx.frame.fill_text(canvas::Text {
             content: measurement.label,
-            position: Point::new(measurement.label_x + 4.0, measurement.label_y + 8.0),
+            position: Point::new(label_x + 4.0, label_y + 8.0),
             color: line_color,
             size: iced::Pixels(11.0),
             align_x: alignment::Horizontal::Left.into(),

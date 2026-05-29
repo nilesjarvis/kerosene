@@ -29,18 +29,23 @@ pub use crosshair::ChartCrosshairStyle;
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
 use defaults::default_true;
 pub use defaults::{
-    DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
+    DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH, DEFAULT_CHART_CROSSHAIR_SCALE,
+    DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY, DEFAULT_CHART_FISHEYE_STRENGTH,
     DEFAULT_MARKET_SLIPPAGE_PCT, DEFAULT_UI_SCALE, MAX_ALFRED_POPUP_SCALE,
-    MAX_CHART_CROSSHAIR_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_PANE_BORDER_THICKNESS,
-    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE, MIN_CHART_CROSSHAIR_SCALE,
-    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
-    MIN_UI_SCALE, default_alfred_popup_scale, default_chart_crosshair_scale,
-    default_chart_dotted_background_opacity, default_layout_ratios,
+    MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
+    MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_FISHEYE_STRENGTH, MAX_PANE_BORDER_THICKNESS,
+    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE,
+    MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
+    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_FISHEYE_STRENGTH, MIN_PANE_BORDER_THICKNESS,
+    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, default_alfred_popup_scale,
+    default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
+    default_chart_dotted_background_opacity, default_chart_fisheye_strength, default_layout_ratios,
     default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
     default_pane_border_thickness, default_pane_corner_radius, default_symbol,
     default_symbol_search_sort_mode, default_tick_size, default_timeframe, default_ui_scale,
-    new_secret_id, normalize_alfred_popup_scale, normalize_chart_crosshair_scale,
-    normalize_chart_dotted_background_opacity, normalize_market_slippage_pct,
+    new_secret_id, normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
+    normalize_chart_crosshair_scale, normalize_chart_dotted_background_opacity,
+    normalize_chart_fisheye_strength, normalize_market_slippage_pct,
     normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
 pub use denomination::DisplayDenominationConfig;
@@ -106,6 +111,18 @@ pub struct KeroseneConfig {
     /// Opacity for dotted chart plot backgrounds.
     #[serde(default = "default_chart_dotted_background_opacity")]
     pub chart_dotted_background_opacity: f32,
+    /// Apply a subtle barrel lens projection to candlestick chart canvases.
+    #[serde(default)]
+    pub chart_fisheye_enabled: bool,
+    /// Strength of the chart fisheye projection.
+    #[serde(default = "default_chart_fisheye_strength")]
+    pub chart_fisheye_strength: f32,
+    /// Apply subtle red/cyan channel separation to chart canvas geometry.
+    #[serde(default)]
+    pub chart_chromatic_aberration_enabled: bool,
+    /// Strength of the chart chromatic aberration effect.
+    #[serde(default = "default_chart_chromatic_aberration_strength")]
+    pub chart_chromatic_aberration_strength: f32,
     /// Crosshair reticle style used by chart canvases.
     #[serde(default)]
     pub chart_crosshair_style: ChartCrosshairStyle,

@@ -1,3 +1,4 @@
+use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
 use super::price_badges::RightAxisBadgeLayout;
 use super::state::ChartState;
@@ -32,6 +33,7 @@ where
     pub(super) candle_bull_color: Color,
     pub(super) candle_bear_color: Color,
     pub(super) right_axis_badges: &'a RightAxisBadgeLayout,
+    pub(super) fisheye: ChartFisheye,
     pub(super) price_to_y: &'a PriceToY,
     pub(super) idx_to_cx: &'a IdxToCx,
 }

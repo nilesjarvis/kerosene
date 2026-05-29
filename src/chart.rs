@@ -5,6 +5,7 @@ mod crosshair;
 pub(crate) mod crosshair_style;
 mod data;
 mod drawing;
+pub(crate) mod fisheye;
 mod formatting;
 mod geometry;
 mod indicators;

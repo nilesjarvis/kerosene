@@ -38,13 +38,23 @@ impl TradingTerminal {
         } else {
             "dots off"
         };
+        let lens = if self.chart_fisheye_enabled {
+            "lens on"
+        } else {
+            "lens off"
+        };
+        let fringe = if self.chart_chromatic_aberration_enabled {
+            "fringe on"
+        } else {
+            "fringe off"
+        };
         let border = if self.outer_widget_border_enabled {
             "border on"
         } else {
             "border off"
         };
         let chrome_summary = format!(
-            "{:.0}% scale, {:.0}px divider, {dots}, {border}",
+            "{:.0}% scale, {:.0}px divider, {dots}, {lens}, {fringe}, {border}",
             self.ui_scale * 100.0,
             self.pane_border_thickness
         );

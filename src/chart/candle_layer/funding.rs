@@ -30,7 +30,8 @@ impl CandlestickChart {
         }
 
         let panel_y = ctx.chart_h;
-        frame.fill_rectangle(
+        ctx.fisheye.fill_projected_rect(
+            frame,
             Point::new(0.0, panel_y),
             Size::new(ctx.chart_w, ctx.funding_panel_h),
             Color {
@@ -39,10 +40,10 @@ impl CandlestickChart {
             },
         );
 
-        let separator =
-            canvas::Path::line(Point::new(0.0, panel_y), Point::new(ctx.chart_w, panel_y));
-        frame.stroke(
-            &separator,
+        ctx.fisheye.stroke_projected_line(
+            frame,
+            Point::new(0.0, panel_y),
+            Point::new(ctx.chart_w, panel_y),
             canvas::Stroke::default()
                 .with_color(Color {
                     a: 0.14,
@@ -94,12 +95,10 @@ impl CandlestickChart {
         };
         let baseline_y = display_range.rate_to_y(0.0, plot_top, plot_bottom);
         if baseline_y >= plot_top && baseline_y <= plot_bottom {
-            let baseline = canvas::Path::line(
+            ctx.fisheye.stroke_projected_line(
+                frame,
                 Point::new(0.0, baseline_y),
                 Point::new(ctx.chart_w, baseline_y),
-            );
-            frame.stroke(
-                &baseline,
                 canvas::Stroke::default()
                     .with_color(Color {
                         a: 0.10,
@@ -130,7 +129,8 @@ impl CandlestickChart {
                     } else {
                         ctx.candle_bear_color
                     };
-                    frame.fill_rectangle(
+                    ctx.fisheye.fill_projected_rect(
+                        frame,
                         Point::new(x - bar_w * 0.5, top),
                         Size::new(bar_w, height),
                         Color { a: 0.78, ..color },

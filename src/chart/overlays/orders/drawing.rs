@@ -1,7 +1,5 @@
 use super::super::TradingOverlayContext;
-use super::segments::{
-    append_segmented_quadratic_curve, order_solid_stroke, stroke_segmented_hline_range,
-};
+use super::segments::{stroke_segmented_hline_range, stroke_segmented_quadratic_curve};
 use super::visible::{MOVING_ORDER_LINE_DASH, ORDER_LINE_DASH, VisibleOrder};
 
 use crate::chart::drawing::{AxisBadgeStyle, SegmentedHLineStyle};
@@ -33,14 +31,9 @@ pub(super) fn draw_order_line<PriceToY, IdxToCx>(
 {
     let start_x = order_line_start_x(order, position, ctx.chart_w);
     let badge_kind = RightAxisBadgeKind::ActiveOrder(order.order_index);
-    let end_x = right_axis_line_end_x(
-        ctx.right_axis_badges,
-        badge_kind,
-        order.order_y,
-        ctx.chart_w,
-    );
+    let end_x = right_axis_line_end_x(ctx.right_axis_badges, badge_kind, ctx.chart_w);
     let style = order_line_style(order);
-    stroke_segmented_hline_range(ctx.frame, start_x, end_x, order.order_y, style);
+    stroke_segmented_hline_range(ctx.frame, ctx.fisheye, start_x, end_x, order.order_y, style);
 }
 
 pub(super) fn draw_order_price_badge<PriceToY, IdxToCx>(
@@ -69,6 +62,7 @@ pub(super) fn draw_order_price_badge<PriceToY, IdxToCx>(
         RightAxisBadgeConnectorStyle::Segmented {
             style: order_line_style(order),
         },
+        ctx.fisheye,
     );
 }
 
@@ -89,24 +83,18 @@ pub(super) fn draw_order_label_connector<PriceToY, IdxToCx>(
         return;
     }
 
-    let mut has_segment = false;
-    let connector = canvas::Path::new(|path| {
-        has_segment = append_segmented_quadratic_curve(
-            path,
-            Point::new(start_x, order.order_y),
-            Point::new(
-                order.label_right_x + (start_x - order.label_right_x) * 0.45,
-                order.order_y,
-            ),
-            Point::new(order.label_right_x, position.label_y),
-            &order_line_style(order),
-        );
-    });
-
-    if has_segment {
-        ctx.frame
-            .stroke(&connector, order_solid_stroke(&order_line_style(order)));
-    }
+    let style = order_line_style(order);
+    stroke_segmented_quadratic_curve(
+        ctx.frame,
+        ctx.fisheye,
+        Point::new(start_x, order.order_y),
+        Point::new(
+            order.label_right_x + (start_x - order.label_right_x) * 0.45,
+            order.order_y,
+        ),
+        Point::new(order.label_right_x, position.label_y),
+        &style,
+    );
 }
 
 fn order_line_start_x(order: &VisibleOrder, position: OrderLabelPosition, chart_w: f32) -> f32 {
@@ -150,7 +138,11 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
     PriceToY: Fn(f64) -> f32,
     IdxToCx: Fn(usize) -> f32,
 {
-    let (label_top, _) = order_label_y_range(position.label_y);
+    let visual_label_y = ctx
+        .fisheye
+        .project(Point::new(ORDER_LABEL_X, position.label_y))
+        .y;
+    let (label_top, _) = order_label_y_range(visual_label_y);
     ctx.frame.fill_rectangle(
         Point::new(ORDER_LABEL_X, label_top),
         Size::new(order.side_label_width, ORDER_LABEL_HEIGHT),
@@ -161,7 +153,7 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
     );
     ctx.frame.fill_text(canvas::Text {
         content: order.side_label.clone(),
-        position: Point::new(order_label_text_x(order), position.label_y),
+        position: Point::new(order_label_text_x(order), visual_label_y),
         color: order.order_color_solid,
         size: iced::Pixels(8.0),
         align_x: alignment::Horizontal::Left.into(),
@@ -170,7 +162,7 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
         ..canvas::Text::default()
     });
     if order.pending_state.is_some() {
-        draw_order_pending_spinner(ctx, order, position.label_y);
+        draw_order_pending_spinner(ctx, order, visual_label_y);
         return;
     }
 
@@ -184,7 +176,7 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
     );
     ctx.frame.fill_text(canvas::Text {
         content: "x".to_string(),
-        position: Point::new(order.cancel_x + ORDER_CANCEL_WIDTH * 0.5, position.label_y),
+        position: Point::new(order.cancel_x + ORDER_CANCEL_WIDTH * 0.5, visual_label_y),
         color: Color::WHITE,
         size: iced::Pixels(8.0),
         align_x: alignment::Horizontal::Center.into(),

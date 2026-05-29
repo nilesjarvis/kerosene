@@ -21,6 +21,13 @@ impl TradingTerminal {
         );
         instance
             .chart
+            .set_fisheye(self.chart_fisheye_enabled, self.chart_fisheye_strength);
+        instance.chart.set_chromatic_aberration(
+            self.chart_chromatic_aberration_enabled,
+            self.chart_chromatic_aberration_strength,
+        );
+        instance
+            .chart
             .set_crosshair_style(self.chart_crosshair_style);
         instance
             .chart

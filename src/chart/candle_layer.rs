@@ -5,6 +5,7 @@ mod liquidity;
 
 pub(in crate::chart) use funding::format_funding_rate_percent;
 
+use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
 use super::moving_averages::MovingAverageLayer;
 use super::state::ChartState;
@@ -42,6 +43,7 @@ where
     pub(super) vol_max: f64,
     pub(super) candle_bull_color: Color,
     pub(super) candle_bear_color: Color,
+    pub(super) fisheye: ChartFisheye,
     pub(super) idx_to_cx: &'a IdxToCx,
     pub(super) price_to_y: &'a PriceToY,
 }
@@ -62,7 +64,7 @@ impl CandlestickChart {
                 let chart_region = Rectangle {
                     x: 0.0,
                     y: 0.0,
-                    width: ctx.bounds.width,
+                    width: ctx.chart_w,
                     height: ctx.chart_h,
                 };
                 frame.with_clip(chart_region, |frame| {
@@ -73,6 +75,7 @@ impl CandlestickChart {
                             ctx.chart_w,
                             ctx.chart_h,
                             self.dotted_background_opacity,
+                            ctx.fisheye,
                         );
                     } else {
                         self.draw_price_grid(ctx, frame);
@@ -90,6 +93,7 @@ impl CandlestickChart {
                         last_vis: ctx.last_vis,
                         chart_w: ctx.chart_w,
                         candle_w: ctx.candle_w,
+                        fisheye: ctx.fisheye,
                         idx_to_cx: ctx.idx_to_cx,
                         price_to_y: ctx.price_to_y,
                     };

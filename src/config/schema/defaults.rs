@@ -70,6 +70,12 @@ pub const MAX_ALFRED_POPUP_SCALE: f32 = 1.60;
 pub const DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.14;
 pub const MIN_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.04;
 pub const MAX_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.35;
+pub const DEFAULT_CHART_FISHEYE_STRENGTH: f32 = 0.55;
+pub const MIN_CHART_FISHEYE_STRENGTH: f32 = 0.10;
+pub const MAX_CHART_FISHEYE_STRENGTH: f32 = 1.0;
+pub const DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH: f32 = 0.50;
+pub const MIN_CHART_CHROMATIC_ABERRATION_STRENGTH: f32 = 0.10;
+pub const MAX_CHART_CHROMATIC_ABERRATION_STRENGTH: f32 = 1.0;
 pub const DEFAULT_CHART_CROSSHAIR_SCALE: f32 = 1.0;
 pub const MIN_CHART_CROSSHAIR_SCALE: f32 = 0.5;
 pub const MAX_CHART_CROSSHAIR_SCALE: f32 = 2.0;
@@ -114,6 +120,33 @@ pub fn normalize_chart_dotted_background_opacity(value: f32) -> f32 {
         )
     } else {
         default_chart_dotted_background_opacity()
+    }
+}
+
+pub fn default_chart_fisheye_strength() -> f32 {
+    DEFAULT_CHART_FISHEYE_STRENGTH
+}
+
+pub fn normalize_chart_fisheye_strength(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_CHART_FISHEYE_STRENGTH, MAX_CHART_FISHEYE_STRENGTH)
+    } else {
+        default_chart_fisheye_strength()
+    }
+}
+
+pub fn default_chart_chromatic_aberration_strength() -> f32 {
+    DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH
+}
+
+pub fn normalize_chart_chromatic_aberration_strength(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(
+            MIN_CHART_CHROMATIC_ABERRATION_STRENGTH,
+            MAX_CHART_CHROMATIC_ABERRATION_STRENGTH,
+        )
+    } else {
+        default_chart_chromatic_aberration_strength()
     }
 }
 
@@ -176,6 +209,10 @@ impl Default for KeroseneConfig {
             ui_scale: default_ui_scale(),
             chart_dotted_background: false,
             chart_dotted_background_opacity: default_chart_dotted_background_opacity(),
+            chart_fisheye_enabled: false,
+            chart_fisheye_strength: default_chart_fisheye_strength(),
+            chart_chromatic_aberration_enabled: false,
+            chart_chromatic_aberration_strength: default_chart_chromatic_aberration_strength(),
             chart_crosshair_style: Default::default(),
             chart_crosshair_guides_enabled: true,
             chart_crosshair_scale: default_chart_crosshair_scale(),

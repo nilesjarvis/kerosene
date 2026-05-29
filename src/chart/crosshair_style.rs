@@ -1,3 +1,4 @@
+use super::fisheye::ChartFisheye;
 use crate::config::{ChartCrosshairStyle, normalize_chart_crosshair_scale};
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Size, Theme};
@@ -20,6 +21,7 @@ pub(crate) struct CrosshairStyleRender {
     pub(crate) position: Point,
     pub(crate) width: f32,
     pub(crate) height: f32,
+    pub(crate) fisheye: ChartFisheye,
 }
 
 pub(crate) fn draw_crosshair_style(
@@ -34,6 +36,7 @@ pub(crate) fn draw_crosshair_style(
         position,
         width,
         height,
+        fisheye,
     } = render;
     let style = style.normalized();
 
@@ -57,30 +60,42 @@ pub(crate) fn draw_crosshair_style(
 
     frame.with_clip(clip, |frame| {
         if guide_lines_enabled {
-            draw_guides(frame, theme, style, position, width, height, scale);
+            draw_guides(
+                frame,
+                theme,
+                style,
+                position,
+                Size::new(width, height),
+                scale,
+                fisheye,
+            );
         }
         match style {
             ChartCrosshairStyle::Classic if !guide_lines_enabled => {
-                draw_classic_reticle(frame, theme, position, scale);
+                draw_classic_reticle(frame, theme, position, scale, fisheye);
             }
             ChartCrosshairStyle::Classic => {}
             ChartCrosshairStyle::Circle => {
                 let radius = scaled_value(scale, 22.0, 9.0);
-                let ring = canvas::Path::circle(position, radius);
-                frame.stroke(&ring, shape_stroke(theme, style, scale));
+                fisheye.stroke_projected_circle(
+                    frame,
+                    position,
+                    radius,
+                    shape_stroke(theme, style, scale),
+                );
             }
             ChartCrosshairStyle::Scope => {
-                draw_scope_reticle(frame, theme, position, scale);
+                draw_scope_reticle(frame, theme, position, scale, fisheye);
             }
             ChartCrosshairStyle::Rangefinder => {
-                draw_rangefinder_reticle(frame, theme, position, scale);
+                draw_rangefinder_reticle(frame, theme, position, scale, fisheye);
             }
             ChartCrosshairStyle::Target => {
-                draw_target_reticle(frame, theme, position, scale);
+                draw_target_reticle(frame, theme, position, scale, fisheye);
             }
             ChartCrosshairStyle::Rectangle => {
                 let size = scaled_size(scale, 58.0, 36.0);
-                draw_rectangle(frame, theme, position, size, scale);
+                draw_rectangle(frame, theme, position, size, scale, fisheye);
             }
             ChartCrosshairStyle::StackedRectangles => {
                 unreachable!("legacy crosshair style is normalized")
@@ -94,93 +109,129 @@ fn draw_guides(
     theme: &Theme,
     style: ChartCrosshairStyle,
     position: Point,
-    width: f32,
-    height: f32,
+    size: Size,
     scale: f32,
+    fisheye: ChartFisheye,
 ) {
-    let h_line = canvas::Path::line(Point::new(0.0, position.y), Point::new(width, position.y));
-    let v_line = canvas::Path::line(Point::new(position.x, 0.0), Point::new(position.x, height));
     let stroke = canvas::Stroke::default()
         .with_color(guide_color(theme, style))
         .with_width(guide_line_width(style) * scale.clamp(0.75, 2.0));
 
-    frame.stroke(&h_line, stroke);
-    frame.stroke(&v_line, stroke);
+    fisheye.stroke_projected_line(
+        frame,
+        Point::new(0.0, position.y),
+        Point::new(size.width, position.y),
+        stroke,
+    );
+    fisheye.stroke_projected_line(
+        frame,
+        Point::new(position.x, 0.0),
+        Point::new(position.x, size.height),
+        stroke,
+    );
 }
 
-fn draw_classic_reticle(frame: &mut canvas::Frame, theme: &Theme, center: Point, scale: f32) {
+fn draw_classic_reticle(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    center: Point,
+    scale: f32,
+    fisheye: ChartFisheye,
+) {
     let gap = (4.0 * scale).max(2.5);
     let line_end = (18.0 * scale).max(8.0);
     let stroke = shape_stroke(theme, ChartCrosshairStyle::Classic, scale);
 
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x - line_end, center.y),
         Point::new(center.x - gap, center.y),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x + gap, center.y),
         Point::new(center.x + line_end, center.y),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x, center.y - line_end),
         Point::new(center.x, center.y - gap),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x, center.y + gap),
         Point::new(center.x, center.y + line_end),
     );
 }
 
-fn draw_scope_reticle(frame: &mut canvas::Frame, theme: &Theme, center: Point, scale: f32) {
+fn draw_scope_reticle(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    center: Point,
+    scale: f32,
+    fisheye: ChartFisheye,
+) {
     let outer_radius = (29.0 * scale).max(12.0);
     let inner_radius = (7.0 * scale).max(3.0);
     let center_gap = (9.0 * scale).max(4.0);
     let line_end = outer_radius - 4.0 * scale;
     let stroke = shape_stroke(theme, ChartCrosshairStyle::Scope, scale);
 
-    let outer_ring = canvas::Path::circle(center, outer_radius);
-    let inner_ring = canvas::Path::circle(center, inner_radius);
-    frame.stroke(&outer_ring, stroke);
-    frame.stroke(&inner_ring, stroke);
+    fisheye.stroke_projected_circle(frame, center, outer_radius, stroke);
+    fisheye.stroke_projected_circle(frame, center, inner_radius, stroke);
 
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x - line_end, center.y),
         Point::new(center.x - center_gap, center.y),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x + center_gap, center.y),
         Point::new(center.x + line_end, center.y),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x, center.y - line_end),
         Point::new(center.x, center.y - center_gap),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x, center.y + center_gap),
         Point::new(center.x, center.y + line_end),
     );
 
-    let dot = canvas::Path::circle(center, (1.9 * scale).max(1.2));
-    frame.fill(&dot, guide_color(theme, ChartCrosshairStyle::Scope));
+    fisheye.fill_projected_circle(
+        frame,
+        center,
+        (1.9 * scale).max(1.2),
+        guide_color(theme, ChartCrosshairStyle::Scope),
+    );
 }
 
-fn draw_rangefinder_reticle(frame: &mut canvas::Frame, theme: &Theme, center: Point, scale: f32) {
+fn draw_rangefinder_reticle(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    center: Point,
+    scale: f32,
+    fisheye: ChartFisheye,
+) {
     let axis_span = (68.0 * scale).max(28.0);
     let bracket_x = (42.0 * scale).max(18.0);
     let bracket_y = (31.0 * scale).max(14.0);
@@ -189,49 +240,69 @@ fn draw_rangefinder_reticle(frame: &mut canvas::Frame, theme: &Theme, center: Po
 
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x - axis_span, center.y),
         Point::new(center.x + axis_span, center.y),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x, center.y - axis_span),
         Point::new(center.x, center.y + axis_span),
     );
 
-    draw_rangefinder_ticks(frame, stroke, center, scale);
-    draw_corner_brackets(frame, stroke, center, bracket_x, bracket_y, bracket_len);
+    draw_rangefinder_ticks(frame, fisheye, stroke, center, scale);
+    draw_corner_brackets(
+        frame,
+        fisheye,
+        stroke,
+        center,
+        bracket_x,
+        bracket_y,
+        bracket_len,
+    );
 }
 
-fn draw_target_reticle(frame: &mut canvas::Frame, theme: &Theme, center: Point, scale: f32) {
+fn draw_target_reticle(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    center: Point,
+    scale: f32,
+    fisheye: ChartFisheye,
+) {
     let radius = (42.0 * scale).max(19.0);
-    let ring = canvas::Path::circle(center, radius);
-    frame.stroke(
-        &ring,
+    fisheye.stroke_projected_circle(
+        frame,
+        center,
+        radius,
         shape_stroke(theme, ChartCrosshairStyle::Target, scale).with_width((5.6 * scale).max(2.4)),
     );
 
     let stroke = shape_stroke(theme, ChartCrosshairStyle::Target, scale);
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x - radius, center.y),
         Point::new(center.x + radius, center.y),
     );
     stroke_segment(
         frame,
+        fisheye,
         stroke,
         Point::new(center.x, center.y - radius),
         Point::new(center.x, center.y + radius),
     );
 
-    draw_target_ticks(frame, stroke, center, scale);
-    draw_target_blocks(frame, theme, center, radius, scale);
+    draw_target_ticks(frame, fisheye, stroke, center, scale);
+    draw_target_blocks(frame, theme, center, radius, scale, fisheye);
 }
 
 fn draw_target_ticks(
     frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
     stroke: canvas::Stroke<'static>,
     center: Point,
     scale: f32,
@@ -243,12 +314,14 @@ fn draw_target_ticks(
         for direction in [-1.0, 1.0] {
             stroke_segment(
                 frame,
+                fisheye,
                 stroke,
                 Point::new(center.x + direction * offset, center.y - tick_half),
                 Point::new(center.x + direction * offset, center.y + tick_half),
             );
             stroke_segment(
                 frame,
+                fisheye,
                 stroke,
                 Point::new(center.x - tick_half, center.y + direction * offset),
                 Point::new(center.x + tick_half, center.y + direction * offset),
@@ -263,6 +336,7 @@ fn draw_target_blocks(
     center: Point,
     radius: f32,
     scale: f32,
+    fisheye: ChartFisheye,
 ) {
     let block_width = (8.0 * scale).max(3.8);
     let block_len = (14.0 * scale).max(6.0);
@@ -276,7 +350,7 @@ fn draw_target_blocks(
         Point::new(0.0, 1.0),
         Point::new(-1.0, 0.0),
     ] {
-        let block = target_block_path(
+        let block = target_block_points(
             center,
             direction,
             radius - inset,
@@ -284,18 +358,18 @@ fn draw_target_blocks(
             block_len,
             point_len,
         );
-        frame.fill(&block, color);
+        fisheye.fill_projected_polygon(frame, &block, color);
     }
 }
 
-fn target_block_path(
+fn target_block_points(
     center: Point,
     direction: Point,
     outer_offset: f32,
     width: f32,
     block_len: f32,
     point_len: f32,
-) -> canvas::Path {
+) -> [Point; 5] {
     let tangent = Point::new(-direction.y, direction.x);
     let outer_center = Point::new(
         center.x + direction.x * outer_offset,
@@ -310,30 +384,30 @@ fn target_block_path(
         inner_center.y - direction.y * point_len,
     );
 
-    canvas::Path::new(|path| {
-        path.move_to(Point::new(
+    [
+        Point::new(
             outer_center.x + tangent.x * width * 0.5,
             outer_center.y + tangent.y * width * 0.5,
-        ));
-        path.line_to(Point::new(
+        ),
+        Point::new(
             outer_center.x - tangent.x * width * 0.5,
             outer_center.y - tangent.y * width * 0.5,
-        ));
-        path.line_to(Point::new(
+        ),
+        Point::new(
             inner_center.x - tangent.x * width * 0.5,
             inner_center.y - tangent.y * width * 0.5,
-        ));
-        path.line_to(tip);
-        path.line_to(Point::new(
+        ),
+        tip,
+        Point::new(
             inner_center.x + tangent.x * width * 0.5,
             inner_center.y + tangent.y * width * 0.5,
-        ));
-        path.close();
-    })
+        ),
+    ]
 }
 
 fn draw_rangefinder_ticks(
     frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
     stroke: canvas::Stroke<'static>,
     center: Point,
     scale: f32,
@@ -345,12 +419,14 @@ fn draw_rangefinder_ticks(
         for direction in [-1.0, 1.0] {
             stroke_segment(
                 frame,
+                fisheye,
                 stroke,
                 Point::new(center.x + direction * offset, center.y - tick_half),
                 Point::new(center.x + direction * offset, center.y + tick_half),
             );
             stroke_segment(
                 frame,
+                fisheye,
                 stroke,
                 Point::new(center.x - tick_half, center.y + direction * offset),
                 Point::new(center.x + tick_half, center.y + direction * offset),
@@ -361,6 +437,7 @@ fn draw_rangefinder_ticks(
 
 fn draw_corner_brackets(
     frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
     stroke: canvas::Stroke<'static>,
     center: Point,
     bracket_x: f32,
@@ -372,12 +449,14 @@ fn draw_corner_brackets(
             let corner = Point::new(center.x + x_sign * bracket_x, center.y + y_sign * bracket_y);
             stroke_segment(
                 frame,
+                fisheye,
                 stroke,
                 corner,
                 Point::new(corner.x - x_sign * bracket_len, corner.y),
             );
             stroke_segment(
                 frame,
+                fisheye,
                 stroke,
                 corner,
                 Point::new(corner.x, corner.y - y_sign * bracket_len),
@@ -388,19 +467,27 @@ fn draw_corner_brackets(
 
 fn stroke_segment(
     frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
     stroke: canvas::Stroke<'static>,
     start: Point,
     end: Point,
 ) {
-    let segment = canvas::Path::line(start, end);
-    frame.stroke(&segment, stroke);
+    fisheye.stroke_projected_line(frame, start, end, stroke);
 }
 
-fn draw_rectangle(frame: &mut canvas::Frame, theme: &Theme, center: Point, size: Size, scale: f32) {
+fn draw_rectangle(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    center: Point,
+    size: Size,
+    scale: f32,
+    fisheye: ChartFisheye,
+) {
     let top_left = Point::new(center.x - size.width * 0.5, center.y - size.height * 0.5);
-    let rectangle = canvas::Path::rectangle(top_left, size);
-    frame.stroke(
-        &rectangle,
+    fisheye.stroke_projected_rect(
+        frame,
+        top_left,
+        size,
         shape_stroke(theme, ChartCrosshairStyle::Rectangle, scale),
     );
 }

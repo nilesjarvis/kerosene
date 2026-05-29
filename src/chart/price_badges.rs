@@ -9,6 +9,7 @@ pub(super) use connector::{RightAxisBadgeConnectorStyle, right_axis_line_end_x};
 
 use self::connector::{right_axis_badge_connector_points, stroke_right_axis_connector};
 use super::drawing::{AxisBadgeStyle, fill_right_axis_badge};
+use super::fisheye::ChartFisheye;
 use iced::Color;
 use iced::widget::canvas;
 
@@ -27,12 +28,13 @@ pub(super) fn draw_stacked_right_axis_badge(
     background: Color,
     badge_style: AxisBadgeStyle,
     connector_style: RightAxisBadgeConnectorStyle,
+    fisheye: ChartFisheye,
 ) {
     let badge_y = layout
         .position(kind)
         .map_or(source_y, |position| position.badge_y);
     if let Some((start, control, end)) =
-        right_axis_badge_connector_points(layout, kind, source_y, chart_w, badge_y)
+        right_axis_badge_connector_points(layout, kind, source_y, chart_w, fisheye)
     {
         stroke_right_axis_connector(frame, start, control, end, connector_style);
     }

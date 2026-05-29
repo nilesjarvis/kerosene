@@ -1,5 +1,6 @@
 use super::super::model::CandlestickChart;
 use super::super::state::ChartState;
+use crate::chart::fisheye::ChartFisheye;
 
 mod anchors;
 mod stacking;
@@ -52,6 +53,8 @@ impl CandlestickChart {
         state: &ChartState,
         price_h: f32,
         price_range: f64,
+        chart_w: f32,
+        fisheye: ChartFisheye,
         price_to_y: &PriceToY,
     ) -> RightAxisBadgeLayout
     where
@@ -64,7 +67,7 @@ impl CandlestickChart {
             return layout;
         }
 
-        let anchors = right_axis_badge_anchors(self, state, price_h, price_to_y);
+        let anchors = right_axis_badge_anchors(self, state, price_h, chart_w, fisheye, price_to_y);
 
         for stacked in stack_right_axis_badge_positions(anchors, price_h) {
             layout.insert(stacked);

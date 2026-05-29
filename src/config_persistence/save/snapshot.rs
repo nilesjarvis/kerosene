@@ -40,6 +40,15 @@ impl TradingTerminal {
             ui_scale: self.ui_scale,
             chart_dotted_background: self.chart_dotted_background,
             chart_dotted_background_opacity: self.chart_dotted_background_opacity,
+            chart_fisheye_enabled: self.chart_fisheye_enabled,
+            chart_fisheye_strength: config::normalize_chart_fisheye_strength(
+                self.chart_fisheye_strength,
+            ),
+            chart_chromatic_aberration_enabled: self.chart_chromatic_aberration_enabled,
+            chart_chromatic_aberration_strength:
+                config::normalize_chart_chromatic_aberration_strength(
+                    self.chart_chromatic_aberration_strength,
+                ),
             chart_crosshair_style: self.chart_crosshair_style.normalized(),
             chart_crosshair_guides_enabled: self.chart_crosshair_guides_enabled,
             chart_crosshair_scale: config::normalize_chart_crosshair_scale(

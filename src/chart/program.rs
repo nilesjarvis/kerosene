@@ -1,7 +1,11 @@
 use super::annotation_overlays::AnnotationOverlayContext;
 use super::candle_layer::CandleLayerContext;
 use super::crosshair::CrosshairOverlayContext;
-use super::model::{CANDLE_GAP_RATIO, CandlestickChart, HEATMAP_MAX_RECTS, VOLUME_REGION_RATIO};
+use super::fisheye::ChartFisheye;
+use super::model::{
+    CANDLE_GAP_RATIO, CandlestickChart, HEATMAP_MAX_RECTS, HEATMAP_MAX_RECTS_WITH_FISHEYE,
+    VOLUME_REGION_RATIO,
+};
 use super::overlays::TradingOverlayContext;
 use super::price_range::visible_price_stats;
 use super::state::ChartState;
@@ -41,12 +45,27 @@ impl CandlestickChart {
         }
         let volume_h = chart_h * VOLUME_REGION_RATIO;
         let price_h = chart_h - volume_h;
+        let fisheye = ChartFisheye::new(
+            self.fisheye_enabled,
+            self.fisheye_strength,
+            chart_w,
+            chart_h + funding_panel_h,
+        )
+        .with_chromatic(
+            self.chromatic_aberration_enabled,
+            self.chromatic_aberration_strength,
+        );
 
         let candle_w = state.candle_width;
         let gap = candle_w * CANDLE_GAP_RATIO;
         let step = candle_w + gap;
-        let heatmap_stride = if self.heatmap_rects.len() > HEATMAP_MAX_RECTS {
-            self.heatmap_rects.len().div_ceil(HEATMAP_MAX_RECTS)
+        let heatmap_rect_budget = if fisheye.distorts_geometry() {
+            HEATMAP_MAX_RECTS_WITH_FISHEYE
+        } else {
+            HEATMAP_MAX_RECTS
+        };
+        let heatmap_stride = if self.heatmap_rects.len() > heatmap_rect_budget {
+            self.heatmap_rects.len().div_ceil(heatmap_rect_budget)
         } else {
             1
         };
@@ -107,13 +126,20 @@ impl CandlestickChart {
             vol_max,
             candle_bull_color,
             candle_bear_color,
+            fisheye,
             idx_to_cx: &idx_to_cx,
             price_to_y: &price_to_y,
         };
         let candles_geo = self.draw_candle_layer(&candle_layer_context);
 
-        let right_axis_badges =
-            self.right_axis_badge_layout(state, price_h, price_range, &price_to_y);
+        let right_axis_badges = self.right_axis_badge_layout(
+            state,
+            price_h,
+            price_range,
+            chart_w,
+            fisheye,
+            &price_to_y,
+        );
         let mut overlay_frame = canvas::Frame::new(renderer, bounds.size());
 
         let chart_region = Rectangle {
@@ -136,6 +162,7 @@ impl CandlestickChart {
                 candle_bull_color,
                 candle_bear_color,
                 right_axis_badges: &right_axis_badges,
+                fisheye,
                 price_to_y: &price_to_y,
                 idx_to_cx: &idx_to_cx,
             };
@@ -150,6 +177,7 @@ impl CandlestickChart {
                 price_h,
                 price_range,
                 right_axis_badges: &right_axis_badges,
+                fisheye,
                 price_to_y: &price_to_y,
             };
             self.draw_annotation_overlays(&mut annotation_overlay_context);
@@ -167,6 +195,7 @@ impl CandlestickChart {
             price_range,
             heatmap_stride,
             step,
+            fisheye,
             price_to_y: &price_to_y,
         };
         self.draw_crosshair_overlay(&mut crosshair_context);

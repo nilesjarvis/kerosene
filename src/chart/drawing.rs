@@ -1,6 +1,8 @@
 use iced::widget::canvas;
 use iced::{Color, Point, Size, alignment};
 
+use super::fisheye::ChartFisheye;
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AxisBadgeStyle {
     pub(super) char_width: f32,
@@ -19,8 +21,9 @@ pub(super) struct SegmentedHLineStyle {
     pub(super) width: f32,
 }
 
-pub(super) fn stroke_hline(
+pub(super) fn stroke_projected_hline(
     frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
     chart_w: f32,
     y: f32,
     color: Color,
@@ -30,40 +33,19 @@ pub(super) fn stroke_hline(
         return;
     }
 
-    let line = canvas::Path::line(Point::new(0.0, y), Point::new(chart_w, y));
-    frame.stroke(
-        &line,
+    fisheye.stroke_projected_line(
+        frame,
+        Point::new(0.0, y),
+        Point::new(chart_w, y),
         canvas::Stroke::default()
             .with_color(color)
             .with_width(width),
     );
 }
 
-pub(super) fn stroke_segmented_hline(
+pub(super) fn stroke_projected_segmented_hline_with_offset(
     frame: &mut canvas::Frame,
-    chart_w: f32,
-    y: f32,
-    segment_len: f32,
-    gap_len: f32,
-    color: Color,
-    width: f32,
-) {
-    stroke_segmented_hline_with_offset(
-        frame,
-        chart_w,
-        y,
-        SegmentedHLineStyle {
-            segment_len,
-            gap_len,
-            offset: 0.0,
-            color,
-            width,
-        },
-    );
-}
-
-pub(super) fn stroke_segmented_hline_with_offset(
-    frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
     chart_w: f32,
     y: f32,
     style: SegmentedHLineStyle,
@@ -75,17 +57,14 @@ pub(super) fn stroke_segmented_hline_with_offset(
     let stride = (style.segment_len + style.gap_len).max(style.segment_len);
     let phase = style.offset.rem_euclid(stride);
     let mut x = phase - stride;
+    let stroke = canvas::Stroke::default()
+        .with_color(style.color)
+        .with_width(style.width);
     while x < chart_w {
         let start = x.max(0.0);
         let end = (x + style.segment_len).min(chart_w);
         if end > start {
-            let seg = canvas::Path::line(Point::new(start, y), Point::new(end, y));
-            frame.stroke(
-                &seg,
-                canvas::Stroke::default()
-                    .with_color(style.color)
-                    .with_width(style.width),
-            );
+            fisheye.stroke_projected_line(frame, Point::new(start, y), Point::new(end, y), stroke);
         }
         x += stride;
     }

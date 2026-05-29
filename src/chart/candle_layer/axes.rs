@@ -49,9 +49,10 @@ impl CandlestickChart {
                 continue;
             }
 
-            let line = canvas::Path::line(Point::new(x, 0.0), Point::new(x, ctx.chart_h));
-            frame.stroke(
-                &line,
+            ctx.fisheye.stroke_projected_line(
+                frame,
+                Point::new(x, 0.0),
+                Point::new(x, ctx.chart_h),
                 canvas::Stroke::default()
                     .with_color(Color {
                         a: 0.06,

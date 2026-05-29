@@ -67,7 +67,8 @@ impl CandlestickChart {
             } else {
                 0.15
             };
-            frame.fill_rectangle(
+            ctx.fisheye.fill_projected_rect(
+                frame,
                 Point::new(ctx.chart_w - bar_w, y_top),
                 Size::new(bar_w, (y_bottom - y_top).max(1.0)),
                 Color {

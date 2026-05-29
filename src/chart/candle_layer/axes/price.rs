@@ -22,9 +22,10 @@ impl CandlestickChart {
         for i in 0..=grid_steps {
             let frac = i as f32 / grid_steps as f32;
             let y = frac * ctx.price_h;
-            let line = canvas::Path::line(Point::new(0.0, y), Point::new(ctx.chart_w, y));
-            frame.stroke(
-                &line,
+            ctx.fisheye.stroke_projected_line(
+                frame,
+                Point::new(0.0, y),
+                Point::new(ctx.chart_w, y),
                 canvas::Stroke::default()
                     .with_color(Color {
                         a: 0.06,
@@ -43,12 +44,10 @@ impl CandlestickChart {
         IdxToCx: Fn(usize) -> f32,
         PriceToY: Fn(f64) -> f32,
     {
-        let sep = canvas::Path::line(
+        ctx.fisheye.stroke_projected_line(
+            frame,
             Point::new(0.0, ctx.price_h),
             Point::new(ctx.chart_w, ctx.price_h),
-        );
-        frame.stroke(
-            &sep,
             canvas::Stroke::default()
                 .with_color(Color {
                     a: 0.10,

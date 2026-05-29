@@ -1,3 +1,4 @@
+use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
 use super::state::ChartState;
 use super::tooltips::TooltipSurface;
@@ -31,6 +32,7 @@ where
     pub(super) price_range: f64,
     pub(super) heatmap_stride: usize,
     pub(super) step: f32,
+    pub(super) fisheye: ChartFisheye,
     pub(super) price_to_y: &'a PriceToY,
 }
 
@@ -41,13 +43,14 @@ impl CandlestickChart {
     ) where
         PriceToY: Fn(f64) -> f32,
     {
-        let Some(pos) = ctx.state.cursor_position else {
+        let Some(data_pos) = ctx.state.cursor_position else {
             return;
         };
         let drawable_h = ctx.chart_h + ctx.funding_panel_h;
-        if pos.x >= ctx.chart_w || pos.y >= drawable_h {
+        if data_pos.x >= ctx.chart_w || data_pos.y >= drawable_h {
             return;
         }
+        let visual_pos = ctx.fisheye.project(data_pos);
 
         draw_crosshair_style(
             ctx.frame,
@@ -56,28 +59,32 @@ impl CandlestickChart {
                 style: self.crosshair_style,
                 guide_lines_enabled: self.crosshair_guides_enabled,
                 crosshair_scale: self.crosshair_scale,
-                position: pos,
+                position: data_pos,
                 width: ctx.chart_w,
                 height: drawable_h,
+                fisheye: ctx.fisheye,
             },
         );
 
-        self.draw_crosshair_time_label(ctx, pos, drawable_h);
+        self.draw_crosshair_time_label(ctx, data_pos, visual_pos, drawable_h);
 
-        if ctx.funding_panel_h > 0.0 && pos.y >= ctx.chart_h {
+        if ctx.funding_panel_h > 0.0 && data_pos.y >= ctx.chart_h {
             let mut tooltip_surface =
-                TooltipSurface::new(ctx.frame, ctx.theme, pos, ctx.chart_w, ctx.price_h);
+                TooltipSurface::new(ctx.frame, ctx.theme, visual_pos, ctx.chart_w, ctx.price_h);
             tooltip_surface.draw_funding_hover(
                 &self.funding_rates,
                 ctx.chart_h,
                 ctx.funding_panel_h,
                 self.funding_annualized,
-                |point| self.timestamp_to_x(point.time_ms, ctx.state, ctx.chart_w),
+                |point| {
+                    self.timestamp_to_x(point.time_ms, ctx.state, ctx.chart_w)
+                        .map(|x| ctx.fisheye.project(Point::new(x, data_pos.y)).x)
+                },
             );
             return;
         }
 
-        if let Some(idx) = self.x_to_candle_index(pos.x, ctx.state, ctx.chart_w) {
+        if let Some(idx) = self.x_to_candle_index(data_pos.x, ctx.state, ctx.chart_w) {
             let volume = self.candles[idx].volume;
             ctx.frame.fill_text(canvas::Text {
                 content: format!("Vol: {}", format_volume_compact(volume)),
@@ -91,17 +98,18 @@ impl CandlestickChart {
             });
         }
 
-        if pos.y > ctx.price_h || ctx.price_range <= 0.0 {
+        if data_pos.y > ctx.price_h || ctx.price_range <= 0.0 {
             return;
         }
 
-        let hover_price = self.y_to_price_with(pos.y, ctx.price_hi, ctx.price_range, ctx.price_h);
+        let hover_price =
+            self.y_to_price_with(data_pos.y, ctx.price_hi, ctx.price_range, ctx.price_h);
 
-        self.draw_range_measurement(ctx, pos, hover_price);
+        self.draw_range_measurement(ctx, data_pos, visual_pos, hover_price);
 
         ctx.frame.fill_text(canvas::Text {
             content: format_price(hover_price),
-            position: Point::new(ctx.chart_w + 6.0, pos.y),
+            position: Point::new(ctx.chart_w + 6.0, visual_pos.y),
             color: Color::WHITE,
             size: iced::Pixels(11.0),
             align_x: alignment::Horizontal::Left.into(),
@@ -111,31 +119,45 @@ impl CandlestickChart {
         });
 
         let mut tooltip_surface =
-            TooltipSurface::new(ctx.frame, ctx.theme, pos, ctx.chart_w, ctx.price_h);
+            TooltipSurface::new(ctx.frame, ctx.theme, visual_pos, ctx.chart_w, ctx.price_h);
+        let projected_price_to_y = |price| {
+            ctx.fisheye
+                .project(Point::new(data_pos.x, (ctx.price_to_y)(price)))
+                .y
+        };
         tooltip_surface.draw_liquidation_hover(
             hover_price,
             ctx.price_range,
             &self.liquidation_buckets,
-            ctx.price_to_y,
+            &projected_price_to_y,
         );
         tooltip_surface.draw_heatmap_hover(
             &self.heatmap_rects,
             ctx.heatmap_stride,
             self.heatmap_max_usd,
-            |rect| self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step),
-            ctx.price_to_y,
+            |rect| {
+                self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step)
+                    .map(|(left, right)| {
+                        (
+                            ctx.fisheye.project(Point::new(left, data_pos.y)).x,
+                            ctx.fisheye.project(Point::new(right, data_pos.y)).x,
+                        )
+                    })
+            },
+            &projected_price_to_y,
         );
     }
 
     fn draw_crosshair_time_label<PriceToY>(
         &self,
         ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
-        pos: Point,
+        data_pos: Point,
+        visual_pos: Point,
         drawable_h: f32,
     ) where
         PriceToY: Fn(f64) -> f32,
     {
-        let Some(timestamp_ms) = self.x_to_timestamp(pos.x, ctx.state, ctx.chart_w) else {
+        let Some(timestamp_ms) = self.x_to_timestamp(data_pos.x, ctx.state, ctx.chart_w) else {
             return;
         };
 
@@ -146,7 +168,7 @@ impl CandlestickChart {
             return;
         }
 
-        let label_x = (pos.x - label_width * 0.5)
+        let label_x = (visual_pos.x - label_width * 0.5)
             .max(4.0)
             .min(ctx.chart_w - label_width - 4.0);
         let label_y = drawable_h + 3.0;

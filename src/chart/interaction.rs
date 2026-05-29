@@ -5,6 +5,7 @@ mod press;
 mod zoom;
 
 use super::{CandlestickChart, ChartState};
+use crate::chart::fisheye::ChartFisheye;
 use crate::message::Message;
 use iced::Rectangle;
 use iced::keyboard;
@@ -23,11 +24,9 @@ impl CandlestickChart {
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<canvas::Action<Message>> {
-        let pos = cursor.position_in(bounds);
+        let raw_pos = cursor.position_in(bounds);
         let chart_w = bounds.width - self.price_axis_width();
         let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
-        let needs_redraw_for_cursor = state.cursor_position != pos;
-        state.cursor_position = pos;
 
         if chart_w <= 0.0
             || chart_h <= 0.0
@@ -37,9 +36,21 @@ impl CandlestickChart {
             || !bounds.height.is_finite()
         {
             let needs_redraw_for_hover = state.hover_order_oid.take().is_some();
+            let needs_redraw_for_cursor = state.cursor_position != raw_pos;
+            state.cursor_position = raw_pos;
             return (needs_redraw_for_cursor || needs_redraw_for_hover)
                 .then(canvas::Action::request_redraw);
         }
+
+        let fisheye = ChartFisheye::new(
+            self.fisheye_enabled,
+            self.fisheye_strength,
+            chart_w,
+            chart_h + funding_panel_h,
+        );
+        let pos = raw_pos.map(|pos| fisheye.unproject(pos));
+        let needs_redraw_for_cursor = state.cursor_position != pos;
+        state.cursor_position = pos;
 
         if state.reset_epoch_seen != self.reset_epoch {
             state.reset_view(self.reset_epoch);

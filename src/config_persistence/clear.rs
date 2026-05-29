@@ -89,6 +89,10 @@ impl TradingTerminal {
         self.ui_scale = defaults.ui_scale;
         self.chart_dotted_background = defaults.chart_dotted_background;
         self.chart_dotted_background_opacity = defaults.chart_dotted_background_opacity;
+        self.chart_fisheye_enabled = defaults.chart_fisheye_enabled;
+        self.chart_fisheye_strength = defaults.chart_fisheye_strength;
+        self.chart_chromatic_aberration_enabled = defaults.chart_chromatic_aberration_enabled;
+        self.chart_chromatic_aberration_strength = defaults.chart_chromatic_aberration_strength;
         self.chart_crosshair_style = defaults.chart_crosshair_style;
         self.chart_crosshair_guides_enabled = defaults.chart_crosshair_guides_enabled;
         self.chart_crosshair_scale = defaults.chart_crosshair_scale;
@@ -120,6 +124,8 @@ impl TradingTerminal {
         self.muted_ticker_status = None;
         self.apply_chart_theme_colors();
         self.sync_chart_dotted_background();
+        self.sync_chart_fisheye();
+        self.sync_chart_chromatic_aberration();
         self.sync_chart_crosshair_style();
         self.sync_chart_crosshair_guides();
         self.sync_chart_crosshair_scale();

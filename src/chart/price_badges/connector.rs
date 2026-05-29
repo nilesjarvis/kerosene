@@ -1,5 +1,6 @@
 use super::{RightAxisBadgeKind, RightAxisBadgeLayout};
 use crate::chart::drawing::SegmentedHLineStyle;
+use crate::chart::fisheye::ChartFisheye;
 use crate::chart::segmented_curve::{
     append_segmented_quadratic_curve, quadratic_point, valid_point,
 };
@@ -23,7 +24,6 @@ pub(in crate::chart) enum RightAxisBadgeConnectorStyle {
 pub(in crate::chart) fn right_axis_line_end_x(
     layout: &RightAxisBadgeLayout,
     kind: RightAxisBadgeKind,
-    source_y: f32,
     chart_w: f32,
 ) -> f32 {
     if chart_w <= 0.0 || !chart_w.is_finite() {
@@ -31,7 +31,7 @@ pub(in crate::chart) fn right_axis_line_end_x(
     }
 
     if let Some(position) = layout.position(kind)
-        && right_axis_badge_is_shifted(source_y, position.badge_y)
+        && right_axis_badge_is_shifted(position.source_y, position.badge_y)
     {
         return (chart_w - RIGHT_AXIS_BADGE_CONNECTOR_SPAN).max(0.0);
     }
@@ -42,18 +42,19 @@ pub(in crate::chart) fn right_axis_line_end_x(
 pub(super) fn right_axis_badge_connector_points(
     layout: &RightAxisBadgeLayout,
     kind: RightAxisBadgeKind,
-    source_y: f32,
+    raw_source_y: f32,
     chart_w: f32,
-    badge_y: f32,
+    fisheye: ChartFisheye,
 ) -> Option<(Point, Point, Point)> {
-    if !right_axis_badge_is_shifted(source_y, badge_y) {
+    let position = layout.position(kind)?;
+    if !right_axis_badge_is_shifted(position.source_y, position.badge_y) {
         return None;
     }
 
-    let start_x = right_axis_line_end_x(layout, kind, source_y, chart_w);
-    let start = Point::new(start_x, source_y);
-    let control = Point::new(start_x + (chart_w - start_x) * 0.55, source_y);
-    let end = Point::new(chart_w + 1.0, badge_y);
+    let start_x = right_axis_line_end_x(layout, kind, chart_w);
+    let start = fisheye.project(Point::new(start_x, raw_source_y));
+    let end = Point::new(chart_w + 1.0, position.badge_y);
+    let control = Point::new(start.x + (end.x - start.x) * 0.55, start.y);
     Some((start, control, end))
 }
 

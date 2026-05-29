@@ -100,6 +100,7 @@ impl SpaghettiCanvas {
                 ctx.chart_w,
                 ctx.chart_h,
                 self.dotted_background_opacity,
+                crate::chart::fisheye::ChartFisheye::disabled(),
             );
         }
         axes::draw_grid_and_axes(

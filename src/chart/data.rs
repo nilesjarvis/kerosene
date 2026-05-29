@@ -29,6 +29,11 @@ impl CandlestickChart {
             show_trade_markers: false,
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
+            fisheye_enabled: false,
+            fisheye_strength: crate::config::default_chart_fisheye_strength(),
+            chromatic_aberration_enabled: false,
+            chromatic_aberration_strength:
+                crate::config::default_chart_chromatic_aberration_strength(),
             crosshair_style: Default::default(),
             crosshair_guides_enabled: true,
             crosshair_scale: crate::config::default_chart_crosshair_scale(),
@@ -74,6 +79,10 @@ impl CandlestickChart {
             show_trade_markers: self.show_trade_markers,
             dotted_background: self.dotted_background,
             dotted_background_opacity: self.dotted_background_opacity,
+            fisheye_enabled: self.fisheye_enabled,
+            fisheye_strength: self.fisheye_strength,
+            chromatic_aberration_enabled: self.chromatic_aberration_enabled,
+            chromatic_aberration_strength: self.chromatic_aberration_strength,
             crosshair_style: self.crosshair_style,
             crosshair_guides_enabled: self.crosshair_guides_enabled,
             crosshair_scale: self.crosshair_scale,
@@ -152,6 +161,28 @@ impl CandlestickChart {
         {
             self.dotted_background = enabled;
             self.dotted_background_opacity = opacity;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_fisheye(&mut self, enabled: bool, strength: f32) {
+        let strength = crate::config::normalize_chart_fisheye_strength(strength);
+        if self.fisheye_enabled != enabled
+            || (self.fisheye_strength - strength).abs() > f32::EPSILON
+        {
+            self.fisheye_enabled = enabled;
+            self.fisheye_strength = strength;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_chromatic_aberration(&mut self, enabled: bool, strength: f32) {
+        let strength = crate::config::normalize_chart_chromatic_aberration_strength(strength);
+        if self.chromatic_aberration_enabled != enabled
+            || (self.chromatic_aberration_strength - strength).abs() > f32::EPSILON
+        {
+            self.chromatic_aberration_enabled = enabled;
+            self.chromatic_aberration_strength = strength;
             self.candle_cache.clear();
         }
     }

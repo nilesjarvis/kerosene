@@ -39,6 +39,7 @@ pub const ZOOM_SPEED: f32 = 1.12; // multiplicative zoom per scroll tick
 pub const PAN_SPEED: f32 = 1.0; // pixels of scroll -> candles of pan
 
 pub(super) const HEATMAP_MAX_RECTS: usize = 20_000;
+pub(super) const HEATMAP_MAX_RECTS_WITH_FISHEYE: usize = 5_000;
 
 pub struct CandlestickChart {
     pub id: u64,
@@ -61,6 +62,14 @@ pub struct CandlestickChart {
     pub(crate) dotted_background: bool,
     /// Opacity applied to dotted chart plot backgrounds.
     pub(crate) dotted_background_opacity: f32,
+    /// Whether chart plot geometry is rendered through a fisheye lens projection.
+    pub(crate) fisheye_enabled: bool,
+    /// Strength of the fisheye lens projection.
+    pub(crate) fisheye_strength: f32,
+    /// Whether chart geometry renders subtle red/cyan lens channel separation.
+    pub(crate) chromatic_aberration_enabled: bool,
+    /// Strength of the chromatic aberration channel separation.
+    pub(crate) chromatic_aberration_strength: f32,
     /// Reticle style used for the chart crosshair.
     pub(crate) crosshair_style: crate::config::ChartCrosshairStyle,
     /// Whether the chart crosshair draws full-span guide lines.

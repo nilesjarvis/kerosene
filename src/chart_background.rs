@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart::fisheye::ChartFisheye;
 
 use iced::widget::canvas;
 use iced::{Color, Point, Size, Theme};
@@ -16,6 +17,7 @@ pub(crate) fn draw_dotted_background(
     width: f32,
     height: f32,
     opacity: f32,
+    fisheye: ChartFisheye,
 ) {
     let alpha = if opacity.is_finite() {
         opacity.clamp(0.0, 1.0)
@@ -26,8 +28,29 @@ pub(crate) fn draw_dotted_background(
         a: alpha,
         ..theme.palette().text
     };
-    let path = dotted_background_path(width, height);
-    frame.fill(&path, color);
+    if fisheye.is_enabled() {
+        draw_projected_dotted_background(frame, width, height, color, fisheye);
+    } else {
+        let path = dotted_background_path(width, height);
+        frame.fill(&path, color);
+    }
+}
+
+fn draw_projected_dotted_background(
+    frame: &mut canvas::Frame,
+    width: f32,
+    height: f32,
+    color: Color,
+    fisheye: ChartFisheye,
+) {
+    let mut dots = Vec::with_capacity(dotted_background_dot_count(width, height));
+    for_each_dotted_background_dot(width, height, |top_left| {
+        dots.push((
+            top_left,
+            Size::new(DOTTED_BACKGROUND_DOT_SIZE, DOTTED_BACKGROUND_DOT_SIZE),
+        ));
+    });
+    fisheye.fill_projected_rects(frame, &dots, color);
 }
 
 fn dotted_background_path(width: f32, height: f32) -> canvas::Path {
@@ -65,7 +88,6 @@ fn for_each_dotted_background_dot(width: f32, height: f32, mut visit: impl FnMut
     }
 }
 
-#[cfg(test)]
 fn dotted_background_dot_count(width: f32, height: f32) -> usize {
     if width <= 0.0 || height <= 0.0 || !width.is_finite() || !height.is_finite() {
         return 0;
@@ -95,6 +117,22 @@ impl TradingTerminal {
         }
         for instance in self.spaghetti_charts.values_mut() {
             instance.canvas.set_dotted_background(enabled, opacity);
+        }
+    }
+
+    pub(crate) fn sync_chart_fisheye(&mut self) {
+        let enabled = self.chart_fisheye_enabled;
+        let strength = self.chart_fisheye_strength;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_fisheye(enabled, strength);
+        }
+    }
+
+    pub(crate) fn sync_chart_chromatic_aberration(&mut self) {
+        let enabled = self.chart_chromatic_aberration_enabled;
+        let strength = self.chart_chromatic_aberration_strength;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_chromatic_aberration(enabled, strength);
         }
     }
 

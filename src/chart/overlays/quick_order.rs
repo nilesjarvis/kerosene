@@ -1,6 +1,6 @@
 use super::TradingOverlayContext;
 use crate::chart::drawing::{
-    AxisBadgeStyle, SegmentedHLineStyle, stroke_segmented_hline_with_offset,
+    AxisBadgeStyle, SegmentedHLineStyle, stroke_projected_segmented_hline_with_offset,
 };
 use crate::chart::model::CandlestickChart;
 use crate::chart::price_badges::{
@@ -39,9 +39,10 @@ impl CandlestickChart {
             ..ctx.theme.palette().primary
         };
         let badge_kind = RightAxisBadgeKind::QuickOrder;
-        let line_end_x = right_axis_line_end_x(ctx.right_axis_badges, badge_kind, y, ctx.chart_w);
-        stroke_segmented_hline_with_offset(
+        let line_end_x = right_axis_line_end_x(ctx.right_axis_badges, badge_kind, ctx.chart_w);
+        stroke_projected_segmented_hline_with_offset(
             ctx.frame,
+            ctx.fisheye,
             line_end_x,
             y,
             SegmentedHLineStyle {
@@ -76,6 +77,7 @@ impl CandlestickChart {
                     width: 1.5,
                 },
             },
+            ctx.fisheye,
         );
     }
 }

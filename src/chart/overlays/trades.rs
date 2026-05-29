@@ -76,10 +76,12 @@ impl CandlestickChart {
             ..ctx.theme.extended_palette().background.strong.color
         };
         for dot in layout.visible_dots() {
-            let circle = canvas::Path::circle(dot.center, dot.radius);
-            ctx.frame.fill(&circle, fill_color);
-            ctx.frame.stroke(
-                &circle,
+            ctx.fisheye
+                .fill_projected_circle(ctx.frame, dot.center, dot.radius, fill_color);
+            ctx.fisheye.stroke_projected_circle(
+                ctx.frame,
+                dot.center,
+                dot.radius,
                 canvas::Stroke::default()
                     .with_color(outline)
                     .with_width(0.9),
@@ -98,7 +100,8 @@ impl CandlestickChart {
         let Some(pos) = ctx.state.cursor_position else {
             return;
         };
-        if pos.x > ctx.chart_w || pos.y > ctx.price_h {
+        let visual_pos = ctx.fisheye.project(pos);
+        if visual_pos.x > ctx.chart_w || visual_pos.y > ctx.price_h {
             return;
         }
 
@@ -149,10 +152,10 @@ impl CandlestickChart {
         let card_size = TooltipSurface::card_size_for_lines(&lines, 142.0);
         let max_card_x = (ctx.chart_w - card_size.width - 4.0).max(4.0);
         let max_card_y = (ctx.price_h - card_size.height).max(0.0);
-        let card_x = (pos.x + 14.0).min(max_card_x).max(4.0);
-        let card_y = (pos.y - card_size.height - 8.0).clamp(0.0, max_card_y);
+        let card_x = (visual_pos.x + 14.0).min(max_card_x).max(4.0);
+        let card_y = (visual_pos.y - card_size.height - 8.0).clamp(0.0, max_card_y);
         let mut tooltip_surface =
-            TooltipSurface::new(ctx.frame, ctx.theme, pos, ctx.chart_w, ctx.price_h);
+            TooltipSurface::new(ctx.frame, ctx.theme, visual_pos, ctx.chart_w, ctx.price_h);
         tooltip_surface.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
 }
