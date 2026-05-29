@@ -5,7 +5,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
 use iced::widget::container as container_style;
-use iced::widget::{column, container, rule};
+use iced::widget::container;
 use iced::{Color, Element, Fill, Theme};
 
 // ---------------------------------------------------------------------------
@@ -14,16 +14,6 @@ use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_status_bar(&self) -> Element<'_, Message> {
-        let separator = rule::horizontal(1).style(|theme: &Theme| rule::Style {
-            color: Color {
-                a: 0.35,
-                ..theme.palette().primary
-            },
-            radius: 0.0.into(),
-            fill_mode: rule::FillMode::Full,
-            snap: true,
-        });
-
         let content = container(self.status_connectivity_row())
             .width(Fill)
             .padding([4, 8])
@@ -38,6 +28,6 @@ impl TradingTerminal {
                 ..Default::default()
             });
 
-        container(column![separator, content]).width(Fill).into()
+        container(content).width(Fill).into()
     }
 }

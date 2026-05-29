@@ -11,17 +11,19 @@ pub enum ChartCrosshairStyle {
     Circle,
     Scope,
     Rangefinder,
+    Target,
     Rectangle,
     /// Legacy value kept so older saved configs continue to deserialize.
     StackedRectangles,
 }
 
 impl ChartCrosshairStyle {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Classic,
         Self::Circle,
         Self::Scope,
         Self::Rangefinder,
+        Self::Target,
         Self::Rectangle,
     ];
 
@@ -38,6 +40,7 @@ impl ChartCrosshairStyle {
             Self::Circle => "Circle",
             Self::Scope => "Scope",
             Self::Rangefinder => "Rangefinder",
+            Self::Target => "Target",
             Self::Rectangle => "Rectangle",
             Self::StackedRectangles => unreachable!("legacy crosshair style is normalized"),
         }

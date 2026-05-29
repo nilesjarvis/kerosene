@@ -75,6 +75,9 @@ pub(crate) fn draw_crosshair_style(
             ChartCrosshairStyle::Rangefinder => {
                 draw_rangefinder_reticle(frame, theme, position, scale);
             }
+            ChartCrosshairStyle::Target => {
+                draw_target_reticle(frame, theme, position, scale);
+            }
             ChartCrosshairStyle::Rectangle => {
                 let size = scaled_size(scale, 58.0, 36.0);
                 draw_rectangle(frame, theme, position, size, scale);
@@ -199,6 +202,134 @@ fn draw_rangefinder_reticle(frame: &mut canvas::Frame, theme: &Theme, center: Po
 
     draw_rangefinder_ticks(frame, stroke, center, scale);
     draw_corner_brackets(frame, stroke, center, bracket_x, bracket_y, bracket_len);
+}
+
+fn draw_target_reticle(frame: &mut canvas::Frame, theme: &Theme, center: Point, scale: f32) {
+    let radius = (42.0 * scale).max(19.0);
+    let ring = canvas::Path::circle(center, radius);
+    frame.stroke(
+        &ring,
+        shape_stroke(theme, ChartCrosshairStyle::Target, scale).with_width((5.6 * scale).max(2.4)),
+    );
+
+    let stroke = shape_stroke(theme, ChartCrosshairStyle::Target, scale);
+    stroke_segment(
+        frame,
+        stroke,
+        Point::new(center.x - radius, center.y),
+        Point::new(center.x + radius, center.y),
+    );
+    stroke_segment(
+        frame,
+        stroke,
+        Point::new(center.x, center.y - radius),
+        Point::new(center.x, center.y + radius),
+    );
+
+    draw_target_ticks(frame, stroke, center, scale);
+    draw_target_blocks(frame, theme, center, radius, scale);
+}
+
+fn draw_target_ticks(
+    frame: &mut canvas::Frame,
+    stroke: canvas::Stroke<'static>,
+    center: Point,
+    scale: f32,
+) {
+    let offsets = [18.0, 28.0];
+    let tick_half = (5.0 * scale).max(2.4);
+    for offset in offsets {
+        let offset = offset * scale;
+        for direction in [-1.0, 1.0] {
+            stroke_segment(
+                frame,
+                stroke,
+                Point::new(center.x + direction * offset, center.y - tick_half),
+                Point::new(center.x + direction * offset, center.y + tick_half),
+            );
+            stroke_segment(
+                frame,
+                stroke,
+                Point::new(center.x - tick_half, center.y + direction * offset),
+                Point::new(center.x + tick_half, center.y + direction * offset),
+            );
+        }
+    }
+}
+
+fn draw_target_blocks(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    center: Point,
+    radius: f32,
+    scale: f32,
+) {
+    let block_width = (8.0 * scale).max(3.8);
+    let block_len = (14.0 * scale).max(6.0);
+    let point_len = (4.0 * scale).max(2.0);
+    let inset = (3.0 * scale).max(1.4);
+    let color = guide_color(theme, ChartCrosshairStyle::Target);
+
+    for direction in [
+        Point::new(0.0, -1.0),
+        Point::new(1.0, 0.0),
+        Point::new(0.0, 1.0),
+        Point::new(-1.0, 0.0),
+    ] {
+        let block = target_block_path(
+            center,
+            direction,
+            radius - inset,
+            block_width,
+            block_len,
+            point_len,
+        );
+        frame.fill(&block, color);
+    }
+}
+
+fn target_block_path(
+    center: Point,
+    direction: Point,
+    outer_offset: f32,
+    width: f32,
+    block_len: f32,
+    point_len: f32,
+) -> canvas::Path {
+    let tangent = Point::new(-direction.y, direction.x);
+    let outer_center = Point::new(
+        center.x + direction.x * outer_offset,
+        center.y + direction.y * outer_offset,
+    );
+    let inner_center = Point::new(
+        outer_center.x - direction.x * block_len,
+        outer_center.y - direction.y * block_len,
+    );
+    let tip = Point::new(
+        inner_center.x - direction.x * point_len,
+        inner_center.y - direction.y * point_len,
+    );
+
+    canvas::Path::new(|path| {
+        path.move_to(Point::new(
+            outer_center.x + tangent.x * width * 0.5,
+            outer_center.y + tangent.y * width * 0.5,
+        ));
+        path.line_to(Point::new(
+            outer_center.x - tangent.x * width * 0.5,
+            outer_center.y - tangent.y * width * 0.5,
+        ));
+        path.line_to(Point::new(
+            inner_center.x - tangent.x * width * 0.5,
+            inner_center.y - tangent.y * width * 0.5,
+        ));
+        path.line_to(tip);
+        path.line_to(Point::new(
+            inner_center.x + tangent.x * width * 0.5,
+            inner_center.y + tangent.y * width * 0.5,
+        ));
+        path.close();
+    })
 }
 
 fn draw_rangefinder_ticks(
