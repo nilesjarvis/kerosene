@@ -17,6 +17,9 @@ use std::collections::HashMap;
 
 impl TradingTerminal {
     pub(crate) fn handle_mids_update(&mut self, mids: HashMap<String, f64>) -> Task<Message> {
+        let now_ms = Self::now_ms();
+        self.record_screener_mid_samples(&mids, now_ms);
+
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
         let market_universe = self.market_universe.clone();
@@ -38,7 +41,7 @@ impl TradingTerminal {
             &mut self.all_mids_updated_at_ms,
             &mut self.live_watchlist_flashes,
             mids,
-            Self::now_ms(),
+            now_ms,
             is_hidden,
         );
         self.sync_chart_display_denominations();

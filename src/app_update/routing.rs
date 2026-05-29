@@ -23,6 +23,7 @@ pub(super) enum UpdateRoute {
     Panes,
     PortfolioIncome,
     Preferences,
+    Screener,
     Settings,
     Spaghetti,
     WalletTracker,
@@ -274,6 +275,14 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AlfredSelectionMoved(_)
         | Message::AlfredSubmit
         | Message::AlfredCommandSelected(_) => UpdateRoute::Alfred,
+
+        Message::OpenScreenerWindow
+        | Message::RefreshScreener
+        | Message::RefreshScreenerHistory
+        | Message::ScreenerExchangeFilterChanged(_)
+        | Message::ScreenerSortChanged(_)
+        | Message::ScreenerContextsLoaded(_, _)
+        | Message::ScreenerHistoryLoaded(_, _, _) => UpdateRoute::Screener,
 
         Message::OpenSettingsWindow
         | Message::SettingsTabSelected(_)

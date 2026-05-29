@@ -1,4 +1,4 @@
-use super::history_baselines;
+use super::{history_baselines, screener_history_baselines};
 use crate::api::Candle;
 
 fn candle(open_time: u64, open: f64) -> Candle {
@@ -33,4 +33,17 @@ fn history_baselines_use_latest_candle_before_each_target() {
     ];
 
     assert_eq!(history_baselines(candles, now), Some((4.0, 3.0, 2.0)));
+}
+
+#[test]
+fn screener_history_baselines_use_fifteen_minute_and_one_hour_targets() {
+    let now = 65 * 60 * 1000;
+    let candles = vec![
+        candle(0, 1.0),
+        candle(5 * 60 * 1000, 2.0),
+        candle(50 * 60 * 1000, 3.0),
+        candle(60 * 60 * 1000, 4.0),
+    ];
+
+    assert_eq!(screener_history_baselines(candles, now), Some((3.0, 2.0)));
 }

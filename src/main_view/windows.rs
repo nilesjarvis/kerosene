@@ -31,6 +31,9 @@ impl TradingTerminal {
         if Some(window_id) == self.settings_window_id {
             return self.view_settings();
         }
+        if Some(window_id) == self.screener.window_id {
+            return self.view_screener_window();
+        }
         if Some(window_id) == self.chart_screenshot_window_id {
             return self.view_chart_screenshot_window();
         }
@@ -72,6 +75,8 @@ impl TradingTerminal {
             "Kerosene Trading Journal".to_string()
         } else if Some(window_id) == self.settings_window_id {
             "Kerosene Settings".to_string()
+        } else if Some(window_id) == self.screener.window_id {
+            "Kerosene Screener".to_string()
         } else if Some(window_id) == self.chart_screenshot_window_id {
             "Kerosene Chart Screenshot".to_string()
         } else if let Some(state) = self.pnl_card_windows.get(&window_id) {

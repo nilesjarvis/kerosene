@@ -209,6 +209,7 @@ impl TradingTerminal {
                     scrub_task,
                     self.request_symbol_search_context_refresh(true),
                     self.request_live_watchlist_refresh(true),
+                    self.request_screener_data_refresh(true),
                     account_task,
                 ]);
             }

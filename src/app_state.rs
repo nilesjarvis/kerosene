@@ -23,6 +23,7 @@ use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
 use crate::positioning_state::{PositioningInfoId, PositioningInfoInstance};
+use crate::screener_state::ScreenerState;
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ChaseOrder, OrderKind};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
@@ -257,6 +258,7 @@ pub(crate) struct TradingTerminal {
     // Multi-window IDs
     pub(crate) main_window_id: Option<window::Id>,
     pub(crate) settings_window_id: Option<window::Id>,
+    pub(crate) screener: ScreenerState,
     pub(crate) chart_screenshot_window_id: Option<window::Id>,
     pub(crate) pnl_card_windows: HashMap<window::Id, PnlCardWindowState>,
     pub(crate) detached_chart_windows: HashMap<window::Id, DetachedChartWindowState>,

@@ -20,7 +20,9 @@ pub(crate) use order_status::{
 };
 pub(crate) use outcome_volume::{OutcomeVolume24h, fetch_outcome_volumes_24h};
 pub use user_fills::{UserFill, UserFillsPage, UserFillsRequest, fetch_user_fills};
-pub use watchlist::{WatchlistContext, fetch_watchlist_contexts, fetch_watchlist_history};
+pub use watchlist::{
+    WatchlistContext, fetch_screener_history, fetch_watchlist_contexts, fetch_watchlist_history,
+};
 
 use reqwest::{
     Client,

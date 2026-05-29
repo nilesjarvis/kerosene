@@ -18,6 +18,7 @@ impl TradingTerminal {
             UpdateRoute::Order => self.update_order(message),
             UpdateRoute::Market => self.update_market(message),
             UpdateRoute::Preferences => self.update_preferences(message),
+            UpdateRoute::Screener => self.update_screener(message),
             UpdateRoute::Settings => self.update_settings(message),
             UpdateRoute::Calendar => self.update_calendar(message),
             UpdateRoute::Window => self.update_window(message),

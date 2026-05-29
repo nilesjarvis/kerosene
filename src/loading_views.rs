@@ -76,6 +76,8 @@ impl TradingTerminal {
                 .any(|state| state.loading)
             || self.live_watchlist_contexts_loading
             || self.live_watchlist_history_loading
+            || self.screener.contexts_loading
+            || self.screener.history_loading
             || self.active_move_order_drag.is_some()
             || !self.pending_move_order_contexts.is_empty()
             || !self.pending_order_indicators.is_empty()

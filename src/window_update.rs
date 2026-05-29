@@ -32,6 +32,11 @@ impl TradingTerminal {
                 if Some(id) == self.settings_window_id {
                     self.settings_window_id = None;
                 }
+                if Some(id) == self.screener.window_id {
+                    self.screener.window_id = None;
+                    self.screener.contexts_loading = false;
+                    self.screener.history_loading = false;
+                }
                 if Some(id) == self.chart_screenshot_window_id {
                     self.chart_screenshot_window_id = None;
                     self.chart_screenshot = None;

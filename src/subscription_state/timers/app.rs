@@ -31,6 +31,17 @@ impl TradingTerminal {
             );
         }
 
+        if self.screener.window_id.is_some() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(15))
+                    .map(|_| Message::RefreshScreenerHistory),
+            );
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(60))
+                    .map(|_| Message::RefreshScreener),
+            );
+        }
+
         subs.push(
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::StatusBarTick),
         );

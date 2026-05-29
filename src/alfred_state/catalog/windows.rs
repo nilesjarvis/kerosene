@@ -30,6 +30,15 @@ impl TradingTerminal {
                 &["wallet", "tracker", "addresses", "window", "open"],
             ),
             AlfredCommand::new(
+                AlfredCommandId::OpenScreenerWindow,
+                "Screener",
+                "Open screener window",
+                open_tag(self.screener.window_id.is_some(), "Window"),
+                AlfredCommandKind::OpenWindow,
+                Some(Message::OpenScreenerWindow),
+                &["screener", "ticker", "prices", "funding", "window", "open"],
+            ),
+            AlfredCommand::new(
                 AlfredCommandId::OpenSettingsWindow,
                 "Settings",
                 "Open settings window",

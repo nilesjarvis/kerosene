@@ -29,6 +29,7 @@ use crate::positioning_state::{
     PositioningInfoChangeSortField, PositioningInfoChangeTimeframe, PositioningInfoId,
     PositioningInfoPage, PositioningInfoSide, PositioningInfoSortField,
 };
+use crate::screener_state::{ScreenerExchangeFilter, ScreenerSortColumn};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
@@ -152,6 +153,20 @@ pub(crate) enum Message {
     AddComparisonChart,
     AddPairRatioChart,
     OpenSettingsWindow,
+    OpenScreenerWindow,
+    RefreshScreener,
+    RefreshScreenerHistory,
+    ScreenerExchangeFilterChanged(ScreenerExchangeFilter),
+    ScreenerSortChanged(ScreenerSortColumn),
+    ScreenerContextsLoaded(
+        u64,
+        Result<HashMap<String, crate::api::WatchlistContext>, String>,
+    ),
+    ScreenerHistoryLoaded(
+        Vec<String>,
+        u64,
+        Result<HashMap<String, (f64, f64)>, String>,
+    ),
     SettingsTabSelected(SettingsTab),
     ThemeSettingsPageSelected(ThemeSettingsPage),
     OpenUnlockCredentialsPopup,

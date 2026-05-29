@@ -35,6 +35,17 @@ pub(in crate::add_widget_menu::body) fn add_window_section(
             theme,
         ))
         .push(menu_item(
+            "Screener",
+            if context.screener_open {
+                "Open"
+            } else {
+                "Window"
+            },
+            Some(Message::OpenScreenerWindow),
+            true,
+            theme,
+        ))
+        .push(menu_item(
             "Settings",
             if context.settings_open {
                 "Open"
