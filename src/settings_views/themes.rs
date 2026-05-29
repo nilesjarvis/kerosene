@@ -5,59 +5,185 @@ mod lists;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{column, rule, scrollable, text};
-use iced::{Element, Fill};
+use crate::settings_state::ThemeSettingsPage;
+use iced::widget::{button as widget_button, column, row, rule, scrollable, text};
+use iced::{Alignment, Element, Fill, Length, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_settings_themes_section(&self) -> Element<'_, Message> {
-        let current_theme = self.theme();
-        let chrome_controls = self.view_settings_widget_chrome_section();
-        let font_controls = self.view_settings_display_font_section();
-        let theme_list = self.view_builtin_theme_list();
-        let custom_list = self.view_custom_theme_list();
-        let has_custom_themes = !self.custom_themes.is_empty();
-
-        if !has_custom_themes {
-            column![
-                text("Theme").size(16).color(current_theme.palette().text),
-                rule::horizontal(1),
-                scrollable(
-                    column![
-                        chrome_controls,
-                        rule::horizontal(1),
-                        font_controls,
-                        rule::horizontal(1),
-                        theme_list
-                    ]
-                    .spacing(12)
-                )
-                .height(Fill),
-            ]
-            .spacing(12)
-            .into()
-        } else {
-            column![
-                text("Theme").size(16).color(current_theme.palette().text),
-                rule::horizontal(1),
-                scrollable(
-                    column![
-                        chrome_controls,
-                        rule::horizontal(1),
-                        font_controls,
-                        rule::horizontal(1),
-                        theme_list,
-                        text("Custom Themes")
-                            .size(16)
-                            .color(current_theme.palette().text),
-                        rule::horizontal(1),
-                        custom_list
-                    ]
-                    .spacing(12)
-                )
-                .height(Fill),
-            ]
-            .spacing(12)
-            .into()
+        match self.settings_theme_page {
+            ThemeSettingsPage::Overview => self.view_settings_theme_overview(),
+            ThemeSettingsPage::WidgetChrome => self.view_settings_theme_subpage(
+                "Widget Chrome",
+                self.view_settings_widget_chrome_section(),
+            ),
+            ThemeSettingsPage::Crosshair => self
+                .view_settings_theme_subpage("Crosshair", self.view_settings_crosshair_section()),
+            ThemeSettingsPage::Fonts => {
+                self.view_settings_theme_subpage("Fonts", self.view_settings_display_font_section())
+            }
+            ThemeSettingsPage::BuiltInThemes => {
+                self.view_settings_theme_subpage("Built-in Themes", self.view_builtin_theme_page())
+            }
+            ThemeSettingsPage::CustomThemes => {
+                self.view_settings_theme_subpage("Custom Themes", self.view_custom_theme_page())
+            }
         }
     }
+
+    fn view_settings_theme_overview(&self) -> Element<'_, Message> {
+        let current_theme = self.theme();
+        let dots = if self.chart_dotted_background {
+            "dots on"
+        } else {
+            "dots off"
+        };
+        let border = if self.outer_widget_border_enabled {
+            "border on"
+        } else {
+            "border off"
+        };
+        let chrome_summary = format!(
+            "{:.0}% scale, {:.0}px divider, {dots}, {border}",
+            self.ui_scale * 100.0,
+            self.pane_border_thickness
+        );
+        let guides = if self.chart_crosshair_guides_enabled {
+            "guides on"
+        } else {
+            "guides off"
+        };
+        let crosshair_summary = format!(
+            "{}, {guides}, {:.0}% size",
+            self.chart_crosshair_style.label(),
+            self.chart_crosshair_scale * 100.0
+        );
+        let font_summary = format!(
+            "Display: {}; Mono: {}",
+            self.display_font, self.monospace_font
+        );
+        let custom_count = self.custom_themes.len();
+        let custom_summary = if custom_count == 1 {
+            "1 saved theme".to_string()
+        } else {
+            format!("{custom_count} saved themes")
+        };
+
+        let mut page_links = column![
+            theme_overview_button(
+                "Widget Chrome",
+                chrome_summary,
+                ThemeSettingsPage::WidgetChrome,
+            ),
+            theme_overview_button("Crosshair", crosshair_summary, ThemeSettingsPage::Crosshair),
+            theme_overview_button("Fonts", font_summary, ThemeSettingsPage::Fonts),
+            theme_overview_button(
+                "Built-in Themes",
+                format!("Active: {}", self.active_theme),
+                ThemeSettingsPage::BuiltInThemes,
+            ),
+        ]
+        .spacing(8);
+
+        if !self.custom_themes.is_empty() {
+            page_links = page_links.push(theme_overview_button(
+                "Custom Themes",
+                custom_summary,
+                ThemeSettingsPage::CustomThemes,
+            ));
+        }
+
+        column![
+            text("Theme").size(16).color(current_theme.palette().text),
+            rule::horizontal(1),
+            scrollable(page_links).height(Fill),
+        ]
+        .spacing(12)
+        .into()
+    }
+
+    fn view_settings_theme_subpage<'a>(
+        &'a self,
+        title: &'static str,
+        content: Element<'a, Message>,
+    ) -> Element<'a, Message> {
+        let current_theme = self.theme();
+
+        column![
+            row![
+                widget_button(text("< Back").size(12))
+                    .padding([6, 10])
+                    .on_press(Message::ThemeSettingsPageSelected(
+                        ThemeSettingsPage::Overview
+                    )),
+                text(title).size(16).color(current_theme.palette().text),
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+            rule::horizontal(1),
+            scrollable(content).height(Fill),
+        ]
+        .spacing(12)
+        .into()
+    }
+
+    fn view_builtin_theme_page(&self) -> Element<'_, Message> {
+        self.view_builtin_theme_list().into()
+    }
+
+    fn view_custom_theme_page(&self) -> Element<'_, Message> {
+        let current_theme = self.theme();
+
+        if self.custom_themes.is_empty() {
+            text("No custom themes configured.")
+                .size(12)
+                .color(current_theme.extended_palette().background.weak.text)
+                .into()
+        } else {
+            self.view_custom_theme_list().into()
+        }
+    }
+}
+
+fn theme_overview_button(
+    label: &'static str,
+    detail: String,
+    page: ThemeSettingsPage,
+) -> Element<'static, Message> {
+    widget_button(
+        row![
+            column![text(label).size(13), text(detail).size(11),]
+                .spacing(3)
+                .width(Fill),
+            text(">")
+                .size(14)
+                .font(crate::app_fonts::monospace_font())
+                .align_x(iced::alignment::Horizontal::Right)
+                .width(Length::Fixed(18.0)),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center)
+        .width(Fill),
+    )
+    .padding([8, 12])
+    .width(Fill)
+    .on_press(Message::ThemeSettingsPageSelected(page))
+    .style(|theme: &Theme, status| {
+        let extended = theme.extended_palette();
+        let background = match status {
+            iced::widget::button::Status::Hovered => extended.background.strong.color.into(),
+            _ => extended.background.weak.color.into(),
+        };
+
+        iced::widget::button::Style {
+            background: Some(background),
+            text_color: theme.palette().text,
+            border: iced::Border {
+                radius: 4.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    })
+    .into()
 }

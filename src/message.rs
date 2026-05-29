@@ -28,7 +28,7 @@ use crate::positioning_state::{
     PositioningInfoChangeSortField, PositioningInfoChangeTimeframe, PositioningInfoId,
     PositioningInfoPage, PositioningInfoSide, PositioningInfoSortField,
 };
-use crate::settings_state::SettingsTab;
+use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
 use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
@@ -152,6 +152,7 @@ pub(crate) enum Message {
     AddPairRatioChart,
     OpenSettingsWindow,
     SettingsTabSelected(SettingsTab),
+    ThemeSettingsPageSelected(ThemeSettingsPage),
     OpenUnlockCredentialsPopup,
     DismissUnlockCredentialsPopup,
     OpenCredentialStorageSettings,

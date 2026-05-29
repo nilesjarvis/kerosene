@@ -23,7 +23,7 @@ use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
 use crate::positioning_state::{PositioningInfoId, PositioningInfoInstance};
-use crate::settings_state::SettingsTab;
+use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ChaseOrder, OrderKind};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
 use crate::timeframe::Timeframe;
@@ -269,6 +269,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) portfolio: PortfolioState,
     pub(crate) income: IncomeState,
     pub(crate) settings_active_tab: SettingsTab,
+    pub(crate) settings_theme_page: ThemeSettingsPage,
     // Custom Themes
     pub(crate) custom_themes: Vec<config::CustomThemeConfig>,
     // Trading Journal

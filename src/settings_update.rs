@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::message::Message;
-use crate::settings_state::SettingsTab;
+use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use iced::{Size, Task, window};
 use zeroize::Zeroize;
 
@@ -30,6 +30,11 @@ impl TradingTerminal {
             }
             Message::SettingsTabSelected(tab) => {
                 self.settings_active_tab = tab;
+                self.settings_theme_page = ThemeSettingsPage::Overview;
+            }
+            Message::ThemeSettingsPageSelected(page) => {
+                self.settings_active_tab = SettingsTab::Themes;
+                self.settings_theme_page = page;
             }
             Message::OpenUnlockCredentialsPopup => {
                 self.show_unlock_credentials_popup = self.encrypted_credentials_locked();
@@ -41,6 +46,7 @@ impl TradingTerminal {
             Message::OpenCredentialStorageSettings => {
                 self.show_unlock_credentials_popup = false;
                 self.settings_active_tab = SettingsTab::Storage;
+                self.settings_theme_page = ThemeSettingsPage::Overview;
                 return self.update(Message::OpenSettingsWindow);
             }
             Message::SecretStorageSelectionChanged(mode) => {

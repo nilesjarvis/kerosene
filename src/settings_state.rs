@@ -8,3 +8,14 @@ pub(crate) enum SettingsTab {
     Storage,
     Hotkeys,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ThemeSettingsPage {
+    #[default]
+    Overview,
+    WidgetChrome,
+    Crosshair,
+    Fonts,
+    BuiltInThemes,
+    CustomThemes,
+}

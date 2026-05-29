@@ -264,6 +264,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
 
         Message::OpenSettingsWindow
         | Message::SettingsTabSelected(_)
+        | Message::ThemeSettingsPageSelected(_)
         | Message::OpenUnlockCredentialsPopup
         | Message::DismissUnlockCredentialsPopup
         | Message::OpenCredentialStorageSettings

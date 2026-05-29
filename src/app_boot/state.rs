@@ -9,7 +9,7 @@ use crate::market_state::{SymbolSearchMarketFilter, SymbolSearchSortMode};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
 use crate::portfolio_state::{IncomeState, PortfolioState};
-use crate::settings_state::SettingsTab;
+use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
 use crate::wallet_state::{AddressBookEntry, WalletTrackerState};
 
@@ -279,6 +279,7 @@ impl TradingTerminal {
             portfolio: PortfolioState::default(),
             income: IncomeState::default(),
             settings_active_tab: SettingsTab::Themes,
+            settings_theme_page: ThemeSettingsPage::Overview,
             custom_themes: cfg.custom_themes.clone(),
             journal: journal::JournalState::new_for_account(
                 boot_account.journal_account_key,

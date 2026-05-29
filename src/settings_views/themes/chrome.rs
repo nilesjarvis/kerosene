@@ -21,7 +21,6 @@ impl TradingTerminal {
         let theme = self.theme();
 
         let mut content = column![
-            text("Widget Chrome").size(14).color(theme.palette().text),
             scale_slider_row(
                 &theme,
                 "Scale",
@@ -68,39 +67,12 @@ impl TradingTerminal {
             ));
         }
 
-        content = content
-            .push(text("Crosshair").size(12).color(theme.palette().text))
-            .push(
-                checkbox(self.chart_crosshair_guides_enabled)
-                    .label("Full-span guide lines")
-                    .on_toggle(Message::ToggleChartCrosshairGuides)
-                    .size(12)
-                    .spacing(8)
-                    .text_size(12)
-                    .font(crate::app_fonts::monospace_font()),
-            )
-            .push(scale_slider_row(
-                &theme,
-                "Size",
-                self.chart_crosshair_scale,
-                MIN_CHART_CROSSHAIR_SCALE..=MAX_CHART_CROSSHAIR_SCALE,
-                Message::ChartCrosshairScaleChanged,
-            ))
-            .push(crosshair_style_grid(
-                &theme,
-                self.chart_crosshair_style,
-                self.chart_crosshair_guides_enabled,
-                self.chart_crosshair_scale,
-            ));
-
         content
             .push(
                 text(format!(
-                    "Defaults: {:.0}% scale, {:.0}% dots, {} crosshair, {:.0}% size, {:.0}px divider, {:.0}px corners",
+                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}px divider, {:.0}px corners",
                     DEFAULT_UI_SCALE * 100.0,
                     DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY * 100.0,
-                    ChartCrosshairStyle::default().label(),
-                    DEFAULT_CHART_CROSSHAIR_SCALE * 100.0,
                     default_pane_border_thickness(),
                     default_pane_corner_radius()
                 ))
@@ -109,6 +81,42 @@ impl TradingTerminal {
             )
             .spacing(10)
             .into()
+    }
+
+    pub(super) fn view_settings_crosshair_section(&self) -> Element<'_, Message> {
+        let theme = self.theme();
+
+        column![
+            checkbox(self.chart_crosshair_guides_enabled)
+                .label("Full-span guide lines")
+                .on_toggle(Message::ToggleChartCrosshairGuides)
+                .size(12)
+                .spacing(8)
+                .text_size(12)
+                .font(crate::app_fonts::monospace_font()),
+            scale_slider_row(
+                &theme,
+                "Size",
+                self.chart_crosshair_scale,
+                MIN_CHART_CROSSHAIR_SCALE..=MAX_CHART_CROSSHAIR_SCALE,
+                Message::ChartCrosshairScaleChanged,
+            ),
+            crosshair_style_grid(
+                &theme,
+                self.chart_crosshair_style,
+                self.chart_crosshair_guides_enabled,
+                self.chart_crosshair_scale,
+            ),
+            text(format!(
+                "Defaults: {} style, full-span guides on, {:.0}% size",
+                ChartCrosshairStyle::default().label(),
+                DEFAULT_CHART_CROSSHAIR_SCALE * 100.0,
+            ))
+            .size(11)
+            .color(theme.extended_palette().background.weak.text),
+        ]
+        .spacing(10)
+        .into()
     }
 }
 
