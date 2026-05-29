@@ -28,6 +28,9 @@ impl TradingTerminal {
         );
         instance
             .chart
+            .set_edge_blur(self.chart_edge_blur_enabled, self.chart_edge_blur_strength);
+        instance
+            .chart
             .set_crosshair_style(self.chart_crosshair_style);
         instance
             .chart

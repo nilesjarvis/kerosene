@@ -1,9 +1,12 @@
 use super::spec::{SAMPLE_RATE, sound_spec};
 use super::synthesis::generate_samples;
-use super::{SoundKind, report_sound_status};
+use super::{SoundKind, SoundRequest, SoundSource, report_sound_status};
 
+use rodio::Decoder;
+use rodio::Source;
 use rodio::buffer::SamplesBuffer;
 use std::collections::HashMap;
+use std::io::Cursor;
 #[cfg(any(
     target_os = "freebsd",
     target_os = "linux",
@@ -19,7 +22,7 @@ use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ALIAS, SND_ASYNC};
 
 const MIN_EVENT_SPACING: Duration = Duration::from_millis(80);
 
-pub(super) fn run_audio_worker(rx: mpsc::Receiver<SoundKind>) {
+pub(super) fn run_audio_worker(rx: mpsc::Receiver<SoundRequest>) {
     let stream = rodio::OutputStream::try_default();
     let Ok((_stream, handle)) = stream else {
         report_sound_status(
@@ -31,35 +34,72 @@ pub(super) fn run_audio_worker(rx: mpsc::Receiver<SoundKind>) {
     };
 
     let mut last_played_by_kind: HashMap<SoundKind, Instant> = HashMap::new();
-    for kind in rx {
-        if is_rate_limited(kind, &mut last_played_by_kind) {
+    for request in rx {
+        if is_rate_limited(request.kind, &mut last_played_by_kind) {
             continue;
         }
 
-        let spec = sound_spec(kind);
-        let samples = generate_samples(&spec);
-        let source = SamplesBuffer::new(1, SAMPLE_RATE, samples);
-        if let Err(e) = handle.play_raw(source) {
+        let fallback_event = sound_spec(request.kind).fallback_event;
+        if let Err(e) = play_request(&handle, request) {
             report_sound_status(
                 format!("Audio playback failed: {e}; using system notification sound fallback"),
                 true,
             );
-            if !try_external_sound(spec.fallback_event) {
+            if !try_external_sound(fallback_event) {
                 report_sound_status("System notification sound fallback failed", true);
             }
         }
     }
 }
 
-fn run_external_fallback_worker(rx: mpsc::Receiver<SoundKind>) {
+fn run_external_fallback_worker(rx: mpsc::Receiver<SoundRequest>) {
     let mut last_played_by_kind: HashMap<SoundKind, Instant> = HashMap::new();
-    for kind in rx {
-        if is_rate_limited(kind, &mut last_played_by_kind) {
+    for request in rx {
+        if is_rate_limited(request.kind, &mut last_played_by_kind) {
             continue;
         }
-        if !try_external_sound(sound_spec(kind).fallback_event) {
+        if !try_external_sound(sound_spec(request.kind).fallback_event) {
             report_sound_status("System notification sound fallback failed", true);
         }
+    }
+}
+
+fn play_request(handle: &rodio::OutputStreamHandle, request: SoundRequest) -> Result<(), String> {
+    let volume = normalized_volume(request.volume);
+    match request.source {
+        SoundSource::Synth => {
+            let spec = sound_spec(request.kind);
+            let samples = generate_samples(&spec);
+            let source = SamplesBuffer::new(1, SAMPLE_RATE, samples).amplify(volume);
+            handle.play_raw(source).map_err(|e| e.to_string())
+        }
+        SoundSource::EmbeddedWav(bytes) => play_wav_bytes(handle, bytes, volume),
+        SoundSource::FileWav(path) => {
+            let bytes =
+                std::fs::read(&path).map_err(|e| format!("read {} failed: {e}", path.display()))?;
+            play_wav_bytes(handle, &bytes, volume)
+        }
+    }
+}
+
+fn play_wav_bytes(
+    handle: &rodio::OutputStreamHandle,
+    bytes: &[u8],
+    volume: f32,
+) -> Result<(), String> {
+    let cursor = Cursor::new(bytes.to_vec());
+    let source = Decoder::new_wav(cursor)
+        .map_err(|e| e.to_string())?
+        .convert_samples()
+        .amplify(volume);
+    handle.play_raw(source).map_err(|e| e.to_string())
+}
+
+fn normalized_volume(volume: f32) -> f32 {
+    if volume.is_finite() {
+        volume.clamp(0.0, 1.0)
+    } else {
+        1.0
     }
 }
 

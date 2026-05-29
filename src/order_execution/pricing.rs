@@ -29,7 +29,7 @@ pub(super) fn slipped_market_price(mid: f64, is_buy: bool, slippage: f64) -> f64
     }
 }
 
-pub(super) fn rounded_market_price(
+pub(crate) fn rounded_market_price(
     mid: f64,
     is_buy: bool,
     slippage: f64,

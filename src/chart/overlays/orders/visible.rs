@@ -31,6 +31,7 @@ pub(super) struct VisibleOrder {
     pub(super) side_label: String,
     pub(super) side_label_width: f32,
     pub(super) cancel_x: f32,
+    pub(super) cancel_hover_progress: f32,
     pub(super) label_right_x: f32,
     pub(super) pending_state: Option<OrderOverlayPendingState>,
 }
@@ -99,6 +100,7 @@ where
             side_label,
             side_label_width,
             cancel_x,
+            cancel_hover_progress: chart.order_cancel_hover_progress_for(order.oid),
             label_right_x,
             pending_state: order.pending_state,
         });

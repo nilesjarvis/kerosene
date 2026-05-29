@@ -99,8 +99,10 @@ impl TradingTerminal {
             let mut fetch_tf = None;
             if let Some(instance) = self.charts.get_mut(&primary_id) {
                 instance.symbol = valid_key.clone();
-                instance.symbol_display = display;
+                instance.symbol_display = display.clone();
+                instance.chart.set_symbol_label(display);
                 instance.chart.request_view_reset();
+                instance.chart.clear_hud_armed();
                 instance.chart.clear_macro_candles();
                 instance.heatmap_last_fetch = None;
                 instance.heatmap_viewport = None;

@@ -74,13 +74,23 @@ impl TradingTerminal {
         } else {
             PendingOrderAction::Sell
         });
-        let pending_indicator_id = self.add_pending_order_placement_indicator(
-            self.connected_address.clone().unwrap_or_default(),
-            active_symbol,
-            prepared.is_buy,
-            prepared.size.clone(),
-            prepared.price.clone(),
-        );
+        let pending_indicator_id = if prepared.order_kind == OrderKind::Market {
+            self.add_pending_market_order_placement_indicator(
+                self.connected_address.clone().unwrap_or_default(),
+                active_symbol,
+                prepared.is_buy,
+                prepared.size.clone(),
+                prepared.price.clone(),
+            )
+        } else {
+            self.add_pending_order_placement_indicator(
+                self.connected_address.clone().unwrap_or_default(),
+                active_symbol,
+                prepared.is_buy,
+                prepared.size.clone(),
+                prepared.price.clone(),
+            )
+        };
 
         Task::perform(
             place_order(

@@ -143,6 +143,7 @@ impl TradingTerminal {
         state.sync_chart_dotted_background();
         state.sync_chart_fisheye();
         state.sync_chart_chromatic_aberration();
+        state.sync_chart_edge_blur();
         state.sync_chart_crosshair_style();
         state.sync_chart_crosshair_guides();
         state.sync_chart_crosshair_scale();

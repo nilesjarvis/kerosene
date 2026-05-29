@@ -5,9 +5,11 @@ use super::super::{
         FUNDING_PLOT_BOTTOM_PADDING, FUNDING_PLOT_TOP_PADDING, FUNDING_RATE_ANNUALIZATION_FACTOR,
     },
 };
+use super::{InteractionLayout, ProjectedCursor};
+use crate::chart::fisheye::ChartFisheye;
 use crate::message::Message;
+use iced::Rectangle;
 use iced::widget::canvas;
-use iced::{Point, Rectangle};
 
 // ---------------------------------------------------------------------------
 // Drag And Hover Handling
@@ -17,12 +19,12 @@ impl CandlestickChart {
     pub(super) fn handle_cursor_moved(
         &self,
         state: &mut ChartState,
-        pos: Option<Point>,
-        chart_w: f32,
-        chart_h: f32,
-        funding_panel_h: f32,
+        cursor: Option<ProjectedCursor>,
+        fisheye: ChartFisheye,
+        layout: InteractionLayout,
         needs_redraw_for_cursor: bool,
     ) -> Option<canvas::Action<Message>> {
+        let pos = cursor.map(|cursor| cursor.source);
         if let (Some(kind), Some(start), Some(pos)) = (state.drag, state.drag_start, pos) {
             match kind {
                 DragKind::PanX => {
@@ -31,25 +33,26 @@ impl CandlestickChart {
                     let candle_delta = dx / step * PAN_SPEED;
                     state.scroll_offset = self.clamp_scroll_offset_for(
                         state.drag_start_scroll + candle_delta,
-                        chart_w,
+                        layout.chart_w,
                         state.candle_width,
                     );
                     self.candle_cache.clear();
                 }
                 DragKind::PanY => {
-                    let price_h = chart_h * (1.0 - VOLUME_REGION_RATIO);
+                    let price_h = layout.chart_h * (1.0 - VOLUME_REGION_RATIO);
                     let dy = pos.y - start.y;
-                    let visible_range = self.visible_price_range(state, chart_w);
+                    let visible_range = self.visible_price_range(state, layout.chart_w);
                     let price_per_px = visible_range / price_h as f64;
                     state.y_offset = state.drag_start_y_offset + (dy as f64) * price_per_px;
                     self.candle_cache.clear();
                 }
                 DragKind::PanFundingY => {
-                    let plot_top = chart_h + FUNDING_PLOT_TOP_PADDING;
-                    let plot_bottom = chart_h + funding_panel_h - FUNDING_PLOT_BOTTOM_PADDING;
+                    let plot_top = layout.chart_h + FUNDING_PLOT_TOP_PADDING;
+                    let plot_bottom =
+                        layout.chart_h + layout.funding_panel_h - FUNDING_PLOT_BOTTOM_PADDING;
                     let step = state.candle_width * (1.0 + CANDLE_GAP_RATIO);
                     if plot_bottom > plot_top
-                        && let Some(range) = self.funding_display_range(state, chart_w, step)
+                        && let Some(range) = self.funding_display_range(state, layout.chart_w, step)
                     {
                         let display_delta = range.y_to_rate(start.y, plot_top, plot_bottom)
                             - range.y_to_rate(pos.y, plot_top, plot_bottom);
@@ -64,7 +67,7 @@ impl CandlestickChart {
                 }
                 DragKind::MoveOrder { .. } => {
                     if let Some((price_hi, price_range, price_h)) =
-                        self.visible_price_params(state, chart_w, chart_h)
+                        self.visible_price_params(state, layout.chart_w, layout.chart_h)
                     {
                         let clamped_y = pos.y.clamp(0.0, price_h);
                         let new_price =
@@ -94,8 +97,15 @@ impl CandlestickChart {
 
         let old_hover = state.hover_order_oid;
         state.hover_order_oid = None;
-        if let Some(pos) = pos
-            && let Some(hit) = self.hit_test_order_line(state, pos, chart_w, chart_h)
+        if let Some(cursor) = cursor
+            && let Some(hit) = self.hit_test_order_line_at(
+                state,
+                cursor.source,
+                cursor.visual,
+                layout.chart_w,
+                layout.chart_h,
+                fisheye,
+            )
         {
             state.hover_order_oid = Some(hit.order.oid);
         }

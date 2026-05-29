@@ -63,6 +63,41 @@ impl TradingTerminal {
                     instance.clear_expired_last_price_flash(now_ms);
                 }
             }
+            Message::ChartHudOrderAnimationTick => {
+                for instance in self.charts.values_mut() {
+                    instance.chart.advance_hud_order_animation();
+                }
+            }
+            Message::ChartHudArmToggled(id, surface_id) => {
+                let now_ms = Self::now_ms();
+                if let Some(instance) = self.charts.get_mut(&id)
+                    && instance.chart.surface_id() == surface_id
+                {
+                    instance.chart.toggle_hud_armed_at(now_ms);
+                }
+            }
+            Message::ChartHudSafetyTick => {
+                let now_ms = Self::now_ms();
+                for instance in self.charts.values_mut() {
+                    if instance.chart.hud_safety_timeout_due(now_ms) {
+                        instance.chart.set_hud_armed_at(false, now_ms);
+                    }
+                }
+            }
+            Message::ChartOrderCancelHoverChanged(id, surface_id, oid, hovering_plot) => {
+                let now_ms = Self::now_ms();
+                if let Some(instance) = self.charts.get_mut(&id)
+                    && instance.chart.surface_id() == surface_id
+                {
+                    instance.chart.set_order_cancel_hover(oid);
+                    instance.chart.record_hud_activity(now_ms, hovering_plot);
+                }
+            }
+            Message::ChartOrderCancelHoverAnimationTick => {
+                for instance in self.charts.values_mut() {
+                    instance.chart.advance_order_cancel_hover_animation();
+                }
+            }
             Message::ChartWsAssetCtxUpdate(_id, symbol, ctx) => {
                 if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();

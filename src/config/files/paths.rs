@@ -40,13 +40,29 @@ pub fn font_storage_dir() -> Option<PathBuf> {
 
 pub fn custom_font_path(file_name: &str) -> Option<PathBuf> {
     let file_name = file_name.trim();
-    if file_name.is_empty()
-        || file_name.contains('/')
-        || file_name.contains('\\')
-        || file_name.contains("..")
-    {
+    if !safe_stored_file_name(file_name) {
         return None;
     }
 
     font_storage_dir().map(|dir| dir.join(file_name))
+}
+
+pub fn sound_storage_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("kerosene").join("sounds"))
+}
+
+pub fn custom_sound_path(file_name: &str) -> Option<PathBuf> {
+    let file_name = file_name.trim();
+    if !safe_stored_file_name(file_name) {
+        return None;
+    }
+
+    sound_storage_dir().map(|dir| dir.join(file_name))
+}
+
+fn safe_stored_file_name(file_name: &str) -> bool {
+    !file_name.is_empty()
+        && !file_name.contains('/')
+        && !file_name.contains('\\')
+        && !file_name.contains("..")
 }

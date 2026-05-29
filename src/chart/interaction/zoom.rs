@@ -28,6 +28,10 @@ impl CandlestickChart {
             return None;
         }
 
+        if self.hud_game_mode_enabled() && state.ctrl_down && pos.x < chart_w && pos.y < chart_h {
+            return self.handle_hud_size_scroll(state, dy);
+        }
+
         let (_, funding_panel_h) = self.chart_area_heights(bounds.height);
         let funding_axis_hover = funding_panel_h > 0.0
             && pos.x >= chart_w

@@ -31,6 +31,7 @@ pub(super) fn draw_ratio_crosshair(
                 width: ctx.chart_w,
                 height: ctx.chart_h,
                 fisheye: crate::chart::fisheye::ChartFisheye::disabled(),
+                accent_color: None,
             },
         );
 

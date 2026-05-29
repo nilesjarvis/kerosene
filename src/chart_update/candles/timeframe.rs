@@ -49,6 +49,7 @@ impl TradingTerminal {
         if let Some(instance) = self.charts.get_mut(&id) {
             instance.interval = tf;
             instance.chart.set_timeframe(tf);
+            instance.chart.clear_hud_armed();
             instance.heatmap_last_fetch = None;
             instance.heatmap_viewport = None;
             instance.heatmap_status = None;
@@ -73,5 +74,26 @@ impl TradingTerminal {
             return Task::none();
         }
         self.queue_candle_fetch_for(id, &symbol, tf, cached_last_time)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::config::ChartCrosshairStyle;
+
+    #[test]
+    fn timeframe_switch_disarms_hud_trading() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance.chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+        instance.chart.set_hud_armed_at(true, 1_000);
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal.switch_chart_candle_timeframe(1, Timeframe::M15);
+
+        assert!(!terminal.charts.get(&1).unwrap().chart.hud_armed());
     }
 }

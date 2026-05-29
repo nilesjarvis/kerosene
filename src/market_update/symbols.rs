@@ -150,7 +150,8 @@ impl TradingTerminal {
                     if let Some(valid) = symbol {
                         let display = Self::exchange_symbol_display_name(valid);
                         if inst.symbol_display != display {
-                            inst.symbol_display = display;
+                            inst.symbol_display = display.clone();
+                            inst.chart.set_symbol_label(display);
                         }
 
                         if valid.key != inst.symbol {

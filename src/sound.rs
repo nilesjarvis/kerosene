@@ -1,3 +1,5 @@
+use crate::config::ChartHudOrderSound;
+use std::path::PathBuf;
 use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::sync::{Mutex, OnceLock};
 
@@ -25,6 +27,21 @@ pub enum SoundKind {
     Fill,
     Error,
     Interest,
+    HudOrder,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum SoundSource {
+    Synth,
+    EmbeddedWav(&'static [u8]),
+    FileWav(PathBuf),
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SoundRequest {
+    pub(super) kind: SoundKind,
+    pub(super) source: SoundSource,
+    pub(super) volume: f32,
 }
 
 /// Play a fill notification sound.
@@ -42,15 +59,68 @@ pub fn play_interest() {
     play(SoundKind::Interest);
 }
 
+pub fn play_hud_order(sound: ChartHudOrderSound, custom_path: Option<PathBuf>, volume: f32) {
+    let volume = normalized_volume(volume);
+    match sound {
+        ChartHudOrderSound::Off => {}
+        ChartHudOrderSound::FillTone => play_request(SoundRequest {
+            kind: SoundKind::HudOrder,
+            source: SoundSource::Synth,
+            volume,
+        }),
+        ChartHudOrderSound::GunShot8Bit => play_request(SoundRequest {
+            kind: SoundKind::HudOrder,
+            source: SoundSource::EmbeddedWav(include_bytes!(
+                "../assets/sounds/hud-order-gun-shot-8-bit.wav"
+            )),
+            volume,
+        }),
+        ChartHudOrderSound::CustomWav => {
+            if let Some(path) = custom_path {
+                play_request(SoundRequest {
+                    kind: SoundKind::HudOrder,
+                    source: SoundSource::FileWav(path),
+                    volume,
+                });
+            } else {
+                play_request(SoundRequest {
+                    kind: SoundKind::HudOrder,
+                    source: SoundSource::EmbeddedWav(include_bytes!(
+                        "../assets/sounds/hud-order-gun-shot-8-bit.wav"
+                    )),
+                    volume,
+                });
+            }
+        }
+    }
+}
+
 pub fn play(kind: SoundKind) {
+    play_request(SoundRequest {
+        kind,
+        source: SoundSource::Synth,
+        volume: 1.0,
+    });
+}
+
+fn normalized_volume(volume: f32) -> f32 {
+    if volume.is_finite() {
+        volume.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
+fn play_request(request: SoundRequest) {
     let sender = sound_sender();
-    match sender.try_send(kind) {
+    let fallback_event = sound_spec(request.kind).fallback_event;
+    match sender.try_send(request) {
         Ok(()) => {}
         Err(TrySendError::Full(_)) => {
             report_sound_status("Audio notification queue is full; dropped sound", true);
         }
         Err(TrySendError::Disconnected(_)) => {
-            if !try_external_sound(sound_spec(kind).fallback_event) {
+            if !try_external_sound(fallback_event) {
                 report_sound_status(
                     "Audio worker stopped and system notification sound fallback failed",
                     true,
@@ -85,8 +155,8 @@ pub(super) fn report_sound_status(message: impl Into<String>, is_error: bool) {
     }
 }
 
-fn sound_sender() -> &'static SyncSender<SoundKind> {
-    static SENDER: OnceLock<SyncSender<SoundKind>> = OnceLock::new();
+fn sound_sender() -> &'static SyncSender<SoundRequest> {
+    static SENDER: OnceLock<SyncSender<SoundRequest>> = OnceLock::new();
     SENDER.get_or_init(|| {
         let (tx, rx) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
         if let Err(e) = std::thread::Builder::new()

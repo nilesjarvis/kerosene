@@ -25,6 +25,9 @@ impl TradingTerminal {
                 self.income.data = None;
                 self.income.last_error = None;
                 self.last_income_alert_time = None;
+                for instance in self.charts.values_mut() {
+                    instance.chart.clear_hud_armed();
+                }
                 if self.journal.window_id.is_some() {
                     self.journal.clear_active_account_data();
                     self.journal.error = Some("Invalid wallet address".to_string());
@@ -72,6 +75,9 @@ impl TradingTerminal {
         self.connected_address = Some(addr.clone());
         self.account_data = None;
         self.pending_order_indicators.clear();
+        for instance in self.charts.values_mut() {
+            instance.chart.clear_hud_armed();
+        }
         self.account_loading = true;
         self.account_reconciliation_required = false;
         self.account_error = None;
@@ -134,6 +140,7 @@ impl TradingTerminal {
         self.wallet_key_input.zeroize();
         self.wallet_address_input.clear();
         for instance in self.charts.values_mut() {
+            instance.chart.clear_hud_armed();
             instance.chart.active_position = None;
             instance.chart.active_orders.clear();
             instance.chart.trade_markers.clear();

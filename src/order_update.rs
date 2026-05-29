@@ -5,6 +5,7 @@ use iced::Task;
 
 mod chase;
 mod form;
+mod hud;
 mod move_order;
 mod nuke;
 mod outcome;
@@ -183,6 +184,11 @@ impl TradingTerminal {
                 pending_indicator_id,
                 result,
             } => return self.handle_quick_order_result(pending_indicator_id, *result),
+            Message::SubmitHudOrder(request) => return self.handle_submit_hud_order(request),
+            Message::HudOrderResult {
+                pending_indicator_id,
+                result,
+            } => return self.handle_hud_order_result(pending_indicator_id, *result),
             Message::EscapePressed => self.clear_transient_order_ui(),
             Message::MoveOrderDragStarted { oid } => {
                 self.active_move_order_drag = Some(oid);

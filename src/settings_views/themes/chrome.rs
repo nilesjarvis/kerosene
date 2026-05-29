@@ -1,18 +1,20 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::config::{
-    ChartCrosshairStyle, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
+    ChartCrosshairStyle, ChartHudOrderSound, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
     DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
-    DEFAULT_CHART_FISHEYE_STRENGTH, DEFAULT_UI_SCALE, MAX_CHART_CHROMATIC_ABERRATION_STRENGTH,
-    MAX_CHART_CROSSHAIR_SCALE, MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_FISHEYE_STRENGTH,
-    MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE,
-    MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
-    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_FISHEYE_STRENGTH, MIN_PANE_BORDER_THICKNESS,
-    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, default_pane_border_thickness,
-    default_pane_corner_radius,
+    DEFAULT_CHART_EDGE_BLUR_STRENGTH, DEFAULT_CHART_FISHEYE_STRENGTH,
+    DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
+    MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
+    MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
+    MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
+    MAX_UI_SCALE, MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
+    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH, MIN_CHART_FISHEYE_STRENGTH,
+    MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
+    MIN_UI_SCALE, default_pane_border_thickness, default_pane_corner_radius,
 };
 use crate::message::Message;
-use iced::widget::{Column, Row, button, checkbox, column, row, slider, text};
+use iced::widget::{Column, Row, button, checkbox, column, pick_list, row, slider, text};
 use iced::{Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
 use std::ops::RangeInclusive;
 
@@ -74,6 +76,13 @@ impl TradingTerminal {
                 .spacing(8)
                 .text_size(12)
                 .font(crate::app_fonts::monospace_font()),
+            checkbox(self.chart_edge_blur_enabled)
+                .label("Chart edge blur")
+                .on_toggle(Message::ToggleChartEdgeBlur)
+                .size(12)
+                .spacing(8)
+                .text_size(12)
+                .font(crate::app_fonts::monospace_font()),
         ];
 
         if self.chart_dotted_background {
@@ -105,14 +114,25 @@ impl TradingTerminal {
             ));
         }
 
+        if self.chart_edge_blur_enabled {
+            content = content.push(scale_slider_row(
+                &theme,
+                "Blur",
+                self.chart_edge_blur_strength,
+                MIN_CHART_EDGE_BLUR_STRENGTH..=MAX_CHART_EDGE_BLUR_STRENGTH,
+                Message::ChartEdgeBlurStrengthChanged,
+            ));
+        }
+
         content
             .push(
                 text(format!(
-                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}% lens, {:.0}% fringe, {:.0}px divider, {:.0}px corners",
+                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}% lens, {:.0}% fringe, {:.0}% blur, {:.0}px divider, {:.0}px corners",
                     DEFAULT_UI_SCALE * 100.0,
                     DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY * 100.0,
                     DEFAULT_CHART_FISHEYE_STRENGTH * 100.0,
                     DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH * 100.0,
+                    DEFAULT_CHART_EDGE_BLUR_STRENGTH * 100.0,
                     default_pane_border_thickness(),
                     default_pane_corner_radius()
                 ))
@@ -147,10 +167,18 @@ impl TradingTerminal {
                 self.chart_crosshair_guides_enabled,
                 self.chart_crosshair_scale,
             ),
+            hud_order_sound_settings(
+                &theme,
+                self.chart_hud_order_sound,
+                self.chart_hud_order_sound_file.as_deref(),
+                self.chart_hud_order_sound_volume,
+            ),
             text(format!(
-                "Defaults: {} style, full-span guides on, {:.0}% size",
+                "Defaults: {} style, full-span guides on, {:.0}% size, {} HUD sound, {:.0}% HUD volume",
                 ChartCrosshairStyle::default().label(),
                 DEFAULT_CHART_CROSSHAIR_SCALE * 100.0,
+                ChartHudOrderSound::default().label(),
+                DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME * 100.0,
             ))
             .size(11)
             .color(theme.extended_palette().background.weak.text),
@@ -158,6 +186,45 @@ impl TradingTerminal {
         .spacing(10)
         .into()
     }
+}
+
+fn hud_order_sound_settings<'a>(
+    theme: &Theme,
+    selected: ChartHudOrderSound,
+    custom_file: Option<&'a str>,
+    volume: f32,
+) -> Element<'a, Message> {
+    let custom_label = custom_file.unwrap_or("No custom WAV imported");
+
+    column![
+        text("HUD order sound").size(13).color(theme.palette().text),
+        row![
+            pick_list(
+                ChartHudOrderSound::ALL.to_vec(),
+                Some(selected),
+                Message::ChartHudOrderSoundChanged,
+            )
+            .padding([4, 8])
+            .text_size(12)
+            .width(Length::Fixed(150.0)),
+            button(text("Import WAV").size(12)).on_press(Message::ImportChartHudOrderSound),
+            button(text("Test").size(12)).on_press(Message::TestChartHudOrderSound),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+        scale_slider_row(
+            theme,
+            "Volume",
+            volume,
+            MIN_CHART_HUD_ORDER_SOUND_VOLUME..=MAX_CHART_HUD_ORDER_SOUND_VOLUME,
+            Message::ChartHudOrderSoundVolumeChanged,
+        ),
+        text(custom_label)
+            .size(11)
+            .color(theme.extended_palette().background.weak.text),
+    ]
+    .spacing(7)
+    .into()
 }
 
 fn scale_slider_row<'a>(
@@ -329,6 +396,7 @@ impl iced::widget::canvas::Program<Message> for CrosshairStylePreview {
                 width: bounds.width,
                 height: bounds.height,
                 fisheye: crate::chart::fisheye::ChartFisheye::disabled(),
+                accent_color: None,
             },
         );
 

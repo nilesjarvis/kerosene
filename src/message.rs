@@ -21,6 +21,7 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
+use crate::order_execution::HudOrderRequest;
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
@@ -195,9 +196,16 @@ pub(crate) enum Message {
     ChartFisheyeStrengthChanged(f32),
     ToggleChartChromaticAberration(bool),
     ChartChromaticAberrationStrengthChanged(f32),
+    ToggleChartEdgeBlur(bool),
+    ChartEdgeBlurStrengthChanged(f32),
     ChartCrosshairStyleChanged(config::ChartCrosshairStyle),
     ToggleChartCrosshairGuides(bool),
     ChartCrosshairScaleChanged(f32),
+    ChartHudOrderSoundChanged(config::ChartHudOrderSound),
+    ChartHudOrderSoundVolumeChanged(f32),
+    ImportChartHudOrderSound,
+    ChartHudOrderSoundImported(Result<Option<String>, String>),
+    TestChartHudOrderSound,
     AlfredPopupScaleChanged(f32),
     DisplayFontChanged(config::DisplayFontConfig),
     MonospaceFontChanged(config::DisplayFontConfig),
@@ -436,6 +444,11 @@ pub(crate) enum Message {
     MacroCandlesLoaded(ChartId, String, Timeframe, Result<Vec<Candle>, String>),
     ChartWsCandleUpdate(ChartId, String, String, Candle),
     ChartPriceFlashTick,
+    ChartHudOrderAnimationTick,
+    ChartHudArmToggled(ChartId, ChartSurfaceId),
+    ChartHudSafetyTick,
+    ChartOrderCancelHoverChanged(ChartId, ChartSurfaceId, Option<u64>, bool),
+    ChartOrderCancelHoverAnimationTick,
     ChartWsAssetCtxUpdate(ChartId, String, AssetContext),
     ChartViewportChanged(ChartId, ChartSurfaceId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
@@ -477,6 +490,11 @@ pub(crate) enum Message {
     CloseQuickOrder(ChartId),
     SubmitQuickOrder(ChartId, bool),
     QuickOrderResult {
+        pending_indicator_id: Option<u64>,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
+    SubmitHudOrder(HudOrderRequest),
+    HudOrderResult {
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
     },

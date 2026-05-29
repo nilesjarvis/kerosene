@@ -58,5 +58,10 @@ pub(super) fn sound_spec(kind: SoundKind) -> SoundSpec {
             gap_ms: 55,
             fallback_event: "message-new-instant",
         },
+        SoundKind::HudOrder => SoundSpec {
+            tones: FILL_TONES,
+            gap_ms: 0,
+            fallback_event: "complete",
+        },
     }
 }

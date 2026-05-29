@@ -30,7 +30,7 @@ impl CandlestickChart {
         }
 
         let panel_y = ctx.chart_h;
-        ctx.fisheye.fill_projected_rect(
+        ctx.fisheye.fill_projected_rect_without_edge_blur(
             frame,
             Point::new(0.0, panel_y),
             Size::new(ctx.chart_w, ctx.funding_panel_h),
@@ -129,7 +129,7 @@ impl CandlestickChart {
                     } else {
                         ctx.candle_bear_color
                     };
-                    ctx.fisheye.fill_projected_rect(
+                    ctx.fisheye.fill_projected_rect_without_edge_blur(
                         frame,
                         Point::new(x - bar_w * 0.5, top),
                         Size::new(bar_w, height),

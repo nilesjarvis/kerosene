@@ -113,6 +113,60 @@ fn order_label_hit_testing_avoids_active_position_label() {
 }
 
 #[test]
+fn order_cancel_hit_testing_uses_expanded_circle_target() {
+    let mut chart = chart_with_order_candles();
+    chart.active_orders.push(btc_buy_order(42, 1.0));
+    let state = ChartState::default();
+    let Some((price_hi, price_range, price_h)) = chart.visible_price_params(&state, 400.0, 240.0)
+    else {
+        panic!("visible price params");
+    };
+    let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
+    let label_positions = order_labels::order_label_position_slots(
+        order_labels::stack_order_label_positions_avoiding(
+            vec![order_labels::OrderLabelAnchor {
+                order_index: 0,
+                order_y,
+                is_buy: true,
+            }],
+            price_h,
+            &[],
+        ),
+        chart.active_orders.len(),
+    );
+    let Some(label) = order_labels::order_label_position(&label_positions, 0) else {
+        panic!("order label should be laid out");
+    };
+    let (_, cancel_end_x) = order_labels::order_cancel_x_range(&chart.active_orders[0]);
+
+    let pos = Point::new(cancel_end_x + 4.0, label.label_y);
+
+    assert_eq!(
+        chart.hit_test_order_cancel(&state, pos, 400.0, 240.0),
+        Some(42)
+    );
+}
+
+#[test]
+fn order_cancel_hover_animation_eases_toward_target() {
+    let mut chart = chart_with_order_candles();
+
+    chart.set_order_cancel_hover(Some(42));
+    chart.advance_order_cancel_hover_animation();
+
+    assert!(chart.order_cancel_hover_animation_active());
+    assert!(chart.order_cancel_hover_progress() > 0.0);
+    assert!(chart.order_cancel_hover_progress_for(42) > chart.order_cancel_hover_progress());
+
+    chart.set_order_cancel_hover(None);
+    for _ in 0..20 {
+        chart.advance_order_cancel_hover_animation();
+    }
+
+    assert!(chart.order_cancel_hover_progress() < 0.05);
+}
+
+#[test]
 fn order_hit_testing_ignores_invalid_resize_bounds() {
     let mut chart = chart_with_order_candles();
     chart.active_orders.push(btc_buy_order(42, 1.0));

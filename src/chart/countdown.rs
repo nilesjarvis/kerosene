@@ -91,7 +91,7 @@ fn point_in_axis_corner(
         && point.y <= drawable_h + axis_corner_h
 }
 
-fn next_candle_countdown_label(
+pub(in crate::chart) fn next_candle_countdown_label(
     last_open_ms: u64,
     timeframe: Timeframe,
     now_ms: u64,
@@ -100,7 +100,11 @@ fn next_candle_countdown_label(
         .map(format_candle_countdown)
 }
 
-fn remaining_ms_until_next_candle(last_open_ms: u64, interval_ms: u64, now_ms: u64) -> Option<u64> {
+pub(in crate::chart) fn remaining_ms_until_next_candle(
+    last_open_ms: u64,
+    interval_ms: u64,
+    now_ms: u64,
+) -> Option<u64> {
     if interval_ms == 0 {
         return None;
     }
@@ -122,7 +126,7 @@ fn remaining_ms_until_next_candle(last_open_ms: u64, interval_ms: u64, now_ms: u
     }
 }
 
-fn format_candle_countdown(remaining_ms: u64) -> String {
+pub(in crate::chart) fn format_candle_countdown(remaining_ms: u64) -> String {
     let seconds = remaining_ms.div_ceil(1_000);
     if seconds < 60 {
         return format!("{seconds}s");

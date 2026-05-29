@@ -17,6 +17,7 @@ impl CandlestickChart {
         Self {
             id,
             surface_id: ChartSurfaceId::Docked(id),
+            symbol_label: String::new(),
             timeframe: Timeframe::H1,
             clock_now_ms: current_unix_ms(),
             candles: Vec::new(),
@@ -34,6 +35,8 @@ impl CandlestickChart {
             chromatic_aberration_enabled: false,
             chromatic_aberration_strength:
                 crate::config::default_chart_chromatic_aberration_strength(),
+            edge_blur_enabled: false,
+            edge_blur_strength: crate::config::default_chart_edge_blur_strength(),
             crosshair_style: Default::default(),
             crosshair_guides_enabled: true,
             crosshair_scale: crate::config::default_chart_crosshair_scale(),
@@ -45,6 +48,7 @@ impl CandlestickChart {
             funding_rates: Vec::new(),
             funding_status: None,
             funding_panel_height: DEFAULT_FUNDING_PANEL_HEIGHT,
+            market_reference_price: None,
             funding_annualized: false,
             macro_indicators: crate::config::MacroIndicatorsConfig::default(),
             daily_candles: Vec::new(),
@@ -57,8 +61,15 @@ impl CandlestickChart {
             quick_order_limit_price: None,
             quick_order_line_phase: 0.0,
             order_line_phase: 0.0,
+            hud_order_animation: None,
+            pending_market_order_loading: Vec::new(),
+            hud_armed: false,
+            hud_last_activity_ms: None,
+            hud_hovering: false,
             obscure_position_prices: false,
             hide_positions_and_orders: false,
+            hover_order_cancel_oid: None,
+            order_cancel_hover_progress: 0.0,
             display_denomination: DisplayDenominationContext::default(),
         }
     }
@@ -67,6 +78,7 @@ impl CandlestickChart {
         Self {
             id: self.id,
             surface_id: self.surface_id,
+            symbol_label: self.symbol_label.clone(),
             timeframe: self.timeframe,
             clock_now_ms: self.clock_now_ms,
             candles: self.candles.clone(),
@@ -83,6 +95,8 @@ impl CandlestickChart {
             fisheye_strength: self.fisheye_strength,
             chromatic_aberration_enabled: self.chromatic_aberration_enabled,
             chromatic_aberration_strength: self.chromatic_aberration_strength,
+            edge_blur_enabled: self.edge_blur_enabled,
+            edge_blur_strength: self.edge_blur_strength,
             crosshair_style: self.crosshair_style,
             crosshair_guides_enabled: self.crosshair_guides_enabled,
             crosshair_scale: self.crosshair_scale,
@@ -94,6 +108,7 @@ impl CandlestickChart {
             funding_rates: self.funding_rates.clone(),
             funding_status: self.funding_status.clone(),
             funding_panel_height: self.funding_panel_height,
+            market_reference_price: self.market_reference_price,
             funding_annualized: self.funding_annualized,
             macro_indicators: self.macro_indicators.clone(),
             daily_candles: self.daily_candles.clone(),
@@ -106,8 +121,15 @@ impl CandlestickChart {
             quick_order_limit_price: None,
             quick_order_line_phase: 0.0,
             order_line_phase: self.order_line_phase,
+            hud_order_animation: None,
+            pending_market_order_loading: Vec::new(),
+            hud_armed: false,
+            hud_last_activity_ms: None,
+            hud_hovering: false,
             obscure_position_prices: self.obscure_position_prices,
             hide_positions_and_orders: self.hide_positions_and_orders,
+            hover_order_cancel_oid: None,
+            order_cancel_hover_progress: 0.0,
             display_denomination: self.display_denomination.clone(),
         }
     }
@@ -143,8 +165,22 @@ impl CandlestickChart {
         }
     }
 
+    pub(crate) fn set_symbol_label(&mut self, symbol_label: String) {
+        if self.symbol_label != symbol_label {
+            self.symbol_label = symbol_label;
+            self.candle_cache.clear();
+        }
+    }
+
     pub(crate) fn set_clock_now_ms(&mut self, now_ms: u64) {
         self.clock_now_ms = now_ms;
+    }
+
+    pub(crate) fn set_market_reference_price(&mut self, price: Option<f64>) {
+        let price = price.and_then(crate::helpers::positive_finite_value);
+        if self.market_reference_price != price {
+            self.market_reference_price = price;
+        }
     }
 
     pub fn set_chart_colors(&mut self, bull: Option<Color>, bear: Option<Color>) {
@@ -187,10 +223,24 @@ impl CandlestickChart {
         }
     }
 
+    pub(crate) fn set_edge_blur(&mut self, enabled: bool, strength: f32) {
+        let strength = crate::config::normalize_chart_edge_blur_strength(strength);
+        if self.edge_blur_enabled != enabled
+            || (self.edge_blur_strength - strength).abs() > f32::EPSILON
+        {
+            self.edge_blur_enabled = enabled;
+            self.edge_blur_strength = strength;
+            self.candle_cache.clear();
+        }
+    }
+
     pub(crate) fn set_crosshair_style(&mut self, style: crate::config::ChartCrosshairStyle) {
         let style = style.normalized();
         if self.crosshair_style != style {
             self.crosshair_style = style;
+            if style != crate::config::ChartCrosshairStyle::Hud {
+                self.clear_hud_armed();
+            }
             self.candle_cache.clear();
         }
     }

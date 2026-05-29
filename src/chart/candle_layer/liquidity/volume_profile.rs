@@ -67,7 +67,7 @@ impl CandlestickChart {
             } else {
                 0.15
             };
-            ctx.fisheye.fill_projected_rect(
+            ctx.fisheye.fill_projected_rect_without_edge_blur(
                 frame,
                 Point::new(ctx.chart_w - bar_w, y_top),
                 Size::new(bar_w, (y_bottom - y_top).max(1.0)),

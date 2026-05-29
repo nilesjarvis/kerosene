@@ -103,6 +103,7 @@ impl TradingTerminal {
                     instance.chart.set_clock_now_ms(now_ms);
                 }
                 self.sync_chart_display_denominations();
+                self.sync_chart_market_reference_prices();
                 self.expire_pending_order_indicators();
                 let config_save_task = self.flush_config_save_if_due(now);
                 let chase_limit_task = self.stop_chase_if_limits_reached(now);

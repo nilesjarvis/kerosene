@@ -76,9 +76,15 @@ pub const MAX_CHART_FISHEYE_STRENGTH: f32 = 1.0;
 pub const DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH: f32 = 0.50;
 pub const MIN_CHART_CHROMATIC_ABERRATION_STRENGTH: f32 = 0.10;
 pub const MAX_CHART_CHROMATIC_ABERRATION_STRENGTH: f32 = 1.0;
+pub const DEFAULT_CHART_EDGE_BLUR_STRENGTH: f32 = 0.45;
+pub const MIN_CHART_EDGE_BLUR_STRENGTH: f32 = 0.10;
+pub const MAX_CHART_EDGE_BLUR_STRENGTH: f32 = 1.0;
 pub const DEFAULT_CHART_CROSSHAIR_SCALE: f32 = 1.0;
 pub const MIN_CHART_CROSSHAIR_SCALE: f32 = 0.5;
 pub const MAX_CHART_CROSSHAIR_SCALE: f32 = 2.0;
+pub const DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME: f32 = 0.28;
+pub const MIN_CHART_HUD_ORDER_SOUND_VOLUME: f32 = 0.0;
+pub const MAX_CHART_HUD_ORDER_SOUND_VOLUME: f32 = 1.0;
 pub const MIN_PANE_BORDER_THICKNESS: f32 = 1.0;
 pub const MAX_PANE_BORDER_THICKNESS: f32 = 12.0;
 pub const MIN_PANE_CORNER_RADIUS: f32 = 0.0;
@@ -150,6 +156,18 @@ pub fn normalize_chart_chromatic_aberration_strength(value: f32) -> f32 {
     }
 }
 
+pub fn default_chart_edge_blur_strength() -> f32 {
+    DEFAULT_CHART_EDGE_BLUR_STRENGTH
+}
+
+pub fn normalize_chart_edge_blur_strength(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_EDGE_BLUR_STRENGTH)
+    } else {
+        default_chart_edge_blur_strength()
+    }
+}
+
 pub fn default_chart_crosshair_scale() -> f32 {
     DEFAULT_CHART_CROSSHAIR_SCALE
 }
@@ -159,6 +177,21 @@ pub fn normalize_chart_crosshair_scale(value: f32) -> f32 {
         value.clamp(MIN_CHART_CROSSHAIR_SCALE, MAX_CHART_CROSSHAIR_SCALE)
     } else {
         default_chart_crosshair_scale()
+    }
+}
+
+pub fn default_chart_hud_order_sound_volume() -> f32 {
+    DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME
+}
+
+pub fn normalize_chart_hud_order_sound_volume(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(
+            MIN_CHART_HUD_ORDER_SOUND_VOLUME,
+            MAX_CHART_HUD_ORDER_SOUND_VOLUME,
+        )
+    } else {
+        default_chart_hud_order_sound_volume()
     }
 }
 
@@ -213,9 +246,14 @@ impl Default for KeroseneConfig {
             chart_fisheye_strength: default_chart_fisheye_strength(),
             chart_chromatic_aberration_enabled: false,
             chart_chromatic_aberration_strength: default_chart_chromatic_aberration_strength(),
+            chart_edge_blur_enabled: false,
+            chart_edge_blur_strength: default_chart_edge_blur_strength(),
             chart_crosshair_style: Default::default(),
             chart_crosshair_guides_enabled: true,
             chart_crosshair_scale: default_chart_crosshair_scale(),
+            chart_hud_order_sound: Default::default(),
+            chart_hud_order_sound_file: None,
+            chart_hud_order_sound_volume: default_chart_hud_order_sound_volume(),
             alfred_popup_scale: default_alfred_popup_scale(),
             display_font: Default::default(),
             monospace_font: Default::default(),

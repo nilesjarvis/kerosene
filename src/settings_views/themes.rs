@@ -48,13 +48,18 @@ impl TradingTerminal {
         } else {
             "fringe off"
         };
+        let blur = if self.chart_edge_blur_enabled {
+            "blur on"
+        } else {
+            "blur off"
+        };
         let border = if self.outer_widget_border_enabled {
             "border on"
         } else {
             "border off"
         };
         let chrome_summary = format!(
-            "{:.0}% scale, {:.0}px divider, {dots}, {lens}, {fringe}, {border}",
+            "{:.0}% scale, {:.0}px divider, {dots}, {lens}, {fringe}, {blur}, {border}",
             self.ui_scale * 100.0,
             self.pane_border_thickness
         );

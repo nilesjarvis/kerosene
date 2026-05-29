@@ -42,6 +42,7 @@ impl TradingTerminal {
             is_hidden,
         );
         self.sync_chart_display_denominations();
+        self.sync_chart_market_reference_prices();
         if matches!(self.order_kind, OrderKind::Limit | OrderKind::Chase)
             && self.order_price.trim().is_empty()
         {

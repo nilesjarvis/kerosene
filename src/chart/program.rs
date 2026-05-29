@@ -54,7 +54,8 @@ impl CandlestickChart {
         .with_chromatic(
             self.chromatic_aberration_enabled,
             self.chromatic_aberration_strength,
-        );
+        )
+        .with_edge_blur(self.edge_blur_enabled, self.edge_blur_strength);
 
         let candle_w = state.candle_width;
         let gap = candle_w * CANDLE_GAP_RATIO;

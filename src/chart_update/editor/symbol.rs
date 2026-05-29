@@ -99,8 +99,10 @@ impl TradingTerminal {
                 .map(Self::exchange_symbol_display_name)
                 .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
             instance.symbol = key.clone();
-            instance.symbol_display = display;
+            instance.symbol_display = display.clone();
+            instance.chart.set_symbol_label(display);
             instance.chart.request_view_reset();
+            instance.chart.clear_hud_armed();
             instance.chart.clear_macro_candles();
 
             if let Some(candles) = cached_candles {
@@ -130,9 +132,33 @@ impl TradingTerminal {
         self.sync_chart_position_for(id);
         self.sync_chart_orders_for(id);
         self.sync_chart_trade_markers_for(id);
+        self.sync_chart_market_reference_prices();
         self.persist_config();
         let mut tasks = vec![self.queue_candle_fetch_for(id, &key, tf, cached_last_time)];
         tasks.extend(Self::fetch_macro_candles_tasks(id, &key));
         Task::batch(tasks)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::config::ChartCrosshairStyle;
+
+    #[test]
+    fn selecting_chart_symbol_disarms_hud_trading() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.primary_chart_id = None;
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance.chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+        instance.chart.set_hud_armed_at(true, 1_000);
+        terminal.charts.insert(1, instance);
+
+        let _task =
+            terminal.select_chart_symbol(Message::ChartSymbolSelected(1, "ETH".to_string()));
+
+        assert!(!terminal.charts.get(&1).unwrap().chart.hud_armed());
     }
 }

@@ -4,9 +4,9 @@ use super::visible::{MOVING_ORDER_LINE_DASH, ORDER_LINE_DASH, VisibleOrder};
 
 use crate::chart::drawing::{AxisBadgeStyle, SegmentedHLineStyle};
 use crate::chart::order_labels::{
-    ORDER_CANCEL_WIDTH, ORDER_LABEL_CONNECTOR_SPAN, ORDER_LABEL_HEIGHT, ORDER_LABEL_TEXT_X,
-    ORDER_LABEL_X, ORDER_PENDING_SPINNER_X, ORDER_PENDING_TEXT_X, OrderLabelPosition,
-    order_label_y_range,
+    ORDER_CANCEL_HOVER_RADIUS, ORDER_CANCEL_WIDTH, ORDER_LABEL_CONNECTOR_SPAN, ORDER_LABEL_HEIGHT,
+    ORDER_LABEL_TEXT_X, ORDER_LABEL_X, ORDER_PENDING_SPINNER_X, ORDER_PENDING_TEXT_X,
+    OrderLabelPosition, order_label_y_range,
 };
 use crate::chart::price_badges::{
     RIGHT_AXIS_SECONDARY_BADGE_HEIGHT, RightAxisBadgeConnectorStyle, RightAxisBadgeKind,
@@ -166,24 +166,59 @@ pub(super) fn draw_order_label<PriceToY, IdxToCx>(
         return;
     }
 
-    ctx.frame.fill_rectangle(
-        Point::new(order.cancel_x, label_top),
-        Size::new(ORDER_CANCEL_WIDTH, ORDER_LABEL_HEIGHT),
-        Color {
-            a: 0.5,
-            ..ctx.theme.palette().danger
-        },
-    );
+    let cancel_center = Point::new(order.cancel_x + ORDER_CANCEL_WIDTH * 0.5, visual_label_y);
+    let hover = order.cancel_hover_progress.clamp(0.0, 1.0);
+    if hover > 0.01 {
+        let radius = lerp(ORDER_CANCEL_WIDTH * 0.52, ORDER_CANCEL_HOVER_RADIUS, hover);
+        let halo = canvas::Path::circle(cancel_center, radius + 3.5 * hover);
+        ctx.frame.fill(
+            &halo,
+            Color {
+                a: 0.16 * hover,
+                ..ctx.theme.palette().danger
+            },
+        );
+        let circle = canvas::Path::circle(cancel_center, radius);
+        ctx.frame.fill(
+            &circle,
+            Color {
+                a: lerp(0.5, 0.82, hover),
+                ..ctx.theme.palette().danger
+            },
+        );
+        ctx.frame.stroke(
+            &circle,
+            canvas::Stroke::default()
+                .with_color(Color {
+                    a: 0.35 + 0.45 * hover,
+                    ..Color::WHITE
+                })
+                .with_width(0.75 + 0.45 * hover),
+        );
+    } else {
+        ctx.frame.fill_rectangle(
+            Point::new(order.cancel_x, label_top),
+            Size::new(ORDER_CANCEL_WIDTH, ORDER_LABEL_HEIGHT),
+            Color {
+                a: 0.5,
+                ..ctx.theme.palette().danger
+            },
+        );
+    }
     ctx.frame.fill_text(canvas::Text {
-        content: "x".to_string(),
-        position: Point::new(order.cancel_x + ORDER_CANCEL_WIDTH * 0.5, visual_label_y),
+        content: "X".to_string(),
+        position: cancel_center,
         color: Color::WHITE,
-        size: iced::Pixels(8.0),
+        size: iced::Pixels(lerp(8.0, 15.0, hover)),
         align_x: alignment::Horizontal::Center.into(),
         align_y: alignment::Vertical::Center,
         font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
+}
+
+fn lerp(start: f32, end: f32, t: f32) -> f32 {
+    start + (end - start) * t.clamp(0.0, 1.0)
 }
 
 fn order_label_text_x(order: &VisibleOrder) -> f32 {

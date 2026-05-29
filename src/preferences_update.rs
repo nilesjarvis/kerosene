@@ -2,8 +2,9 @@ use crate::app_state::TradingTerminal;
 use crate::config::{
     normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
     normalize_chart_crosshair_scale, normalize_chart_dotted_background_opacity,
-    normalize_chart_fisheye_strength, normalize_market_slippage_pct,
-    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
+    normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
+    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
+    normalize_ui_scale,
 };
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
@@ -12,6 +13,7 @@ use iced::Task;
 mod fonts;
 mod hotkeys;
 mod muted_tickers;
+mod sounds;
 
 impl TradingTerminal {
     pub(crate) fn update_preferences(&mut self, message: Message) -> Task<Message> {
@@ -69,6 +71,19 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ToggleChartEdgeBlur(enabled) if self.chart_edge_blur_enabled != enabled => {
+                self.chart_edge_blur_enabled = enabled;
+                self.sync_chart_edge_blur();
+                self.persist_config();
+            }
+            Message::ChartEdgeBlurStrengthChanged(value) => {
+                let strength = normalize_chart_edge_blur_strength(value);
+                if (self.chart_edge_blur_strength - strength).abs() > f32::EPSILON {
+                    self.chart_edge_blur_strength = strength;
+                    self.sync_chart_edge_blur();
+                    self.persist_config();
+                }
+            }
             Message::ChartCrosshairStyleChanged(style)
                 if self.chart_crosshair_style != style.normalized() =>
             {
@@ -91,6 +106,13 @@ impl TradingTerminal {
                     self.sync_chart_crosshair_scale();
                     self.persist_config();
                 }
+            }
+            message @ (Message::ChartHudOrderSoundChanged(_)
+            | Message::ChartHudOrderSoundVolumeChanged(_)
+            | Message::ImportChartHudOrderSound
+            | Message::ChartHudOrderSoundImported(_)
+            | Message::TestChartHudOrderSound) => {
+                return self.update_sound_preferences(message);
             }
             Message::AlfredPopupScaleChanged(value) => {
                 self.alfred_popup_scale = normalize_alfred_popup_scale(value);

@@ -1,9 +1,10 @@
 use super::{
     ChartCrosshairStyle, KeroseneConfig, default_alfred_popup_scale,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
-    default_chart_dotted_background_opacity, default_chart_fisheye_strength, default_config_value,
-    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale, json_string,
-    object_mut, value_from_json, value_from_str,
+    default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
+    default_chart_fisheye_strength, default_config_value, default_pane_border_thickness,
+    default_pane_corner_radius, default_ui_scale, json_string, object_mut, value_from_json,
+    value_from_str,
 };
 
 #[test]
@@ -16,6 +17,8 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         chart_fisheye_strength: 0.72,
         chart_chromatic_aberration_enabled: true,
         chart_chromatic_aberration_strength: 0.66,
+        chart_edge_blur_enabled: true,
+        chart_edge_blur_strength: 0.57,
         chart_crosshair_style: ChartCrosshairStyle::Rangefinder,
         chart_crosshair_guides_enabled: false,
         chart_crosshair_scale: 1.55,
@@ -35,6 +38,8 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.chart_fisheye_strength, 0.72);
     assert!(decoded.chart_chromatic_aberration_enabled);
     assert_eq!(decoded.chart_chromatic_aberration_strength, 0.66);
+    assert!(decoded.chart_edge_blur_enabled);
+    assert_eq!(decoded.chart_edge_blur_strength, 0.57);
     assert_eq!(
         decoded.chart_crosshair_style,
         ChartCrosshairStyle::Rangefinder
@@ -55,6 +60,8 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("chart_fisheye_strength");
     object.remove("chart_chromatic_aberration_enabled");
     object.remove("chart_chromatic_aberration_strength");
+    object.remove("chart_edge_blur_enabled");
+    object.remove("chart_edge_blur_strength");
     object.remove("chart_crosshair_style");
     object.remove("chart_crosshair_guides_enabled");
     object.remove("chart_crosshair_scale");
@@ -80,6 +87,11 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(
         decoded_legacy.chart_chromatic_aberration_strength,
         default_chart_chromatic_aberration_strength()
+    );
+    assert!(!decoded_legacy.chart_edge_blur_enabled);
+    assert_eq!(
+        decoded_legacy.chart_edge_blur_strength,
+        default_chart_edge_blur_strength()
     );
     assert_eq!(
         decoded_legacy.chart_crosshair_style,

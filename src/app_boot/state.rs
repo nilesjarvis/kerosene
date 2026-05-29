@@ -76,10 +76,19 @@ impl TradingTerminal {
                 config::normalize_chart_chromatic_aberration_strength(
                     cfg.chart_chromatic_aberration_strength,
                 ),
+            chart_edge_blur_enabled: cfg.chart_edge_blur_enabled,
+            chart_edge_blur_strength: config::normalize_chart_edge_blur_strength(
+                cfg.chart_edge_blur_strength,
+            ),
             chart_crosshair_style: cfg.chart_crosshair_style.normalized(),
             chart_crosshair_guides_enabled: cfg.chart_crosshair_guides_enabled,
             chart_crosshair_scale: config::normalize_chart_crosshair_scale(
                 cfg.chart_crosshair_scale,
+            ),
+            chart_hud_order_sound: cfg.chart_hud_order_sound,
+            chart_hud_order_sound_file: cfg.chart_hud_order_sound_file.clone(),
+            chart_hud_order_sound_volume: config::normalize_chart_hud_order_sound_volume(
+                cfg.chart_hud_order_sound_volume,
             ),
             alfred_popup_scale: cfg.alfred_popup_scale,
             display_font: cfg.display_font.clone(),

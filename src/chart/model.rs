@@ -44,6 +44,7 @@ pub(super) const HEATMAP_MAX_RECTS_WITH_FISHEYE: usize = 5_000;
 pub struct CandlestickChart {
     pub id: u64,
     pub(in crate::chart) surface_id: ChartSurfaceId,
+    pub(in crate::chart) symbol_label: String,
     pub(in crate::chart) timeframe: Timeframe,
     pub(in crate::chart) clock_now_ms: u64,
     pub candles: Vec<Candle>,
@@ -70,6 +71,10 @@ pub struct CandlestickChart {
     pub(crate) chromatic_aberration_enabled: bool,
     /// Strength of the chromatic aberration channel separation.
     pub(crate) chromatic_aberration_strength: f32,
+    /// Whether chart geometry renders subtle radial edge blur.
+    pub(crate) edge_blur_enabled: bool,
+    /// Strength of the radial edge blur effect.
+    pub(crate) edge_blur_strength: f32,
     /// Reticle style used for the chart crosshair.
     pub(crate) crosshair_style: crate::config::ChartCrosshairStyle,
     /// Whether the chart crosshair draws full-span guide lines.
@@ -92,6 +97,8 @@ pub struct CandlestickChart {
     pub funding_status: Option<(String, bool)>,
     /// Desired funding sub-panel height in pixels.
     pub funding_panel_height: f32,
+    /// Fresh executable mid/reference price used by HUD market-mode targeting.
+    pub(crate) market_reference_price: Option<f64>,
     /// Render funding as hourly rate or annualized rate.
     pub funding_annualized: bool,
     // Macro MAs
@@ -115,10 +122,24 @@ pub struct CandlestickChart {
     pub(crate) quick_order_line_phase: f32,
     /// Pixel phase for animating active order lines while moving them.
     pub(crate) order_line_phase: f32,
+    /// Short visual pulse shown immediately after submitting a HUD chart order.
+    pub(crate) hud_order_animation: Option<HudOrderAnimation>,
+    /// Background loading pulses for market orders that are pending exchange response.
+    pub(in crate::chart) pending_market_order_loading: Vec<MarketOrderLoadingOverlay>,
+    /// True when HUD chart trading clicks are allowed to submit orders.
+    pub(crate) hud_armed: bool,
+    /// Last time the armed HUD chart was used or hovered.
+    pub(crate) hud_last_activity_ms: Option<u64>,
+    /// Whether the cursor is currently hovering over the HUD chart plot.
+    pub(crate) hud_hovering: bool,
     /// Whether position entry and liquidation labels should be redacted while rendering.
     pub(crate) obscure_position_prices: bool,
     /// Whether active position/liquidation and order overlays should be hidden while rendering.
     pub(crate) hide_positions_and_orders: bool,
+    /// OID of the chart order cancel button currently hovered by the cursor.
+    pub(crate) hover_order_cancel_oid: Option<u64>,
+    /// Smoothed hover progress for the chart order cancel button.
+    pub(crate) order_cancel_hover_progress: f32,
     /// Display-only conversion context for the chart header symbol price.
     pub(crate) display_denomination: DisplayDenominationContext,
 }
@@ -170,6 +191,25 @@ pub enum OrderOverlayPendingState {
     Placing,
     Cancelling,
     Modifying,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct HudOrderAnimation {
+    pub(crate) price: f64,
+    pub(crate) origin_x: f32,
+    pub(crate) click_y: f32,
+    pub(crate) chart_w: f32,
+    pub(crate) chart_h: f32,
+    pub(crate) is_buy: bool,
+    pub(crate) show_line: bool,
+    pub(crate) progress: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(in crate::chart) struct MarketOrderLoadingOverlay {
+    pub(in crate::chart) pending_id: u64,
+    pub(in crate::chart) is_buy: bool,
+    pub(in crate::chart) progress: f32,
 }
 
 /// Lightweight user fill info passed to the chart for marker rendering.

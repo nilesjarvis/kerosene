@@ -165,13 +165,23 @@ impl TradingTerminal {
             format!("Placing {kind_str} {side_str} {size} {chart_symbol}..."),
             false,
         ));
-        let pending_indicator_id = self.add_pending_order_placement_indicator(
-            self.connected_address.clone().unwrap_or_default(),
-            chart_symbol,
-            is_buy,
-            size.clone(),
-            price.clone(),
-        );
+        let pending_indicator_id = if order_kind == OrderKind::Market {
+            self.add_pending_market_order_placement_indicator(
+                self.connected_address.clone().unwrap_or_default(),
+                chart_symbol,
+                is_buy,
+                size.clone(),
+                price.clone(),
+            )
+        } else {
+            self.add_pending_order_placement_indicator(
+                self.connected_address.clone().unwrap_or_default(),
+                chart_symbol,
+                is_buy,
+                size.clone(),
+                price.clone(),
+            )
+        };
 
         Task::perform(
             place_order(

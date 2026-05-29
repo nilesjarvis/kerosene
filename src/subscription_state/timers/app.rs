@@ -47,6 +47,39 @@ impl TradingTerminal {
             );
         }
 
+        if self
+            .charts
+            .values()
+            .any(|instance| instance.chart.hud_order_animation_active())
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(40))
+                    .map(|_| Message::ChartHudOrderAnimationTick),
+            );
+        }
+
+        if self
+            .charts
+            .values()
+            .any(|instance| instance.chart.order_cancel_hover_animation_active())
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(16))
+                    .map(|_| Message::ChartOrderCancelHoverAnimationTick),
+            );
+        }
+
+        if self
+            .charts
+            .values()
+            .any(|instance| instance.chart.hud_armed())
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(1))
+                    .map(|_| Message::ChartHudSafetyTick),
+            );
+        }
+
         subs.push(
             iced::time::every(std::time::Duration::from_secs(60 * 15)).map(|_| Message::Tick),
         );

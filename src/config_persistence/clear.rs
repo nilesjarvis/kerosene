@@ -93,9 +93,14 @@ impl TradingTerminal {
         self.chart_fisheye_strength = defaults.chart_fisheye_strength;
         self.chart_chromatic_aberration_enabled = defaults.chart_chromatic_aberration_enabled;
         self.chart_chromatic_aberration_strength = defaults.chart_chromatic_aberration_strength;
+        self.chart_edge_blur_enabled = defaults.chart_edge_blur_enabled;
+        self.chart_edge_blur_strength = defaults.chart_edge_blur_strength;
         self.chart_crosshair_style = defaults.chart_crosshair_style;
         self.chart_crosshair_guides_enabled = defaults.chart_crosshair_guides_enabled;
         self.chart_crosshair_scale = defaults.chart_crosshair_scale;
+        self.chart_hud_order_sound = defaults.chart_hud_order_sound;
+        self.chart_hud_order_sound_file = defaults.chart_hud_order_sound_file;
+        self.chart_hud_order_sound_volume = defaults.chart_hud_order_sound_volume;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
         self.outer_widget_border_enabled = defaults.outer_widget_border_enabled;
         self.custom_themes = defaults.custom_themes;
@@ -126,6 +131,7 @@ impl TradingTerminal {
         self.sync_chart_dotted_background();
         self.sync_chart_fisheye();
         self.sync_chart_chromatic_aberration();
+        self.sync_chart_edge_blur();
         self.sync_chart_crosshair_style();
         self.sync_chart_crosshair_guides();
         self.sync_chart_crosshair_scale();

@@ -5,8 +5,8 @@ use crate::config::{
     ChartCrosshairStyle, CustomFontConfig, DisplayDenominationConfig, DisplayFontConfig,
     KeroseneConfig, default_alfred_popup_scale, default_chart_chromatic_aberration_strength,
     default_chart_crosshair_scale, default_chart_dotted_background_opacity,
-    default_chart_fisheye_strength, default_pane_border_thickness, default_pane_corner_radius,
-    default_ui_scale,
+    default_chart_edge_blur_strength, default_chart_fisheye_strength,
+    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
 };
 
 mod chrome;

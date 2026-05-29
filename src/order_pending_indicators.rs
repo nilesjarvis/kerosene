@@ -11,6 +11,7 @@ pub(crate) const PENDING_ORDER_INDICATOR_TTL_MS: u64 = 30_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PendingOrderIndicatorKind {
     Placing,
+    MarketPlacing,
     Cancelling,
     Modifying,
 }
@@ -27,6 +28,16 @@ pub(crate) struct PendingOrderIndicator {
     created_at_ms: u64,
 }
 
+struct PendingOrderIndicatorInput {
+    account_address: String,
+    symbol: String,
+    oid: Option<u64>,
+    is_buy: bool,
+    size: String,
+    price: String,
+    kind: PendingOrderIndicatorKind,
+}
+
 impl TradingTerminal {
     pub(crate) fn add_pending_order_placement_indicator(
         &mut self,
@@ -36,21 +47,52 @@ impl TradingTerminal {
         size: String,
         price: String,
     ) -> Option<u64> {
-        parse_positive_finite_number(&size)?;
-        parse_positive_finite_number(&price)?;
+        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+            account_address,
+            symbol,
+            oid: None,
+            is_buy,
+            size,
+            price,
+            kind: PendingOrderIndicatorKind::Placing,
+        })
+    }
+
+    pub(crate) fn add_pending_market_order_placement_indicator(
+        &mut self,
+        account_address: String,
+        symbol: String,
+        is_buy: bool,
+        size: String,
+        price: String,
+    ) -> Option<u64> {
+        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+            account_address,
+            symbol,
+            oid: None,
+            is_buy,
+            size,
+            price,
+            kind: PendingOrderIndicatorKind::MarketPlacing,
+        })
+    }
+
+    fn add_pending_order_indicator(&mut self, input: PendingOrderIndicatorInput) -> Option<u64> {
+        parse_positive_finite_number(&input.size)?;
+        parse_positive_finite_number(&input.price)?;
 
         let created_at_ms = Self::now_ms();
         let pending_id = self.next_pending_order_indicator_id(created_at_ms);
         self.pending_order_indicators.insert(
             pending_id,
             PendingOrderIndicator {
-                account_address,
-                symbol,
-                oid: None,
-                is_buy,
-                size,
-                price,
-                kind: PendingOrderIndicatorKind::Placing,
+                account_address: input.account_address,
+                symbol: input.symbol,
+                oid: input.oid,
+                is_buy: input.is_buy,
+                size: input.size,
+                price: input.price,
+                kind: input.kind,
                 created_at_ms,
             },
         );
@@ -64,26 +106,15 @@ impl TradingTerminal {
         order: &OpenOrder,
     ) -> Option<u64> {
         let is_buy = open_order_is_buy(&order.side)?;
-        parse_positive_finite_number(&order.sz)?;
-        parse_positive_finite_number(&order.limit_px)?;
-
-        let created_at_ms = Self::now_ms();
-        let pending_id = self.next_pending_order_indicator_id(created_at_ms);
-        self.pending_order_indicators.insert(
-            pending_id,
-            PendingOrderIndicator {
-                account_address,
-                symbol: order.coin.clone(),
-                oid: Some(order.oid),
-                is_buy,
-                size: order.sz.clone(),
-                price: order.limit_px.clone(),
-                kind: PendingOrderIndicatorKind::Cancelling,
-                created_at_ms,
-            },
-        );
-        self.sync_all_chart_orders();
-        Some(pending_id)
+        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+            account_address,
+            symbol: order.coin.clone(),
+            oid: Some(order.oid),
+            is_buy,
+            size: order.sz.clone(),
+            price: order.limit_px.clone(),
+            kind: PendingOrderIndicatorKind::Cancelling,
+        })
     }
 
     pub(crate) fn add_pending_order_modification_indicator(
@@ -93,26 +124,15 @@ impl TradingTerminal {
         new_price: String,
     ) -> Option<u64> {
         let is_buy = open_order_is_buy(&order.side)?;
-        parse_positive_finite_number(&order.sz)?;
-        parse_positive_finite_number(&new_price)?;
-
-        let created_at_ms = Self::now_ms();
-        let pending_id = self.next_pending_order_indicator_id(created_at_ms);
-        self.pending_order_indicators.insert(
-            pending_id,
-            PendingOrderIndicator {
-                account_address,
-                symbol: order.coin.clone(),
-                oid: Some(order.oid),
-                is_buy,
-                size: order.sz.clone(),
-                price: new_price,
-                kind: PendingOrderIndicatorKind::Modifying,
-                created_at_ms,
-            },
-        );
-        self.sync_all_chart_orders();
-        Some(pending_id)
+        self.add_pending_order_indicator(PendingOrderIndicatorInput {
+            account_address,
+            symbol: order.coin.clone(),
+            oid: Some(order.oid),
+            is_buy,
+            size: order.sz.clone(),
+            price: new_price,
+            kind: PendingOrderIndicatorKind::Modifying,
+        })
     }
 
     pub(crate) fn clear_pending_order_indicator(&mut self, pending_id: Option<u64>) -> bool {
@@ -172,4 +192,75 @@ fn open_order_is_buy(side: &str) -> Option<bool> {
 
 fn indicator_is_fresh(created_at_ms: u64, now_ms: u64) -> bool {
     now_ms.saturating_sub(created_at_ms) <= PENDING_ORDER_INDICATOR_TTL_MS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
+
+    fn terminal_with_chart() -> TradingTerminal {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+        terminal
+    }
+
+    #[test]
+    fn pending_market_order_uses_loading_pulse_instead_of_order_line() {
+        let mut terminal = terminal_with_chart();
+
+        let pending_id = terminal.add_pending_market_order_placement_indicator(
+            terminal.connected_address.clone().unwrap_or_default(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+
+        assert!(pending_id.is_some());
+        let chart = &terminal.charts.get(&1).unwrap().chart;
+        assert!(chart.active_orders.is_empty());
+        assert!(chart.hud_order_animation_active());
+    }
+
+    #[test]
+    fn clearing_pending_market_order_removes_loading_pulse() {
+        let mut terminal = terminal_with_chart();
+        let pending_id = terminal.add_pending_market_order_placement_indicator(
+            terminal.connected_address.clone().unwrap_or_default(),
+            "BTC".to_string(),
+            false,
+            "1".to_string(),
+            "100".to_string(),
+        );
+
+        assert!(terminal.clear_pending_order_indicator(pending_id));
+
+        let chart = &terminal.charts.get(&1).unwrap().chart;
+        assert!(chart.active_orders.is_empty());
+        assert!(!chart.hud_order_animation_active());
+    }
+
+    #[test]
+    fn pending_limit_order_still_uses_order_line() {
+        let mut terminal = terminal_with_chart();
+
+        let pending_id = terminal.add_pending_order_placement_indicator(
+            terminal.connected_address.clone().unwrap_or_default(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+
+        assert!(pending_id.is_some());
+        let chart = &terminal.charts.get(&1).unwrap().chart;
+        assert_eq!(chart.active_orders.len(), 1);
+        assert!(!chart.hud_order_animation_active());
+    }
 }

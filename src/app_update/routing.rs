@@ -156,6 +156,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CloseQuickOrder(_)
         | Message::SubmitQuickOrder(_, _)
         | Message::QuickOrderResult { .. }
+        | Message::SubmitHudOrder(_)
+        | Message::HudOrderResult { .. }
         | Message::EscapePressed
         | Message::MoveOrderDragStarted { .. }
         | Message::MoveOrder { .. }
@@ -234,9 +236,16 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartFisheyeStrengthChanged(_)
         | Message::ToggleChartChromaticAberration(_)
         | Message::ChartChromaticAberrationStrengthChanged(_)
+        | Message::ToggleChartEdgeBlur(_)
+        | Message::ChartEdgeBlurStrengthChanged(_)
         | Message::ChartCrosshairStyleChanged(_)
         | Message::ToggleChartCrosshairGuides(_)
         | Message::ChartCrosshairScaleChanged(_)
+        | Message::ChartHudOrderSoundChanged(_)
+        | Message::ChartHudOrderSoundVolumeChanged(_)
+        | Message::ImportChartHudOrderSound
+        | Message::ChartHudOrderSoundImported(_)
+        | Message::TestChartHudOrderSound
         | Message::AlfredPopupScaleChanged(_)
         | Message::DisplayFontChanged(_)
         | Message::MonospaceFontChanged(_)
@@ -375,6 +384,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartFundingHistoryLoaded(_, _)
         | Message::ChartWsCandleUpdate(_, _, _, _)
         | Message::ChartPriceFlashTick
+        | Message::ChartHudOrderAnimationTick
+        | Message::ChartHudArmToggled(_, _)
+        | Message::ChartHudSafetyTick
+        | Message::ChartOrderCancelHoverChanged(_, _, _, _)
+        | Message::ChartOrderCancelHoverAnimationTick
         | Message::ChartWsAssetCtxUpdate(_, _, _)
         | Message::ChartViewportChanged(_, _, _)
         | Message::ChartFundingPanelHeightChanged(_, _, _)

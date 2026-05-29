@@ -33,7 +33,7 @@ impl CandlestickChart {
 
             let wick_top = (ctx.price_to_y)(candle.high);
             let wick_bot = (ctx.price_to_y)(candle.low);
-            ctx.fisheye.stroke_projected_line(
+            ctx.fisheye.stroke_projected_line_without_edge_blur(
                 frame,
                 Point::new(cx, wick_top),
                 Point::new(cx, wick_bot),
@@ -44,7 +44,7 @@ impl CandlestickChart {
             let close_y = (ctx.price_to_y)(candle.close);
             let body_top = open_y.min(close_y);
             let body_h = (open_y - close_y).abs().max(1.0);
-            ctx.fisheye.fill_projected_rect(
+            ctx.fisheye.fill_projected_rect_without_edge_blur(
                 frame,
                 Point::new(cx - ctx.candle_w * 0.5, body_top),
                 Size::new(ctx.candle_w, body_h),
@@ -68,7 +68,7 @@ impl CandlestickChart {
                     ..ctx.candle_bear_color
                 }
             };
-            ctx.fisheye.fill_projected_rect(
+            ctx.fisheye.fill_projected_rect_without_edge_blur(
                 frame,
                 Point::new(cx - ctx.candle_w * 0.5, ctx.price_h + ctx.volume_h - bar_h),
                 Size::new(ctx.candle_w, bar_h),

@@ -21,6 +21,36 @@ pub(super) enum DragKind {
     MoveOrder { oid: u64 },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum HudOrderKind {
+    Limit,
+    Market,
+}
+
+impl HudOrderKind {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Limit => "LIMIT",
+            Self::Market => "MARKET",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum HudMarketSide {
+    Long,
+    Short,
+}
+
+impl HudMarketSide {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Long => "LONG",
+            Self::Short => "SHORT",
+        }
+    }
+}
+
 /// Widget-local mutable state for the canvas (managed by iced runtime).
 #[derive(Debug)]
 pub struct ChartState {
@@ -48,6 +78,20 @@ pub struct ChartState {
     pub(super) pending_anchor: Option<(u64, f64)>,
     /// True while Shift is pressed.
     pub(super) shift_down: bool,
+    /// True while Ctrl is pressed.
+    pub(super) ctrl_down: bool,
+    /// Visual-only order mode used by the HUD game-mode overlay.
+    pub(super) hud_order_kind: HudOrderKind,
+    /// Visual-only market side used by the HUD game-mode overlay.
+    pub(super) hud_market_side: HudMarketSide,
+    /// Visual-only coin size shown by the HUD game-mode overlay.
+    pub(super) hud_size_input: String,
+    /// True while typed keyboard input should update the HUD size.
+    pub(super) hud_size_editing: bool,
+    /// Clears the current HUD size on the next numeric key after the edit hotkey.
+    pub(super) hud_size_replace_on_type: bool,
+    /// Last Ctrl+scroll direction, used only to angle the HUD size scroller.
+    pub(super) hud_size_scroll_bias: f32,
     /// Anchor price for Shift+click range measurement.
     pub(super) range_anchor_price: Option<f64>,
     pub(super) reset_epoch_seen: u64,
@@ -74,6 +118,13 @@ impl Default for ChartState {
             hover_order_oid: None,
             pending_anchor: None,
             shift_down: false,
+            ctrl_down: false,
+            hud_order_kind: HudOrderKind::Limit,
+            hud_market_side: HudMarketSide::Long,
+            hud_size_input: "1".to_string(),
+            hud_size_editing: false,
+            hud_size_replace_on_type: false,
+            hud_size_scroll_bias: 0.0,
             range_anchor_price: None,
             reset_epoch_seen: 0,
         }

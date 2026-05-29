@@ -50,7 +50,7 @@ fn draw_projected_dotted_background(
             Size::new(DOTTED_BACKGROUND_DOT_SIZE, DOTTED_BACKGROUND_DOT_SIZE),
         ));
     });
-    fisheye.fill_projected_rects(frame, &dots, color);
+    fisheye.fill_projected_micro_rects(frame, &dots, color);
 }
 
 fn dotted_background_path(width: f32, height: f32) -> canvas::Path {
@@ -133,6 +133,14 @@ impl TradingTerminal {
         let strength = self.chart_chromatic_aberration_strength;
         for instance in self.charts.values_mut() {
             instance.chart.set_chromatic_aberration(enabled, strength);
+        }
+    }
+
+    pub(crate) fn sync_chart_edge_blur(&mut self) {
+        let enabled = self.chart_edge_blur_enabled;
+        let strength = self.chart_edge_blur_strength;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_edge_blur(enabled, strength);
         }
     }
 

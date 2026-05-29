@@ -4,6 +4,7 @@ use iced::widget::canvas;
 use iced::{Point, Rectangle};
 
 mod data;
+mod hud_safety;
 mod input;
 mod orders;
 mod view_state;

@@ -12,6 +12,7 @@ impl ChartInstance {
         let display = symbol.split(':').nth(1).unwrap_or(&symbol).to_string();
         let mut chart = CandlestickChart::new(id);
         chart.set_timeframe(interval);
+        chart.set_symbol_label(display.clone());
         Self {
             id,
             symbol,

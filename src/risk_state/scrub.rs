@@ -20,6 +20,8 @@ impl TradingTerminal {
         instance.chart.active_position = None;
         instance.chart.active_orders.clear();
         instance.chart.trade_markers.clear();
+        instance.chart.clear_hud_armed();
+        instance.chart.set_market_reference_price(None);
         instance.asset_ctx = None;
         instance.candle_fetch_request = None;
         instance.candle_fetch_error = None;

@@ -19,6 +19,7 @@ pub(super) const ORDER_LABEL_PADDING_WIDTH: f32 = 8.0;
 pub(super) const ORDER_PENDING_LABEL_PADDING_WIDTH: f32 = 19.0;
 pub(super) const ORDER_CANCEL_GAP: f32 = 3.0;
 pub(super) const ORDER_CANCEL_WIDTH: f32 = 12.0;
+pub(super) const ORDER_CANCEL_HOVER_RADIUS: f32 = 13.5;
 pub(super) const ORDER_LABEL_STACK_GAP: f32 = 2.0;
 pub(super) const ORDER_LABEL_STACK_MARGIN: f32 = 2.0;
 pub(super) const ORDER_LABEL_CONNECTOR_SPAN: f32 = 24.0;

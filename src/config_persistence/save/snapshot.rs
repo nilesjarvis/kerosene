@@ -49,10 +49,19 @@ impl TradingTerminal {
                 config::normalize_chart_chromatic_aberration_strength(
                     self.chart_chromatic_aberration_strength,
                 ),
+            chart_edge_blur_enabled: self.chart_edge_blur_enabled,
+            chart_edge_blur_strength: config::normalize_chart_edge_blur_strength(
+                self.chart_edge_blur_strength,
+            ),
             chart_crosshair_style: self.chart_crosshair_style.normalized(),
             chart_crosshair_guides_enabled: self.chart_crosshair_guides_enabled,
             chart_crosshair_scale: config::normalize_chart_crosshair_scale(
                 self.chart_crosshair_scale,
+            ),
+            chart_hud_order_sound: self.chart_hud_order_sound,
+            chart_hud_order_sound_file: self.chart_hud_order_sound_file.clone(),
+            chart_hud_order_sound_volume: config::normalize_chart_hud_order_sound_volume(
+                self.chart_hud_order_sound_volume,
             ),
             alfred_popup_scale: self.alfred_popup_scale,
             display_font: self.display_font.clone(),

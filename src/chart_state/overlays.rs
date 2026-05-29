@@ -52,6 +52,7 @@ impl TradingTerminal {
         if self.symbol_key_is_hidden(&symbol) {
             if let Some(inst) = self.charts.get_mut(&chart_id) {
                 inst.chart.active_orders.clear();
+                inst.chart.set_pending_market_order_loading([]);
             }
             return;
         }
@@ -114,7 +115,13 @@ impl TradingTerminal {
                 order_overlays.push(chase_order);
             }
         }
+        let mut pending_market_loaders = Vec::new();
         for (pending_id, pending) in self.pending_order_indicators_for_symbol(&symbol) {
+            if pending.kind == PendingOrderIndicatorKind::MarketPlacing {
+                pending_market_loaders.push((pending_id, pending.is_buy));
+                continue;
+            }
+
             let Some(limit_px) = pending.price.parse::<f64>().ok() else {
                 continue;
             };
@@ -129,6 +136,7 @@ impl TradingTerminal {
                 PendingOrderIndicatorKind::Placing => OrderOverlayPendingState::Placing,
                 PendingOrderIndicatorKind::Cancelling => OrderOverlayPendingState::Cancelling,
                 PendingOrderIndicatorKind::Modifying => OrderOverlayPendingState::Modifying,
+                PendingOrderIndicatorKind::MarketPlacing => continue,
             });
             if let Some(oid) = pending.oid
                 && let Some(existing) = order_overlays.iter_mut().find(|order| order.oid == oid)
@@ -155,6 +163,8 @@ impl TradingTerminal {
         }
         if let Some(inst) = self.charts.get_mut(&chart_id) {
             inst.chart.active_orders = order_overlays;
+            inst.chart
+                .set_pending_market_order_loading(pending_market_loaders);
         }
     }
 
@@ -191,6 +201,7 @@ impl TradingTerminal {
             self.sync_chart_orders_for(id);
             self.sync_chart_trade_markers_for(id);
         }
+        self.sync_chart_market_reference_prices();
     }
 
     /// Sync only order overlays for all chart instances.
@@ -202,11 +213,56 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn sync_chart_market_reference_prices(&mut self) {
+        let references: Vec<_> = self
+            .charts
+            .iter()
+            .map(|(id, instance)| (*id, self.resolve_mid_for_symbol(&instance.symbol)))
+            .collect();
+        for (id, price) in references {
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.chart.set_market_reference_price(price);
+            }
+        }
+    }
+
     /// Sync only trade marker overlays for all chart instances.
     pub(crate) fn sync_all_chart_trade_markers(&mut self) {
         let ids: Vec<ChartId> = self.charts.keys().copied().collect();
         for id in ids {
             self.sync_chart_trade_markers_for(id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn market_reference_prices_sync_from_live_mids() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+        terminal.all_mids.insert("BTC".to_string(), 50_000.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+        terminal.sync_chart_market_reference_prices();
+
+        assert_eq!(
+            terminal
+                .charts
+                .get(&1)
+                .unwrap()
+                .chart
+                .market_reference_price,
+            Some(50_000.0)
+        );
     }
 }
