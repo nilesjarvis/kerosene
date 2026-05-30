@@ -19,6 +19,7 @@ fn reset_view_state_restores_default_positioning() {
         drag_order_new_price: Some(100.0),
         hover_order_oid: Some(9),
         pending_anchor: Some((1_000, 10.0)),
+        hud_follow_price: true,
         range_anchor_price: Some(11.0),
         ..ChartState::default()
     };
@@ -35,6 +36,7 @@ fn reset_view_state_restores_default_positioning() {
     assert!(state.drag_order_new_price.is_none());
     assert!(state.hover_order_oid.is_none());
     assert!(state.pending_anchor.is_none());
+    assert!(!state.hud_follow_price);
     assert!(state.range_anchor_price.is_none());
     assert_eq!(state.reset_epoch_seen, 5);
 }

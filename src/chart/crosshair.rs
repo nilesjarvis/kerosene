@@ -247,7 +247,7 @@ impl CandlestickChart {
             accent,
         );
 
-        let menu_size = Size::new(142.0, 122.0);
+        let menu_size = Size::new(142.0, 138.0);
         let menu_origin = Point::new(
             (ctx.chart_w - menu_size.width - 8.0).max(8.0),
             (ctx.chart_h - menu_size.height - 8.0).max(46.0),
@@ -277,17 +277,24 @@ impl CandlestickChart {
             accent,
         );
         draw_hud_arm_row(ctx.frame, menu_origin, 64.0, self.hud_armed, accent);
+        draw_hud_follow_row(
+            ctx.frame,
+            menu_origin,
+            81.0,
+            ctx.state.hud_follow_price,
+            accent,
+        );
         draw_hud_panel_text(
             ctx.frame,
             "MARKET SIDE",
-            Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + 80.0),
+            Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + 97.0),
             ctx.state.hud_order_kind == HudOrderKind::Market,
             accent,
         );
         draw_hud_market_side_row(
             ctx.frame,
             menu_origin,
-            94.0,
+            111.0,
             HudMarketSide::Long,
             ctx.state.hud_market_side,
             ctx.state.hud_order_kind == HudOrderKind::Market,
@@ -296,7 +303,7 @@ impl CandlestickChart {
         draw_hud_market_side_row(
             ctx.frame,
             menu_origin,
-            108.0,
+            125.0,
             HudMarketSide::Short,
             ctx.state.hud_market_side,
             ctx.state.hud_order_kind == HudOrderKind::Market,
@@ -832,6 +839,34 @@ fn draw_hud_arm_row(
         &label,
         Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + y_offset),
         armed,
+        accent,
+    );
+}
+
+fn draw_hud_follow_row(
+    frame: &mut canvas::Frame,
+    menu_origin: Point,
+    y_offset: f32,
+    following: bool,
+    accent: Color,
+) {
+    let row_origin = Point::new(menu_origin.x + 5.0, menu_origin.y + y_offset - 7.0);
+    let row_size = Size::new(122.0, 14.0);
+    if following {
+        frame.fill_rectangle(row_origin, row_size, Color { a: 0.17, ..accent });
+    }
+
+    let marker = if following { ">" } else { " " };
+    let label = if following {
+        format!("{marker} C FOLLOW")
+    } else {
+        format!("{marker} C MANUAL")
+    };
+    draw_hud_panel_text(
+        frame,
+        &label,
+        Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + y_offset),
+        following,
         accent,
     );
 }

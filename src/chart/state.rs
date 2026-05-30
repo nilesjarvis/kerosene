@@ -92,6 +92,8 @@ pub struct ChartState {
     pub(super) hud_size_replace_on_type: bool,
     /// Last Ctrl+scroll direction, used only to angle the HUD size scroller.
     pub(super) hud_size_scroll_bias: f32,
+    /// True while HUD mode keeps the price viewport centered on the latest candle.
+    pub(super) hud_follow_price: bool,
     /// Anchor price for Shift+click range measurement.
     pub(super) range_anchor_price: Option<f64>,
     pub(super) reset_epoch_seen: u64,
@@ -125,6 +127,7 @@ impl Default for ChartState {
             hud_size_editing: false,
             hud_size_replace_on_type: false,
             hud_size_scroll_bias: 0.0,
+            hud_follow_price: false,
             range_anchor_price: None,
             reset_epoch_seen: 0,
         }
@@ -149,6 +152,7 @@ impl ChartState {
         self.drag_order_new_price = None;
         self.hover_order_oid = None;
         self.pending_anchor = None;
+        self.hud_follow_price = false;
         self.range_anchor_price = None;
         self.reset_epoch_seen = reset_epoch;
     }

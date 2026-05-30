@@ -1,5 +1,5 @@
 use crate::chart::model::VisibleCandleRange;
-use crate::chart::price_range::visible_price_stats;
+use crate::chart::price_range::{VisiblePriceStats, visible_price_stats_with_follow};
 use crate::chart::{CANDLE_GAP_RATIO, CandlestickChart, ChartState, VOLUME_REGION_RATIO};
 
 #[cfg(test)]
@@ -75,12 +75,7 @@ impl CandlestickChart {
         let first_vis = visible_range.first;
         let last_vis = visible_range.last;
 
-        let price_stats = visible_price_stats(
-            &self.candles[first_vis..=last_vis],
-            state.y_auto,
-            state.y_scale,
-            state.y_offset,
-        )?;
+        let price_stats = self.visible_price_stats_for_state(state, first_vis, last_vis)?;
         let price_range = price_stats.price_range;
         if price_range <= 0.0 {
             return None;
@@ -99,12 +94,8 @@ impl CandlestickChart {
         let first_vis = visible_range.first;
         let last_vis = visible_range.last;
 
-        let Some(price_stats) = visible_price_stats(
-            &self.candles[first_vis..=last_vis],
-            state.y_auto,
-            state.y_scale,
-            state.y_offset,
-        ) else {
+        let Some(price_stats) = self.visible_price_stats_for_state(state, first_vis, last_vis)
+        else {
             return 1.0;
         };
         if price_stats.price_range > 0.0 {
@@ -112,6 +103,23 @@ impl CandlestickChart {
         } else {
             1.0
         }
+    }
+
+    pub(in crate::chart) fn visible_price_stats_for_state(
+        &self,
+        state: &ChartState,
+        first_vis: usize,
+        last_vis: usize,
+    ) -> Option<VisiblePriceStats> {
+        let candles = self.candles.get(first_vis..=last_vis)?;
+        visible_price_stats_with_follow(
+            candles,
+            state.y_auto,
+            state.y_scale,
+            state.y_offset,
+            self.hud_game_mode_enabled() && state.hud_follow_price,
+            self.candles.last().map(|candle| candle.close),
+        )
     }
 
     pub(in crate::chart) fn price_to_y_with(

@@ -53,3 +53,38 @@ pub(in crate::chart) fn visible_price_stats(
         volume_max,
     })
 }
+
+pub(in crate::chart) fn visible_price_stats_with_follow(
+    candles: &[Candle],
+    y_auto: bool,
+    y_scale: f64,
+    y_offset: f64,
+    follow_price: bool,
+    follow_center: Option<f64>,
+) -> Option<VisiblePriceStats> {
+    if !follow_price {
+        return visible_price_stats(candles, y_auto, y_scale, y_offset);
+    }
+
+    let auto_stats = visible_price_stats(candles, true, 1.0, 0.0)?;
+    let Some(center) = follow_center.filter(|value| value.is_finite()) else {
+        return visible_price_stats(candles, y_auto, y_scale, y_offset);
+    };
+
+    let price_range = if y_auto {
+        auto_stats.price_range
+    } else {
+        auto_stats.price_range * y_scale
+    };
+    if price_range <= 0.0 || !price_range.is_finite() {
+        return Some(auto_stats);
+    }
+
+    let half_range = price_range * 0.5;
+    Some(VisiblePriceStats {
+        price_lo: center - half_range,
+        price_hi: center + half_range,
+        price_range,
+        volume_max: auto_stats.volume_max,
+    })
+}

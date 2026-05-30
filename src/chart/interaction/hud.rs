@@ -56,6 +56,11 @@ impl CandlestickChart {
                 state.hud_size_replace_on_type = true;
                 Some(redraw_and_capture())
             }
+            keyboard::Key::Character(value) if value.eq_ignore_ascii_case("c") => {
+                state.hud_follow_price = !state.hud_follow_price;
+                self.candle_cache.clear();
+                Some(redraw_and_capture())
+            }
             keyboard::Key::Named(key::Named::ArrowUp) => {
                 state.hud_market_side = HudMarketSide::Long;
                 Some(redraw_and_capture())
@@ -90,7 +95,7 @@ impl CandlestickChart {
         Some(redraw_and_capture())
     }
 
-    pub(super) fn hud_game_mode_enabled(&self) -> bool {
+    pub(in crate::chart) fn hud_game_mode_enabled(&self) -> bool {
         self.crosshair_style.normalized() == ChartCrosshairStyle::Hud
     }
 
@@ -233,6 +238,9 @@ fn format_hud_size(value: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::{format_hud_size, hud_size_scroll_step};
+    use crate::chart::{CandlestickChart, ChartState};
+    use crate::config::ChartCrosshairStyle;
+    use iced::{Point, keyboard};
 
     #[test]
     fn hud_size_format_trims_fractional_padding() {
@@ -248,5 +256,35 @@ mod tests {
         assert_eq!(hud_size_scroll_step(1.0), 0.1);
         assert_eq!(hud_size_scroll_step(10.0), 1.0);
         assert_eq!(hud_size_scroll_step(100.0), 10.0);
+    }
+
+    #[test]
+    fn c_key_toggles_hud_follow_price() {
+        let mut chart = CandlestickChart::new(1);
+        chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+        let mut state = ChartState {
+            cursor_position: Some(Point::ORIGIN),
+            ..ChartState::default()
+        };
+
+        let action = chart.handle_hud_key_pressed(
+            &mut state,
+            keyboard::Key::Character("c"),
+            Some("c"),
+            keyboard::Modifiers::NONE,
+        );
+
+        assert!(action.is_some());
+        assert!(state.hud_follow_price);
+
+        let action = chart.handle_hud_key_pressed(
+            &mut state,
+            keyboard::Key::Character("c"),
+            Some("c"),
+            keyboard::Modifiers::NONE,
+        );
+
+        assert!(action.is_some());
+        assert!(!state.hud_follow_price);
     }
 }

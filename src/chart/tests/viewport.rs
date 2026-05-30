@@ -1,5 +1,13 @@
 use super::candle_at;
 use crate::chart::{CandlestickChart, ChartState};
+use crate::config::ChartCrosshairStyle;
+
+fn assert_close_f64(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() < 0.000_001,
+        "expected {expected}, got {actual}"
+    );
+}
 
 #[test]
 fn visible_price_params_reject_invalid_resize_bounds() {
@@ -83,4 +91,47 @@ fn one_candle_visible_range_is_stable() {
     assert_eq!(range.first, 0);
     assert_eq!(range.last, 0);
     assert!(chart.visible_price_params(&state, 400.0, 300.0).is_some());
+}
+
+#[test]
+fn hud_follow_centers_price_window_on_latest_candle_close() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 200.0)]);
+    let state = ChartState {
+        hud_follow_price: true,
+        ..ChartState::default()
+    };
+
+    let Some((price_hi, price_range, _)) = chart.visible_price_params(&state, 400.0, 300.0) else {
+        panic!("visible price params should be available");
+    };
+
+    assert_close_f64(price_hi - price_range * 0.5, 200.0);
+}
+
+#[test]
+fn hud_follow_keeps_manual_zoom_range_centered_on_latest_close() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 200.0)]);
+    let auto_state = ChartState::default();
+    let manual_follow_state = ChartState {
+        y_auto: false,
+        y_scale: 2.0,
+        hud_follow_price: true,
+        ..ChartState::default()
+    };
+
+    let Some((_, auto_range, _)) = chart.visible_price_params(&auto_state, 400.0, 300.0) else {
+        panic!("auto price params should be available");
+    };
+    let Some((price_hi, price_range, _)) =
+        chart.visible_price_params(&manual_follow_state, 400.0, 300.0)
+    else {
+        panic!("manual follow price params should be available");
+    };
+
+    assert_close_f64(price_range, auto_range * 2.0);
+    assert_close_f64(price_hi - price_range * 0.5, 200.0);
 }

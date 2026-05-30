@@ -7,7 +7,6 @@ use super::model::{
     VOLUME_REGION_RATIO,
 };
 use super::overlays::TradingOverlayContext;
-use super::price_range::visible_price_stats;
 use super::state::ChartState;
 use crate::message::Message;
 
@@ -83,12 +82,8 @@ impl CandlestickChart {
             chart_w - (slots_from_right as f32) * step - step * 0.5
         };
 
-        let Some(price_stats) = visible_price_stats(
-            &self.candles[first_vis..=last_vis],
-            state.y_auto,
-            state.y_scale,
-            state.y_offset,
-        ) else {
+        let Some(price_stats) = self.visible_price_stats_for_state(state, first_vis, last_vis)
+        else {
             return vec![];
         };
         let price_lo = price_stats.price_lo;
