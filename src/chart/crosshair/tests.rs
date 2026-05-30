@@ -1,4 +1,6 @@
-use super::{format_crosshair_relative_time, format_volume_compact};
+use super::{format_crosshair_relative_time, format_volume_compact, hud_game_panels_visible};
+use crate::config::ChartCrosshairStyle;
+use iced::Point;
 
 #[test]
 fn format_crosshair_relative_time_handles_past_values() {
@@ -67,4 +69,38 @@ fn format_volume_compact_groups_with_k_m_and_b_suffixes() {
     assert_eq!(format_volume_compact(12_345.0), "12.3K");
     assert_eq!(format_volume_compact(5_000_000.0), "5.00M");
     assert_eq!(format_volume_compact(2_500_000_000.0), "2.50B");
+}
+
+#[test]
+fn hud_game_panels_require_hover_inside_chart_area() {
+    assert!(hud_game_panels_visible(
+        ChartCrosshairStyle::Hud,
+        Some(Point::new(120.0, 80.0)),
+        300.0,
+        200.0
+    ));
+    assert!(!hud_game_panels_visible(
+        ChartCrosshairStyle::Hud,
+        None,
+        300.0,
+        200.0
+    ));
+    assert!(!hud_game_panels_visible(
+        ChartCrosshairStyle::Hud,
+        Some(Point::new(320.0, 80.0)),
+        300.0,
+        200.0
+    ));
+    assert!(!hud_game_panels_visible(
+        ChartCrosshairStyle::Hud,
+        Some(Point::new(120.0, 220.0)),
+        300.0,
+        200.0
+    ));
+    assert!(!hud_game_panels_visible(
+        ChartCrosshairStyle::Classic,
+        Some(Point::new(120.0, 80.0)),
+        300.0,
+        200.0
+    ));
 }

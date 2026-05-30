@@ -70,16 +70,20 @@ impl CandlestickChart {
     ) where
         PriceToY: Fn(f64) -> f32,
     {
-        if self.crosshair_style.normalized() == ChartCrosshairStyle::Hud {
-            self.draw_hud_game_panels(ctx);
-        }
-
         let Some(data_pos) = ctx.state.cursor_position else {
             return;
         };
         let drawable_h = ctx.chart_h + ctx.funding_panel_h;
         if data_pos.x >= ctx.chart_w || data_pos.y >= drawable_h {
             return;
+        }
+        if hud_game_panels_visible(
+            self.crosshair_style,
+            ctx.state.cursor_position,
+            ctx.chart_w,
+            drawable_h,
+        ) {
+            self.draw_hud_game_panels(ctx);
         }
         let visual_pos = ctx.fisheye.project(data_pos);
         let hover_timestamp_ms = self.x_to_timestamp(data_pos.x, ctx.state, ctx.chart_w);
@@ -500,6 +504,20 @@ impl CandlestickChart {
         ));
         draw_hud_market_price_line(ctx.frame, center, target, accent);
     }
+}
+
+fn hud_game_panels_visible(
+    style: ChartCrosshairStyle,
+    cursor_position: Option<Point>,
+    chart_w: f32,
+    drawable_h: f32,
+) -> bool {
+    style.normalized() == ChartCrosshairStyle::Hud
+        && chart_w > 0.0
+        && drawable_h > 0.0
+        && cursor_position.is_some_and(|pos| {
+            pos.x >= 0.0 && pos.y >= 0.0 && pos.x < chart_w && pos.y < drawable_h
+        })
 }
 
 fn hud_text_block_size(lines: &[String]) -> Size {
