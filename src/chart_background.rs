@@ -120,6 +120,16 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn sync_chart_hollow_candles(&mut self) {
+        let mode = self.chart_hollow_candle_mode;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_hollow_candle_mode(mode);
+        }
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.canvas.set_hollow_candle_mode(mode);
+        }
+    }
+
     pub(crate) fn sync_chart_fisheye(&mut self) {
         let enabled = self.chart_fisheye_enabled;
         let strength = self.chart_fisheye_strength;

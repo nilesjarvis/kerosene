@@ -1,5 +1,5 @@
 use super::{
-    ChartCrosshairStyle, KeroseneConfig, default_alfred_popup_scale,
+    ChartCrosshairStyle, ChartHollowCandleMode, KeroseneConfig, default_alfred_popup_scale,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
     default_chart_fisheye_strength, default_config_value, default_pane_border_thickness,
@@ -13,6 +13,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         ui_scale: 0.85,
         chart_dotted_background: true,
         chart_dotted_background_opacity: 0.27,
+        chart_hollow_candle_mode: ChartHollowCandleMode::Both,
         chart_fisheye_enabled: true,
         chart_fisheye_strength: 0.72,
         chart_chromatic_aberration_enabled: true,
@@ -34,6 +35,10 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.ui_scale, 0.85);
     assert!(decoded.chart_dotted_background);
     assert_eq!(decoded.chart_dotted_background_opacity, 0.27);
+    assert_eq!(
+        decoded.chart_hollow_candle_mode,
+        ChartHollowCandleMode::Both
+    );
     assert!(decoded.chart_fisheye_enabled);
     assert_eq!(decoded.chart_fisheye_strength, 0.72);
     assert!(decoded.chart_chromatic_aberration_enabled);
@@ -56,6 +61,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("ui_scale");
     object.remove("chart_dotted_background");
     object.remove("chart_dotted_background_opacity");
+    object.remove("chart_hollow_candle_mode");
     object.remove("chart_fisheye_enabled");
     object.remove("chart_fisheye_strength");
     object.remove("chart_chromatic_aberration_enabled");
@@ -77,6 +83,11 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(
         decoded_legacy.chart_dotted_background_opacity,
         default_chart_dotted_background_opacity()
+    );
+    assert!(!decoded_legacy.chart_hollow_candles);
+    assert_eq!(
+        decoded_legacy.chart_hollow_candle_mode,
+        ChartHollowCandleMode::Off
     );
     assert!(!decoded_legacy.chart_fisheye_enabled);
     assert_eq!(

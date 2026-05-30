@@ -29,6 +29,9 @@ impl TradingTerminal {
         );
         instance
             .canvas
+            .set_hollow_candle_mode(self.chart_hollow_candle_mode);
+        instance
+            .canvas
             .set_crosshair_style(self.chart_crosshair_style);
         instance
             .canvas

@@ -262,6 +262,17 @@ impl ChartFisheye {
             .fill_projected_rect(frame, origin, size, color);
     }
 
+    pub(crate) fn stroke_projected_rect_without_edge_blur<'a>(
+        self,
+        frame: &mut canvas::Frame,
+        origin: Point,
+        size: Size,
+        stroke: canvas::Stroke<'a>,
+    ) {
+        self.without_edge_blur()
+            .stroke_projected_rect(frame, origin, size, stroke);
+    }
+
     pub(crate) fn fill_projected_rects(
         self,
         frame: &mut canvas::Frame,

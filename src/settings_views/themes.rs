@@ -43,6 +43,7 @@ impl TradingTerminal {
         } else {
             "lens off"
         };
+        let hollow = self.chart_hollow_candle_mode.label();
         let fringe = if self.chart_chromatic_aberration_enabled {
             "fringe on"
         } else {
@@ -59,7 +60,7 @@ impl TradingTerminal {
             "border off"
         };
         let chrome_summary = format!(
-            "{:.0}% scale, {:.0}px divider, {dots}, {lens}, {fringe}, {blur}, {border}",
+            "{:.0}% scale, {:.0}px divider, {dots}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}",
             self.ui_scale * 100.0,
             self.pane_border_thickness
         );

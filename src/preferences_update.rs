@@ -43,6 +43,13 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ChartHollowCandleModeChanged(mode)
+                if self.chart_hollow_candle_mode != mode =>
+            {
+                self.chart_hollow_candle_mode = mode;
+                self.sync_chart_hollow_candles();
+                self.persist_config();
+            }
             Message::ToggleChartFisheye(enabled) if self.chart_fisheye_enabled != enabled => {
                 self.chart_fisheye_enabled = enabled;
                 self.sync_chart_fisheye();

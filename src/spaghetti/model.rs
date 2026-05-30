@@ -68,6 +68,8 @@ pub struct SpaghettiCanvas {
     pub(crate) dotted_background: bool,
     /// Opacity applied to dotted chart plot backgrounds.
     pub(crate) dotted_background_opacity: f32,
+    /// Which pair-ratio candle bodies render hollow instead of filled.
+    pub(crate) hollow_candle_mode: crate::config::ChartHollowCandleMode,
     /// Reticle style used for the chart crosshair.
     pub(crate) crosshair_style: crate::config::ChartCrosshairStyle,
     /// Whether the chart crosshair draws full-span guide lines.
@@ -94,6 +96,7 @@ impl SpaghettiCanvas {
             pair_candle_mode: false,
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
+            hollow_candle_mode: Default::default(),
             crosshair_style: Default::default(),
             crosshair_guides_enabled: true,
             crosshair_scale: crate::config::default_chart_crosshair_scale(),
@@ -149,6 +152,13 @@ impl SpaghettiCanvas {
         {
             self.dotted_background = enabled;
             self.dotted_background_opacity = opacity;
+            self.cache.clear();
+        }
+    }
+
+    pub(crate) fn set_hollow_candle_mode(&mut self, mode: crate::config::ChartHollowCandleMode) {
+        if self.hollow_candle_mode != mode {
+            self.hollow_candle_mode = mode;
             self.cache.clear();
         }
     }

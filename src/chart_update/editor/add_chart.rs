@@ -21,6 +21,9 @@ impl TradingTerminal {
         );
         instance
             .chart
+            .set_hollow_candle_mode(self.chart_hollow_candle_mode);
+        instance
+            .chart
             .set_fisheye(self.chart_fisheye_enabled, self.chart_fisheye_strength);
         instance.chart.set_chromatic_aberration(
             self.chart_chromatic_aberration_enabled,

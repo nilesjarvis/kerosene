@@ -18,12 +18,14 @@ use std::collections::HashMap;
 use zeroize::Zeroizing;
 
 mod accounts;
+mod candles;
 mod crosshair;
 mod defaults;
 mod denomination;
 mod market_universe;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
+pub use candles::ChartHollowCandleMode;
 pub use crosshair::{ChartCrosshairStyle, ChartHudOrderSound};
 #[cfg(test)]
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
@@ -115,6 +117,13 @@ pub struct KeroseneConfig {
     /// Opacity for dotted chart plot backgrounds.
     #[serde(default = "default_chart_dotted_background_opacity")]
     pub chart_dotted_background_opacity: f32,
+    /// Legacy toggle for hollow bullish candle bodies.
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    pub chart_hollow_candles: bool,
+    /// Which candle directions should render hollow instead of solid fills.
+    #[serde(default)]
+    pub chart_hollow_candle_mode: ChartHollowCandleMode,
     /// Apply a subtle barrel lens projection to candlestick chart canvases.
     #[serde(default)]
     pub chart_fisheye_enabled: bool,

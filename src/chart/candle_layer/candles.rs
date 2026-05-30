@@ -31,25 +31,48 @@ impl CandlestickChart {
                 ctx.candle_bear_color
             };
 
-            let wick_top = (ctx.price_to_y)(candle.high);
-            let wick_bot = (ctx.price_to_y)(candle.low);
-            ctx.fisheye.stroke_projected_line_without_edge_blur(
-                frame,
-                Point::new(cx, wick_top),
-                Point::new(cx, wick_bot),
-                canvas::Stroke::default().with_color(color).with_width(1.0),
-            );
-
             let open_y = (ctx.price_to_y)(candle.open);
             let close_y = (ctx.price_to_y)(candle.close);
             let body_top = open_y.min(close_y);
             let body_h = (open_y - close_y).abs().max(1.0);
-            ctx.fisheye.fill_projected_rect_without_edge_blur(
-                frame,
-                Point::new(cx - ctx.candle_w * 0.5, body_top),
-                Size::new(ctx.candle_w, body_h),
-                color,
-            );
+            let body_bottom = body_top + body_h;
+            let high_y = (ctx.price_to_y)(candle.high);
+            let low_y = (ctx.price_to_y)(candle.low);
+            let wick_top = high_y.min(low_y);
+            let wick_bottom = high_y.max(low_y);
+            if wick_top < body_top {
+                ctx.fisheye.stroke_projected_line_without_edge_blur(
+                    frame,
+                    Point::new(cx, wick_top),
+                    Point::new(cx, body_top),
+                    canvas::Stroke::default().with_color(color).with_width(1.0),
+                );
+            }
+            if body_bottom < wick_bottom {
+                ctx.fisheye.stroke_projected_line_without_edge_blur(
+                    frame,
+                    Point::new(cx, body_bottom),
+                    Point::new(cx, wick_bottom),
+                    canvas::Stroke::default().with_color(color).with_width(1.0),
+                );
+            }
+            let body_origin = Point::new(cx - ctx.candle_w * 0.5, body_top);
+            let body_size = Size::new(ctx.candle_w, body_h);
+            if self.hollow_candle_mode.applies_to(is_bullish) {
+                ctx.fisheye.stroke_projected_rect_without_edge_blur(
+                    frame,
+                    body_origin,
+                    body_size,
+                    canvas::Stroke::default().with_color(color).with_width(1.25),
+                );
+            } else {
+                ctx.fisheye.fill_projected_rect_without_edge_blur(
+                    frame,
+                    body_origin,
+                    body_size,
+                    color,
+                );
+            }
 
             let vol_frac = if ctx.vol_max > 0.0 {
                 (candle.volume / ctx.vol_max) as f32

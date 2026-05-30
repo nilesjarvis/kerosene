@@ -1,10 +1,10 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::config::{
-    ChartCrosshairStyle, ChartHudOrderSound, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
-    DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
-    DEFAULT_CHART_EDGE_BLUR_STRENGTH, DEFAULT_CHART_FISHEYE_STRENGTH,
-    DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
+    ChartCrosshairStyle, ChartHollowCandleMode, ChartHudOrderSound,
+    DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH, DEFAULT_CHART_CROSSHAIR_SCALE,
+    DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY, DEFAULT_CHART_EDGE_BLUR_STRENGTH,
+    DEFAULT_CHART_FISHEYE_STRENGTH, DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
     MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
     MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
     MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
@@ -62,6 +62,19 @@ impl TradingTerminal {
                 .spacing(8)
                 .text_size(12)
                 .font(crate::app_fonts::monospace_font()),
+            row![
+                text("Hollow candles").size(12).color(theme.palette().text),
+                pick_list(
+                    ChartHollowCandleMode::ALL.to_vec(),
+                    Some(self.chart_hollow_candle_mode),
+                    Message::ChartHollowCandleModeChanged,
+                )
+                .padding([4, 8])
+                .text_size(12)
+                .width(Length::Fixed(170.0)),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
             checkbox(self.chart_fisheye_enabled)
                 .label("Chart fisheye lens")
                 .on_toggle(Message::ToggleChartFisheye)

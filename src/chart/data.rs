@@ -30,6 +30,7 @@ impl CandlestickChart {
             show_trade_markers: false,
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
+            hollow_candle_mode: Default::default(),
             fisheye_enabled: false,
             fisheye_strength: crate::config::default_chart_fisheye_strength(),
             chromatic_aberration_enabled: false,
@@ -91,6 +92,7 @@ impl CandlestickChart {
             show_trade_markers: self.show_trade_markers,
             dotted_background: self.dotted_background,
             dotted_background_opacity: self.dotted_background_opacity,
+            hollow_candle_mode: self.hollow_candle_mode,
             fisheye_enabled: self.fisheye_enabled,
             fisheye_strength: self.fisheye_strength,
             chromatic_aberration_enabled: self.chromatic_aberration_enabled,
@@ -197,6 +199,13 @@ impl CandlestickChart {
         {
             self.dotted_background = enabled;
             self.dotted_background_opacity = opacity;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_hollow_candle_mode(&mut self, mode: crate::config::ChartHollowCandleMode) {
+        if self.hollow_candle_mode != mode {
+            self.hollow_candle_mode = mode;
             self.candle_cache.clear();
         }
     }

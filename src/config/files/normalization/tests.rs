@@ -77,6 +77,27 @@ fn normalizes_out_of_range_pane_chrome() {
 }
 
 #[test]
+fn migrates_legacy_hollow_candle_toggle_to_up_candles() {
+    let mut value =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config serializes");
+    let object = value
+        .as_object_mut()
+        .expect("config should serialize to object");
+    object.insert("chart_hollow_candles".to_string(), serde_json::json!(true));
+    object.remove("chart_hollow_candle_mode");
+    let mut config: KeroseneConfig =
+        serde_json::from_value(value).expect("test config deserializes");
+
+    normalize_loaded_config(&mut config);
+
+    assert_eq!(
+        config.chart_hollow_candle_mode,
+        crate::config::ChartHollowCandleMode::Up
+    );
+    assert!(!config.chart_hollow_candles);
+}
+
+#[test]
 fn prunes_unsupported_panes_from_loaded_layouts() {
     let mut config = KeroseneConfig {
         pane_layout: Some(crate::config::PaneLayoutConfig::Split {

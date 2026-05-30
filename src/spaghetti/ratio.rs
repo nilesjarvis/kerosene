@@ -120,7 +120,14 @@ impl SpaghettiCanvas {
         draw_ratio_base_line(&mut frame, &ctx, &ts_to_x);
 
         if self.pair_candle_mode {
-            draw_ratio_candles(&mut frame, &ctx, &ratio_candles, &ratio_to_y, ctx.theme);
+            draw_ratio_candles(
+                &mut frame,
+                &ctx,
+                &ratio_candles,
+                &ratio_to_y,
+                ctx.theme,
+                self.hollow_candle_mode,
+            );
         } else {
             draw_ratio_line(
                 &mut frame,

@@ -56,6 +56,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) ui_scale: f32,
     pub(crate) chart_dotted_background: bool,
     pub(crate) chart_dotted_background_opacity: f32,
+    pub(crate) chart_hollow_candle_mode: config::ChartHollowCandleMode,
     pub(crate) chart_fisheye_enabled: bool,
     pub(crate) chart_fisheye_strength: f32,
     pub(crate) chart_chromatic_aberration_enabled: bool,

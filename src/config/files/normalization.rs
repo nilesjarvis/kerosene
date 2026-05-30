@@ -56,6 +56,12 @@ fn normalized_market_slippage_pct(value: f64) -> f64 {
 fn normalize_pane_chrome(config: &mut KeroseneConfig) {
     config.ui_scale = normalize_ui_scale(config.ui_scale);
     config.alfred_popup_scale = normalize_alfred_popup_scale(config.alfred_popup_scale);
+    if config.chart_hollow_candles
+        && config.chart_hollow_candle_mode == crate::config::ChartHollowCandleMode::Off
+    {
+        config.chart_hollow_candle_mode = crate::config::ChartHollowCandleMode::Up;
+    }
+    config.chart_hollow_candles = false;
     config.chart_dotted_background_opacity =
         normalize_chart_dotted_background_opacity(config.chart_dotted_background_opacity);
     config.chart_fisheye_strength = normalize_chart_fisheye_strength(config.chart_fisheye_strength);
