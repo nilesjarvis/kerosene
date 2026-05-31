@@ -248,16 +248,18 @@ fn screener_symbol_cell(
         content = content.push(icon).push(Space::new().width(4.0));
     }
 
-    content
-        .push(
-            text(display)
-                .size(12)
-                .color(theme.palette().text)
-                .width(Fill),
-        )
-        .width(Fill)
-        .align_y(Alignment::Center)
-        .into()
+    content = content.push(text(display).size(12).color(theme.palette().text));
+
+    if let Some(dex) = helpers::hip3_dex(sym_key) {
+        content = content.push(Space::new().width(5.0)).push(
+            text(format!("@{dex}"))
+                .size(10)
+                .font(crate::app_fonts::monospace_font())
+                .color(theme.extended_palette().background.weak.text),
+        );
+    }
+
+    content.width(Fill).align_y(Alignment::Center).into()
 }
 
 fn screener_value_cell(
