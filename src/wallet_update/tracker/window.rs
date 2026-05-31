@@ -13,7 +13,7 @@ impl TradingTerminal {
 
         let settings = window::Settings {
             size: Size::new(self.wallet_tracker.width, self.wallet_tracker.height),
-            ..crate::window_chrome::settings()
+            ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
         let (id, task) = window::open(settings);
         self.wallet_tracker.window_id = Some(id);

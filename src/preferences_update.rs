@@ -9,6 +9,8 @@ use crate::config::{
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
 use iced::Task;
+#[cfg(target_os = "linux")]
+use iced::window;
 
 mod fonts;
 mod hotkeys;
@@ -149,6 +151,29 @@ impl TradingTerminal {
                 self.persist_config();
                 return self.sync_main_window_min_size();
             }
+            Message::ToggleCustomWindowChrome(enabled)
+                if self.custom_window_chrome_enabled != enabled =>
+            {
+                self.custom_window_chrome_enabled = enabled;
+                self.persist_config();
+
+                #[cfg(target_os = "linux")]
+                {
+                    self.custom_window_chrome_active = enabled;
+                    return Task::batch([
+                        self.sync_open_window_decorations(),
+                        self.sync_main_window_min_size(),
+                    ]);
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    self.push_toast(
+                        "Restart Kerosene to apply the OS bar preference.".to_string(),
+                        false,
+                    );
+                }
+            }
             Message::MutedTickerInputChanged(value) => {
                 self.muted_ticker_input = value;
                 self.muted_ticker_status = None;
@@ -268,5 +293,46 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn sync_open_window_decorations(&self) -> Task<Message> {
+        Task::batch(
+            self.open_window_ids()
+                .into_iter()
+                .map(window::toggle_decorations),
+        )
+    }
+
+    #[cfg(target_os = "linux")]
+    fn open_window_ids(&self) -> Vec<window::Id> {
+        let mut ids = Vec::new();
+
+        if let Some(id) = self.main_window_id {
+            ids.push(id);
+        }
+        if let Some(id) = self.settings_window_id {
+            ids.push(id);
+        }
+        if let Some(id) = self.screener.window_id {
+            ids.push(id);
+        }
+        if let Some(id) = self.chart_screenshot_window_id {
+            ids.push(id);
+        }
+        if let Some(id) = self.wallet_tracker.window_id {
+            ids.push(id);
+        }
+        if let Some(id) = self.journal.window_id {
+            ids.push(id);
+        }
+
+        ids.extend(self.wallet_detail_windows.keys().copied());
+        ids.extend(self.twap_orders.values().filter_map(|twap| twap.window_id));
+        ids.extend(self.advanced_order_history_windows.keys().copied());
+        ids.extend(self.pnl_card_windows.keys().copied());
+        ids.extend(self.detached_chart_windows.keys().copied());
+
+        ids
     }
 }

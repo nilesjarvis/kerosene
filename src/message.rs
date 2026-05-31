@@ -232,6 +232,7 @@ pub(crate) enum Message {
     PaneBorderThicknessChanged(f32),
     PaneCornerRadiusChanged(f32),
     ToggleOuterWidgetBorder(bool),
+    ToggleCustomWindowChrome(bool),
     MutedTickerInputChanged(String),
     MuteTicker,
     UnmuteTicker(String),

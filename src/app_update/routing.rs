@@ -258,6 +258,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PaneBorderThicknessChanged(_)
         | Message::PaneCornerRadiusChanged(_)
         | Message::ToggleOuterWidgetBorder(_)
+        | Message::ToggleCustomWindowChrome(_)
         | Message::MutedTickerInputChanged(_)
         | Message::MuteTicker
         | Message::UnmuteTicker(_)

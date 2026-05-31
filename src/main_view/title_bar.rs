@@ -117,6 +117,10 @@ const CLOSE_ICON_SVG: &[u8] = br#"
 impl TradingTerminal {
     #[cfg(target_os = "linux")]
     pub(crate) fn view_main_window(&self, window_id: window::Id) -> Element<'_, Message> {
+        if !self.custom_window_chrome_active {
+            return self.view_main();
+        }
+
         let content = self.view_main_with_top_bar(self.view_main_chrome_header(window_id));
 
         stack![content, self.view_window_resize_handles(window_id)]
@@ -127,6 +131,10 @@ impl TradingTerminal {
 
     #[cfg(target_os = "macos")]
     pub(crate) fn view_main_window(&self, window_id: window::Id) -> Element<'_, Message> {
+        if !self.custom_window_chrome_active {
+            return self.view_main();
+        }
+
         self.view_main_with_top_bar(self.view_main_chrome_header(window_id))
     }
 
@@ -141,6 +149,10 @@ impl TradingTerminal {
         window_id: window::Id,
         content: Element<'a, Message>,
     ) -> Element<'a, Message> {
+        if !self.custom_window_chrome_active {
+            return content;
+        }
+
         let framed_content: Element<'a, Message> = column![
             container(self.view_window_title_bar(window_id, false))
                 .width(Fill)
@@ -163,6 +175,10 @@ impl TradingTerminal {
         window_id: window::Id,
         content: Element<'a, Message>,
     ) -> Element<'a, Message> {
+        if !self.custom_window_chrome_active {
+            return content;
+        }
+
         column![
             container(self.view_window_title_bar(window_id, false))
                 .width(Fill)

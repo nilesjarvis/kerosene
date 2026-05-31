@@ -59,8 +59,13 @@ impl TradingTerminal {
         } else {
             "border off"
         };
+        let os_bar = if self.custom_window_chrome_enabled {
+            "OS bar custom"
+        } else {
+            "OS bar native"
+        };
         let chrome_summary = format!(
-            "{:.0}% scale, {:.0}px divider, {dots}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}",
+            "{:.0}% scale, {:.0}px divider, {dots}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}, {os_bar}",
             self.ui_scale * 100.0,
             self.pane_border_thickness
         );

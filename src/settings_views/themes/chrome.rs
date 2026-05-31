@@ -55,6 +55,13 @@ impl TradingTerminal {
                 .spacing(8)
                 .text_size(12)
                 .font(crate::app_fonts::monospace_font()),
+            checkbox(self.custom_window_chrome_enabled)
+                .label("Custom OS bar")
+                .on_toggle(Message::ToggleCustomWindowChrome)
+                .size(12)
+                .spacing(8)
+                .text_size(12)
+                .font(crate::app_fonts::monospace_font()),
             checkbox(self.chart_dotted_background)
                 .label("Dotted chart background")
                 .on_toggle(Message::ToggleChartDottedBackground)

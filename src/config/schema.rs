@@ -181,6 +181,9 @@ pub struct KeroseneConfig {
     /// Whether the main window has an exterior gutter matching pane dividers.
     #[serde(default = "default_true")]
     pub outer_widget_border_enabled: bool,
+    /// Whether Kerosene draws its own OS title bar instead of using native window chrome.
+    #[serde(default = "default_true")]
+    pub custom_window_chrome_enabled: bool,
     /// Order book tick size.
     #[serde(default = "default_tick_size")]
     pub book_tick_size: f64,

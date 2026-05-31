@@ -33,16 +33,36 @@ impl TradingTerminal {
         );
         let reload_btn = sections::chart_reload_button(chart_id);
         let reset_view_btn = sections::chart_reset_view_button(chart_id, surface_id);
+        let header_collapse_btn = match surface_id {
+            ChartSurfaceId::Detached(_) => {
+                Some(self.view_chart_header_collapse_button(chart_id, instance.header_collapsed))
+            }
+            ChartSurfaceId::Docked(_) => None,
+        };
 
-        let mut tf_row = row![
-            tf_picker,
-            sections::chart_toolbar_separator(),
-            indicator_btn,
-            sections::chart_toolbar_separator(),
-            reload_btn,
-            sections::chart_toolbar_separator(),
-            reset_view_btn,
-        ]
+        let mut tf_row = if let Some(btn) = header_collapse_btn {
+            row![
+                tf_picker,
+                sections::chart_toolbar_separator(),
+                indicator_btn,
+                sections::chart_toolbar_separator(),
+                reload_btn,
+                sections::chart_toolbar_separator(),
+                reset_view_btn,
+                sections::chart_toolbar_separator(),
+                btn,
+            ]
+        } else {
+            row![
+                tf_picker,
+                sections::chart_toolbar_separator(),
+                indicator_btn,
+                sections::chart_toolbar_separator(),
+                reload_btn,
+                sections::chart_toolbar_separator(),
+                reset_view_btn,
+            ]
+        }
         .spacing(0)
         .align_y(iced::Alignment::Center);
 

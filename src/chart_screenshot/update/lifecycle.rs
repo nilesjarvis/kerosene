@@ -17,7 +17,7 @@ impl TradingTerminal {
 
         let settings = window::Settings {
             size: Size::new(720.0, 560.0),
-            ..crate::window_chrome::settings()
+            ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
         let (id, open_task) = window::open(settings);
         self.chart_screenshot_window_id = Some(id);

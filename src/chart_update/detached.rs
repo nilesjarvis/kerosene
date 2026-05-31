@@ -39,7 +39,7 @@ impl TradingTerminal {
         let settings = window::Settings {
             size: state.size(),
             position: state.position(),
-            ..crate::window_chrome::settings()
+            ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
         let (window_id, task) = window::open(settings);
         detached_instance

@@ -27,6 +27,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         pane_border_thickness: 8.0,
         pane_corner_radius: 12.0,
         outer_widget_border_enabled: true,
+        custom_window_chrome_enabled: false,
         ..KeroseneConfig::default()
     };
 
@@ -55,6 +56,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.pane_border_thickness, 8.0);
     assert_eq!(decoded.pane_corner_radius, 12.0);
     assert!(decoded.outer_widget_border_enabled);
+    assert!(!decoded.custom_window_chrome_enabled);
 
     let mut legacy = default_config_value();
     let object = object_mut(&mut legacy, "config should serialize to object");
@@ -75,6 +77,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("pane_border_thickness");
     object.remove("pane_corner_radius");
     object.remove("outer_widget_border_enabled");
+    object.remove("custom_window_chrome_enabled");
 
     let decoded_legacy: KeroseneConfig =
         value_from_json(legacy, "legacy config should deserialize");
@@ -126,4 +129,5 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         default_pane_corner_radius()
     );
     assert!(decoded_legacy.outer_widget_border_enabled);
+    assert!(decoded_legacy.custom_window_chrome_enabled);
 }

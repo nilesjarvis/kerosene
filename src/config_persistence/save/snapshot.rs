@@ -72,6 +72,7 @@ impl TradingTerminal {
             pane_border_thickness: self.pane_border_thickness,
             pane_corner_radius: self.pane_corner_radius,
             outer_widget_border_enabled: self.outer_widget_border_enabled,
+            custom_window_chrome_enabled: self.custom_window_chrome_enabled,
             symbol_search_sort_mode: self.symbol_search_sort_mode.config_value().to_string(),
             market_universe: self.market_universe.clone().normalized(),
             display_denomination: self.display_denomination.clone().normalized(),

@@ -50,7 +50,7 @@ impl TradingTerminal {
 
         let settings = window::Settings {
             size: Size::new(920.0, 680.0),
-            ..crate::window_chrome::settings()
+            ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
         let (id, task) = window::open(settings);
         self.screener.window_id = Some(id);
