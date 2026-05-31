@@ -28,7 +28,7 @@ fn impact_spread(ctx: &AssetContext) -> Option<f64> {
     let bid = impact[0].parse::<f64>().ok()?;
     let ask = impact[1].parse::<f64>().ok()?;
     let spread = ask - bid;
-    spread.is_finite().then_some(spread)
+    (spread.is_finite() && spread >= 0.0).then_some(spread)
 }
 
 fn trim_spread_history(spread_history: &mut VecDeque<(Instant, f64)>, now: Instant) {

@@ -611,16 +611,16 @@ fn draw_distribution_chart(
         max_cumulative_usd,
     );
     draw_current_mark(&mut frame, data, denomination, theme, &plot);
-    draw_hover_state(
-        &mut frame,
+    draw_hover_state(HoverStateRenderContext {
+        frame: &mut frame,
         data,
         denomination,
         theme,
         bounds,
-        &plot,
+        plot: &plot,
         cursor,
         max_cumulative_usd,
-    );
+    });
 
     vec![frame.into_geometry()]
 }
@@ -1071,38 +1071,40 @@ fn draw_current_mark(
     });
 }
 
-fn draw_hover_state(
-    frame: &mut Frame,
-    data: &LiquidationDistributionData,
-    denomination: &DisplayDenominationContext,
-    theme: &Theme,
+struct HoverStateRenderContext<'a> {
+    frame: &'a mut Frame,
+    data: &'a LiquidationDistributionData,
+    denomination: &'a DisplayDenominationContext,
+    theme: &'a Theme,
     bounds: Rectangle,
-    plot: &PlotArea,
+    plot: &'a PlotArea,
     cursor: iced::mouse::Cursor,
     max_cumulative_usd: f64,
-) {
-    let Some(cursor_pos) = cursor.position_in(bounds) else {
+}
+
+fn draw_hover_state(ctx: HoverStateRenderContext<'_>) {
+    let Some(cursor_pos) = ctx.cursor.position_in(ctx.bounds) else {
         return;
     };
-    if cursor_pos.x < plot.left
-        || cursor_pos.x > plot.right
-        || cursor_pos.y < plot.top
-        || cursor_pos.y > plot.bottom
+    if cursor_pos.x < ctx.plot.left
+        || cursor_pos.x > ctx.plot.right
+        || cursor_pos.y < ctx.plot.top
+        || cursor_pos.y > ctx.plot.bottom
     {
         return;
     }
-    let Some(point) = nearest_distribution_point(data, plot, cursor_pos.x) else {
+    let Some(point) = nearest_distribution_point(ctx.data, ctx.plot, cursor_pos.x) else {
         return;
     };
 
-    let x = point_x(point, plot);
-    let guide = canvas::Path::line(Point::new(x, plot.top), Point::new(x, plot.bottom));
-    frame.stroke(
+    let x = point_x(point, ctx.plot);
+    let guide = canvas::Path::line(Point::new(x, ctx.plot.top), Point::new(x, ctx.plot.bottom));
+    ctx.frame.stroke(
         &guide,
         Stroke::default()
             .with_color(Color {
                 a: 0.22,
-                ..theme.palette().text
+                ..ctx.theme.palette().text
             })
             .with_width(1.0),
     );
@@ -1110,66 +1112,66 @@ fn draw_hover_state(
     for (value, max_value, color) in [
         (
             point.cumulative_long_usd,
-            max_cumulative_usd,
+            ctx.max_cumulative_usd,
             color!(0xff7777),
         ),
         (
             point.cumulative_short_usd,
-            max_cumulative_usd,
+            ctx.max_cumulative_usd,
             color!(0x66d9a8),
         ),
     ] {
         if value > 0.0 {
             let marker =
-                canvas::Path::circle(Point::new(x, plot.value_to_y(value, max_value)), 2.8);
-            frame.fill(&marker, color);
+                canvas::Path::circle(Point::new(x, ctx.plot.value_to_y(value, max_value)), 2.8);
+            ctx.frame.fill(&marker, color);
         }
     }
 
-    let tooltip_width = 170.0_f32.min((plot.width - 8.0).max(126.0));
+    let tooltip_width = 170.0_f32.min((ctx.plot.width - 8.0).max(126.0));
     let tooltip_height = 68.0_f32;
-    let max_x = (plot.right - tooltip_width).max(plot.left);
-    let max_y = (plot.bottom - tooltip_height).max(plot.top);
-    let tooltip_x = if cursor_pos.x + tooltip_width + 12.0 <= plot.right {
+    let max_x = (ctx.plot.right - tooltip_width).max(ctx.plot.left);
+    let max_y = (ctx.plot.bottom - tooltip_height).max(ctx.plot.top);
+    let tooltip_x = if cursor_pos.x + tooltip_width + 12.0 <= ctx.plot.right {
         cursor_pos.x + 10.0
     } else {
         cursor_pos.x - tooltip_width - 10.0
     }
-    .clamp(plot.left, max_x);
-    let tooltip_y = (cursor_pos.y - tooltip_height / 2.0).clamp(plot.top, max_y);
+    .clamp(ctx.plot.left, max_x);
+    let tooltip_y = (cursor_pos.y - tooltip_height / 2.0).clamp(ctx.plot.top, max_y);
     let tooltip_origin = Point::new(tooltip_x, tooltip_y);
 
-    frame.fill_rectangle(
+    ctx.frame.fill_rectangle(
         tooltip_origin,
         Size::new(tooltip_width, tooltip_height),
         Color {
             a: 0.94,
-            ..theme.extended_palette().background.strong.color
+            ..ctx.theme.extended_palette().background.strong.color
         },
     );
     let border = canvas::Path::rectangle(tooltip_origin, Size::new(tooltip_width, tooltip_height));
-    frame.stroke(
+    ctx.frame.stroke(
         &border,
         Stroke::default()
             .with_color(Color {
                 a: 0.18,
-                ..theme.palette().text
+                ..ctx.theme.palette().text
             })
             .with_width(1.0),
     );
 
     let tooltip_text = format!(
         "{}\nL {}  S {}\nCum L {}\nCum S {}",
-        denomination.format_price(point.price),
-        compact_denomination_value(denomination, point.long_usd),
-        compact_denomination_value(denomination, point.short_usd),
-        compact_denomination_value(denomination, point.cumulative_long_usd),
-        compact_denomination_value(denomination, point.cumulative_short_usd),
+        ctx.denomination.format_price(point.price),
+        compact_denomination_value(ctx.denomination, point.long_usd),
+        compact_denomination_value(ctx.denomination, point.short_usd),
+        compact_denomination_value(ctx.denomination, point.cumulative_long_usd),
+        compact_denomination_value(ctx.denomination, point.cumulative_short_usd),
     );
-    frame.fill_text(canvas::Text {
+    ctx.frame.fill_text(canvas::Text {
         content: tooltip_text,
         position: Point::new(tooltip_x + 8.0, tooltip_y + 8.0),
-        color: theme.palette().text,
+        color: ctx.theme.palette().text,
         size: iced::Pixels(10.0),
         font: crate::app_fonts::monospace_font(),
         align_x: iced::alignment::Horizontal::Left.into(),

@@ -31,7 +31,7 @@ impl TradingTerminal {
             };
             inst.center_on_mid = ob_cfg.center_on_mid;
             inst.show_spread_chart = ob_cfg.show_spread_chart;
-            inst.spread_chart_height = ob_cfg.spread_chart_height;
+            inst.set_spread_chart_height(ob_cfg.spread_chart_height);
             inst.book_loading = true;
             self.order_books.insert(ob_cfg.id, inst);
             self.next_order_book_id = self.next_order_book_id.max(ob_cfg.id + 1);

@@ -142,7 +142,7 @@ impl TradingTerminal {
             }
             Message::OrderBookSpreadChartResize(id, new_height) => {
                 if let Some(inst) = self.order_books.get_mut(&id) {
-                    inst.spread_chart_height = new_height;
+                    inst.set_spread_chart_height(new_height);
                 }
                 self.persist_config();
                 Task::none()

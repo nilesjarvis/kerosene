@@ -1,4 +1,5 @@
 use super::{SpreadChart, SpreadChartState};
+use crate::market_state::clamp_order_book_spread_chart_height;
 use crate::message::Message;
 use iced::mouse;
 use iced::widget::canvas::Action;
@@ -7,8 +8,6 @@ use iced::{Event, Rectangle};
 #[cfg(test)]
 mod tests;
 
-const MIN_SPREAD_CHART_HEIGHT: f32 = 30.0;
-const MAX_SPREAD_CHART_HEIGHT: f32 = 1000.0;
 const WHEEL_RESIZE_STEP: f32 = 18.0;
 
 impl SpreadChart<'_> {
@@ -102,13 +101,9 @@ fn wheel_resized_height(current_height: f32, delta: &mouse::ScrollDelta) -> f32 
         mouse::ScrollDelta::Pixels { y, .. } => *y / 28.0,
     };
 
-    clamped_height(current_height + lines * WHEEL_RESIZE_STEP)
+    clamp_order_book_spread_chart_height(current_height + lines * WHEEL_RESIZE_STEP)
 }
 
 fn clamped_height(height: f32) -> f32 {
-    if height.is_finite() {
-        height.clamp(MIN_SPREAD_CHART_HEIGHT, MAX_SPREAD_CHART_HEIGHT)
-    } else {
-        MIN_SPREAD_CHART_HEIGHT
-    }
+    clamp_order_book_spread_chart_height(height)
 }

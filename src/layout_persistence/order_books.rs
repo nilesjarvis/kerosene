@@ -38,7 +38,7 @@ impl TradingTerminal {
             instance.center_on_mid = order_book_config.center_on_mid;
             instance.reverse_side = order_book_config.reverse_side;
             instance.show_spread_chart = order_book_config.show_spread_chart;
-            instance.spread_chart_height = order_book_config.spread_chart_height;
+            instance.set_spread_chart_height(order_book_config.spread_chart_height);
             instance.book_loading = true;
             self.order_books.insert(order_book_config.id, instance);
             self.next_order_book_id = self.next_order_book_id.max(order_book_config.id + 1);

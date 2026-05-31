@@ -30,6 +30,10 @@ fn impact_spread_ignores_missing_or_invalid_prices() {
     assert_eq!(impact_spread(&asset_ctx(Some(vec!["100.25"]))), None);
     assert_eq!(impact_spread(&asset_ctx(Some(vec!["bad", "100.75"]))), None);
     assert_eq!(impact_spread(&asset_ctx(Some(vec!["100.25", "NaN"]))), None);
+    assert_eq!(
+        impact_spread(&asset_ctx(Some(vec!["100.75", "100.25"]))),
+        None
+    );
 }
 
 #[test]

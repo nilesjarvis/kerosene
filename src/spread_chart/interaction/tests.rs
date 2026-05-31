@@ -1,4 +1,8 @@
 use super::*;
+use crate::market_state::{
+    DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT, MAX_ORDER_BOOK_SPREAD_CHART_HEIGHT,
+    MIN_ORDER_BOOK_SPREAD_CHART_HEIGHT,
+};
 
 #[test]
 fn wheel_resized_height_grows_and_shrinks_from_hover_scroll() {
@@ -22,7 +26,10 @@ fn wheel_resized_height_normalizes_pixel_scroll() {
 
 #[test]
 fn clamped_height_respects_bounds_and_non_finite_values() {
-    assert_eq!(clamped_height(10.0), MIN_SPREAD_CHART_HEIGHT);
-    assert_eq!(clamped_height(2_000.0), MAX_SPREAD_CHART_HEIGHT);
-    assert_eq!(clamped_height(f32::NAN), MIN_SPREAD_CHART_HEIGHT);
+    assert_eq!(clamped_height(10.0), MIN_ORDER_BOOK_SPREAD_CHART_HEIGHT);
+    assert_eq!(clamped_height(2_000.0), MAX_ORDER_BOOK_SPREAD_CHART_HEIGHT);
+    assert_eq!(
+        clamped_height(f32::NAN),
+        DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT
+    );
 }

@@ -20,6 +20,20 @@ use scope::merge_books_preserving_scope;
 // ---------------------------------------------------------------------------
 
 pub type OrderBookId = u64;
+pub(crate) const DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT: f32 = 60.0;
+pub(crate) const MIN_ORDER_BOOK_SPREAD_CHART_HEIGHT: f32 = 30.0;
+pub(crate) const MAX_ORDER_BOOK_SPREAD_CHART_HEIGHT: f32 = 1000.0;
+
+pub(crate) fn clamp_order_book_spread_chart_height(height: f32) -> f32 {
+    if height.is_finite() {
+        height.clamp(
+            MIN_ORDER_BOOK_SPREAD_CHART_HEIGHT,
+            MAX_ORDER_BOOK_SPREAD_CHART_HEIGHT,
+        )
+    } else {
+        DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OrderBookDisplayMode {
@@ -78,7 +92,7 @@ impl OrderBookInstance {
             reverse_side: false,
             show_spread_chart: false,
             spread_history: VecDeque::new(),
-            spread_chart_height: 60.0,
+            spread_chart_height: DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT,
             mid_price_history: VecDeque::new(),
             book_source_tick_size: None,
             pending_book_sigfigs: None,
@@ -137,6 +151,10 @@ impl OrderBookInstance {
 
     pub fn set_tick_size(&mut self, tick: f64) {
         self.tick_size = tick;
+    }
+
+    pub(crate) fn set_spread_chart_height(&mut self, height: f32) {
+        self.spread_chart_height = clamp_order_book_spread_chart_height(height);
     }
 
     pub fn can_render_book_at_tick(&self, tick: f64) -> bool {
