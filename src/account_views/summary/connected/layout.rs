@@ -194,16 +194,6 @@ impl TradingTerminal {
             actions = actions.push(self.summary_display_denomination_picker());
         }
 
-        actions = actions.push(self.summary_hide_pnl_button());
-
-        if !compaction.hide_sound() {
-            actions = actions.push(self.summary_sound_button());
-        }
-
-        if !compaction.hide_notifications() {
-            actions = actions.push(self.summary_notifications_button());
-        }
-
         actions
             .push(self.summary_layouts_button())
             .push(self.summary_widgets_button())
