@@ -1,6 +1,6 @@
 use super::{
-    ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, KeroseneConfig,
-    default_alfred_popup_scale, default_chart_chromatic_aberration_strength,
+    ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, ChartHudReadoutConfig,
+    KeroseneConfig, default_alfred_popup_scale, default_chart_chromatic_aberration_strength,
     default_chart_crosshair_scale, default_chart_dotted_background_opacity,
     default_chart_edge_blur_strength, default_chart_fisheye_strength, default_config_value,
     default_pane_border_thickness, default_pane_corner_radius, default_ui_scale, json_string,
@@ -23,6 +23,11 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         chart_crosshair_style: ChartCrosshairStyle::Rangefinder,
         chart_crosshair_guides_enabled: false,
         chart_crosshair_scale: 1.55,
+        chart_hud_readout: ChartHudReadoutConfig {
+            price: false,
+            clock: false,
+            ..ChartHudReadoutConfig::default()
+        },
         alfred_popup_scale: 1.35,
         chart_backfill_source: ChartBackfillSource::Hydromancer,
         pane_border_thickness: 8.0,
@@ -53,6 +58,12 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     );
     assert!(!decoded.chart_crosshair_guides_enabled);
     assert_eq!(decoded.chart_crosshair_scale, 1.55);
+    assert!(decoded.chart_hud_readout.symbol);
+    assert!(!decoded.chart_hud_readout.price);
+    assert!(decoded.chart_hud_readout.coordinates);
+    assert!(decoded.chart_hud_readout.hover_time);
+    assert!(!decoded.chart_hud_readout.clock);
+    assert!(decoded.chart_hud_readout.candle_close);
     assert_eq!(decoded.alfred_popup_scale, 1.35);
     assert_eq!(
         decoded.chart_backfill_source,
@@ -78,6 +89,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("chart_crosshair_style");
     object.remove("chart_crosshair_guides_enabled");
     object.remove("chart_crosshair_scale");
+    object.remove("chart_hud_readout");
     object.remove("alfred_popup_scale");
     object.remove("chart_backfill_source");
     object.remove("pane_border_thickness");
@@ -121,6 +133,10 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(
         decoded_legacy.chart_crosshair_scale,
         default_chart_crosshair_scale()
+    );
+    assert_eq!(
+        decoded_legacy.chart_hud_readout,
+        ChartHudReadoutConfig::default()
     );
     assert_eq!(
         decoded_legacy.alfred_popup_scale,

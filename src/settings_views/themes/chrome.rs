@@ -1,10 +1,11 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::config::{
-    ChartCrosshairStyle, ChartHollowCandleMode, ChartHudOrderSound,
-    DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH, DEFAULT_CHART_CROSSHAIR_SCALE,
-    DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY, DEFAULT_CHART_EDGE_BLUR_STRENGTH,
-    DEFAULT_CHART_FISHEYE_STRENGTH, DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
+    ChartCrosshairStyle, ChartHollowCandleMode, ChartHudOrderSound, ChartHudReadoutConfig,
+    ChartHudReadoutElement, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
+    DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
+    DEFAULT_CHART_EDGE_BLUR_STRENGTH, DEFAULT_CHART_FISHEYE_STRENGTH,
+    DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
     MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
     MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
     MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
@@ -187,6 +188,7 @@ impl TradingTerminal {
                 self.chart_crosshair_guides_enabled,
                 self.chart_crosshair_scale,
             ),
+            hud_readout_settings(&theme, self.chart_hud_readout),
             hud_order_sound_settings(
                 &theme,
                 self.chart_hud_order_sound,
@@ -206,6 +208,32 @@ impl TradingTerminal {
         .spacing(10)
         .into()
     }
+}
+
+fn hud_readout_settings(theme: &Theme, config: ChartHudReadoutConfig) -> Element<'static, Message> {
+    let mut toggles = Column::new()
+        .push(text("HUD readout").size(13).color(theme.palette().text))
+        .spacing(7);
+
+    for element in ChartHudReadoutElement::ALL {
+        toggles = toggles.push(hud_readout_toggle(config, element));
+    }
+
+    toggles.into()
+}
+
+fn hud_readout_toggle(
+    config: ChartHudReadoutConfig,
+    element: ChartHudReadoutElement,
+) -> Element<'static, Message> {
+    checkbox(config.enabled(element))
+        .label(element.label())
+        .on_toggle(move |enabled| Message::ChartHudReadoutToggled(element, enabled))
+        .size(12)
+        .spacing(8)
+        .text_size(12)
+        .font(crate::app_fonts::monospace_font())
+        .into()
 }
 
 fn hud_order_sound_settings<'a>(

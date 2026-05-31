@@ -5,7 +5,7 @@ use super::order_cancel_hover::ease_out_cubic;
 use super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::tooltips::TooltipSurface;
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
-use crate::config::ChartCrosshairStyle;
+use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
 use crate::helpers::format_price;
 use iced::widget::canvas;
 use iced::{Color, Point, Radians, Size, Theme, alignment};
@@ -347,55 +347,64 @@ impl CandlestickChart {
         let hover_time_label = hover_timestamp_ms
             .map(format_hud_hover_time)
             .unwrap_or_else(|| "--".to_string());
+        let clock_label = format_hud_clock_time(self.clock_now_ms);
         let accent = self.hud_accent_color(ctx.theme, ctx.state);
 
-        let left_lines = [
-            format!("{symbol} {}", self.timeframe.label()),
-            format!("PX {}", format_price(hover_price)),
-            format!("XY {:>5.1} {:>5.1}", data_pos.x, data_pos.y),
-        ];
-        let right_lines = [
-            format!("T  {hover_time_label}"),
-            format!("NOW {}", format_hud_clock_time(self.clock_now_ms)),
-            format!("CLS {candle_close_label}"),
-        ];
+        let (left_lines, right_lines) = hud_readout_lines(
+            self.hud_readout,
+            HudReadoutLabels {
+                symbol: &symbol,
+                timeframe: self.timeframe.label(),
+                hover_price,
+                data_pos,
+                hover_time: &hover_time_label,
+                clock: &clock_label,
+                candle_close: &candle_close_label,
+            },
+        );
+        if left_lines.is_empty() && right_lines.is_empty() {
+            return;
+        }
 
         let left_size = hud_text_block_size(&left_lines);
         let right_size = hud_text_block_size(&right_lines);
-        let left_origin = hud_block_origin(
-            visual_pos,
-            -left_size.width - 42.0,
-            -left_size.height - 26.0,
-            left_size,
-            ctx.chart_w,
-            ctx.price_h,
-        );
-        let right_origin = hud_block_origin(
-            visual_pos,
-            42.0,
-            -right_size.height - 26.0,
-            right_size,
-            ctx.chart_w,
-            ctx.price_h,
-        );
-
-        draw_hud_connector(
-            ctx.frame,
-            visual_pos,
-            Point::new(
-                left_origin.x + left_size.width,
-                left_origin.y + left_size.height,
-            ),
-            accent,
-        );
-        draw_hud_connector(
-            ctx.frame,
-            visual_pos,
-            Point::new(right_origin.x, right_origin.y + right_size.height),
-            accent,
-        );
-        draw_hud_text_block(ctx.frame, &left_lines, left_origin, accent);
-        draw_hud_text_block(ctx.frame, &right_lines, right_origin, accent);
+        if !left_lines.is_empty() {
+            let left_origin = hud_block_origin(
+                visual_pos,
+                -left_size.width - 42.0,
+                -left_size.height - 26.0,
+                left_size,
+                ctx.chart_w,
+                ctx.price_h,
+            );
+            draw_hud_connector(
+                ctx.frame,
+                visual_pos,
+                Point::new(
+                    left_origin.x + left_size.width,
+                    left_origin.y + left_size.height,
+                ),
+                accent,
+            );
+            draw_hud_text_block(ctx.frame, &left_lines, left_origin, accent);
+        }
+        if !right_lines.is_empty() {
+            let right_origin = hud_block_origin(
+                visual_pos,
+                42.0,
+                -right_size.height - 26.0,
+                right_size,
+                ctx.chart_w,
+                ctx.price_h,
+            );
+            draw_hud_connector(
+                ctx.frame,
+                visual_pos,
+                Point::new(right_origin.x, right_origin.y + right_size.height),
+                accent,
+            );
+            draw_hud_text_block(ctx.frame, &right_lines, right_origin, accent);
+        }
     }
 
     fn draw_crosshair_time_label<PriceToY>(
@@ -526,6 +535,48 @@ fn hud_text_block_size(lines: &[String]) -> Size {
         .map(|line| line.chars().count() as f32 * HUD_CHAR_WIDTH)
         .fold(0.0, f32::max);
     Size::new(width, lines.len() as f32 * HUD_LINE_HEIGHT)
+}
+
+struct HudReadoutLabels<'a> {
+    symbol: &'a str,
+    timeframe: &'a str,
+    hover_price: f64,
+    data_pos: Point,
+    hover_time: &'a str,
+    clock: &'a str,
+    candle_close: &'a str,
+}
+
+fn hud_readout_lines(
+    config: ChartHudReadoutConfig,
+    labels: HudReadoutLabels<'_>,
+) -> (Vec<String>, Vec<String>) {
+    let mut left_lines = Vec::new();
+    let mut right_lines = Vec::new();
+
+    if config.symbol {
+        left_lines.push(format!("{} {}", labels.symbol, labels.timeframe));
+    }
+    if config.price {
+        left_lines.push(format!("PX {}", format_price(labels.hover_price)));
+    }
+    if config.coordinates {
+        left_lines.push(format!(
+            "XY {:>5.1} {:>5.1}",
+            labels.data_pos.x, labels.data_pos.y
+        ));
+    }
+    if config.hover_time {
+        right_lines.push(format!("T  {}", labels.hover_time));
+    }
+    if config.clock {
+        right_lines.push(format!("NOW {}", labels.clock));
+    }
+    if config.candle_close {
+        right_lines.push(format!("CLS {}", labels.candle_close));
+    }
+
+    (left_lines, right_lines)
 }
 
 fn hud_size_panel_label(state: &ChartState) -> String {

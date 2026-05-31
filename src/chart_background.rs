@@ -184,6 +184,13 @@ impl TradingTerminal {
             instance.canvas.set_crosshair_scale(scale);
         }
     }
+
+    pub(crate) fn sync_chart_hud_readout(&mut self) {
+        let readout = self.chart_hud_readout;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_hud_readout(readout);
+        }
+    }
 }
 
 #[cfg(test)]

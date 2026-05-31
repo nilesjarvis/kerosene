@@ -116,6 +116,13 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ChartHudReadoutToggled(element, enabled)
+                if self.chart_hud_readout.enabled(element) != enabled =>
+            {
+                self.chart_hud_readout.set(element, enabled);
+                self.sync_chart_hud_readout();
+                self.persist_config();
+            }
             message @ (Message::ChartHudOrderSoundChanged(_)
             | Message::ChartHudOrderSoundVolumeChanged(_)
             | Message::ImportChartHudOrderSound

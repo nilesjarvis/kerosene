@@ -218,6 +218,7 @@ pub(crate) enum Message {
     ChartCrosshairStyleChanged(config::ChartCrosshairStyle),
     ToggleChartCrosshairGuides(bool),
     ChartCrosshairScaleChanged(f32),
+    ChartHudReadoutToggled(config::ChartHudReadoutElement, bool),
     ChartHudOrderSoundChanged(config::ChartHudOrderSound),
     ChartHudOrderSoundVolumeChanged(f32),
     ImportChartHudOrderSound,

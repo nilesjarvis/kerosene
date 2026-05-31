@@ -41,6 +41,7 @@ impl CandlestickChart {
             crosshair_style: Default::default(),
             crosshair_guides_enabled: true,
             crosshair_scale: crate::config::default_chart_crosshair_scale(),
+            hud_readout: Default::default(),
             annotations: Vec::new(),
             active_tool: None,
             liquidation_buckets: Vec::new(),
@@ -102,6 +103,7 @@ impl CandlestickChart {
             crosshair_style: self.crosshair_style,
             crosshair_guides_enabled: self.crosshair_guides_enabled,
             crosshair_scale: self.crosshair_scale,
+            hud_readout: self.hud_readout,
             annotations: self.annotations.clone(),
             active_tool: None,
             liquidation_buckets: self.liquidation_buckets.clone(),
@@ -265,6 +267,13 @@ impl CandlestickChart {
         let scale = crate::config::normalize_chart_crosshair_scale(scale);
         if (self.crosshair_scale - scale).abs() > f32::EPSILON {
             self.crosshair_scale = scale;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_hud_readout(&mut self, readout: crate::config::ChartHudReadoutConfig) {
+        if self.hud_readout != readout {
+            self.hud_readout = readout;
             self.candle_cache.clear();
         }
     }

@@ -26,7 +26,9 @@ mod market_universe;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
 pub use candles::{ChartBackfillSource, ChartHollowCandleMode};
-pub use crosshair::{ChartCrosshairStyle, ChartHudOrderSound};
+pub use crosshair::{
+    ChartCrosshairStyle, ChartHudOrderSound, ChartHudReadoutConfig, ChartHudReadoutElement,
+};
 #[cfg(test)]
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
 use defaults::default_true;
@@ -160,6 +162,9 @@ pub struct KeroseneConfig {
     /// Volume multiplier for the HUD chart order sound.
     #[serde(default = "default_chart_hud_order_sound_volume")]
     pub chart_hud_order_sound_volume: f32,
+    /// HUD chart readout rows displayed around the central order type and size.
+    #[serde(default)]
+    pub chart_hud_readout: ChartHudReadoutConfig,
     /// User-controlled scale for the Alfred command popup.
     #[serde(default = "default_alfred_popup_scale")]
     pub alfred_popup_scale: f32,

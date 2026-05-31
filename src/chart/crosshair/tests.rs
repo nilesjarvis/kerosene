@@ -1,5 +1,8 @@
-use super::{format_crosshair_relative_time, format_volume_compact, hud_game_panels_visible};
-use crate::config::ChartCrosshairStyle;
+use super::{
+    HudReadoutLabels, format_crosshair_relative_time, format_volume_compact,
+    hud_game_panels_visible, hud_readout_lines,
+};
+use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
 use iced::Point;
 
 #[test]
@@ -103,4 +106,33 @@ fn hud_game_panels_require_hover_inside_chart_area() {
         300.0,
         200.0
     ));
+}
+
+#[test]
+fn hud_readout_lines_follow_visibility_config() {
+    let config = ChartHudReadoutConfig {
+        price: false,
+        clock: false,
+        candle_close: false,
+        ..ChartHudReadoutConfig::default()
+    };
+
+    let (left, right) = hud_readout_lines(
+        config,
+        HudReadoutLabels {
+            symbol: "HYPE",
+            timeframe: "1H",
+            hover_price: 42.0,
+            data_pos: Point::new(12.0, 34.0),
+            hover_time: "01/01 00:00:00",
+            clock: "00:00:01",
+            candle_close: "59m",
+        },
+    );
+
+    assert_eq!(
+        left,
+        vec!["HYPE 1H".to_string(), "XY  12.0  34.0".to_string()]
+    );
+    assert_eq!(right, vec!["T  01/01 00:00:00".to_string()]);
 }

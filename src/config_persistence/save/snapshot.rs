@@ -65,6 +65,7 @@ impl TradingTerminal {
             chart_hud_order_sound_volume: config::normalize_chart_hud_order_sound_volume(
                 self.chart_hud_order_sound_volume,
             ),
+            chart_hud_readout: self.chart_hud_readout,
             alfred_popup_scale: self.alfred_popup_scale,
             chart_backfill_source: self.chart_backfill_source,
             display_font: self.display_font.clone(),

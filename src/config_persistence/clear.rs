@@ -102,6 +102,7 @@ impl TradingTerminal {
         self.chart_hud_order_sound = defaults.chart_hud_order_sound;
         self.chart_hud_order_sound_file = defaults.chart_hud_order_sound_file;
         self.chart_hud_order_sound_volume = defaults.chart_hud_order_sound_volume;
+        self.chart_hud_readout = defaults.chart_hud_readout;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
         self.chart_backfill_source = defaults.chart_backfill_source;
         self.outer_widget_border_enabled = defaults.outer_widget_border_enabled;
@@ -139,6 +140,7 @@ impl TradingTerminal {
         self.sync_chart_crosshair_style();
         self.sync_chart_crosshair_guides();
         self.sync_chart_crosshair_scale();
+        self.sync_chart_hud_readout();
 
         let file_label = if summary.files_removed == 1 {
             "file"

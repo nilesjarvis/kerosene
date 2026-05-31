@@ -244,6 +244,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartCrosshairStyleChanged(_)
         | Message::ToggleChartCrosshairGuides(_)
         | Message::ChartCrosshairScaleChanged(_)
+        | Message::ChartHudReadoutToggled(_, _)
         | Message::ChartHudOrderSoundChanged(_)
         | Message::ChartHudOrderSoundVolumeChanged(_)
         | Message::ImportChartHudOrderSound

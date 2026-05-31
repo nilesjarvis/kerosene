@@ -83,6 +83,8 @@ pub struct CandlestickChart {
     pub(crate) crosshair_guides_enabled: bool,
     /// Multiplier applied to local crosshair reticle geometry.
     pub(crate) crosshair_scale: f32,
+    /// HUD readout rows displayed around the central order type and size.
+    pub(crate) hud_readout: crate::config::ChartHudReadoutConfig,
     /// User-drawn annotations (levels, trend lines).
     pub annotations: Vec<Annotation>,
     /// Currently active drawing tool (None = normal pan/zoom mode).

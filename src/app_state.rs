@@ -70,6 +70,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_hud_order_sound: config::ChartHudOrderSound,
     pub(crate) chart_hud_order_sound_file: Option<String>,
     pub(crate) chart_hud_order_sound_volume: f32,
+    pub(crate) chart_hud_readout: config::ChartHudReadoutConfig,
     pub(crate) alfred_popup_scale: f32,
     pub(crate) chart_backfill_source: config::ChartBackfillSource,
     pub(crate) display_font: config::DisplayFontConfig,

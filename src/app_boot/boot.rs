@@ -157,6 +157,7 @@ impl TradingTerminal {
         state.sync_chart_crosshair_style();
         state.sync_chart_crosshair_guides();
         state.sync_chart_crosshair_scale();
+        state.sync_chart_hud_readout();
 
         (state, Task::batch(boot_tasks))
     }

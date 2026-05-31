@@ -93,6 +93,7 @@ impl TradingTerminal {
         self.sync_chart_crosshair_style();
         self.sync_chart_crosshair_guides();
         self.sync_chart_crosshair_scale();
+        self.sync_chart_hud_readout();
 
         Task::batch(boot_tasks)
     }

@@ -41,6 +41,7 @@ impl TradingTerminal {
         instance
             .chart
             .set_crosshair_scale(self.chart_crosshair_scale);
+        instance.chart.set_hud_readout(self.chart_hud_readout);
         self.charts.insert(id, instance);
         if self
             .add_pane_to_target(
