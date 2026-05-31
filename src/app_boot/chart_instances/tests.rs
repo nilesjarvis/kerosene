@@ -17,8 +17,12 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         outcome_volume_as_notional: false,
     }];
 
-    let (charts, tasks) =
-        TradingTerminal::boot_chart_instances(&configs, &std::collections::HashSet::new());
+    let (charts, tasks) = TradingTerminal::boot_chart_instances(
+        &configs,
+        &std::collections::HashSet::new(),
+        crate::config::ChartBackfillSource::Hyperliquid,
+        String::new(),
+    );
 
     assert!(tasks.is_empty());
     assert!(

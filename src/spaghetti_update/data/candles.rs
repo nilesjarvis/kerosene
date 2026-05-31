@@ -17,6 +17,7 @@ impl TradingTerminal {
         }
         let mut new_cache_data = None;
         let mut remove_cache_data = None;
+        let expected_source = self.chart_backfill_source;
 
         if let Some(inst) = self.spaghetti_charts.get_mut(&request.chart_id)
             && let Some(series) = inst.canvas.series.iter_mut().find(|s| s.symbol == symbol)
@@ -28,6 +29,7 @@ impl TradingTerminal {
                 Self::now_ms(),
             );
             if current_tf != request.timeframe
+                || expected_source != request.source
                 || inst.canvas.active_session != request.session
                 || inst.session_granularity != request.session_granularity
             {

@@ -248,6 +248,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ImportChartHudOrderSound
         | Message::ChartHudOrderSoundImported(_)
         | Message::TestChartHudOrderSound
+        | Message::ChartBackfillSourceChanged(_)
         | Message::AlfredPopupScaleChanged(_)
         | Message::DisplayFontChanged(_)
         | Message::MonospaceFontChanged(_)

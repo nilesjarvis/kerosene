@@ -92,6 +92,7 @@ impl TradingTerminal {
                 cfg.chart_hud_order_sound_volume,
             ),
             alfred_popup_scale: cfg.alfred_popup_scale,
+            chart_backfill_source: cfg.chart_backfill_source,
             display_font: cfg.display_font.clone(),
             monospace_font: cfg.monospace_font.clone(),
             custom_fonts: cfg.custom_fonts.clone(),

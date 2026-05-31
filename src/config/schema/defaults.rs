@@ -257,6 +257,7 @@ impl Default for KeroseneConfig {
             chart_hud_order_sound_file: None,
             chart_hud_order_sound_volume: default_chart_hud_order_sound_volume(),
             alfred_popup_scale: default_alfred_popup_scale(),
+            chart_backfill_source: Default::default(),
             display_font: Default::default(),
             monospace_font: Default::default(),
             custom_fonts: Vec::new(),

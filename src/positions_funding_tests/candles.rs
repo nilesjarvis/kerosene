@@ -8,6 +8,7 @@ fn candle_fetch_request_overlaps_cached_candle_refresh() {
         7,
         "BTC",
         Timeframe::H1,
+        crate::config::ChartBackfillSource::Hyperliquid,
         Some(last_candle_ms),
         0,
     );
@@ -15,6 +16,10 @@ fn candle_fetch_request_overlaps_cached_candle_refresh() {
     assert_eq!(request.chart_id, 7);
     assert_eq!(request.symbol, "BTC");
     assert_eq!(request.timeframe, Timeframe::H1);
+    assert_eq!(
+        request.source,
+        crate::config::ChartBackfillSource::Hyperliquid
+    );
     assert_eq!(
         request.start_ms,
         last_candle_ms - Timeframe::H1.duration_ms() * 2

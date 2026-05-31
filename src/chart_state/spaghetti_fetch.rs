@@ -1,5 +1,6 @@
 use crate::api;
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartBackfillFetchContext;
 use crate::message::Message;
 use crate::spaghetti;
 use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
@@ -15,6 +16,7 @@ impl TradingTerminal {
         session: Option<spaghetti::Session>,
         session_granularity: Option<Timeframe>,
         cached_start_ms: Option<u64>,
+        backfill: ChartBackfillFetchContext,
     ) -> Task<Message> {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -33,11 +35,14 @@ impl TradingTerminal {
             chart_id: sid,
             symbol: coin_str.clone(),
             timeframe: api_tf,
+            source: backfill.source,
             session,
             session_granularity,
         };
         Task::perform(
-            api::fetch_candles(
+            api::fetch_chart_backfill_candles(
+                backfill.source,
+                backfill.hydromancer_api_key,
                 coin_str.clone(),
                 api_tf.api_str().to_string(),
                 start,

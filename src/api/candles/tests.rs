@@ -1,4 +1,4 @@
-use super::{Candle, normalize_candles};
+use super::{Candle, fill_zero_volume_candle_gaps, normalize_candles};
 
 fn candle_at(open_time: u64, close: f64) -> Candle {
     Candle {
@@ -42,4 +42,25 @@ fn candle_normalization_drops_malformed_candles() {
 
     assert_eq!(normalized.len(), 1);
     assert_eq!(normalized[0].open_time, 1_000);
+}
+
+#[test]
+fn zero_volume_gap_fill_preserves_chart_timeline() {
+    let candles = fill_zero_volume_candle_gaps(
+        vec![candle_at(60_000, 10.0), candle_at(240_000, 13.0)],
+        60_000,
+    );
+
+    assert_eq!(
+        candles
+            .iter()
+            .map(|candle| (candle.open_time, candle.close, candle.volume))
+            .collect::<Vec<_>>(),
+        vec![
+            (60_000, 10.0, 10.0),
+            (120_000, 10.0, 0.0),
+            (180_000, 10.0, 0.0),
+            (240_000, 13.0, 10.0),
+        ]
+    );
 }

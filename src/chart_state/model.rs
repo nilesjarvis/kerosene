@@ -23,9 +23,25 @@ pub(crate) struct CandleFetchRequest {
     pub(crate) chart_id: ChartId,
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
+    pub(crate) source: config::ChartBackfillSource,
     pub(crate) start_ms: u64,
     pub(crate) end_ms: u64,
     pub(crate) attempt: u8,
+}
+
+#[derive(Clone)]
+pub(crate) struct ChartBackfillFetchContext {
+    pub(crate) source: config::ChartBackfillSource,
+    pub(crate) hydromancer_api_key: String,
+}
+
+impl ChartBackfillFetchContext {
+    pub(crate) fn new(source: config::ChartBackfillSource, hydromancer_api_key: String) -> Self {
+        Self {
+            source,
+            hydromancer_api_key,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

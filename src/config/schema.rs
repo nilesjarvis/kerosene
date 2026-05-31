@@ -25,7 +25,7 @@ mod denomination;
 mod market_universe;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
-pub use candles::ChartHollowCandleMode;
+pub use candles::{ChartBackfillSource, ChartHollowCandleMode};
 pub use crosshair::{ChartCrosshairStyle, ChartHudOrderSound};
 #[cfg(test)]
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
@@ -163,6 +163,9 @@ pub struct KeroseneConfig {
     /// User-controlled scale for the Alfred command popup.
     #[serde(default = "default_alfred_popup_scale")]
     pub alfred_popup_scale: f32,
+    /// REST provider used for historical chart candle backfills.
+    #[serde(default)]
+    pub chart_backfill_source: ChartBackfillSource,
     /// Global display font used by default UI text.
     #[serde(default)]
     pub display_font: DisplayFontConfig,

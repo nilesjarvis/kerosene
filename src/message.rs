@@ -222,6 +222,7 @@ pub(crate) enum Message {
     ImportChartHudOrderSound,
     ChartHudOrderSoundImported(Result<Option<String>, String>),
     TestChartHudOrderSound,
+    ChartBackfillSourceChanged(config::ChartBackfillSource),
     AlfredPopupScaleChanged(f32),
     DisplayFontChanged(config::DisplayFontConfig),
     MonospaceFontChanged(config::DisplayFontConfig),

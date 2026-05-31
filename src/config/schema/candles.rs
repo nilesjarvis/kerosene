@@ -1,6 +1,34 @@
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
+// Chart Candle Data
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ChartBackfillSource {
+    #[default]
+    Hyperliquid,
+    Hydromancer,
+}
+
+impl ChartBackfillSource {
+    pub const ALL: [Self; 2] = [Self::Hyperliquid, Self::Hydromancer];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Hyperliquid => "Hyperliquid",
+            Self::Hydromancer => "Hydromancer",
+        }
+    }
+}
+
+impl std::fmt::Display for ChartBackfillSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Chart Candle Appearance
 // ---------------------------------------------------------------------------
 

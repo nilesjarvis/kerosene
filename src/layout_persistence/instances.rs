@@ -1,6 +1,6 @@
 use crate::annotations::{Annotation, AnnotationId};
 use crate::app_state::TradingTerminal;
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{ChartBackfillFetchContext, ChartId, ChartInstance};
 use crate::config;
 use crate::message::Message;
 use crate::spaghetti;
@@ -60,9 +60,19 @@ impl TradingTerminal {
             instance.next_annotation_id = ann_id;
             instance.chart.annotations = instance.annotations.clone();
             if !chart_cfg.symbol.is_empty() && !self.symbol_key_is_hidden(&chart_cfg.symbol) {
-                let request = Self::build_candle_fetch_request(id, &chart_cfg.symbol, tf, None, 0);
+                let request = Self::build_candle_fetch_request(
+                    id,
+                    &chart_cfg.symbol,
+                    tf,
+                    self.chart_backfill_source,
+                    None,
+                    0,
+                );
                 instance.candle_fetch_request = Some(request.clone());
-                boot_tasks.push(Self::fetch_candles_task(request));
+                boot_tasks.push(Self::fetch_candles_task(
+                    request,
+                    self.hydromancer_api_key.trim().to_string(),
+                ));
                 boot_tasks.extend(Self::fetch_macro_candles_tasks(id, &chart_cfg.symbol));
             } else if !chart_cfg.symbol.is_empty() {
                 Self::clear_chart_for_muted_symbol(&mut instance);
@@ -126,6 +136,10 @@ impl TradingTerminal {
                     inst.canvas.active_session,
                     inst.session_granularity,
                     None,
+                    ChartBackfillFetchContext::new(
+                        self.chart_backfill_source,
+                        self.hydromancer_api_key.trim().to_string(),
+                    ),
                 ));
             }
 

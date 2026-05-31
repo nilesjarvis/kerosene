@@ -143,6 +143,8 @@ impl TradingTerminal {
                     }
                 }
 
+                let chart_backfill_source = self.chart_backfill_source;
+                let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
                 for (id, inst) in self.charts.iter_mut() {
                     let key = inst.symbol.clone();
                     let symbol = resolve_exchange_symbol(&self.exchange_symbols, &key);
@@ -166,11 +168,15 @@ impl TradingTerminal {
                                 *id,
                                 &valid.key,
                                 inst.interval,
+                                chart_backfill_source,
                                 None,
                                 0,
                             );
                             inst.candle_fetch_request = Some(request.clone());
-                            let mut chart_tasks = vec![Self::fetch_candles_task(request)];
+                            let mut chart_tasks = vec![Self::fetch_candles_task(
+                                request,
+                                hydromancer_api_key.clone(),
+                            )];
                             chart_tasks.extend(Self::fetch_macro_candles_tasks(*id, &valid.key));
                             tasks.push(Task::batch(chart_tasks));
                         }

@@ -2,6 +2,7 @@ use crate::api::Candle;
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::{CANDLE_FETCH_MAX_ATTEMPTS, CandleFetchRequest};
+use crate::config::ChartBackfillSource;
 use crate::message::Message;
 
 use iced::Task;
@@ -57,7 +58,9 @@ impl TradingTerminal {
                 }
                 Err(error) => {
                     let next_attempt = request.attempt.saturating_add(1);
-                    if next_attempt < CANDLE_FETCH_MAX_ATTEMPTS {
+                    if next_attempt < CANDLE_FETCH_MAX_ATTEMPTS
+                        && candle_fetch_error_is_retryable(&request, &error)
+                    {
                         let mut next_request = request.clone();
                         next_request.attempt = next_attempt;
                         next_request.end_ms = Self::now_ms();
@@ -88,7 +91,7 @@ impl TradingTerminal {
         }
 
         if let Some(request) = retry_request {
-            return Self::fetch_candles_task(request);
+            return Self::fetch_candles_task(request, self.hydromancer_api_key.trim().to_string());
         }
 
         if let Some((symbol, tf, new_cache)) = new_cache_data {
@@ -111,4 +114,9 @@ impl TradingTerminal {
 
         Task::none()
     }
+}
+
+fn candle_fetch_error_is_retryable(request: &CandleFetchRequest, error: &str) -> bool {
+    request.source != ChartBackfillSource::Hydromancer
+        || !error.contains("Hydromancer API key required")
 }

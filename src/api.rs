@@ -10,7 +10,9 @@ mod user_fills;
 mod watchlist;
 
 pub use calendar::{CalendarEvent, fetch_economic_calendar};
-pub use candles::{Candle, fetch_candles, is_valid_candle, normalize_candles};
+pub use candles::{
+    Candle, fetch_candles, fetch_chart_backfill_candles, is_valid_candle, normalize_candles,
+};
 pub use exchange_symbols::{ExchangeSymbol, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols};
 pub(crate) use hype_etfs::fetch_hype_etfs;
 pub(crate) use hype_unstaking_queue::fetch_hype_unstaking_queue;

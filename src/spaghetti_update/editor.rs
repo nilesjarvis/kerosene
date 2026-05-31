@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartBackfillFetchContext;
 use crate::message::Message;
 use crate::spaghetti;
 use crate::spaghetti_state::SpaghettiChartId;
@@ -51,6 +52,8 @@ impl TradingTerminal {
             .map(Self::exchange_symbol_display_name)
             .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
         let theme = self.theme();
+        let chart_backfill_source = self.chart_backfill_source;
+        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
         let mut task = Task::none();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id)
             && !inst.canvas.series.iter().any(|s| s.symbol == key)
@@ -81,6 +84,7 @@ impl TradingTerminal {
                 inst.canvas.active_session,
                 inst.session_granularity,
                 None,
+                ChartBackfillFetchContext::new(chart_backfill_source, hydromancer_api_key),
             );
         }
         self.persist_config();

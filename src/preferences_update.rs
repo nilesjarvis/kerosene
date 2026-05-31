@@ -123,6 +123,15 @@ impl TradingTerminal {
             | Message::TestChartHudOrderSound) => {
                 return self.update_sound_preferences(message);
             }
+            Message::ChartBackfillSourceChanged(source) if self.chart_backfill_source != source => {
+                self.chart_backfill_source = source;
+                self.persist_config();
+                self.push_toast(
+                    format!("Chart backfill source set to {}", source.label()),
+                    false,
+                );
+                return self.reload_chart_backfills_for_source_change();
+            }
             Message::AlfredPopupScaleChanged(value) => {
                 self.alfred_popup_scale = normalize_alfred_popup_scale(value);
                 self.persist_config();

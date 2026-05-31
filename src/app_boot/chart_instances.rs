@@ -1,7 +1,7 @@
 use crate::annotations::{Annotation, AnnotationId};
 use crate::app_state::TradingTerminal;
-use crate::chart_state::{ChartId, ChartInstance};
-use crate::config::{ChartConfig, SpaghettiChartConfig};
+use crate::chart_state::{ChartBackfillFetchContext, ChartId, ChartInstance};
+use crate::config::{ChartBackfillSource, ChartConfig, SpaghettiChartConfig};
 use crate::message::Message;
 use crate::spaghetti;
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
@@ -13,6 +13,8 @@ impl TradingTerminal {
     pub(crate) fn boot_chart_instances(
         chart_configs: &[ChartConfig],
         muted_tickers: &HashSet<String>,
+        chart_backfill_source: ChartBackfillSource,
+        hydromancer_api_key: String,
     ) -> (HashMap<ChartId, ChartInstance>, Vec<Task<Message>>) {
         let mut boot_tasks = Vec::new();
         let mut charts = HashMap::new();
@@ -45,9 +47,19 @@ impl TradingTerminal {
             if !chart_cfg.symbol.is_empty()
                 && !Self::key_matches_muted_tickers(&[], muted_tickers, &chart_cfg.symbol)
             {
-                let request = Self::build_candle_fetch_request(id, &chart_cfg.symbol, tf, None, 0);
+                let request = Self::build_candle_fetch_request(
+                    id,
+                    &chart_cfg.symbol,
+                    tf,
+                    chart_backfill_source,
+                    None,
+                    0,
+                );
                 instance.candle_fetch_request = Some(request.clone());
-                boot_tasks.push(Self::fetch_candles_task(request));
+                boot_tasks.push(Self::fetch_candles_task(
+                    request,
+                    hydromancer_api_key.clone(),
+                ));
                 boot_tasks.extend(Self::fetch_macro_candles_tasks(id, &chart_cfg.symbol));
             } else if !chart_cfg.symbol.is_empty() {
                 Self::clear_chart_for_muted_symbol(&mut instance);
@@ -62,6 +74,8 @@ impl TradingTerminal {
     pub(crate) fn boot_spaghetti_instances(
         spaghetti_configs: &[SpaghettiChartConfig],
         muted_tickers: &HashSet<String>,
+        chart_backfill_source: ChartBackfillSource,
+        hydromancer_api_key: String,
     ) -> (
         HashMap<SpaghettiChartId, SpaghettiChartInstance>,
         Vec<Task<Message>>,
@@ -115,6 +129,10 @@ impl TradingTerminal {
                     inst.canvas.active_session,
                     inst.session_granularity,
                     None,
+                    ChartBackfillFetchContext::new(
+                        chart_backfill_source,
+                        hydromancer_api_key.clone(),
+                    ),
                 ));
             }
 

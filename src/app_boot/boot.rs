@@ -53,11 +53,20 @@ impl TradingTerminal {
             next_spaghetti_id,
         } = Self::boot_layout_widget_configs(&cfg, &symbol);
 
-        let (charts, chart_tasks) = Self::boot_chart_instances(&chart_configs, &muted_tickers);
+        let (charts, chart_tasks) = Self::boot_chart_instances(
+            &chart_configs,
+            &muted_tickers,
+            cfg.chart_backfill_source,
+            cfg.hydromancer_api_key.trim().to_string(),
+        );
         boot_tasks.extend(chart_tasks);
 
-        let (spaghetti_charts, spaghetti_tasks) =
-            Self::boot_spaghetti_instances(&spaghetti_configs, &muted_tickers);
+        let (spaghetti_charts, spaghetti_tasks) = Self::boot_spaghetti_instances(
+            &spaghetti_configs,
+            &muted_tickers,
+            cfg.chart_backfill_source,
+            cfg.hydromancer_api_key.trim().to_string(),
+        );
         boot_tasks.extend(spaghetti_tasks);
 
         let detached_chart_ids: std::collections::BTreeSet<_> = cfg

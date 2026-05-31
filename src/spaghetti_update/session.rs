@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartBackfillFetchContext;
 use crate::message::Message;
 use crate::spaghetti;
 use crate::spaghetti_state::SpaghettiChartId;
@@ -11,6 +12,8 @@ impl TradingTerminal {
         id: SpaghettiChartId,
         session: Option<spaghetti::Session>,
     ) -> Task<Message> {
+        let chart_backfill_source = self.chart_backfill_source;
+        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             inst.canvas.active_session = session;
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
@@ -29,6 +32,10 @@ impl TradingTerminal {
                     inst.canvas.active_session,
                     inst.session_granularity,
                     None,
+                    ChartBackfillFetchContext::new(
+                        chart_backfill_source,
+                        hydromancer_api_key.clone(),
+                    ),
                 ));
             }
             self.persist_config();
@@ -43,6 +50,8 @@ impl TradingTerminal {
         &mut self,
         id: SpaghettiChartId,
     ) -> Task<Message> {
+        let chart_backfill_source = self.chart_backfill_source;
+        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             if inst.session_granularity.is_none() {
                 return Task::none();
@@ -65,6 +74,10 @@ impl TradingTerminal {
                     inst.canvas.active_session,
                     inst.session_granularity,
                     None,
+                    ChartBackfillFetchContext::new(
+                        chart_backfill_source,
+                        hydromancer_api_key.clone(),
+                    ),
                 ));
             }
             Self::refresh_spaghetti_session_anchor(inst);

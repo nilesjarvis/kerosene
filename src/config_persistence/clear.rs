@@ -103,6 +103,7 @@ impl TradingTerminal {
         self.chart_hud_order_sound_file = defaults.chart_hud_order_sound_file;
         self.chart_hud_order_sound_volume = defaults.chart_hud_order_sound_volume;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
+        self.chart_backfill_source = defaults.chart_backfill_source;
         self.outer_widget_border_enabled = defaults.outer_widget_border_enabled;
         self.custom_window_chrome_enabled = defaults.custom_window_chrome_enabled;
         self.custom_themes = defaults.custom_themes;

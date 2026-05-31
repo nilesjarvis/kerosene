@@ -11,6 +11,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Feed,
     );
     assert_route(Message::RefreshHeatmap, UpdateRoute::Hyperdash);
+    assert_route(
+        Message::ChartBackfillSourceChanged(crate::config::ChartBackfillSource::Hydromancer),
+        UpdateRoute::Preferences,
+    );
     assert_route(Message::OpenDetachedChart(7), UpdateRoute::Chart);
     assert_route(
         Message::OpenChartScreenshot(7, crate::chart_state::ChartSurfaceId::Docked(7)),

@@ -54,6 +54,7 @@ pub(crate) struct SpaghettiCandleFetch {
     pub(crate) chart_id: SpaghettiChartId,
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
+    pub(crate) source: crate::config::ChartBackfillSource,
     pub(crate) session: Option<spaghetti::Session>,
     pub(crate) session_granularity: Option<Timeframe>,
 }

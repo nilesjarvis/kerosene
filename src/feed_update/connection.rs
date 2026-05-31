@@ -40,7 +40,11 @@ impl TradingTerminal {
                 if !self.hydromancer_api_key.trim().is_empty() {
                     ws::reconnect_hydromancer(self.hydromancer_api_key.trim());
                 }
-                return self.refresh_enabled_funding_charts();
+                let mut tasks = vec![self.refresh_enabled_funding_charts()];
+                if self.chart_backfill_source == crate::config::ChartBackfillSource::Hydromancer {
+                    tasks.push(self.reload_chart_backfills_for_source_change());
+                }
+                return Task::batch(tasks);
             }
             Message::ReconnectLiquidations if !self.hydromancer_api_key.trim().is_empty() => {
                 ws::reconnect_hydromancer(self.hydromancer_api_key.trim());
