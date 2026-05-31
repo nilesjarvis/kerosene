@@ -20,6 +20,7 @@ impl TradingTerminal {
             | Message::AddIncomePane
             | Message::AddCalendarPane
             | Message::AddLiquidationsPane
+            | Message::AddLiquidationsDistributionPane
             | Message::AddTrackedTradesPane
             | Message::AddAdvancedOrdersPane
             | Message::AddOutcomesPane
@@ -27,5 +28,23 @@ impl TradingTerminal {
             | Message::AddHypeUnstakingQueuePane => self.add_widget_pane(message),
             _ => Task::none(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::KeroseneConfig;
+    use crate::pane_state::PaneKind;
+
+    #[test]
+    fn liquidations_distribution_add_message_opens_pane() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.add_widget_menu_open = true;
+
+        let _task = terminal.update_panes(Message::AddLiquidationsDistributionPane);
+
+        assert!(!terminal.add_widget_menu_open);
+        assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::LiquidationsDistribution)));
     }
 }

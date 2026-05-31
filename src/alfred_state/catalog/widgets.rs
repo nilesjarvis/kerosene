@@ -27,6 +27,8 @@ impl TradingTerminal {
         let hype_unstaking_queue_open =
             self.pane_is_open(|kind| matches!(kind, PaneKind::HypeUnstakingQueue));
         let liquidations_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Liquidations));
+        let liquidations_distribution_open =
+            self.pane_is_open(|kind| matches!(kind, PaneKind::LiquidationsDistribution));
         let tracked_trades_open = self.pane_is_open(|kind| matches!(kind, PaneKind::TrackedTrades));
         let calendar_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Calendar));
 
@@ -132,6 +134,24 @@ impl TradingTerminal {
                 AlfredCommandKind::AddWidget,
                 Some(Message::AddLiquidationsPane),
                 &["liq", "liquidation", "feed", "hydromancer", "widget", "add"],
+            )
+            .disabled_if(!can_add_pane, no_pane_reason),
+            AlfredCommand::new(
+                AlfredCommandId::AddLiquidationsDistributionPane,
+                "Liquidations Distribution",
+                "HyperDash liquidation depth pane",
+                open_tag(liquidations_distribution_open, "Pane"),
+                AlfredCommandKind::AddWidget,
+                Some(Message::AddLiquidationsDistributionPane),
+                &[
+                    "liq",
+                    "liquidation",
+                    "distribution",
+                    "depth",
+                    "hyperdash",
+                    "widget",
+                    "add",
+                ],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
             AlfredCommand::new(

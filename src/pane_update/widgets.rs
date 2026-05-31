@@ -99,6 +99,18 @@ impl TradingTerminal {
                     |kind| matches!(kind, PaneKind::Liquidations),
                 );
             }
+            Message::AddLiquidationsDistributionPane => {
+                self.add_widget_menu_open = false;
+                let outcome = self.add_or_focus_singleton_pane(
+                    self.add_widget_axis(),
+                    PaneKind::LiquidationsDistribution,
+                    "Liquidations Distribution",
+                    |kind| matches!(kind, PaneKind::LiquidationsDistribution),
+                );
+                if !matches!(outcome, AddPaneOutcome::Failed) {
+                    return self.request_liquidation_distribution_refresh(false);
+                }
+            }
             Message::AddAdvancedOrdersPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(

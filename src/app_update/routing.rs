@@ -65,6 +65,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddTradingJournal
         | Message::AddCalendarPane
         | Message::AddLiquidationsPane
+        | Message::AddLiquidationsDistributionPane
         | Message::AddAdvancedOrdersPane
         | Message::AddTrackedTradesPane
         | Message::AddOutcomesPane
@@ -468,6 +469,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleLiquidationOverlay(_)
         | Message::ChartLiquidationLoaded(_, _)
         | Message::RefreshLiquidations
+        | Message::LiquidationsDistributionLoaded(_, _)
+        | Message::RefreshLiquidationsDistribution
         | Message::ToggleHeatmapOverlay(_)
         | Message::ChartHeatmapLoaded(_, _)
         | Message::RefreshHeatmap => UpdateRoute::Hyperdash,

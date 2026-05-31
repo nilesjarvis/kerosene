@@ -316,6 +316,8 @@ impl TradingTerminal {
             heatmap_data_cache_order: VecDeque::new(),
             heatmap_pending_charts: HashMap::new(),
             liquidation_pending_charts: HashMap::new(),
+            liquidation_distribution:
+                crate::liquidations_distribution_state::LiquidationDistributionState::default(),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg
                 .chart_timeframe_hotkey_prefix

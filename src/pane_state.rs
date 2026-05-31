@@ -24,6 +24,7 @@ pub(crate) enum PaneKind {
     Settings,
     Calendar,
     Liquidations,
+    LiquidationsDistribution,
     TrackedTrades,
     Outcomes,
     HypeEtfs,

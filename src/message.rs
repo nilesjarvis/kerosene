@@ -181,6 +181,7 @@ pub(crate) enum Message {
     ConfigsCleared(Result<config::ClearConfigSummary, String>),
     AddCalendarPane,
     AddLiquidationsPane,
+    AddLiquidationsDistributionPane,
     AddTrackedTradesPane,
     AddOutcomesPane,
     AddHypeEtfsPane,
@@ -594,6 +595,8 @@ pub(crate) enum Message {
     ToggleLiquidationOverlay(ChartId),
     ChartLiquidationLoaded(String, Box<Result<LiquidationLevel, String>>),
     RefreshLiquidations,
+    LiquidationsDistributionLoaded(String, Box<Result<LiquidationLevel, String>>),
+    RefreshLiquidationsDistribution,
     // HyperDash historical liquidation heatmap
     ToggleHeatmapOverlay(ChartId),
     ChartHeatmapLoaded(String, Box<Result<LiquidationHeatmap, String>>),

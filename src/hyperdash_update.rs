@@ -5,6 +5,7 @@ use iced::Task;
 mod heatmap;
 mod key;
 mod liquidations;
+mod liquidations_distribution;
 
 impl TradingTerminal {
     pub(crate) fn update_hyperdash(&mut self, message: Message) -> Task<Message> {
@@ -19,6 +20,10 @@ impl TradingTerminal {
                 return self.apply_chart_liquidation_loaded(request_key, *result);
             }
             Message::RefreshLiquidations => return self.refresh_liquidations(),
+            message @ (Message::LiquidationsDistributionLoaded(_, _)
+            | Message::RefreshLiquidationsDistribution) => {
+                return self.update_liquidations_distribution(message);
+            }
             message @ (Message::ToggleHeatmapOverlay(_)
             | Message::ChartHeatmapLoaded(_, _)
             | Message::RefreshHeatmap) => {

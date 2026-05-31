@@ -50,6 +50,7 @@ mod journal_views;
 mod layout_persistence;
 mod layout_preview;
 mod layout_update;
+mod liquidations_distribution_state;
 mod loading_views;
 mod main_view;
 mod market_state;

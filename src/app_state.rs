@@ -11,6 +11,7 @@ use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWi
 use crate::hype_etf_state::HypeEtfState;
 use crate::hype_unstaking_state::HypeUnstakingQueueState;
 use crate::hyperdash_api::LiquidationHeatmap;
+use crate::liquidations_distribution_state::LiquidationDistributionState;
 use crate::market_state::{
     LiveWatchlistId, LiveWatchlistInstance, OrderBookId, OrderBookInstance,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
@@ -313,4 +314,5 @@ pub(crate) struct TradingTerminal {
     pub(crate) heatmap_pending_charts: HashMap<String, Vec<ChartId>>,
     // Shared in-flight dedupe for HyperDash liquidation level requests
     pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
+    pub(crate) liquidation_distribution: LiquidationDistributionState,
 }

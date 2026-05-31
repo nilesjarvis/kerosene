@@ -56,6 +56,7 @@ pub enum PaneKindConfig {
     Settings,
     Calendar,
     Liquidations,
+    LiquidationsDistribution,
     TrackedTrades,
     Outcomes,
     HypeEtfs,

@@ -30,6 +30,7 @@ impl TradingTerminal {
             PaneKind::Settings => self.view_settings_deprecated(),
             PaneKind::Calendar => self.view_calendar(),
             PaneKind::Liquidations => self.view_liquidations(),
+            PaneKind::LiquidationsDistribution => self.view_liquidations_distribution(),
             PaneKind::TrackedTrades => self.view_tracked_trades(),
             PaneKind::Outcomes => self.view_outcomes(),
             PaneKind::HypeEtfs => self.view_hype_etfs(),

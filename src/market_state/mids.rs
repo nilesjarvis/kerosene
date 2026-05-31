@@ -53,7 +53,9 @@ impl TradingTerminal {
             self.refresh_order_price_for_symbol(&active_symbol);
         }
         self.refresh_live_watchlist_row_caches();
-        self.order_book_precision_refresh_task()
+        let order_book_task = self.order_book_precision_refresh_task();
+        let liquidation_distribution_task = self.request_liquidation_distribution_refresh(false);
+        Task::batch([order_book_task, liquidation_distribution_task])
     }
 
     pub(crate) fn fetch_mids_task_for_dex(dex: &str) -> Task<Message> {

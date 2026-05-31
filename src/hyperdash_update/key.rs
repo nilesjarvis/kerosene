@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
 use crate::message::Message;
+use crate::pane_state::PaneKind;
 use iced::Task;
 use zeroize::Zeroize;
 
@@ -28,6 +29,8 @@ impl TradingTerminal {
                     .filter(|(_, inst)| inst.show_liquidations && !inst.symbol.is_empty())
                     .map(|(id, _)| *id)
                     .collect();
+                let distribution_open =
+                    self.pane_is_open(|kind| matches!(kind, PaneKind::LiquidationsDistribution));
                 self.liquidation_pending_charts.clear();
                 for id in &liquidation_ids {
                     if let Some(instance) = self.charts.get_mut(id) {
@@ -58,6 +61,9 @@ impl TradingTerminal {
                             instance.chart.candle_cache.clear();
                         }
                     }
+                    if distribution_open {
+                        let _ = self.request_liquidation_distribution_refresh(true);
+                    }
                     return Task::none();
                 }
                 let mut tasks: Vec<Task<Message>> = heatmap_ids
@@ -69,6 +75,9 @@ impl TradingTerminal {
                         .into_iter()
                         .map(|id| self.maybe_fetch_liquidations(id)),
                 );
+                if distribution_open {
+                    tasks.push(self.request_liquidation_distribution_refresh(true));
+                }
                 if !tasks.is_empty() {
                     return Task::batch(tasks);
                 }

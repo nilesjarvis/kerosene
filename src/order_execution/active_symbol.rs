@@ -153,6 +153,7 @@ impl TradingTerminal {
                 .into_iter()
                 .map(|id| self.order_book_fetch_task_for_id(id)),
         );
-        Task::batch([candle_task, book_task])
+        let liquidation_distribution_task = self.request_liquidation_distribution_refresh(false);
+        Task::batch([candle_task, book_task, liquidation_distribution_task])
     }
 }
