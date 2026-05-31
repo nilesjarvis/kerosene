@@ -206,17 +206,9 @@ impl TradingTerminal {
         show_status_toggles: bool,
     ) -> Element<'_, Message> {
         let drag_region = mouse_area(
-            container(
-                svg(SvgHandle::from_memory(include_bytes!(
-                    "../../assets/kerosene.svg"
-                )))
-                .width(Length::Fixed(18.0))
-                .height(Length::Fixed(18.0)),
-            )
-            .width(Fill)
-            .height(Length::Fixed(TITLE_BAR_HEIGHT))
-            .padding([0, 12])
-            .align_y(Alignment::Center),
+            Space::new()
+                .width(Fill)
+                .height(Length::Fixed(TITLE_BAR_HEIGHT)),
         )
         .on_press(Message::WindowDrag(window_id))
         .interaction(mouse::Interaction::Grab);
