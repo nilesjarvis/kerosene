@@ -306,7 +306,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::WindowMoved(_, _)
         | Message::WindowOpened(_)
         | Message::WindowClosed(_)
-        | Message::WindowResized(_, _) => UpdateRoute::Window,
+        | Message::WindowResized(_, _)
+        | Message::WindowDrag(_)
+        | Message::WindowDragResize(_, _)
+        | Message::WindowMinimize(_)
+        | Message::WindowToggleMaximize(_)
+        | Message::WindowClose(_) => UpdateRoute::Window,
 
         Message::ToggleChartScreenshotMenu(_, _)
         | Message::ToggleChartScreenshotObscurePositionEntry(_)

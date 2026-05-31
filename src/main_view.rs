@@ -1,5 +1,6 @@
 mod grid;
 mod panes;
+mod title_bar;
 mod unlock;
 mod windows;
 
@@ -15,9 +16,16 @@ use iced::{Element, Fill, Theme};
 
 impl TradingTerminal {
     pub(crate) fn view_main(&self) -> Element<'_, Message> {
+        self.view_main_with_top_bar(self.view_account_summary_bar())
+    }
+
+    pub(crate) fn view_main_with_top_bar<'a>(
+        &'a self,
+        top_bar: Element<'a, Message>,
+    ) -> Element<'a, Message> {
         let theme = self.theme();
 
-        let mut main_column = column![self.view_account_summary_bar()]
+        let mut main_column = column![top_bar]
             .spacing(self.pane_border_thickness)
             .width(Fill)
             .height(Fill);

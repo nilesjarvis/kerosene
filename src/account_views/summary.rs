@@ -65,7 +65,7 @@ impl TradingTerminal {
     }
 }
 
-fn account_summary_bar_style(theme: &Theme) -> container_style::Style {
+pub(crate) fn account_summary_bar_style(theme: &Theme) -> container_style::Style {
     let mut border_color = theme.extended_palette().background.strong.text;
     border_color.a = 0.10;
 

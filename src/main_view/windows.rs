@@ -9,42 +9,39 @@ use iced::{Element, Theme, window};
 
 impl TradingTerminal {
     pub(crate) fn view_window(&self, window_id: window::Id) -> Element<'_, Message> {
-        if Some(window_id) == self.wallet_tracker.window_id {
-            return self.view_wallet_tracker();
+        if Some(window_id) == self.main_window_id {
+            return self.view_main_window(window_id);
         }
-        if self.wallet_detail_windows.contains_key(&window_id) {
-            return self.view_wallet_details(window_id);
-        }
-        if self
+
+        let content = if Some(window_id) == self.wallet_tracker.window_id {
+            self.view_wallet_tracker()
+        } else if self.wallet_detail_windows.contains_key(&window_id) {
+            self.view_wallet_details(window_id)
+        } else if self
             .twap_orders
             .values()
             .any(|twap| twap.window_id == Some(window_id))
         {
-            return self.view_twap_details(window_id);
-        }
-        if self.advanced_order_history_windows.contains_key(&window_id) {
-            return self.view_advanced_order_history_details(window_id);
-        }
-        if Some(window_id) == self.journal.window_id {
-            return self.view_journal();
-        }
-        if Some(window_id) == self.settings_window_id {
-            return self.view_settings();
-        }
-        if Some(window_id) == self.screener.window_id {
-            return self.view_screener_window();
-        }
-        if Some(window_id) == self.chart_screenshot_window_id {
-            return self.view_chart_screenshot_window();
-        }
-        if self.pnl_card_windows.contains_key(&window_id) {
-            return self.view_pnl_card_window(window_id);
-        }
-        if let Some(state) = self.detached_chart_windows.get(&window_id) {
-            return self
-                .view_detached_chart_window(state.chart_id, ChartSurfaceId::Detached(window_id));
-        }
-        self.view_main()
+            self.view_twap_details(window_id)
+        } else if self.advanced_order_history_windows.contains_key(&window_id) {
+            self.view_advanced_order_history_details(window_id)
+        } else if Some(window_id) == self.journal.window_id {
+            self.view_journal()
+        } else if Some(window_id) == self.settings_window_id {
+            self.view_settings()
+        } else if Some(window_id) == self.screener.window_id {
+            self.view_screener_window()
+        } else if Some(window_id) == self.chart_screenshot_window_id {
+            self.view_chart_screenshot_window()
+        } else if self.pnl_card_windows.contains_key(&window_id) {
+            self.view_pnl_card_window(window_id)
+        } else if let Some(state) = self.detached_chart_windows.get(&window_id) {
+            self.view_detached_chart_window(state.chart_id, ChartSurfaceId::Detached(window_id))
+        } else {
+            self.view_main()
+        };
+
+        self.view_window_chrome(window_id, content)
     }
 
     pub(crate) fn window_title(&self, window_id: window::Id) -> String {

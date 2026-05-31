@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::Task;
+use iced::{Task, window};
 
 impl TradingTerminal {
     pub(crate) fn update_window(&mut self, message: Message) -> Task<Message> {
@@ -89,6 +89,21 @@ impl TradingTerminal {
                     self.journal.width = size.width;
                     self.journal.height = size.height;
                 }
+            }
+            Message::WindowDrag(id) => {
+                return window::drag(id);
+            }
+            Message::WindowDragResize(id, direction) => {
+                return window::drag_resize(id, direction);
+            }
+            Message::WindowMinimize(id) => {
+                return window::minimize(id, true);
+            }
+            Message::WindowToggleMaximize(id) => {
+                return window::toggle_maximize(id);
+            }
+            Message::WindowClose(id) => {
+                return window::close(id);
             }
             _ => {}
         }

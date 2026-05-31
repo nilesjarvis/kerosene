@@ -257,6 +257,11 @@ pub(crate) enum Message {
     WindowClosed(window::Id),
     WindowResized(window::Id, Size),
     WindowMoved(window::Id, Point),
+    WindowDrag(window::Id),
+    WindowDragResize(window::Id, window::Direction),
+    WindowMinimize(window::Id),
+    WindowToggleMaximize(window::Id),
+    WindowClose(window::Id),
     // Trading Journal
     JournalFillsLoaded {
         account_key: Option<String>,

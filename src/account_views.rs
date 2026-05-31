@@ -12,6 +12,7 @@ pub(in crate::account_views) mod table_helpers;
 mod tabs;
 
 use crate::helpers::invalid_data_placeholder;
+pub(crate) use summary::account_summary_bar_style;
 
 #[cfg(test)]
 mod tests;
