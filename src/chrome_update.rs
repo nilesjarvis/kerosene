@@ -70,7 +70,7 @@ impl TradingTerminal {
                 self.toasts.retain(|t| t.id != id);
             }
             Message::CopyToClipboard(text) => {
-                self.push_toast("Copied address to clipboard".to_string(), false);
+                self.push_toast("Copied to clipboard".to_string(), false);
                 return clipboard::write(text).map(|()| Message::NoOp);
             }
             Message::NoOp => {}

@@ -68,6 +68,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddLiquidationsDistributionPane
         | Message::AddAdvancedOrdersPane
         | Message::AddTrackedTradesPane
+        | Message::AddTelegramFeedPane
         | Message::AddOutcomesPane
         | Message::AddHypeEtfsPane
         | Message::AddHypeUnstakingQueuePane => UpdateRoute::Panes,
@@ -463,7 +464,15 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WsHydromancerLiquidation(_)
         | Message::WsHydromancerTrackedTrades(_)
         | Message::ClearLiquidations
-        | Message::ClearTrackedTrades => UpdateRoute::Feed,
+        | Message::ClearTrackedTrades
+        | Message::RefreshTelegramFeed
+        | Message::TelegramFeedRefreshTick
+        | Message::TelegramFeedLoaded(_, _)
+        | Message::TelegramAvatarLoaded(_, _, _, _)
+        | Message::TelegramFeedChannelInputChanged(_)
+        | Message::TelegramFeedAddChannel
+        | Message::TelegramFeedRemoveChannel(_)
+        | Message::ToggleTelegramFeedNotifications => UpdateRoute::Feed,
 
         Message::HyperdashKeyInputChanged(_)
         | Message::SaveHyperdashKey

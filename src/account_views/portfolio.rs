@@ -6,7 +6,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioPnlChart};
 use iced::widget::{canvas, column, container, row, rule, scrollable, text};
-use iced::{Element, Fill, color};
+use iced::{Element, Fill};
 use totals::{format_signed_percent_value, portfolio_total_performance, portfolio_total_pnl};
 
 // ---------------------------------------------------------------------------
@@ -96,9 +96,6 @@ impl TradingTerminal {
             })
             .size(11)
             .color(theme.palette().text),
-            text("Source: allTime/perpAllTime (UTC days)")
-                .size(10)
-                .color(color!(0x7f8ab0)),
             self.view_daily_pnl_list(&theme),
         ]
         .spacing(8);

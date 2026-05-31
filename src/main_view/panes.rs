@@ -32,6 +32,7 @@ impl TradingTerminal {
             PaneKind::Liquidations => self.view_liquidations(),
             PaneKind::LiquidationsDistribution => self.view_liquidations_distribution(),
             PaneKind::TrackedTrades => self.view_tracked_trades(),
+            PaneKind::TelegramFeed => self.view_telegram_feed(),
             PaneKind::Outcomes => self.view_outcomes(),
             PaneKind::HypeEtfs => self.view_hype_etfs(),
             PaneKind::HypeUnstakingQueue => self.view_hype_unstaking_queue(),

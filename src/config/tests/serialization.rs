@@ -3,6 +3,7 @@ use serde::{Serialize, de::DeserializeOwned};
 mod appearance;
 mod charts;
 mod credentials;
+mod feeds;
 mod history;
 mod panes;
 mod preferences;

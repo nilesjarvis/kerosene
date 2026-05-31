@@ -4,6 +4,7 @@ use iced::Task;
 
 mod connection;
 mod liquidations;
+mod telegram;
 mod tracked_trades;
 
 impl TradingTerminal {
@@ -18,6 +19,16 @@ impl TradingTerminal {
             }
             message @ (Message::WsHydromancerTrackedTrades(_) | Message::ClearTrackedTrades) => {
                 return self.update_tracked_trade_feed(message);
+            }
+            message @ (Message::RefreshTelegramFeed
+            | Message::TelegramFeedRefreshTick
+            | Message::TelegramFeedLoaded(_, _)
+            | Message::TelegramAvatarLoaded(_, _, _, _)
+            | Message::TelegramFeedChannelInputChanged(_)
+            | Message::TelegramFeedAddChannel
+            | Message::TelegramFeedRemoveChannel(_)
+            | Message::ToggleTelegramFeedNotifications) => {
+                return self.update_telegram_feed(message);
             }
             _ => {}
         }

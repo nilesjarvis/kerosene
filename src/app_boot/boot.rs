@@ -3,6 +3,7 @@ use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::layout_persistence::LayoutWidgetConfigs;
 use crate::message::Message;
+use crate::pane_state::PaneKind;
 use crate::wallet_state::WalletTrackerState;
 
 use iced::Task;
@@ -142,6 +143,9 @@ impl TradingTerminal {
 
         if state.is_calendar_open() {
             boot_tasks.push(state.request_calendar_refresh(false));
+        }
+        if state.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed)) {
+            boot_tasks.push(state.request_telegram_feed_refresh());
         }
         boot_tasks.push(state.request_hype_etfs_boot_refresh());
         boot_tasks.push(state.request_hype_unstaking_queue_boot_refresh());

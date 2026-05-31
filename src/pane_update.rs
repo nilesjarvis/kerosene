@@ -22,6 +22,7 @@ impl TradingTerminal {
             | Message::AddLiquidationsPane
             | Message::AddLiquidationsDistributionPane
             | Message::AddTrackedTradesPane
+            | Message::AddTelegramFeedPane
             | Message::AddAdvancedOrdersPane
             | Message::AddOutcomesPane
             | Message::AddHypeEtfsPane
@@ -46,5 +47,17 @@ mod tests {
 
         assert!(!terminal.add_widget_menu_open);
         assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::LiquidationsDistribution)));
+    }
+
+    #[test]
+    fn telegram_feed_add_message_opens_pane_and_requests_initial_refresh() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.add_widget_menu_open = true;
+
+        let _task = terminal.update_panes(Message::AddTelegramFeedPane);
+
+        assert!(!terminal.add_widget_menu_open);
+        assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed)));
+        assert_eq!(terminal.telegram_feed.loading_channels, vec!["marketfeed"]);
     }
 }

@@ -129,6 +129,19 @@ impl TradingTerminal {
                     |kind| matches!(kind, PaneKind::TrackedTrades),
                 );
             }
+            Message::AddTelegramFeedPane => {
+                self.add_widget_menu_open = false;
+                let outcome = self.add_or_focus_singleton_pane(
+                    self.add_widget_axis(),
+                    PaneKind::TelegramFeed,
+                    "Telegram Feed",
+                    |kind| matches!(kind, PaneKind::TelegramFeed),
+                );
+                if !matches!(outcome, AddPaneOutcome::Failed) && self.telegram_feed.posts.is_empty()
+                {
+                    return self.request_telegram_feed_refresh();
+                }
+            }
             Message::AddOutcomesPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(

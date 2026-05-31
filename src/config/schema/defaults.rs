@@ -295,6 +295,8 @@ impl Default for KeroseneConfig {
             tracked_trade_alerts_enabled: false,
             tracked_trade_aggregation_enabled: false,
             liquidation_feed_aggregation_enabled: false,
+            telegram_feed_notifications_enabled: false,
+            telegram_feed_channels: crate::telegram_feed::default_telegram_feed_channels(),
             spaghetti_charts: Vec::new(),
             wallet_tracker: WalletTrackerConfig {
                 tracked_addresses: Vec::new(),

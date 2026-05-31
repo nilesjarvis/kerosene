@@ -38,6 +38,7 @@ pub(crate) enum AlfredCommandId {
     AddLiquidationsPane,
     AddLiquidationsDistributionPane,
     AddTrackedTradesPane,
+    AddTelegramFeedPane,
     AddCalendarPane,
     AddOrderBookPane,
     AddLiveWatchlistPane,

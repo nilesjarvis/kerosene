@@ -30,6 +30,7 @@ impl TradingTerminal {
         let liquidations_distribution_open =
             self.pane_is_open(|kind| matches!(kind, PaneKind::LiquidationsDistribution));
         let tracked_trades_open = self.pane_is_open(|kind| matches!(kind, PaneKind::TrackedTrades));
+        let telegram_feed_open = self.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed));
         let calendar_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Calendar));
 
         vec![
@@ -164,6 +165,16 @@ impl TradingTerminal {
                 &[
                     "wallet", "tracker", "tracked", "trades", "feed", "widget", "add",
                 ],
+            )
+            .disabled_if(!can_add_pane, no_pane_reason),
+            AlfredCommand::new(
+                AlfredCommandId::AddTelegramFeedPane,
+                "Telegram Feed",
+                "Telegram channel feed pane",
+                open_tag(telegram_feed_open, "Pane"),
+                AlfredCommandKind::AddWidget,
+                Some(Message::AddTelegramFeedPane),
+                &["telegram", "news", "channel", "feed", "widget", "add"],
             )
             .disabled_if(!can_add_pane, no_pane_reason),
             AlfredCommand::new(

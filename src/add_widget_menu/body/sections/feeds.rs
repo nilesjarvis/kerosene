@@ -79,6 +79,17 @@ pub(in crate::add_widget_menu::body) fn add_feed_section(
             theme,
         ))
         .push(menu_item(
+            "Telegram Feed",
+            if context.telegram_feed_open {
+                "Open"
+            } else {
+                "Pane"
+            },
+            Some(Message::AddTelegramFeedPane),
+            context.can_add_pane,
+            theme,
+        ))
+        .push(menu_item(
             "Calendar",
             if context.calendar_open {
                 "Open"

@@ -58,6 +58,7 @@ pub enum PaneKindConfig {
     Liquidations,
     LiquidationsDistribution,
     TrackedTrades,
+    TelegramFeed,
     Outcomes,
     HypeEtfs,
     HypeUnstakingQueue,

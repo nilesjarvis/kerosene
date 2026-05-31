@@ -109,6 +109,17 @@ impl TradingTerminal {
             );
         }
 
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed))
+            && !self.telegram_feed.refreshing()
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(
+                    crate::telegram_feed::TELEGRAM_FEED_REFRESH_INTERVAL_SECS,
+                ))
+                .map(|_| Message::TelegramFeedRefreshTick),
+            );
+        }
+
         if !self.hydromancer_api_key.trim().is_empty()
             && self
                 .charts

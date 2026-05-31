@@ -9,6 +9,11 @@ mod tooltip;
 use tooltip::draw_hover_state;
 pub(super) use tooltip::tooltip_origin;
 
+const PNL_AREA_MAX_ALPHA: f32 = 0.18;
+const PNL_AREA_MID_ALPHA: f32 = 0.07;
+const PNL_AREA_EDGE_ALPHA: f32 = 0.02;
+const PNL_AREA_ZERO_ALPHA: f32 = 0.0;
+
 // ---------------------------------------------------------------------------
 // Summary Chart Canvas
 // ---------------------------------------------------------------------------
@@ -51,20 +56,23 @@ fn draw_journal_summary_chart(
     };
 
     draw_grid(&mut frame, theme, bounds.size());
-    draw_zero_line(&mut frame, theme, bounds.width, layout.zero_y);
-
-    let pnl_color = match chart.pnl_points.last().map(|(_, value)| *value) {
-        Some(value) if value < 0.0 => theme.palette().danger,
-        _ => theme.palette().success,
-    };
+    let positive_color = theme.palette().success;
+    let negative_color = theme.palette().danger;
     draw_pnl_area(
         &mut frame,
         &layout.pnl_points,
         layout.zero_y,
-        pnl_color,
-        bounds.height,
+        positive_color,
+        negative_color,
     );
-    draw_series(&mut frame, &layout.pnl_points, pnl_color, 2.0, &[]);
+    draw_zero_line(&mut frame, theme, bounds.width, layout.zero_y);
+    draw_signed_pnl_series(
+        &mut frame,
+        &layout.pnl_points,
+        layout.zero_y,
+        positive_color,
+        negative_color,
+    );
 
     if chart.show_account_value && !layout.account_value_points.is_empty() {
         draw_series(
@@ -122,28 +130,124 @@ fn draw_pnl_area(
     frame: &mut canvas::Frame,
     points: &[ChartPoint],
     zero_y: f32,
-    color: Color,
-    height: f32,
+    positive_color: Color,
+    negative_color: Color,
 ) {
     if points.len() < 2 {
         return;
     }
 
-    for segment in points.windows(2) {
-        let p1 = segment[0].point;
-        let p2 = segment[1].point;
-        let top = p1.y.min(p2.y).min(zero_y);
-        let depth = (zero_y - top).abs();
-        let alpha = (0.05 + (depth / height) * 0.14).clamp(0.05, 0.18);
-        let fill = Color { a: alpha, ..color };
-        let poly = canvas::Path::new(|builder| {
-            builder.move_to(Point::new(p1.x, zero_y));
-            builder.line_to(p1);
-            builder.line_to(p2);
-            builder.line_to(Point::new(p2.x, zero_y));
-            builder.close();
+    let first_x = points
+        .first()
+        .map(|point| point.point.x)
+        .unwrap_or_default();
+    let last_x = points.last().map(|point| point.point.x).unwrap_or_default();
+    let (min_y, max_y) = points
+        .iter()
+        .fold((zero_y, zero_y), |(min_y, max_y), point| {
+            (min_y.min(point.point.y), max_y.max(point.point.y))
         });
-        frame.fill(&poly, fill);
+
+    if (max_y - min_y).abs() <= f32::EPSILON {
+        return;
+    }
+
+    let area = canvas::Path::new(|builder| {
+        if let Some(first) = points.first() {
+            builder.move_to(first.point);
+            for point in points.iter().skip(1) {
+                builder.line_to(point.point);
+            }
+            builder.line_to(Point::new(last_x, zero_y));
+            builder.line_to(Point::new(first_x, zero_y));
+            builder.close();
+        }
+    });
+
+    let width = frame.width();
+    let height = frame.height();
+    let gradient = |color| pnl_area_gradient(color, min_y, zero_y, max_y);
+
+    if zero_y > 0.0 {
+        frame.with_clip(
+            Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width,
+                height: zero_y,
+            },
+            |frame| frame.fill(&area, gradient(positive_color)),
+        );
+    }
+
+    if zero_y < height {
+        frame.with_clip(
+            Rectangle {
+                x: 0.0,
+                y: zero_y,
+                width,
+                height: height - zero_y,
+            },
+            |frame| frame.fill(&area, gradient(negative_color)),
+        );
+    }
+}
+
+fn draw_signed_pnl_series(
+    frame: &mut canvas::Frame,
+    points: &[ChartPoint],
+    zero_y: f32,
+    positive_color: Color,
+    negative_color: Color,
+) {
+    match points {
+        [] => {}
+        [only] => {
+            let color = if only.value >= 0.0 {
+                positive_color
+            } else {
+                negative_color
+            };
+            let dot = canvas::Path::circle(only.point, 2.4);
+            frame.fill(&dot, color);
+        }
+        points => {
+            let line = canvas::Path::new(|path| {
+                for (idx, point) in points.iter().enumerate() {
+                    if idx == 0 {
+                        path.move_to(point.point);
+                    } else {
+                        path.line_to(point.point);
+                    }
+                }
+            });
+
+            let width = frame.width();
+            let height = frame.height();
+            if zero_y > 0.0 {
+                frame.with_clip(
+                    Rectangle {
+                        x: 0.0,
+                        y: 0.0,
+                        width,
+                        height: zero_y,
+                    },
+                    |frame| draw_series_path(frame, &line, positive_color, 2.0, &[]),
+                );
+            }
+
+            if zero_y < height {
+                frame.with_clip(
+                    Rectangle {
+                        x: 0.0,
+                        y: zero_y,
+                        width,
+                        height: height - zero_y,
+                    },
+                    |frame| draw_series_path(frame, &line, negative_color, 2.0, &[]),
+                );
+            }
+        }
     }
 }
 
@@ -161,26 +265,86 @@ fn draw_series(
             frame.fill(&dot, color);
         }
         points => {
-            let mut path = canvas::path::Builder::new();
-            for (idx, point) in points.iter().enumerate() {
-                if idx == 0 {
-                    path.move_to(point.point);
-                } else {
-                    path.line_to(point.point);
+            let path = canvas::Path::new(|path| {
+                for (idx, point) in points.iter().enumerate() {
+                    if idx == 0 {
+                        path.move_to(point.point);
+                    } else {
+                        path.line_to(point.point);
+                    }
                 }
-            }
-
-            let mut stroke = canvas::Stroke::default()
-                .with_color(color)
-                .with_width(width);
-            if !dash_segments.is_empty() {
-                stroke.line_dash = canvas::stroke::LineDash {
-                    segments: dash_segments,
-                    offset: 0,
-                };
-            }
-            frame.stroke(&path.build(), stroke);
+            });
+            draw_series_path(frame, &path, color, width, dash_segments);
         }
+    }
+}
+
+fn draw_series_path(
+    frame: &mut canvas::Frame,
+    path: &canvas::Path,
+    color: Color,
+    width: f32,
+    dash_segments: &'static [f32],
+) {
+    let mut stroke = canvas::Stroke::default()
+        .with_color(color)
+        .with_width(width)
+        .with_line_cap(canvas::LineCap::Round)
+        .with_line_join(canvas::LineJoin::Round);
+    if !dash_segments.is_empty() {
+        stroke.line_dash = canvas::stroke::LineDash {
+            segments: dash_segments,
+            offset: 0,
+        };
+    }
+    frame.stroke(path, stroke);
+}
+
+fn pnl_area_gradient(
+    color: Color,
+    min_y: f32,
+    zero_y: f32,
+    max_y: f32,
+) -> canvas::gradient::Linear {
+    let span = (max_y - min_y).max(1.0);
+    let zero_offset = ((zero_y - min_y) / span).clamp(0.0, 1.0);
+    let strong = Color {
+        a: PNL_AREA_MAX_ALPHA,
+        ..color
+    };
+    let mid = Color {
+        a: PNL_AREA_MID_ALPHA,
+        ..color
+    };
+    let edge = Color {
+        a: PNL_AREA_EDGE_ALPHA,
+        ..color
+    };
+    let clear = Color {
+        a: PNL_AREA_ZERO_ALPHA,
+        ..color
+    };
+
+    let gradient = canvas::gradient::Linear::new(Point::new(0.0, min_y), Point::new(0.0, max_y));
+
+    if zero_offset <= 0.02 {
+        gradient
+            .add_stop(0.0, clear)
+            .add_stop(0.35, mid)
+            .add_stop(1.0, strong)
+    } else if zero_offset >= 0.98 {
+        gradient
+            .add_stop(0.0, strong)
+            .add_stop(0.65, mid)
+            .add_stop(1.0, clear)
+    } else {
+        let fade = zero_offset.min(1.0 - zero_offset).min(0.18);
+        gradient
+            .add_stop(0.0, strong)
+            .add_stop((zero_offset - fade).max(0.0), edge)
+            .add_stop(zero_offset, clear)
+            .add_stop((zero_offset + fade).min(1.0), edge)
+            .add_stop(1.0, strong)
     }
 }
 

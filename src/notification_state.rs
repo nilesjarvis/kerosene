@@ -167,6 +167,27 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn push_telegram_feed_alert(&mut self, message: String) {
+        self.toasts.push(Toast {
+            id: self.next_toast_id,
+            message: message.clone(),
+            is_error: false,
+            created_at: std::time::Instant::now(),
+        });
+        self.next_toast_id += 1;
+        if self.toasts.len() > MAX_TOASTS {
+            self.toasts.remove(0);
+        }
+
+        if self.sound_enabled {
+            sound::play_fill();
+        }
+
+        if self.desktop_notifications {
+            show_desktop_notification("Kerosene: Telegram Feed", message);
+        }
+    }
+
     pub(crate) fn play_notification_sound(&self, is_error: bool) {
         let _theme = self.theme();
         if self.sound_enabled {

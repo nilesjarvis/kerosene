@@ -28,6 +28,7 @@ use crate::screener_state::ScreenerState;
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ChaseOrder, OrderKind};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
+use crate::telegram_feed::TelegramFeedState;
 use crate::timeframe::Timeframe;
 use crate::twap_state::{TwapOrder, TwapOrderForm};
 use crate::wallet_state::{AddressBookEntry, WalletDetailsWindowState, WalletTrackerState};
@@ -316,4 +317,5 @@ pub(crate) struct TradingTerminal {
     // Shared in-flight dedupe for HyperDash liquidation level requests
     pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
     pub(crate) liquidation_distribution: LiquidationDistributionState,
+    pub(crate) telegram_feed: TelegramFeedState,
 }

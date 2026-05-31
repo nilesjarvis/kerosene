@@ -1,4 +1,5 @@
 mod liquidations;
+mod telegram;
 mod tracked_trades;
 
 use crate::message::Message;

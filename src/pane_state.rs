@@ -26,6 +26,7 @@ pub(crate) enum PaneKind {
     Liquidations,
     LiquidationsDistribution,
     TrackedTrades,
+    TelegramFeed,
     Outcomes,
     HypeEtfs,
     HypeUnstakingQueue,

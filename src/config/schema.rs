@@ -13,6 +13,7 @@ use super::wallets::{AddressBookEntryConfig, WalletTrackerConfig};
 use super::{CustomFontConfig, DisplayFontConfig};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
+use crate::telegram_feed::default_telegram_feed_channels;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
@@ -276,6 +277,11 @@ pub struct KeroseneConfig {
     pub tracked_trade_aggregation_enabled: bool,
     #[serde(default)]
     pub liquidation_feed_aggregation_enabled: bool,
+    #[serde(default)]
+    pub telegram_feed_notifications_enabled: bool,
+    /// Public Telegram channel usernames shown by the Telegram Feed widget.
+    #[serde(default = "default_telegram_feed_channels")]
+    pub telegram_feed_channels: Vec<String>,
     /// Per-spaghetti (comparison) chart configurations.
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,

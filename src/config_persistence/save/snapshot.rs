@@ -110,6 +110,8 @@ impl TradingTerminal {
             tracked_trade_aggregation_enabled: layout_snapshot.tracked_trade_aggregation_enabled,
             liquidation_feed_aggregation_enabled: layout_snapshot
                 .liquidation_feed_aggregation_enabled,
+            telegram_feed_notifications_enabled: self.telegram_feed.notifications_enabled,
+            telegram_feed_channels: self.telegram_feed.channels.clone(),
 
             spaghetti_charts: layout_snapshot.spaghetti_charts,
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),

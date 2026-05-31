@@ -12,6 +12,17 @@ fn legacy_assistant_pane_deserializes_as_unsupported() {
 }
 
 #[test]
+fn telegram_feed_pane_round_trips() {
+    let layout = PaneLayoutConfig::Leaf(PaneKindConfig::TelegramFeed);
+
+    let json = json_string(&layout, "telegram feed pane should serialize");
+    let decoded: PaneLayoutConfig =
+        serde_json::from_str(&json).expect("telegram feed pane should deserialize");
+
+    assert_eq!(decoded, layout);
+}
+
+#[test]
 fn serialized_config_omits_removed_assistant_settings() {
     let json = json_string(
         &KeroseneConfig::default(),

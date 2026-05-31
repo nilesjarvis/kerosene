@@ -325,6 +325,10 @@ impl TradingTerminal {
                     ..Default::default()
                 }
             },
+            telegram_feed: crate::telegram_feed::TelegramFeedState::new(
+                &cfg.telegram_feed_channels,
+                cfg.telegram_feed_notifications_enabled,
+            ),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg
                 .chart_timeframe_hotkey_prefix
