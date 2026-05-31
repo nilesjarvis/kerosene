@@ -3,12 +3,14 @@ use crate::config::MacroIndicatorsConfig;
 
 #[test]
 fn indicator_menu_options_preserve_keys_and_checked_states() {
-    let mut indicators = MacroIndicatorsConfig::default();
-    indicators.tf_sma_50 = true;
-    indicators.sma_200d = true;
-    indicators.show_funding_rate = true;
-    indicators.show_labels = false;
-    indicators.show_volume_profile = true;
+    let indicators = MacroIndicatorsConfig {
+        tf_sma_50: true,
+        sma_200d: true,
+        show_funding_rate: true,
+        show_labels: false,
+        show_volume_profile: true,
+        ..MacroIndicatorsConfig::default()
+    };
 
     let options = all_indicator_options(&indicators);
     let keys: Vec<_> = options.iter().map(|option| option.key).collect();

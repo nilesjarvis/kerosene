@@ -15,7 +15,7 @@ fn price_formatter_keeps_existing_precision_bands_below_thousand() {
 
 #[test]
 fn grouped_decimal_formatter_keeps_requested_precision() {
-    assert_eq!(format_decimal_with_commas(12_345.6789, 3), "12,345.679");
+    assert_eq!(format_decimal_with_commas(12_345.678_9, 3), "12,345.679");
     assert_eq!(format_decimal_with_commas(12_345.0, 0), "12,345");
 }
 

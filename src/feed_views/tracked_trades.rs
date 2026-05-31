@@ -4,7 +4,7 @@ mod rows;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{column, container, responsive, scrollable, text};
+use iced::widget::{column, container, responsive, scrollable};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
@@ -15,34 +15,18 @@ impl TradingTerminal {
         let tracked_addresses = self.tracked_trade_subscription_addresses();
 
         if self.hydromancer_api_key.trim().is_empty() {
-            let empty_state = container(
-                text("Add Hydromancer key in Settings > Integrations").color(theme.palette().text),
-            )
-            .width(Fill)
-            .height(Fill)
-            .center_x(Fill)
-            .center_y(Fill);
-            return empty_state.into();
+            return super::feed_empty_state(
+                &theme,
+                "Add Hydromancer key in Settings > Integrations",
+            );
         }
 
         if labeled_addresses.is_empty() {
-            let empty_state =
-                container(text("Add wallet labels in Wallet Tracker").color(theme.palette().text))
-                    .width(Fill)
-                    .height(Fill)
-                    .center_x(Fill)
-                    .center_y(Fill);
-            return empty_state.into();
+            return super::feed_empty_state(&theme, "Add wallet labels in Wallet Tracker");
         }
 
         if tracked_addresses.is_empty() {
-            let empty_state =
-                container(text("All labeled wallets are muted").color(theme.palette().text))
-                    .width(Fill)
-                    .height(Fill)
-                    .center_x(Fill)
-                    .center_y(Fill);
-            return empty_state.into();
+            return super::feed_empty_state(&theme, "All labeled wallets are muted");
         }
 
         container(responsive(move |size| {

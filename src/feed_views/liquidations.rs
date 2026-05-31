@@ -5,7 +5,7 @@ mod rows;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use iced::widget::{column, container, responsive, scrollable, text};
+use iced::widget::{column, container, responsive, scrollable};
 use iced::{Element, Fill};
 
 impl TradingTerminal {
@@ -14,14 +14,10 @@ impl TradingTerminal {
         let now_ms = Self::now_ms();
 
         if self.hydromancer_api_key.trim().is_empty() {
-            let empty_state = container(
-                text("Add Hydromancer key in Settings > Integrations").color(theme.palette().text),
-            )
-            .width(Fill)
-            .height(Fill)
-            .center_x(Fill)
-            .center_y(Fill);
-            return empty_state.into();
+            return super::feed_empty_state(
+                &theme,
+                "Add Hydromancer key in Settings > Integrations",
+            );
         }
 
         container(responsive(move |size| {

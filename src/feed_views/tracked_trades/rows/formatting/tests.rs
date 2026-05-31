@@ -12,7 +12,7 @@ fn tracked_trade_numbers_drop_empty_decimal_places() {
 #[test]
 fn tracked_trade_numbers_keep_meaningful_decimal_places() {
     assert_eq!(tracked_trade_size_label(2.5), "2.5");
-    assert_eq!(tracked_trade_price_label(12_345.6789), "12345.6789");
+    assert_eq!(tracked_trade_price_label(12_345.678_9), "12345.6789");
     assert_eq!(tracked_trade_fee_label(0.0123, "USDC"), "0.0123 USDC");
 }
 

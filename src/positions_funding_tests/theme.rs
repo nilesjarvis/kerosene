@@ -330,7 +330,7 @@ fn coinbase_light_theme_uses_clean_portfolio_surfaces_and_blue_actions() {
         extended.success.base.color.into_rgba8(),
         [0x09, 0x85, 0x51, 255]
     );
-    assert_eq!(extended.is_dark, false);
+    assert!(!extended.is_dark);
 }
 
 #[test]
