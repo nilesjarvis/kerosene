@@ -10,8 +10,11 @@ pub(crate) const LIQUIDATION_DISTRIBUTION_BUCKET_COUNT: usize = 240;
 pub(crate) const LIQUIDATION_DISTRIBUTION_AUTO_REFRESH_SECS: u64 = 60;
 pub(crate) const LIQUIDATION_DISTRIBUTION_REQUEST_BACKOFF_SECS: u64 = 5;
 pub(crate) const LIQUIDATION_DISTRIBUTION_MARK_REFRESH_THRESHOLD: f64 = 0.01;
+pub(crate) const LIQUIDATION_DISTRIBUTION_MIN_ZOOM: f64 = 1.0;
+pub(crate) const LIQUIDATION_DISTRIBUTION_MAX_ZOOM: f64 = 16.0;
+pub(crate) const LIQUIDATION_DISTRIBUTION_ZOOM_STEP: f64 = 1.25;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct LiquidationDistributionState {
     pub(crate) data: Option<LiquidationDistributionData>,
     pub(crate) loading: bool,
@@ -20,6 +23,30 @@ pub(crate) struct LiquidationDistributionState {
     pub(crate) last_request: Option<Instant>,
     pub(crate) last_request_symbol: Option<String>,
     pub(crate) last_fetch: Option<Instant>,
+    pub(crate) zoom: f64,
+    pub(crate) zoom_center_price: Option<f64>,
+    pub(crate) symbol: String,
+    pub(crate) symbol_search_query: String,
+    pub(crate) symbol_picker_open: bool,
+}
+
+impl Default for LiquidationDistributionState {
+    fn default() -> Self {
+        Self {
+            data: None,
+            loading: false,
+            error: None,
+            pending_request: None,
+            last_request: None,
+            last_request_symbol: None,
+            last_fetch: None,
+            zoom: LIQUIDATION_DISTRIBUTION_MIN_ZOOM,
+            zoom_center_price: None,
+            symbol: String::new(),
+            symbol_search_query: String::new(),
+            symbol_picker_open: false,
+        }
+    }
 }
 
 impl LiquidationDistributionState {
@@ -33,6 +60,7 @@ impl LiquidationDistributionState {
         if !self.data_matches_symbol(symbol) {
             self.data = None;
             self.last_fetch = None;
+            self.reset_zoom();
         }
     }
 
@@ -65,6 +93,66 @@ impl LiquidationDistributionState {
         }
         mark_drift_exceeds_threshold(data.request.mark, request.mark)
     }
+
+    pub(crate) fn zoom_factor(&self) -> f64 {
+        sanitize_zoom(self.zoom)
+    }
+
+    pub(crate) fn zoom_by(
+        &mut self,
+        factor: f64,
+        anchor: Option<LiquidationDistributionZoomAnchor>,
+    ) {
+        let Some(data) = self.data.as_ref() else {
+            self.reset_zoom();
+            return;
+        };
+        if !factor.is_finite() || factor <= 0.0 {
+            return;
+        }
+
+        let old_zoom = self.zoom_factor();
+        let new_zoom = (old_zoom * factor).clamp(
+            LIQUIDATION_DISTRIBUTION_MIN_ZOOM,
+            LIQUIDATION_DISTRIBUTION_MAX_ZOOM,
+        );
+        self.zoom = new_zoom;
+
+        if (new_zoom - LIQUIDATION_DISTRIBUTION_MIN_ZOOM).abs() <= f64::EPSILON {
+            self.zoom_center_price = None;
+            return;
+        }
+
+        let (min, max) = normalized_distribution_bounds(data);
+        let full_range = max - min;
+        if full_range <= 0.0 {
+            self.zoom_center_price = None;
+            return;
+        }
+
+        let visible_range = full_range / new_zoom;
+        let half_range = visible_range / 2.0;
+        let min_center = min + half_range;
+        let max_center = max - half_range;
+        let center = if let Some(anchor) = anchor {
+            let fraction = anchor.fraction.clamp(0.0, 1.0);
+            anchor.price - (fraction - 0.5) * visible_range
+        } else {
+            self.zoom_center_price.unwrap_or(data.request.mark)
+        };
+        self.zoom_center_price = Some(center.clamp(min_center, max_center));
+    }
+
+    pub(crate) fn reset_zoom(&mut self) {
+        self.zoom = LIQUIDATION_DISTRIBUTION_MIN_ZOOM;
+        self.zoom_center_price = None;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LiquidationDistributionZoomAnchor {
+    pub(crate) price: f64,
+    pub(crate) fraction: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -189,6 +277,40 @@ pub(crate) fn validate_liquidation_distribution_level(
     Ok(())
 }
 
+pub(crate) fn liquidation_distribution_visible_price_range(
+    data: &LiquidationDistributionData,
+    zoom: f64,
+    center_price: Option<f64>,
+) -> (f64, f64) {
+    let (min, max) = normalized_distribution_bounds(data);
+    let full_range = max - min;
+    if full_range <= 0.0 {
+        return (min, max);
+    }
+
+    let zoom = sanitize_zoom(zoom);
+    if (zoom - LIQUIDATION_DISTRIBUTION_MIN_ZOOM).abs() <= f64::EPSILON {
+        return (min, max);
+    }
+
+    let visible_range = (full_range / zoom).clamp(0.0, full_range);
+    if visible_range >= full_range {
+        return (min, max);
+    }
+
+    let half_range = visible_range / 2.0;
+    let min_center = min + half_range;
+    let max_center = max - half_range;
+    let requested_center = center_price.unwrap_or(data.request.mark);
+    let center = if requested_center.is_finite() {
+        requested_center.clamp(min_center, max_center)
+    } else {
+        data.request.mark.clamp(min_center, max_center)
+    };
+
+    (center - half_range, center + half_range)
+}
+
 pub(crate) fn distribution_points_from_buckets(
     buckets: &[LiquidationBucket],
     mark: f64,
@@ -236,6 +358,27 @@ fn mark_drift_exceeds_threshold(previous: f64, current: f64) -> bool {
         return true;
     }
     ((current - previous).abs() / previous) >= LIQUIDATION_DISTRIBUTION_MARK_REFRESH_THRESHOLD
+}
+
+fn sanitize_zoom(zoom: f64) -> f64 {
+    if zoom.is_finite() {
+        zoom.clamp(
+            LIQUIDATION_DISTRIBUTION_MIN_ZOOM,
+            LIQUIDATION_DISTRIBUTION_MAX_ZOOM,
+        )
+    } else {
+        LIQUIDATION_DISTRIBUTION_MIN_ZOOM
+    }
+}
+
+fn normalized_distribution_bounds(data: &LiquidationDistributionData) -> (f64, f64) {
+    let min = data.request.min.min(data.request.max);
+    let max = data.request.min.max(data.request.max);
+    if min.is_finite() && max.is_finite() && max > min {
+        (min, max)
+    } else {
+        (0.0, 1.0)
+    }
 }
 
 fn validate_price_bound(name: &str, expected: f64, actual: f64) -> Result<(), String> {
@@ -360,6 +503,54 @@ mod tests {
         };
 
         assert!(state.should_fetch(&request("BTC", 102.0), false));
+    }
+
+    #[test]
+    fn visible_price_range_uses_full_request_range_at_default_zoom() {
+        let data = data("BTC", 100.0);
+
+        let range = liquidation_distribution_visible_price_range(&data, 1.0, None);
+
+        assert_eq!(range, (0.0, 200.0));
+    }
+
+    #[test]
+    fn zoom_by_anchors_visible_range_to_cursor_fraction() {
+        let mut state = LiquidationDistributionState {
+            data: Some(data("BTC", 100.0)),
+            ..Default::default()
+        };
+
+        state.zoom_by(
+            2.0,
+            Some(LiquidationDistributionZoomAnchor {
+                price: 75.0,
+                fraction: 0.25,
+            }),
+        );
+
+        let data = state
+            .data
+            .as_ref()
+            .expect("zoom test should retain loaded distribution data");
+        let range =
+            liquidation_distribution_visible_price_range(data, state.zoom, state.zoom_center_price);
+        assert_eq!(state.zoom_factor(), 2.0);
+        assert_eq!(range, (50.0, 150.0));
+    }
+
+    #[test]
+    fn reset_zoom_restores_full_range() {
+        let mut state = LiquidationDistributionState {
+            data: Some(data("BTC", 100.0)),
+            ..Default::default()
+        };
+
+        state.zoom_by(2.0, None);
+        state.reset_zoom();
+
+        assert_eq!(state.zoom_factor(), 1.0);
+        assert!(state.zoom_center_price.is_none());
     }
 
     #[test]

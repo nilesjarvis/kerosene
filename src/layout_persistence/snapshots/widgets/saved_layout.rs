@@ -33,6 +33,15 @@ impl TradingTerminal {
         self.order_kind.config_str().to_string()
     }
 
+    pub(crate) fn liquidation_distribution_symbol_config_value(&self) -> String {
+        let symbol = self.liquidation_distribution.symbol.trim();
+        if symbol.is_empty() || self.symbol_key_is_hidden(symbol) {
+            String::new()
+        } else {
+            symbol.to_string()
+        }
+    }
+
     pub(crate) fn saved_layout_snapshot(&self, name: String) -> config::SavedLayout {
         config::SavedLayout {
             name,

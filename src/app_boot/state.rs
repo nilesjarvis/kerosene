@@ -317,8 +317,14 @@ impl TradingTerminal {
             heatmap_data_cache_order: VecDeque::new(),
             heatmap_pending_charts: HashMap::new(),
             liquidation_pending_charts: HashMap::new(),
-            liquidation_distribution:
-                crate::liquidations_distribution_state::LiquidationDistributionState::default(),
+            liquidation_distribution: {
+                let symbol = cfg.liquidation_distribution_symbol.trim().to_string();
+                crate::liquidations_distribution_state::LiquidationDistributionState {
+                    symbol_search_query: symbol.clone(),
+                    symbol,
+                    ..Default::default()
+                }
+            },
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg
                 .chart_timeframe_hotkey_prefix

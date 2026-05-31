@@ -21,7 +21,12 @@ impl TradingTerminal {
             }
             Message::RefreshLiquidations => return self.refresh_liquidations(),
             message @ (Message::LiquidationsDistributionLoaded(_, _)
-            | Message::RefreshLiquidationsDistribution) => {
+            | Message::RefreshLiquidationsDistribution
+            | Message::LiquidationsDistributionSearchChanged(_)
+            | Message::ToggleLiquidationsDistributionSymbolPicker
+            | Message::LiquidationsDistributionSymbolSelected(_)
+            | Message::LiquidationsDistributionZoomed { .. }
+            | Message::ResetLiquidationsDistributionZoom) => {
                 return self.update_liquidations_distribution(message);
             }
             message @ (Message::ToggleHeatmapOverlay(_)

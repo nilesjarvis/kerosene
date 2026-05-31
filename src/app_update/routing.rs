@@ -472,6 +472,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::RefreshLiquidations
         | Message::LiquidationsDistributionLoaded(_, _)
         | Message::RefreshLiquidationsDistribution
+        | Message::LiquidationsDistributionSearchChanged(_)
+        | Message::ToggleLiquidationsDistributionSymbolPicker
+        | Message::LiquidationsDistributionSymbolSelected(_)
+        | Message::LiquidationsDistributionZoomed { .. }
+        | Message::ResetLiquidationsDistributionZoom
         | Message::ToggleHeatmapOverlay(_)
         | Message::ChartHeatmapLoaded(_, _)
         | Message::RefreshHeatmap => UpdateRoute::Hyperdash,

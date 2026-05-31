@@ -17,6 +17,7 @@ use crate::hype_unstaking_state::{
 };
 use crate::hyperdash_api::{LiquidationHeatmap, LiquidationLevel};
 use crate::journal;
+use crate::liquidations_distribution_state::LiquidationDistributionZoomAnchor;
 use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
@@ -598,6 +599,14 @@ pub(crate) enum Message {
     RefreshLiquidations,
     LiquidationsDistributionLoaded(String, Box<Result<LiquidationLevel, String>>),
     RefreshLiquidationsDistribution,
+    LiquidationsDistributionSearchChanged(String),
+    ToggleLiquidationsDistributionSymbolPicker,
+    LiquidationsDistributionSymbolSelected(String),
+    LiquidationsDistributionZoomed {
+        factor: f64,
+        anchor: Option<LiquidationDistributionZoomAnchor>,
+    },
+    ResetLiquidationsDistributionZoom,
     // HyperDash historical liquidation heatmap
     ToggleHeatmapOverlay(ChartId),
     ChartHeatmapLoaded(String, Box<Result<LiquidationHeatmap, String>>),

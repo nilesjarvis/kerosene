@@ -29,6 +29,27 @@ impl TradingTerminal {
             Message::LiquidationsDistributionLoaded(request_key, result) => {
                 self.apply_liquidation_distribution_loaded(request_key, *result)
             }
+            Message::LiquidationsDistributionSearchChanged(query) => {
+                self.liquidation_distribution.symbol_search_query = query;
+                self.liquidation_distribution.symbol_picker_open = true;
+                Task::none()
+            }
+            Message::ToggleLiquidationsDistributionSymbolPicker => {
+                self.liquidation_distribution.symbol_picker_open =
+                    !self.liquidation_distribution.symbol_picker_open;
+                Task::none()
+            }
+            Message::LiquidationsDistributionSymbolSelected(symbol) => {
+                self.select_liquidation_distribution_symbol(symbol)
+            }
+            Message::LiquidationsDistributionZoomed { factor, anchor } => {
+                self.liquidation_distribution.zoom_by(factor, anchor);
+                Task::none()
+            }
+            Message::ResetLiquidationsDistributionZoom => {
+                self.liquidation_distribution.reset_zoom();
+                Task::none()
+            }
             _ => Task::none(),
         }
     }
@@ -43,8 +64,11 @@ impl TradingTerminal {
         if self.liquidation_distribution.loading && !force {
             return Task::none();
         }
+        if self.liquidation_distribution.symbol.trim().is_empty() && !force {
+            return Task::none();
+        }
 
-        let active_symbol = self.active_symbol.clone();
+        let selected_symbol = self.liquidation_distribution.symbol.clone();
         let request = match self.build_liquidation_distribution_request() {
             Ok(request) => request,
             Err(error) => {
@@ -52,7 +76,7 @@ impl TradingTerminal {
                 self.liquidation_distribution.error = Some(error);
                 self.liquidation_distribution.pending_request = None;
                 self.liquidation_distribution
-                    .clear_data_if_not_symbol(&active_symbol);
+                    .clear_data_if_not_symbol(&selected_symbol);
                 return Task::none();
             }
         };
@@ -90,41 +114,32 @@ impl TradingTerminal {
         if self.hyperdash_api_key.trim().is_empty() {
             return Err("Add HyperDash key in Settings > Integrations".to_string());
         }
-        if self.active_symbol.trim().is_empty() {
+        let symbol = self.liquidation_distribution.symbol.trim();
+        if symbol.is_empty() {
             return Err("Select a perp market to load liquidation distribution".to_string());
         }
-        if self.symbol_key_is_hidden(&self.active_symbol) {
+        if self.symbol_key_is_hidden(symbol) {
             return Err("Ticker is hidden in Settings > Risk".to_string());
         }
 
-        let Some(coin) = self.hyperdash_coin_for_symbol(&self.active_symbol) else {
+        let Some(coin) = self.hyperdash_coin_for_symbol(symbol) else {
             return Err(
                 "HyperDash liquidation distribution is available for perp markets only".to_string(),
             );
         };
-        let Some(mark) = self.resolve_mid_for_symbol(&self.active_symbol) else {
-            return Err(format!(
-                "Waiting for a live mid price for {}",
-                self.active_symbol_display
-            ));
+        let display = self.liquidation_distribution_symbol_display(symbol);
+        let Some(mark) = self.resolve_mid_for_symbol(symbol) else {
+            return Err(format!("Waiting for a live mid price for {display}"));
         };
         if !mark.is_finite() || mark <= 0.0 {
-            return Err(format!(
-                "Invalid live mid price for {}",
-                self.active_symbol_display
-            ));
+            return Err(format!("Invalid live mid price for {display}"));
         }
 
         let min = (mark * (1.0 - LIQUIDATION_DISTRIBUTION_DOWNSIDE_RANGE_PCT)).max(0.0);
         let max = mark * (1.0 + LIQUIDATION_DISTRIBUTION_UPSIDE_RANGE_PCT);
-        let display = if self.active_symbol_display.trim().is_empty() {
-            coin.clone()
-        } else {
-            self.active_symbol_display.clone()
-        };
 
         Ok(LiquidationDistributionRequest::new(
-            self.active_symbol.clone(),
+            symbol.to_string(),
             display,
             coin,
             mark,
@@ -132,6 +147,40 @@ impl TradingTerminal {
             max,
             Self::now_ms() / 1_000,
         ))
+    }
+
+    fn select_liquidation_distribution_symbol(&mut self, symbol: String) -> Task<Message> {
+        if self.symbol_key_is_hidden(&symbol) {
+            self.liquidation_distribution.error =
+                Some(format!("{symbol} is hidden in Settings > Risk"));
+            self.liquidation_distribution.symbol_picker_open = false;
+            return Task::none();
+        }
+        if self.hyperdash_coin_for_symbol(&symbol).is_none() {
+            self.liquidation_distribution.error = Some(
+                "HyperDash liquidation distribution is available for perp markets only".into(),
+            );
+            self.liquidation_distribution.symbol_picker_open = false;
+            return Task::none();
+        }
+
+        let display = self.liquidation_distribution_symbol_display(&symbol);
+        self.liquidation_distribution.symbol = symbol.clone();
+        self.liquidation_distribution.symbol_search_query = display;
+        self.liquidation_distribution.symbol_picker_open = false;
+        self.liquidation_distribution.error = None;
+        self.liquidation_distribution
+            .clear_data_if_not_symbol(&symbol);
+        self.persist_config();
+        self.request_liquidation_distribution_refresh(true)
+    }
+
+    pub(crate) fn liquidation_distribution_symbol_display(&self, symbol: &str) -> String {
+        self.exchange_symbols
+            .iter()
+            .find(|candidate| candidate.key == symbol)
+            .map(Self::exchange_symbol_display_name)
+            .unwrap_or_else(|| symbol.to_string())
     }
 
     fn apply_liquidation_distribution_loaded(

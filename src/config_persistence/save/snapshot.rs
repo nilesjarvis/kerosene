@@ -77,6 +77,7 @@ impl TradingTerminal {
             custom_window_chrome_enabled: self.custom_window_chrome_enabled,
             symbol_search_sort_mode: self.symbol_search_sort_mode.config_value().to_string(),
             market_universe: self.market_universe.clone().normalized(),
+            liquidation_distribution_symbol: self.liquidation_distribution_symbol_config_value(),
             display_denomination: self.display_denomination.clone().normalized(),
             chart_screenshot_settings: self.chart_screenshot_settings.clone(),
             accounts: persisted_accounts,

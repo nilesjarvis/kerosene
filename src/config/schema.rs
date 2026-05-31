@@ -201,6 +201,9 @@ pub struct KeroseneConfig {
     /// Global visible market universe.
     #[serde(default)]
     pub market_universe: MarketUniverseConfig,
+    /// Independently selected perp market for the liquidation distribution widget.
+    #[serde(default)]
+    pub liquidation_distribution_symbol: String,
     /// Display-only denomination for USD-valued readouts.
     #[serde(default)]
     pub display_denomination: DisplayDenominationConfig,
