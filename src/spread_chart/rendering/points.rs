@@ -15,6 +15,7 @@ const SPREAD_CHART_WINDOW: Duration = Duration::from_secs(300);
 pub(super) struct SpreadChartScale {
     start_time: Instant,
     now: Instant,
+    y_min: f64,
     y_max: f64,
     width: f32,
     height: f32,
@@ -27,16 +28,16 @@ impl SpreadChartScale {
         width: f32,
         height: f32,
     ) -> Self {
-        let max_spread = data
-            .iter()
-            .map(|(_, spread)| *spread)
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+        let start_time = now.checked_sub(SPREAD_CHART_WINDOW).unwrap_or(now);
+        let (min_spread, max_spread) =
+            visible_spread_bounds(data, start_time, now).unwrap_or((0.0, 1.0));
+        let (y_min, y_max) = padded_spread_bounds(min_spread, max_spread);
 
         Self {
-            start_time: now.checked_sub(SPREAD_CHART_WINDOW).unwrap_or(now),
+            start_time,
             now,
-            y_max: max_spread * 1.1,
+            y_min,
+            y_max,
             width,
             height,
         }
@@ -55,7 +56,12 @@ impl SpreadChartScale {
     }
 
     fn spread_to_y(&self, spread: f64) -> f32 {
-        let normalized = (spread / self.y_max) as f32;
+        if !spread.is_finite() {
+            return self.height;
+        }
+
+        let range = self.y_max - self.y_min;
+        let normalized = ((spread - self.y_min) / range).clamp(0.0, 1.0) as f32;
         self.height - (normalized * self.height)
     }
 
@@ -64,12 +70,42 @@ impl SpreadChartScale {
     }
 }
 
+fn visible_spread_bounds(
+    data: &VecDeque<(Instant, f64)>,
+    start_time: Instant,
+    now: Instant,
+) -> Option<(f64, f64)> {
+    data.iter()
+        .filter(|(time, spread)| *time >= start_time && *time <= now && spread.is_finite())
+        .map(|(_, spread)| *spread)
+        .fold(None, |bounds, spread| {
+            Some(match bounds {
+                Some((min_spread, max_spread)) => (min_spread.min(spread), max_spread.max(spread)),
+                None => (spread, spread),
+            })
+        })
+}
+
+fn padded_spread_bounds(min_spread: f64, max_spread: f64) -> (f64, f64) {
+    let range = max_spread - min_spread;
+    let padding = if range > f64::EPSILON {
+        range * 0.1
+    } else {
+        max_spread.abs().max(1.0) * 0.05
+    };
+
+    (min_spread - padding, max_spread + padding)
+}
+
 pub(super) fn rendered_spread_points(
     data: &VecDeque<(Instant, f64)>,
     scale: &SpreadChartScale,
 ) -> Vec<(Point, f64)> {
     data.iter()
         .rev()
+        .filter(|(time, spread)| {
+            *time >= scale.start_time && *time <= scale.now && spread.is_finite()
+        })
         .map(|(time, spread)| (scale.point_for(*time, *spread), *spread))
         .collect()
 }

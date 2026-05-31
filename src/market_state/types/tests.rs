@@ -30,3 +30,26 @@ fn symbol_search_sort_mode_config_values_round_trip() {
         SymbolSearchSortMode::Relevance
     );
 }
+
+#[test]
+fn order_book_spread_chart_height_is_clamped_at_state_boundary() {
+    let mut instance = OrderBookInstance::new(1, OrderBookSymbolMode::Active, 0.01);
+
+    instance.set_spread_chart_height(10.0);
+    assert_eq!(
+        instance.spread_chart_height,
+        MIN_ORDER_BOOK_SPREAD_CHART_HEIGHT
+    );
+
+    instance.set_spread_chart_height(2_000.0);
+    assert_eq!(
+        instance.spread_chart_height,
+        MAX_ORDER_BOOK_SPREAD_CHART_HEIGHT
+    );
+
+    instance.set_spread_chart_height(f32::NAN);
+    assert_eq!(
+        instance.spread_chart_height,
+        DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT
+    );
+}

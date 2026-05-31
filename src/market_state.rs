@@ -7,11 +7,16 @@ mod types;
 pub use dom_ladder::DomLadderRow;
 #[cfg(test)]
 pub(crate) use dom_ladder::build_dom_ladder_rows;
+#[cfg(test)]
+pub(crate) use types::{
+    DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT, MAX_ORDER_BOOK_SPREAD_CHART_HEIGHT,
+    MIN_ORDER_BOOK_SPREAD_CHART_HEIGHT,
+};
 pub use types::{
     LiveWatchlistId, LiveWatchlistInstance, OrderBookDisplayMode, OrderBookId, OrderBookInstance,
     OrderBookSymbolMode,
 };
 pub(crate) use types::{
     LiveWatchlistRowData, SYMBOL_SEARCH_ALL_HIP3_DEXES, SymbolSearchMarketFilter,
-    SymbolSearchSortMode,
+    SymbolSearchSortMode, clamp_order_book_spread_chart_height,
 };

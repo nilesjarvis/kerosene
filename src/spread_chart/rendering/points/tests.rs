@@ -33,15 +33,27 @@ fn scale_clamps_times_outside_window() {
 }
 
 #[test]
-fn scale_adds_ten_percent_y_padding_and_defaults_empty_spreads() {
+fn scale_uses_visible_spread_range_instead_of_zero_baseline() {
     let now = Instant::now();
-    let data = VecDeque::from([(now, 10.0)]);
+    let data = VecDeque::from([
+        (now, 100.50),
+        (now - Duration::from_secs(150), 100.25),
+        (now - Duration::from_secs(300), 100.00),
+    ]);
+    let scale = SpreadChartScale::new(&data, now, 120.0, 120.0);
+
+    assert_close(scale.spread_to_y(100.00), 110.0);
+    assert_close(scale.spread_to_y(100.25), 60.0);
+    assert_close(scale.spread_to_y(100.50), 10.0);
+}
+
+#[test]
+fn scale_centers_flat_spreads() {
+    let now = Instant::now();
+    let data = VecDeque::from([(now, 10.0), (now - Duration::from_secs(30), 10.0)]);
     let scale = SpreadChartScale::new(&data, now, 120.0, 110.0);
 
-    assert_close(scale.spread_to_y(10.0), 10.0);
-
-    let empty_scale = SpreadChartScale::new(&VecDeque::new(), now, 120.0, 110.0);
-    assert_close(empty_scale.spread_to_y(1.0), 10.0);
+    assert_close(scale.spread_to_y(10.0), 55.0);
 }
 
 #[test]
@@ -59,6 +71,25 @@ fn rendered_points_are_oldest_to_newest() {
     assert_eq!(
         points.iter().map(|(_, spread)| *spread).collect::<Vec<_>>(),
         vec![1.0, 2.0, 3.0]
+    );
+}
+
+#[test]
+fn rendered_points_skip_non_finite_and_stale_spreads() {
+    let now = Instant::now();
+    let data = VecDeque::from([
+        (now, 3.0),
+        (now - Duration::from_secs(60), f64::NAN),
+        (now - Duration::from_secs(120), 2.0),
+        (now - Duration::from_secs(301), 1.0),
+    ]);
+    let scale = SpreadChartScale::new(&data, now, 300.0, 60.0);
+
+    let points = rendered_spread_points(&data, &scale);
+
+    assert_eq!(
+        points.iter().map(|(_, spread)| *spread).collect::<Vec<_>>(),
+        vec![2.0, 3.0]
     );
 }
 
