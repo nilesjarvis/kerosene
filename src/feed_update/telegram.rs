@@ -87,6 +87,10 @@ impl TradingTerminal {
     }
 
     pub(crate) fn request_telegram_feed_background_refresh(&mut self) -> Task<Message> {
+        if self.telegram_feed.fast_mode_enabled && self.telegram_feed.fast_connected {
+            return Task::none();
+        }
+
         self.request_telegram_feed_refresh_with_visibility(false)
     }
 
@@ -162,6 +166,7 @@ impl TradingTerminal {
         self.telegram_feed
             .posts
             .retain(|post| post.channel != channel);
+        self.telegram_feed.clear_seen_posts_for_channel(&channel);
         self.telegram_feed.channel_profiles.remove(&channel);
         self.telegram_feed.last_error = None;
         self.persist_config();
@@ -405,13 +410,12 @@ impl TradingTerminal {
                 let now_ms = Self::now_ms();
                 let avatar_task = self.store_telegram_channel_profile(page.profile);
                 self.telegram_feed.last_error = None;
-                let had_existing_posts = self
-                    .telegram_feed
-                    .posts
-                    .iter()
-                    .any(|post| post.channel == channel);
+                let had_seen_posts = self.telegram_feed.has_seen_posts_for_channel(&channel);
                 let mut new_posts = Vec::new();
                 for mut post in page.posts {
+                    let already_seen = self
+                        .telegram_feed
+                        .record_seen_post(&channel, post.message_id);
                     if let Some(existing_index) =
                         self.telegram_feed.posts.iter().position(|existing| {
                             existing.channel == channel && existing.message_id == post.message_id
@@ -431,13 +435,13 @@ impl TradingTerminal {
                         existing_post.url = post.url;
                         existing_post.ticker_mentions = mentions;
                     } else {
-                        if had_existing_posts {
+                        if had_seen_posts && !already_seen {
                             post.first_seen_ms = now_ms;
                         }
                         let mentions =
                             self.telegram_ticker_mentions_for_text(&post.text, now_ms, &[]);
                         post.ticker_mentions = mentions;
-                        if had_existing_posts {
+                        if had_seen_posts && !already_seen {
                             new_posts.push(post.clone());
                         }
                         self.telegram_feed.posts.push(post);
@@ -795,6 +799,24 @@ mod tests {
     }
 
     #[test]
+    fn background_refresh_is_skipped_while_fast_feed_is_connected() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_connected = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedRefreshTick);
+
+        assert!(terminal.telegram_feed.loading_channels.is_empty());
+        assert!(
+            terminal
+                .telegram_feed
+                .background_loading_channels
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn fast_feed_toggle_is_persisted_without_disabling_public_channels() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
@@ -1145,5 +1167,39 @@ mod tests {
         assert!(new_post.first_seen_ms > 0);
         assert_eq!(terminal.toasts.len(), 1);
         assert!(terminal.toasts[0].message.contains("@marketfeed"));
+    }
+
+    #[test]
+    fn hard_refresh_does_not_alert_for_seen_post_pruned_from_rendered_feed() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.notifications_enabled = true;
+        let initial_posts = (1..=(crate::telegram_feed::TELEGRAM_FEED_RENDER_LIMIT as u64 + 1))
+            .map(|message_id| sample_post("marketfeed", message_id))
+            .collect();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
+            "marketfeed".to_string(),
+            Box::new(Ok(sample_page("marketfeed", initial_posts))),
+        ));
+
+        assert!(terminal.toasts.is_empty());
+        assert!(
+            !terminal
+                .telegram_feed
+                .posts
+                .iter()
+                .any(|post| post.message_id == 1)
+        );
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
+            "marketfeed".to_string(),
+            Box::new(Ok(sample_page(
+                "marketfeed",
+                vec![sample_post("marketfeed", 1)],
+            ))),
+        ));
+
+        assert!(terminal.toasts.is_empty());
     }
 }

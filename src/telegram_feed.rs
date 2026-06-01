@@ -2,7 +2,7 @@ use crate::api::{CLIENT, ExchangeSymbol, MarketType};
 use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zeroize::Zeroizing;
 
@@ -18,6 +18,7 @@ pub(crate) const TELEGRAM_FEED_RENDER_LIMIT: usize = 100;
 pub(crate) const TELEGRAM_FEED_MAX_CHANNELS: usize = 12;
 pub(crate) const TELEGRAM_FEED_REFRESH_INTERVAL_SECS: u64 = 15;
 pub(crate) const TELEGRAM_NEW_MESSAGE_COOLDOWN_MS: u64 = 120_000;
+const TELEGRAM_FEED_SEEN_ID_LIMIT_PER_CHANNEL: usize = 1024;
 const TELEGRAM_STRONG_TICKER_WORDS: &[&str] = &[
     "A", "AI", "AM", "AN", "AND", "ARE", "AS", "AT", "BE", "BY", "CEO", "CFO", "CTO", "DO", "FOR",
     "GO", "HAS", "HE", "IN", "IS", "IT", "ME", "NEW", "NO", "NOT", "OF", "ON", "OR", "SEC", "SHE",
@@ -133,6 +134,7 @@ pub(crate) struct TelegramFeedState {
     pub(crate) channel_input: String,
     pub(crate) channel_profiles: HashMap<String, TelegramChannelProfile>,
     pub(crate) posts: Vec<TelegramFeedPost>,
+    seen_post_ids: HashMap<String, VecDeque<u64>>,
     pub(crate) loading_channels: Vec<String>,
     pub(crate) background_loading_channels: Vec<String>,
     pub(crate) next_avatar_request_id: u64,
@@ -169,6 +171,7 @@ impl TelegramFeedState {
             channel_input: String::new(),
             channel_profiles: HashMap::new(),
             posts: Vec::new(),
+            seen_post_ids: HashMap::new(),
             loading_channels: Vec::new(),
             background_loading_channels: Vec::new(),
             next_avatar_request_id: 0,
@@ -196,6 +199,30 @@ impl TelegramFeedState {
         });
         posts.truncate(TELEGRAM_FEED_RENDER_LIMIT);
         posts
+    }
+
+    pub(crate) fn has_seen_posts_for_channel(&self, channel: &str) -> bool {
+        self.seen_post_ids
+            .get(channel)
+            .is_some_and(|ids| !ids.is_empty())
+            || self.posts.iter().any(|post| post.channel == channel)
+    }
+
+    pub(crate) fn record_seen_post(&mut self, channel: &str, message_id: u64) -> bool {
+        let ids = self.seen_post_ids.entry(channel.to_string()).or_default();
+        if ids.contains(&message_id) {
+            return true;
+        }
+
+        ids.push_back(message_id);
+        while ids.len() > TELEGRAM_FEED_SEEN_ID_LIMIT_PER_CHANNEL {
+            let _ = ids.pop_front();
+        }
+        false
+    }
+
+    pub(crate) fn clear_seen_posts_for_channel(&mut self, channel: &str) {
+        self.seen_post_ids.remove(channel);
     }
 }
 
