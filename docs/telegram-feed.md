@@ -25,12 +25,24 @@ The controls provide:
 Each post shows:
 
 - Channel avatar, title, and username.
-- Exact Telegram send time in UTC, including milliseconds.
-- Arrival latency in the form `(+250 ms)`, computed as local fetch completion
-  time minus the Telegram send timestamp.
 - A live age label, such as `12.345 s ago`.
+- For newly seen live posts, optional arrival latency in the form
+  `seen +250 ms`, computed as local fetch completion time minus the Telegram
+  send timestamp.
 - Message text, with unsupported emoji removed before rendering.
+- Clickable ticker impact chips when the text mentions Hyperliquid symbols.
 - A link-copy action for the Telegram post URL.
+
+Ticker impact chips are parsed from the loaded Hyperliquid symbol universe,
+excluding spot markets.
+When a post is first seen, Kerosene stores the current live mid as that ticker's
+reference price. The chip then shows the live percentage move from that
+reference to the latest live mid. Clicking a chip selects that symbol and opens
+the primary chart when a chart pane is present.
+
+News keywords can also map to related markets. Mentions of `oil`, `Iran`, or
+`Hormuz` display `xyz:BRENTOIL` and `xyz:WTIOIL` when those markets are present
+in the loaded symbol universe.
 
 New messages are highlighted with a background color that cools down over
 `TELEGRAM_NEW_MESSAGE_COOLDOWN_MS`, currently 120 seconds. Initial backfill is
@@ -96,12 +108,36 @@ time until next poll + Telegram public page availability + HTTP request time
 
 The best case is roughly the request duration after a post appears on the public
 preview page. The common case is up to one poll interval plus request time. The
-displayed `(+latency)` value measures the difference between Telegram's send
-timestamp and the local fetch completion time.
+displayed `seen +latency` value measures the difference between Telegram's send
+timestamp and the local fetch completion time for newly seen live posts.
 
 Telegram's public HTML timestamps may only provide second-level precision, so
 the send-time milliseconds can be `.000` even though Kerosene's local fetch
 timestamp is millisecond precision.
+
+## Optional fast mode
+
+Telegram Feed also has an optional fast mode that signs in through Telegram's
+MTProto user API and listens for Telegram updates while preserving the public
+HTML polling path as a fallback. Users can toggle fast mode in the feed widget.
+
+Fast mode requires a Telegram session. If the app is built with
+`KEROSENE_TELEGRAM_API_ID` and `KEROSENE_TELEGRAM_API_HASH`, users only need to
+enter their phone number and Telegram login code. Otherwise, the widget also
+accepts a user-provided Telegram developer API ID and hash. The API hash is not
+persisted in `config.json`.
+
+The MTProto session is stored separately in the Kerosene config directory as
+`telegram_fast.session` and is permission-tightened on Unix-like platforms.
+Signing out from the widget clears that session file family.
+
+Fast updates are additive: new MTProto posts go through the same `(channel,
+message_id)` merge and dedupe path as public-page refreshes. Public polling
+continues to run so existing no-login behavior remains available.
+
+Telegram only pushes channel updates to the signed-in account for channels it
+receives updates for. For channels outside the account's update stream, the
+public HTML polling path remains the fallback source.
 
 ## Persistence
 
@@ -109,6 +145,8 @@ The persisted configuration stores:
 
 - `telegram_feed_channels`
 - `telegram_feed_notifications_enabled`
+- `telegram_feed_fast_mode_enabled`
+- `telegram_feed_fast_api_id`
 
 Runtime-only data is not persisted:
 
@@ -118,6 +156,7 @@ Runtime-only data is not persisted:
 - In-flight avatar request ids.
 - Loading state.
 - Last refresh timing and errors.
+- Telegram API hash and login form inputs.
 
 Legacy configs without Telegram Feed fields default to `@marketfeed` with
 notifications disabled.
@@ -193,8 +232,11 @@ Core implementation:
 
 - `src/telegram_feed.rs`: state model, channel normalization, HTML parsing,
   HTTP fetches, timing labels, avatar validation, and parser tests.
+- `src/telegram_fast_feed.rs`: optional MTProto auth, session handling,
+  startup backfill, and live update streaming.
 - `src/feed_update/telegram.rs`: update routing for refreshes, channel edits,
-  post merging, notifications, avatar request state, and update tests.
+  fast-mode auth events, post merging, notifications, avatar request state, and
+  update tests.
 - `src/feed_views/telegram.rs`: pane controls, channel chips, post cards,
   avatar rendering, heat styling, and responsive layout.
 

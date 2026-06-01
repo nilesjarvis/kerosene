@@ -111,6 +111,8 @@ impl TradingTerminal {
             liquidation_feed_aggregation_enabled: layout_snapshot
                 .liquidation_feed_aggregation_enabled,
             telegram_feed_notifications_enabled: self.telegram_feed.notifications_enabled,
+            telegram_feed_fast_mode_enabled: self.telegram_feed.fast_mode_enabled,
+            telegram_feed_fast_api_id: self.telegram_feed.fast_api_id,
             telegram_feed_channels: self.telegram_feed.channels.clone(),
 
             spaghetti_charts: layout_snapshot.spaghetti_charts,

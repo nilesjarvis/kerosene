@@ -1,9 +1,10 @@
-use crate::api::CLIENT;
+use crate::api::{CLIENT, ExchangeSymbol, MarketType};
 use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use zeroize::Zeroizing;
 
 const TELEGRAM_WEB_BASE: &str = "https://t.me/s/";
 const TELEGRAM_USER_AGENT: &str =
@@ -17,8 +18,23 @@ pub(crate) const TELEGRAM_FEED_RENDER_LIMIT: usize = 100;
 pub(crate) const TELEGRAM_FEED_MAX_CHANNELS: usize = 12;
 pub(crate) const TELEGRAM_FEED_REFRESH_INTERVAL_SECS: u64 = 15;
 pub(crate) const TELEGRAM_NEW_MESSAGE_COOLDOWN_MS: u64 = 120_000;
+const TELEGRAM_STRONG_TICKER_WORDS: &[&str] = &[
+    "A", "AI", "AM", "AN", "AND", "ARE", "AS", "AT", "BE", "BY", "CEO", "CFO", "CTO", "DO", "FOR",
+    "GO", "HAS", "HE", "IN", "IS", "IT", "ME", "NEW", "NO", "NOT", "OF", "ON", "OR", "SEC", "SHE",
+    "THE", "TO", "UP", "US", "USD", "USDC", "USDT", "WE", "YES",
+];
+const TELEGRAM_OIL_TRIGGER_WORDS: &[&str] = &["OIL", "IRAN", "IRANIAN", "HORMUZ"];
+const TELEGRAM_XYZ_OIL_SYMBOL_KEYS: &[&str] = &["xyz:BRENTOIL", "xyz:WTIOIL"];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TelegramTickerMention {
+    pub(crate) symbol: String,
+    pub(crate) ticker: String,
+    pub(crate) reference_price: Option<f64>,
+    pub(crate) reference_seen_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TelegramFeedPost {
     pub(crate) channel: String,
     pub(crate) message_id: u64,
@@ -29,6 +45,7 @@ pub(crate) struct TelegramFeedPost {
     pub(crate) request_duration_ms: u64,
     pub(crate) first_seen_ms: u64,
     pub(crate) url: String,
+    pub(crate) ticker_mentions: Vec<TelegramTickerMention>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,10 +60,42 @@ pub(crate) struct TelegramChannelProfile {
     pub(crate) avatar_failed_at_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TelegramFeedPage {
     pub(crate) profile: TelegramChannelProfile,
     pub(crate) posts: Vec<TelegramFeedPost>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TelegramFastAuthStage {
+    Idle,
+    CodeRequested,
+    PasswordRequired,
+    SignedIn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TelegramFastAuthOutcome {
+    CodeSent,
+    PasswordRequired { hint: Option<String> },
+    SignedIn { display_name: String },
+    SignedOut,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum TelegramFastFeedEvent {
+    Status {
+        connected: bool,
+        auth_required: bool,
+        message: String,
+    },
+    Loaded(String, Box<Result<TelegramFeedPage, String>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TelegramTickerMatch {
+    pub(crate) symbol: String,
+    pub(crate) ticker: String,
 }
 
 impl TelegramFeedPost {
@@ -67,6 +116,20 @@ impl TelegramFeedPost {
 pub(crate) struct TelegramFeedState {
     pub(crate) channels: Vec<String>,
     pub(crate) notifications_enabled: bool,
+    pub(crate) fast_mode_enabled: bool,
+    pub(crate) fast_api_id: Option<i32>,
+    pub(crate) fast_api_id_input: String,
+    pub(crate) fast_api_hash_input: Zeroizing<String>,
+    pub(crate) fast_phone_input: String,
+    pub(crate) fast_code_input: Zeroizing<String>,
+    pub(crate) fast_password_input: Zeroizing<String>,
+    pub(crate) fast_auth_stage: TelegramFastAuthStage,
+    pub(crate) fast_auth_in_flight: bool,
+    pub(crate) fast_connected: bool,
+    pub(crate) fast_status: Option<(String, bool)>,
+    pub(crate) fast_password_hint: Option<String>,
+    pub(crate) fast_reconnect_nonce: u64,
+    pub(crate) channels_expanded: bool,
     pub(crate) channel_input: String,
     pub(crate) channel_profiles: HashMap<String, TelegramChannelProfile>,
     pub(crate) posts: Vec<TelegramFeedPost>,
@@ -78,10 +141,31 @@ pub(crate) struct TelegramFeedState {
 }
 
 impl TelegramFeedState {
-    pub(crate) fn new(channels: &[String], notifications_enabled: bool) -> Self {
+    pub(crate) fn new(
+        channels: &[String],
+        notifications_enabled: bool,
+        fast_mode_enabled: bool,
+        fast_api_id: Option<i32>,
+    ) -> Self {
         Self {
             channels: normalized_channel_list(channels),
             notifications_enabled,
+            fast_mode_enabled,
+            fast_api_id,
+            fast_api_id_input: fast_api_id
+                .map(|api_id| api_id.to_string())
+                .unwrap_or_default(),
+            fast_api_hash_input: Zeroizing::new(String::new()),
+            fast_phone_input: String::new(),
+            fast_code_input: Zeroizing::new(String::new()),
+            fast_password_input: Zeroizing::new(String::new()),
+            fast_auth_stage: TelegramFastAuthStage::Idle,
+            fast_auth_in_flight: false,
+            fast_connected: false,
+            fast_status: None,
+            fast_password_hint: None,
+            fast_reconnect_nonce: 0,
+            channels_expanded: false,
             channel_input: String::new(),
             channel_profiles: HashMap::new(),
             posts: Vec::new(),
@@ -322,6 +406,29 @@ pub(crate) fn parse_telegram_channel_profile(channel: &str, html: &str) -> Teleg
     }
 }
 
+pub(crate) fn telegram_channel_profile_from_title(
+    channel: &str,
+    title: Option<&str>,
+) -> TelegramChannelProfile {
+    let channel = normalize_public_channel_input(channel).unwrap_or_else(|_| channel.to_string());
+    let title = title
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("@{channel}"));
+
+    TelegramChannelProfile {
+        initials: channel_initials(&title, &channel),
+        channel,
+        title,
+        avatar_url: None,
+        avatar_handle: None,
+        avatar_loading_url: None,
+        avatar_request_id: 0,
+        avatar_failed_at_ms: None,
+    }
+}
+
 fn is_supported_raster_image(bytes: &[u8]) -> bool {
     bytes.starts_with(&[0xFF, 0xD8, 0xFF])
         || bytes.starts_with(b"\x89PNG\r\n\x1A\n")
@@ -391,6 +498,7 @@ fn parse_telegram_message_block(channel: &str, block: &str) -> Option<TelegramFe
         request_duration_ms: 0,
         first_seen_ms: 0,
         url: format!("https://t.me/{channel}/{message_id}"),
+        ticker_mentions: Vec::new(),
     })
 }
 
@@ -424,7 +532,11 @@ fn html_to_plain_text(html: &str) -> String {
     }
 
     let plain_text = decode_html_entities(&out);
-    strip_unsupported_telegram_emoji(&plain_text)
+    normalize_telegram_plain_text(&plain_text)
+}
+
+pub(crate) fn normalize_telegram_plain_text(input: &str) -> String {
+    strip_unsupported_telegram_emoji(input)
         .lines()
         .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
         .filter(|line| !line.is_empty())
@@ -556,12 +668,6 @@ pub(crate) fn telegram_age_countdown_label(sent_at_ms: u64, now_ms: u64) -> Stri
     )
 }
 
-pub(crate) fn telegram_exact_time_label(sent_at_ms: u64) -> String {
-    chrono::DateTime::<Utc>::from_timestamp_millis(sent_at_ms as i64)
-        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S%.3f UTC").to_string())
-        .unwrap_or_else(|| "Unknown time".to_string())
-}
-
 pub(crate) fn telegram_new_message_heat(first_seen_ms: u64, now_ms: u64) -> f32 {
     if first_seen_ms == 0 {
         return 0.0;
@@ -576,14 +682,211 @@ pub(crate) fn telegram_new_message_heat(first_seen_ms: u64, now_ms: u64) -> f32 
 }
 
 pub(crate) fn telegram_arrival_latency_label(post: &TelegramFeedPost) -> Option<String> {
-    if post.fetched_at_ms == 0 {
+    if post.fetched_at_ms == 0 || post.first_seen_ms == 0 {
         return None;
     }
 
     Some(format!(
-        "(+{})",
+        "seen +{}",
         telegram_duration_label(post.fetched_at_ms.saturating_sub(post.timestamp_ms))
     ))
+}
+
+pub(crate) fn telegram_ticker_matches(
+    text: &str,
+    symbols: &[ExchangeSymbol],
+) -> Vec<TelegramTickerMatch> {
+    if text.trim().is_empty() || symbols.is_empty() {
+        return Vec::new();
+    }
+
+    let uppercase_text = text.to_ascii_uppercase();
+    let mut matched = symbols
+        .iter()
+        .filter(|symbol| symbol.is_user_selectable_market())
+        .filter(|symbol| symbol.market_type != MarketType::Spot)
+        .filter_map(|symbol| {
+            let match_index = telegram_symbol_match_index(text, &uppercase_text, symbol)?;
+            let ticker = symbol.ticker.trim();
+            if ticker.is_empty() {
+                return None;
+            }
+            Some((
+                ticker.to_ascii_uppercase(),
+                market_type_rank(symbol.market_type),
+                match_index,
+                symbol.key.clone(),
+                TelegramTickerMatch {
+                    symbol: symbol.key.clone(),
+                    ticker: ticker.to_string(),
+                },
+            ))
+        })
+        .collect::<Vec<_>>();
+    if let Some(match_index) = telegram_oil_keyword_match_index(text, &uppercase_text) {
+        matched.extend(
+            TELEGRAM_XYZ_OIL_SYMBOL_KEYS
+                .iter()
+                .filter_map(|key| telegram_oil_symbol_match(symbols, key, match_index)),
+        );
+    }
+
+    matched.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.3.cmp(&right.3))
+    });
+    matched.dedup_by(|left, right| left.0 == right.0);
+    matched.sort_by(|left, right| {
+        left.2
+            .cmp(&right.2)
+            .then_with(|| left.4.ticker.cmp(&right.4.ticker))
+    });
+
+    matched
+        .into_iter()
+        .map(|(_, _, _, _, matched)| matched)
+        .collect()
+}
+
+fn telegram_oil_keyword_match_index(text: &str, uppercase_text: &str) -> Option<usize> {
+    TELEGRAM_OIL_TRIGGER_WORDS
+        .iter()
+        .filter_map(|candidate| telegram_candidate_match_index(text, uppercase_text, candidate))
+        .min()
+}
+
+fn telegram_oil_symbol_match(
+    symbols: &[ExchangeSymbol],
+    key: &str,
+    match_index: usize,
+) -> Option<(String, u8, usize, String, TelegramTickerMatch)> {
+    let symbol = symbols.iter().find(|symbol| symbol.key == key)?;
+    if !symbol.is_user_selectable_market() || symbol.market_type == MarketType::Spot {
+        return None;
+    }
+    let ticker = symbol.ticker.trim();
+    if ticker.is_empty() {
+        return None;
+    }
+
+    Some((
+        ticker.to_ascii_uppercase(),
+        market_type_rank(symbol.market_type),
+        match_index,
+        symbol.key.clone(),
+        TelegramTickerMatch {
+            symbol: symbol.key.clone(),
+            ticker: ticker.to_string(),
+        },
+    ))
+}
+
+pub(crate) fn telegram_price_impact_pct(
+    reference_price: Option<f64>,
+    current_price: Option<f64>,
+) -> Option<f64> {
+    let reference = reference_price.filter(|price| price.is_finite() && *price > 0.0)?;
+    let current = current_price.filter(|price| price.is_finite() && *price > 0.0)?;
+    Some(((current / reference) - 1.0) * 100.0)
+}
+
+fn telegram_symbol_match_index(
+    text: &str,
+    uppercase_text: &str,
+    symbol: &ExchangeSymbol,
+) -> Option<usize> {
+    telegram_symbol_match_candidates(symbol)
+        .into_iter()
+        .filter_map(|candidate| telegram_candidate_match_index(text, uppercase_text, &candidate))
+        .min()
+}
+
+fn telegram_symbol_match_candidates(symbol: &ExchangeSymbol) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    let mut push_candidate = |candidate: &str| {
+        let candidate = candidate.trim();
+        if candidate.is_empty() {
+            return;
+        }
+        let key = candidate.to_ascii_uppercase();
+        if seen.insert(key) {
+            candidates.push(candidate.to_string());
+        }
+    };
+
+    push_candidate(&symbol.ticker);
+    for split in ['/', '-'] {
+        if let Some((base, _)) = symbol.ticker.split_once(split) {
+            push_candidate(base);
+        }
+    }
+
+    if let Some((_, suffix)) = symbol.key.split_once(':') {
+        push_candidate(suffix);
+        if let Some(stripped) = suffix.strip_prefix('U') {
+            push_candidate(stripped);
+        }
+    } else if !symbol.key.starts_with('@') {
+        push_candidate(&symbol.key);
+    }
+
+    candidates
+}
+
+fn telegram_candidate_match_index(
+    text: &str,
+    uppercase_text: &str,
+    candidate: &str,
+) -> Option<usize> {
+    let candidate_upper = candidate.to_ascii_uppercase();
+    let requires_strong_match = telegram_ticker_requires_strong_match(&candidate_upper);
+    for (index, _) in uppercase_text.match_indices(&candidate_upper) {
+        let end = index + candidate_upper.len();
+        let before = text[..index].chars().next_back();
+        let after = text[end..].chars().next();
+        if !telegram_ticker_boundary(before) || !telegram_ticker_boundary(after) {
+            continue;
+        }
+
+        let prefixed = before == Some('$') || before == Some('#');
+        let original = &text[index..end];
+        if requires_strong_match && !prefixed && !telegram_original_match_is_strong(original) {
+            continue;
+        }
+
+        return Some(index);
+    }
+    None
+}
+
+fn telegram_ticker_requires_strong_match(candidate: &str) -> bool {
+    let alphanumeric_len = candidate
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .count();
+    alphanumeric_len <= 2 || TELEGRAM_STRONG_TICKER_WORDS.contains(&candidate)
+}
+
+fn telegram_original_match_is_strong(original: &str) -> bool {
+    original.chars().any(|ch| ch.is_ascii_alphabetic())
+        && original
+            .chars()
+            .all(|ch| !ch.is_ascii_alphabetic() || ch.is_ascii_uppercase())
+}
+
+fn telegram_ticker_boundary(ch: Option<char>) -> bool {
+    ch.is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '_')
+}
+
+fn market_type_rank(market_type: MarketType) -> u8 {
+    match market_type {
+        MarketType::Perp => 0,
+        MarketType::Spot => 1,
+        MarketType::Outcome => 2,
+    }
 }
 
 fn telegram_duration_label(duration_ms: u64) -> String {
@@ -636,6 +939,23 @@ fn system_time_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: ticker.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 2,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type,
+            outcome: None,
+        }
+    }
 
     const SAMPLE_HTML: &str = r#"
 <div class="tgme_channel_info">
@@ -768,19 +1088,6 @@ mod tests {
     }
 
     #[test]
-    fn exact_time_label_includes_milliseconds() {
-        let timestamp = DateTime::parse_from_rfc3339("2026-05-31T18:00:00.123+00:00")
-            .unwrap()
-            .with_timezone(&Utc)
-            .timestamp_millis() as u64;
-
-        assert_eq!(
-            telegram_exact_time_label(timestamp),
-            "2026-05-31 18:00:00.123 UTC"
-        );
-    }
-
-    #[test]
     fn arrival_latency_label_uses_fetched_at_minus_sent_at() {
         let post = TelegramFeedPost {
             channel: "marketfeed".to_string(),
@@ -792,9 +1099,169 @@ mod tests {
             request_duration_ms: 150,
             first_seen_ms: 1_250,
             url: "https://t.me/marketfeed/1".to_string(),
+            ticker_mentions: Vec::new(),
         };
 
-        assert_eq!(telegram_arrival_latency_label(&post).unwrap(), "(+250 ms)");
+        assert_eq!(
+            telegram_arrival_latency_label(&post).unwrap(),
+            "seen +250 ms"
+        );
+    }
+
+    #[test]
+    fn arrival_latency_label_hides_historical_fetches() {
+        let post = TelegramFeedPost {
+            channel: "marketfeed".to_string(),
+            message_id: 1,
+            text: "old".to_string(),
+            timestamp_ms: 1_000,
+            fetched_at_ms: 9_000,
+            request_started_ms: 8_850,
+            request_duration_ms: 150,
+            first_seen_ms: 0,
+            url: "https://t.me/marketfeed/1".to_string(),
+            ticker_mentions: Vec::new(),
+        };
+
+        assert_eq!(telegram_arrival_latency_label(&post), None);
+    }
+
+    #[test]
+    fn ticker_matches_find_bare_and_cashtag_mentions() {
+        let symbols = vec![
+            symbol("BTC", "BTC", MarketType::Perp),
+            symbol("ETH", "ETH", MarketType::Perp),
+            symbol("xyz:NVDA", "NVDA", MarketType::Perp),
+        ];
+
+        let matches = telegram_ticker_matches("BTC bounced while $eth and NVDA lagged", &symbols);
+
+        assert_eq!(
+            matches,
+            vec![
+                TelegramTickerMatch {
+                    symbol: "BTC".to_string(),
+                    ticker: "BTC".to_string(),
+                },
+                TelegramTickerMatch {
+                    symbol: "ETH".to_string(),
+                    ticker: "ETH".to_string(),
+                },
+                TelegramTickerMatch {
+                    symbol: "xyz:NVDA".to_string(),
+                    ticker: "NVDA".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn ticker_matches_avoid_substrings_and_weak_short_words() {
+        let symbols = vec![
+            symbol("BTC", "BTC", MarketType::Perp),
+            symbol("IN", "IN", MarketType::Perp),
+            symbol("ME", "ME", MarketType::Perp),
+        ];
+
+        let matches = telegram_ticker_matches("bitcoin is in motion; $me too, BTC.", &symbols);
+
+        assert_eq!(
+            matches,
+            vec![
+                TelegramTickerMatch {
+                    symbol: "ME".to_string(),
+                    ticker: "ME".to_string(),
+                },
+                TelegramTickerMatch {
+                    symbol: "BTC".to_string(),
+                    ticker: "BTC".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn ticker_matches_prefer_perp_when_tickers_overlap() {
+        let symbols = vec![
+            symbol("@107", "HYPE", MarketType::Spot),
+            symbol("HYPE", "HYPE", MarketType::Perp),
+        ];
+
+        let matches = telegram_ticker_matches("HYPE headline", &symbols);
+
+        assert_eq!(
+            matches,
+            vec![TelegramTickerMatch {
+                symbol: "HYPE".to_string(),
+                ticker: "HYPE".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn ticker_matches_skip_spot_only_symbols() {
+        let symbols = vec![symbol("@1", "PURR", MarketType::Spot)];
+
+        let matches = telegram_ticker_matches("PURR headline", &symbols);
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn ticker_matches_oil_keyword_adds_xyz_oil_contracts() {
+        let symbols = vec![
+            symbol("xyz:BRENTOIL", "BRENTOIL", MarketType::Perp),
+            symbol("xyz:WTIOIL", "WTIOIL", MarketType::Perp),
+            symbol("flx:BRENTOIL", "BRENTOIL", MarketType::Perp),
+        ];
+
+        let matches = telegram_ticker_matches("Crude oil headlines", &symbols);
+
+        assert_eq!(
+            matches,
+            vec![
+                TelegramTickerMatch {
+                    symbol: "xyz:BRENTOIL".to_string(),
+                    ticker: "BRENTOIL".to_string(),
+                },
+                TelegramTickerMatch {
+                    symbol: "xyz:WTIOIL".to_string(),
+                    ticker: "WTIOIL".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn ticker_matches_iran_and_hormuz_add_xyz_oil_contracts() {
+        let symbols = vec![
+            symbol("xyz:BRENTOIL", "BRENTOIL", MarketType::Perp),
+            symbol("xyz:WTIOIL", "WTIOIL", MarketType::Perp),
+        ];
+
+        let iran_matches = telegram_ticker_matches("Iranian export risk rises", &symbols);
+        let hormuz_matches = telegram_ticker_matches("Hormuz traffic disrupted", &symbols);
+
+        assert_eq!(iran_matches.len(), 2);
+        assert_eq!(hormuz_matches.len(), 2);
+        assert!(
+            iran_matches
+                .iter()
+                .all(|matched| matched.symbol.starts_with("xyz:"))
+        );
+        assert!(
+            hormuz_matches
+                .iter()
+                .all(|matched| matched.symbol.starts_with("xyz:"))
+        );
+    }
+
+    #[test]
+    fn price_impact_pct_uses_reference_price() {
+        let impact = telegram_price_impact_pct(Some(100.0), Some(101.5)).unwrap();
+        assert!((impact - 1.5).abs() < 1e-9);
+        assert_eq!(telegram_price_impact_pct(Some(0.0), Some(101.5)), None);
+        assert_eq!(telegram_price_impact_pct(Some(100.0), None), None);
     }
 
     #[test]

@@ -91,6 +91,7 @@ impl TradingTerminal {
         match result {
             Ok(symbols) => {
                 self.exchange_symbols = symbols;
+                self.refresh_telegram_ticker_mentions();
                 let mut market_universe_changed = false;
                 let normalized_universe =
                     self.normalize_market_universe_selection(self.market_universe.clone());

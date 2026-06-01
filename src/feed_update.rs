@@ -24,9 +24,22 @@ impl TradingTerminal {
             | Message::TelegramFeedRefreshTick
             | Message::TelegramFeedLoaded(_, _)
             | Message::TelegramAvatarLoaded(_, _, _, _)
+            | Message::ToggleTelegramFastFeed
+            | Message::TelegramFastApiIdChanged(_)
+            | Message::TelegramFastApiHashChanged(_)
+            | Message::TelegramFastPhoneChanged(_)
+            | Message::TelegramFastCodeChanged(_)
+            | Message::TelegramFastPasswordChanged(_)
+            | Message::TelegramFastRequestCode
+            | Message::TelegramFastSubmitCode
+            | Message::TelegramFastSubmitPassword
+            | Message::TelegramFastSignOut
+            | Message::TelegramFastAuthResult(_)
+            | Message::TelegramFastFeedEvent(_)
             | Message::TelegramFeedChannelInputChanged(_)
             | Message::TelegramFeedAddChannel
             | Message::TelegramFeedRemoveChannel(_)
+            | Message::ToggleTelegramFeedChannelsExpanded
             | Message::ToggleTelegramFeedNotifications) => {
                 return self.update_telegram_feed(message);
             }

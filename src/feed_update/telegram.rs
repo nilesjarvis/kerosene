@@ -1,12 +1,19 @@
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::telegram_fast_feed::{
+    bundled_telegram_api_hash, bundled_telegram_api_id, request_telegram_fast_login_code,
+    sign_out_telegram_fast, submit_telegram_fast_login_code, submit_telegram_fast_password,
+};
 use crate::telegram_feed::{
-    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_CHANNELS, TelegramFeedPage,
-    TelegramFeedPost, fetch_telegram_avatar_bytes, fetch_telegram_channel_posts,
-    normalize_public_channel_input,
+    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_CHANNELS, TelegramFastAuthOutcome,
+    TelegramFastAuthStage, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
+    TelegramTickerMention, fetch_telegram_avatar_bytes, fetch_telegram_channel_posts,
+    normalize_public_channel_input, telegram_ticker_matches,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
+use zeroize::Zeroize;
 
 impl TradingTerminal {
     pub(crate) fn update_telegram_feed(&mut self, message: Message) -> Task<Message> {
@@ -20,6 +27,38 @@ impl TradingTerminal {
                 self.handle_telegram_avatar_loaded(channel, avatar_url, request_id, *result);
                 Task::none()
             }
+            Message::ToggleTelegramFastFeed => self.toggle_telegram_fast_feed(),
+            Message::TelegramFastApiIdChanged(input) => {
+                self.telegram_feed.fast_api_id_input = input;
+                Task::none()
+            }
+            Message::TelegramFastApiHashChanged(input) => {
+                self.telegram_feed.fast_api_hash_input.zeroize();
+                self.telegram_feed.fast_api_hash_input = input.into();
+                Task::none()
+            }
+            Message::TelegramFastPhoneChanged(input) => {
+                self.telegram_feed.fast_phone_input = input;
+                Task::none()
+            }
+            Message::TelegramFastCodeChanged(input) => {
+                self.telegram_feed.fast_code_input.zeroize();
+                self.telegram_feed.fast_code_input = input.into();
+                Task::none()
+            }
+            Message::TelegramFastPasswordChanged(input) => {
+                self.telegram_feed.fast_password_input.zeroize();
+                self.telegram_feed.fast_password_input = input.into();
+                Task::none()
+            }
+            Message::TelegramFastRequestCode => self.request_telegram_fast_code(),
+            Message::TelegramFastSubmitCode => self.submit_telegram_fast_code(),
+            Message::TelegramFastSubmitPassword => self.submit_telegram_fast_2fa_password(),
+            Message::TelegramFastSignOut => self.sign_out_telegram_fast_feed(),
+            Message::TelegramFastAuthResult(result) => {
+                self.handle_telegram_fast_auth_result(*result)
+            }
+            Message::TelegramFastFeedEvent(event) => self.handle_telegram_fast_feed_event(event),
             Message::TelegramFeedChannelInputChanged(input) => {
                 self.telegram_feed.channel_input = input;
                 Task::none()
@@ -27,6 +66,10 @@ impl TradingTerminal {
             Message::TelegramFeedAddChannel => self.add_telegram_feed_channel(),
             Message::TelegramFeedRemoveChannel(channel) => {
                 self.remove_telegram_feed_channel(&channel);
+                Task::none()
+            }
+            Message::ToggleTelegramFeedChannelsExpanded => {
+                self.telegram_feed.channels_expanded = !self.telegram_feed.channels_expanded;
                 Task::none()
             }
             Message::ToggleTelegramFeedNotifications => {
@@ -131,6 +174,206 @@ impl TradingTerminal {
         )
     }
 
+    fn toggle_telegram_fast_feed(&mut self) -> Task<Message> {
+        self.telegram_feed.fast_mode_enabled = !self.telegram_feed.fast_mode_enabled;
+        self.telegram_feed.fast_connected = false;
+        self.telegram_feed.fast_reconnect_nonce =
+            self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+        if self.telegram_feed.fast_mode_enabled {
+            let has_api_id = self.telegram_fast_api_id().is_some();
+            self.telegram_feed.fast_status = Some((
+                if has_api_id {
+                    "Fast mode enabled; checking Telegram session".to_string()
+                } else {
+                    "Fast mode enabled; enter Telegram API credentials".to_string()
+                },
+                false,
+            ));
+        } else {
+            self.telegram_feed.fast_status = Some(("Fast mode disabled".to_string(), false));
+            self.telegram_feed.fast_auth_in_flight = false;
+            self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
+        }
+        self.persist_config();
+        Task::none()
+    }
+
+    fn telegram_fast_api_id(&mut self) -> Option<i32> {
+        let input = self.telegram_feed.fast_api_id_input.trim();
+        if input.is_empty() {
+            if let Some(api_id) = self.telegram_feed.fast_api_id {
+                return Some(api_id);
+            }
+            if let Some(api_id) = bundled_telegram_api_id() {
+                self.telegram_feed.fast_api_id = Some(api_id);
+                self.telegram_feed.fast_api_id_input = api_id.to_string();
+                self.persist_config();
+                return Some(api_id);
+            }
+            self.telegram_feed.fast_status = Some(("Enter a Telegram API ID".to_string(), true));
+            return None;
+        }
+
+        match input.parse::<i32>() {
+            Ok(api_id) if api_id > 0 => {
+                self.telegram_feed.fast_api_id = Some(api_id);
+                self.telegram_feed.fast_api_id_input = api_id.to_string();
+                self.persist_config();
+                Some(api_id)
+            }
+            _ => {
+                self.telegram_feed.fast_status = Some((
+                    "Telegram API ID must be a positive number".to_string(),
+                    true,
+                ));
+                None
+            }
+        }
+    }
+
+    fn request_telegram_fast_code(&mut self) -> Task<Message> {
+        if self.telegram_feed.fast_connected
+            || matches!(
+                self.telegram_feed.fast_auth_stage,
+                TelegramFastAuthStage::SignedIn
+            )
+        {
+            self.telegram_feed.fast_status =
+                Some(("Fast mode is already signed in".to_string(), false));
+            return Task::none();
+        }
+
+        let Some(api_id) = self.telegram_fast_api_id() else {
+            return Task::none();
+        };
+        let api_hash = self.telegram_feed.fast_api_hash_input.trim().to_string();
+        let api_hash = if api_hash.is_empty() {
+            bundled_telegram_api_hash().unwrap_or_default().to_string()
+        } else {
+            api_hash
+        };
+        let phone = self.telegram_feed.fast_phone_input.trim().to_string();
+        self.telegram_feed.fast_auth_in_flight = true;
+        self.telegram_feed.fast_status =
+            Some(("Requesting Telegram login code".to_string(), false));
+
+        Task::perform(
+            request_telegram_fast_login_code(api_id, api_hash, phone),
+            |result| Message::TelegramFastAuthResult(Box::new(result)),
+        )
+    }
+
+    fn submit_telegram_fast_code(&mut self) -> Task<Message> {
+        let Some(api_id) = self.telegram_fast_api_id() else {
+            return Task::none();
+        };
+        let code = self.telegram_feed.fast_code_input.trim().to_string();
+        self.telegram_feed.fast_auth_in_flight = true;
+        self.telegram_feed.fast_status = Some(("Signing in to Telegram".to_string(), false));
+
+        Task::perform(submit_telegram_fast_login_code(api_id, code), |result| {
+            Message::TelegramFastAuthResult(Box::new(result))
+        })
+    }
+
+    fn submit_telegram_fast_2fa_password(&mut self) -> Task<Message> {
+        let Some(api_id) = self.telegram_fast_api_id() else {
+            return Task::none();
+        };
+        let password = self.telegram_feed.fast_password_input.trim().to_string();
+        self.telegram_feed.fast_auth_in_flight = true;
+        self.telegram_feed.fast_status =
+            Some(("Checking Telegram 2FA password".to_string(), false));
+
+        Task::perform(submit_telegram_fast_password(api_id, password), |result| {
+            Message::TelegramFastAuthResult(Box::new(result))
+        })
+    }
+
+    fn sign_out_telegram_fast_feed(&mut self) -> Task<Message> {
+        let Some(api_id) = self.telegram_fast_api_id() else {
+            return Task::none();
+        };
+        self.telegram_feed.fast_auth_in_flight = true;
+        self.telegram_feed.fast_status = Some(("Signing out of Telegram".to_string(), false));
+
+        Task::perform(sign_out_telegram_fast(api_id), |result| {
+            Message::TelegramFastAuthResult(Box::new(result))
+        })
+    }
+
+    fn handle_telegram_fast_auth_result(
+        &mut self,
+        result: Result<TelegramFastAuthOutcome, String>,
+    ) -> Task<Message> {
+        self.telegram_feed.fast_auth_in_flight = false;
+        match result {
+            Ok(TelegramFastAuthOutcome::CodeSent) => {
+                self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+                self.telegram_feed.fast_status = Some(("Telegram code sent".to_string(), false));
+            }
+            Ok(TelegramFastAuthOutcome::PasswordRequired { hint }) => {
+                self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::PasswordRequired;
+                self.telegram_feed.fast_password_hint = hint.clone();
+                self.telegram_feed.fast_status = Some((
+                    hint.map(|hint| format!("Telegram 2FA password required; hint: {hint}"))
+                        .unwrap_or_else(|| "Telegram 2FA password required".to_string()),
+                    false,
+                ));
+            }
+            Ok(TelegramFastAuthOutcome::SignedIn { display_name }) => {
+                self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
+                self.telegram_feed.fast_connected = true;
+                self.telegram_feed.fast_code_input.zeroize();
+                self.telegram_feed.fast_password_input.zeroize();
+                self.telegram_feed.fast_api_hash_input.zeroize();
+                self.telegram_feed.fast_phone_input.clear();
+                self.telegram_feed.fast_password_hint = None;
+                self.telegram_feed.fast_reconnect_nonce =
+                    self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+                self.telegram_feed.fast_status =
+                    Some((format!("Fast mode signed in as {display_name}"), false));
+            }
+            Ok(TelegramFastAuthOutcome::SignedOut) => {
+                self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
+                self.telegram_feed.fast_connected = false;
+                self.telegram_feed.fast_code_input.zeroize();
+                self.telegram_feed.fast_password_input.zeroize();
+                self.telegram_feed.fast_phone_input.clear();
+                self.telegram_feed.fast_reconnect_nonce =
+                    self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+                self.telegram_feed.fast_status =
+                    Some(("Telegram fast session signed out".to_string(), false));
+            }
+            Err(err) => {
+                self.telegram_feed.fast_status = Some((err, true));
+            }
+        }
+        Task::none()
+    }
+
+    fn handle_telegram_fast_feed_event(&mut self, event: TelegramFastFeedEvent) -> Task<Message> {
+        match event {
+            TelegramFastFeedEvent::Status {
+                connected,
+                auth_required,
+                message,
+            } => {
+                self.telegram_feed.fast_connected = connected;
+                if connected {
+                    self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
+                } else if auth_required {
+                    self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
+                }
+                self.telegram_feed.fast_status = Some((message, auth_required));
+                Task::none()
+            }
+            TelegramFastFeedEvent::Loaded(channel, result) => {
+                self.handle_telegram_feed_loaded(channel, *result)
+            }
+        }
+    }
+
     fn handle_telegram_feed_loaded(
         &mut self,
         channel: String,
@@ -169,17 +412,32 @@ impl TradingTerminal {
                     .any(|post| post.channel == channel);
                 let mut new_posts = Vec::new();
                 for mut post in page.posts {
-                    if let Some(existing_post) =
-                        self.telegram_feed.posts.iter_mut().find(|existing| {
+                    if let Some(existing_index) =
+                        self.telegram_feed.posts.iter().position(|existing| {
                             existing.channel == channel && existing.message_id == post.message_id
                         })
                     {
+                        let previous_mentions = self.telegram_feed.posts[existing_index]
+                            .ticker_mentions
+                            .clone();
+                        let mentions = self.telegram_ticker_mentions_for_text(
+                            &post.text,
+                            now_ms,
+                            &previous_mentions,
+                        );
+                        let existing_post = &mut self.telegram_feed.posts[existing_index];
                         existing_post.text = post.text;
                         existing_post.timestamp_ms = post.timestamp_ms;
                         existing_post.url = post.url;
+                        existing_post.ticker_mentions = mentions;
                     } else {
                         if had_existing_posts {
                             post.first_seen_ms = now_ms;
+                        }
+                        let mentions =
+                            self.telegram_ticker_mentions_for_text(&post.text, now_ms, &[]);
+                        post.ticker_mentions = mentions;
+                        if had_existing_posts {
                             new_posts.push(post.clone());
                         }
                         self.telegram_feed.posts.push(post);
@@ -213,11 +471,91 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn refresh_telegram_ticker_mentions(&mut self) {
+        if self.telegram_feed.posts.is_empty() {
+            return;
+        }
+
+        let now_ms = Self::now_ms();
+        let mut posts = std::mem::take(&mut self.telegram_feed.posts);
+        for post in &mut posts {
+            let previous_mentions = post.ticker_mentions.clone();
+            post.ticker_mentions =
+                self.telegram_ticker_mentions_for_text(&post.text, now_ms, &previous_mentions);
+        }
+        self.telegram_feed.posts = posts;
+    }
+
+    pub(crate) fn fill_missing_telegram_ticker_reference_prices(&mut self, now_ms: u64) {
+        if self.telegram_feed.posts.is_empty() {
+            return;
+        }
+
+        let mut posts = std::mem::take(&mut self.telegram_feed.posts);
+        for post in &mut posts {
+            for mention in &mut post.ticker_mentions {
+                if mention.reference_price.is_none() {
+                    mention.reference_price = self.resolve_mid_for_symbol(&mention.symbol);
+                    if mention.reference_price.is_some() {
+                        mention.reference_seen_ms = now_ms;
+                    }
+                }
+            }
+        }
+        self.telegram_feed.posts = posts;
+    }
+
+    fn telegram_ticker_mentions_for_text(
+        &self,
+        text: &str,
+        reference_seen_ms: u64,
+        previous_mentions: &[TelegramTickerMention],
+    ) -> Vec<TelegramTickerMention> {
+        telegram_ticker_matches(text, &self.exchange_symbols)
+            .into_iter()
+            .filter(|matched| {
+                self.resolve_exchange_symbol_by_key_or_ticker(&matched.symbol)
+                    .is_some_and(|symbol| {
+                        symbol.market_type != MarketType::Spot
+                            && self.exchange_symbol_is_orderable(symbol)
+                    })
+            })
+            .map(|matched| {
+                if let Some(previous) = previous_mentions
+                    .iter()
+                    .find(|mention| mention.symbol == matched.symbol)
+                {
+                    let mut mention = previous.clone();
+                    mention.ticker = matched.ticker;
+                    if mention.reference_price.is_none() {
+                        mention.reference_price = self.resolve_mid_for_symbol(&matched.symbol);
+                        if mention.reference_price.is_some() {
+                            mention.reference_seen_ms = reference_seen_ms;
+                        }
+                    }
+                    mention
+                } else {
+                    TelegramTickerMention {
+                        reference_price: self.resolve_mid_for_symbol(&matched.symbol),
+                        reference_seen_ms,
+                        symbol: matched.symbol,
+                        ticker: matched.ticker,
+                    }
+                }
+            })
+            .collect()
+    }
+
     fn store_telegram_channel_profile(
         &mut self,
         mut profile: crate::telegram_feed::TelegramChannelProfile,
     ) -> Task<Message> {
         let now_ms = Self::now_ms();
+        if let Some(existing) = self.telegram_feed.channel_profiles.get(&profile.channel)
+            && profile.avatar_url.is_none()
+        {
+            profile.avatar_url = existing.avatar_url.clone();
+        }
         let avatar_url = profile.avatar_url.clone();
         if let Some(existing) = self
             .telegram_feed
@@ -347,7 +685,25 @@ fn telegram_post_alert_message(post: &TelegramFeedPost) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::{ExchangeSymbol, MarketType};
     use crate::config::KeroseneConfig;
+
+    fn exchange_symbol(key: &str, ticker: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: ticker.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 2,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
 
     fn sample_post(channel: &str, message_id: u64) -> TelegramFeedPost {
         TelegramFeedPost {
@@ -360,6 +716,7 @@ mod tests {
             request_duration_ms: 50,
             first_seen_ms: 0,
             url: format!("https://t.me/{channel}/{message_id}"),
+            ticker_mentions: Vec::new(),
         }
     }
 
@@ -438,6 +795,71 @@ mod tests {
     }
 
     #[test]
+    fn fast_feed_toggle_is_persisted_without_disabling_public_channels() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFastFeed);
+
+        assert!(terminal.telegram_feed.fast_mode_enabled);
+        assert_eq!(terminal.telegram_feed.channels, vec!["marketfeed"]);
+    }
+
+    #[test]
+    fn fast_feed_signed_in_result_clears_login_inputs_and_reconnects() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_api_hash_input = "hash".to_string().into();
+        terminal.telegram_feed.fast_phone_input = "+15555550123".to_string();
+        terminal.telegram_feed.fast_code_input = "12345".to_string().into();
+        terminal.telegram_feed.fast_password_input = "password".to_string().into();
+        let nonce = terminal.telegram_feed.fast_reconnect_nonce;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(Box::new(Ok(
+            TelegramFastAuthOutcome::SignedIn {
+                display_name: "Alice".to_string(),
+            },
+        ))));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::SignedIn
+        );
+        assert!(terminal.telegram_feed.fast_connected);
+        assert!(terminal.telegram_feed.fast_api_hash_input.is_empty());
+        assert!(terminal.telegram_feed.fast_phone_input.is_empty());
+        assert!(terminal.telegram_feed.fast_code_input.is_empty());
+        assert!(terminal.telegram_feed.fast_password_input.is_empty());
+        assert_eq!(
+            terminal.telegram_feed.fast_reconnect_nonce,
+            nonce.saturating_add(1)
+        );
+    }
+
+    #[test]
+    fn fast_feed_request_code_is_ignored_when_signed_in() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_connected = true;
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastRequestCode);
+
+        assert!(!terminal.telegram_feed.fast_auth_in_flight);
+        assert_eq!(
+            terminal.telegram_feed.fast_status,
+            Some(("Fast mode is already signed in".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn telegram_channel_list_expansion_is_runtime_only() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFeedChannelsExpanded);
+
+        assert!(terminal.telegram_feed.channels_expanded);
+    }
+
+    #[test]
     fn refreshing_existing_post_preserves_row_timing() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
@@ -463,6 +885,105 @@ mod tests {
         assert_eq!(post.text, "edited");
         assert_eq!(post.fetched_at_ms, 1_100);
         assert_eq!(post.request_duration_ms, 50);
+    }
+
+    #[test]
+    fn loaded_posts_capture_ticker_mentions_with_reference_price() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.exchange_symbols = vec![exchange_symbol("BTC", "BTC")];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut post = sample_post("marketfeed", 1);
+        post.text = "BTC is moving".to_string();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
+            "marketfeed".to_string(),
+            Box::new(Ok(sample_page("marketfeed", vec![post]))),
+        ));
+
+        let mentions = &terminal.telegram_feed.posts[0].ticker_mentions;
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].symbol, "BTC");
+        assert_eq!(mentions[0].ticker, "BTC");
+        assert_eq!(mentions[0].reference_price, Some(100.0));
+    }
+
+    #[test]
+    fn refreshing_existing_post_preserves_ticker_reference_price() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.exchange_symbols = vec![exchange_symbol("BTC", "BTC")];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut initial = sample_post("marketfeed", 1);
+        initial.text = "BTC is moving".to_string();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
+            "marketfeed".to_string(),
+            Box::new(Ok(sample_page("marketfeed", vec![initial]))),
+        ));
+        terminal.all_mids.insert("BTC".to_string(), 105.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut refreshed = sample_post("marketfeed", 1);
+        refreshed.text = "edited BTC".to_string();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
+            "marketfeed".to_string(),
+            Box::new(Ok(sample_page("marketfeed", vec![refreshed]))),
+        ));
+
+        let mentions = &terminal.telegram_feed.posts[0].ticker_mentions;
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].reference_price, Some(100.0));
+    }
+
+    #[test]
+    fn fast_profile_update_without_avatar_keeps_cached_avatar() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channel_profiles.insert(
+            "marketfeed".to_string(),
+            crate::telegram_feed::TelegramChannelProfile {
+                channel: "marketfeed".to_string(),
+                title: "@marketfeed".to_string(),
+                initials: "MA".to_string(),
+                avatar_url: Some("https://example.com/avatar.jpg".to_string()),
+                avatar_handle: Some(ImageHandle::from_bytes(vec![0x89, b'P', b'N', b'G'])),
+                avatar_loading_url: None,
+                avatar_request_id: 42,
+                avatar_failed_at_ms: None,
+            },
+        );
+
+        let _task =
+            terminal.store_telegram_channel_profile(crate::telegram_feed::TelegramChannelProfile {
+                channel: "marketfeed".to_string(),
+                title: "Market Feed".to_string(),
+                initials: "MF".to_string(),
+                avatar_url: None,
+                avatar_handle: None,
+                avatar_loading_url: None,
+                avatar_request_id: 0,
+                avatar_failed_at_ms: None,
+            });
+
+        let profile = terminal
+            .telegram_feed
+            .channel_profiles
+            .get("marketfeed")
+            .expect("profile should remain cached");
+        assert_eq!(
+            profile.avatar_url.as_deref(),
+            Some("https://example.com/avatar.jpg")
+        );
+        assert!(profile.avatar_handle.is_some());
+        assert_eq!(profile.title, "Market Feed");
     }
 
     #[test]

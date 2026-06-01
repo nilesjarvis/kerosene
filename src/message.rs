@@ -35,7 +35,7 @@ use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
 use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
-use crate::telegram_feed::TelegramFeedPage;
+use crate::telegram_feed::{TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage};
 use crate::timeframe::Timeframe;
 use crate::ws::WsUserData;
 use iced::widget::pane_grid;
@@ -337,9 +337,22 @@ pub(crate) enum Message {
     TelegramFeedRefreshTick,
     TelegramFeedLoaded(String, Box<Result<TelegramFeedPage, String>>),
     TelegramAvatarLoaded(String, String, u64, Box<Result<Vec<u8>, String>>),
+    ToggleTelegramFastFeed,
+    TelegramFastApiIdChanged(String),
+    TelegramFastApiHashChanged(String),
+    TelegramFastPhoneChanged(String),
+    TelegramFastCodeChanged(String),
+    TelegramFastPasswordChanged(String),
+    TelegramFastRequestCode,
+    TelegramFastSubmitCode,
+    TelegramFastSubmitPassword,
+    TelegramFastSignOut,
+    TelegramFastAuthResult(Box<Result<TelegramFastAuthOutcome, String>>),
+    TelegramFastFeedEvent(TelegramFastFeedEvent),
     TelegramFeedChannelInputChanged(String),
     TelegramFeedAddChannel,
     TelegramFeedRemoveChannel(String),
+    ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),

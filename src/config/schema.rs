@@ -279,6 +279,12 @@ pub struct KeroseneConfig {
     pub liquidation_feed_aggregation_enabled: bool,
     #[serde(default)]
     pub telegram_feed_notifications_enabled: bool,
+    /// Optional Telegram MTProto fast-feed mode. Secret session material is stored separately.
+    #[serde(default)]
+    pub telegram_feed_fast_mode_enabled: bool,
+    /// Telegram developer API ID used by optional MTProto fast-feed mode.
+    #[serde(default)]
+    pub telegram_feed_fast_api_id: Option<i32>,
     /// Public Telegram channel usernames shown by the Telegram Feed widget.
     #[serde(default = "default_telegram_feed_channels")]
     pub telegram_feed_channels: Vec<String>,

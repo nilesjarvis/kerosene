@@ -4,6 +4,7 @@ use iced::{Subscription, window};
 
 mod hydromancer;
 mod market;
+mod telegram;
 mod timers;
 mod user_data;
 
@@ -13,6 +14,7 @@ impl TradingTerminal {
         self.push_market_subscriptions(&mut subs);
         self.push_user_data_subscriptions(&mut subs);
         self.push_hydromancer_subscriptions(&mut subs);
+        self.push_telegram_subscriptions(&mut subs);
         self.push_timer_subscriptions(&mut subs);
         Self::push_window_subscriptions(&mut subs);
         self.push_post_window_timer_subscriptions(&mut subs);

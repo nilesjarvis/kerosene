@@ -44,6 +44,7 @@ impl TradingTerminal {
             now_ms,
             is_hidden,
         );
+        self.fill_missing_telegram_ticker_reference_prices(now_ms);
         self.sync_chart_display_denominations();
         self.sync_chart_market_reference_prices();
         if matches!(self.order_kind, OrderKind::Limit | OrderKind::Chase)

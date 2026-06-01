@@ -328,6 +328,8 @@ impl TradingTerminal {
             telegram_feed: crate::telegram_feed::TelegramFeedState::new(
                 &cfg.telegram_feed_channels,
                 cfg.telegram_feed_notifications_enabled,
+                cfg.telegram_feed_fast_mode_enabled,
+                cfg.telegram_feed_fast_api_id,
             ),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg

@@ -39,6 +39,9 @@ tokio = { version = "1", features = ["time"] }
 futures = "0.3"
 arboard = "3"
 image = { version = "0.25", default-features = false, features = ["png"] }
+# Optional Telegram MTProto fast feed. Session storage is kept outside config.json.
+grammers-client = { version = "0.9", default-features = false }
+grammers-session = "0.9"
 # Signing / order placement
 k256 = { version = "0.13", features = ["ecdsa"] }
 sha3 = "0.10"
