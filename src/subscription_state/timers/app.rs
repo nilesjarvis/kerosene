@@ -111,7 +111,6 @@ impl TradingTerminal {
 
         if self.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed))
             && !self.telegram_feed.refreshing()
-            && !(self.telegram_feed.fast_mode_enabled && self.telegram_feed.fast_connected)
         {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(

@@ -18,6 +18,9 @@ pub(crate) const TELEGRAM_FEED_RENDER_LIMIT: usize = 100;
 pub(crate) const TELEGRAM_FEED_MAX_CHANNELS: usize = 12;
 pub(crate) const TELEGRAM_FEED_REFRESH_INTERVAL_SECS: u64 = 15;
 pub(crate) const TELEGRAM_NEW_MESSAGE_COOLDOWN_MS: u64 = 120_000;
+pub(crate) const TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS: u64 = 30;
+pub(crate) const TELEGRAM_FAST_STALE_AFTER_MS: u64 =
+    TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS * 3 * 1_000;
 const TELEGRAM_FEED_SEEN_ID_LIMIT_PER_CHANNEL: usize = 1024;
 const TELEGRAM_STRONG_TICKER_WORDS: &[&str] = &[
     "A", "AI", "AM", "AN", "AND", "ARE", "AS", "AT", "BE", "BY", "CEO", "CFO", "CTO", "DO", "FOR",
@@ -130,6 +133,7 @@ pub(crate) struct TelegramFeedState {
     pub(crate) fast_status: Option<(String, bool)>,
     pub(crate) fast_password_hint: Option<String>,
     pub(crate) fast_reconnect_nonce: u64,
+    pub(crate) fast_last_event_ms: Option<u64>,
     pub(crate) channels_expanded: bool,
     pub(crate) channel_input: String,
     pub(crate) channel_profiles: HashMap<String, TelegramChannelProfile>,
@@ -167,6 +171,7 @@ impl TelegramFeedState {
             fast_status: None,
             fast_password_hint: None,
             fast_reconnect_nonce: 0,
+            fast_last_event_ms: None,
             channels_expanded: false,
             channel_input: String::new(),
             channel_profiles: HashMap::new(),
@@ -223,6 +228,22 @@ impl TelegramFeedState {
 
     pub(crate) fn clear_seen_posts_for_channel(&mut self, channel: &str) {
         self.seen_post_ids.remove(channel);
+    }
+
+    pub(crate) fn record_fast_connection_event(&mut self, now_ms: u64) {
+        self.fast_last_event_ms = Some(now_ms);
+    }
+
+    pub(crate) fn clear_fast_connection_event(&mut self) {
+        self.fast_last_event_ms = None;
+    }
+
+    pub(crate) fn fast_connection_stale(&self, now_ms: u64) -> bool {
+        self.fast_last_event_ms
+            .map(|last_event_ms| {
+                now_ms.saturating_sub(last_event_ms) > TELEGRAM_FAST_STALE_AFTER_MS
+            })
+            .unwrap_or(true)
     }
 }
 

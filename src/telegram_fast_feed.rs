@@ -1,7 +1,8 @@
 use crate::telegram_feed::{
-    TELEGRAM_FEED_FETCH_LIMIT, TelegramChannelProfile, TelegramFastAuthOutcome,
-    TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost, normalize_public_channel_input,
-    normalize_telegram_plain_text, telegram_channel_profile_from_title,
+    TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS, TELEGRAM_FEED_FETCH_LIMIT, TelegramChannelProfile,
+    TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
+    normalize_public_channel_input, normalize_telegram_plain_text,
+    telegram_channel_profile_from_title,
 };
 use futures::{SinkExt as _, channel::mpsc};
 use grammers_client::client::{LoginToken, PasswordToken, UpdatesConfiguration};
@@ -14,10 +15,14 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
 const TELEGRAM_FAST_UPDATE_QUEUE_LIMIT: usize = 2_000;
+const TELEGRAM_FAST_RECONNECT_BASE_DELAY: Duration = Duration::from_secs(2);
+const TELEGRAM_FAST_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
+const TELEGRAM_FAST_HEALTH_CHECK_INTERVAL: Duration =
+    Duration::from_secs(TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS);
 type ChannelIdMap = Arc<RwLock<HashMap<PeerId, String>>>;
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
@@ -64,6 +69,12 @@ pub(crate) struct TelegramFastFeedStreamParams {
 enum PendingAuth {
     Login(LoginToken),
     Password(PasswordToken),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FastFeedSessionExit {
+    Retry,
+    Stop,
 }
 
 fn pending_auths() -> &'static Mutex<HashMap<PathBuf, PendingAuth>> {
@@ -239,149 +250,223 @@ pub(crate) fn telegram_fast_feed_stream(
 ) -> Pin<Box<dyn futures::Stream<Item = TelegramFastFeedEvent> + Send>> {
     let params = params.clone();
     Box::pin(iced::stream::channel(1000, async move |mut output| {
-        let Some(session_path) = telegram_fast_session_path() else {
-            let _ = output
-                .send(status_event(
-                    false,
-                    true,
-                    "Could not resolve Kerosene config directory",
-                ))
-                .await;
-            return;
-        };
-        if let Err(err) = prepare_session_path(&session_path).await {
-            let _ = output.send(status_event(false, true, &err)).await;
-            return;
-        }
-
-        let session = match SqliteSession::open(&session_path).await {
-            Ok(session) => Arc::new(session),
-            Err(err) => {
-                let _ = output
-                    .send(status_event(
-                        false,
-                        true,
-                        &format!("Telegram session open failed: {err}"),
-                    ))
-                    .await;
-                return;
-            }
-        };
-        tighten_session_permissions(&session_path);
-
-        let SenderPool {
-            runner,
-            updates,
-            handle,
-        } = SenderPool::new(session, params.api_id);
-        let client = Client::new(handle.clone());
-        let _pool_task = AbortOnDrop::new(tokio::spawn(runner.run()));
-        let handle_for_drop = handle.clone();
-        let _handle_guard = DropGuard::new(move || {
-            handle_for_drop.quit();
-        });
-
-        let authorized = match client.is_authorized().await {
-            Ok(authorized) => authorized,
-            Err(err) => {
-                let _ = output
-                    .send(status_event(
-                        false,
-                        true,
-                        &format!("Telegram authorization check failed: {err}"),
-                    ))
-                    .await;
-                handle.quit();
-                return;
-            }
-        };
-        if !authorized {
-            let _ = output
-                .send(status_event(
-                    false,
-                    true,
-                    "Fast mode needs Telegram sign-in",
-                ))
-                .await;
-            handle.quit();
-            return;
-        }
-
-        let mut updates = client
-            .stream_updates(updates, live_first_updates_configuration())
-            .await;
-        let channels = normalized_channel_set(&params.channels);
-        let channel_ids = Arc::new(RwLock::new(HashMap::new()));
-        let background_client = client.clone();
-        let background_channels = channels.clone();
-        let background_channel_ids = Arc::clone(&channel_ids);
-        let mut background_output = output.clone();
-        let background_task = AbortOnDrop::new(tokio::spawn(async move {
-            resolve_fast_channel_ids(
-                &background_client,
-                &background_channels,
-                &background_channel_ids,
-            )
-            .await;
-            backfill_fast_channels(
-                &background_client,
-                &background_channels,
-                &background_channel_ids,
-                &mut background_output,
-            )
-            .await;
-            warm_dialog_update_state(&background_client).await;
-        }));
-
-        if output
-            .send(status_event(true, false, "Fast Telegram mode listening"))
-            .await
-            .is_err()
-        {
-            background_task.abort();
-            handle.quit();
-            return;
-        }
-
+        let mut retry_delay = TELEGRAM_FAST_RECONNECT_BASE_DELAY;
         loop {
-            match updates.next().await {
-                Ok(Update::NewMessage(message)) | Ok(Update::MessageEdited(message)) => {
-                    let Some(page) =
-                        fast_page_from_message(&channels, &channel_ids, &message).await
-                    else {
-                        continue;
-                    };
-                    if output
-                        .send(TelegramFastFeedEvent::Loaded(
-                            page.profile.channel.clone(),
-                            Box::new(Ok(page)),
-                        ))
-                        .await
-                        .is_err()
+            match run_telegram_fast_feed_session(&params, &mut output).await {
+                FastFeedSessionExit::Retry => {
+                    tokio::time::sleep(retry_delay).await;
+                    retry_delay = next_fast_reconnect_delay(retry_delay);
+                }
+                FastFeedSessionExit::Stop => return,
+            }
+        }
+    }))
+}
+
+async fn run_telegram_fast_feed_session(
+    params: &TelegramFastFeedStreamParams,
+    output: &mut mpsc::Sender<TelegramFastFeedEvent>,
+) -> FastFeedSessionExit {
+    let Some(session_path) = telegram_fast_session_path() else {
+        let _ = send_status(
+            output,
+            false,
+            true,
+            "Could not resolve Kerosene config directory",
+        )
+        .await;
+        return FastFeedSessionExit::Stop;
+    };
+    if let Err(err) = prepare_session_path(&session_path).await {
+        let _ = send_status(output, false, true, &err).await;
+        return FastFeedSessionExit::Stop;
+    }
+
+    let session = match SqliteSession::open(&session_path).await {
+        Ok(session) => Arc::new(session),
+        Err(err) => {
+            if !send_status(
+                output,
+                false,
+                false,
+                &format!("Telegram session open failed: {err}"),
+            )
+            .await
+            {
+                return FastFeedSessionExit::Stop;
+            }
+            return FastFeedSessionExit::Retry;
+        }
+    };
+    tighten_session_permissions(&session_path);
+
+    let SenderPool {
+        runner,
+        updates,
+        handle,
+    } = SenderPool::new(session, params.api_id);
+    let client = Client::new(handle.clone());
+    let _pool_task = AbortOnDrop::new(tokio::spawn(runner.run()));
+    let handle_for_drop = handle.clone();
+    let _handle_guard = DropGuard::new(move || {
+        handle_for_drop.quit();
+    });
+
+    let authorized = match client.is_authorized().await {
+        Ok(authorized) => authorized,
+        Err(err) => {
+            let _ = send_status(
+                output,
+                false,
+                false,
+                &format!("Telegram authorization check failed: {err}"),
+            )
+            .await;
+            handle.quit();
+            return FastFeedSessionExit::Retry;
+        }
+    };
+    if !authorized {
+        let _ = send_status(output, false, true, "Fast mode needs Telegram sign-in").await;
+        handle.quit();
+        return FastFeedSessionExit::Stop;
+    }
+
+    let mut updates = client
+        .stream_updates(updates, live_first_updates_configuration())
+        .await;
+    let channels = normalized_channel_set(&params.channels);
+    let channel_ids = Arc::new(RwLock::new(HashMap::new()));
+    let background_client = client.clone();
+    let background_channels = channels.clone();
+    let background_channel_ids = Arc::clone(&channel_ids);
+    let mut background_output = output.clone();
+    let background_task = AbortOnDrop::new(tokio::spawn(async move {
+        resolve_fast_channel_ids(
+            &background_client,
+            &background_channels,
+            &background_channel_ids,
+        )
+        .await;
+        backfill_fast_channels(
+            &background_client,
+            &background_channels,
+            &background_channel_ids,
+            &mut background_output,
+        )
+        .await;
+        warm_dialog_update_state(&background_client).await;
+    }));
+    let health_client = client.clone();
+    let health_handle = handle.clone();
+    let mut health_output = output.clone();
+    let health_task = AbortOnDrop::new(tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(TELEGRAM_FAST_HEALTH_CHECK_INTERVAL).await;
+            match health_client.is_authorized().await {
+                Ok(true) => {
+                    if !send_status(
+                        &mut health_output,
+                        true,
+                        false,
+                        "Fast Telegram mode listening",
+                    )
+                    .await
                     {
-                        background_task.abort();
-                        updates.sync_update_state().await;
-                        handle.quit();
+                        health_handle.quit();
                         return;
                     }
                 }
-                Ok(_) => {}
+                Ok(false) => {
+                    let _ = send_status(
+                        &mut health_output,
+                        false,
+                        true,
+                        "Fast mode needs Telegram sign-in",
+                    )
+                    .await;
+                    health_handle.quit();
+                    return;
+                }
                 Err(err) => {
-                    let _ = output
-                        .send(status_event(
-                            false,
-                            false,
-                            &format!("Telegram fast feed disconnected: {err}"),
-                        ))
-                        .await;
-                    background_task.abort();
-                    updates.sync_update_state().await;
-                    handle.quit();
+                    let _ = send_status(
+                        &mut health_output,
+                        false,
+                        false,
+                        &format!("Telegram fast feed health check failed: {err}"),
+                    )
+                    .await;
+                    health_handle.quit();
                     return;
                 }
             }
         }
-    }))
+    }));
+
+    if !send_status(output, true, false, "Fast Telegram mode listening").await {
+        background_task.abort();
+        health_task.abort();
+        handle.quit();
+        return FastFeedSessionExit::Stop;
+    }
+
+    loop {
+        match updates.next().await {
+            Ok(Update::NewMessage(message)) | Ok(Update::MessageEdited(message)) => {
+                let Some(page) = fast_page_from_message(&channels, &channel_ids, &message).await
+                else {
+                    continue;
+                };
+                if output
+                    .send(TelegramFastFeedEvent::Loaded(
+                        page.profile.channel.clone(),
+                        Box::new(Ok(page)),
+                    ))
+                    .await
+                    .is_err()
+                {
+                    background_task.abort();
+                    health_task.abort();
+                    updates.sync_update_state().await;
+                    handle.quit();
+                    return FastFeedSessionExit::Stop;
+                }
+            }
+            Ok(_) => {}
+            Err(err) => {
+                let _ = send_status(
+                    output,
+                    false,
+                    false,
+                    &format!("Telegram fast feed disconnected; reconnecting: {err}"),
+                )
+                .await;
+                background_task.abort();
+                health_task.abort();
+                updates.sync_update_state().await;
+                handle.quit();
+                return FastFeedSessionExit::Retry;
+            }
+        }
+    }
+}
+
+async fn send_status(
+    output: &mut mpsc::Sender<TelegramFastFeedEvent>,
+    connected: bool,
+    auth_required: bool,
+    message: &str,
+) -> bool {
+    output
+        .send(status_event(connected, auth_required, message))
+        .await
+        .is_ok()
+}
+
+fn next_fast_reconnect_delay(current: Duration) -> Duration {
+    current
+        .saturating_mul(2)
+        .min(TELEGRAM_FAST_RECONNECT_MAX_DELAY)
 }
 
 fn clear_pending_auth() {
