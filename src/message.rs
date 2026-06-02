@@ -41,6 +41,7 @@ use crate::telegram_feed::{
 };
 use crate::timeframe::Timeframe;
 use crate::ws::WsUserData;
+use crate::x_feed::{XFeedPage, XFeedStreamEvent};
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
 use std::collections::HashMap;
@@ -189,6 +190,7 @@ pub(crate) enum Message {
     AddLiquidationsDistributionPane,
     AddTrackedTradesPane,
     AddTelegramFeedPane,
+    AddXFeedPane,
     AddOutcomesPane,
     AddHypeEtfsPane,
     AddHypeUnstakingQueuePane,
@@ -368,6 +370,18 @@ pub(crate) enum Message {
     TelegramFeedRemoveChannel(String),
     ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
+    RefreshXFeed,
+    XFeedRefreshTick,
+    XFeedLoaded(Box<Result<XFeedPage, String>>),
+    XFeedStreamEvent(XFeedStreamEvent),
+    XFeedBearerTokenChanged(String),
+    SaveXFeedBearerToken,
+    XFeedSourceInputChanged(String),
+    XFeedAddSource,
+    XFeedRemoveSource(String),
+    ToggleXFeedStreaming,
+    ToggleXFeedNotifications,
+    ToggleXFeedSourcesExpanded,
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
@@ -376,6 +390,8 @@ pub(crate) enum Message {
     // Notifications
     DismissToast(u64),
     CopyToClipboard(String),
+    WalletAddressActionsHovered(String),
+    WalletAddressActionsExited(String),
     TickToastCleanup,
     NoOp,
     SpinnerTick,

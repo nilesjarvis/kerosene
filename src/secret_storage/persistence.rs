@@ -16,6 +16,7 @@ impl TradingTerminal {
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
+            &self.x_feed.bearer_token,
         ) {
             Ok(()) => {
                 self.secret_store_status = Some((success_message.into(), false));
@@ -65,6 +66,18 @@ impl TradingTerminal {
             ),
             config::CredentialStorageMode::EncryptedConfig => {
                 self.persist_encrypted_credentials_blob("HyperDash key saved to encrypted config")
+            }
+        }
+    }
+
+    pub(crate) fn persist_x_secret(&mut self) -> bool {
+        match self.secret_storage_mode {
+            config::CredentialStorageMode::OsKeychain => self.persist_keychain_credentials(
+                "X bearer token saved to OS keychain",
+                "X keychain save failed; token is only in memory",
+            ),
+            config::CredentialStorageMode::EncryptedConfig => {
+                self.persist_encrypted_credentials_blob("X bearer token saved to encrypted config")
             }
         }
     }

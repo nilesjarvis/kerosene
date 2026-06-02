@@ -40,7 +40,7 @@ impl TradingTerminal {
             text("Actions")
                 .size(10)
                 .color(theme.extended_palette().background.weak.text)
-                .width(280),
+                .width(220),
         ]
         .spacing(8)
         .padding([0, 8])

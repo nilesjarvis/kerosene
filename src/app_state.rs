@@ -32,6 +32,7 @@ use crate::telegram_feed::TelegramFeedState;
 use crate::timeframe::Timeframe;
 use crate::twap_state::{TwapOrder, TwapOrderForm};
 use crate::wallet_state::{AddressBookEntry, WalletDetailsWindowState, WalletTrackerState};
+use crate::x_feed::XFeedState;
 use crate::{config, journal, ws};
 use iced::widget::pane_grid;
 use iced::window;
@@ -284,6 +285,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) wallet_tracker: WalletTrackerState,
     pub(crate) wallet_detail_windows: HashMap<window::Id, WalletDetailsWindowState>,
     pub(crate) address_book: HashMap<String, AddressBookEntry>,
+    pub(crate) hovered_wallet_address_actions: Option<String>,
     pub(crate) portfolio: PortfolioState,
     pub(crate) income: IncomeState,
     pub(crate) settings_active_tab: SettingsTab,
@@ -318,4 +320,5 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
     pub(crate) liquidation_distribution: LiquidationDistributionState,
     pub(crate) telegram_feed: TelegramFeedState,
+    pub(crate) x_feed: XFeedState,
 }

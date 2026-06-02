@@ -1,3 +1,4 @@
+mod address_actions;
 mod details_header;
 mod details_summary;
 mod numbers;
@@ -8,6 +9,8 @@ mod spot;
 mod style;
 mod tracker;
 mod warnings;
+
+pub(crate) use address_actions::{WalletAddressActionCell, wallet_address_action_cell};
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;

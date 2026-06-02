@@ -13,7 +13,6 @@ const HIDE_TIME_WIDTH: f32 = 315.0;
 
 pub(super) const TIME_WIDTH: f32 = 54.0;
 pub(super) const WALLET_COLUMN_WIDTH: f32 = 150.0;
-pub(super) const WALLET_LABEL_WIDTH: f32 = 96.0;
 pub(super) const COIN_WIDTH: f32 = 96.0;
 pub(super) const SIDE_WIDTH: f32 = 42.0;
 pub(super) const NUMBER_WIDTH: f32 = 72.0;

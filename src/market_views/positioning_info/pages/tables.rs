@@ -27,6 +27,7 @@ impl TradingTerminal {
         let columns = PositioningInfoColumns::for_width(available_width);
         let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
         let denomination = self.display_denomination_context();
+        let hovered_wallet_action_key = self.hovered_wallet_address_actions.as_deref();
         let mut rows = Column::new()
             .spacing(3)
             .push(positioning_table_header(
@@ -51,9 +52,11 @@ impl TradingTerminal {
         } else {
             for position in &data.positions {
                 rows = rows.push(positioning_position_row(
+                    instance.id,
                     position,
                     self.wallet_display(&position.address),
                     columns,
+                    hovered_wallet_action_key,
                     theme,
                     live_mark,
                     &denomination,
@@ -74,6 +77,7 @@ impl TradingTerminal {
         let columns = PositioningChangeColumns::for_width(available_width);
         let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
         let denomination = self.display_denomination_context();
+        let hovered_wallet_action_key = self.hovered_wallet_address_actions.as_deref();
         let sorted = sorted_change_rows(
             &data.deltas,
             instance.change_sort_field,
@@ -105,9 +109,11 @@ impl TradingTerminal {
         } else {
             for entry in sorted.into_iter().take(POSITIONING_CHANGE_ROW_LIMIT) {
                 rows = rows.push(positioning_change_row(
+                    instance.id,
                     entry,
                     self.wallet_display(&entry.address),
                     columns,
+                    hovered_wallet_action_key,
                     theme,
                     live_mark,
                     &denomination,

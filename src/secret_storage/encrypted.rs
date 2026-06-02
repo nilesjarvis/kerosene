@@ -13,6 +13,7 @@ impl TradingTerminal {
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
+            &self.x_feed.bearer_token,
         )
     }
 
@@ -97,6 +98,12 @@ impl TradingTerminal {
         self.hyperdash_api_key = payload.global.hyperdash_api_key;
         self.hyperdash_key_input.zeroize();
         self.hyperdash_key_input = self.hyperdash_api_key.clone();
+        self.x_feed.bearer_token.zeroize();
+        self.x_feed.bearer_token = payload.global.x_bearer_token;
+        self.x_feed.bearer_token_input.zeroize();
+        self.x_feed.bearer_token_input = self.x_feed.bearer_token.clone();
+        self.x_feed.stream_connected = false;
+        self.x_feed.stream_reconnect_nonce = self.x_feed.stream_reconnect_nonce.saturating_add(1);
 
         self.liquidations_last_rx_ms = None;
         self.tracked_trades_last_rx_ms = None;

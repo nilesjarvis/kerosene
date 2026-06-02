@@ -94,6 +94,7 @@ impl TradingTerminal {
                 self.telegram_feed
                     .rebuild_ticker_mention_resolver(&self.exchange_symbols);
                 self.refresh_telegram_ticker_mentions();
+                self.refresh_x_ticker_mentions();
                 let mut market_universe_changed = false;
                 let normalized_universe =
                     self.normalize_market_universe_selection(self.market_universe.clone());

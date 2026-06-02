@@ -38,6 +38,10 @@ pub(super) fn merge_missing_plaintext_secrets_into_payload(
     {
         changed |= payload.set_global_hyperdash_api_key(&config.hyperdash_api_key);
     }
+    if payload.global_x_bearer_token().trim().is_empty() && !config.x_bearer_token.trim().is_empty()
+    {
+        changed |= payload.set_global_x_bearer_token(&config.x_bearer_token);
+    }
 
     changed
 }
@@ -59,6 +63,8 @@ pub(super) fn apply_secret_payload(config: &mut KeroseneConfig, payload: &Secret
     config.hydromancer_api_key = payload.global_hydromancer_api_key().to_string().into();
     config.hyperdash_api_key.zeroize();
     config.hyperdash_api_key = payload.global_hyperdash_api_key().to_string().into();
+    config.x_bearer_token.zeroize();
+    config.x_bearer_token = payload.global_x_bearer_token().to_string().into();
 }
 
 #[cfg(test)]

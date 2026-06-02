@@ -68,8 +68,14 @@ pub fn store_keychain_secrets(
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
+    x_bearer_token: &str,
 ) -> Result<(), String> {
-    let payload = SecretPayload::from_credentials(profiles, hydromancer_api_key, hyperdash_api_key);
+    let payload = SecretPayload::from_credentials(
+        profiles,
+        hydromancer_api_key,
+        hyperdash_api_key,
+        x_bearer_token,
+    );
     store_secret_payload(&payload)
 }
 
@@ -134,6 +140,7 @@ pub fn clear_global_secrets() -> Result<(), String> {
         Ok(Some(mut payload)) => {
             let mut changed = payload.set_global_hydromancer_api_key("");
             changed |= payload.set_global_hyperdash_api_key("");
+            changed |= payload.set_global_x_bearer_token("");
             if changed && let Err(e) = store_secret_payload(&payload) {
                 errors.push(format!("credential bundle update failed: {e}"));
             }
@@ -147,6 +154,9 @@ pub fn clear_global_secrets() -> Result<(), String> {
     }
     if let Err(e) = keychain_set(GLOBAL_SECRET_ID, "hyperdash_api_key", "") {
         errors.push(format!("HyperDash key delete failed: {e}"));
+    }
+    if let Err(e) = keychain_set(GLOBAL_SECRET_ID, "x_bearer_token", "") {
+        errors.push(format!("X bearer token delete failed: {e}"));
     }
 
     if errors.is_empty() {

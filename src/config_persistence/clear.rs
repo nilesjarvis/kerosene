@@ -122,6 +122,12 @@ impl TradingTerminal {
         self.tracked_trade_alerts_enabled = defaults.tracked_trade_alerts_enabled;
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;
+        self.x_feed = crate::x_feed::XFeedState::new(
+            &defaults.x_feed_handles,
+            defaults.x_feed_notifications_enabled,
+            defaults.x_feed_streaming_enabled,
+            "",
+        );
         self.order_presets = defaults.order_presets;
         self.order_quantity_is_usd = defaults.order_quantity_is_usd;
         self.preset_is_usd = defaults.preset_is_usd;

@@ -73,6 +73,14 @@ impl TradingTerminal {
                 self.push_toast("Copied to clipboard".to_string(), false);
                 return clipboard::write(text).map(|()| Message::NoOp);
             }
+            Message::WalletAddressActionsHovered(key) => {
+                self.hovered_wallet_address_actions = Some(key);
+            }
+            Message::WalletAddressActionsExited(key) => {
+                if self.hovered_wallet_address_actions.as_deref() == Some(key.as_str()) {
+                    self.hovered_wallet_address_actions = None;
+                }
+            }
             Message::NoOp => {}
             Message::TickToastCleanup => {
                 let now = Instant::now();

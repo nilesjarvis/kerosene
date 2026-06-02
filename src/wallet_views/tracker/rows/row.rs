@@ -40,7 +40,8 @@ impl TradingTerminal {
                     address.clone(),
                     label_value,
                     display,
-                    theme.extended_palette().background.weak.text
+                    self.hovered_wallet_address_actions.as_deref(),
+                    theme,
                 ),
                 money_text(metrics.equity, metrics.data_color).width(85),
                 money_text(metrics.withdrawable, metrics.data_color).width(85),

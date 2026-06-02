@@ -300,6 +300,7 @@ impl TradingTerminal {
             wallet_tracker: parts.wallet_tracker,
             wallet_detail_windows: HashMap::new(),
             address_book: parts.address_book,
+            hovered_wallet_address_actions: None,
             portfolio: PortfolioState::default(),
             income: IncomeState::default(),
             settings_active_tab: SettingsTab::Themes,
@@ -331,6 +332,12 @@ impl TradingTerminal {
                 cfg.telegram_feed_notifications_enabled,
                 cfg.telegram_feed_fast_mode_enabled,
                 cfg.telegram_feed_fast_api_id,
+            ),
+            x_feed: crate::x_feed::XFeedState::new(
+                &cfg.x_feed_handles,
+                cfg.x_feed_notifications_enabled,
+                cfg.x_feed_streaming_enabled,
+                cfg.x_bearer_token.trim().to_string(),
             ),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg

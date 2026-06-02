@@ -7,6 +7,7 @@ mod market;
 mod telegram;
 mod timers;
 mod user_data;
+mod x;
 
 impl TradingTerminal {
     pub(crate) fn subscription(&self) -> Subscription<Message> {
@@ -15,6 +16,7 @@ impl TradingTerminal {
         self.push_user_data_subscriptions(&mut subs);
         self.push_hydromancer_subscriptions(&mut subs);
         self.push_telegram_subscriptions(&mut subs);
+        self.push_x_feed_subscriptions(&mut subs);
         self.push_timer_subscriptions(&mut subs);
         Self::push_window_subscriptions(&mut subs);
         self.push_post_window_timer_subscriptions(&mut subs);

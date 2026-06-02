@@ -147,6 +147,9 @@ impl TradingTerminal {
         if state.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed)) {
             boot_tasks.push(state.request_telegram_feed_refresh());
         }
+        if state.pane_is_open(|kind| matches!(kind, PaneKind::XFeed)) {
+            boot_tasks.push(state.request_x_feed_refresh());
+        }
         boot_tasks.push(state.request_hype_etfs_boot_refresh());
         boot_tasks.push(state.request_hype_unstaking_queue_boot_refresh());
 

@@ -1,12 +1,11 @@
 use crate::app_state::TradingTerminal;
-use crate::feed_views::tracked_trades::layout::{
-    COIN_WIDTH, WALLET_COLUMN_WIDTH, WALLET_LABEL_WIDTH,
-};
+use crate::feed_views::tracked_trades::layout::{COIN_WIDTH, WALLET_COLUMN_WIDTH};
 use crate::helpers;
 use crate::message::Message;
+use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, row, text, tooltip};
-use iced::{Color, Element, Theme};
+use iced::{Element, Theme};
 
 impl TradingTerminal {
     pub(super) fn view_tracked_trade_wallet_cell(
@@ -26,103 +25,25 @@ impl TradingTerminal {
         }
 
         let display = self.wallet_display(&address);
-        let wallet_button = button(
-            text(display.primary)
-                .size(12)
-                .font(crate::app_fonts::monospace_font())
-                .color(theme.palette().primary)
-                .wrapping(Wrapping::None),
-        )
-        .on_press(Message::CopyToClipboard(address_for_message.clone()))
-        .padding(0)
-        .style(|_theme: &Theme, _status| button::Style {
-            background: None,
-            ..Default::default()
-        })
-        .width(WALLET_LABEL_WIDTH);
+        let tooltip_label = if display.has_label {
+            format!("{} ({address})", display.primary)
+        } else {
+            format!("Copy {address}")
+        };
 
-        let wallet_button: Element<'_, Message> = tooltip(
-            wallet_button,
-            text(address.clone())
-                .size(10)
-                .font(crate::app_fonts::monospace_font()),
-            iced::widget::tooltip::Position::Top,
+        wallet_address_action_cell(
+            WalletAddressActionCell {
+                address: address.clone(),
+                label: display.primary,
+                tooltip_label,
+                hover_key: format!("tracked-trades:{address}"),
+                hovered_key: self.hovered_wallet_address_actions.as_deref(),
+                width: WALLET_COLUMN_WIDTH,
+                text_size: 12,
+                text_color: theme.palette().primary,
+            },
+            &theme,
         )
-        .into();
-
-        let ghost_button: Element<'_, Message> = tooltip(
-            button(
-                text("G")
-                    .size(10)
-                    .font(crate::app_fonts::monospace_font())
-                    .wrapping(Wrapping::None)
-                    .center(),
-            )
-            .on_press(Message::GhostWallet(address_for_message.clone()))
-            .padding([0, 4])
-            .style(|theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ => theme.extended_palette().background.weak.color,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().primary,
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        width: 1.0,
-                        color: Color {
-                            a: 0.45,
-                            ..theme.palette().primary
-                        },
-                    },
-                    ..Default::default()
-                }
-            }),
-            text("Open in ghost mode").size(10),
-            iced::widget::tooltip::Position::Top,
-        )
-        .into();
-
-        let details_button: Element<'_, Message> = tooltip(
-            button(
-                text("\u{2197}")
-                    .size(12)
-                    .font(crate::app_fonts::monospace_font())
-                    .wrapping(Wrapping::None)
-                    .center(),
-            )
-            .on_press(Message::OpenWalletDetailsWindow(address_for_message))
-            .padding([0, 4])
-            .style(|theme: &Theme, status| {
-                let bg = match status {
-                    button::Status::Hovered => theme.extended_palette().background.strong.color,
-                    _ => theme.extended_palette().background.weak.color,
-                };
-                button::Style {
-                    background: Some(bg.into()),
-                    text_color: theme.palette().primary,
-                    border: iced::Border {
-                        radius: 3.0.into(),
-                        width: 1.0,
-                        color: Color {
-                            a: 0.45,
-                            ..theme.palette().primary
-                        },
-                    },
-                    ..Default::default()
-                }
-            }),
-            text("Open detachable wallet details").size(10),
-            iced::widget::tooltip::Position::Top,
-        )
-        .into();
-
-        row![wallet_button, details_button, ghost_button]
-            .spacing(3)
-            .align_y(iced::Alignment::Center)
-            .width(WALLET_COLUMN_WIDTH)
-            .into()
     }
 
     pub(super) fn view_tracked_trade_coin_cell(&self, coin: String) -> Element<'_, Message> {

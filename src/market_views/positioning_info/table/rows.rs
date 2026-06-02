@@ -5,6 +5,7 @@ use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
 use crate::hyperdash_api::{PerpDeltaEntry, TickerPositionEntry};
 use crate::message::Message;
+use crate::positioning_state::PositioningInfoId;
 use crate::wallet_state::address_book::WalletDisplay;
 
 use iced::widget::{Row, container};
@@ -15,9 +16,11 @@ use iced::{Alignment, Element, Fill, Length, Theme};
 // ---------------------------------------------------------------------------
 
 pub(in crate::market_views::positioning_info) fn positioning_position_row(
+    instance_id: PositioningInfoId,
     position: &TickerPositionEntry,
     wallet_display: WalletDisplay,
     columns: PositioningInfoColumns,
+    hovered_wallet_action_key: Option<&str>,
     theme: &Theme,
     live_mark: Option<f64>,
     denomination: &DisplayDenominationContext,
@@ -49,6 +52,11 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
             wallet_display,
             columns.trader_width,
             POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
+            format!(
+                "positioning-info:{instance_id}:positions:{}",
+                position.address
+            ),
+            hovered_wallet_action_key,
             theme,
         ))
         .push(value_cell(
@@ -124,9 +132,11 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
 }
 
 pub(in crate::market_views::positioning_info) fn positioning_change_row(
+    instance_id: PositioningInfoId,
     entry: &PerpDeltaEntry,
     wallet_display: WalletDisplay,
     columns: PositioningChangeColumns,
+    hovered_wallet_action_key: Option<&str>,
     theme: &Theme,
     live_mark: Option<f64>,
     denomination: &DisplayDenominationContext,
@@ -153,6 +163,8 @@ pub(in crate::market_views::positioning_info) fn positioning_change_row(
             wallet_display,
             columns.trader_width,
             POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
+            format!("positioning-info:{instance_id}:changes:{}", entry.address),
+            hovered_wallet_action_key,
             theme,
         ))
         .push(value_cell(

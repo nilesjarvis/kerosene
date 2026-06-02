@@ -47,6 +47,7 @@ impl TradingTerminal {
                     &accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
+                    &self.x_feed.bearer_token,
                 ) {
                     Ok(()) => {
                         self.secret_storage_mode = config::CredentialStorageMode::OsKeychain;

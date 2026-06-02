@@ -115,6 +115,10 @@ impl TradingTerminal {
             telegram_feed_fast_api_id: self.telegram_feed.fast_api_id,
             telegram_feed_channels: self.telegram_feed.channels.clone(),
             telegram_feed_private_channels: self.telegram_feed.private_channels.clone(),
+            x_feed_notifications_enabled: self.x_feed.notifications_enabled,
+            x_feed_streaming_enabled: self.x_feed.streaming_enabled,
+            x_feed_handles: self.x_feed.handles.clone(),
+            x_bearer_token: String::new().into(),
 
             spaghetti_charts: layout_snapshot.spaghetti_charts,
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),

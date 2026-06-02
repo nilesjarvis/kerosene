@@ -9,16 +9,17 @@ use crate::hype_unstaking_state::{
 };
 use crate::message::Message;
 use crate::wallet_state::address_book::WalletDisplay;
+use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 
 use iced::alignment::Horizontal;
-use iced::widget::text::Wrapping;
+use iced::widget::text;
 use iced::widget::{
     Column, Row, Space, button, column, container, responsive, row, rule, scrollable,
 };
-use iced::widget::{text, tooltip};
-use iced::{Color, Element, Fill, Length, Theme, color};
+use iced::{Color, Element, Fill, Theme, color};
 
 const HYPE_UNSTAKING_ROW_LIMIT: usize = 250;
+const HYPE_UNSTAKING_WALLET_ACTION_WIDTH: f32 = 150.0;
 
 #[derive(Clone, Copy)]
 struct HypeUnstakingRowContext<'a> {
@@ -305,8 +306,12 @@ impl TradingTerminal {
             context.hype_mid,
             context.denomination,
         );
-        let wallet_cell =
-            hype_unstaking_wallet_cell(event.user.clone(), self.wallet_display(&event.user), theme);
+        let wallet_cell = hype_unstaking_wallet_cell(
+            event.user.clone(),
+            self.wallet_display(&event.user),
+            self.hovered_wallet_address_actions.as_deref(),
+            theme,
+        );
 
         let content: Element<'a, Message> = if context.compact {
             column![
@@ -695,102 +700,25 @@ fn format_hype_amount_with_notional(
 fn hype_unstaking_wallet_cell(
     address: String,
     display: WalletDisplay,
+    hovered_wallet_action_key: Option<&str>,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let label = hype_unstaking_wallet_label(&display, 26);
     let tooltip_label = hype_unstaking_wallet_tooltip(&display, &address);
-    let text_color = theme.palette().text;
 
-    let identity = tooltip(
-        button(
-            text(label)
-                .size(11)
-                .font(crate::app_fonts::monospace_font())
-                .color(text_color)
-                .wrapping(Wrapping::None),
-        )
-        .on_press(Message::CopyToClipboard(address.clone()))
-        .padding(0)
-        .style(|theme: &Theme, status| {
-            let background = match status {
-                button::Status::Hovered => Some(
-                    Color {
-                        a: 0.18,
-                        ..theme.extended_palette().background.weak.color
-                    }
-                    .into(),
-                ),
-                _ => None,
-            };
-            button::Style {
-                background,
-                ..Default::default()
-            }
-        }),
-        text(tooltip_label)
-            .size(10)
-            .font(crate::app_fonts::monospace_font()),
-        tooltip::Position::Top,
-    );
-
-    row![
-        identity,
-        hype_unstaking_wallet_action_button(
-            "\u{2197}",
-            "Open detachable wallet details",
-            Message::OpenWalletDetailsWindow(address.clone()),
-        ),
-        hype_unstaking_wallet_action_button(
-            "G",
-            "Open in ghost mode",
-            Message::GhostWallet(address)
-        ),
-    ]
-    .spacing(3)
-    .align_y(iced::Alignment::Center)
-    .width(Length::Shrink)
-    .into()
-}
-
-fn hype_unstaking_wallet_action_button(
-    label: &'static str,
-    tooltip_label: &'static str,
-    msg: Message,
-) -> Element<'static, Message> {
-    tooltip(
-        button(
-            text(label)
-                .size(10)
-                .font(crate::app_fonts::monospace_font())
-                .wrapping(Wrapping::None)
-                .center(),
-        )
-        .on_press(msg)
-        .padding([0, 4])
-        .width(Length::Fixed(18.0))
-        .style(|theme: &Theme, status| {
-            let bg = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => theme.extended_palette().background.weak.color,
-            };
-            button::Style {
-                background: Some(bg.into()),
-                text_color: theme.palette().primary,
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    width: 1.0,
-                    color: Color {
-                        a: 0.45,
-                        ..theme.palette().primary
-                    },
-                },
-                ..Default::default()
-            }
-        }),
-        text(tooltip_label).size(10),
-        tooltip::Position::Top,
+    wallet_address_action_cell(
+        WalletAddressActionCell {
+            address: address.clone(),
+            label,
+            tooltip_label,
+            hover_key: format!("hype-unstaking:{address}"),
+            hovered_key: hovered_wallet_action_key,
+            width: HYPE_UNSTAKING_WALLET_ACTION_WIDTH,
+            text_size: 11,
+            text_color: theme.palette().text,
+        },
+        theme,
     )
-    .into()
 }
 
 fn hype_unstaking_wallet_label(display: &WalletDisplay, max_chars: usize) -> String {

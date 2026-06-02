@@ -42,6 +42,8 @@ pub struct ProfileSecretPayload {
 pub struct GlobalSecretPayload {
     pub hydromancer_api_key: Zeroizing<String>,
     pub hyperdash_api_key: Zeroizing<String>,
+    #[serde(default)]
+    pub x_bearer_token: Zeroizing<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,6 +58,7 @@ impl SecretPayload {
         profiles: &[AccountProfile],
         hydromancer_api_key: &str,
         hyperdash_api_key: &str,
+        x_bearer_token: &str,
     ) -> Self {
         Self {
             schema: SECRET_PAYLOAD_SCHEMA.to_string(),
@@ -72,6 +75,7 @@ impl SecretPayload {
             global: GlobalSecretPayload {
                 hydromancer_api_key: hydromancer_api_key.to_string().into(),
                 hyperdash_api_key: hyperdash_api_key.to_string().into(),
+                x_bearer_token: x_bearer_token.to_string().into(),
             },
         }
     }
@@ -80,6 +84,7 @@ impl SecretPayload {
         self.profiles.is_empty()
             && self.global.hydromancer_api_key.trim().is_empty()
             && self.global.hyperdash_api_key.trim().is_empty()
+            && self.global.x_bearer_token.trim().is_empty()
     }
 
     pub fn profile_agent_key(&self, secret_id: &str) -> Option<&str> {
@@ -95,6 +100,10 @@ impl SecretPayload {
 
     pub fn global_hyperdash_api_key(&self) -> &str {
         &self.global.hyperdash_api_key
+    }
+
+    pub fn global_x_bearer_token(&self) -> &str {
+        &self.global.x_bearer_token
     }
 
     pub fn upsert_profile_agent_key(&mut self, secret_id: &str, agent_key: &str) -> bool {
@@ -146,6 +155,14 @@ impl SecretPayload {
             return false;
         }
         self.global.hyperdash_api_key = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_x_bearer_token(&mut self, value: &str) -> bool {
+        if self.global.x_bearer_token.as_str() == value {
+            return false;
+        }
+        self.global.x_bearer_token = value.to_string().into();
         true
     }
 }

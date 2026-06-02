@@ -100,6 +100,8 @@ mod wallet_views;
 mod window_chrome;
 mod window_update;
 mod ws;
+mod x_feed;
+mod x_feed_stream;
 
 use app_state::TradingTerminal;
 

@@ -23,6 +23,17 @@ fn telegram_feed_pane_round_trips() {
 }
 
 #[test]
+fn x_feed_pane_round_trips() {
+    let layout = PaneLayoutConfig::Leaf(PaneKindConfig::XFeed);
+
+    let json = json_string(&layout, "x feed pane should serialize");
+    let decoded: PaneLayoutConfig =
+        serde_json::from_str(&json).expect("x feed pane should deserialize");
+
+    assert_eq!(decoded, layout);
+}
+
+#[test]
 fn serialized_config_omits_removed_assistant_settings() {
     let json = json_string(
         &KeroseneConfig::default(),

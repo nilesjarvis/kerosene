@@ -45,6 +45,7 @@ fn load_os_keychain_secrets(config: &mut KeroseneConfig) {
         &config.accounts,
         &config.hydromancer_api_key,
         &config.hyperdash_api_key,
+        &config.x_bearer_token,
     );
     if !payload.is_empty()
         && let Err(error) = store_secret_payload(&payload)
