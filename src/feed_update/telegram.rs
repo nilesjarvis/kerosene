@@ -1,16 +1,16 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::symbol_mentions::resolve_symbol_mentions;
 use crate::telegram_fast_feed::{
-    bundled_telegram_api_hash, bundled_telegram_api_id, request_telegram_fast_login_code,
-    sign_out_telegram_fast, submit_telegram_fast_login_code, submit_telegram_fast_password,
+    bundled_telegram_api_hash, bundled_telegram_api_id, list_telegram_private_channel_candidates,
+    request_telegram_fast_login_code, sign_out_telegram_fast, submit_telegram_fast_login_code,
+    submit_telegram_fast_password,
 };
 use crate::telegram_feed::{
-    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_CHANNELS, TelegramFastAuthOutcome,
-    TelegramFastAuthStage, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
-    TelegramTickerMention, fetch_telegram_avatar_bytes, fetch_telegram_channel_posts,
-    normalize_public_channel_input,
+    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TelegramFastAuthOutcome, TelegramFastAuthStage,
+    TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost, TelegramTickerMention,
+    fetch_telegram_avatar_bytes, fetch_telegram_channel_posts, normalize_public_channel_input,
+    telegram_private_channel_peer_id_from_key,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
@@ -65,6 +65,20 @@ impl TradingTerminal {
                 Task::none()
             }
             Message::TelegramFeedAddChannel => self.add_telegram_feed_channel(),
+            Message::TelegramPrivateChannelsRefresh => self.request_telegram_private_channels(),
+            Message::TelegramPrivateChannelsLoaded(result) => {
+                self.handle_telegram_private_channels_loaded(*result);
+                Task::none()
+            }
+            Message::TelegramFeedAddPrivateChannel(peer_id) => {
+                self.add_telegram_private_channel(peer_id);
+                Task::none()
+            }
+            Message::ToggleTelegramPrivateChannelCandidatesExpanded => {
+                self.telegram_feed.private_channel_candidates_expanded =
+                    !self.telegram_feed.private_channel_candidates_expanded;
+                Task::none()
+            }
             Message::TelegramFeedRemoveChannel(channel) => {
                 self.remove_telegram_feed_channel(&channel);
                 Task::none()
@@ -109,7 +123,14 @@ impl TradingTerminal {
     fn request_telegram_feed_refresh_with_visibility(&mut self, visible: bool) -> Task<Message> {
         let channels = self.telegram_feed.channels.clone();
         if channels.is_empty() {
-            self.telegram_feed.last_error = Some("Add a public Telegram channel".to_string());
+            if visible {
+                self.telegram_feed.last_error =
+                    Some(if self.telegram_feed.private_channels.is_empty() {
+                        "Add a public Telegram channel".to_string()
+                    } else {
+                        "Private Telegram channels require signed-in fast mode".to_string()
+                    });
+            }
             return Task::none();
         }
 
@@ -147,13 +168,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if self.telegram_feed.channels.len() >= TELEGRAM_FEED_MAX_CHANNELS {
-            self.telegram_feed.last_error = Some(format!(
-                "Telegram Feed supports up to {TELEGRAM_FEED_MAX_CHANNELS} channels"
-            ));
-            return Task::none();
-        }
-
         self.telegram_feed.channels.push(channel.clone());
         self.telegram_feed.channel_input.clear();
         self.telegram_feed.last_error = None;
@@ -162,7 +176,95 @@ impl TradingTerminal {
         self.request_telegram_channel_refresh_task(channel)
     }
 
+    fn request_telegram_private_channels(&mut self) -> Task<Message> {
+        if !self.telegram_feed.fast_mode_enabled {
+            self.telegram_feed.fast_status =
+                Some(("Enable fast mode to add private channels".to_string(), true));
+            return Task::none();
+        }
+        let Some(api_id) = self.telegram_fast_api_id() else {
+            return Task::none();
+        };
+        if !self.telegram_feed.fast_connected
+            && !matches!(
+                self.telegram_feed.fast_auth_stage,
+                TelegramFastAuthStage::SignedIn
+            )
+        {
+            self.telegram_feed.fast_status =
+                Some(("Sign in to Telegram fast mode first".to_string(), true));
+            return Task::none();
+        }
+
+        self.telegram_feed.private_channel_candidates_loading = true;
+        self.telegram_feed.fast_status = Some(("Scanning Telegram channels".to_string(), false));
+        Task::perform(list_telegram_private_channel_candidates(api_id), |result| {
+            Message::TelegramPrivateChannelsLoaded(Box::new(result))
+        })
+    }
+
+    fn handle_telegram_private_channels_loaded(
+        &mut self,
+        result: Result<Vec<crate::telegram_feed::TelegramPrivateChannelCandidate>, String>,
+    ) {
+        self.telegram_feed.private_channel_candidates_loading = false;
+        match result {
+            Ok(candidates) => {
+                let count = candidates.len();
+                self.telegram_feed.private_channel_candidates = candidates;
+                self.telegram_feed.private_channel_candidates_expanded = count > 0;
+                self.telegram_feed.fast_status =
+                    Some((format!("Found {count} private Telegram channels"), false));
+            }
+            Err(err) => {
+                self.telegram_feed.fast_status = Some((err, true));
+            }
+        }
+    }
+
+    fn add_telegram_private_channel(&mut self, peer_id: i64) {
+        if self.telegram_feed.private_channel_selected(peer_id) {
+            self.telegram_feed.last_error =
+                Some("Private channel is already in the feed".to_string());
+            return;
+        }
+        let Some(candidate) = self
+            .telegram_feed
+            .private_channel_candidates
+            .iter()
+            .find(|candidate| candidate.peer_id == peer_id)
+            .cloned()
+        else {
+            self.telegram_feed.last_error = Some("Refresh private channels first".to_string());
+            return;
+        };
+
+        self.telegram_feed
+            .private_channels
+            .push(candidate.to_config());
+        self.telegram_feed.last_error = None;
+        self.telegram_feed.fast_reconnect_nonce =
+            self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+        self.persist_config();
+    }
+
     fn remove_telegram_feed_channel(&mut self, channel: &str) {
+        if let Some(peer_id) = telegram_private_channel_peer_id_from_key(channel) {
+            self.telegram_feed
+                .private_channels
+                .retain(|existing| existing.peer_id != peer_id);
+            self.telegram_feed
+                .posts
+                .retain(|post| post.channel != channel);
+            self.telegram_feed.clear_seen_posts_for_channel(channel);
+            self.telegram_feed.channel_profiles.remove(channel);
+            self.telegram_feed.fast_reconnect_nonce =
+                self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+            self.telegram_feed.last_error = None;
+            self.persist_config();
+            return;
+        }
+
         let Ok(channel) = normalize_public_channel_input(channel) else {
             return;
         };
@@ -536,7 +638,8 @@ impl TradingTerminal {
         reference_seen_ms: u64,
         previous_mentions: &[TelegramTickerMention],
     ) -> Vec<TelegramTickerMention> {
-        resolve_symbol_mentions(text, &self.exchange_symbols)
+        self.telegram_feed
+            .resolve_ticker_mentions(text)
             .into_iter()
             .filter(|matched| {
                 self.resolve_exchange_symbol_by_key_or_ticker(&matched.symbol_key)
@@ -552,6 +655,9 @@ impl TradingTerminal {
                 {
                     let mut mention = previous.clone();
                     mention.ticker = matched.ticker;
+                    mention.matched_text = matched.matched_text;
+                    mention.source = matched.source;
+                    mention.confidence = matched.confidence;
                     if mention.reference_price.is_none() {
                         mention.reference_price = self.resolve_mid_for_symbol(&matched.symbol_key);
                         if mention.reference_price.is_some() {
@@ -565,6 +671,9 @@ impl TradingTerminal {
                         reference_seen_ms,
                         symbol: matched.symbol_key,
                         ticker: matched.ticker,
+                        matched_text: matched.matched_text,
+                        source: matched.source,
+                        confidence: matched.confidence,
                     }
                 }
             })
@@ -841,6 +950,41 @@ mod tests {
     }
 
     #[test]
+    fn private_channel_scan_requires_signed_in_fast_session() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_api_id = Some(123);
+
+        let _task = terminal.update_telegram_feed(Message::TelegramPrivateChannelsRefresh);
+
+        assert!(!terminal.telegram_feed.private_channel_candidates_loading);
+        assert_eq!(
+            terminal.telegram_feed.fast_status,
+            Some(("Sign in to Telegram fast mode first".to_string(), true))
+        );
+    }
+
+    #[test]
+    fn loaded_private_channel_candidates_open_and_can_collapse_selector() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        assert!(!terminal.telegram_feed.private_channel_candidates_expanded);
+
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(Box::new(Ok(
+                vec![crate::telegram_feed::TelegramPrivateChannelCandidate {
+                    peer_id: 42,
+                    title: "Private Macro".to_string(),
+                    avatar_handle: None,
+                }],
+            ))));
+
+        assert!(terminal.telegram_feed.private_channel_candidates_expanded);
+        let _task =
+            terminal.update_telegram_feed(Message::ToggleTelegramPrivateChannelCandidatesExpanded);
+        assert!(!terminal.telegram_feed.private_channel_candidates_expanded);
+    }
+
+    #[test]
     fn stale_fast_feed_tick_reconnects_and_falls_back_to_public_refresh() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
@@ -1021,6 +1165,9 @@ mod tests {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
         terminal.exchange_symbols = vec![exchange_symbol("BTC", "BTC")];
+        terminal
+            .telegram_feed
+            .rebuild_ticker_mention_resolver(&terminal.exchange_symbols);
         terminal.all_mids.insert("BTC".to_string(), 100.0);
         terminal
             .all_mids_updated_at_ms
@@ -1037,6 +1184,11 @@ mod tests {
         assert_eq!(mentions.len(), 1);
         assert_eq!(mentions[0].symbol, "BTC");
         assert_eq!(mentions[0].ticker, "BTC");
+        assert_eq!(mentions[0].matched_text, "BTC");
+        assert_eq!(
+            mentions[0].source,
+            crate::symbol_mentions::SymbolAliasSource::Ticker
+        );
         assert_eq!(mentions[0].reference_price, Some(100.0));
     }
 
@@ -1045,6 +1197,9 @@ mod tests {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
         terminal.exchange_symbols = vec![exchange_symbol("BTC", "BTC")];
+        terminal
+            .telegram_feed
+            .rebuild_ticker_mention_resolver(&terminal.exchange_symbols);
         terminal.all_mids.insert("BTC".to_string(), 100.0);
         terminal
             .all_mids_updated_at_ms
@@ -1142,6 +1297,60 @@ mod tests {
     }
 
     #[test]
+    fn adding_private_channel_uses_scanned_candidate_and_reconnects_fast_feed() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.private_channel_candidates.push(
+            crate::telegram_feed::TelegramPrivateChannelCandidate {
+                peer_id: 42,
+                title: "Private Macro".to_string(),
+                avatar_handle: None,
+            },
+        );
+        let nonce = terminal.telegram_feed.fast_reconnect_nonce;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedAddPrivateChannel(42));
+
+        assert_eq!(terminal.telegram_feed.private_channels.len(), 1);
+        assert_eq!(terminal.telegram_feed.private_channels[0].peer_id, 42);
+        assert_eq!(
+            terminal.telegram_feed.private_channels[0].title,
+            "Private Macro"
+        );
+        assert_eq!(
+            terminal.telegram_feed.fast_reconnect_nonce,
+            nonce.saturating_add(1)
+        );
+    }
+
+    #[test]
+    fn removing_private_channel_clears_posts_profile_and_reconnects() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = crate::telegram_feed::telegram_private_channel_key(42);
+        terminal.telegram_feed.private_channels =
+            vec![crate::telegram_feed::TelegramFeedPrivateChannelConfig {
+                peer_id: 42,
+                title: "Private Macro".to_string(),
+            }];
+        terminal.telegram_feed.posts = vec![sample_post(&key, 7)];
+        terminal
+            .telegram_feed
+            .channel_profiles
+            .insert(key.clone(), sample_profile(&key, None));
+        let nonce = terminal.telegram_feed.fast_reconnect_nonce;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel(key.clone()));
+
+        assert!(terminal.telegram_feed.private_channels.is_empty());
+        assert!(terminal.telegram_feed.posts.is_empty());
+        assert!(!terminal.telegram_feed.channel_profiles.contains_key(&key));
+        assert_eq!(
+            terminal.telegram_feed.fast_reconnect_nonce,
+            nonce.saturating_add(1)
+        );
+    }
+
+    #[test]
     fn stale_avatar_result_is_ignored() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         let current_url = "https://example.com/current.jpg";
@@ -1219,26 +1428,21 @@ mod tests {
     }
 
     #[test]
-    fn adding_channels_is_capped() {
+    fn adding_channel_after_many_existing_channels_is_allowed() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
-        terminal.telegram_feed.channels = (0..TELEGRAM_FEED_MAX_CHANNELS)
-            .map(|index| format!("channel_{index}"))
-            .collect();
+        terminal.telegram_feed.channels = (0..16).map(|index| format!("channel_{index}")).collect();
         terminal.telegram_feed.channel_input = "another_channel".to_string();
 
         let _task = terminal.update_telegram_feed(Message::TelegramFeedAddChannel);
 
-        assert_eq!(
-            terminal.telegram_feed.channels.len(),
-            TELEGRAM_FEED_MAX_CHANNELS
-        );
         assert!(
             terminal
                 .telegram_feed
-                .last_error
-                .as_deref()
-                .is_some_and(|error| error.contains("supports up to"))
+                .channels
+                .contains(&"another_channel".to_string())
         );
+        assert_eq!(terminal.telegram_feed.channels.len(), 17);
+        assert_eq!(terminal.telegram_feed.last_error, None);
     }
 
     #[test]

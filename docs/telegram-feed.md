@@ -63,8 +63,7 @@ Private invite links and internal Telegram paths are rejected. Usernames must:
 - Be 5 to 32 characters long.
 - Contain only ASCII letters, numbers, and `_`.
 
-The channel list is normalized to lowercase, deduplicated, and capped by
-`TELEGRAM_FEED_MAX_CHANNELS`, currently 12.
+The channel list is normalized to lowercase and deduplicated.
 
 ## Loading and refresh flow
 

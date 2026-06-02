@@ -1,10 +1,15 @@
 use super::{default_config_value, json_string, remove_field, value_from_json, value_from_str};
 use crate::config::KeroseneConfig;
+use crate::telegram_feed::TelegramFeedPrivateChannelConfig;
 
 #[test]
 fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
     let config = KeroseneConfig {
         telegram_feed_channels: vec!["marketfeed".to_string(), "hyperliquid".to_string()],
+        telegram_feed_private_channels: vec![TelegramFeedPrivateChannelConfig {
+            peer_id: 123456,
+            title: "Private Macro".to_string(),
+        }],
         telegram_feed_notifications_enabled: true,
         telegram_feed_fast_mode_enabled: true,
         telegram_feed_fast_api_id: Some(12345),
@@ -16,6 +21,13 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
     assert_eq!(
         decoded.telegram_feed_channels,
         vec!["marketfeed".to_string(), "hyperliquid".to_string()]
+    );
+    assert_eq!(
+        decoded.telegram_feed_private_channels,
+        vec![TelegramFeedPrivateChannelConfig {
+            peer_id: 123456,
+            title: "Private Macro".to_string(),
+        }]
     );
     assert!(decoded.telegram_feed_notifications_enabled);
     assert!(decoded.telegram_feed_fast_mode_enabled);
@@ -34,6 +46,11 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
     );
     remove_field(
         &mut legacy,
+        "telegram_feed_private_channels",
+        "config should serialize to object",
+    );
+    remove_field(
+        &mut legacy,
         "telegram_feed_fast_mode_enabled",
         "config should serialize to object",
     );
@@ -45,6 +62,7 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
     let decoded_legacy: KeroseneConfig =
         value_from_json(legacy, "legacy config should deserialize");
     assert_eq!(decoded_legacy.telegram_feed_channels, vec!["marketfeed"]);
+    assert!(decoded_legacy.telegram_feed_private_channels.is_empty());
     assert!(!decoded_legacy.telegram_feed_notifications_enabled);
     assert!(!decoded_legacy.telegram_feed_fast_mode_enabled);
     assert_eq!(decoded_legacy.telegram_feed_fast_api_id, None);

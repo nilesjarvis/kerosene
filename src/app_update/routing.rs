@@ -483,6 +483,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TelegramFastFeedEvent(_)
         | Message::TelegramFeedChannelInputChanged(_)
         | Message::TelegramFeedAddChannel
+        | Message::TelegramPrivateChannelsRefresh
+        | Message::TelegramPrivateChannelsLoaded(_)
+        | Message::TelegramFeedAddPrivateChannel(_)
+        | Message::ToggleTelegramPrivateChannelCandidatesExpanded
         | Message::TelegramFeedRemoveChannel(_)
         | Message::ToggleTelegramFeedChannelsExpanded
         | Message::ToggleTelegramFeedNotifications => UpdateRoute::Feed,

@@ -299,6 +299,7 @@ impl Default for KeroseneConfig {
             telegram_feed_fast_mode_enabled: false,
             telegram_feed_fast_api_id: None,
             telegram_feed_channels: crate::telegram_feed::default_telegram_feed_channels(),
+            telegram_feed_private_channels: Vec::new(),
             spaghetti_charts: Vec::new(),
             wallet_tracker: WalletTrackerConfig {
                 tracked_addresses: Vec::new(),

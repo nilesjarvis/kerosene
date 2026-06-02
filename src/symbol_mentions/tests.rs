@@ -20,6 +20,18 @@ fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
     }
 }
 
+fn symbol_with_metadata(
+    key: &str,
+    ticker: &str,
+    display_name: Option<&str>,
+    keywords: &[&str],
+) -> ExchangeSymbol {
+    let mut symbol = symbol(key, ticker, MarketType::Perp);
+    symbol.display_name = display_name.map(str::to_string);
+    symbol.keywords = keywords.iter().map(|keyword| keyword.to_string()).collect();
+    symbol
+}
+
 fn pairs(mentions: &[SymbolMention]) -> Vec<(String, String)> {
     mentions
         .iter()
@@ -55,15 +67,51 @@ fn avoids_substrings_and_weak_short_words() {
         symbol("BTC", "BTC", MarketType::Perp),
         symbol("IN", "IN", MarketType::Perp),
         symbol("ME", "ME", MarketType::Perp),
+        symbol("S", "S", MarketType::Perp),
     ];
 
-    let mentions = resolve_symbol_mentions("bitcoin is in motion; $me too, BTC.", &symbols);
+    let mentions =
+        resolve_symbol_mentions("bitcoin is in motion; s curve; $me too, BTC.", &symbols);
 
     assert_eq!(
         pairs(&mentions),
         vec![
             ("ME".to_string(), "ME".to_string()),
             ("BTC".to_string(), "BTC".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn cashtags_still_match_weak_single_letter_words() {
+    let symbols = vec![symbol("S", "S", MarketType::Perp)];
+
+    let mentions = resolve_symbol_mentions("$s squeeze", &symbols);
+
+    assert_eq!(pairs(&mentions), vec![("S".to_string(), "S".to_string())]);
+}
+
+#[test]
+fn avoids_ambiguous_lowercase_bare_ticker_words() {
+    let symbols = vec![
+        symbol("LINK", "LINK", MarketType::Perp),
+        symbol("NEAR", "NEAR", MarketType::Perp),
+        symbol("APT", "APT", MarketType::Perp),
+    ];
+
+    let lowercase = resolve_symbol_mentions(
+        "people shared a link near the venue with apt timing",
+        &symbols,
+    );
+    let strong = resolve_symbol_mentions("LINK and $near moved with APT", &symbols);
+
+    assert!(lowercase.is_empty());
+    assert_eq!(
+        pairs(&strong),
+        vec![
+            ("LINK".to_string(), "LINK".to_string()),
+            ("NEAR".to_string(), "NEAR".to_string()),
+            ("APT".to_string(), "APT".to_string()),
         ]
     );
 }
@@ -88,6 +136,64 @@ fn skips_spot_only_symbols() {
     let symbols = vec![symbol("@1", "PURR", MarketType::Spot)];
 
     let mentions = resolve_symbol_mentions("PURR headline", &symbols);
+
+    assert!(mentions.is_empty());
+}
+
+#[test]
+fn display_names_and_keywords_resolve_as_lower_confidence_aliases() {
+    let symbols = vec![symbol_with_metadata(
+        "xyz:NVDA",
+        "NVDA",
+        Some("Nvidia"),
+        &["graphics chips"],
+    )];
+
+    let display_name_mentions = resolve_symbol_mentions("nvidia headlines crossed", &symbols);
+    let keyword_mentions = resolve_symbol_mentions("graphics chips demand spiked", &symbols);
+
+    assert_eq!(
+        pairs(&display_name_mentions),
+        vec![("xyz:NVDA".to_string(), "NVDA".to_string())]
+    );
+    assert_eq!(display_name_mentions[0].matched_text, "nvidia");
+    assert_eq!(
+        display_name_mentions[0].source,
+        SymbolAliasSource::DisplayName
+    );
+    assert_eq!(display_name_mentions[0].confidence, 78);
+
+    assert_eq!(
+        pairs(&keyword_mentions),
+        vec![("xyz:NVDA".to_string(), "NVDA".to_string())]
+    );
+    assert_eq!(keyword_mentions[0].matched_text, "graphics chips");
+    assert_eq!(keyword_mentions[0].source, SymbolAliasSource::Keyword);
+    assert_eq!(keyword_mentions[0].confidence, 74);
+}
+
+#[test]
+fn ticker_source_beats_metadata_alias_for_same_symbol() {
+    let symbols = vec![symbol_with_metadata(
+        "xyz:NVDA",
+        "NVDA",
+        Some("Nvidia"),
+        &["graphics chips"],
+    )];
+
+    let mentions = resolve_symbol_mentions("nvidia headlines before NVDA moved", &symbols);
+
+    assert_eq!(mentions.len(), 1);
+    assert_eq!(mentions[0].symbol_key, "xyz:NVDA");
+    assert_eq!(mentions[0].matched_text, "NVDA");
+    assert_eq!(mentions[0].source, SymbolAliasSource::Ticker);
+}
+
+#[test]
+fn metadata_aliases_skip_unsafe_short_phrases() {
+    let symbols = vec![symbol_with_metadata("xyz:NVDA", "NVDA", None, &["ai"])];
+
+    let mentions = resolve_symbol_mentions("ai demand rose", &symbols);
 
     assert!(mentions.is_empty());
 }

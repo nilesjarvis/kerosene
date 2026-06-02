@@ -1,7 +1,9 @@
-use crate::api::CLIENT;
+use crate::api::{CLIENT, ExchangeSymbol};
+use crate::symbol_mentions::{SymbolAliasSource, SymbolMention, SymbolMentionResolver};
 use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zeroize::Zeroizing;
@@ -15,18 +17,21 @@ const TELEGRAM_AVATAR_MAX_BODY_BYTES: usize = 512 * 1024;
 pub(crate) const TELEGRAM_AVATAR_RETRY_BACKOFF_MS: u64 = 300_000;
 pub(crate) const TELEGRAM_FEED_FETCH_LIMIT: usize = 10;
 pub(crate) const TELEGRAM_FEED_RENDER_LIMIT: usize = 100;
-pub(crate) const TELEGRAM_FEED_MAX_CHANNELS: usize = 12;
 pub(crate) const TELEGRAM_FEED_REFRESH_INTERVAL_SECS: u64 = 15;
 pub(crate) const TELEGRAM_NEW_MESSAGE_COOLDOWN_MS: u64 = 120_000;
 pub(crate) const TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS: u64 = 30;
 pub(crate) const TELEGRAM_FAST_STALE_AFTER_MS: u64 =
     TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS * 3 * 1_000;
 const TELEGRAM_FEED_SEEN_ID_LIMIT_PER_CHANNEL: usize = 1024;
+const TELEGRAM_PRIVATE_CHANNEL_KEY_PREFIX: &str = "private:";
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TelegramTickerMention {
     pub(crate) symbol: String,
     pub(crate) ticker: String,
+    pub(crate) matched_text: String,
+    pub(crate) source: SymbolAliasSource,
+    pub(crate) confidence: u8,
     pub(crate) reference_price: Option<f64>,
     pub(crate) reference_seen_ms: u64,
 }
@@ -89,6 +94,41 @@ pub(crate) enum TelegramFastFeedEvent {
     Loaded(String, Box<Result<TelegramFeedPage, String>>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TelegramFeedPrivateChannelConfig {
+    pub peer_id: i64,
+    pub title: String,
+}
+
+impl TelegramFeedPrivateChannelConfig {
+    pub(crate) fn normalized(&self) -> Option<Self> {
+        (self.peer_id > 0).then(|| Self {
+            peer_id: self.peer_id,
+            title: normalize_private_channel_title(self.title.as_str(), self.peer_id),
+        })
+    }
+
+    pub(crate) fn key(&self) -> String {
+        telegram_private_channel_key(self.peer_id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TelegramPrivateChannelCandidate {
+    pub(crate) peer_id: i64,
+    pub(crate) title: String,
+    pub(crate) avatar_handle: Option<ImageHandle>,
+}
+
+impl TelegramPrivateChannelCandidate {
+    pub(crate) fn to_config(&self) -> TelegramFeedPrivateChannelConfig {
+        TelegramFeedPrivateChannelConfig {
+            peer_id: self.peer_id,
+            title: self.title.clone(),
+        }
+    }
+}
+
 impl TelegramFeedPost {
     fn with_fetch_timing(
         mut self,
@@ -106,6 +146,10 @@ impl TelegramFeedPost {
 #[derive(Debug, Clone)]
 pub(crate) struct TelegramFeedState {
     pub(crate) channels: Vec<String>,
+    pub(crate) private_channels: Vec<TelegramFeedPrivateChannelConfig>,
+    pub(crate) private_channel_candidates: Vec<TelegramPrivateChannelCandidate>,
+    pub(crate) private_channel_candidates_loading: bool,
+    pub(crate) private_channel_candidates_expanded: bool,
     pub(crate) notifications_enabled: bool,
     pub(crate) fast_mode_enabled: bool,
     pub(crate) fast_api_id: Option<i32>,
@@ -125,6 +169,7 @@ pub(crate) struct TelegramFeedState {
     pub(crate) channel_input: String,
     pub(crate) channel_profiles: HashMap<String, TelegramChannelProfile>,
     pub(crate) posts: Vec<TelegramFeedPost>,
+    ticker_mention_resolver: SymbolMentionResolver,
     seen_post_ids: HashMap<String, VecDeque<u64>>,
     pub(crate) loading_channels: Vec<String>,
     pub(crate) background_loading_channels: Vec<String>,
@@ -136,12 +181,17 @@ pub(crate) struct TelegramFeedState {
 impl TelegramFeedState {
     pub(crate) fn new(
         channels: &[String],
+        private_channels: &[TelegramFeedPrivateChannelConfig],
         notifications_enabled: bool,
         fast_mode_enabled: bool,
         fast_api_id: Option<i32>,
     ) -> Self {
         Self {
             channels: normalized_channel_list(channels),
+            private_channels: normalized_private_channel_list(private_channels),
+            private_channel_candidates: Vec::new(),
+            private_channel_candidates_loading: false,
+            private_channel_candidates_expanded: false,
             notifications_enabled,
             fast_mode_enabled,
             fast_api_id,
@@ -163,6 +213,7 @@ impl TelegramFeedState {
             channel_input: String::new(),
             channel_profiles: HashMap::new(),
             posts: Vec::new(),
+            ticker_mention_resolver: SymbolMentionResolver::empty(),
             seen_post_ids: HashMap::new(),
             loading_channels: Vec::new(),
             background_loading_channels: Vec::new(),
@@ -177,7 +228,9 @@ impl TelegramFeedState {
     }
 
     pub(crate) fn refreshing(&self) -> bool {
-        self.loading() || !self.background_loading_channels.is_empty()
+        self.loading()
+            || !self.background_loading_channels.is_empty()
+            || self.private_channel_candidates_loading
     }
 
     pub(crate) fn visible_posts(&self) -> Vec<TelegramFeedPost> {
@@ -191,6 +244,14 @@ impl TelegramFeedState {
         });
         posts.truncate(TELEGRAM_FEED_RENDER_LIMIT);
         posts
+    }
+
+    pub(crate) fn rebuild_ticker_mention_resolver(&mut self, symbols: &[ExchangeSymbol]) {
+        self.ticker_mention_resolver = SymbolMentionResolver::from_symbols(symbols);
+    }
+
+    pub(crate) fn resolve_ticker_mentions(&self, text: &str) -> Vec<SymbolMention> {
+        self.ticker_mention_resolver.resolve(text)
     }
 
     pub(crate) fn has_seen_posts_for_channel(&self, channel: &str) -> bool {
@@ -215,6 +276,26 @@ impl TelegramFeedState {
 
     pub(crate) fn clear_seen_posts_for_channel(&mut self, channel: &str) {
         self.seen_post_ids.remove(channel);
+    }
+
+    pub(crate) fn selected_channel_count(&self) -> usize {
+        self.channels.len() + self.private_channels.len()
+    }
+
+    pub(crate) fn private_channel_selected(&self, peer_id: i64) -> bool {
+        self.private_channels
+            .iter()
+            .any(|channel| channel.peer_id == peer_id)
+    }
+
+    pub(crate) fn available_private_channel_candidates(
+        &self,
+    ) -> Vec<TelegramPrivateChannelCandidate> {
+        self.private_channel_candidates
+            .iter()
+            .filter(|candidate| !self.private_channel_selected(candidate.peer_id))
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn record_fast_connection_event(&mut self, now_ms: u64) {
@@ -245,12 +326,46 @@ pub(crate) fn normalized_channel_list(channels: &[String]) -> Vec<String> {
             && !normalized.iter().any(|existing| existing == &channel)
         {
             normalized.push(channel);
-            if normalized.len() >= TELEGRAM_FEED_MAX_CHANNELS {
-                break;
-            }
         }
     }
     normalized
+}
+
+pub(crate) fn normalized_private_channel_list(
+    channels: &[TelegramFeedPrivateChannelConfig],
+) -> Vec<TelegramFeedPrivateChannelConfig> {
+    let mut normalized = Vec::new();
+    for channel in channels {
+        if let Some(channel) = channel.normalized()
+            && !normalized
+                .iter()
+                .any(|existing: &TelegramFeedPrivateChannelConfig| {
+                    existing.peer_id == channel.peer_id
+                })
+        {
+            normalized.push(channel);
+        }
+    }
+    normalized
+}
+
+pub(crate) fn normalize_private_channel_title(title: &str, peer_id: i64) -> String {
+    let title = normalize_telegram_plain_text(title).trim().to_string();
+    if title.is_empty() {
+        format!("Private channel {peer_id}")
+    } else {
+        title
+    }
+}
+
+pub(crate) fn telegram_private_channel_key(peer_id: i64) -> String {
+    format!("{TELEGRAM_PRIVATE_CHANNEL_KEY_PREFIX}{peer_id}")
+}
+
+pub(crate) fn telegram_private_channel_peer_id_from_key(key: &str) -> Option<i64> {
+    key.strip_prefix(TELEGRAM_PRIVATE_CHANNEL_KEY_PREFIX)
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|peer_id| *peer_id > 0)
 }
 
 pub(crate) fn normalize_public_channel_input(input: &str) -> Result<String, String> {
@@ -824,17 +939,56 @@ mod tests {
     }
 
     #[test]
-    fn normalized_channel_list_dedupes_and_caps_channels() {
-        let channels = (0..TELEGRAM_FEED_MAX_CHANNELS + 4)
+    fn normalized_channel_list_dedupes_without_capping_channels() {
+        let channels = (0..16)
             .map(|index| format!("channel_{index}"))
             .chain(std::iter::once("channel_1".to_string()))
             .collect::<Vec<_>>();
 
         let normalized = normalized_channel_list(&channels);
 
-        assert_eq!(normalized.len(), TELEGRAM_FEED_MAX_CHANNELS);
+        assert_eq!(normalized.len(), 16);
         assert_eq!(normalized[0], "channel_0");
         assert_eq!(normalized[1], "channel_1");
+        assert_eq!(normalized[15], "channel_15");
+    }
+
+    #[test]
+    fn normalized_private_channel_list_dedupes_and_sanitizes_titles() {
+        let channels = vec![
+            TelegramFeedPrivateChannelConfig {
+                peer_id: 42,
+                title: "  Macro & News  ".to_string(),
+            },
+            TelegramFeedPrivateChannelConfig {
+                peer_id: 42,
+                title: "Duplicate".to_string(),
+            },
+            TelegramFeedPrivateChannelConfig {
+                peer_id: 0,
+                title: "Invalid".to_string(),
+            },
+            TelegramFeedPrivateChannelConfig {
+                peer_id: 43,
+                title: String::new(),
+            },
+        ];
+
+        let normalized = normalized_private_channel_list(&channels);
+
+        assert_eq!(normalized.len(), 2);
+        assert_eq!(normalized[0].peer_id, 42);
+        assert_eq!(normalized[0].title, "Macro & News");
+        assert_eq!(normalized[1].title, "Private channel 43");
+        assert_eq!(normalized[0].key(), "private:42");
+        assert_eq!(
+            telegram_private_channel_peer_id_from_key("private:42"),
+            Some(42)
+        );
+        assert_eq!(
+            telegram_private_channel_peer_id_from_key("marketfeed"),
+            None
+        );
     }
 
     #[test]

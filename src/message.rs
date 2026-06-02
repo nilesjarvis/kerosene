@@ -35,7 +35,10 @@ use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
 use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
-use crate::telegram_feed::{TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage};
+use crate::telegram_feed::{
+    TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage,
+    TelegramPrivateChannelCandidate,
+};
 use crate::timeframe::Timeframe;
 use crate::ws::WsUserData;
 use iced::widget::pane_grid;
@@ -351,6 +354,10 @@ pub(crate) enum Message {
     TelegramFastFeedEvent(TelegramFastFeedEvent),
     TelegramFeedChannelInputChanged(String),
     TelegramFeedAddChannel,
+    TelegramPrivateChannelsRefresh,
+    TelegramPrivateChannelsLoaded(Box<Result<Vec<TelegramPrivateChannelCandidate>, String>>),
+    TelegramFeedAddPrivateChannel(i64),
+    ToggleTelegramPrivateChannelCandidatesExpanded,
     TelegramFeedRemoveChannel(String),
     ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,

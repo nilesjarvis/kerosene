@@ -2,12 +2,15 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
+use crate::symbol_mentions::SymbolAliasSource;
 use crate::telegram_feed::{
-    TelegramChannelProfile, TelegramFastAuthStage, TelegramFeedPost, telegram_age_countdown_label,
-    telegram_arrival_latency_label, telegram_new_message_heat, telegram_price_impact_pct,
+    TelegramChannelProfile, TelegramFastAuthStage, TelegramFeedPost,
+    TelegramPrivateChannelCandidate, telegram_age_countdown_label, telegram_arrival_latency_label,
+    telegram_new_message_heat, telegram_price_impact_pct,
 };
 use iced::ContentFit;
 use iced::widget::container as container_style;
+use iced::widget::image::Handle as ImageHandle;
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::{
     Space, button, column, container, image, responsive, row, rule, scrollable, text, text_input,
@@ -17,6 +20,9 @@ use iced::{Alignment, Color, Element, Fill, Theme};
 
 const TELEGRAM_COMPACT_CONTROLS_WIDTH: f32 = 360.0;
 const TELEGRAM_CHANNEL_COLLAPSE_THRESHOLD: usize = 4;
+const TELEGRAM_PRIVATE_BUTTON_WIDTH: f32 = 64.0;
+const TELEGRAM_PRIVATE_BUTTON_HEIGHT: f32 = 26.0;
+const TELEGRAM_PRIVATE_CANDIDATE_LIST_HEIGHT: f32 = 150.0;
 const TELEGRAM_FAST_STATUS_BUTTON_SIZE: f32 = 24.0;
 const TELEGRAM_FAST_STATUS_ICON_SIZE: f32 = 14.0;
 const TELEGRAM_FAST_STATUS_DOT_SIZE: f32 = 7.0;
@@ -25,6 +31,9 @@ const TELEGRAM_FAST_STATUS_DOT_SIZE: f32 = 7.0;
 struct TelegramTickerImpactCard {
     symbol: String,
     ticker: String,
+    matched_text: String,
+    source: SymbolAliasSource,
+    confidence: u8,
     impact_pct: Option<f64>,
 }
 
@@ -83,6 +92,7 @@ impl TradingTerminal {
 
         let notification_button = self.view_telegram_notification_button();
         let fast_button = self.view_telegram_fast_button();
+        let private_button = self.view_telegram_private_channels_button();
         let refresh_button = self.view_telegram_refresh_button();
 
         if available_width < TELEGRAM_COMPACT_CONTROLS_WIDTH {
@@ -92,6 +102,7 @@ impl TradingTerminal {
                     add_button,
                     notification_button,
                     fast_button,
+                    private_button,
                     Space::new().width(Fill),
                     refresh_button
                 ]
@@ -107,6 +118,7 @@ impl TradingTerminal {
                 add_button,
                 notification_button,
                 fast_button,
+                private_button,
                 refresh_button
             ]
             .spacing(8)
@@ -114,6 +126,43 @@ impl TradingTerminal {
             .width(Fill)
             .into()
         }
+    }
+
+    fn view_telegram_private_channels_button(&self) -> Element<'_, Message> {
+        if !self.telegram_feed.fast_mode_enabled {
+            return Space::new().width(0).into();
+        }
+
+        let content: Element<'_, Message> = if self.telegram_feed.private_channel_candidates_loading
+        {
+            container(self.view_spinner(13))
+                .width(13.0)
+                .height(13.0)
+                .center(13.0)
+                .into()
+        } else {
+            text("Private").size(11).center().into()
+        };
+        let mut private_button = button(content)
+            .width(TELEGRAM_PRIVATE_BUTTON_WIDTH)
+            .height(TELEGRAM_PRIVATE_BUTTON_HEIGHT)
+            .padding([0, 8])
+            .style(telegram_action_button);
+        if !self.telegram_feed.private_channel_candidates_loading {
+            private_button = private_button.on_press(Message::TelegramPrivateChannelsRefresh);
+        }
+
+        tooltip(
+            private_button,
+            text(if self.telegram_fast_signed_in() {
+                "Scan private channels"
+            } else {
+                "Sign in to scan private channels"
+            })
+            .size(10),
+            tooltip::Position::Top,
+        )
+        .into()
     }
 
     fn view_telegram_notification_button(&self) -> Element<'static, Message> {
@@ -336,69 +385,152 @@ impl TradingTerminal {
 
     fn view_telegram_feed_channels(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        if self.telegram_feed.channels.is_empty() {
+        let selected_count = self.telegram_feed.selected_channel_count();
+        let scan_status = self.telegram_private_scan_status(&theme);
+        let candidates = self.telegram_feed.available_private_channel_candidates();
+        let private_selector = (!candidates.is_empty()).then(|| {
+            telegram_private_candidate_selector(
+                candidates,
+                self.telegram_feed.private_channel_candidates_expanded,
+                theme.palette().primary,
+                theme.extended_palette().background.weak.text,
+            )
+        });
+
+        if selected_count == 0 {
+            if let Some(status) = scan_status {
+                let mut content = column![status].spacing(6).width(Fill);
+                if let Some(private_selector) = private_selector {
+                    content = content.push(private_selector);
+                }
+                return content.into();
+            }
+            if let Some(private_selector) = private_selector {
+                return private_selector.into();
+            }
+
             return text("No channels")
                 .size(11)
                 .color(theme.extended_palette().background.weak.text)
                 .into();
         }
 
-        let collapsible = self.telegram_feed.channels.len() > TELEGRAM_CHANNEL_COLLAPSE_THRESHOLD;
+        let collapsible = selected_count > TELEGRAM_CHANNEL_COLLAPSE_THRESHOLD;
         if collapsible && !self.telegram_feed.channels_expanded {
-            return telegram_channel_collapse_summary(
-                self.telegram_feed.channels.len(),
+            let summary = telegram_channel_collapse_summary(
+                selected_count,
                 self.telegram_feed.refreshing(),
                 false,
                 theme.palette().primary,
                 theme.extended_palette().background.weak.text,
             );
+            if scan_status.is_some() || private_selector.is_some() {
+                let mut content = column![summary].spacing(6).width(Fill);
+                if let Some(status) = scan_status {
+                    content = content.push(status);
+                }
+                if let Some(private_selector) = private_selector {
+                    content = content.push(private_selector);
+                }
+                return content.into();
+            }
+            return summary;
         }
 
-        let chips = self
-            .telegram_feed
-            .channels
-            .iter()
-            .fold(
-                row![].spacing(6).align_y(Alignment::Center),
-                |channels, channel| {
-                    let label_color = if self
-                        .telegram_feed
-                        .loading_channels
-                        .iter()
-                        .any(|loading| loading == channel)
-                    {
-                        theme.palette().primary
-                    } else {
-                        theme.extended_palette().background.weak.text
-                    };
+        let mut chips = row![].spacing(6).align_y(Alignment::Center);
+        for channel in &self.telegram_feed.channels {
+            let label_color = if self
+                .telegram_feed
+                .loading_channels
+                .iter()
+                .any(|loading| loading == channel)
+            {
+                theme.palette().primary
+            } else {
+                theme.extended_palette().background.weak.text
+            };
 
-                    channels.push(telegram_channel_chip(
-                        channel.clone(),
-                        label_color,
-                        self.telegram_feed.channel_profiles.get(channel).cloned(),
-                    ))
-                },
-            )
-            .wrap()
-            .vertical_spacing(6);
+            chips = chips.push(telegram_channel_chip(
+                channel.clone(),
+                format!("@{channel}"),
+                label_color,
+                self.telegram_feed.channel_profiles.get(channel).cloned(),
+            ));
+        }
+        for channel in &self.telegram_feed.private_channels {
+            let key = channel.key();
+            let profile = self.telegram_feed.channel_profiles.get(&key).cloned();
+            let label = profile
+                .as_ref()
+                .map(|profile| profile.title.clone())
+                .unwrap_or_else(|| channel.title.clone());
+            chips = chips.push(telegram_channel_chip(
+                key,
+                label,
+                theme.extended_palette().background.weak.text,
+                profile,
+            ));
+        }
+        let chips = chips.wrap().vertical_spacing(6);
 
         if collapsible {
-            column![
+            let mut content = column![
                 telegram_channel_collapse_summary(
-                    self.telegram_feed.channels.len(),
+                    selected_count,
                     self.telegram_feed.refreshing(),
                     true,
                     theme.palette().primary,
                     theme.extended_palette().background.weak.text,
                 ),
                 chips,
-            ]
-            .spacing(6)
-            .width(Fill)
-            .into()
+            ];
+            if let Some(status) = scan_status {
+                content = content.push(status);
+            }
+            if let Some(private_selector) = private_selector {
+                content = content.push(private_selector);
+            }
+            content.spacing(6).width(Fill).into()
         } else {
-            chips.into()
+            let mut content = column![chips].spacing(6).width(Fill);
+            if let Some(status) = scan_status {
+                content = content.push(status);
+            }
+            if let Some(private_selector) = private_selector {
+                content = content.push(private_selector);
+            }
+            content.into()
         }
+    }
+
+    fn telegram_private_scan_status(&self, theme: &Theme) -> Option<Element<'static, Message>> {
+        if !self.telegram_feed.fast_mode_enabled {
+            return None;
+        }
+
+        let (message, is_error) = self.telegram_feed.fast_status.as_ref()?;
+        let scan_related = self.telegram_feed.private_channel_candidates_loading
+            || message == "Scanning Telegram channels"
+            || (message.starts_with("Found ") && message.contains("private Telegram channels"))
+            || message.contains("private channels")
+            || message.contains("Telegram channel list failed");
+        if !scan_related {
+            return None;
+        }
+
+        let color = if *is_error {
+            theme.palette().danger
+        } else {
+            theme.extended_palette().background.weak.text
+        };
+
+        Some(
+            text(message.clone())
+                .size(11)
+                .color(color)
+                .width(Fill)
+                .into(),
+        )
     }
 
     fn view_telegram_feed_body(&self, now_ms: u64) -> Element<'_, Message> {
@@ -408,10 +540,10 @@ impl TradingTerminal {
         if posts.is_empty() {
             let label = if self.telegram_feed.loading() {
                 "Loading posts..."
-            } else if self.telegram_feed.channels.is_empty() {
-                "Add a public Telegram channel"
+            } else if self.telegram_feed.selected_channel_count() == 0 {
+                "Add a Telegram channel"
             } else {
-                "No public posts found"
+                "No posts found"
             };
             return container(text(label).size(12).color(theme.palette().text))
                 .width(Fill)
@@ -467,6 +599,9 @@ impl TradingTerminal {
             .map(|mention| TelegramTickerImpactCard {
                 symbol: mention.symbol.clone(),
                 ticker: mention.ticker.clone(),
+                matched_text: mention.matched_text.clone(),
+                source: mention.source,
+                confidence: mention.confidence,
                 impact_pct: telegram_price_impact_pct(
                     mention.reference_price,
                     self.resolve_mid_for_symbol(&mention.symbol),
@@ -478,10 +613,10 @@ impl TradingTerminal {
 
 fn telegram_channel_chip(
     channel: String,
+    label: String,
     label_color: Color,
     profile: Option<TelegramChannelProfile>,
 ) -> Element<'static, Message> {
-    let label = format!("@{channel}");
     let remove_channel = channel.clone();
     let avatar = telegram_channel_avatar(profile.as_ref(), &channel, 18.0, label_color);
 
@@ -500,6 +635,115 @@ fn telegram_channel_chip(
     .padding([3, 6])
     .style(telegram_chip_container)
     .into()
+}
+
+fn telegram_private_candidate_list(
+    candidates: Vec<TelegramPrivateChannelCandidate>,
+    label_color: Color,
+) -> Element<'static, Message> {
+    let rows = candidates
+        .into_iter()
+        .fold(column![].spacing(4).width(Fill), |rows, candidate| {
+            rows.push(telegram_private_candidate_chip(candidate, label_color))
+        });
+
+    scrollable(rows)
+        .direction(Direction::Vertical(
+            Scrollbar::new().width(4).margin(0).scroller_width(4),
+        ))
+        .height(TELEGRAM_PRIVATE_CANDIDATE_LIST_HEIGHT)
+        .width(Fill)
+        .into()
+}
+
+fn telegram_private_candidate_selector(
+    candidates: Vec<TelegramPrivateChannelCandidate>,
+    expanded: bool,
+    label_color: Color,
+    muted_text: Color,
+) -> Element<'static, Message> {
+    let count = candidates.len();
+    let toggle_label = if expanded { "Hide" } else { "Show" };
+    let header = container(
+        row![
+            text(format!("{count} private channels"))
+                .size(11)
+                .color(muted_text),
+            Space::new().width(Fill),
+            button(text(toggle_label).size(10).center())
+                .on_press(Message::ToggleTelegramPrivateChannelCandidatesExpanded)
+                .padding([1, 7])
+                .style(subtle_telegram_icon_button),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([3, 6])
+    .style(telegram_chip_container);
+
+    if expanded {
+        column![
+            header,
+            telegram_private_candidate_list(candidates, label_color)
+        ]
+        .spacing(6)
+        .width(Fill)
+        .into()
+    } else {
+        header.into()
+    }
+}
+
+fn telegram_private_candidate_chip(
+    candidate: TelegramPrivateChannelCandidate,
+    label_color: Color,
+) -> Element<'static, Message> {
+    let peer_id = candidate.peer_id;
+    let title = candidate.title;
+    let avatar =
+        telegram_private_candidate_avatar(candidate.avatar_handle, &title, 18.0, label_color);
+
+    container(
+        row![
+            avatar,
+            text(title).size(11).color(label_color),
+            Space::new().width(Fill),
+            button(text("+").size(10).center())
+                .on_press(Message::TelegramFeedAddPrivateChannel(peer_id))
+                .padding([0, 4])
+                .style(subtle_telegram_icon_button),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .padding([3, 6])
+    .style(telegram_chip_container)
+    .into()
+}
+
+fn telegram_private_candidate_avatar(
+    avatar_handle: Option<ImageHandle>,
+    title: &str,
+    size: f32,
+    text_color: Color,
+) -> Element<'static, Message> {
+    if let Some(handle) = avatar_handle {
+        return container(
+            image(handle)
+                .width(size)
+                .height(size)
+                .content_fit(ContentFit::Cover)
+                .border_radius(size / 2.0),
+        )
+        .width(size)
+        .height(size)
+        .clip(true)
+        .into();
+    }
+
+    telegram_channel_avatar(None, title, size, text_color)
 }
 
 fn telegram_channel_collapse_summary(
@@ -646,6 +890,7 @@ fn telegram_ticker_impact_card(
     danger_text: Color,
 ) -> Element<'static, Message> {
     let symbol = impact.symbol.clone();
+    let ticker = impact.ticker.clone();
     let impact_label = telegram_impact_label(impact.impact_pct);
     let impact_color =
         telegram_impact_color(impact.impact_pct, muted_text, success_text, danger_text);
@@ -654,10 +899,10 @@ fn telegram_ticker_impact_card(
         .unwrap_or_else(|| telegram_ticker_fallback_icon(&impact.ticker, primary_text));
     let pct = impact.impact_pct;
 
-    button(
+    let chip = button(
         row![
             icon,
-            text(impact.ticker)
+            text(ticker)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
                 .color(primary_text),
@@ -671,8 +916,13 @@ fn telegram_ticker_impact_card(
     )
     .on_press(Message::SymbolSelected(symbol))
     .padding([3, 7])
-    .style(move |theme: &Theme, status| telegram_ticker_impact_button(theme, status, pct))
-    .into()
+    .style(move |theme: &Theme, status| telegram_ticker_impact_button(theme, status, pct));
+
+    if let Some(label) = telegram_ticker_match_tooltip(&impact) {
+        tooltip(chip, text(label).size(10), tooltip::Position::Top).into()
+    } else {
+        chip.into()
+    }
 }
 
 fn telegram_ticker_fallback_icon(ticker: &str, color: Color) -> Element<'static, Message> {
@@ -698,6 +948,34 @@ fn telegram_impact_label(impact_pct: Option<f64>) -> String {
     impact_pct
         .map(|impact| format!("{impact:+.2}%"))
         .unwrap_or_else(|| "-".to_string())
+}
+
+fn telegram_ticker_match_tooltip(impact: &TelegramTickerImpactCard) -> Option<String> {
+    let matched = impact.matched_text.trim();
+    if matched.is_empty()
+        || (impact.source == SymbolAliasSource::Ticker
+            && matched.eq_ignore_ascii_case(&impact.ticker))
+    {
+        return None;
+    }
+
+    Some(format!(
+        "Matched \"{}\" as {} ({})",
+        matched,
+        telegram_symbol_alias_source_label(impact.source),
+        impact.confidence
+    ))
+}
+
+fn telegram_symbol_alias_source_label(source: SymbolAliasSource) -> &'static str {
+    match source {
+        SymbolAliasSource::Ticker => "ticker",
+        SymbolAliasSource::Key => "symbol key",
+        SymbolAliasSource::KeySuffix => "symbol key",
+        SymbolAliasSource::DisplayName => "display name",
+        SymbolAliasSource::Keyword => "keyword",
+        SymbolAliasSource::CuratedKeyword => "curated keyword",
+    }
 }
 
 fn telegram_impact_color(

@@ -114,6 +114,7 @@ impl TradingTerminal {
             telegram_feed_fast_mode_enabled: self.telegram_feed.fast_mode_enabled,
             telegram_feed_fast_api_id: self.telegram_feed.fast_api_id,
             telegram_feed_channels: self.telegram_feed.channels.clone(),
+            telegram_feed_private_channels: self.telegram_feed.private_channels.clone(),
 
             spaghetti_charts: layout_snapshot.spaghetti_charts,
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),

@@ -1,15 +1,19 @@
 use crate::telegram_feed::{
     TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS, TELEGRAM_FEED_FETCH_LIMIT, TelegramChannelProfile,
     TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
-    normalize_public_channel_input, normalize_telegram_plain_text,
-    telegram_channel_profile_from_title,
+    TelegramFeedPrivateChannelConfig, TelegramPrivateChannelCandidate,
+    normalize_private_channel_title, normalize_public_channel_input, normalize_telegram_plain_text,
+    telegram_channel_profile_from_title, telegram_private_channel_peer_id_from_key,
 };
 use futures::{SinkExt as _, channel::mpsc};
 use grammers_client::client::{LoginToken, PasswordToken, UpdatesConfiguration};
+use grammers_client::media::ChatPhoto;
+use grammers_client::peer::Peer;
 use grammers_client::session::storages::SqliteSession;
 use grammers_client::update::Update;
 use grammers_client::{Client, SenderPool, SignInError};
-use grammers_session::types::PeerId;
+use grammers_session::types::{PeerId, PeerRef};
+use iced::widget::image::Handle as ImageHandle;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -19,11 +23,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
 const TELEGRAM_FAST_UPDATE_QUEUE_LIMIT: usize = 2_000;
+const TELEGRAM_PRIVATE_CANDIDATE_AVATAR_MAX_BYTES: usize = 128 * 1024;
 const TELEGRAM_FAST_RECONNECT_BASE_DELAY: Duration = Duration::from_secs(2);
 const TELEGRAM_FAST_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
 const TELEGRAM_FAST_HEALTH_CHECK_INTERVAL: Duration =
     Duration::from_secs(TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS);
-type ChannelIdMap = Arc<RwLock<HashMap<PeerId, String>>>;
+type ChannelIdMap = Arc<RwLock<HashMap<PeerId, FastChannelIdentity>>>;
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
 
@@ -63,7 +68,21 @@ impl<F: FnOnce()> Drop for DropGuard<F> {
 pub(crate) struct TelegramFastFeedStreamParams {
     pub(crate) api_id: i32,
     pub(crate) channels: Vec<String>,
+    pub(crate) private_channels: Vec<TelegramFeedPrivateChannelConfig>,
     pub(crate) reconnect_nonce: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FastChannelIdentity {
+    key: String,
+    title: String,
+}
+
+#[derive(Debug, Clone)]
+struct FastChannelTarget {
+    identity: FastChannelIdentity,
+    profile: TelegramChannelProfile,
+    peer_ref: PeerRef,
 }
 
 enum PendingAuth {
@@ -245,6 +264,74 @@ pub(crate) async fn sign_out_telegram_fast(api_id: i32) -> Result<TelegramFastAu
     result
 }
 
+pub(crate) async fn list_telegram_private_channel_candidates(
+    api_id: i32,
+) -> Result<Vec<TelegramPrivateChannelCandidate>, String> {
+    with_telegram_client(api_id, |client| async move {
+        if !client
+            .is_authorized()
+            .await
+            .map_err(|e| format!("Telegram authorization check failed: {e}"))?
+        {
+            return Err("Sign in to Telegram fast mode first".to_string());
+        }
+
+        let mut candidates = Vec::new();
+        let mut dialogs = client.iter_dialogs().limit(500);
+        while let Some(dialog) = dialogs
+            .next()
+            .await
+            .map_err(|e| format!("Telegram channel list failed: {e}"))?
+        {
+            let Peer::Channel(channel) = dialog.peer else {
+                continue;
+            };
+            if channel.username().is_some() {
+                continue;
+            }
+            let avatar_handle =
+                download_private_channel_avatar_handle(&client, Peer::Channel(channel.clone()))
+                    .await;
+            candidates.push(TelegramPrivateChannelCandidate {
+                peer_id: channel.id().bare_id(),
+                title: normalize_private_channel_title(channel.title(), channel.id().bare_id()),
+                avatar_handle,
+            });
+        }
+
+        candidates.sort_by(|left, right| {
+            left.title
+                .to_ascii_lowercase()
+                .cmp(&right.title.to_ascii_lowercase())
+                .then_with(|| left.peer_id.cmp(&right.peer_id))
+        });
+        candidates.dedup_by_key(|candidate| candidate.peer_id);
+        Ok(candidates)
+    })
+    .await
+}
+
+async fn download_private_channel_avatar_handle(
+    client: &Client,
+    peer: Peer,
+) -> Option<ImageHandle> {
+    let photo = peer.photo(false).await?;
+    let bytes = download_chat_photo_bytes(client, &photo).await?;
+    Some(ImageHandle::from_bytes(bytes))
+}
+
+async fn download_chat_photo_bytes(client: &Client, photo: &ChatPhoto) -> Option<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut download = client.iter_download(photo);
+    while let Some(chunk) = download.next().await.ok()? {
+        bytes.extend_from_slice(&chunk);
+        if bytes.len() > TELEGRAM_PRIVATE_CANDIDATE_AVATAR_MAX_BYTES {
+            return None;
+        }
+    }
+    (!bytes.is_empty()).then_some(bytes)
+}
+
 pub(crate) fn telegram_fast_feed_stream(
     params: &TelegramFastFeedStreamParams,
 ) -> Pin<Box<dyn futures::Stream<Item = TelegramFastFeedEvent> + Send>> {
@@ -336,25 +423,22 @@ async fn run_telegram_fast_feed_session(
         .stream_updates(updates, live_first_updates_configuration())
         .await;
     let channels = normalized_channel_set(&params.channels);
+    let private_channels = normalized_private_channel_map(&params.private_channels);
     let channel_ids = Arc::new(RwLock::new(HashMap::new()));
     let background_client = client.clone();
     let background_channels = channels.clone();
+    let background_private_channels = private_channels.clone();
     let background_channel_ids = Arc::clone(&channel_ids);
     let mut background_output = output.clone();
     let background_task = AbortOnDrop::new(tokio::spawn(async move {
-        resolve_fast_channel_ids(
+        let targets = resolve_fast_channel_targets(
             &background_client,
             &background_channels,
+            &background_private_channels,
             &background_channel_ids,
         )
         .await;
-        backfill_fast_channels(
-            &background_client,
-            &background_channels,
-            &background_channel_ids,
-            &mut background_output,
-        )
-        .await;
+        backfill_fast_channels(&background_client, targets, &mut background_output).await;
         warm_dialog_update_state(&background_client).await;
     }));
     let health_client = client.clone();
@@ -572,62 +656,101 @@ async fn warm_dialog_update_state(client: &Client) {
     }
 }
 
-async fn resolve_fast_channel_ids(
+async fn resolve_fast_channel_targets(
     client: &Client,
     channels: &HashSet<String>,
+    private_channels: &HashMap<i64, TelegramFeedPrivateChannelConfig>,
     channel_ids: &ChannelIdMap,
-) {
+) -> Vec<FastChannelTarget> {
+    let mut targets = Vec::new();
     for channel in channels {
         if let Ok(Some(peer)) = client.resolve_username(channel).await {
-            channel_ids.write().await.insert(peer.id(), channel.clone());
+            if !matches!(peer, Peer::Channel(_)) {
+                continue;
+            }
+            let Some(peer_ref) = peer.to_ref().await else {
+                continue;
+            };
+            let identity = FastChannelIdentity {
+                key: channel.clone(),
+                title: peer.name().unwrap_or(channel).to_string(),
+            };
+            channel_ids
+                .write()
+                .await
+                .insert(peer.id(), identity.clone());
+            targets.push(FastChannelTarget {
+                profile: profile_from_identity(&identity, Some(&peer)),
+                identity,
+                peer_ref,
+            });
         }
     }
+
+    if private_channels.is_empty() {
+        return targets;
+    }
+
+    let mut dialogs = client.iter_dialogs().limit(500);
+    while let Ok(Some(dialog)) = dialogs.next().await {
+        let Peer::Channel(channel) = dialog.peer else {
+            continue;
+        };
+        let peer_id = channel.id().bare_id();
+        let Some(config) = private_channels.get(&peer_id) else {
+            continue;
+        };
+        let Some(peer_ref) = channel.to_ref().await else {
+            continue;
+        };
+        let identity = FastChannelIdentity {
+            key: config.key(),
+            title: normalize_private_channel_title(channel.title(), peer_id),
+        };
+        channel_ids
+            .write()
+            .await
+            .insert(channel.id(), identity.clone());
+        targets.push(FastChannelTarget {
+            profile: telegram_channel_profile_from_title(&identity.key, Some(&identity.title)),
+            identity,
+            peer_ref,
+        });
+    }
+
+    targets
 }
 
 async fn backfill_fast_channels(
     client: &Client,
-    channels: &HashSet<String>,
-    channel_ids: &ChannelIdMap,
+    targets: Vec<FastChannelTarget>,
     output: &mut mpsc::Sender<TelegramFastFeedEvent>,
 ) {
-    for channel in channels {
-        let profile = match client.resolve_username(channel).await {
-            Ok(Some(peer)) => {
-                channel_ids.write().await.insert(peer.id(), channel.clone());
-                let profile = profile_from_peer(channel, Some(&peer));
-                if let Some(peer_ref) = peer.to_ref().await {
-                    let mut posts = Vec::new();
-                    let mut messages = client
-                        .iter_messages(peer_ref)
-                        .limit(TELEGRAM_FEED_FETCH_LIMIT);
-                    while let Ok(Some(message)) = messages.next().await {
-                        if let Some(post) = fast_post_from_message(channel, &message, false) {
-                            posts.push(post);
-                        }
-                    }
-                    posts.reverse();
-                    if !posts.is_empty()
-                        && output
-                            .send(TelegramFastFeedEvent::Loaded(
-                                channel.clone(),
-                                Box::new(Ok(TelegramFeedPage {
-                                    profile: profile.clone(),
-                                    posts,
-                                })),
-                            ))
-                            .await
-                            .is_err()
-                    {
-                        return;
-                    }
-                }
-                profile
+    for target in targets {
+        let mut posts = Vec::new();
+        let mut messages = client
+            .iter_messages(target.peer_ref)
+            .limit(TELEGRAM_FEED_FETCH_LIMIT);
+        while let Ok(Some(message)) = messages.next().await {
+            if let Some(post) = fast_post_from_message(&target.identity.key, &message, false) {
+                posts.push(post);
             }
-            Ok(None) => telegram_channel_profile_from_title(channel, None),
-            Err(_) => telegram_channel_profile_from_title(channel, None),
-        };
-
-        let _ = profile;
+        }
+        posts.reverse();
+        if !posts.is_empty()
+            && output
+                .send(TelegramFastFeedEvent::Loaded(
+                    target.identity.key.clone(),
+                    Box::new(Ok(TelegramFeedPage {
+                        profile: target.profile,
+                        posts,
+                    })),
+                ))
+                .await
+                .is_err()
+        {
+            return;
+        }
     }
 }
 
@@ -637,17 +760,23 @@ async fn fast_page_from_message(
     message: &grammers_client::update::Message,
 ) -> Option<TelegramFeedPage> {
     let peer = message.peer();
-    let channel = if let Some(channel) = peer
-        .and_then(|peer| peer.username())
+    let public_channel = peer
+        .and_then(|peer| match peer {
+            Peer::Channel(_) => peer.username(),
+            _ => None,
+        })
         .and_then(|username| normalize_public_channel_input(username).ok())
-        .filter(|channel| channels.contains(channel))
-    {
-        channel
+        .filter(|channel| channels.contains(channel));
+    let identity = if let Some(channel) = public_channel {
+        FastChannelIdentity {
+            title: channel.clone(),
+            key: channel,
+        }
     } else {
         channel_ids.read().await.get(&message.peer_id()).cloned()?
     };
-    let profile = profile_from_peer(&channel, peer);
-    let post = fast_post_from_message(&channel, message, true)?;
+    let profile = profile_from_identity(&identity, peer);
+    let post = fast_post_from_message(&identity.key, message, true)?;
     Some(TelegramFeedPage {
         profile,
         posts: vec![post],
@@ -676,16 +805,20 @@ fn fast_post_from_message(
         request_started_ms: now_ms,
         request_duration_ms: 0,
         first_seen_ms: if live_update { now_ms } else { 0 },
-        url: format!("https://t.me/{channel}/{message_id}"),
+        url: telegram_post_url(channel, message_id),
         ticker_mentions: Vec::new(),
     })
 }
 
-fn profile_from_peer(
-    channel: &str,
+fn profile_from_identity(
+    identity: &FastChannelIdentity,
     peer: Option<&grammers_client::peer::Peer>,
 ) -> TelegramChannelProfile {
-    telegram_channel_profile_from_title(channel, peer.and_then(|peer| peer.name()))
+    telegram_channel_profile_from_title(
+        &identity.key,
+        peer.and_then(|peer| peer.name())
+            .or(Some(identity.title.as_str())),
+    )
 }
 
 fn normalized_channel_set(channels: &[String]) -> HashSet<String> {
@@ -693,6 +826,22 @@ fn normalized_channel_set(channels: &[String]) -> HashSet<String> {
         .iter()
         .filter_map(|channel| normalize_public_channel_input(channel).ok())
         .collect()
+}
+
+fn normalized_private_channel_map(
+    channels: &[TelegramFeedPrivateChannelConfig],
+) -> HashMap<i64, TelegramFeedPrivateChannelConfig> {
+    channels
+        .iter()
+        .filter_map(TelegramFeedPrivateChannelConfig::normalized)
+        .map(|channel| (channel.peer_id, channel))
+        .collect()
+}
+
+fn telegram_post_url(channel: &str, message_id: u64) -> String {
+    telegram_private_channel_peer_id_from_key(channel)
+        .map(|peer_id| format!("https://t.me/c/{peer_id}/{message_id}"))
+        .unwrap_or_else(|| format!("https://t.me/{channel}/{message_id}"))
 }
 
 fn status_event(connected: bool, auth_required: bool, message: &str) -> TelegramFastFeedEvent {
@@ -722,6 +871,26 @@ mod tests {
         assert_eq!(
             config.update_queue_limit,
             Some(TELEGRAM_FAST_UPDATE_QUEUE_LIMIT)
+        );
+    }
+
+    #[test]
+    fn private_channel_configs_map_to_private_source_keys_and_links() {
+        let channels = vec![TelegramFeedPrivateChannelConfig {
+            peer_id: 42,
+            title: "Private Macro".to_string(),
+        }];
+
+        let mapped = normalized_private_channel_map(&channels);
+
+        assert_eq!(
+            mapped.get(&42).map(|channel| channel.key()).as_deref(),
+            Some("private:42")
+        );
+        assert_eq!(telegram_post_url("private:42", 7), "https://t.me/c/42/7");
+        assert_eq!(
+            telegram_post_url("marketfeed", 7),
+            "https://t.me/marketfeed/7"
         );
     }
 }

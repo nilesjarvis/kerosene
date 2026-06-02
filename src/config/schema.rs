@@ -13,7 +13,7 @@ use super::wallets::{AddressBookEntryConfig, WalletTrackerConfig};
 use super::{CustomFontConfig, DisplayFontConfig};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
-use crate::telegram_feed::default_telegram_feed_channels;
+use crate::telegram_feed::{TelegramFeedPrivateChannelConfig, default_telegram_feed_channels};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
@@ -288,6 +288,9 @@ pub struct KeroseneConfig {
     /// Public Telegram channel usernames shown by the Telegram Feed widget.
     #[serde(default = "default_telegram_feed_channels")]
     pub telegram_feed_channels: Vec<String>,
+    /// Private broadcast Telegram channels selected from the signed-in MTProto account.
+    #[serde(default)]
+    pub telegram_feed_private_channels: Vec<TelegramFeedPrivateChannelConfig>,
     /// Per-spaghetti (comparison) chart configurations.
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,

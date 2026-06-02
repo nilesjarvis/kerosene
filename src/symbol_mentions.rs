@@ -5,9 +5,10 @@ use std::collections::{HashMap, HashSet};
 
 const STRONG_TICKER_WORDS: &[&str] = &[
     "A", "AI", "AM", "AN", "AND", "ARE", "AS", "AT", "BE", "BY", "CEO", "CFO", "CTO", "DO", "FOR",
-    "GO", "HAS", "HE", "IN", "IS", "IT", "ME", "NEW", "NO", "NOT", "OF", "ON", "OR", "SEC", "SHE",
-    "THE", "TO", "UP", "US", "USD", "USDC", "USDT", "WE", "YES",
+    "GO", "HAS", "HE", "IN", "IS", "IT", "ME", "NEW", "NO", "NOT", "OF", "ON", "OR", "S", "SEC",
+    "SHE", "THE", "TO", "TRUMP", "UP", "US", "USD", "USDC", "USDT", "WE", "YES",
 ];
+const AMBIGUOUS_BARE_TICKER_WORDS: &[&str] = &["APT", "FLOW", "LINK", "MOVE", "NEAR"];
 const DEFAULT_OIL_SYMBOL_KEYS: &[&str] = &["xyz:BRENTOIL", "xyz:WTIOIL"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -15,6 +16,8 @@ pub(crate) enum SymbolAliasSource {
     Ticker,
     Key,
     KeySuffix,
+    DisplayName,
+    Keyword,
     CuratedKeyword,
 }
 
@@ -58,6 +61,10 @@ pub(crate) struct SymbolMentionResolver {
 }
 
 impl SymbolMentionResolver {
+    pub(crate) fn empty() -> Self {
+        Self::from_aliases(Vec::new())
+    }
+
     pub(crate) fn from_symbols(symbols: &[ExchangeSymbol]) -> Self {
         Self::with_alias_rules(symbols, default_curated_symbol_alias_rules())
     }
@@ -182,6 +189,7 @@ impl SymbolMentionResolver {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_symbol_mentions(
     text: &str,
     symbols: &[ExchangeSymbol],
@@ -283,6 +291,34 @@ fn push_symbol_aliases(
             MatchPolicy::Ticker,
             90,
         );
+    }
+
+    if let Some(display_name) = symbol.display_name.as_deref()
+        && metadata_alias_is_safe(display_name)
+    {
+        push_alias(
+            aliases,
+            seen,
+            display_name,
+            symbol,
+            SymbolAliasSource::DisplayName,
+            MatchPolicy::Phrase,
+            78,
+        );
+    }
+
+    for keyword in &symbol.keywords {
+        if metadata_alias_is_safe(keyword) {
+            push_alias(
+                aliases,
+                seen,
+                keyword,
+                symbol,
+                SymbolAliasSource::Keyword,
+                MatchPolicy::Phrase,
+                74,
+            );
+        }
     }
 }
 
@@ -400,11 +436,10 @@ fn dedupe_and_sort_mentions(candidates: Vec<CandidateMention>) -> Vec<SymbolMent
 }
 
 fn compare_same_symbol_candidate(left: &CandidateMention, right: &CandidateMention) -> Ordering {
-    left.mention
-        .start
-        .cmp(&right.mention.start)
-        .then_with(|| source_rank(left.mention.source).cmp(&source_rank(right.mention.source)))
+    source_rank(left.mention.source)
+        .cmp(&source_rank(right.mention.source))
         .then_with(|| right.mention.confidence.cmp(&left.mention.confidence))
+        .then_with(|| left.mention.start.cmp(&right.mention.start))
         .then_with(|| left.mention.end.cmp(&right.mention.end))
 }
 
@@ -423,7 +458,9 @@ fn source_rank(source: SymbolAliasSource) -> u8 {
     match source {
         SymbolAliasSource::Ticker => 0,
         SymbolAliasSource::Key | SymbolAliasSource::KeySuffix => 1,
-        SymbolAliasSource::CuratedKeyword => 2,
+        SymbolAliasSource::DisplayName => 2,
+        SymbolAliasSource::Keyword => 3,
+        SymbolAliasSource::CuratedKeyword => 4,
     }
 }
 
@@ -432,7 +469,28 @@ fn ticker_requires_strong_match(candidate: &str) -> bool {
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric())
         .count();
-    alphanumeric_len <= 2 || STRONG_TICKER_WORDS.contains(&candidate)
+    alphanumeric_len <= 2
+        || STRONG_TICKER_WORDS.contains(&candidate)
+        || AMBIGUOUS_BARE_TICKER_WORDS.contains(&candidate)
+}
+
+fn metadata_alias_is_safe(phrase: &str) -> bool {
+    let phrase = phrase.trim();
+    if phrase.is_empty() {
+        return false;
+    }
+
+    let alphanumeric_len = phrase
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .count();
+    if alphanumeric_len < 4 {
+        return false;
+    }
+
+    let upper = phrase.to_ascii_uppercase();
+    !STRONG_TICKER_WORDS.contains(&upper.as_str())
+        && !AMBIGUOUS_BARE_TICKER_WORDS.contains(&upper.as_str())
 }
 
 fn original_match_is_strong(original: &str) -> bool {

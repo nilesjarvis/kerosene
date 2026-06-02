@@ -21,7 +21,8 @@ impl TradingTerminal {
         else {
             return;
         };
-        if self.telegram_feed.channels.is_empty() {
+        if self.telegram_feed.channels.is_empty() && self.telegram_feed.private_channels.is_empty()
+        {
             return;
         }
 
@@ -30,6 +31,7 @@ impl TradingTerminal {
                 TelegramFastFeedStreamParams {
                     api_id,
                     channels: self.telegram_feed.channels.clone(),
+                    private_channels: self.telegram_feed.private_channels.clone(),
                     reconnect_nonce: self.telegram_feed.fast_reconnect_nonce,
                 },
                 telegram_fast_feed_stream,
