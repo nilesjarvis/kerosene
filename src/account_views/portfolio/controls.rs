@@ -7,8 +7,8 @@ use crate::portfolio_state::{
 use iced::widget::{Space, button, column, container, responsive, row, rule, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
 
-const PORTFOLIO_TIMEFRAME_STACK_WIDTH: f32 = 460.0;
-const PORTFOLIO_TIMEFRAME_WRAP_WIDTH: f32 = 300.0;
+const PORTFOLIO_TIMEFRAME_STACK_WIDTH: f32 = 500.0;
+const PORTFOLIO_TIMEFRAME_WRAP_WIDTH: f32 = 350.0;
 const PORTFOLIO_COMPACT_WINDOW_ROW_SIZE: usize = 4;
 
 impl TradingTerminal {

@@ -16,6 +16,7 @@ pub(crate) enum PortfolioScope {
 pub(crate) enum PortfolioWindow {
     Day,
     Week,
+    Mtd,
     Month,
     Quarter,
     HalfYear,
@@ -29,6 +30,7 @@ impl PortfolioWindow {
         match self {
             PortfolioWindow::Day => "1D",
             PortfolioWindow::Week => "1W",
+            PortfolioWindow::Mtd => "MTD",
             PortfolioWindow::Month => "1M",
             PortfolioWindow::Quarter => "3M",
             PortfolioWindow::HalfYear => "6M",
@@ -47,6 +49,15 @@ impl PortfolioWindow {
             PortfolioWindow::Quarter => Some(now_ms.saturating_sub(90 * DAY_MS)),
             PortfolioWindow::HalfYear => Some(now_ms.saturating_sub(180 * DAY_MS)),
             PortfolioWindow::Year => Some(now_ms.saturating_sub(365 * DAY_MS)),
+            PortfolioWindow::Mtd => {
+                let now = Utc
+                    .timestamp_millis_opt(i64::try_from(now_ms).ok()?)
+                    .single()?;
+                let start = Utc
+                    .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+                    .single()?;
+                u64::try_from(start.timestamp_millis()).ok()
+            }
             PortfolioWindow::Ytd => {
                 let now = Utc
                     .timestamp_millis_opt(i64::try_from(now_ms).ok()?)
@@ -62,6 +73,7 @@ impl PortfolioWindow {
 pub(crate) const PORTFOLIO_WINDOWS: &[PortfolioWindow] = &[
     PortfolioWindow::Day,
     PortfolioWindow::Week,
+    PortfolioWindow::Mtd,
     PortfolioWindow::Month,
     PortfolioWindow::Quarter,
     PortfolioWindow::HalfYear,
@@ -98,4 +110,45 @@ pub(crate) struct IncomeState {
     pub(crate) loading: bool,
     pub(crate) data: Option<IncomeSnapshot>,
     pub(crate) last_error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn timestamp_ms(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32) -> u64 {
+        let datetime = Utc
+            .with_ymd_and_hms(year, month, day, hour, min, sec)
+            .single()
+            .expect("test timestamp should be a valid UTC instant");
+        u64::try_from(datetime.timestamp_millis()).expect("test timestamp should be positive")
+    }
+
+    #[test]
+    fn mtd_cutoff_starts_at_current_calendar_month() {
+        let now_ms = timestamp_ms(2026, 6, 15, 14, 30, 12);
+        let expected = timestamp_ms(2026, 6, 1, 0, 0, 0);
+
+        assert_eq!(PortfolioWindow::Mtd.cutoff_ms(now_ms), Some(expected));
+    }
+
+    #[test]
+    fn mtd_cutoff_handles_first_day_of_month() {
+        let now_ms = timestamp_ms(2026, 6, 1, 0, 0, 0);
+
+        assert_eq!(PortfolioWindow::Mtd.cutoff_ms(now_ms), Some(now_ms));
+    }
+
+    #[test]
+    fn portfolio_windows_include_mtd_before_rolling_month() {
+        let labels: Vec<_> = PORTFOLIO_WINDOWS
+            .iter()
+            .map(|window| window.label())
+            .collect();
+
+        assert_eq!(
+            labels,
+            vec!["1D", "1W", "MTD", "1M", "3M", "6M", "YTD", "1Y", "ALL"]
+        );
+    }
 }
