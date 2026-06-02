@@ -18,6 +18,18 @@ const AREA_EDGE_ALPHA: f32 = 0.02;
 const AREA_ZERO_ALPHA: f32 = 0.0;
 const LINE_HALO_ALPHA: f32 = 0.16;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PnlAreaSide {
+    Positive,
+    Negative,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PnlAreaSegment {
+    side: PnlAreaSide,
+    points: Vec<Point>,
+}
+
 pub(super) fn draw_portfolio_pnl_chart(
     points: &[(u64, f64)],
     value_mode: PnlValueDisplayMode,
@@ -140,60 +152,135 @@ fn draw_pnl_area(
         return;
     }
 
-    let first_x = points
-        .first()
-        .map(|point| point.point.x)
-        .unwrap_or_default();
-    let last_x = points.last().map(|point| point.point.x).unwrap_or_default();
-    let (min_y, max_y) = points
-        .iter()
-        .fold((zero_y, zero_y), |(min_y, max_y), point| {
-            (min_y.min(point.point.y), max_y.max(point.point.y))
-        });
-
-    if (max_y - min_y).abs() <= f32::EPSILON {
+    let segments = pnl_area_segments(points, zero_y);
+    if segments.is_empty() {
         return;
     }
 
-    let area = canvas::Path::new(|builder| {
-        if let Some(first) = points.first() {
-            builder.move_to(first.point);
-            for point in points.iter().skip(1) {
-                builder.line_to(point.point);
-            }
-            builder.line_to(Point::new(last_x, zero_y));
-            builder.line_to(Point::new(first_x, zero_y));
-            builder.close();
-        }
-    });
-
     let width = frame.width();
     let height = frame.height();
-    let gradient = |color| area_gradient(color, min_y, zero_y, max_y);
 
-    if zero_y > 0.0 {
-        frame.with_clip(
-            Rectangle {
-                x: 0.0,
-                y: 0.0,
-                width,
-                height: zero_y,
-            },
-            |frame| frame.fill(&area, gradient(positive_color)),
-        );
+    for segment in segments {
+        let area = area_segment_path(&segment, zero_y);
+
+        match segment.side {
+            PnlAreaSide::Positive if zero_y > 0.0 => {
+                let gradient = segment_area_gradient(positive_color, &segment, zero_y);
+                frame.with_clip(
+                    Rectangle {
+                        x: 0.0,
+                        y: 0.0,
+                        width,
+                        height: zero_y,
+                    },
+                    |frame| frame.fill(&area, gradient),
+                );
+            }
+            PnlAreaSide::Negative if zero_y < height => {
+                let gradient = segment_area_gradient(negative_color, &segment, zero_y);
+                frame.with_clip(
+                    Rectangle {
+                        x: 0.0,
+                        y: zero_y,
+                        width,
+                        height: height - zero_y,
+                    },
+                    |frame| frame.fill(&area, gradient),
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+fn pnl_area_segments(points: &[PnlChartPoint], zero_y: f32) -> Vec<PnlAreaSegment> {
+    let Some(first) = points.first().copied() else {
+        return Vec::new();
+    };
+
+    let mut segments = Vec::new();
+    let mut current_side = pnl_area_side(first.pnl);
+    let mut current_points = vec![first.point];
+
+    for pair in points.windows(2) {
+        let previous = pair[0];
+        let next = pair[1];
+        let previous_side = pnl_area_side(previous.pnl);
+        let next_side = pnl_area_side(next.pnl);
+
+        if previous_side == next_side {
+            current_points.push(next.point);
+            continue;
+        }
+
+        let crossing = zero_crossing_point(previous, next, zero_y);
+        current_points.push(crossing);
+        push_area_segment(&mut segments, current_side, &mut current_points, zero_y);
+
+        current_side = next_side;
+        current_points.push(crossing);
+        current_points.push(next.point);
     }
 
-    if zero_y < height {
-        frame.with_clip(
-            Rectangle {
-                x: 0.0,
-                y: zero_y,
-                width,
-                height: height - zero_y,
-            },
-            |frame| frame.fill(&area, gradient(negative_color)),
-        );
+    push_area_segment(&mut segments, current_side, &mut current_points, zero_y);
+    segments
+}
+
+fn push_area_segment(
+    segments: &mut Vec<PnlAreaSegment>,
+    side: PnlAreaSide,
+    points: &mut Vec<Point>,
+    zero_y: f32,
+) {
+    let has_area = points
+        .iter()
+        .any(|point| (point.y - zero_y).abs() > f32::EPSILON);
+    if points.len() >= 2 && has_area {
+        segments.push(PnlAreaSegment {
+            side,
+            points: std::mem::take(points),
+        });
+    } else {
+        points.clear();
     }
+}
+
+fn pnl_area_side(pnl: f64) -> PnlAreaSide {
+    if pnl >= 0.0 {
+        PnlAreaSide::Positive
+    } else {
+        PnlAreaSide::Negative
+    }
+}
+
+fn zero_crossing_point(previous: PnlChartPoint, next: PnlChartPoint, zero_y: f32) -> Point {
+    let denominator = previous.pnl - next.pnl;
+    let t = if denominator.abs() <= f64::EPSILON {
+        0.5
+    } else {
+        (previous.pnl / denominator).clamp(0.0, 1.0)
+    } as f32;
+
+    Point::new(
+        previous.point.x + (next.point.x - previous.point.x) * t,
+        zero_y,
+    )
+}
+
+fn area_segment_path(segment: &PnlAreaSegment, zero_y: f32) -> canvas::Path {
+    canvas::Path::new(|builder| {
+        if let Some(first) = segment.points.first() {
+            builder.move_to(*first);
+            for point in segment.points.iter().skip(1) {
+                builder.line_to(*point);
+            }
+            if let Some(last) = segment.points.last() {
+                builder.line_to(Point::new(last.x, zero_y));
+                builder.line_to(Point::new(first.x, zero_y));
+                builder.close();
+            }
+        }
+    })
 }
 
 fn draw_pnl_line(
@@ -262,9 +349,11 @@ fn draw_pnl_line_stroke(frame: &mut canvas::Frame, line: &canvas::Path, color: C
     );
 }
 
-fn area_gradient(color: Color, min_y: f32, zero_y: f32, max_y: f32) -> canvas::gradient::Linear {
-    let span = (max_y - min_y).max(1.0);
-    let zero_offset = ((zero_y - min_y) / span).clamp(0.0, 1.0);
+fn segment_area_gradient(
+    color: Color,
+    segment: &PnlAreaSegment,
+    zero_y: f32,
+) -> canvas::gradient::Linear {
     let strong = Color {
         a: AREA_MAX_ALPHA,
         ..color
@@ -282,25 +371,122 @@ fn area_gradient(color: Color, min_y: f32, zero_y: f32, max_y: f32) -> canvas::g
         ..color
     };
 
-    let gradient = canvas::gradient::Linear::new(Point::new(0.0, min_y), Point::new(0.0, max_y));
+    match segment.side {
+        PnlAreaSide::Positive => {
+            let top_y = segment
+                .points
+                .iter()
+                .fold(zero_y, |top, point| top.min(point.y))
+                .min(zero_y - 1.0);
+            canvas::gradient::Linear::new(Point::new(0.0, top_y), Point::new(0.0, zero_y))
+                .add_stop(0.0, strong)
+                .add_stop(0.70, mid)
+                .add_stop(0.92, edge)
+                .add_stop(1.0, clear)
+        }
+        PnlAreaSide::Negative => {
+            let bottom_y = segment
+                .points
+                .iter()
+                .fold(zero_y, |bottom, point| bottom.max(point.y))
+                .max(zero_y + 1.0);
+            canvas::gradient::Linear::new(Point::new(0.0, zero_y), Point::new(0.0, bottom_y))
+                .add_stop(0.0, clear)
+                .add_stop(0.08, edge)
+                .add_stop(0.30, mid)
+                .add_stop(1.0, strong)
+        }
+    }
+}
 
-    if zero_offset <= 0.02 {
-        gradient
-            .add_stop(0.0, clear)
-            .add_stop(0.35, mid)
-            .add_stop(1.0, strong)
-    } else if zero_offset >= 0.98 {
-        gradient
-            .add_stop(0.0, strong)
-            .add_stop(0.65, mid)
-            .add_stop(1.0, clear)
-    } else {
-        let fade = zero_offset.min(1.0 - zero_offset).min(0.18);
-        gradient
-            .add_stop(0.0, strong)
-            .add_stop((zero_offset - fade).max(0.0), edge)
-            .add_stop(zero_offset, clear)
-            .add_stop((zero_offset + fade).min(1.0), edge)
-            .add_stop(1.0, strong)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chart_point(x: f32, y: f32, pnl: f64) -> PnlChartPoint {
+        PnlChartPoint {
+            point: Point::new(x, y),
+            timestamp_ms: x as u64,
+            pnl,
+        }
+    }
+
+    fn assert_near(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < 1e-4,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn area_segments_split_at_zero_crossings() {
+        let zero_y = 50.0;
+        let points = vec![
+            chart_point(0.0, 75.0, -10.0),
+            chart_point(50.0, 25.0, 10.0),
+            chart_point(100.0, 75.0, -10.0),
+        ];
+
+        let segments = pnl_area_segments(&points, zero_y);
+
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].side, PnlAreaSide::Negative);
+        assert_eq!(segments[1].side, PnlAreaSide::Positive);
+        assert_eq!(segments[2].side, PnlAreaSide::Negative);
+        assert_near(segments[0].points[1].x, 25.0);
+        assert_near(segments[0].points[1].y, zero_y);
+        assert_near(segments[1].points[0].x, 25.0);
+        assert_near(segments[1].points[2].x, 75.0);
+        assert_near(segments[2].points[0].x, 75.0);
+    }
+
+    #[test]
+    fn area_segments_keep_single_sided_series_contiguous() {
+        let zero_y = 100.0;
+        let points = vec![
+            chart_point(0.0, 80.0, 1.0),
+            chart_point(50.0, 40.0, 3.0),
+            chart_point(100.0, 60.0, 2.0),
+        ];
+
+        let segments = pnl_area_segments(&points, zero_y);
+
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].side, PnlAreaSide::Positive);
+        assert_eq!(segments[0].points.len(), 3);
+    }
+
+    #[test]
+    fn area_segments_ignore_baseline_only_runs() {
+        let zero_y = 50.0;
+        let points = vec![chart_point(0.0, 50.0, 0.0), chart_point(50.0, 50.0, 0.0)];
+
+        assert!(pnl_area_segments(&points, zero_y).is_empty());
+    }
+
+    #[test]
+    fn segment_gradients_use_local_vertical_extents() {
+        let zero_y = 50.0;
+        let points = [
+            chart_point(0.0, 45.0, 1.0),
+            chart_point(50.0, 10.0, 8.0),
+            chart_point(100.0, 70.0, -2.0),
+        ];
+        let positive_segment = PnlAreaSegment {
+            side: PnlAreaSide::Positive,
+            points: vec![points[0].point, points[1].point],
+        };
+        let negative_segment = PnlAreaSegment {
+            side: PnlAreaSide::Negative,
+            points: vec![points[2].point],
+        };
+
+        let positive_gradient = segment_area_gradient(Color::WHITE, &positive_segment, zero_y);
+        let negative_gradient = segment_area_gradient(Color::WHITE, &negative_segment, zero_y);
+
+        assert_near(positive_gradient.start.y, 10.0);
+        assert_near(positive_gradient.end.y, zero_y);
+        assert_near(negative_gradient.start.y, zero_y);
+        assert_near(negative_gradient.end.y, 70.0);
     }
 }
