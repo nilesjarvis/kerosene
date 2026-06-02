@@ -1,6 +1,7 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::symbol_mentions::resolve_symbol_mentions;
 use crate::telegram_fast_feed::{
     bundled_telegram_api_hash, bundled_telegram_api_id, request_telegram_fast_login_code,
     sign_out_telegram_fast, submit_telegram_fast_login_code, submit_telegram_fast_password,
@@ -9,7 +10,7 @@ use crate::telegram_feed::{
     TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_CHANNELS, TelegramFastAuthOutcome,
     TelegramFastAuthStage, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
     TelegramTickerMention, fetch_telegram_avatar_bytes, fetch_telegram_channel_posts,
-    normalize_public_channel_input, telegram_ticker_matches,
+    normalize_public_channel_input,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
@@ -535,10 +536,10 @@ impl TradingTerminal {
         reference_seen_ms: u64,
         previous_mentions: &[TelegramTickerMention],
     ) -> Vec<TelegramTickerMention> {
-        telegram_ticker_matches(text, &self.exchange_symbols)
+        resolve_symbol_mentions(text, &self.exchange_symbols)
             .into_iter()
             .filter(|matched| {
-                self.resolve_exchange_symbol_by_key_or_ticker(&matched.symbol)
+                self.resolve_exchange_symbol_by_key_or_ticker(&matched.symbol_key)
                     .is_some_and(|symbol| {
                         symbol.market_type != MarketType::Spot
                             && self.exchange_symbol_is_orderable(symbol)
@@ -547,12 +548,12 @@ impl TradingTerminal {
             .map(|matched| {
                 if let Some(previous) = previous_mentions
                     .iter()
-                    .find(|mention| mention.symbol == matched.symbol)
+                    .find(|mention| mention.symbol == matched.symbol_key)
                 {
                     let mut mention = previous.clone();
                     mention.ticker = matched.ticker;
                     if mention.reference_price.is_none() {
-                        mention.reference_price = self.resolve_mid_for_symbol(&matched.symbol);
+                        mention.reference_price = self.resolve_mid_for_symbol(&matched.symbol_key);
                         if mention.reference_price.is_some() {
                             mention.reference_seen_ms = reference_seen_ms;
                         }
@@ -560,9 +561,9 @@ impl TradingTerminal {
                     mention
                 } else {
                     TelegramTickerMention {
-                        reference_price: self.resolve_mid_for_symbol(&matched.symbol),
+                        reference_price: self.resolve_mid_for_symbol(&matched.symbol_key),
                         reference_seen_ms,
-                        symbol: matched.symbol,
+                        symbol: matched.symbol_key,
                         ticker: matched.ticker,
                     }
                 }

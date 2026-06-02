@@ -88,6 +88,7 @@ mod spaghetti_views;
 mod spread_chart;
 mod status_bar;
 mod subscription_state;
+mod symbol_mentions;
 mod telegram_fast_feed;
 mod telegram_feed;
 mod timeframe;
