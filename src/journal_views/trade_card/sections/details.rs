@@ -7,6 +7,7 @@ use iced::{Element, Fill, Theme};
 pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
     trade_id: String,
     note_key: Option<String>,
+    snapshot_expanded: bool,
     max_position_label: String,
     fill_count: usize,
     fee: f64,
@@ -48,6 +49,17 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
         Space::new().width(4.0),
         text(duration_str).size(11).color(theme.palette().text),
         Space::new().width(Fill),
+        button(
+            text(if snapshot_expanded {
+                "Hide Chart"
+            } else {
+                "Chart"
+            })
+            .size(11)
+        )
+        .on_press(Message::JournalSnapshotToggle(trade_id.clone()))
+        .padding([4, 8])
+        .style(button::text),
         button(
             text(if note_key.is_some() {
                 "\u{270e} Note"

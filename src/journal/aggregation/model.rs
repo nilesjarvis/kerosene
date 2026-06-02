@@ -1,3 +1,6 @@
+use super::identity::FillIdentity;
+use std::collections::HashMap;
+
 #[derive(Debug, Clone)]
 pub struct AggregatedTrade {
     pub id: String,
@@ -16,6 +19,35 @@ pub struct AggregatedTrade {
     pub total_entry_size: f64,
     pub is_long: bool,
     pub basis_complete: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JournalAttributedFillRole {
+    Increase,
+    Reduce,
+    FlipClose,
+    FlipOpen,
+    Settlement,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JournalAttributedFill {
+    pub identity: FillIdentity,
+    pub time_ms: u64,
+    pub price: f64,
+    pub raw_size: f64,
+    pub attributed_size: f64,
+    pub side: String,
+    pub role: JournalAttributedFillRole,
+    pub fee: f64,
+    pub closed_pnl: f64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct JournalTradeDetails {
+    pub trade_id: String,
+    pub coin: String,
+    pub attributed_fills: Vec<JournalAttributedFill>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -76,5 +108,6 @@ impl AggregationDiagnostics {
 #[derive(Debug, Clone, Default)]
 pub struct AggregationResult {
     pub trades: Vec<AggregatedTrade>,
+    pub trade_details: HashMap<String, JournalTradeDetails>,
     pub diagnostics: AggregationDiagnostics,
 }

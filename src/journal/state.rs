@@ -1,5 +1,8 @@
-use super::{AggregatedTrade, JournalNote};
-use std::collections::HashMap;
+use super::{
+    AggregatedTrade, JournalNote, JournalTradeDetails, JournalTradeSnapshot,
+    JournalTradeSnapshotRequest,
+};
+use std::collections::{HashMap, HashSet};
 
 mod account_scope;
 
@@ -37,6 +40,10 @@ pub struct JournalState {
     pub entries: HashMap<String, JournalNote>,
     pub raw_fills: Vec<crate::api::UserFill>,
     pub trades: Vec<AggregatedTrade>,
+    pub trade_details: HashMap<String, JournalTradeDetails>,
+    pub expanded_snapshot_trade_ids: HashSet<String>,
+    pub snapshot_requests: HashMap<String, JournalTradeSnapshotRequest>,
+    pub snapshots: HashMap<String, JournalTradeSnapshot>,
     pub loading: bool,
     pub filter: JournalFilter,
     pub sort: JournalSort,
@@ -56,6 +63,10 @@ pub struct JournalAccountState {
     pub entries: HashMap<String, JournalNote>,
     pub raw_fills: Vec<crate::api::UserFill>,
     pub trades: Vec<AggregatedTrade>,
+    pub trade_details: HashMap<String, JournalTradeDetails>,
+    pub expanded_snapshot_trade_ids: HashSet<String>,
+    pub snapshot_requests: HashMap<String, JournalTradeSnapshotRequest>,
+    pub snapshots: HashMap<String, JournalTradeSnapshot>,
     pub loading: bool,
     pub error: Option<String>,
     pub warning: Option<String>,

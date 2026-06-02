@@ -1,6 +1,6 @@
 use super::{JournalAccountState, JournalFilter, JournalSort, JournalState};
 use crate::journal::JournalNote;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 impl JournalState {
     pub fn new_for_account(
@@ -52,6 +52,10 @@ impl JournalState {
             entries,
             raw_fills: Vec::new(),
             trades: Vec::new(),
+            trade_details: HashMap::new(),
+            expanded_snapshot_trade_ids: HashSet::new(),
+            snapshot_requests: HashMap::new(),
+            snapshots: HashMap::new(),
             loading: false,
             filter: JournalFilter::All,
             sort: JournalSort::TimeDesc,
@@ -111,6 +115,7 @@ impl JournalState {
         self.loaded_address = Some(address);
         self.raw_fills.clear();
         self.trades.clear();
+        self.clear_snapshot_data();
         self.loading = false;
         self.error = None;
         self.warning = None;
@@ -124,6 +129,7 @@ impl JournalState {
         self.loaded_address = None;
         self.raw_fills.clear();
         self.trades.clear();
+        self.clear_snapshot_data();
         self.loading = false;
         self.error = None;
         self.warning = None;
@@ -139,6 +145,10 @@ impl JournalState {
             entries: self.entries.clone(),
             raw_fills: self.raw_fills.clone(),
             trades: self.trades.clone(),
+            trade_details: self.trade_details.clone(),
+            expanded_snapshot_trade_ids: self.expanded_snapshot_trade_ids.clone(),
+            snapshot_requests: self.snapshot_requests.clone(),
+            snapshots: self.snapshots.clone(),
             loading: false,
             error: self.error.clone(),
             warning: self.warning.clone(),
@@ -155,6 +165,10 @@ impl JournalState {
         self.entries = state.entries;
         self.raw_fills = state.raw_fills;
         self.trades = state.trades;
+        self.trade_details = state.trade_details;
+        self.expanded_snapshot_trade_ids = state.expanded_snapshot_trade_ids;
+        self.snapshot_requests = state.snapshot_requests;
+        self.snapshots = state.snapshots;
         self.loading = state.loading;
         self.error = state.error;
         self.warning = state.warning;
@@ -163,5 +177,17 @@ impl JournalState {
         self.edit_source_keys = state.edit_source_keys;
         self.edit_buffers = state.edit_buffers;
         self.show_account_value_chart = state.show_account_value_chart;
+    }
+
+    pub fn clear_snapshot_data(&mut self) {
+        self.trade_details.clear();
+        self.expanded_snapshot_trade_ids.clear();
+        self.snapshot_requests.clear();
+        self.snapshots.clear();
+    }
+
+    pub fn clear_snapshot_cache(&mut self) {
+        self.snapshot_requests.clear();
+        self.snapshots.clear();
     }
 }

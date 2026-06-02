@@ -41,6 +41,8 @@ impl TradingTerminal {
             let aggregation =
                 journal::aggregate_trades_with_diagnostics(self.journal.raw_fills.clone());
             self.journal.trades = aggregation.trades;
+            self.journal.trade_details = aggregation.trade_details;
+            self.journal.clear_snapshot_cache();
             self.journal.warning = aggregation.diagnostics.warning_message();
         }
 

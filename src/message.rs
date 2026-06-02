@@ -287,6 +287,13 @@ pub(crate) enum Message {
     JournalSortChanged(journal::JournalSort),
     JournalToggleAllAssets,
     JournalToggleAccountValueChart(bool),
+    JournalSnapshotToggle(String),
+    JournalSnapshotLoaded {
+        account_key: Option<String>,
+        address: String,
+        request: journal::JournalTradeSnapshotRequest,
+        result: Result<Vec<Candle>, String>,
+    },
     // Spaghetti chart
     SpaghettiSwitchTimeframe(SpaghettiChartId, Timeframe),
     SpaghettiReload(SpaghettiChartId),

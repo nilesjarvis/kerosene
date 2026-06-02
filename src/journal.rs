@@ -3,13 +3,21 @@ use std::collections::HashMap;
 
 mod aggregation;
 mod cache;
+mod snapshot;
 mod state;
 
 pub use aggregation::{
-    AggregatedTrade, aggregate_trades_with_diagnostics, merge_fills, newest_fill_time,
-    normalize_fills,
+    AggregatedTrade, JournalAttributedFillRole, JournalTradeDetails,
+    aggregate_trades_with_diagnostics, merge_fills, newest_fill_time, normalize_fills,
 };
+#[cfg(test)]
+pub use aggregation::{FillIdentity, JournalAttributedFill};
 pub use cache::{load_cache, save_cache};
+pub use snapshot::{
+    JournalTradeSnapshot, JournalTradeSnapshotMetrics, JournalTradeSnapshotRequest,
+    JournalTradeSnapshotStatus, build_journal_trade_snapshot, initial_snapshot_request,
+    next_snapshot_request, unavailable_snapshot,
+};
 #[cfg(test)]
 pub use state::JournalAccountState;
 pub use state::{JournalFilter, JournalSort, JournalState};

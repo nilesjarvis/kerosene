@@ -132,6 +132,8 @@ impl TradingTerminal {
             }
             Message::ChartBackfillSourceChanged(source) if self.chart_backfill_source != source => {
                 self.chart_backfill_source = source;
+                self.journal.clear_snapshot_cache();
+                self.journal.expanded_snapshot_trade_ids.clear();
                 self.persist_config();
                 self.push_toast(
                     format!("Chart backfill source set to {}", source.label()),

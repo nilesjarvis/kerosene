@@ -37,6 +37,8 @@ impl TradingTerminal {
                 self.tracked_trades_status = self.liquidations_status.clone();
                 self.persist_hydromancer_secret();
                 self.persist_config();
+                self.journal.clear_snapshot_cache();
+                self.journal.expanded_snapshot_trade_ids.clear();
                 if !self.hydromancer_api_key.trim().is_empty() {
                     ws::reconnect_hydromancer(self.hydromancer_api_key.trim());
                 }

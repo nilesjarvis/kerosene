@@ -79,3 +79,28 @@ fn journal_entries_snapshot_includes_current_active_entries() {
         Some("active")
     );
 }
+
+#[test]
+fn journal_snapshot_expansion_is_scoped_by_account() {
+    let mut state = JournalState::new_for_account(
+        Some("account-a".to_string()),
+        HashMap::new(),
+        HashMap::new(),
+    );
+
+    state
+        .expanded_snapshot_trade_ids
+        .insert("trade-a".to_string());
+    state.switch_active_account(Some("account-b".to_string()));
+    assert!(!state.expanded_snapshot_trade_ids.contains("trade-a"));
+
+    state
+        .expanded_snapshot_trade_ids
+        .insert("trade-b".to_string());
+    state.switch_active_account(Some("account-a".to_string()));
+    assert!(state.expanded_snapshot_trade_ids.contains("trade-a"));
+    assert!(!state.expanded_snapshot_trade_ids.contains("trade-b"));
+
+    state.switch_active_account(Some("account-b".to_string()));
+    assert!(state.expanded_snapshot_trade_ids.contains("trade-b"));
+}

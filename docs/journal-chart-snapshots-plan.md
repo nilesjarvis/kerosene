@@ -21,17 +21,24 @@ The existing journal and chart systems already provide most of the raw pieces:
 - `src/api/candles.rs` already fetches Hyperliquid `candleSnapshot` data and
   supports chart backfill through the configured source.
 - `src/timeframe.rs` already models `1m`, `3m`, `5m`, and broader intervals.
-- `src/chart_state/overlays/trades.rs` already maps fills into buy/sell marker
-  data for chart overlays.
+- `src/chart_state/overlays/trades.rs` already maps account-data fills into
+  buy/sell marker data for chart overlays.
 
 The main missing piece is per-trade fill attribution. `AggregatedTrade` records
 counts and totals, but it does not retain the specific fills that belong to the
 trade. Journal snapshots need those fills to draw markers and compute close/exit
 metrics accurately.
 
+The existing chart trade marker helper is useful for marker semantics, but it is
+not a drop-in dependency for journal snapshots because it consumes
+`crate::account::UserFill`. Journal snapshots should parse markers from
+journal-owned `crate::api::UserFill` attribution fragments instead.
+
 ## Proposed User Experience
 
-Add a collapsible snapshot section to each journal trade card.
+Add a collapsible snapshot section inside each journal trade card in the journal
+window UI. Each trade card should expose its own snapshot toggle; expanding one
+card must not require opening or mutating an interactive chart pane.
 
 When collapsed, the existing card remains compact. When expanded, show:
 
@@ -46,12 +53,53 @@ When collapsed, the existing card remains compact. When expanded, show:
 Snapshots should be loaded lazily when a trade is expanded or selected, not for
 every visible card.
 
+Multiple trade cards may be expanded at once. This avoids surprising collapses
+when a trader compares nearby trades in the journal.
+
 ## Data Model Additions
 
 Add journal-owned snapshot state rather than reusing live chart instance state.
-Suggested model:
+Suggested models:
 
 ```rust
+pub struct JournalTradeDetails {
+    pub trade_id: String,
+    pub coin: String,
+    pub attributed_fills: Vec<JournalAttributedFill>,
+}
+
+pub struct JournalAttributedFill {
+    pub identity: FillIdentity,
+    pub time_ms: u64,
+    pub price: f64,
+    pub raw_size: f64,
+    pub attributed_size: f64,
+    pub side: String,
+    pub role: JournalAttributedFillRole,
+    pub fee: f64,
+    pub closed_pnl: f64,
+}
+
+pub enum JournalAttributedFillRole {
+    Increase,
+    Reduce,
+    FlipClose,
+    FlipOpen,
+    Settlement,
+}
+
+pub struct JournalTradeSnapshotRequest {
+    pub account_key: Option<String>,
+    pub address: String,
+    pub trade_id: String,
+    pub coin: String,
+    pub source: ChartBackfillSource,
+    pub timeframe: Timeframe,
+    pub ladder_index: usize,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
 pub struct JournalTradeSnapshot {
     pub trade_id: String,
     pub coin: String,
@@ -68,18 +116,24 @@ pub struct JournalTradeSnapshot {
 Suggested journal state fields:
 
 ```rust
-pub expanded_snapshot_trade_id: Option<String>,
+pub trade_details: HashMap<String, JournalTradeDetails>,
+pub expanded_snapshot_trade_ids: HashSet<String>,
 pub snapshot_requests: HashMap<String, JournalTradeSnapshotRequest>,
 pub snapshots: HashMap<String, JournalTradeSnapshot>,
 ```
 
-If multiple cards may be expanded at once, replace `expanded_snapshot_trade_id`
-with a `HashSet<String>`.
+These fields must be account-scoped. Mirror them into `JournalAccountState`, and
+include them in active-account snapshot/restore paths so account switches do not
+leak cached candles, expanded card state, or in-flight requests across wallets.
+Clear or invalidate snapshot state when the active account data is cleared, the
+journal is force-refreshed, the chart backfill source changes, or an in-flight
+request no longer matches the active account/source.
 
 ## Per-Trade Fill Attribution
 
-Add an aggregation variant that can return fill identities or lightweight fill
-copies per trade.
+Add an aggregation variant that returns attributed fill fragments per trade.
+Identities alone are not sufficient because a flip can split one raw fill across
+two trades.
 
 Preferred direction:
 
@@ -90,9 +144,15 @@ Preferred direction:
   existing journal trade boundaries.
 - Include flip attribution carefully: the closing portion belongs to the old
   trade, while the opening remainder belongs to the new flipped trade.
+- Store attributed sizes and roles so snapshot markers and VWAP metrics can use
+  the same split math as aggregation totals.
 
 This keeps notes and summary behavior stable while giving snapshots the richer
 data they need.
+
+The first implementation should prioritize perp trades with complete opening
+basis. Spot, outcome, and partial-history trades can render an unavailable or
+simplified state until their semantics are intentionally designed.
 
 ## Candle Planning
 
@@ -118,6 +178,9 @@ Suggested selection rule:
 - If the first request returns empty, retry the next coarser interval.
 - Fetch through `fetch_chart_backfill_candles` so the configured backfill source
   can provide finer older history when available.
+- Treat an empty successful candle response as retryable only within the journal
+  snapshot ladder. Existing interactive chart candle loading treats empty data as
+  an unavailable chart state and should not be changed for this feature.
 
 Suggested padding:
 
@@ -126,6 +189,10 @@ padding = max(trade_duration * 0.25, 6 * interval_duration, 30 minutes)
 ```
 
 For open trades, use the current time as the right edge.
+
+Snapshot requests should carry the account key, address, selected source, time
+range, timeframe, and ladder index. Loaded responses must be ignored if any of
+those request fields are stale by the time the async task completes.
 
 ## Metrics
 
@@ -148,9 +215,14 @@ Suggested metrics:
 
 Use fill VWAPs when possible:
 
-- Entry: existing `avg_entry_price` or VWAP of fills that increased exposure.
-- Exit: VWAP of closing fills for closed trades.
+- Entry: existing `avg_entry_price` or VWAP of attributed fills that increased
+  exposure.
+- Exit: VWAP of attributed closing fills for closed trades.
 - Open trades: last overlapping candle close or latest mid/reference price.
+
+Flip fills should contribute their attributed closing size to the closing
+trade's exit VWAP and their attributed opening size to the new trade's entry
+VWAP.
 
 ## Rendering Approach
 
@@ -173,6 +245,11 @@ The canvas should render:
 - Optional entry/exit guide lines.
 - Empty/loading/error states sized consistently with the card.
 
+Place the canvas directly inside the expanded trade card body below the existing
+details row and before notes/editor content. The collapsed state should preserve
+the current card density, with only a compact snapshot toggle added to the
+details/actions row.
+
 ## Messages And Update Flow
 
 Suggested messages:
@@ -180,7 +257,8 @@ Suggested messages:
 ```rust
 JournalSnapshotToggle(String)
 JournalSnapshotLoaded {
-    trade_id: String,
+    account_key: Option<String>,
+    address: String,
     request: JournalTradeSnapshotRequest,
     result: Result<Vec<Candle>, String>,
 }
@@ -189,13 +267,30 @@ JournalSnapshotLoaded {
 Update flow:
 
 1. User toggles a card snapshot.
-2. If cached snapshot exists, show it.
-3. If missing or stale, build a candle request from the trade and attributed
+2. Add or remove the trade ID from `expanded_snapshot_trade_ids`.
+3. If collapsed, keep cached snapshot data but do not fetch.
+4. If cached snapshot exists and matches the current account/source, show it.
+5. If missing or stale, build a candle request from the trade and attributed
    fills.
-4. Fetch candles with `Task::perform`.
-5. On success, compute metrics and store the snapshot.
-6. On empty candles, retry the next coarser interval.
-7. On final failure, show a compact unavailable state.
+6. Store the request in `snapshot_requests` and fetch candles with
+   `Task::perform`.
+7. On response, verify account key, address, source, request fields, and active
+   in-flight request before mutating journal state.
+8. On success with candles, compute metrics and store the snapshot.
+9. On success with empty candles, retry the next coarser interval from the
+   snapshot ladder.
+10. On final failure or exhausted ladder, show a compact unavailable state.
+
+## Implementation Milestones
+
+1. Add aggregation detail output and tests for attributed fill fragments.
+2. Add snapshot planning, candle overlap, VWAP, and metric helpers with focused
+   pure tests.
+3. Add account-scoped snapshot state, messages, stale-response guards, and lazy
+   candle fetch flow.
+4. Add the collapsible per-trade-card UI with loading, unavailable, and loaded
+   states.
+5. Add the journal snapshot canvas and compile-level UI validation.
 
 ## Testing Plan
 
@@ -209,6 +304,10 @@ Add focused tests near journal code:
 - Max adverse and max favorable calculations are direction-aware.
 - Fill attribution preserves same-timestamp chain ordering.
 - Flip trades attribute closing and opening portions to the correct snapshots.
+- Snapshot state is saved/restored per active journal account.
+- Stale snapshot responses are ignored after account/source/request changes.
+- Collapsing a snapshot does not trigger a fetch, and re-expanding can reuse a
+  matching cached snapshot.
 
 UI-only rendering can be covered by compile checks initially, with canvas logic
 tested through pure layout/metric helpers.

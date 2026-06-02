@@ -339,6 +339,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalSortChanged(_)
         | Message::JournalToggleAllAssets
         | Message::JournalToggleAccountValueChart(_)
+        | Message::JournalSnapshotToggle(_)
+        | Message::JournalSnapshotLoaded { .. }
         | Message::JournalRefresh => UpdateRoute::Journal,
 
         Message::AddComparisonChart

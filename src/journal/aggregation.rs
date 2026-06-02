@@ -14,8 +14,11 @@ use position::{
 use std::cmp::Reverse;
 use std::collections::HashMap;
 
-pub use identity::{merge_fills, newest_fill_time, normalize_fills};
-pub use model::{AggregatedTrade, AggregationDiagnostics, AggregationResult};
+pub use identity::{FillIdentity, merge_fills, newest_fill_time, normalize_fills};
+pub use model::{
+    AggregatedTrade, AggregationDiagnostics, AggregationResult, JournalAttributedFill,
+    JournalAttributedFillRole, JournalTradeDetails,
+};
 
 // ---------------------------------------------------------------------------
 // Aggregation
@@ -27,6 +30,7 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
     let mut trade_history = Vec::new();
     let mut current_trades: HashMap<String, AggregatedTrade> = HashMap::new();
     let mut spot_trades: HashMap<u64, AggregatedTrade> = HashMap::new();
+    let mut trade_details: HashMap<String, JournalTradeDetails> = HashMap::new();
     let mut tracked_positions: HashMap<String, (u64, f64)> = HashMap::new();
     let mut diagnostics = AggregationDiagnostics::default();
 
@@ -55,6 +59,22 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
                 .remove(&fill.oid)
                 .unwrap_or_else(|| new_non_perp_trade(&coin, &fill));
             apply_non_perp_fill(&mut trade, &coin, &fill, signed_sz, sz, px, fee);
+            record_attributed_fill(
+                &mut trade_details,
+                &trade.id,
+                &coin,
+                &fill,
+                px,
+                sz,
+                sz,
+                if signed_sz >= 0.0 {
+                    JournalAttributedFillRole::Increase
+                } else {
+                    JournalAttributedFillRole::Reduce
+                },
+                fee,
+                closed_pnl,
+            );
             spot_trades.insert(fill.oid, trade);
             continue;
         }
@@ -97,6 +117,18 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
         if is_settlement {
             trade.fee += fee;
             trade.pnl += closed_pnl;
+            record_attributed_fill(
+                &mut trade_details,
+                &trade.id,
+                &coin,
+                &fill,
+                px,
+                sz,
+                0.0,
+                JournalAttributedFillRole::Settlement,
+                fee,
+                closed_pnl,
+            );
             current_trades.insert(coin, trade);
             continue;
         }
@@ -120,6 +152,18 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
             trade.volume += closing_sz * px;
             trade.fee += fee * closing_ratio;
             trade.pnl += closed_pnl;
+            record_attributed_fill(
+                &mut trade_details,
+                &trade.id,
+                &coin,
+                &fill,
+                px,
+                sz,
+                closing_sz,
+                JournalAttributedFillRole::FlipClose,
+                fee * closing_ratio,
+                closed_pnl,
+            );
 
             trade.status = "CLOSED".to_string();
             trade.end_time = Some(fill.time);
@@ -128,11 +172,47 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
             let mut new_trade =
                 new_flip_trade(&coin, &fill, new_pos, opening_sz, px, fee, opening_ratio);
             add_stable_note_ids_for_fill(&mut new_trade, &coin, &fill);
+            record_attributed_fill(
+                &mut trade_details,
+                &new_trade.id,
+                &coin,
+                &fill,
+                px,
+                sz,
+                opening_sz,
+                JournalAttributedFillRole::FlipOpen,
+                fee * opening_ratio,
+                0.0,
+            );
             current_trades.insert(coin, new_trade);
         } else {
             trade.volume += sz * px;
             trade.fee += fee;
             trade.pnl += closed_pnl;
+
+            let exposure_increased = new_pos.abs() > start_pos.abs();
+            let role = if exposure_increased {
+                JournalAttributedFillRole::Increase
+            } else {
+                JournalAttributedFillRole::Reduce
+            };
+            let attributed_size = if exposure_increased {
+                new_pos.abs() - start_pos.abs()
+            } else {
+                (start_pos.abs() - new_pos.abs()).max(0.0)
+            };
+            record_attributed_fill(
+                &mut trade_details,
+                &trade.id,
+                &coin,
+                &fill,
+                px,
+                sz,
+                attributed_size,
+                role,
+                fee,
+                closed_pnl,
+            );
 
             if new_pos.abs() > start_pos.abs() {
                 let increase_sz = new_pos.abs() - start_pos.abs();
@@ -169,6 +249,7 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
 
     AggregationResult {
         trades: trade_history,
+        trade_details,
         diagnostics,
     }
 }
@@ -176,4 +257,38 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
 fn add_stable_note_ids_for_fill(trade: &mut AggregatedTrade, coin: &str, fill: &UserFill) {
     add_legacy_note_id(trade, stable_trade_id("perp", coin, fill));
     add_legacy_note_id(trade, stable_trade_id("perp-flip", coin, fill));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_attributed_fill(
+    trade_details: &mut HashMap<String, JournalTradeDetails>,
+    trade_id: &str,
+    coin: &str,
+    fill: &UserFill,
+    price: f64,
+    raw_size: f64,
+    attributed_size: f64,
+    role: JournalAttributedFillRole,
+    fee: f64,
+    closed_pnl: f64,
+) {
+    trade_details
+        .entry(trade_id.to_string())
+        .or_insert_with(|| JournalTradeDetails {
+            trade_id: trade_id.to_string(),
+            coin: coin.to_string(),
+            attributed_fills: Vec::new(),
+        })
+        .attributed_fills
+        .push(JournalAttributedFill {
+            identity: FillIdentity::from(fill),
+            time_ms: fill.time,
+            price,
+            raw_size,
+            attributed_size,
+            side: fill.side.clone(),
+            role,
+            fee,
+            closed_pnl,
+        });
 }

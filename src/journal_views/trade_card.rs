@@ -1,6 +1,7 @@
 mod components;
 mod editor;
 mod sections;
+mod snapshot;
 
 use self::sections::{
     journal_trade_card_details, journal_trade_card_header, push_journal_trade_notes,
@@ -50,6 +51,7 @@ impl TradingTerminal {
         };
         let max_position_label = format!("{} {:.2}", side_label, trade.max_position.abs());
         let note_key = journal::note_key_for_trade(&self.journal.entries, trade);
+        let snapshot_expanded = self.journal.expanded_snapshot_trade_ids.contains(&trade.id);
 
         let header = journal_trade_card_header(
             display_coin,
@@ -64,6 +66,7 @@ impl TradingTerminal {
         let details = journal_trade_card_details(
             trade.id.clone(),
             note_key.clone(),
+            snapshot_expanded,
             max_position_label,
             trade.fill_count,
             trade.fee,
@@ -80,6 +83,10 @@ impl TradingTerminal {
                     .size(11)
                     .color(theme.palette().primary),
             );
+        }
+
+        if snapshot_expanded {
+            card = card.push(self.view_journal_trade_snapshot(trade));
         }
 
         let is_editing = self
