@@ -7,7 +7,7 @@ Last audited against the repository: 2026-05-31.
 Kerosene is a GPU-accelerated desktop trading terminal for Hyperliquid, built in
 Rust with the **iced** GUI framework.
 
-- **Package:** `kerosene` 0.1.7
+- **Package:** `kerosene` 0.1.8
 - **Rust edition:** 2024
 - **Framework:** `iced` 0.14 with `default`, `tokio`, `canvas`, `svg`, `advanced`,
   and `image` features
