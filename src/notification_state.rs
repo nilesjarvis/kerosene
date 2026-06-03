@@ -13,6 +13,8 @@ use std::sync::Once;
 pub(crate) const TOAST_LIFETIME_SECS: u64 = 5;
 /// Maximum toasts visible at once.
 const MAX_TOASTS: usize = 8;
+/// Duration of the toast enter/exit slide-and-fade animation.
+pub(crate) const TOAST_ANIMATION: std::time::Duration = std::time::Duration::from_millis(260);
 
 #[cfg(target_os = "macos")]
 const MACOS_DEV_NOTIFICATION_BUNDLE_ID: &str = "com.apple.Terminal";
@@ -77,6 +79,32 @@ pub(crate) struct Toast {
     pub(crate) message: String,
     pub(crate) is_error: bool,
     pub(crate) created_at: std::time::Instant,
+    /// Set once the toast begins its exit animation.
+    pub(crate) dismissing_at: Option<std::time::Instant>,
+}
+
+impl Toast {
+    /// Entrance animation progress in `0.0..=1.0` (1.0 once fully shown).
+    pub(crate) fn enter_progress(&self, now: std::time::Instant) -> f32 {
+        let elapsed = now.saturating_duration_since(self.created_at).as_secs_f32();
+        (elapsed / TOAST_ANIMATION.as_secs_f32()).clamp(0.0, 1.0)
+    }
+
+    /// Exit animation progress in `0.0..=1.0` (1.0 once fully gone).
+    pub(crate) fn exit_progress(&self, now: std::time::Instant) -> f32 {
+        match self.dismissing_at {
+            Some(started) => {
+                let elapsed = now.saturating_duration_since(started).as_secs_f32();
+                (elapsed / TOAST_ANIMATION.as_secs_f32()).clamp(0.0, 1.0)
+            }
+            None => 0.0,
+        }
+    }
+
+    /// Whether this toast is mid enter or exit transition.
+    pub(crate) fn is_animating(&self, now: std::time::Instant) -> bool {
+        self.enter_progress(now) < 1.0 || self.dismissing_at.is_some()
+    }
 }
 
 impl TradingTerminal {
@@ -86,6 +114,7 @@ impl TradingTerminal {
             message,
             is_error,
             created_at: std::time::Instant::now(),
+            dismissing_at: None,
         });
         self.next_toast_id += 1;
         if self.toasts.len() > MAX_TOASTS {
@@ -102,6 +131,7 @@ impl TradingTerminal {
             message: message.clone(),
             is_error,
             created_at: std::time::Instant::now(),
+            dismissing_at: None,
         });
         self.next_toast_id += 1;
         if self.toasts.len() > MAX_TOASTS {
@@ -128,6 +158,7 @@ impl TradingTerminal {
             message: message.clone(),
             is_error: false,
             created_at: std::time::Instant::now(),
+            dismissing_at: None,
         });
         self.next_toast_id += 1;
         if self.toasts.len() > MAX_TOASTS {
@@ -152,6 +183,7 @@ impl TradingTerminal {
             message: message.clone(),
             is_error: false,
             created_at: std::time::Instant::now(),
+            dismissing_at: None,
         });
         self.next_toast_id += 1;
         if self.toasts.len() > MAX_TOASTS {
@@ -173,6 +205,7 @@ impl TradingTerminal {
             message: message.clone(),
             is_error: false,
             created_at: std::time::Instant::now(),
+            dismissing_at: None,
         });
         self.next_toast_id += 1;
         if self.toasts.len() > MAX_TOASTS {
@@ -194,6 +227,7 @@ impl TradingTerminal {
             message: message.clone(),
             is_error: false,
             created_at: std::time::Instant::now(),
+            dismissing_at: None,
         });
         self.next_toast_id += 1;
         if self.toasts.len() > MAX_TOASTS {

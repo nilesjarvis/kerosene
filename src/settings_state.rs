@@ -15,6 +15,7 @@ pub(crate) enum ThemeSettingsPage {
     Overview,
     WidgetChrome,
     Crosshair,
+    Notifications,
     Fonts,
     BuiltInThemes,
     CustomThemes,

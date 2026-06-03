@@ -400,6 +400,9 @@ pub(crate) enum Message {
     ClearDrawingTool(ChartId, ChartSurfaceId),
     // Notifications
     DismissToast(u64),
+    ToastPositionChanged(config::ToastPosition),
+    ToggleToastAnimations(bool),
+    ToastAnimationTick,
     CopyToClipboard(String),
     WalletAddressActionsHovered(String),
     WalletAddressActionsExited(String),

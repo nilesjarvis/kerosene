@@ -1,6 +1,7 @@
 use super::{
     default_config_value, json_string, object_mut, remove_field, value_from_json, value_from_str,
 };
+use crate::config::ToastPosition;
 use crate::config::{
     ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, ChartHudReadoutConfig,
     CustomFontConfig, DisplayDenominationConfig, DisplayFontConfig, KeroseneConfig,
@@ -13,3 +14,4 @@ use crate::config::{
 mod chrome;
 mod denomination;
 mod fonts;
+mod toast;

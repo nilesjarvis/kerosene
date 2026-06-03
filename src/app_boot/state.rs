@@ -267,6 +267,8 @@ impl TradingTerminal {
             ),
             toasts: Vec::new(),
             next_toast_id: 0,
+            toast_position: cfg.toast_position,
+            toast_animations_enabled: cfg.toast_animations_enabled,
             sound_enabled: cfg.sound_enabled,
             desktop_notifications: cfg.desktop_notifications,
             income_alerts_enabled: cfg.income_alerts_enabled,

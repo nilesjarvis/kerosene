@@ -67,7 +67,18 @@ impl TradingTerminal {
                 self.persist_config();
             }
             Message::DismissToast(id) => {
-                self.toasts.retain(|t| t.id != id);
+                if self.toast_animations_enabled {
+                    let now = Instant::now();
+                    if let Some(toast) = self.toasts.iter_mut().find(|t| t.id == id) {
+                        toast.dismissing_at.get_or_insert(now);
+                    }
+                } else {
+                    self.toasts.retain(|t| t.id != id);
+                }
+            }
+            Message::ToastAnimationTick => {
+                let now = Instant::now();
+                self.toasts.retain(|t| t.exit_progress(now) < 1.0);
             }
             Message::CopyToClipboard(text) => {
                 self.push_toast("Copied to clipboard".to_string(), false);
@@ -84,8 +95,20 @@ impl TradingTerminal {
             Message::NoOp => {}
             Message::TickToastCleanup => {
                 let now = Instant::now();
-                self.toasts
-                    .retain(|t| now.duration_since(t.created_at).as_secs() < TOAST_LIFETIME_SECS);
+                if self.toast_animations_enabled {
+                    for toast in &mut self.toasts {
+                        if toast.dismissing_at.is_none()
+                            && now.duration_since(toast.created_at).as_secs() >= TOAST_LIFETIME_SECS
+                        {
+                            toast.dismissing_at = Some(now);
+                        }
+                    }
+                    self.toasts.retain(|t| t.exit_progress(now) < 1.0);
+                } else {
+                    self.toasts.retain(|t| {
+                        now.duration_since(t.created_at).as_secs() < TOAST_LIFETIME_SECS
+                    });
+                }
                 if self.nuke_confirmation.is_some_and(|armed_at| {
                     !crate::order_update::nuke_confirmation_is_armed(Some(armed_at), now)
                 }) {

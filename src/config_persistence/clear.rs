@@ -110,6 +110,8 @@ impl TradingTerminal {
         self.custom_themes = defaults.custom_themes;
         self.sound_enabled = defaults.sound_enabled;
         self.desktop_notifications = defaults.desktop_notifications;
+        self.toast_position = defaults.toast_position;
+        self.toast_animations_enabled = defaults.toast_animations_enabled;
         self.income_alerts_enabled = defaults.income_alerts_enabled;
         self.hide_pnl = defaults.hide_pnl;
         self.hidden_positions_by_account.clear();

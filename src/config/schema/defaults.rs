@@ -288,6 +288,8 @@ impl Default for KeroseneConfig {
             hyperdash_api_key: String::new().into(),
             sound_enabled: false,
             desktop_notifications: false,
+            toast_position: Default::default(),
+            toast_animations_enabled: true,
             income_alerts_enabled: false,
             hide_pnl: false,
             hidden_positions_by_account: HashMap::new(),

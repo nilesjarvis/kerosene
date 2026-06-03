@@ -1,13 +1,39 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::notification_state::Toast;
 
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, container, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Alignment, Color, Element, Length, Padding, Theme};
 
 // ---------------------------------------------------------------------------
 // Toast overlay view
 // ---------------------------------------------------------------------------
+
+/// Fixed width of a toast card.
+const TOAST_WIDTH: f32 = 320.0;
+/// Horizontal travel of the slide animation, in pixels.
+const SLIDE_DISTANCE: f32 = 26.0;
+/// Maximum simultaneously visible toasts.
+const VISIBLE_TOASTS: usize = 5;
+
+fn with_alpha(color: Color, alpha: f32) -> Color {
+    Color {
+        a: (color.a * alpha).clamp(0.0, 1.0),
+        ..color
+    }
+}
+
+/// Cubic ease-out used for the entrance motion.
+fn ease_out(t: f32) -> f32 {
+    let inv = 1.0 - t;
+    1.0 - inv * inv * inv
+}
+
+/// Cubic ease-in used for the exit motion.
+fn ease_in(t: f32) -> f32 {
+    t * t * t
+}
 
 impl TradingTerminal {
     pub(crate) fn view_toast_overlay(&self, theme: &Theme) -> Option<Element<'_, Message>> {
@@ -15,76 +41,170 @@ impl TradingTerminal {
             return None;
         }
 
-        let success_color = theme.palette().success;
-        let danger_color = theme.palette().danger;
-        let text_color = theme.palette().text;
-        let weak_text_color = theme.extended_palette().background.weak.text;
-        let strong_background = theme.extended_palette().background.strong.color;
+        let now = std::time::Instant::now();
+        let position = self.toast_position;
+        let animate = self.toast_animations_enabled;
 
-        let toast_col = self.toasts.iter().rev().take(5).fold(
-            Column::new().spacing(4).width(280),
-            |col, toast| {
-                let border_color = if toast.is_error {
-                    danger_color
-                } else {
-                    success_color
-                };
-                let message_color = if toast.is_error {
-                    danger_color
-                } else {
-                    text_color
-                };
-                let tid = toast.id;
-                let dismiss = button(text("x").size(9))
-                    .on_press(Message::DismissToast(tid))
-                    .padding([1, 4])
-                    .style(move |_theme: &Theme, _status| button::Style {
-                        background: None,
-                        text_color: weak_text_color,
-                        ..Default::default()
-                    });
-                let card = container(
-                    row![
-                        text(&toast.message)
-                            .size(11)
-                            .color(message_color)
-                            .width(Fill),
-                        dismiss,
-                    ]
-                    .spacing(4)
-                    .align_y(iced::Alignment::Center),
-                )
-                .padding([6, 8])
-                .style(move |_theme: &Theme| container_style::Style {
-                    background: Some(
-                        Color {
-                            a: 0.95,
-                            ..strong_background
-                        }
-                        .into(),
-                    ),
-                    border: iced::Border {
-                        radius: 4.0.into(),
-                        width: 1.0,
-                        color: border_color,
-                    },
-                    ..Default::default()
-                });
-                col.push(card)
-            },
-        );
+        let mut toast_col = Column::new().spacing(8).width(Length::Fixed(TOAST_WIDTH));
+        // Newest toast nearest the anchored edge.
+        for toast in self.toasts.iter().rev().take(VISIBLE_TOASTS) {
+            toast_col = toast_col.push(toast_card(theme, toast, now, animate, position));
+        }
+
+        // Anchor the stack to the configured corner with matching edge padding.
+        let align_x = if position.is_right() {
+            Alignment::End
+        } else {
+            Alignment::Start
+        };
+        let align_y = if position.is_bottom() {
+            Alignment::End
+        } else {
+            Alignment::Start
+        };
+
+        let padding = Padding {
+            top: if position.is_bottom() { 0.0 } else { 10.0 },
+            right: if position.is_right() { 10.0 } else { 0.0 },
+            bottom: if position.is_bottom() { 10.0 } else { 0.0 },
+            left: if position.is_right() { 0.0 } else { 10.0 },
+        };
 
         Some(
             container(toast_col)
-                .width(Fill)
-                .padding(iced::Padding {
-                    top: 8.0,
-                    right: 8.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                })
-                .align_x(iced::Alignment::End)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .padding(padding)
+                .align_x(align_x)
+                .align_y(align_y)
                 .into(),
         )
     }
+}
+
+fn toast_card<'a>(
+    theme: &Theme,
+    toast: &'a Toast,
+    now: std::time::Instant,
+    animate: bool,
+    position: crate::config::ToastPosition,
+) -> Element<'a, Message> {
+    // Combine entrance and exit animation into a single 0.0..=1.0 visibility
+    // value, plus a horizontal slide offset.
+    let (visibility, slide) = if animate {
+        let enter = ease_out(toast.enter_progress(now));
+        let exit = ease_in(toast.exit_progress(now));
+        let visibility = (enter - exit).clamp(0.0, 1.0);
+        // Slide in from (and out toward) the anchored edge.
+        let direction = if position.is_right() { 1.0 } else { -1.0 };
+        let offset = (1.0 - enter) * SLIDE_DISTANCE + exit * SLIDE_DISTANCE;
+        (visibility, direction * offset)
+    } else {
+        (1.0, 0.0)
+    };
+
+    let palette = theme.palette();
+    let extended = theme.extended_palette();
+    let accent = if toast.is_error {
+        palette.danger
+    } else {
+        palette.success
+    };
+    let message_color = if toast.is_error {
+        palette.danger
+    } else {
+        palette.text
+    };
+
+    let glyph = if toast.is_error { "!" } else { "✓" };
+    let icon = container(
+        text(glyph)
+            .size(12)
+            .color(with_alpha(Color::WHITE, visibility)),
+    )
+    .width(Length::Fixed(20.0))
+    .height(Length::Fixed(20.0))
+    .align_x(Alignment::Center)
+    .align_y(Alignment::Center)
+    .style(move |_theme: &Theme| container_style::Style {
+        background: Some(with_alpha(accent, 0.85 * visibility).into()),
+        border: iced::Border {
+            radius: 10.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+
+    let tid = toast.id;
+    let dismiss_color = with_alpha(extended.background.weak.text, visibility);
+    let dismiss = button(text("×").size(14))
+        .on_press(Message::DismissToast(tid))
+        .padding([0, 6])
+        .style(move |_theme: &Theme, status| {
+            let color = match status {
+                button::Status::Hovered => with_alpha(palette.text, visibility),
+                _ => dismiss_color,
+            };
+            button::Style {
+                background: None,
+                text_color: color,
+                ..Default::default()
+            }
+        });
+
+    let body = row![
+        icon,
+        text(&toast.message)
+            .size(12)
+            .color(with_alpha(message_color, visibility))
+            .width(Length::Fill),
+        dismiss,
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center);
+
+    let card_bg = with_alpha(extended.background.strong.color, 0.97 * visibility);
+    let border_color = with_alpha(accent, 0.55 * visibility);
+    let shadow_color = with_alpha(Color::BLACK, 0.30 * visibility);
+
+    let card = container(body)
+        .padding(Padding {
+            top: 9.0,
+            right: 10.0,
+            bottom: 9.0,
+            left: 10.0,
+        })
+        .width(Length::Fill)
+        .style(move |_theme: &Theme| container_style::Style {
+            background: Some(card_bg.into()),
+            border: iced::Border {
+                radius: 8.0.into(),
+                width: 1.0,
+                color: border_color,
+            },
+            shadow: iced::Shadow {
+                color: shadow_color,
+                offset: iced::Vector::new(0.0, 6.0),
+                blur_radius: 18.0,
+            },
+            ..Default::default()
+        });
+
+    // Apply the horizontal slide by padding the leading/trailing edge.
+    let slide_padding = if slide >= 0.0 {
+        Padding {
+            left: slide,
+            ..Padding::ZERO
+        }
+    } else {
+        Padding {
+            right: -slide,
+            ..Padding::ZERO
+        }
+    };
+
+    container(card)
+        .width(Length::Fill)
+        .padding(slide_padding)
+        .into()
 }

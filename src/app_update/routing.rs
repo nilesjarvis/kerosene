@@ -88,6 +88,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::LiquidationAlertThresholdChanged(_)
         | Message::SaveLiquidationAlertThreshold
         | Message::DismissToast(_)
+        | Message::ToastAnimationTick
         | Message::CopyToClipboard(_)
         | Message::WalletAddressActionsHovered(_)
         | Message::WalletAddressActionsExited(_)
@@ -253,6 +254,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartCrosshairStyleChanged(_)
         | Message::ToggleChartCrosshairGuides(_)
         | Message::ChartCrosshairScaleChanged(_)
+        | Message::ToastPositionChanged(_)
+        | Message::ToggleToastAnimations(_)
         | Message::ChartHudReadoutToggled(_, _)
         | Message::ChartHudOrderSoundChanged(_)
         | Message::ChartHudOrderSoundVolumeChanged(_)

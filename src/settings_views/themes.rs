@@ -2,6 +2,7 @@ mod button;
 mod chrome;
 mod fonts;
 mod lists;
+mod notifications;
 
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -19,6 +20,10 @@ impl TradingTerminal {
             ),
             ThemeSettingsPage::Crosshair => self
                 .view_settings_theme_subpage("Crosshair", self.view_settings_crosshair_section()),
+            ThemeSettingsPage::Notifications => self.view_settings_theme_subpage(
+                "Notifications",
+                self.view_settings_notifications_section(),
+            ),
             ThemeSettingsPage::Fonts => {
                 self.view_settings_theme_subpage("Fonts", self.view_settings_display_font_section())
             }
@@ -79,6 +84,15 @@ impl TradingTerminal {
             self.chart_crosshair_style.label(),
             self.chart_crosshair_scale * 100.0
         );
+        let toast_animations = if self.toast_animations_enabled {
+            "animated"
+        } else {
+            "instant"
+        };
+        let notifications_summary = format!(
+            "{}, {toast_animations}",
+            self.toast_position.label().to_lowercase()
+        );
         let font_summary = format!(
             "Display: {}; Mono: {}",
             self.display_font, self.monospace_font
@@ -97,6 +111,11 @@ impl TradingTerminal {
                 ThemeSettingsPage::WidgetChrome,
             ),
             theme_overview_button("Crosshair", crosshair_summary, ThemeSettingsPage::Crosshair),
+            theme_overview_button(
+                "Notifications",
+                notifications_summary,
+                ThemeSettingsPage::Notifications,
+            ),
             theme_overview_button("Fonts", font_summary, ThemeSettingsPage::Fonts),
             theme_overview_button(
                 "Built-in Themes",

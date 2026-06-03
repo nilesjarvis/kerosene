@@ -116,6 +116,14 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ToastPositionChanged(position) if self.toast_position != position => {
+                self.toast_position = position;
+                self.persist_config();
+            }
+            Message::ToggleToastAnimations(enabled) if self.toast_animations_enabled != enabled => {
+                self.toast_animations_enabled = enabled;
+                self.persist_config();
+            }
             Message::ChartHudReadoutToggled(element, enabled)
                 if self.chart_hud_readout.enabled(element) != enabled =>
             {

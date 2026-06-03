@@ -102,6 +102,8 @@ impl TradingTerminal {
             hyperdash_api_key: String::new().into(),
             sound_enabled: layout_snapshot.sound_enabled,
             desktop_notifications: layout_snapshot.desktop_notifications,
+            toast_position: self.toast_position,
+            toast_animations_enabled: self.toast_animations_enabled,
             income_alerts_enabled: layout_snapshot.income_alerts_enabled,
             hide_pnl: self.hide_pnl,
             hidden_positions_by_account,

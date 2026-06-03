@@ -258,6 +258,8 @@ pub(crate) struct TradingTerminal {
     // Toast notification queue
     pub(crate) toasts: Vec<Toast>,
     pub(crate) next_toast_id: u64,
+    pub(crate) toast_position: config::ToastPosition,
+    pub(crate) toast_animations_enabled: bool,
     // Notification settings
     pub(crate) sound_enabled: bool,
     pub(crate) desktop_notifications: bool,

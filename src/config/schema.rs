@@ -25,6 +25,7 @@ mod crosshair;
 mod defaults;
 mod denomination;
 mod market_universe;
+mod toast;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
 pub use candles::{ChartBackfillSource, ChartHollowCandleMode};
@@ -60,6 +61,7 @@ pub use defaults::{
 };
 pub use denomination::DisplayDenominationConfig;
 pub use market_universe::MarketUniverseConfig;
+pub use toast::ToastPosition;
 
 // ---------------------------------------------------------------------------
 // Config Schema
@@ -262,6 +264,12 @@ pub struct KeroseneConfig {
     /// Desktop notifications enabled.
     #[serde(default)]
     pub desktop_notifications: bool,
+    /// Screen corner where in-app toast notifications stack.
+    #[serde(default)]
+    pub toast_position: ToastPosition,
+    /// Whether toasts slide and fade when entering and leaving.
+    #[serde(default = "default_true")]
+    pub toast_animations_enabled: bool,
     /// Hourly positive-interest alerts enabled.
     #[serde(default)]
     pub income_alerts_enabled: bool,

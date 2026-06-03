@@ -17,6 +17,16 @@ impl TradingTerminal {
             );
         }
 
+        if self.toast_animations_enabled {
+            let now = std::time::Instant::now();
+            if self.toasts.iter().any(|toast| toast.is_animating(now)) {
+                subs.push(
+                    iced::time::every(std::time::Duration::from_millis(16))
+                        .map(|_| Message::ToastAnimationTick),
+                );
+            }
+        }
+
         if self.has_loading_activity() {
             subs.push(
                 iced::time::every(std::time::Duration::from_millis(40))
