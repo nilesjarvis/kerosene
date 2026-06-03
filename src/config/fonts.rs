@@ -10,6 +10,7 @@ pub(crate) const INTER_FONT_FAMILY: &str = "Inter";
 pub(crate) const DM_SANS_FONT_FAMILY: &str = "DM Sans";
 pub(crate) const ROBOTO_FONT_FAMILY: &str = "Roboto";
 pub(crate) const ROBOTO_MONO_FONT_FAMILY: &str = "Roboto Mono";
+pub(crate) const QUANTICO_FONT_FAMILY: &str = "Quantico";
 pub(crate) const UBUNTU_SANS_FONT_FAMILY: &str = "Ubuntu Sans";
 pub(crate) const UBUNTU_SANS_MONO_FONT_FAMILY: &str = "Ubuntu Sans Mono";
 pub(crate) const BUNDLED_DISPLAY_FONT_FAMILIES: &[&str] = &[
@@ -17,6 +18,7 @@ pub(crate) const BUNDLED_DISPLAY_FONT_FAMILIES: &[&str] = &[
     DM_SANS_FONT_FAMILY,
     ROBOTO_FONT_FAMILY,
     ROBOTO_MONO_FONT_FAMILY,
+    QUANTICO_FONT_FAMILY,
     UBUNTU_SANS_FONT_FAMILY,
     UBUNTU_SANS_MONO_FONT_FAMILY,
 ];

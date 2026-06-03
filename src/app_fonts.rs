@@ -12,6 +12,10 @@ const ROBOTO_BYTES: &[u8] = include_bytes!("../assets/fonts/Roboto-Variable.ttf"
 const INTER_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Variable.ttf");
 const DM_SANS_BYTES: &[u8] = include_bytes!("../assets/fonts/DMSans-Variable.ttf");
 const ROBOTO_MONO_BYTES: &[u8] = include_bytes!("../assets/fonts/RobotoMono-Variable.ttf");
+const QUANTICO_REGULAR_BYTES: &[u8] = include_bytes!("../assets/fonts/Quantico-Regular.ttf");
+const QUANTICO_BOLD_BYTES: &[u8] = include_bytes!("../assets/fonts/Quantico-Bold.ttf");
+const QUANTICO_ITALIC_BYTES: &[u8] = include_bytes!("../assets/fonts/Quantico-Italic.ttf");
+const QUANTICO_BOLD_ITALIC_BYTES: &[u8] = include_bytes!("../assets/fonts/Quantico-BoldItalic.ttf");
 const UBUNTU_SANS_BYTES: &[u8] = include_bytes!("../assets/fonts/UbuntuSans-Variable.ttf");
 const UBUNTU_SANS_MONO_BYTES: &[u8] = include_bytes!("../assets/fonts/UbuntuSansMono-Variable.ttf");
 const BUNDLED_FONT_BYTES: &[(&str, &[u8])] = &[
@@ -19,6 +23,10 @@ const BUNDLED_FONT_BYTES: &[(&str, &[u8])] = &[
     (config::DM_SANS_FONT_FAMILY, DM_SANS_BYTES),
     (config::ROBOTO_FONT_FAMILY, ROBOTO_BYTES),
     (config::ROBOTO_MONO_FONT_FAMILY, ROBOTO_MONO_BYTES),
+    (config::QUANTICO_FONT_FAMILY, QUANTICO_REGULAR_BYTES),
+    (config::QUANTICO_FONT_FAMILY, QUANTICO_BOLD_BYTES),
+    (config::QUANTICO_FONT_FAMILY, QUANTICO_ITALIC_BYTES),
+    (config::QUANTICO_FONT_FAMILY, QUANTICO_BOLD_ITALIC_BYTES),
     (config::UBUNTU_SANS_FONT_FAMILY, UBUNTU_SANS_BYTES),
     (config::UBUNTU_SANS_MONO_FONT_FAMILY, UBUNTU_SANS_MONO_BYTES),
 ];
