@@ -6,11 +6,12 @@ mod ui;
 
 pub(crate) use aggregation::{add_optional_f64, positive_percent_change, sum_optional_f64};
 pub use formatting::{
-    finite_value, format_decimal_with_commas, format_duration, format_price, format_relative_time,
-    format_signed_percent_value, format_size, format_timestamp, format_timestamp_exact, format_usd,
-    format_with_commas, invalid_data_placeholder, normalize_two_decimal_display_value,
-    not_available_placeholder, parse_finite_json_number, parse_finite_number, parse_number,
-    parse_positive_finite_number, parse_positive_number, positive_finite_value,
+    ellipsized_text, finite_value, format_decimal_with_commas, format_duration, format_price,
+    format_relative_time, format_signed_percent_value, format_size, format_timestamp,
+    format_timestamp_exact, format_usd, format_with_commas, invalid_data_placeholder,
+    normalize_two_decimal_display_value, not_available_placeholder, parse_finite_json_number,
+    parse_finite_number, parse_number, parse_positive_finite_number, parse_positive_number,
+    positive_finite_value, response_excerpt, response_snippet, text_excerpt,
 };
 pub use order_book::{
     BookRowData, aggregate_levels, book_row, book_tick_options, clickable_book_row,

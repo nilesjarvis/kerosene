@@ -1,4 +1,5 @@
 use crate::api::API_URL;
+use crate::helpers::text_excerpt;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -29,7 +30,7 @@ pub(super) async fn post_info_json_with_retries(
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            let body_preview = body.chars().take(160).collect::<String>();
+            let body_preview = text_excerpt(&body, 160);
             last_error = if body_preview.is_empty() {
                 format!("{label} request failed with HTTP {status}")
             } else {

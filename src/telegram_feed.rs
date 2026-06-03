@@ -1,4 +1,5 @@
 use crate::api::{CLIENT, ExchangeSymbol};
+use crate::helpers::text_excerpt;
 use crate::symbol_mentions::{SymbolAliasSource, SymbolMention, SymbolMentionResolver};
 use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
@@ -445,7 +446,7 @@ pub(crate) async fn fetch_telegram_channel_posts(
     let body = String::from_utf8_lossy(&body_bytes);
 
     if !status.is_success() {
-        let preview = body.chars().take(160).collect::<String>();
+        let preview = text_excerpt(&body, 160);
         return if preview.is_empty() {
             Err(format!("@{channel} request failed with HTTP {status}"))
         } else {

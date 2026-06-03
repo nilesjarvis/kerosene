@@ -1,5 +1,6 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
+use crate::helpers::ellipsized_text;
 use crate::message::Message;
 use crate::telegram_fast_feed::{
     bundled_telegram_api_hash, bundled_telegram_api_id, list_telegram_private_channel_candidates,
@@ -802,12 +803,11 @@ impl TradingTerminal {
 }
 
 fn telegram_post_alert_message(post: &TelegramFeedPost) -> String {
-    let mut preview = post.text.lines().next().unwrap_or_default().to_string();
     const MAX_PREVIEW_CHARS: usize = 140;
-    if preview.chars().count() > MAX_PREVIEW_CHARS {
-        preview = preview.chars().take(MAX_PREVIEW_CHARS - 3).collect();
-        preview.push_str("...");
-    }
+    let preview = ellipsized_text(
+        post.text.lines().next().unwrap_or_default(),
+        MAX_PREVIEW_CHARS,
+    );
 
     if preview.is_empty() {
         format!("@{} posted a new message", post.channel)

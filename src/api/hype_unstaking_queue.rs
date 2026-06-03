@@ -1,4 +1,5 @@
 use super::CLIENT;
+use crate::helpers::response_excerpt;
 use crate::hype_unstaking_state::{HypeUnstakingEvent, HypeUnstakingQueueData};
 
 use serde::Deserialize;
@@ -27,14 +28,14 @@ pub(crate) async fn fetch_hype_unstaking_queue() -> Result<HypeUnstakingQueueDat
         return Err(format!(
             "HYPE unstaking queue request failed (HTTP {}): {}",
             status,
-            response_snippet(&text)
+            response_excerpt(&text)
         ));
     }
 
     let rows: Vec<HypurrscanUnstakingQueueRow> = serde_json::from_str(&text).map_err(|e| {
         format!(
             "HYPE unstaking queue response parse failed: {e}; {}",
-            response_snippet(&text)
+            response_excerpt(&text)
         )
     })?;
 
@@ -58,10 +59,6 @@ impl From<HypurrscanUnstakingQueueRow> for HypeUnstakingEvent {
             amount_wei: row.wei,
         }
     }
-}
-
-fn response_snippet(text: &str) -> String {
-    text.chars().take(200).collect()
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
+use crate::helpers::ellipsized_text;
 use crate::message::Message;
 use crate::x_feed::{
     X_FEED_MAX_SOURCES, XFeedPage, XFeedPost, XFeedStreamEvent, XTickerMention,
@@ -354,12 +355,11 @@ impl TradingTerminal {
 }
 
 fn x_post_alert_message(post: &XFeedPost) -> String {
-    let mut preview = post.text.lines().next().unwrap_or_default().to_string();
     const MAX_PREVIEW_CHARS: usize = 140;
-    if preview.chars().count() > MAX_PREVIEW_CHARS {
-        preview = preview.chars().take(MAX_PREVIEW_CHARS - 3).collect();
-        preview.push_str("...");
-    }
+    let preview = ellipsized_text(
+        post.text.lines().next().unwrap_or_default(),
+        MAX_PREVIEW_CHARS,
+    );
 
     if preview.is_empty() {
         format!("@{} posted on X", post.username)

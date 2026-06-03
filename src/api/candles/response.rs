@@ -1,4 +1,5 @@
 use super::{Candle, normalize_candles};
+use crate::helpers::response_snippet;
 use reqwest::StatusCode;
 
 #[cfg(test)]
@@ -52,12 +53,4 @@ pub(super) fn parse_candle_response(
     })?;
 
     Ok(normalize_candles(candles))
-}
-
-fn response_snippet(text: &str) -> String {
-    let mut snippet: String = text.chars().take(200).collect();
-    if text.chars().count() > 200 {
-        snippet.push_str("...");
-    }
-    snippet
 }

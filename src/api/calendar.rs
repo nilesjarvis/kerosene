@@ -1,4 +1,5 @@
 use super::{CLIENT, KEROSENE_USER_AGENT};
+use crate::helpers::response_excerpt;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
 
@@ -34,7 +35,7 @@ pub async fn fetch_economic_calendar() -> Result<Vec<CalendarEvent>, String> {
         .await
         .map_err(|e| format!("Failed to read economic calendar response: {e}"))?;
 
-    let snippet = || -> String { text.chars().take(200).collect() };
+    let snippet = || response_excerpt(&text);
 
     if !status.is_success() {
         return Err(format!(

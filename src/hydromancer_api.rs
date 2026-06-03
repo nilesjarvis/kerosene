@@ -1,4 +1,4 @@
-use crate::api::CLIENT;
+use crate::{api::CLIENT, helpers::response_snippet};
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
 
@@ -173,14 +173,6 @@ fn normalize_funding_history(
     points.sort_by_key(|point| point.time_ms);
     points.dedup_by_key(|point| point.time_ms);
     Ok(points)
-}
-
-fn response_snippet(text: &str) -> String {
-    let mut snippet: String = text.chars().take(200).collect();
-    if text.chars().count() > 200 {
-        snippet.push_str("...");
-    }
-    snippet
 }
 
 #[cfg(test)]

@@ -34,7 +34,7 @@ fn cumulative_pnl_points_sort_and_coalesce_trade_times() {
     let third = trade(4_000, Some(3_000), 2.5);
     let trades = vec![&first, &second, &third];
 
-    let points = journal_cumulative_pnl_points(&trades, true);
+    let points = journal_cumulative_pnl_points(&trades, false);
     assert!(points.len() > 3);
     assert!(points.windows(2).all(|window| window[0].0 < window[1].0));
     assert!(
@@ -43,6 +43,17 @@ fn cumulative_pnl_points_sort_and_coalesce_trade_times() {
             .all(|(_, pnl)| *pnl == 0.0)
     );
     assert!(points.ends_with(&[(2_000, -4.0), (3_000, 8.5)]));
+}
+
+#[test]
+fn cumulative_pnl_points_apply_fees_when_requested() {
+    let first = trade(1_000, Some(1_000), 10.0);
+    let second = trade(2_000, Some(2_000), -4.0);
+    let trades = vec![&first, &second];
+
+    let points = journal_cumulative_pnl_points(&trades, true);
+
+    assert!(points.ends_with(&[(1_000, 9.0), (2_000, 4.0)]));
 }
 
 #[test]
@@ -111,7 +122,7 @@ fn recent_trade_outcomes_sort_filter_and_cap_results() {
     let third = trade(3_000, Some(3_000), 0.0);
     let trades = vec![&third, &ignored_open, &second, &first];
 
-    let outcomes = journal_recent_trade_outcome_tiles(&trades, true)
+    let outcomes = journal_recent_trade_outcome_tiles(&trades, false)
         .into_iter()
         .map(|tile| (tile.outcome, tile.trade_type, tile.pnl))
         .collect::<Vec<_>>();
@@ -122,6 +133,28 @@ fn recent_trade_outcomes_sort_filter_and_cap_results() {
             (JournalTradeOutcome::Win, "Long BTC".to_string(), 1.0),
             (JournalTradeOutcome::Loss, "Long BTC".to_string(), -1.0),
             (JournalTradeOutcome::Flat, "Long BTC".to_string(), 0.0),
+        ]
+    );
+}
+
+#[test]
+fn recent_trade_outcomes_apply_fees_when_requested() {
+    let win_after_fees = trade(1_000, Some(1_000), 2.0);
+    let flat_after_fees = trade(2_000, Some(2_000), 1.0);
+    let loss_after_fees = trade(3_000, Some(3_000), 0.5);
+    let trades = vec![&loss_after_fees, &flat_after_fees, &win_after_fees];
+
+    let outcomes = journal_recent_trade_outcome_tiles(&trades, true)
+        .into_iter()
+        .map(|tile| (tile.outcome, tile.pnl))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        outcomes,
+        vec![
+            (JournalTradeOutcome::Win, 1.0),
+            (JournalTradeOutcome::Flat, 0.0),
+            (JournalTradeOutcome::Loss, -0.5),
         ]
     );
 }

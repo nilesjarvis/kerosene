@@ -1,4 +1,5 @@
 use crate::api::CLIENT;
+use crate::helpers::text_excerpt;
 use crate::x_feed::{
     XFeedStreamEvent, build_x_feed_query, normalize_x_bearer_token_input, normalized_x_handle_list,
     parse_x_stream_page, x_api_auth_guidance,
@@ -102,7 +103,7 @@ async fn run_x_feed_stream_session(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        let preview = body.chars().take(160).collect::<String>();
+        let preview = text_excerpt(&body, 160);
         let message = if preview.is_empty() {
             format!("X stream failed with HTTP {status}")
         } else {

@@ -1,3 +1,4 @@
+use crate::helpers::text_excerpt;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -36,10 +37,7 @@ where
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        let preview = body
-            .chars()
-            .take(HTTP_ERROR_PREVIEW_CHARS)
-            .collect::<String>();
+        let preview = text_excerpt(&body, HTTP_ERROR_PREVIEW_CHARS);
         return if preview.is_empty() {
             Err(format!("{label} request failed with HTTP {status}"))
         } else {

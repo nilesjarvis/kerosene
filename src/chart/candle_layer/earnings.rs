@@ -107,11 +107,11 @@ pub(in crate::chart) fn earnings_marker_dot_y(price_h: f32) -> f32 {
     (price_h - EARNINGS_DOT_BOTTOM_PADDING).max(EARNINGS_DOT_RADIUS)
 }
 
-fn visible_earnings_marker_xs<'a, F>(
-    markers: &'a [EarningsMarker],
+fn visible_earnings_marker_xs<F>(
+    markers: &[EarningsMarker],
     chart_w: f32,
     mut timestamp_to_x: F,
-) -> Vec<(f32, &'a EarningsMarker)>
+) -> Vec<(f32, &EarningsMarker)>
 where
     F: FnMut(u64) -> Option<f32>,
 {

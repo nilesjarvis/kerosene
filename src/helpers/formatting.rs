@@ -1,4 +1,5 @@
 mod numbers;
+mod text;
 mod time;
 
 pub use numbers::{
@@ -8,4 +9,5 @@ pub use numbers::{
     parse_finite_number, parse_number, parse_positive_finite_number, parse_positive_number,
     positive_finite_value,
 };
+pub use text::{ellipsized_text, response_excerpt, response_snippet, text_excerpt};
 pub use time::{format_duration, format_relative_time, format_timestamp, format_timestamp_exact};

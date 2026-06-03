@@ -3,6 +3,7 @@ mod parsing;
 
 use self::parsing::parse_order_status_inner;
 use super::{API_URL, CLIENT};
+use crate::helpers::text_excerpt;
 pub(crate) use model::OrderStatusResult;
 use serde_json::Value;
 
@@ -45,7 +46,7 @@ async fn fetch_order_status(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        let preview = body.chars().take(160).collect::<String>();
+        let preview = text_excerpt(&body, 160);
         return if preview.is_empty() {
             Err(format!("orderStatus request failed with HTTP {status}"))
         } else {

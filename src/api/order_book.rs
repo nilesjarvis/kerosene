@@ -1,4 +1,5 @@
 use super::{API_URL, CLIENT};
+use crate::helpers::response_snippet;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -120,12 +121,7 @@ fn parse_order_book_response(raw: &Value) -> Result<OrderBook, String> {
 }
 
 fn value_snippet(value: &Value) -> String {
-    let rendered = value.to_string();
-    let mut snippet: String = rendered.chars().take(200).collect();
-    if rendered.chars().count() > 200 {
-        snippet.push_str("...");
-    }
-    snippet
+    response_snippet(&value.to_string())
 }
 
 fn is_valid_book_level(level: &BookLevel) -> bool {

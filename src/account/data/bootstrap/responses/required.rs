@@ -1,4 +1,5 @@
 use crate::account::{ClearinghouseState, SpotClearinghouseState};
+use crate::helpers::response_excerpt;
 
 use serde_json::Value;
 
@@ -12,7 +13,7 @@ pub(in crate::account::data::bootstrap) fn clearinghouse_from_required_value(
     serde_json::from_value(raw.clone()).map_err(|e| {
         format!(
             "clearinghouseState deserialize failed: {e} | JSON: {}",
-            raw.to_string().chars().take(200).collect::<String>()
+            response_excerpt(&raw.to_string())
         )
     })
 }

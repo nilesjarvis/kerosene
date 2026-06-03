@@ -1,4 +1,5 @@
 use super::super::CLIENT;
+use crate::helpers::response_excerpt;
 
 use flate2::read::GzDecoder;
 use serde::Deserialize;
@@ -30,20 +31,16 @@ where
         return Err(format!(
             "{label} request failed (HTTP {}): {}",
             status,
-            response_snippet(&text)
+            response_excerpt(&text)
         ));
     }
 
     serde_json::from_str(&text).map_err(|e| {
         format!(
             "{label} response parse failed: {e}; {}",
-            response_snippet(&text)
+            response_excerpt(&text)
         )
     })
-}
-
-fn response_snippet(text: &str) -> String {
-    text.chars().take(200).collect()
 }
 
 fn decode_response_text(bytes: &[u8], label: &str) -> Result<String, String> {
