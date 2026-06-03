@@ -9,8 +9,6 @@ mod tooltip;
 use tooltip::draw_hover_state;
 pub(super) use tooltip::tooltip_origin;
 
-const CARD_RADIUS: f32 = 12.0;
-const CARD_BORDER_ALPHA: f32 = 0.16;
 const GRID_ALPHA: f32 = 0.055;
 const ZERO_LINE_ALPHA: f32 = 0.16;
 const PNL_AREA_TOP_ALPHA: f32 = 0.26;
@@ -54,7 +52,6 @@ fn draw_journal_summary_chart(
 ) -> Vec<canvas::Geometry> {
     let mut frame = canvas::Frame::new(renderer, bounds.size());
     frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::TRANSPARENT);
-    draw_card_backdrop(&mut frame, theme, bounds.size());
 
     let Some(layout) = prepare_chart_layout(chart, bounds.width, bounds.height) else {
         return vec![frame.into_geometry()];
@@ -110,26 +107,6 @@ fn draw_journal_summary_chart(
     }
 
     vec![frame.into_geometry()]
-}
-
-fn draw_card_backdrop(frame: &mut canvas::Frame, theme: &Theme, size: Size) {
-    let rect = canvas::Path::rounded_rectangle(Point::ORIGIN, size, CARD_RADIUS.into());
-    frame.fill(
-        &rect,
-        Color {
-            a: 0.86,
-            ..theme.extended_palette().background.base.color
-        },
-    );
-    frame.stroke(
-        &rect,
-        canvas::Stroke::default()
-            .with_color(Color {
-                a: CARD_BORDER_ALPHA,
-                ..journal_chart_mint()
-            })
-            .with_width(1.0),
-    );
 }
 
 fn draw_grid(frame: &mut canvas::Frame, theme: &Theme, size: Size) {
