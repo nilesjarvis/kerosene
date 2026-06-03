@@ -1,5 +1,4 @@
 use crate::journal::AggregatedTrade;
-use std::cmp::Reverse;
 use std::collections::HashMap;
 
 pub(super) type JournalAssetStats = Vec<(String, (usize, f64, f64))>;
@@ -53,7 +52,7 @@ pub(super) fn journal_summary_stats(filtered_trades: &[&AggregatedTrade]) -> Jou
     }
 
     let mut sorted_assets: JournalAssetStats = asset_stats.into_iter().collect();
-    sorted_assets.sort_by_key(|asset| Reverse(asset.1.0));
+    sorted_assets.sort_unstable_by(|a, b| b.1.0.cmp(&a.1.0).then_with(|| a.0.cmp(&b.0)));
 
     JournalSummaryStats {
         total_pnl,
