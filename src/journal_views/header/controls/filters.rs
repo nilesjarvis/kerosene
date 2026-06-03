@@ -1,13 +1,21 @@
 use crate::journal;
 use crate::journal_views::style::journal_pill_style;
 use crate::message::Message;
-use iced::Element;
-use iced::widget::{button, row, text};
+use iced::widget::{Space, button, row, text};
+use iced::{Element, Theme};
 
 pub(super) fn journal_filter_controls(
     active_filter: journal::JournalFilter,
 ) -> Element<'static, Message> {
-    let mut filter_row = row![].spacing(4);
+    let mut filter_row = row![
+        text("Filter:").size(11).style(|theme: &Theme| text::Style {
+            color: Some(theme.extended_palette().background.weak.text),
+        }),
+        Space::new().width(4.0)
+    ]
+    .spacing(4)
+    .align_y(iced::Alignment::Center);
+
     for filter in [
         (journal::JournalFilter::All, "All"),
         (journal::JournalFilter::Perp, "Perp"),
