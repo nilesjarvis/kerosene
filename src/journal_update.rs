@@ -149,6 +149,9 @@ impl TradingTerminal {
             Message::JournalToggleAccountValueChart(show) => {
                 self.journal.show_account_value_chart = show;
             }
+            Message::JournalToggleIncludeFeesInPnl => {
+                self.journal.include_fees_in_pnl = !self.journal.include_fees_in_pnl;
+            }
             Message::JournalSnapshotToggle(trade_id) => {
                 return self.toggle_journal_snapshot(trade_id);
             }

@@ -21,7 +21,10 @@ impl JournalSummaryStats {
     }
 }
 
-pub(super) fn journal_summary_stats(filtered_trades: &[&AggregatedTrade]) -> JournalSummaryStats {
+pub(super) fn journal_summary_stats(
+    filtered_trades: &[&AggregatedTrade],
+    include_fees: bool,
+) -> JournalSummaryStats {
     let mut total_pnl = 0.0;
     let mut total_fees = 0.0;
     let mut total_closed = 0;
@@ -29,14 +32,20 @@ pub(super) fn journal_summary_stats(filtered_trades: &[&AggregatedTrade]) -> Jou
     let mut asset_stats = HashMap::new();
 
     for trade in filtered_trades {
-        total_pnl += trade.pnl;
+        let pnl = if include_fees {
+            trade.pnl - trade.fee
+        } else {
+            trade.pnl
+        };
+
+        total_pnl += pnl;
         total_fees += trade.fee;
 
         let stats = asset_stats
             .entry(trade.coin.clone())
             .or_insert((0usize, 0.0f64, 0.0f64));
         stats.0 += 1;
-        stats.1 += trade.pnl;
+        stats.1 += pnl;
         stats.2 += trade.fee;
 
         if trade.status == "CLOSED"
@@ -45,7 +54,7 @@ pub(super) fn journal_summary_stats(filtered_trades: &[&AggregatedTrade]) -> Jou
             && trade.basis_complete
         {
             total_closed += 1;
-            if trade.pnl > 0.0 {
+            if pnl > 0.0 {
                 winning_closed += 1;
             }
         }

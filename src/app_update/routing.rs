@@ -348,6 +348,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalChartRevealTick
         | Message::JournalToggleAllAssets
         | Message::JournalToggleAccountValueChart(_)
+        | Message::JournalToggleIncludeFeesInPnl
         | Message::JournalSnapshotToggle(_)
         | Message::JournalSnapshotLoaded { .. }
         | Message::JournalRefresh => UpdateRoute::Journal,

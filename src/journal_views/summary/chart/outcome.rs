@@ -31,8 +31,9 @@ pub(crate) struct JournalOutcomeTile {
 pub(super) fn journal_outcome_strip(
     filtered_trades: &[&AggregatedTrade],
     denomination: DisplayDenominationContext,
+    include_fees: bool,
 ) -> Element<'static, Message> {
-    let tiles = journal_recent_trade_outcome_tiles(filtered_trades);
+    let tiles = journal_recent_trade_outcome_tiles(filtered_trades, include_fees);
     if tiles.is_empty() {
         return container(
             text("No closed trades")
@@ -54,14 +55,20 @@ pub(super) fn journal_outcome_strip(
 
 pub(super) fn journal_recent_trade_outcome_tiles(
     trades: &[&AggregatedTrade],
+    include_fees: bool,
 ) -> Vec<JournalOutcomeTile> {
     let mut tiles = trades
         .iter()
         .filter(|trade| journal_trade_counts_toward_win_rate(trade))
         .map(|trade| {
-            let outcome = if trade.pnl > 0.0 {
+            let pnl = if include_fees {
+                trade.pnl - trade.fee
+            } else {
+                trade.pnl
+            };
+            let outcome = if pnl > 0.0 {
                 JournalTradeOutcome::Win
-            } else if trade.pnl < 0.0 {
+            } else if pnl < 0.0 {
                 JournalTradeOutcome::Loss
             } else {
                 JournalTradeOutcome::Flat
@@ -70,7 +77,7 @@ pub(super) fn journal_recent_trade_outcome_tiles(
                 trade.end_time.unwrap_or(trade.start_time),
                 JournalOutcomeTile {
                     outcome,
-                    pnl: trade.pnl,
+                    pnl,
                     trade_type: trade_type_label(trade),
                 },
             )

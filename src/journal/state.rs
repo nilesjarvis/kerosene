@@ -56,6 +56,7 @@ pub struct JournalState {
     pub sort: JournalSort,
     pub show_all_assets: bool,
     pub show_account_value_chart: bool,
+    pub include_fees_in_pnl: bool,
     pub portfolio_window: PortfolioWindow,
     pub error: Option<String>,
     pub warning: Option<String>,
@@ -114,6 +115,7 @@ pub struct JournalAccountState {
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
     pub show_account_value_chart: bool,
+    pub include_fees_in_pnl: bool,
     pub portfolio_window: PortfolioWindow,
 }
 
@@ -136,6 +138,7 @@ impl Default for JournalAccountState {
             edit_source_keys: HashMap::new(),
             edit_buffers: HashMap::new(),
             show_account_value_chart: false,
+            include_fees_in_pnl: true,
             portfolio_window: PortfolioWindow::Week,
         }
     }

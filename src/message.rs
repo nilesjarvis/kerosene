@@ -298,6 +298,7 @@ pub(crate) enum Message {
     JournalChartRevealTick,
     JournalToggleAllAssets,
     JournalToggleAccountValueChart(bool),
+    JournalToggleIncludeFeesInPnl,
     JournalSnapshotToggle(String),
     JournalSnapshotLoaded {
         account_key: Option<String>,

@@ -63,6 +63,7 @@ impl JournalState {
             sort: JournalSort::TimeDesc,
             show_all_assets: false,
             show_account_value_chart: false,
+            include_fees_in_pnl: true,
             portfolio_window: crate::portfolio_state::PortfolioWindow::Week,
             error: None,
             warning: None,
@@ -160,6 +161,7 @@ impl JournalState {
             edit_source_keys: self.edit_source_keys.clone(),
             edit_buffers: self.edit_buffers.clone(),
             show_account_value_chart: self.show_account_value_chart,
+            include_fees_in_pnl: self.include_fees_in_pnl,
             portfolio_window: self.portfolio_window,
         }
     }
@@ -181,6 +183,7 @@ impl JournalState {
         self.edit_source_keys = state.edit_source_keys;
         self.edit_buffers = state.edit_buffers;
         self.show_account_value_chart = state.show_account_value_chart;
+        self.include_fees_in_pnl = state.include_fees_in_pnl;
         self.portfolio_window = state.portfolio_window;
     }
 

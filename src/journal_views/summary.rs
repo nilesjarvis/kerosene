@@ -19,7 +19,7 @@ impl TradingTerminal {
         content: Column<'a, Message>,
         filtered_trades: &[&AggregatedTrade],
     ) -> Column<'a, Message> {
-        let stats = journal_summary_stats(filtered_trades);
+        let stats = journal_summary_stats(filtered_trades, self.journal.include_fees_in_pnl);
         let total_pnl = stats.total_pnl;
         let total_fees = stats.total_fees;
         let total_closed = stats.total_closed;

@@ -10,11 +10,16 @@ const MAX_LEADING_ZERO_WINDOW_MS: u64 = 7 * DAY_MS;
 
 pub(in crate::journal_views::summary::chart) fn journal_cumulative_pnl_points(
     trades: &[&AggregatedTrade],
+    include_fees: bool,
 ) -> Vec<(u64, f64)> {
     let mut trade_pnls = trades
         .iter()
         .filter_map(|trade| {
-            let pnl = trade.pnl;
+            let pnl = if include_fees {
+                trade.pnl - trade.fee
+            } else {
+                trade.pnl
+            };
             pnl.is_finite()
                 .then_some((trade.end_time.unwrap_or(trade.start_time), pnl))
         })

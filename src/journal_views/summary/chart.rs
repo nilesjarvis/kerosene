@@ -33,7 +33,8 @@ impl TradingTerminal {
         total_closed: usize,
     ) -> Element<'_, Message> {
         let theme = self.theme();
-        let all_pnl_points = journal_cumulative_pnl_points(filtered_trades);
+        let all_pnl_points =
+            journal_cumulative_pnl_points(filtered_trades, self.journal.include_fees_in_pnl);
         let pnl_points = self.journal_portfolio_window_points(all_pnl_points);
         let selected_window_pnl = journal_window_total_pnl(&pnl_points).unwrap_or(total_pnl);
         let account_value_points = self.journal_account_value_chart_points(&pnl_points);
@@ -94,23 +95,36 @@ impl TradingTerminal {
             journal_portfolio_window_row(self.journal.portfolio_window),
             rule::horizontal(1),
             row![
-                text(format_signed_display_full(
-                    selected_window_pnl,
-                    &denomination
-                ))
-                .size(22)
-                .font(crate::app_fonts::monospace_font())
-                .color(value_color),
-                text("PNL")
-                    .size(13)
+                button(
+                    text(format_signed_display_full(
+                        selected_window_pnl,
+                        &denomination
+                    ))
+                    .size(22)
                     .font(crate::app_fonts::monospace_font())
-                    .color(muted),
+                    .color(value_color)
+                )
+                .on_press(Message::JournalToggleIncludeFeesInPnl)
+                .padding(0)
+                .style(button::text),
+                text(if self.journal.include_fees_in_pnl {
+                    "NET PNL"
+                } else {
+                    "GROSS PNL"
+                })
+                .size(13)
+                .font(crate::app_fonts::monospace_font())
+                .color(muted),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
             chart_body,
             column![
-                journal_outcome_strip(filtered_trades, denomination.clone()),
+                journal_outcome_strip(
+                    filtered_trades,
+                    denomination.clone(),
+                    self.journal.include_fees_in_pnl
+                ),
                 column![
                     text(format!("{win_rate:.1}% Win Rate"))
                         .size(11)
