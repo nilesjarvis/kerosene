@@ -406,7 +406,7 @@ impl TradingTerminal {
                 return content.into();
             }
             if let Some(private_selector) = private_selector {
-                return private_selector.into();
+                return private_selector;
             }
 
             return text("No channels")
@@ -567,11 +567,13 @@ impl TradingTerminal {
                     profile,
                     ticker_impacts,
                     now_ms,
-                    theme.palette().primary,
-                    theme.palette().text,
-                    theme.extended_palette().background.weak.text,
-                    theme.palette().success,
-                    theme.palette().danger,
+                    TelegramPostCardPalette {
+                        primary_text: theme.palette().primary,
+                        body_text: theme.palette().text,
+                        muted_text: theme.extended_palette().background.weak.text,
+                        success_text: theme.palette().success,
+                        danger_text: theme.palette().danger,
+                    },
                 ))
             });
 
@@ -780,17 +782,29 @@ fn telegram_channel_collapse_summary(
     .into()
 }
 
-fn telegram_post_card(
-    post: TelegramFeedPost,
-    profile: Option<TelegramChannelProfile>,
-    ticker_impacts: Vec<TelegramTickerImpactCard>,
-    now_ms: u64,
+#[derive(Debug, Clone, Copy)]
+struct TelegramPostCardPalette {
     primary_text: Color,
     body_text: Color,
     muted_text: Color,
     success_text: Color,
     danger_text: Color,
+}
+
+fn telegram_post_card(
+    post: TelegramFeedPost,
+    profile: Option<TelegramChannelProfile>,
+    ticker_impacts: Vec<TelegramTickerImpactCard>,
+    now_ms: u64,
+    palette: TelegramPostCardPalette,
 ) -> Element<'static, Message> {
+    let TelegramPostCardPalette {
+        primary_text,
+        body_text,
+        muted_text,
+        success_text,
+        danger_text,
+    } = palette;
     let channel = format!("@{}", post.channel);
     let title = profile
         .as_ref()

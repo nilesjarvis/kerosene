@@ -6,8 +6,8 @@ use crate::positioning_state::{POSITIONING_CHANGE_ROW_LIMIT, PositioningInfoInst
 use super::super::columns::{PositioningChangeColumns, PositioningInfoColumns};
 use super::super::metrics::{positioning_live_mark, sorted_change_rows};
 use super::super::table::{
-    positioning_change_row, positioning_change_table_header, positioning_position_row,
-    positioning_table_header,
+    PositioningRowContext, positioning_change_row, positioning_change_table_header,
+    positioning_position_row, positioning_table_header,
 };
 use iced::widget::{Column, container, rule, scrollable, text};
 use iced::{Element, Fill, Theme};
@@ -28,6 +28,13 @@ impl TradingTerminal {
         let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
         let denomination = self.display_denomination_context();
         let hovered_wallet_action_key = self.hovered_wallet_address_actions.as_deref();
+        let row_context = PositioningRowContext {
+            instance_id: instance.id,
+            hovered_wallet_action_key,
+            theme,
+            live_mark,
+            denomination: &denomination,
+        };
         let mut rows = Column::new()
             .spacing(3)
             .push(positioning_table_header(
@@ -52,14 +59,10 @@ impl TradingTerminal {
         } else {
             for position in &data.positions {
                 rows = rows.push(positioning_position_row(
-                    instance.id,
+                    row_context,
                     position,
                     self.wallet_display(&position.address),
                     columns,
-                    hovered_wallet_action_key,
-                    theme,
-                    live_mark,
-                    &denomination,
                 ));
             }
         }
@@ -78,6 +81,13 @@ impl TradingTerminal {
         let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
         let denomination = self.display_denomination_context();
         let hovered_wallet_action_key = self.hovered_wallet_address_actions.as_deref();
+        let row_context = PositioningRowContext {
+            instance_id: instance.id,
+            hovered_wallet_action_key,
+            theme,
+            live_mark,
+            denomination: &denomination,
+        };
         let sorted = sorted_change_rows(
             &data.deltas,
             instance.change_sort_field,
@@ -109,14 +119,10 @@ impl TradingTerminal {
         } else {
             for entry in sorted.into_iter().take(POSITIONING_CHANGE_ROW_LIMIT) {
                 rows = rows.push(positioning_change_row(
-                    instance.id,
+                    row_context,
                     entry,
                     self.wallet_display(&entry.address),
                     columns,
-                    hovered_wallet_action_key,
-                    theme,
-                    live_mark,
-                    &denomination,
                 ));
             }
         }

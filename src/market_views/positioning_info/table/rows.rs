@@ -15,16 +15,28 @@ use iced::{Alignment, Element, Fill, Length, Theme};
 // Positioning Table Rows
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy)]
+pub(in crate::market_views::positioning_info) struct PositioningRowContext<'a> {
+    pub instance_id: PositioningInfoId,
+    pub hovered_wallet_action_key: Option<&'a str>,
+    pub theme: &'a Theme,
+    pub live_mark: Option<f64>,
+    pub denomination: &'a DisplayDenominationContext,
+}
+
 pub(in crate::market_views::positioning_info) fn positioning_position_row(
-    instance_id: PositioningInfoId,
+    context: PositioningRowContext<'_>,
     position: &TickerPositionEntry,
     wallet_display: WalletDisplay,
     columns: PositioningInfoColumns,
-    hovered_wallet_action_key: Option<&str>,
-    theme: &Theme,
-    live_mark: Option<f64>,
-    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
+    let PositioningRowContext {
+        instance_id,
+        hovered_wallet_action_key,
+        theme,
+        live_mark,
+        denomination,
+    } = context;
     let side = position_side_label(position.size);
     let side_color = position_side_color(position.size, theme);
     let notional = positioning_live_notional(position, live_mark).unwrap_or(position.notional_size);
@@ -132,15 +144,18 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
 }
 
 pub(in crate::market_views::positioning_info) fn positioning_change_row(
-    instance_id: PositioningInfoId,
+    context: PositioningRowContext<'_>,
     entry: &PerpDeltaEntry,
     wallet_display: WalletDisplay,
     columns: PositioningChangeColumns,
-    hovered_wallet_action_key: Option<&str>,
-    theme: &Theme,
-    live_mark: Option<f64>,
-    denomination: &DisplayDenominationContext,
 ) -> Element<'static, Message> {
+    let PositioningRowContext {
+        instance_id,
+        hovered_wallet_action_key,
+        theme,
+        live_mark,
+        denomination,
+    } = context;
     let previous = positioning_previous_change_size(entry);
     let previous_color = previous
         .map(|value| signed_value_color(value, theme))

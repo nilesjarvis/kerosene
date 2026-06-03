@@ -87,7 +87,7 @@ struct FastChannelTarget {
 
 enum PendingAuth {
     Login(LoginToken),
-    Password(PasswordToken),
+    Password(Box<PasswordToken>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,7 +188,7 @@ pub(crate) async fn submit_telegram_fast_login_code(
                 if let Some(session_path) = telegram_fast_session_path()
                     && let Ok(mut pending) = pending_auths().lock()
                 {
-                    pending.insert(session_path, PendingAuth::Password(password));
+                    pending.insert(session_path, PendingAuth::Password(Box::new(password)));
                 }
                 Ok(TelegramFastAuthOutcome::PasswordRequired { hint })
             }
@@ -213,7 +213,7 @@ pub(crate) async fn submit_telegram_fast_password(
         .map_err(|_| "Telegram login state is unavailable".to_string())?
         .remove(&session_path)
     {
-        Some(PendingAuth::Password(token)) => token,
+        Some(PendingAuth::Password(token)) => *token,
         Some(PendingAuth::Login(login)) => {
             if let Ok(mut pending) = pending_auths().lock() {
                 pending.insert(session_path, PendingAuth::Login(login));
@@ -233,7 +233,7 @@ pub(crate) async fn submit_telegram_fast_password(
                 if let Some(session_path) = telegram_fast_session_path()
                     && let Ok(mut pending) = pending_auths().lock()
                 {
-                    pending.insert(session_path, PendingAuth::Password(token));
+                    pending.insert(session_path, PendingAuth::Password(Box::new(token)));
                 }
                 Err(format!(
                     "Telegram 2FA password was invalid{}",

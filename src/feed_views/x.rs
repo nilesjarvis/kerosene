@@ -279,11 +279,13 @@ impl TradingTerminal {
                     profile,
                     impacts,
                     now_ms,
-                    theme.palette().primary,
-                    theme.palette().text,
-                    theme.extended_palette().background.weak.text,
-                    theme.palette().success,
-                    theme.palette().danger,
+                    XPostCardPalette {
+                        primary_text: theme.palette().primary,
+                        text_color: theme.palette().text,
+                        muted_text: theme.extended_palette().background.weak.text,
+                        success_text: theme.palette().success,
+                        danger_text: theme.palette().danger,
+                    },
                 ))
             });
 
@@ -364,17 +366,29 @@ fn x_source_collapse_summary(
     .into()
 }
 
-fn x_post_card(
-    post: XFeedPost,
-    profile: Option<XFeedAuthorProfile>,
-    impacts: Vec<XTickerImpactCard>,
-    now_ms: u64,
+#[derive(Debug, Clone, Copy)]
+struct XPostCardPalette {
     primary_text: Color,
     text_color: Color,
     muted_text: Color,
     success_text: Color,
     danger_text: Color,
+}
+
+fn x_post_card(
+    post: XFeedPost,
+    profile: Option<XFeedAuthorProfile>,
+    impacts: Vec<XTickerImpactCard>,
+    now_ms: u64,
+    palette: XPostCardPalette,
 ) -> Element<'static, Message> {
+    let XPostCardPalette {
+        primary_text,
+        text_color,
+        muted_text,
+        success_text,
+        danger_text,
+    } = palette;
     let age = x_age_countdown_label(post.timestamp_ms, now_ms);
     let latency = x_arrival_latency_label(&post);
     let heat = x_new_post_heat(post.first_seen_ms, now_ms);

@@ -134,16 +134,16 @@ impl SymbolMentionResolver {
                     &mut candidates,
                 );
             }
-            if let Some(second) = bytes.get(index + 1) {
-                if let Some(alias_indices) = self.prefix_aliases.get(&[first, *second]) {
-                    self.push_alias_matches_at(
-                        text,
-                        &uppercase_text,
-                        index,
-                        alias_indices,
-                        &mut candidates,
-                    );
-                }
+            if let Some(second) = bytes.get(index + 1)
+                && let Some(alias_indices) = self.prefix_aliases.get(&[first, *second])
+            {
+                self.push_alias_matches_at(
+                    text,
+                    &uppercase_text,
+                    index,
+                    alias_indices,
+                    &mut candidates,
+                );
             }
         }
 

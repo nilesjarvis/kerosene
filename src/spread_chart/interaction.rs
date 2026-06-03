@@ -30,20 +30,16 @@ impl SpreadChart<'_> {
                     return Some(Action::capture());
                 }
             }
-            Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                if pos.is_some() {
-                    let new_height = wheel_resized_height(bounds.height, delta);
-                    state.hover_pos = pos;
-                    if (new_height - bounds.height).abs() > f32::EPSILON {
-                        return Some(
-                            Action::publish(Message::OrderBookSpreadChartResize(
-                                self.id, new_height,
-                            ))
+            Event::Mouse(mouse::Event::WheelScrolled { delta }) if pos.is_some() => {
+                let new_height = wheel_resized_height(bounds.height, delta);
+                state.hover_pos = pos;
+                if (new_height - bounds.height).abs() > f32::EPSILON {
+                    return Some(
+                        Action::publish(Message::OrderBookSpreadChartResize(self.id, new_height))
                             .and_capture(),
-                        );
-                    }
-                    return Some(Action::capture());
+                    );
                 }
+                return Some(Action::capture());
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
                 if state.is_dragging =>

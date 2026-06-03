@@ -429,9 +429,7 @@ fn update_snapshot_interaction(
             }
         }
         iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-            let Some(drag) = state.drag else {
-                return None;
-            };
+            let drag = state.drag?;
             pan_snapshot_view(state, snapshot, loaded_range, bounds.size(), drag, pos);
             Some(canvas::Action::request_redraw().and_capture())
         }

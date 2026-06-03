@@ -22,7 +22,7 @@ impl TradingTerminal {
             Message::RefreshTelegramFeed => self.request_telegram_feed_refresh(),
             Message::TelegramFeedRefreshTick => self.request_telegram_feed_background_refresh(),
             Message::TelegramFeedLoaded(channel, result) => {
-                return self.handle_telegram_feed_loaded(channel, *result);
+                self.handle_telegram_feed_loaded(channel, *result)
             }
             Message::TelegramAvatarLoaded(channel, avatar_url, request_id, result) => {
                 self.handle_telegram_avatar_loaded(channel, avatar_url, request_id, *result);

@@ -76,10 +76,10 @@ impl TradingTerminal {
             Message::WalletAddressActionsHovered(key) => {
                 self.hovered_wallet_address_actions = Some(key);
             }
-            Message::WalletAddressActionsExited(key) => {
-                if self.hovered_wallet_address_actions.as_deref() == Some(key.as_str()) {
-                    self.hovered_wallet_address_actions = None;
-                }
+            Message::WalletAddressActionsExited(key)
+                if self.hovered_wallet_address_actions.as_deref() == Some(key.as_str()) =>
+            {
+                self.hovered_wallet_address_actions = None;
             }
             Message::NoOp => {}
             Message::TickToastCleanup => {
