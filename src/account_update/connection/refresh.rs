@@ -63,6 +63,7 @@ impl TradingTerminal {
                 let data = self.filter_account_data_for_muted_tickers(data);
                 let is_pm = data.is_portfolio_margin();
                 self.account_data = Some(data);
+                self.sync_order_leverage_form_for_active_symbol();
                 self.account_error = None;
                 self.sync_all_chart_overlays();
                 let chase_task = self.reconcile_chase_after_account_refresh();
@@ -110,6 +111,15 @@ impl TradingTerminal {
         &mut self,
         addr: String,
     ) -> Task<Message> {
+        let scope = self.account_data_fetch_scope();
+        self.force_refresh_account_data_with_scope(addr, scope)
+    }
+
+    pub(crate) fn force_refresh_account_data_with_scope(
+        &mut self,
+        addr: String,
+        scope: AccountDataFetchScope,
+    ) -> Task<Message> {
         if self.connected_address.as_deref() != Some(addr.as_str()) {
             return Task::none();
         }
@@ -122,7 +132,6 @@ impl TradingTerminal {
         self.account_loading = true;
         self.account_reconciliation_required = true;
         self.account_error = None;
-        let scope = self.account_data_fetch_scope();
         Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
             Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
         })

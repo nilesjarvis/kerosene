@@ -1,6 +1,6 @@
 use super::wire::{
     CancelAction, CancelByCloidAction, CancelByCloidWire, CancelWire, LimitOrderWire, ModifyAction,
-    ModifyWire, OrderAction, OrderTypeWire, OrderWire,
+    ModifyWire, OrderAction, OrderTypeWire, OrderWire, UpdateLeverageAction,
 };
 use crate::signing::model::OrderKind;
 
@@ -113,5 +113,18 @@ pub(in crate::signing) fn build_modify_action(
                 None,
             ),
         }],
+    }
+}
+
+pub(in crate::signing) fn build_update_leverage_action(
+    asset: u32,
+    is_cross: bool,
+    leverage: u32,
+) -> UpdateLeverageAction {
+    UpdateLeverageAction {
+        action_type: "updateLeverage".to_string(),
+        asset,
+        is_cross,
+        leverage,
     }
 }

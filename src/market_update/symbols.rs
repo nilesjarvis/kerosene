@@ -139,6 +139,7 @@ impl TradingTerminal {
                         {
                             self.active_symbol_display = Self::exchange_symbol_display_name(symbol);
                         }
+                        self.sync_order_leverage_form_for_active_symbol();
                     }
                     None => {
                         self.apply_active_symbol_selection(String::new(), String::new());

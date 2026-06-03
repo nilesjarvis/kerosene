@@ -1,5 +1,8 @@
 use super::json_value;
-use super::{CLIENT_ORDER_ID, OrderKind, build_order_action, build_order_action_with_cloid};
+use super::{
+    CLIENT_ORDER_ID, OrderKind, build_order_action, build_order_action_with_cloid,
+    build_update_leverage_action,
+};
 
 #[test]
 fn build_order_action_serializes_limit_payload_for_exchange() {
@@ -86,4 +89,20 @@ fn build_order_action_uses_ioc_for_market_and_limit_ioc_and_gtc_for_chase() {
     assert_eq!(market_json["orders"][0]["r"], true);
     assert_eq!(limit_ioc_json["orders"][0]["t"]["limit"]["tif"], "Ioc");
     assert_eq!(chase_json["orders"][0]["t"]["limit"]["tif"], "Gtc");
+}
+
+#[test]
+fn build_update_leverage_action_serializes_payload_for_exchange() {
+    let action = build_update_leverage_action(110_003, false, 7);
+    let json = json_value(action, "update leverage action should serialize");
+
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "type": "updateLeverage",
+            "asset": 110_003,
+            "isCross": false,
+            "leverage": 7
+        })
+    );
 }

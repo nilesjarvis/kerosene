@@ -1,12 +1,12 @@
 use super::model::OrderKind;
-use wire::{CancelAction, CancelByCloidAction, ModifyAction, OrderAction};
+use wire::{CancelAction, CancelByCloidAction, ModifyAction, OrderAction, UpdateLeverageAction};
 
 mod builders;
 mod wire;
 
 pub(super) use builders::{
     build_cancel_action, build_cancel_by_cloid_action, build_modify_action, build_order_action,
-    build_order_action_with_cloid,
+    build_order_action_with_cloid, build_update_leverage_action,
 };
 use serde::Serialize;
 
@@ -28,6 +28,7 @@ pub(super) enum HyperliquidL1Action {
     Cancel(CancelAction),
     CancelByCloid(CancelByCloidAction),
     Modify(ModifyAction),
+    UpdateLeverage(UpdateLeverageAction),
 }
 
 impl HyperliquidL1Action {
@@ -93,5 +94,9 @@ impl HyperliquidL1Action {
             size,
             reduce_only,
         ))
+    }
+
+    pub(super) fn update_leverage(asset: u32, is_cross: bool, leverage: u32) -> Self {
+        Self::UpdateLeverage(build_update_leverage_action(asset, is_cross, leverage))
     }
 }

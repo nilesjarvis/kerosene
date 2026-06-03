@@ -174,5 +174,16 @@ pub async fn modify_order(
     sign_and_post(private_key, &action, None).await
 }
 
+/// Update cross or isolated leverage for a perpetual asset.
+pub async fn update_leverage(
+    private_key: Zeroizing<String>,
+    asset: u32,
+    is_cross: bool,
+    leverage: u32,
+) -> Result<ExchangeResponse, String> {
+    let action = HyperliquidL1Action::update_leverage(asset, is_cross, leverage);
+    sign_and_post(private_key, &action, None).await
+}
+
 #[cfg(test)]
 mod tests;

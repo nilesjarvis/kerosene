@@ -22,7 +22,7 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
-use crate::order_execution::HudOrderRequest;
+use crate::order_execution::{HudOrderRequest, PendingLeverageUpdateContext};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
@@ -132,6 +132,13 @@ pub(crate) enum Message {
     OrderPercentageChanged(f32),
     PrefillOutcomeSell(String),
     ToggleReduceOnly,
+    OrderLeverageInputChanged(String),
+    SetOrderLeverageCross(bool),
+    SubmitOrderLeverage,
+    OrderLeverageResult {
+        context: PendingLeverageUpdateContext,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
     TogglePresetsMenu,
     TogglePresetCurrency,
     TogglePresetEditMode,

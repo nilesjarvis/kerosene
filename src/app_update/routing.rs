@@ -110,6 +110,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PrefillOutcomeSell(_)
         | Message::SetOrderKind(_)
         | Message::ToggleReduceOnly
+        | Message::OrderLeverageInputChanged(_)
+        | Message::SetOrderLeverageCross(_)
+        | Message::SubmitOrderLeverage
+        | Message::OrderLeverageResult { .. }
         | Message::TogglePresetsMenu
         | Message::TogglePresetCurrency
         | Message::TogglePresetEditMode

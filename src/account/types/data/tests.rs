@@ -3,8 +3,10 @@ use super::{
     parse_account_number,
 };
 use crate::account::types::{
-    AccountAbstractionMode, ClearinghouseState, MarginSummary, SpotBalance, SpotClearinghouseState,
+    AccountAbstractionMode, AssetPosition, ClearinghouseState, MarginSummary, Position,
+    PositionLeverage, SpotBalance, SpotClearinghouseState,
 };
+use crate::api::{ExchangeSymbol, MarketType};
 
 mod completeness;
 mod fetch_scope;
@@ -97,4 +99,68 @@ fn account_data_snapshot(fetched_at_ms: u64) -> AccountData {
         fee_rates: Default::default(),
         completeness: Default::default(),
     }
+}
+
+fn perp_symbol(key: &str, max_leverage: u32) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.split(':').nth(1).unwrap_or(key).to_string(),
+        category: "crypto".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 0,
+        collateral_token: None,
+        sz_decimals: 5,
+        max_leverage,
+        only_isolated: false,
+        market_type: MarketType::Perp,
+        outcome: None,
+    }
+}
+
+fn asset_position(coin: &str, leverage_type: &str, leverage: u32) -> AssetPosition {
+    AssetPosition {
+        position: Position {
+            coin: coin.to_string(),
+            szi: "1".to_string(),
+            entry_px: "100".to_string(),
+            position_value: "100".to_string(),
+            unrealized_pnl: "0".to_string(),
+            liquidation_px: None,
+            leverage: PositionLeverage {
+                leverage_type: leverage_type.to_string(),
+                value: leverage,
+            },
+            margin_used: "10".to_string(),
+            cum_funding: None,
+        },
+        liquidation_px: None,
+    }
+}
+
+#[test]
+fn leverage_lookup_for_hip3_symbol_does_not_suffix_match_main_position() {
+    let mut data = account_data_snapshot(1_000);
+    data.clearinghouse.asset_positions = vec![asset_position("BTC", "cross", 20)];
+    let symbols = vec![perp_symbol("xyz:BTC", 7)];
+
+    assert_eq!(
+        data.get_leverage_for("xyz:BTC", &symbols),
+        Some((true, 7, false))
+    );
+}
+
+#[test]
+fn leverage_lookup_for_hip3_symbol_uses_exact_position() {
+    let mut data = account_data_snapshot(1_000);
+    data.clearinghouse.asset_positions = vec![
+        asset_position("BTC", "cross", 20),
+        asset_position("xyz:BTC", "isolated", 4),
+    ];
+    let symbols = vec![perp_symbol("xyz:BTC", 7)];
+
+    assert_eq!(
+        data.get_leverage_for("xyz:BTC", &symbols),
+        Some((false, 4, true))
+    );
 }

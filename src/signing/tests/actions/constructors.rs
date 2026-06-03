@@ -1,6 +1,6 @@
 use super::{
     HyperliquidL1Action, OrderKind, build_cancel_action, build_modify_action, build_order_action,
-    json_value, msgpack_named,
+    build_update_leverage_action, json_value, msgpack_named,
 };
 
 #[test]
@@ -67,5 +67,20 @@ fn action_enum_modify_constructor_matches_direct_builder() {
     assert_eq!(
         msgpack_named(&direct, "direct modify should encode as msgpack"),
         msgpack_named(&via_enum, "enum modify should encode as msgpack"),
+    );
+}
+
+#[test]
+fn action_enum_update_leverage_constructor_matches_direct_builder() {
+    let direct = build_update_leverage_action(110_003, false, 7);
+    let via_enum = HyperliquidL1Action::update_leverage(110_003, false, 7);
+
+    let direct_json = json_value(&direct, "direct leverage action should serialize");
+    let via_enum_json = json_value(&via_enum, "enum leverage action should serialize");
+    assert_eq!(direct_json, via_enum_json);
+
+    assert_eq!(
+        msgpack_named(&direct, "direct leverage should encode as msgpack"),
+        msgpack_named(&via_enum, "enum leverage should encode as msgpack"),
     );
 }

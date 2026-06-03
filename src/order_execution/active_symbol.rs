@@ -21,6 +21,7 @@ impl TradingTerminal {
             self.order_quantity_is_usd = false;
             self.order_quantity = Self::sanitize_outcome_quantity_input(&self.order_quantity);
         }
+        self.sync_order_leverage_form_for_active_symbol();
     }
 
     pub(crate) fn switch_active_symbol_internal(&mut self, key: String) -> Task<Message> {

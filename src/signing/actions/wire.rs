@@ -83,3 +83,14 @@ pub(in crate::signing) struct ModifyAction {
     pub(super) action_type: String,
     pub(super) modifies: Vec<ModifyWire>,
 }
+
+/// Update leverage action: fields in Python SDK/docs order: type, asset, isCross, leverage
+#[derive(Debug, Clone, Serialize)]
+pub(in crate::signing) struct UpdateLeverageAction {
+    #[serde(rename = "type")]
+    pub(super) action_type: String,
+    pub(super) asset: u32,
+    #[serde(rename = "isCross")]
+    pub(super) is_cross: bool,
+    pub(super) leverage: u32,
+}

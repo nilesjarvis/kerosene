@@ -6,6 +6,7 @@ use iced::Task;
 mod chase;
 mod form;
 mod hud;
+mod leverage;
 mod move_order;
 mod nuke;
 mod outcome;
@@ -33,6 +34,16 @@ impl TradingTerminal {
             }
             Message::SetOrderKind(kind) => self.handle_set_order_kind(kind),
             Message::ToggleReduceOnly => self.handle_toggle_reduce_only(),
+            Message::OrderLeverageInputChanged(value) => {
+                self.handle_order_leverage_input_changed(value)
+            }
+            Message::SetOrderLeverageCross(is_cross) => {
+                self.handle_set_order_leverage_cross(is_cross)
+            }
+            Message::SubmitOrderLeverage => return self.submit_order_leverage_update(),
+            Message::OrderLeverageResult { context, result } => {
+                return self.handle_order_leverage_result(context, *result);
+            }
             Message::TogglePresetsMenu => self.handle_toggle_presets_menu(),
             Message::TogglePresetCurrency => self.handle_toggle_preset_currency(),
             Message::TogglePresetEditMode => self.handle_toggle_preset_edit_mode(),

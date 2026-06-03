@@ -5,8 +5,8 @@ use crate::helpers::{
 };
 use crate::message::Message;
 use crate::signing::OrderKind;
-use iced::widget::{Space, container, row, text};
-use iced::{Color, Element, Fill, Theme};
+use iced::widget::{Space, button, container, row, text, text_input};
+use iced::{Color, Element, Fill, Length, Theme};
 
 #[cfg(test)]
 mod tests;
@@ -58,15 +58,12 @@ impl TradingTerminal {
         let mut margin_used = Some(0.0);
 
         if let Some(data) = &self.account_data {
-            let mut search_coin = self.active_symbol.as_str();
-            if let Some((_, suffix)) = search_coin.split_once(':') {
-                search_coin = suffix;
-            }
+            let original_coin = self.active_symbol.as_str();
             if let Some(pos) = data
                 .clearinghouse
                 .asset_positions
                 .iter()
-                .find(|p| p.position.coin == search_coin)
+                .find(|p| p.position.coin == original_coin)
             {
                 margin_used = parse_order_header_number(&pos.position.margin_used);
             }
@@ -120,6 +117,70 @@ impl TradingTerminal {
         .spacing(8)
         .align_y(iced::Alignment::Center)
         .into()
+    }
+
+    pub(super) fn view_order_entry_leverage_row(
+        &self,
+        can_update: bool,
+    ) -> Option<Element<'_, Message>> {
+        let (max_leverage, cross_allowed) = self.active_order_leverage_constraints()?;
+        let theme = self.theme();
+        let cross_selected = self.order_leverage_is_cross && cross_allowed;
+        let isolated_selected = !cross_selected;
+        let pending = self.pending_leverage_update.is_some();
+        let can_apply = can_update && !pending && !self.order_leverage_input.is_empty();
+
+        let mut input = text_input("", &self.order_leverage_input)
+            .style(helpers::text_input_style)
+            .size(12)
+            .padding(5)
+            .width(Length::Fixed(46.0));
+        if !pending {
+            input = input.on_input(Message::OrderLeverageInputChanged);
+        }
+
+        let apply_button: Element<'_, Message> = if pending {
+            container(self.view_spinner(12))
+                .padding([4, 8])
+                .width(Length::Fixed(58.0))
+                .center_x(Fill)
+                .style(leverage_apply_container_style)
+                .into()
+        } else {
+            leverage_apply_button(can_apply)
+        };
+
+        Some(
+            row![
+                text("Leverage")
+                    .size(12)
+                    .color(theme.extended_palette().background.weak.text),
+                leverage_mode_button(
+                    "Cross",
+                    cross_selected,
+                    cross_allowed,
+                    Message::SetOrderLeverageCross(true),
+                ),
+                leverage_mode_button(
+                    "Isolated",
+                    isolated_selected,
+                    true,
+                    Message::SetOrderLeverageCross(false),
+                ),
+                Space::new().width(Fill),
+                input,
+                text("x")
+                    .size(12)
+                    .color(theme.extended_palette().background.weak.text),
+                text(format!("Max {max_leverage}x"))
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text),
+                apply_button,
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center)
+            .into(),
+        )
     }
 
     pub(super) fn view_order_entry_type_row(&self) -> Element<'static, Message> {
@@ -186,4 +247,110 @@ fn order_leverage_badge(label: String) -> Element<'static, Message> {
             ..Default::default()
         })
         .into()
+}
+
+fn leverage_mode_button(
+    label: &'static str,
+    active: bool,
+    enabled: bool,
+    msg: Message,
+) -> Element<'static, Message> {
+    let mut btn = button(text(label).size(11).center()).padding([4, 8]).style(
+        move |theme: &Theme, status| {
+            let palette = theme.palette();
+            let extended = theme.extended_palette();
+            let bg = if active {
+                Color {
+                    a: 0.15,
+                    ..palette.primary
+                }
+            } else if matches!(status, button::Status::Hovered) && enabled {
+                extended.background.strong.color
+            } else {
+                extended.background.weak.color
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: if active {
+                    palette.primary
+                } else if enabled {
+                    extended.background.weak.text
+                } else {
+                    Color {
+                        a: 0.45,
+                        ..extended.background.weak.text
+                    }
+                },
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: if active { 1.0 } else { 0.0 },
+                    color: if active {
+                        Color {
+                            a: 0.3,
+                            ..palette.primary
+                        }
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                },
+                ..Default::default()
+            }
+        },
+    );
+
+    if enabled {
+        btn = btn.on_press(msg);
+    }
+
+    btn.into()
+}
+
+fn leverage_apply_button(enabled: bool) -> Element<'static, Message> {
+    let mut btn = button(text("Apply").size(11).center())
+        .padding([4, 8])
+        .width(Length::Fixed(58.0))
+        .style(|theme: &Theme, status| {
+            let palette = theme.palette();
+            let bg = match status {
+                button::Status::Hovered => Color {
+                    a: 0.85,
+                    ..palette.primary
+                },
+                button::Status::Disabled => theme.extended_palette().background.weak.color,
+                _ => palette.primary,
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: if matches!(status, button::Status::Disabled) {
+                    Color {
+                        a: 0.45,
+                        ..theme.extended_palette().background.weak.text
+                    }
+                } else {
+                    crate::helpers::text_color_for_bg(palette.primary)
+                },
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        });
+
+    if enabled {
+        btn = btn.on_press(Message::SubmitOrderLeverage);
+    }
+
+    btn.into()
+}
+
+fn leverage_apply_container_style(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(theme.palette().primary.into()),
+        border: iced::Border {
+            radius: 4.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }

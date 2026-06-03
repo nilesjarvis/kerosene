@@ -29,7 +29,11 @@ impl TradingTerminal {
         let (symbol_row, margin_used) = self.view_order_entry_symbol_row(&theme);
         let context_row = self.view_order_entry_context_row(margin_used, &theme);
         let type_row = self.view_order_entry_type_row();
-        let mut form = column![symbol_row, context_row, type_row].spacing(8);
+        let mut form = column![symbol_row, context_row].spacing(8);
+        if let Some(leverage_row) = self.view_order_entry_leverage_row(can_trade) {
+            form = form.push(leverage_row);
+        }
+        form = form.push(type_row);
 
         if active_is_outcome {
             let quote_symbol = self.outcome_quote_symbol_for_coin(&self.active_symbol);

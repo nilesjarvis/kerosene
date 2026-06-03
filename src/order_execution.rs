@@ -28,6 +28,23 @@ pub(crate) enum PendingOrderAction {
     ChaseSell,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingLeverageUpdateContext {
+    pub(crate) address: String,
+    pub(crate) symbol_key: String,
+    pub(crate) display: String,
+    pub(crate) asset: u32,
+    pub(crate) dex: Option<String>,
+    pub(crate) is_cross: bool,
+    pub(crate) leverage: u32,
+}
+
+impl PendingLeverageUpdateContext {
+    pub(crate) fn margin_mode_label(&self) -> &'static str {
+        if self.is_cross { "Cross" } else { "Isolated" }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MoveOrderContextError {
     MissingAgentKey,

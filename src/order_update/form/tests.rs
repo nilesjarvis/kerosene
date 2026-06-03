@@ -1,4 +1,4 @@
-use super::{TradingTerminal, position_size_for_symbol};
+use super::{OrderSizingBasis, TradingTerminal, position_size_for_symbol};
 use crate::account::{
     AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
     Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
@@ -122,4 +122,21 @@ fn terminal_with_position(coin: &str, szi: &str) -> TradingTerminal {
     terminal.order_price.clear();
     terminal.account_data = Some(account_data_with_positions(vec![asset_position(coin, szi)]));
     terminal
+}
+
+#[test]
+fn margin_order_sizing_uses_one_x_when_leverage_is_only_symbol_limit() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.active_symbol = "BTC".to_string();
+    terminal.active_symbol_display = "BTC".to_string();
+    terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+    let data = account_data_with_positions(Vec::new());
+
+    let Some(OrderSizingBasis::MarginNotional { max_notional }) =
+        terminal.order_sizing_basis(&data)
+    else {
+        panic!("expected margin sizing basis");
+    };
+
+    assert_eq!(max_notional, 1_000.0);
 }

@@ -17,7 +17,9 @@ use crate::market_state::{
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::notification_state::Toast;
-use crate::order_execution::{PendingMoveOrderContext, PendingOrderAction};
+use crate::order_execution::{
+    PendingLeverageUpdateContext, PendingMoveOrderContext, PendingOrderAction,
+};
 use crate::order_pending_indicators::PendingOrderIndicator;
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
@@ -95,6 +97,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) order_percentage: f32,
     pub(crate) order_kind: OrderKind,
     pub(crate) order_reduce_only: bool,
+    pub(crate) order_leverage_input: String,
+    pub(crate) order_leverage_is_cross: bool,
+    pub(crate) pending_leverage_update: Option<PendingLeverageUpdateContext>,
     // Order status feedback (message, is_error)
     pub(crate) order_status: Option<(String, bool)>,
     pub(crate) pending_order_action: Option<PendingOrderAction>,

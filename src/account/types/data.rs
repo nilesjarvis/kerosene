@@ -145,24 +145,12 @@ impl AccountData {
         coin: &str,
         symbols: &[crate::api::ExchangeSymbol],
     ) -> Option<(bool, u32, bool)> {
-        let original_coin = coin;
-        let mut search_coin = coin;
-        if let Some((_, suffix)) = coin.split_once(':') {
-            search_coin = suffix;
-        }
-
         // 1. If user has interacted with this asset, the exact leverage is in asset_positions.
         if let Some(pos) = self
             .clearinghouse
             .asset_positions
             .iter()
-            .find(|pos| pos.position.coin == original_coin)
-            .or_else(|| {
-                self.clearinghouse
-                    .asset_positions
-                    .iter()
-                    .find(|pos| pos.position.coin == search_coin)
-            })
+            .find(|pos| pos.position.coin == coin)
         {
             let is_cross = pos.position.leverage.leverage_type.to_lowercase() == "cross";
             return Some((is_cross, pos.position.leverage.value, true));
@@ -171,7 +159,7 @@ impl AccountData {
         // 2. Otherwise, we only know the exchange's max allowed limit for the symbol.
         // It's just for display purposes, not the actual account setting.
         for sym in symbols {
-            if sym.key == original_coin {
+            if sym.key == coin {
                 if !matches!(sym.market_type, crate::api::MarketType::Perp) {
                     return None; // No leverage for spot or outcome markets
                 }

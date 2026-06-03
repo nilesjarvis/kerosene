@@ -6,7 +6,7 @@ mod numbers;
 
 pub use client::{
     PlaceOrderRequest, cancel_order, cancel_order_by_cloid, modify_order, place_order,
-    place_order_with_cloid,
+    place_order_with_cloid, update_leverage,
 };
 pub use model::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseStopPhase,

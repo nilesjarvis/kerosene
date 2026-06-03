@@ -60,7 +60,8 @@ pub(super) fn append_perp_symbols(
             let only_isolated = asset
                 .get("onlyIsolated")
                 .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+                .unwrap_or(false)
+                || margin_mode_disallows_cross(asset);
 
             let ticker = name.split(':').nth(1).unwrap_or(&name).to_string();
             let annotation = annotation_map.get(&name);
@@ -121,6 +122,19 @@ fn dex_offsets_from(dexs_raw: &Value) -> Vec<u32> {
     dex_offsets
 }
 
+fn margin_mode_disallows_cross(asset: &Value) -> bool {
+    asset
+        .get("marginMode")
+        .and_then(|v| v.as_str())
+        .map(|mode| {
+            matches!(
+                mode.to_ascii_lowercase().as_str(),
+                "strictisolated" | "nocross" | "onlyisolated"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn annotation_map_from(annotations_raw: &Value) -> HashMap<String, Value> {
     let mut annotation_map = HashMap::new();
     if let Some(pairs) = annotations_raw.as_array() {
@@ -134,4 +148,31 @@ fn annotation_map_from(annotations_raw: &Value) -> HashMap<String, Value> {
         }
     }
     annotation_map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::margin_mode_disallows_cross;
+
+    #[test]
+    fn margin_mode_strict_isolated_disallows_cross() {
+        assert!(margin_mode_disallows_cross(&serde_json::json!({
+            "marginMode": "strictIsolated"
+        })));
+    }
+
+    #[test]
+    fn margin_mode_no_cross_disallows_cross() {
+        assert!(margin_mode_disallows_cross(&serde_json::json!({
+            "marginMode": "noCross"
+        })));
+    }
+
+    #[test]
+    fn unknown_margin_mode_keeps_cross_allowed() {
+        assert!(!margin_mode_disallows_cross(&serde_json::json!({
+            "marginMode": "cross"
+        })));
+        assert!(!margin_mode_disallows_cross(&serde_json::json!({})));
+    }
 }

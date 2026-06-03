@@ -172,6 +172,7 @@ impl TradingTerminal {
 
         let max_leverage = data
             .get_leverage_for(&self.active_symbol, &self.exchange_symbols)
+            .filter(|(_, _, is_actual)| *is_actual)
             .map(|(_, leverage, _)| leverage as f64)
             .unwrap_or(1.0);
         positive_finite_value(available_margin * max_leverage)
