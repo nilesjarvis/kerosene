@@ -34,7 +34,7 @@ fn cumulative_pnl_points_sort_and_coalesce_trade_times() {
     let third = trade(4_000, Some(3_000), 2.5);
     let trades = vec![&first, &second, &third];
 
-    let points = journal_cumulative_pnl_points(&trades);
+    let points = journal_cumulative_pnl_points(&trades, true);
     assert!(points.len() > 3);
     assert!(points.windows(2).all(|window| window[0].0 < window[1].0));
     assert!(
@@ -111,7 +111,7 @@ fn recent_trade_outcomes_sort_filter_and_cap_results() {
     let third = trade(3_000, Some(3_000), 0.0);
     let trades = vec![&third, &ignored_open, &second, &first];
 
-    let outcomes = journal_recent_trade_outcome_tiles(&trades)
+    let outcomes = journal_recent_trade_outcome_tiles(&trades, true)
         .into_iter()
         .map(|tile| (tile.outcome, tile.trade_type, tile.pnl))
         .collect::<Vec<_>>();

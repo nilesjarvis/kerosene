@@ -54,16 +54,3 @@ pub(crate) fn is_known_default_hyperliquid_theme(theme: &CustomThemeConfig) -> b
 
     original_default || sampled_default
 }
-
-pub(crate) fn is_known_default_ubuntu_theme(theme: &CustomThemeConfig) -> bool {
-    matches!(
-        theme.background.to_ascii_uppercase().as_str(),
-        "#2C001E" | "#56334B"
-    ) && theme.text.eq_ignore_ascii_case("#F6F6F5")
-        && theme.primary.eq_ignore_ascii_case("#E95420")
-        && theme.success.eq_ignore_ascii_case("#2EC27E")
-        && theme.warning.eq_ignore_ascii_case("#F99B11")
-        && theme.danger.eq_ignore_ascii_case("#C7162B")
-        && optional_hex_eq(&theme.chart_bull, "#2EC27E")
-        && optional_hex_eq(&theme.chart_bear, "#C7162B")
-}

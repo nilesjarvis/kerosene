@@ -79,13 +79,6 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             chart: Some(("#FF7A1A", "#F8EFE2")),
         },
         ThemeSpec {
-            name: "ubuntu",
-            colors: [
-                "#56334B", "#F6F6F5", "#E95420", "#2EC27E", "#F99B11", "#C7162B",
-            ],
-            chart: Some(("#2EC27E", "#C7162B")),
-        },
-        ThemeSpec {
             name: "Hyperliquid",
             colors: [
                 "#0F1A1E", "#F6FEFD", "#50D2C1", "#50D2C1", "#FFB648", "#ED7088",
