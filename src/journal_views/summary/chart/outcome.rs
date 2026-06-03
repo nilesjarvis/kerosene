@@ -155,6 +155,8 @@ fn draw_journal_outcome_strip(
     let mut hovered_tile = None;
     let mut hovered_origin = Point::ORIGIN;
 
+    let max_abs_pnl = tiles.iter().map(|t| t.pnl.abs()).fold(0.0_f64, f64::max);
+
     for i in 0..(rows * cols) {
         let col = i / rows;
         let row = i % rows;
@@ -165,13 +167,34 @@ fn draw_journal_outcome_strip(
         let tile_rect = Size::new(tile_size, tile_size);
 
         if let Some(tile) = tiles.get(i) {
+            let intensity = if max_abs_pnl > 0.0 {
+                (tile.pnl.abs() / max_abs_pnl) as f32
+            } else {
+                0.0
+            };
+
+            let level = if tile.outcome == JournalTradeOutcome::Flat {
+                0.3
+            } else if intensity <= 0.25 {
+                0.4
+            } else if intensity <= 0.50 {
+                0.6
+            } else if intensity <= 0.75 {
+                0.8
+            } else {
+                1.0
+            };
+
             let fill = outcome_color(tile.outcome, theme);
-            frame.fill_rectangle(tile_origin, tile_rect, Color { a: 0.86, ..fill });
+            frame.fill_rectangle(tile_origin, tile_rect, Color { a: level, ..fill });
             let outline = canvas::Path::rectangle(tile_origin, tile_rect);
             frame.stroke(
                 &outline,
                 canvas::Stroke::default()
-                    .with_color(Color { a: 0.40, ..fill })
+                    .with_color(Color {
+                        a: level * 0.5,
+                        ..fill
+                    })
                     .with_width(1.0),
             );
 
