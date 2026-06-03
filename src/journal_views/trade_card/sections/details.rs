@@ -11,43 +11,39 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_details(
     max_position_label: String,
     fill_count: usize,
     fee: f64,
+    opened_time_str: String,
     duration_str: String,
     denomination: &DisplayDenominationContext,
     theme: &Theme,
 ) -> Element<'static, Message> {
+    let muted = theme.extended_palette().background.weak.text;
+    let dot = || text(" \u{2022} ").size(11).color(muted);
+
     row![
-        text("Max Pos:")
-            .size(11)
-            .color(theme.extended_palette().background.weak.text),
-        Space::new().width(4.0),
         text(max_position_label)
             .font(crate::app_fonts::monospace_font())
             .size(11)
             .color(theme.palette().text),
-        Space::new().width(16.0),
-        text("Fills:")
+        Space::new().width(6.0),
+        dot(),
+        Space::new().width(6.0),
+        text(opened_time_str).size(11).color(muted),
+        Space::new().width(6.0),
+        dot(),
+        Space::new().width(6.0),
+        text(format!("{} duration", duration_str))
             .size(11)
-            .color(theme.extended_palette().background.weak.text),
-        Space::new().width(4.0),
-        text(format!("{}", fill_count))
-            .font(crate::app_fonts::monospace_font())
+            .color(muted),
+        Space::new().width(6.0),
+        dot(),
+        Space::new().width(6.0),
+        text(format!("{} fills", fill_count)).size(11).color(muted),
+        Space::new().width(6.0),
+        dot(),
+        Space::new().width(6.0),
+        text(format!("{} fees", denomination.format_value(fee, 2)))
             .size(11)
-            .color(theme.palette().text),
-        Space::new().width(16.0),
-        text("Fees:")
-            .size(11)
-            .color(theme.extended_palette().background.weak.text),
-        Space::new().width(4.0),
-        text(denomination.format_value(fee, 2))
-            .font(crate::app_fonts::monospace_font())
-            .size(11)
-            .color(theme.palette().text),
-        Space::new().width(16.0),
-        text("Duration:")
-            .size(11)
-            .color(theme.extended_palette().background.weak.text),
-        Space::new().width(4.0),
-        text(duration_str).size(11).color(theme.palette().text),
+            .color(muted),
         Space::new().width(Fill),
         button(
             text(if snapshot_expanded {
