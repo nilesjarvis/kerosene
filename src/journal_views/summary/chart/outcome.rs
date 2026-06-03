@@ -7,7 +7,6 @@ use iced::widget::{canvas, container, text};
 use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme};
 
 const RECENT_OUTCOME_TILE_LIMIT: usize = 56;
-const OUTCOME_TILE_GAP: f32 = 4.0;
 const OUTCOME_TILE_TOOLTIP_WIDTH: f32 = 128.0;
 const OUTCOME_TILE_TOOLTIP_HEIGHT: f32 = 34.0;
 
@@ -138,50 +137,70 @@ fn draw_journal_outcome_strip(
     let mut frame = canvas::Frame::new(renderer, bounds.size());
     frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::TRANSPARENT);
 
-    if tiles.is_empty() || bounds.width <= 0.0 || bounds.height <= 0.0 {
+    if bounds.width <= 0.0 || bounds.height <= 0.0 {
         return vec![frame.into_geometry()];
     }
 
-    let tile_count = tiles.len() as f32;
-    let gap = if tile_count > 1.0 {
-        OUTCOME_TILE_GAP.min(((bounds.width / tile_count) * 0.3).max(1.0))
-    } else {
-        0.0
-    };
-    let total_gap = gap * (tile_count - 1.0).max(0.0);
-    let tile_w = ((bounds.width - total_gap) / tile_count).clamp(5.0, 14.0);
-    let tile_h = tile_w.clamp(5.0, 10.0);
+    let rows = 4;
+    let cols = 14;
+    let tile_size = 8.0;
+    let gap = 2.0;
+
+    let grid_h = rows as f32 * tile_size + (rows - 1) as f32 * gap;
+
     let start_x = 0.0;
-    let tile_y = (bounds.height - tile_h - 2.0).max(0.0);
+    let start_y = (bounds.height - grid_h).max(0.0) / 2.0;
+
     let cursor_pos = cursor.position_in(bounds);
     let mut hovered_tile = None;
     let mut hovered_origin = Point::ORIGIN;
 
-    for (idx, tile) in tiles.iter().enumerate() {
-        let x = start_x + idx as f32 * (tile_w + gap);
-        let tile_origin = Point::new(x, tile_y);
-        let fill = outcome_color(tile.outcome, theme);
-        frame.fill_rectangle(
-            tile_origin,
-            Size::new(tile_w, tile_h),
-            Color { a: 0.86, ..fill },
-        );
-        let outline = canvas::Path::rectangle(tile_origin, Size::new(tile_w, tile_h));
-        frame.stroke(
-            &outline,
-            canvas::Stroke::default()
-                .with_color(Color { a: 0.40, ..fill })
-                .with_width(1.0),
-        );
+    for i in 0..(rows * cols) {
+        let col = i / rows;
+        let row = i % rows;
 
-        if let Some(pos) = cursor_pos
-            && pos.x >= x
-            && pos.x <= x + tile_w
-            && pos.y >= tile_y
-            && pos.y <= tile_y + tile_h
-        {
-            hovered_tile = Some(tile);
-            hovered_origin = Point::new(x + tile_w / 2.0, tile_y + tile_h);
+        let x = start_x + col as f32 * (tile_size + gap);
+        let y = start_y + row as f32 * (tile_size + gap);
+        let tile_origin = Point::new(x, y);
+        let tile_rect = Size::new(tile_size, tile_size);
+
+        if let Some(tile) = tiles.get(i) {
+            let fill = outcome_color(tile.outcome, theme);
+            frame.fill_rectangle(tile_origin, tile_rect, Color { a: 0.86, ..fill });
+            let outline = canvas::Path::rectangle(tile_origin, tile_rect);
+            frame.stroke(
+                &outline,
+                canvas::Stroke::default()
+                    .with_color(Color { a: 0.40, ..fill })
+                    .with_width(1.0),
+            );
+
+            if let Some(pos) = cursor_pos
+                && pos.x >= x
+                && pos.x <= x + tile_size
+                && pos.y >= y
+                && pos.y <= y + tile_size
+            {
+                hovered_tile = Some(tile);
+                hovered_origin = Point::new(x + tile_size / 2.0, y + tile_size);
+            }
+        } else {
+            // Empty tile
+            let empty_color = Color {
+                a: 0.05,
+                ..theme.palette().text
+            };
+            frame.fill_rectangle(tile_origin, tile_rect, empty_color);
+            let outline = canvas::Path::rectangle(tile_origin, tile_rect);
+            frame.stroke(
+                &outline,
+                canvas::Stroke::default()
+                    .with_color(Color {
+                        a: 0.10,
+                        ..theme.palette().text
+                    })
+                    .with_width(1.0),
+            );
         }
     }
 
