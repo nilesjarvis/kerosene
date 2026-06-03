@@ -12,9 +12,10 @@ pub(crate) enum PortfolioScope {
     Perp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum PortfolioWindow {
     Day,
+    #[default]
     Week,
     Mtd,
     Month,
@@ -23,12 +24,6 @@ pub(crate) enum PortfolioWindow {
     Ytd,
     Year,
     AllTime,
-}
-
-impl Default for PortfolioWindow {
-    fn default() -> Self {
-        Self::Week
-    }
 }
 
 impl PortfolioWindow {
