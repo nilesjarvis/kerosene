@@ -29,6 +29,7 @@ impl TradingTerminal {
                 .width(COIN_WIDTH),
         ]
         .spacing(ROW_SPACING)
+        .width(Fill)
         .align_y(iced::Alignment::Center);
 
         if row_layout.show_side {

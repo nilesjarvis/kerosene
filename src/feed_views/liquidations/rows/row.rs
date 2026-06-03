@@ -99,6 +99,7 @@ impl TradingTerminal {
         }
 
         container(row_ui)
+            .width(Fill)
             .padding([4, 8])
             .style(move |_| liquidation_row_style(color, opacity))
             .into()
