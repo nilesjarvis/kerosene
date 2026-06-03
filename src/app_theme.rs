@@ -12,6 +12,7 @@ mod ftx;
 mod hyperliquid;
 mod ibkr_dark;
 mod kraken;
+mod kwenta;
 
 use self::color_parse::parse_hex_color;
 
@@ -90,6 +91,8 @@ impl TradingTerminal {
             && Self::palette_matches_coinbase_dark_source(palette);
         let use_coinbase_light_source_palette = theme_name == "Custom: coinbase-light"
             && Self::palette_matches_coinbase_light_source(palette);
+        let use_kwenta_source_palette =
+            theme_name == "Custom: kwenta" && Self::palette_matches_kwenta_source(palette);
 
         Theme::Custom(std::sync::Arc::new(iced::theme::Custom::with_fn(
             name,
@@ -132,6 +135,9 @@ impl TradingTerminal {
                     && TradingTerminal::palette_matches_coinbase_light_source(p)
                 {
                     return TradingTerminal::coinbase_light_source_extended_palette();
+                }
+                if use_kwenta_source_palette && TradingTerminal::palette_matches_kwenta_source(p) {
+                    return TradingTerminal::kwenta_source_extended_palette();
                 }
 
                 fn mix(a: Color, b: Color, factor: f32) -> Color {

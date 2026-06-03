@@ -5,7 +5,7 @@ fn default_theme_is_kerosene() {
     assert_eq!(default_theme(), "Custom: Kerosene");
 }
 
-fn default_theme_expectations() -> [ThemeExpectation<'static>; 11] {
+fn default_theme_expectations() -> [ThemeExpectation<'static>; 12] {
     [
         ThemeExpectation {
             name: "Kerosene",
@@ -105,6 +105,17 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 11] {
             danger: "#DC5351",
             chart_bull: Some("#55AF72"),
             chart_bear: Some("#DC5351"),
+        },
+        ThemeExpectation {
+            name: "kwenta",
+            background: "#131212",
+            text: "#F4F1E8",
+            primary: "#FEB700",
+            success: "#71D27A",
+            warning: "#FEB700",
+            danger: "#F05050",
+            chart_bull: Some("#28A898"),
+            chart_bear: Some("#F05050"),
         },
         ThemeExpectation {
             name: "coinbase-dark",

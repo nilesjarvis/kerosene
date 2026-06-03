@@ -128,6 +128,13 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             chart: Some(("#55AF72", "#DC5351")),
         },
         ThemeSpec {
+            name: "kwenta",
+            colors: [
+                "#131212", "#F4F1E8", "#FEB700", "#71D27A", "#FEB700", "#F05050",
+            ],
+            chart: Some(("#28A898", "#F05050")),
+        },
+        ThemeSpec {
             name: "coinbase-dark",
             colors: [
                 "#090B0C", "#F5F7F9", "#3474F4", "#44C48C", "#F4941C", "#EC6474",
