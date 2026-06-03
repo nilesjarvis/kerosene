@@ -54,10 +54,9 @@ impl TradingTerminal {
         let snapshot_expanded = self.journal.expanded_snapshot_trade_ids.contains(&trade.id);
 
         let header = journal_trade_card_header(
+            &trade.coin,
             display_coin,
             trade.status.clone(),
-            opened_time_str,
-            max_position_label.clone(),
             trade.pnl,
             status_color,
             &denomination,
@@ -70,6 +69,7 @@ impl TradingTerminal {
             max_position_label,
             trade.fill_count,
             trade.fee,
+            opened_time_str,
             duration_str,
             &denomination,
             &theme,
