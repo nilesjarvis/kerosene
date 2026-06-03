@@ -1,6 +1,7 @@
 use crate::api::CLIENT;
 use crate::x_feed::{
-    XFeedStreamEvent, build_x_feed_query, normalized_x_handle_list, parse_x_stream_page,
+    XFeedStreamEvent, build_x_feed_query, normalize_x_bearer_token_input, normalized_x_handle_list,
+    parse_x_stream_page, x_api_auth_guidance,
 };
 use futures::{SinkExt as _, StreamExt as _, channel::mpsc};
 use serde::{Deserialize, Serialize};
@@ -48,7 +49,7 @@ async fn run_x_feed_stream_session(
     params: &XFeedStreamParams,
     output: &mut mpsc::Sender<XFeedStreamEvent>,
 ) -> XStreamSessionExit {
-    let bearer_token = params.bearer_token.trim();
+    let bearer_token = normalize_x_bearer_token_input(&params.bearer_token);
     if bearer_token.is_empty() {
         let _ = send_status(output, false, "Enter an X API bearer token").await;
         return XStreamSessionExit::Stop;
@@ -68,7 +69,7 @@ async fn run_x_feed_stream_session(
         }
     };
 
-    if let Err(err) = sync_x_stream_rules(bearer_token, &query).await {
+    if let Err(err) = sync_x_stream_rules(&bearer_token, &query).await {
         let _ = send_status(output, false, &err).await;
         return XStreamSessionExit::Retry;
     }
@@ -79,7 +80,7 @@ async fn run_x_feed_stream_session(
 
     let response = match CLIENT
         .get(X_STREAM_ENDPOINT)
-        .bearer_auth(bearer_token)
+        .bearer_auth(&bearer_token)
         .query(&[
             (
                 "tweet.fields",
@@ -254,7 +255,9 @@ fn http_error(prefix: &str, status: reqwest::StatusCode, body: &[u8]) -> String 
         .chars()
         .take(160)
         .collect::<String>();
-    if preview.is_empty() {
+    if let Some(message) = x_api_auth_guidance(&preview) {
+        message
+    } else if preview.is_empty() {
         format!("{prefix} failed with HTTP {status}")
     } else {
         format!("{prefix} failed with HTTP {status}: {preview}")

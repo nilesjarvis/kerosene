@@ -8,8 +8,8 @@ const STRONG_TICKER_WORDS: &[&str] = &[
     "GO", "HAS", "HE", "IN", "IS", "IT", "ME", "NEW", "NO", "NOT", "OF", "ON", "OR", "S", "SEC",
     "SHE", "THE", "TO", "TRUMP", "UP", "US", "USD", "USDC", "USDT", "WE", "YES",
 ];
-const AMBIGUOUS_BARE_TICKER_WORDS: &[&str] = &["APT", "FLOW", "LINK", "MOVE", "NEAR"];
-const DEFAULT_OIL_SYMBOL_KEYS: &[&str] = &["xyz:BRENTOIL", "xyz:WTIOIL"];
+const AMBIGUOUS_BARE_TICKER_WORDS: &[&str] = &["APT", "FLOW", "LINK", "MOVE", "NEAR", "OIL"];
+const DEFAULT_OIL_SYMBOL_KEYS: &[&str] = &["xyz:CL"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum SymbolAliasSource {
@@ -199,9 +199,16 @@ pub(crate) fn resolve_symbol_mentions(
 
 fn default_curated_symbol_alias_rules() -> Vec<SymbolAliasRule> {
     vec![
+        SymbolAliasRule::new("sonic", ["S"], 82),
+        SymbolAliasRule::new("zcash", ["ZEC"], 82),
         SymbolAliasRule::new("crude oil", DEFAULT_OIL_SYMBOL_KEYS.iter().copied(), 80),
+        SymbolAliasRule::new("brent crude oil", ["xyz:BRENTOIL"], 82),
+        SymbolAliasRule::new("brent oil", ["xyz:BRENTOIL"], 81),
         SymbolAliasRule::new("brent crude", ["xyz:BRENTOIL"], 80),
-        SymbolAliasRule::new("wti crude", ["xyz:WTIOIL"], 80),
+        SymbolAliasRule::new("wti crude oil", ["xyz:CL"], 82),
+        SymbolAliasRule::new("wti crude", ["xyz:CL"], 81),
+        SymbolAliasRule::new("wti oil", ["xyz:CL"], 81),
+        SymbolAliasRule::new("wti", ["xyz:CL"], 80),
         SymbolAliasRule::new("iran", DEFAULT_OIL_SYMBOL_KEYS.iter().copied(), 75),
         SymbolAliasRule::new("iranian", DEFAULT_OIL_SYMBOL_KEYS.iter().copied(), 75),
         SymbolAliasRule::new("hormuz", DEFAULT_OIL_SYMBOL_KEYS.iter().copied(), 75),
@@ -370,6 +377,12 @@ fn alias_match_at(
     }
 
     let prefixed = before == Some('$') || before == Some('#');
+    if alias.phrase_upper.len() == 1
+        && (is_apostrophe_like(before) || (is_apostrophe_like(after) && !prefixed))
+    {
+        return None;
+    }
+
     let original = &text[index..end];
     if alias.match_policy == MatchPolicy::Ticker
         && ticker_requires_strong_match(&alias.phrase_upper)
@@ -408,7 +421,7 @@ fn dedupe_and_sort_mentions(candidates: Vec<CandidateMention>) -> Vec<SymbolMent
         }
     }
 
-    let mut candidates = by_symbol.into_values().collect::<Vec<_>>();
+    let mut candidates = remove_nested_contextual_matches(by_symbol.into_values().collect());
     candidates.sort_by(|left, right| {
         left.mention
             .ticker
@@ -433,6 +446,46 @@ fn dedupe_and_sort_mentions(candidates: Vec<CandidateMention>) -> Vec<SymbolMent
         .into_iter()
         .map(|candidate| candidate.mention)
         .collect()
+}
+
+fn remove_nested_contextual_matches(candidates: Vec<CandidateMention>) -> Vec<CandidateMention> {
+    candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(index, candidate)| {
+            let is_nested_in_better_context =
+                candidates.iter().enumerate().any(|(other_index, other)| {
+                    index != other_index
+                        && contextual_source_suppresses_nested_ticker(
+                            other.mention.source,
+                            candidate.mention.source,
+                        )
+                        && other.mention.start <= candidate.mention.start
+                        && candidate.mention.end <= other.mention.end
+                        && other.mention.end.saturating_sub(other.mention.start)
+                            > candidate
+                                .mention
+                                .end
+                                .saturating_sub(candidate.mention.start)
+                });
+            (!is_nested_in_better_context).then(|| candidate.clone())
+        })
+        .collect()
+}
+
+fn contextual_source_suppresses_nested_ticker(
+    container: SymbolAliasSource,
+    nested: SymbolAliasSource,
+) -> bool {
+    matches!(
+        (container, nested),
+        (
+            SymbolAliasSource::CuratedKeyword
+                | SymbolAliasSource::DisplayName
+                | SymbolAliasSource::Keyword,
+            SymbolAliasSource::Ticker | SymbolAliasSource::Key | SymbolAliasSource::KeySuffix
+        )
+    )
 }
 
 fn compare_same_symbol_candidate(left: &CandidateMention, right: &CandidateMention) -> Ordering {
@@ -502,6 +555,10 @@ fn original_match_is_strong(original: &str) -> bool {
 
 fn symbol_mention_boundary(ch: Option<char>) -> bool {
     ch.is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '_')
+}
+
+fn is_apostrophe_like(ch: Option<char>) -> bool {
+    matches!(ch, Some('\'' | '’' | '‘' | 'ʼ' | '`'))
 }
 
 fn market_type_rank(market_type: MarketType) -> u8 {

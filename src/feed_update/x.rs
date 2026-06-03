@@ -3,7 +3,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::x_feed::{
     X_FEED_MAX_SOURCES, XFeedPage, XFeedPost, XFeedStreamEvent, XTickerMention,
-    fetch_x_recent_posts, normalize_x_handle_input,
+    fetch_x_recent_posts, normalize_x_bearer_token_input, normalize_x_handle_input,
 };
 use iced::Task;
 use zeroize::Zeroize;
@@ -100,7 +100,10 @@ impl TradingTerminal {
 
     fn save_x_feed_bearer_token(&mut self) -> Task<Message> {
         self.x_feed.bearer_token.zeroize();
-        self.x_feed.bearer_token = self.x_feed.bearer_token_input.trim().to_string().into();
+        self.x_feed.bearer_token =
+            normalize_x_bearer_token_input(&self.x_feed.bearer_token_input).into();
+        self.x_feed.bearer_token_input.zeroize();
+        self.x_feed.bearer_token_input = self.x_feed.bearer_token.clone();
         self.x_feed.stream_connected = false;
         self.x_feed.stream_reconnect_nonce = self.x_feed.stream_reconnect_nonce.saturating_add(1);
         self.x_feed.stream_status = if self.x_feed.bearer_token.trim().is_empty() {

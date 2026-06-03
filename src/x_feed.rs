@@ -209,6 +209,20 @@ pub(crate) fn normalize_x_handle_input(input: &str) -> Result<String, String> {
     Ok(handle)
 }
 
+pub(crate) fn normalize_x_bearer_token_input(input: &str) -> String {
+    let mut token = input.trim();
+    if let Some(value) = token.strip_prefix("Authorization:") {
+        token = value.trim();
+    }
+    if let Some(value) = token
+        .strip_prefix("Bearer ")
+        .or_else(|| token.strip_prefix("bearer "))
+    {
+        token = value.trim();
+    }
+    token.trim_matches(['"', '\'']).trim().to_string()
+}
+
 pub(crate) fn build_x_feed_query(handles: &[String]) -> Result<String, String> {
     let handles = normalized_x_handle_list(handles);
     if handles.is_empty() {
@@ -232,7 +246,7 @@ pub(crate) async fn fetch_x_recent_posts(
     bearer_token: String,
     handles: Vec<String>,
 ) -> Result<XFeedPage, String> {
-    let bearer_token = bearer_token.trim().to_string();
+    let bearer_token = normalize_x_bearer_token_input(&bearer_token);
     if bearer_token.is_empty() {
         return Err("Enter an X API bearer token".to_string());
     }
@@ -283,7 +297,9 @@ pub(crate) async fn fetch_x_recent_posts(
             .chars()
             .take(160)
             .collect::<String>();
-        return if preview.is_empty() {
+        return if let Some(message) = x_api_auth_guidance(&preview) {
+            Err(message)
+        } else if preview.is_empty() {
             Err(format!("X recent search failed with HTTP {status}"))
         } else {
             Err(format!(
@@ -371,6 +387,17 @@ pub(crate) fn x_price_impact_pct(
     let reference = reference_price.filter(|price| price.is_finite() && *price > 0.0)?;
     let current = current_price.filter(|price| price.is_finite() && *price > 0.0)?;
     Some(((current / reference) - 1.0) * 100.0)
+}
+
+pub(crate) fn x_api_auth_guidance(body: &str) -> Option<String> {
+    if body.contains("client-not-enrolled") || body.contains("attached to a Project") {
+        Some(
+            "X rejected this token. Use the Bearer Token from an X developer App attached to a Project: Developer Portal -> Project -> App -> Keys and tokens. Standalone app credentials will not work for X API v2."
+                .to_string(),
+        )
+    } else {
+        None
+    }
 }
 
 fn x_feed_page_from_parts(
@@ -607,6 +634,27 @@ mod tests {
     fn x_feed_query_combines_sources_and_filters_retweets() {
         let query = build_x_feed_query(&["foo".to_string(), "@bar".to_string()]).unwrap();
         assert_eq!(query, "(from:foo OR from:bar) -is:retweet");
+    }
+
+    #[test]
+    fn x_bearer_token_normalization_accepts_copied_header_values() {
+        assert_eq!(normalize_x_bearer_token_input(" token "), "token");
+        assert_eq!(normalize_x_bearer_token_input("Bearer token"), "token");
+        assert_eq!(
+            normalize_x_bearer_token_input("Authorization: Bearer \"token\""),
+            "token"
+        );
+    }
+
+    #[test]
+    fn x_api_auth_guidance_detects_project_enrollment_errors() {
+        let body = r#"{"reason":"client-not-enrolled","detail":"When authenticating requests to the Twitter API v2 endpoints, you must use keys and tokens from a Twitter developer App that is attached to a Project."}"#;
+
+        assert!(
+            x_api_auth_guidance(body)
+                .unwrap()
+                .contains("attached to a Project")
+        );
     }
 
     #[test]

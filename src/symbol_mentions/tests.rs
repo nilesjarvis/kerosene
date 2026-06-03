@@ -92,6 +92,17 @@ fn cashtags_still_match_weak_single_letter_words() {
 }
 
 #[test]
+fn avoids_single_letter_tickers_in_apostrophe_words() {
+    let symbols = vec![symbol("S", "S", MarketType::Perp)];
+
+    let lowercase = resolve_symbol_mentions("it's still early", &symbols);
+    let uppercase = resolve_symbol_mentions("IT'S still early and BTC'S dominance held", &symbols);
+
+    assert!(lowercase.is_empty());
+    assert!(uppercase.is_empty());
+}
+
+#[test]
 fn avoids_ambiguous_lowercase_bare_ticker_words() {
     let symbols = vec![
         symbol("LINK", "LINK", MarketType::Perp),
@@ -138,6 +149,31 @@ fn skips_spot_only_symbols() {
     let mentions = resolve_symbol_mentions("PURR headline", &symbols);
 
     assert!(mentions.is_empty());
+}
+
+#[test]
+fn curated_zcash_keyword_maps_to_zec() {
+    let symbols = vec![symbol("ZEC", "ZEC", MarketType::Perp)];
+
+    let mentions = resolve_symbol_mentions("zcash privacy rotation", &symbols);
+
+    assert_eq!(
+        pairs(&mentions),
+        vec![("ZEC".to_string(), "ZEC".to_string())]
+    );
+    assert_eq!(mentions[0].matched_text, "zcash");
+    assert_eq!(mentions[0].source, SymbolAliasSource::CuratedKeyword);
+}
+
+#[test]
+fn curated_sonic_keyword_maps_to_s() {
+    let symbols = vec![symbol("S", "S", MarketType::Perp)];
+
+    let mentions = resolve_symbol_mentions("sonic ecosystem update", &symbols);
+
+    assert_eq!(pairs(&mentions), vec![("S".to_string(), "S".to_string())]);
+    assert_eq!(mentions[0].matched_text, "sonic");
+    assert_eq!(mentions[0].source, SymbolAliasSource::CuratedKeyword);
 }
 
 #[test]
@@ -199,21 +235,19 @@ fn metadata_aliases_skip_unsafe_short_phrases() {
 }
 
 #[test]
-fn curated_oil_phrase_adds_xyz_oil_contracts() {
+fn curated_oil_phrase_defaults_to_xyz_cl() {
     let symbols = vec![
+        symbol("xyz:CL", "CL", MarketType::Perp),
         symbol("xyz:BRENTOIL", "BRENTOIL", MarketType::Perp),
-        symbol("xyz:WTIOIL", "WTIOIL", MarketType::Perp),
-        symbol("flx:BRENTOIL", "BRENTOIL", MarketType::Perp),
+        symbol("flx:CL", "CL", MarketType::Perp),
+        symbol("flx:OIL", "OIL", MarketType::Perp),
     ];
 
-    let mentions = resolve_symbol_mentions("Crude oil headlines", &symbols);
+    let mentions = resolve_symbol_mentions("Crude OIL headlines", &symbols);
 
     assert_eq!(
         pairs(&mentions),
-        vec![
-            ("xyz:BRENTOIL".to_string(), "BRENTOIL".to_string()),
-            ("xyz:WTIOIL".to_string(), "WTIOIL".to_string()),
-        ]
+        vec![("xyz:CL".to_string(), "CL".to_string())]
     );
     assert!(
         mentions
@@ -223,34 +257,59 @@ fn curated_oil_phrase_adds_xyz_oil_contracts() {
 }
 
 #[test]
-fn curated_geopolitical_oil_keywords_add_xyz_oil_contracts() {
+fn curated_specific_oil_phrases_use_live_xyz_symbols() {
     let symbols = vec![
+        symbol("xyz:CL", "CL", MarketType::Perp),
         symbol("xyz:BRENTOIL", "BRENTOIL", MarketType::Perp),
-        symbol("xyz:WTIOIL", "WTIOIL", MarketType::Perp),
+        symbol("flx:OIL", "OIL", MarketType::Perp),
+    ];
+
+    let wti_mentions = resolve_symbol_mentions("WTI OIL bounced", &symbols);
+    let wti_crude_mentions = resolve_symbol_mentions("WTI crude oil bounced", &symbols);
+    let brent_mentions = resolve_symbol_mentions("Brent OIL bounced", &symbols);
+
+    assert_eq!(
+        pairs(&wti_mentions),
+        vec![("xyz:CL".to_string(), "CL".to_string())]
+    );
+    assert_eq!(wti_mentions[0].matched_text, "WTI OIL");
+    assert_eq!(
+        pairs(&wti_crude_mentions),
+        vec![("xyz:CL".to_string(), "CL".to_string())]
+    );
+    assert_eq!(wti_crude_mentions[0].matched_text, "WTI crude oil");
+    assert_eq!(
+        pairs(&brent_mentions),
+        vec![("xyz:BRENTOIL".to_string(), "BRENTOIL".to_string())]
+    );
+}
+
+#[test]
+fn curated_geopolitical_oil_keywords_default_to_xyz_cl() {
+    let symbols = vec![
+        symbol("xyz:CL", "CL", MarketType::Perp),
+        symbol("xyz:BRENTOIL", "BRENTOIL", MarketType::Perp),
     ];
 
     let iran_mentions = resolve_symbol_mentions("Iranian export risk rises", &symbols);
     let hormuz_mentions = resolve_symbol_mentions("Hormuz traffic disrupted", &symbols);
 
-    assert_eq!(iran_mentions.len(), 2);
-    assert_eq!(hormuz_mentions.len(), 2);
-    assert!(
-        iran_mentions
-            .iter()
-            .all(|mention| mention.symbol_key.starts_with("xyz:"))
+    assert_eq!(
+        pairs(&iran_mentions),
+        vec![("xyz:CL".to_string(), "CL".to_string())]
     );
-    assert!(
-        hormuz_mentions
-            .iter()
-            .all(|mention| mention.symbol_key.starts_with("xyz:"))
+    assert_eq!(
+        pairs(&hormuz_mentions),
+        vec![("xyz:CL".to_string(), "CL".to_string())]
     );
 }
 
 #[test]
 fn curated_oil_rules_avoid_generic_oil_false_positive() {
     let symbols = vec![
+        symbol("xyz:CL", "CL", MarketType::Perp),
         symbol("xyz:BRENTOIL", "BRENTOIL", MarketType::Perp),
-        symbol("xyz:WTIOIL", "WTIOIL", MarketType::Perp),
+        symbol("flx:OIL", "OIL", MarketType::Perp),
     ];
 
     let mentions = resolve_symbol_mentions("Oil painting sold at auction", &symbols);
