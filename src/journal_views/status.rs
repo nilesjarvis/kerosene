@@ -91,11 +91,15 @@ impl TradingTerminal {
         status_row = status_row.push(Space::new().width(Fill));
 
         if is_syncing {
-            status_row = status_row.push(
-                text("Syncing history...")
-                    .size(11)
-                    .color(journal_accent_mint()),
-            );
+            let sync_text = if self.journal.sync_status.pages_loaded > 0 {
+                format!(
+                    "Syncing history: {} fills across {} pages...",
+                    self.journal.sync_status.fills_loaded, self.journal.sync_status.pages_loaded
+                )
+            } else {
+                "Syncing history...".to_string()
+            };
+            status_row = status_row.push(text(sync_text).size(11).color(journal_accent_mint()));
         }
 
         content.push(status_row)

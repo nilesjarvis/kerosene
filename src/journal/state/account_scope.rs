@@ -68,6 +68,7 @@ impl JournalState {
             error: None,
             warning: None,
             last_refresh_time: None,
+            sync_status: super::JournalSyncStatus::default(),
             edit_modes: HashMap::new(),
             edit_source_keys: HashMap::new(),
             edit_buffers: HashMap::new(),
@@ -124,6 +125,7 @@ impl JournalState {
         self.error = None;
         self.warning = None;
         self.last_refresh_time = None;
+        self.sync_status = super::JournalSyncStatus::default();
         self.edit_modes.clear();
         self.edit_source_keys.clear();
         self.edit_buffers.clear();
@@ -138,6 +140,7 @@ impl JournalState {
         self.error = None;
         self.warning = None;
         self.last_refresh_time = None;
+        self.sync_status = super::JournalSyncStatus::default();
         self.edit_modes.clear();
         self.edit_source_keys.clear();
         self.edit_buffers.clear();
@@ -157,6 +160,7 @@ impl JournalState {
             error: self.error.clone(),
             warning: self.warning.clone(),
             last_refresh_time: self.last_refresh_time,
+            sync_status: self.sync_status.clone(),
             edit_modes: self.edit_modes.clone(),
             edit_source_keys: self.edit_source_keys.clone(),
             edit_buffers: self.edit_buffers.clone(),
@@ -179,6 +183,7 @@ impl JournalState {
         self.error = state.error;
         self.warning = state.warning;
         self.last_refresh_time = state.last_refresh_time;
+        self.sync_status = state.sync_status;
         self.edit_modes = state.edit_modes;
         self.edit_source_keys = state.edit_source_keys;
         self.edit_buffers = state.edit_buffers;

@@ -73,6 +73,78 @@ pub fn save_cache(address: &str, fills: &[UserFill]) -> Result<(), String> {
     Ok(())
 }
 
+pub fn clear_cache(address: &str) -> Result<usize, String> {
+    let Some(path) = crate::config::journal_cache_path(address) else {
+        return Err("No cache path available".to_string());
+    };
+
+    clear_cache_path_family(&path)
+}
+
+fn clear_cache_path_family(path: &std::path::Path) -> Result<usize, String> {
+    let mut removed = 0;
+    let mut errors = Vec::new();
+
+    match remove_file_if_exists(path) {
+        Ok(true) => removed += 1,
+        Ok(false) => {}
+        Err(e) => errors.push(e),
+    }
+
+    if let (Some(parent), Some(file_name)) = (
+        path.parent(),
+        path.file_name().and_then(|name| name.to_str()),
+    ) {
+        let temp_prefix = format!("{file_name}.tmp.");
+        match std::fs::read_dir(parent) {
+            Ok(entries) => {
+                for entry in entries {
+                    match entry {
+                        Ok(entry) => {
+                            let temp_path = entry.path();
+                            let is_temp_cache = temp_path
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .is_some_and(|name| name.starts_with(&temp_prefix));
+
+                            if is_temp_cache {
+                                match remove_file_if_exists(&temp_path) {
+                                    Ok(true) => removed += 1,
+                                    Ok(false) => {}
+                                    Err(e) => errors.push(e),
+                                }
+                            }
+                        }
+                        Err(e) => errors.push(format!(
+                            "read journal cache directory {} entry failed: {e}",
+                            parent.display()
+                        )),
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => errors.push(format!(
+                "read journal cache directory {} failed: {e}",
+                parent.display()
+            )),
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(removed)
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn remove_file_if_exists(path: &std::path::Path) -> Result<bool, String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("remove {} failed: {e}", path.display())),
+    }
+}
+
 fn unique_temp_cache_path(path: &std::path::Path) -> std::path::PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

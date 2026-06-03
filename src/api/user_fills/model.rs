@@ -52,4 +52,5 @@ pub struct UserFillsPage {
     pub fills: Vec<UserFill>,
     pub next_request: Option<UserFillsRequest>,
     pub requested_end_time: u64,
+    pub progress_warning: Option<String>,
 }

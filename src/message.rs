@@ -292,6 +292,7 @@ pub(crate) enum Message {
         result: Result<api::UserFillsPage, String>,
     },
     JournalRefresh,
+    JournalClearCache,
     JournalEditStart(String, Option<String>),
     JournalEditCancel(String),
     JournalEditSave(String),

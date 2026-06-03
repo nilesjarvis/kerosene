@@ -30,6 +30,16 @@ pub enum JournalSort {
     PnlAsc,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JournalSyncStatus {
+    pub watermark_ms: Option<u64>,
+    pub next_start_ms: Option<u64>,
+    pub pages_loaded: usize,
+    pub fills_loaded: usize,
+    pub pagination_warning: Option<String>,
+    pub complete: bool,
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -61,6 +71,7 @@ pub struct JournalState {
     pub error: Option<String>,
     pub warning: Option<String>,
     pub last_refresh_time: Option<u64>,
+    pub sync_status: JournalSyncStatus,
     pub edit_modes: HashMap<String, bool>,
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
@@ -111,6 +122,7 @@ pub struct JournalAccountState {
     pub error: Option<String>,
     pub warning: Option<String>,
     pub last_refresh_time: Option<u64>,
+    pub sync_status: JournalSyncStatus,
     pub edit_modes: HashMap<String, bool>,
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
@@ -134,6 +146,7 @@ impl Default for JournalAccountState {
             error: None,
             warning: None,
             last_refresh_time: None,
+            sync_status: JournalSyncStatus::default(),
             edit_modes: HashMap::new(),
             edit_source_keys: HashMap::new(),
             edit_buffers: HashMap::new(),

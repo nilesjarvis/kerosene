@@ -51,6 +51,14 @@ impl TradingTerminal {
         } else {
             api::UserFillsRequest::since(journal::newest_fill_time(&self.journal.raw_fills))
         };
+        self.journal.sync_status = journal::JournalSyncStatus {
+            watermark_ms: request.end_time,
+            next_start_ms: Some(request.start_time),
+            pages_loaded: 0,
+            fills_loaded: self.journal.raw_fills.len(),
+            pagination_warning: None,
+            complete: false,
+        };
         let request_account_key = account_key.clone();
         let request_address = address.clone();
 

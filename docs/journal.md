@@ -51,7 +51,11 @@ Journal fills are fetched with Hyperliquid's `userFillsByTime` info request:
 
 Kerosene requests unaggregated fills because aggregation has to preserve individual execution size, side, fee, PnL, order id, transaction hash, and `startPosition`.
 
-Large histories are paginated backward when a page returns the API cap. The next page uses the oldest loaded fill timestamp as the new `endTime`, with a one-millisecond step-back when all fills in the page share the same timestamp.
+Large histories are paginated forward when a page returns the API cap. Kerosene
+keeps the first request's `endTime` as a fixed sync watermark, then advances the
+next page's `startTime` to the newest loaded fill timestamp. Page boundaries are
+inclusive, so duplicate boundary fills are deduplicated locally rather than
+skipping same-millisecond executions.
 
 Loaded fills are cached per wallet in the platform config directory:
 
@@ -60,6 +64,11 @@ Loaded fills are cached per wallet in the platform config directory:
 - Windows: `%APPDATA%\kerosene\journal_cache_<address>.json`
 
 On normal journal open, Kerosene can show cached data immediately and then fetch fills since the newest cached fill. A manual full refresh starts from the beginning of history.
+
+If `clearinghouseState` reports a current open perp position that cannot be
+reconstructed from loaded fills, the journal adds a partial open trade from the
+current account snapshot. These fallback cards are marked partial because the
+opening fills, fees, and exact open time are outside the loaded fill history.
 
 ## Fill normalization
 

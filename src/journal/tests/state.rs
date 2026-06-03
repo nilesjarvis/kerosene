@@ -1,5 +1,5 @@
 use super::note;
-use crate::journal::JournalState;
+use crate::journal::{JournalState, JournalSyncStatus};
 use std::collections::HashMap;
 
 #[test]
@@ -103,4 +103,68 @@ fn journal_snapshot_expansion_is_scoped_by_account() {
 
     state.switch_active_account(Some("account-b".to_string()));
     assert!(state.expanded_snapshot_trade_ids.contains("trade-b"));
+}
+
+#[test]
+fn journal_sync_status_is_scoped_by_account() {
+    let mut state = JournalState::new_for_account(
+        Some("account-a".to_string()),
+        HashMap::new(),
+        HashMap::new(),
+    );
+    state.sync_status = JournalSyncStatus {
+        watermark_ms: Some(10_000),
+        next_start_ms: Some(5_000),
+        pages_loaded: 2,
+        fills_loaded: 4_000,
+        pagination_warning: Some("page boundary warning".to_string()),
+        complete: false,
+    };
+
+    state.switch_active_account(Some("account-b".to_string()));
+    assert_eq!(state.sync_status, JournalSyncStatus::default());
+
+    state.sync_status = JournalSyncStatus {
+        watermark_ms: Some(20_000),
+        next_start_ms: None,
+        pages_loaded: 1,
+        fills_loaded: 42,
+        pagination_warning: None,
+        complete: true,
+    };
+
+    state.switch_active_account(Some("account-a".to_string()));
+    assert_eq!(state.sync_status.pages_loaded, 2);
+    assert_eq!(state.sync_status.fills_loaded, 4_000);
+    assert_eq!(state.sync_status.next_start_ms, Some(5_000));
+    assert_eq!(
+        state.sync_status.pagination_warning.as_deref(),
+        Some("page boundary warning")
+    );
+
+    state.switch_active_account(Some("account-b".to_string()));
+    assert_eq!(state.sync_status.pages_loaded, 1);
+    assert_eq!(state.sync_status.fills_loaded, 42);
+    assert!(state.sync_status.complete);
+}
+
+#[test]
+fn journal_clear_data_resets_sync_status() {
+    let mut state = JournalState::new_for_account(
+        Some("account-a".to_string()),
+        HashMap::new(),
+        HashMap::new(),
+    );
+    state.sync_status = JournalSyncStatus {
+        watermark_ms: Some(10_000),
+        next_start_ms: Some(5_000),
+        pages_loaded: 2,
+        fills_loaded: 4_000,
+        pagination_warning: Some("page boundary warning".to_string()),
+        complete: false,
+    };
+
+    state.clear_active_account_data();
+
+    assert_eq!(state.sync_status, JournalSyncStatus::default());
 }

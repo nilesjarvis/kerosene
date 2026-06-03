@@ -345,6 +345,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CloseChartScreenshotWindow => UpdateRoute::ChartScreenshot,
 
         Message::JournalFillsLoaded { .. }
+        | Message::JournalClearCache
         | Message::JournalEditStart(_, _)
         | Message::JournalEditCancel(_)
         | Message::JournalEditSave(_)

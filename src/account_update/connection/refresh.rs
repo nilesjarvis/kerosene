@@ -1,6 +1,7 @@
 use crate::account::{AccountData, AccountDataFetchScope, fetch_account_data_scoped};
 use crate::account_analytics::fetch_income_data;
 use crate::app_state::TradingTerminal;
+use crate::journal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 
@@ -63,6 +64,13 @@ impl TradingTerminal {
                 let data = self.filter_account_data_for_muted_tickers(data);
                 let is_pm = data.is_portfolio_margin();
                 self.account_data = Some(data);
+                let position_reconciliation =
+                    self.reconcile_journal_current_positions_from_account();
+                if position_reconciliation.added_open_positions > 0 {
+                    self.push_journal_warning_message(journal::current_position_fallback_warning(
+                        position_reconciliation.added_open_positions,
+                    ));
+                }
                 self.sync_order_leverage_form_for_active_symbol();
                 self.account_error = None;
                 self.sync_all_chart_overlays();

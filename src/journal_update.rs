@@ -5,6 +5,40 @@ use crate::{api, journal};
 use iced::Task;
 
 impl TradingTerminal {
+    pub(crate) fn reconcile_journal_current_positions_from_account(
+        &mut self,
+    ) -> journal::JournalPositionReconciliation {
+        if self.journal.loaded_address.as_deref() != self.connected_address.as_deref() {
+            return journal::JournalPositionReconciliation::default();
+        }
+
+        let Some(data) = self.account_data.as_ref() else {
+            return journal::JournalPositionReconciliation::default();
+        };
+
+        let result = journal::reconcile_current_position_trades(
+            &mut self.journal.trades,
+            &data.clearinghouse.asset_positions,
+            data.fetched_at_ms,
+        );
+        if result.added_open_positions > 0 || result.removed_stale_positions > 0 {
+            self.journal.clear_snapshot_cache();
+            self.journal.expanded_snapshot_trade_ids.clear();
+        }
+        result
+    }
+
+    pub(crate) fn push_journal_warning_message(&mut self, warning: String) {
+        match &mut self.journal.warning {
+            Some(existing) if existing.contains(&warning) => {}
+            Some(existing) => {
+                existing.push(' ');
+                existing.push_str(&warning);
+            }
+            None => self.journal.warning = Some(warning),
+        }
+    }
+
     pub(crate) fn update_journal(&mut self, message: Message) -> Task<Message> {
         match message {
             // ----- Trading Journal messages -----
@@ -25,9 +59,67 @@ impl TradingTerminal {
                     Ok(page) => {
                         self.journal.loaded_address = Some(address.clone());
                         let fetched_count = page.fills.len();
+                        let next_request = page.next_request;
+                        let requested_end_time = page.requested_end_time;
                         let added = journal::merge_fills(&mut self.journal.raw_fills, page.fills);
+                        self.journal.sync_status.watermark_ms = Some(requested_end_time);
+                        self.journal.sync_status.next_start_ms =
+                            next_request.map(|request| request.start_time);
+                        self.journal.sync_status.pages_loaded =
+                            self.journal.sync_status.pages_loaded.saturating_add(1);
+                        self.journal.sync_status.fills_loaded = self.journal.raw_fills.len();
+                        self.journal.sync_status.complete = next_request.is_none();
+                        if let Some(warning) = page.progress_warning {
+                            self.journal.sync_status.pagination_warning = Some(warning);
+                        }
 
-                        if let Some(next_request) = page.next_request {
+                        let mut warnings = self
+                            .journal
+                            .sync_status
+                            .pagination_warning
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>();
+
+                        if added > 0 || next_request.is_none() || self.journal.trades.is_empty() {
+                            let aggregation = journal::aggregate_trades_with_diagnostics(
+                                self.journal.raw_fills.clone(),
+                            );
+                            if let Some(warning) = aggregation.diagnostics.warning_message() {
+                                warnings.push(warning);
+                            }
+                            self.journal.trades = aggregation.trades;
+                            self.journal.trade_details = aggregation.trade_details;
+                            let position_reconciliation =
+                                self.reconcile_journal_current_positions_from_account();
+                            if position_reconciliation.added_open_positions > 0 {
+                                warnings.push(journal::current_position_fallback_warning(
+                                    position_reconciliation.added_open_positions,
+                                ));
+                            }
+                            self.journal.clear_snapshot_cache();
+                            self.journal.expanded_snapshot_trade_ids.clear();
+                            self.journal.error = None;
+                        }
+
+                        if added > 0
+                            && !self.journal_active_account_is_ghost()
+                            && let Err(e) = journal::save_cache(&address, &self.journal.raw_fills)
+                        {
+                            warnings.push(format!("Could not save journal cache: {}", e));
+                        }
+
+                        if fetched_count == 0 && added == 0 && self.journal.raw_fills.is_empty() {
+                            warnings.push("No fills found for this account.".to_string());
+                        }
+
+                        self.journal.warning = if warnings.is_empty() {
+                            None
+                        } else {
+                            Some(warnings.join(" "))
+                        };
+
+                        if let Some(next_request) = next_request {
                             let request_account_key = account_key.clone();
                             let request_address = address.clone();
                             return Task::perform(
@@ -40,43 +132,15 @@ impl TradingTerminal {
                             );
                         }
 
-                        let aggregation = journal::aggregate_trades_with_diagnostics(
-                            self.journal.raw_fills.clone(),
-                        );
-                        let mut warnings = Vec::new();
-                        if let Some(warning) = aggregation.diagnostics.warning_message() {
-                            warnings.push(warning);
-                        }
-                        self.journal.trades = aggregation.trades;
-                        self.journal.trade_details = aggregation.trade_details;
-                        self.journal.clear_snapshot_cache();
-                        self.journal.expanded_snapshot_trade_ids.clear();
-                        self.journal.error = None;
-
-                        if !self.journal_active_account_is_ghost()
-                            && let Err(e) = journal::save_cache(&address, &self.journal.raw_fills)
-                        {
-                            warnings.push(format!("Could not save journal cache: {}", e));
-                        }
-
                         self.journal.loading = false;
-                        self.journal.last_refresh_time = Some(page.requested_end_time);
-
-                        if fetched_count == 0 && added == 0 && self.journal.raw_fills.is_empty() {
-                            warnings.push("No fills found for this account.".to_string());
-                        }
-
-                        self.journal.warning = if warnings.is_empty() {
-                            None
-                        } else {
-                            Some(warnings.join(" "))
-                        };
+                        self.journal.last_refresh_time = Some(requested_end_time);
 
                         if !had_chart_history && self.journal.trades.len() >= 2 {
                             self.journal.begin_chart_reveal(Self::now_ms());
                         }
                     }
                     Err(e) => {
+                        self.journal.sync_status.complete = false;
                         if self.journal.raw_fills.is_empty() {
                             self.journal.error = Some(e);
                         } else {
@@ -88,6 +152,9 @@ impl TradingTerminal {
                         self.journal.loading = false;
                     }
                 }
+            }
+            Message::JournalClearCache => {
+                return self.clear_journal_cache_for_active_account();
             }
             Message::JournalEditStart(id, source_key) => {
                 self.journal.edit_modes.insert(id.clone(), true);
@@ -172,6 +239,49 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    fn clear_journal_cache_for_active_account(&mut self) -> Task<Message> {
+        if self.journal.loading {
+            self.push_toast("Journal is already syncing".to_string(), true);
+            return Task::none();
+        }
+
+        let Some(address) = self.connected_address.clone() else {
+            self.journal.error =
+                Some("Connect an account before clearing journal cache.".to_string());
+            self.push_toast(
+                "Connect an account before clearing journal cache".to_string(),
+                true,
+            );
+            return Task::none();
+        };
+
+        let mut clear_warning = None;
+        match journal::clear_cache(&address) {
+            Ok(removed) => {
+                let message = if removed == 0 {
+                    "Journal cache already clear; reloading full history".to_string()
+                } else {
+                    format!("Cleared {removed} journal cache file(s); reloading full history")
+                };
+                self.push_toast(message, false);
+            }
+            Err(e) => {
+                let warning =
+                    format!("Could not clear journal cache: {e}. Reloading full history.");
+                clear_warning = Some(warning.clone());
+                self.push_toast(warning, true);
+            }
+        }
+
+        self.journal
+            .clear_active_account_data_for_address(address.clone());
+        let task = self.load_journal_for_active_account(true);
+        if let Some(warning) = clear_warning {
+            self.journal.warning = Some(warning);
+        }
+        task
     }
 
     fn toggle_journal_snapshot(&mut self, trade_id: String) -> Task<Message> {

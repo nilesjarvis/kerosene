@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 mod aggregation;
 mod cache;
+mod current_positions;
 mod snapshot;
 mod state;
 
@@ -12,7 +13,11 @@ pub use aggregation::{
 };
 #[cfg(test)]
 pub use aggregation::{FillIdentity, JournalAttributedFill};
-pub use cache::{load_cache, save_cache};
+pub use cache::{clear_cache, load_cache, save_cache};
+pub use current_positions::{
+    JournalPositionReconciliation, current_position_fallback_warning,
+    reconcile_current_position_trades,
+};
 pub use snapshot::{
     JournalTradeSnapshot, JournalTradeSnapshotMetrics, JournalTradeSnapshotRequest,
     JournalTradeSnapshotStatus, build_journal_trade_snapshot, initial_snapshot_request,
@@ -21,7 +26,7 @@ pub use snapshot::{
 #[cfg(test)]
 pub use state::JournalAccountState;
 pub(crate) use state::{DEFAULT_JOURNAL_WINDOW_HEIGHT, DEFAULT_JOURNAL_WINDOW_WIDTH};
-pub use state::{JournalFilter, JournalSort, JournalState};
+pub use state::{JournalFilter, JournalSort, JournalState, JournalSyncStatus};
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct JournalNote {

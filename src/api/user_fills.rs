@@ -69,17 +69,18 @@ pub async fn fetch_user_fills(
             fills,
             next_request: None,
             requested_end_time: end_time,
+            progress_warning: None,
         });
     }
 
-    let oldest_time = fills.first().map(|f| f.time).unwrap_or(0);
     let newest_time = fills.last().map(|f| f.time).unwrap_or(0);
-    let next_request =
-        next_user_fills_request(current_start, fetched_count, oldest_time, newest_time);
+    let (next_request, progress_warning) =
+        next_user_fills_request(current_start, end_time, fetched_count, newest_time);
 
     Ok(UserFillsPage {
         fills,
         next_request,
         requested_end_time: end_time,
+        progress_warning,
     })
 }

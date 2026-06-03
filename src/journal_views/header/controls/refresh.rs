@@ -17,3 +17,20 @@ pub(super) fn journal_refresh_button(loading: bool) -> Element<'static, Message>
     )
     .into()
 }
+
+pub(super) fn journal_clear_cache_button(enabled: bool) -> Element<'static, Message> {
+    let mut clear_button = button(text("\u{232B}").size(14).center())
+        .padding([3, 9])
+        .style(journal_pill_style(false));
+
+    if enabled {
+        clear_button = clear_button.on_press(Message::JournalClearCache);
+    }
+
+    tooltip(
+        clear_button,
+        text("Clear cache and reload full history").size(10),
+        tooltip::Position::Bottom,
+    )
+    .into()
+}

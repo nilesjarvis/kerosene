@@ -1,4 +1,4 @@
-use super::unique_temp_cache_path;
+use super::{clear_cache_path_family, unique_temp_cache_path};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -16,4 +16,55 @@ fn journal_cache_temp_paths_are_unique_and_adjacent() {
         );
         assert!(seen.insert(temp));
     }
+}
+
+#[test]
+fn clear_cache_path_family_removes_cache_and_temp_files() {
+    let dir = std::env::temp_dir().join(format!(
+        "kerosene-journal-cache-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp test directory");
+    let target = dir.join("journal_cache_0xabc.json");
+    let temp_a = dir.join("journal_cache_0xabc.json.tmp.1");
+    let temp_b = dir.join("journal_cache_0xabc.json.tmp.2");
+    let unrelated = dir.join("journal_cache_0xdef.json");
+    std::fs::write(&target, "[]").expect("write cache");
+    std::fs::write(&temp_a, "[]").expect("write temp cache");
+    std::fs::write(&temp_b, "[]").expect("write temp cache");
+    std::fs::write(&unrelated, "[]").expect("write unrelated cache");
+
+    let removed = clear_cache_path_family(&target).expect("clear cache path family");
+
+    assert_eq!(removed, 3);
+    assert!(!target.exists());
+    assert!(!temp_a.exists());
+    assert!(!temp_b.exists());
+    assert!(unrelated.exists());
+
+    let _ = std::fs::remove_file(unrelated);
+    let _ = std::fs::remove_dir(dir);
+}
+
+#[test]
+fn clear_cache_path_family_tolerates_missing_cache() {
+    let dir = std::env::temp_dir().join(format!(
+        "kerosene-journal-cache-missing-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp test directory");
+    let target = dir.join("journal_cache_0xabc.json");
+
+    let removed = clear_cache_path_family(&target).expect("clear missing cache path family");
+
+    assert_eq!(removed, 0);
+    let _ = std::fs::remove_dir(dir);
 }

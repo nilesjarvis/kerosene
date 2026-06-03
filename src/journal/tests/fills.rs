@@ -34,3 +34,20 @@ fn merge_fills_uses_composite_identity_not_tid_only() {
     assert_eq!(existing.len(), 2);
     assert_eq!(newest_fill_time(&existing), Some(2));
 }
+
+#[test]
+fn merge_fills_deduplicates_inclusive_page_boundaries() {
+    let mut existing = vec![fill(1, 10, "BTC"), fill(2, 20, "BTC")];
+
+    let added = merge_fills(
+        &mut existing,
+        vec![fill(2, 20, "BTC"), fill(3, 30, "BTC"), fill(4, 40, "BTC")],
+    );
+
+    assert_eq!(added, 2);
+    assert_eq!(existing.len(), 4);
+    assert_eq!(
+        existing.iter().map(|fill| fill.time).collect::<Vec<_>>(),
+        vec![1, 2, 3, 4]
+    );
+}
