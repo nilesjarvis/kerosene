@@ -19,6 +19,8 @@ impl TradingTerminal {
                     return Task::none();
                 }
 
+                let had_chart_history = self.journal.trades.len() >= 2;
+
                 match result {
                     Ok(page) => {
                         self.journal.loaded_address = Some(address.clone());
@@ -69,6 +71,10 @@ impl TradingTerminal {
                         } else {
                             Some(warnings.join(" "))
                         };
+
+                        if !had_chart_history && self.journal.trades.len() >= 2 {
+                            self.journal.begin_chart_reveal(Self::now_ms());
+                        }
                     }
                     Err(e) => {
                         if self.journal.raw_fills.is_empty() {
@@ -133,6 +139,9 @@ impl TradingTerminal {
             }
             Message::JournalPortfolioWindowChanged(window) => {
                 self.journal.portfolio_window = window;
+            }
+            Message::JournalChartRevealTick => {
+                self.journal.advance_chart_reveal(Self::now_ms());
             }
             Message::JournalToggleAllAssets => {
                 self.journal.show_all_assets = !self.journal.show_all_assets;

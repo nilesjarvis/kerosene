@@ -288,6 +288,7 @@ pub(crate) enum Message {
     JournalFilterChanged(journal::JournalFilter),
     JournalSortChanged(journal::JournalSort),
     JournalPortfolioWindowChanged(PortfolioWindow),
+    JournalChartRevealTick,
     JournalToggleAllAssets,
     JournalToggleAccountValueChart(bool),
     JournalSnapshotToggle(String),

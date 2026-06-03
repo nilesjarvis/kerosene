@@ -46,6 +46,8 @@ impl JournalState {
             open: false,
             width: super::DEFAULT_JOURNAL_WINDOW_WIDTH,
             height: super::DEFAULT_JOURNAL_WINDOW_HEIGHT,
+            chart_reveal_started_ms: None,
+            chart_reveal_progress: 1.0,
             active_account_key,
             account_states,
             loaded_address: None,

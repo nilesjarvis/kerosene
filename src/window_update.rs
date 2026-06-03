@@ -57,6 +57,7 @@ impl TradingTerminal {
                 if Some(id) == self.journal.window_id {
                     self.journal.window_id = None;
                     self.journal.open = false;
+                    self.journal.finish_chart_reveal();
                 }
                 for twap in self.twap_orders.values_mut() {
                     if twap.window_id == Some(id) {

@@ -21,6 +21,7 @@ impl TradingTerminal {
         let (id, task) = window::open(settings);
         self.journal.window_id = Some(id);
         self.journal.open = true;
+        self.journal.begin_chart_reveal(Self::now_ms());
 
         let mut tasks = vec![task.map(Message::WindowOpened)];
         tasks.push(self.load_journal_for_active_account(false));

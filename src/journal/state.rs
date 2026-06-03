@@ -9,6 +9,7 @@ mod account_scope;
 
 pub(crate) const DEFAULT_JOURNAL_WINDOW_WIDTH: f32 = 800.0;
 pub(crate) const DEFAULT_JOURNAL_WINDOW_HEIGHT: f32 = 600.0;
+pub(crate) const JOURNAL_CHART_REVEAL_DURATION_MS: u64 = 850;
 
 // ---------------------------------------------------------------------------
 // Filters
@@ -38,6 +39,8 @@ pub struct JournalState {
     pub open: bool,
     pub width: f32,
     pub height: f32,
+    pub chart_reveal_started_ms: Option<u64>,
+    pub chart_reveal_progress: f32,
     pub active_account_key: Option<String>,
     pub account_states: HashMap<String, JournalAccountState>,
     pub loaded_address: Option<String>,
@@ -60,6 +63,37 @@ pub struct JournalState {
     pub edit_modes: HashMap<String, bool>,
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
+}
+
+impl JournalState {
+    pub fn begin_chart_reveal(&mut self, now_ms: u64) {
+        self.chart_reveal_started_ms = Some(now_ms);
+        self.chart_reveal_progress = 0.0;
+    }
+
+    pub fn finish_chart_reveal(&mut self) {
+        self.chart_reveal_started_ms = None;
+        self.chart_reveal_progress = 1.0;
+    }
+
+    pub fn chart_reveal_active(&self) -> bool {
+        self.window_id.is_some() && self.chart_reveal_progress < 1.0
+    }
+
+    pub fn advance_chart_reveal(&mut self, now_ms: u64) {
+        let Some(started_ms) = self.chart_reveal_started_ms else {
+            self.finish_chart_reveal();
+            return;
+        };
+
+        let elapsed_ms = now_ms.saturating_sub(started_ms);
+        self.chart_reveal_progress =
+            (elapsed_ms as f32 / JOURNAL_CHART_REVEAL_DURATION_MS as f32).clamp(0.0, 1.0);
+
+        if self.chart_reveal_progress >= 1.0 {
+            self.chart_reveal_started_ms = None;
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

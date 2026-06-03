@@ -31,6 +31,13 @@ impl TradingTerminal {
             );
         }
 
+        if self.journal.chart_reveal_active() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(16))
+                    .map(|_| Message::JournalChartRevealTick),
+            );
+        }
+
         if self.screener.window_id.is_some() {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(15))

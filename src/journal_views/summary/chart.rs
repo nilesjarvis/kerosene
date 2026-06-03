@@ -2,15 +2,14 @@ use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::{
     format_decimal_with_commas, normalize_two_decimal_display_value, signed_number_color,
-    timeframe_button,
 };
 use crate::journal::{AggregatedTrade, JournalFilter};
 use crate::message::Message;
 use crate::portfolio_state::{PORTFOLIO_WINDOWS, PortfolioWindow};
 
 use iced::widget::container as container_style;
-use iced::widget::{Space, canvas, checkbox, column, container, row, rule, text};
-use iced::{Alignment, Element, Fill, Theme};
+use iced::widget::{Space, button, canvas, checkbox, column, container, row, rule, text};
+use iced::{Alignment, Color, Element, Fill, Theme};
 
 mod drawing;
 mod outcome;
@@ -58,9 +57,10 @@ impl TradingTerminal {
                 account_value_points,
                 show_account_value,
                 denomination: denomination.clone(),
+                reveal_progress: self.journal.chart_reveal_progress,
             })
             .width(Fill)
-            .height(112)
+            .height(136)
             .into()
         } else {
             container(
@@ -69,7 +69,7 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text),
             )
             .width(Fill)
-            .height(112)
+            .height(136)
             .center(Fill)
             .into()
         };
@@ -131,13 +131,13 @@ impl TradingTerminal {
             .spacing(3)
             .align_x(Alignment::Start),
         ]
-        .spacing(7)
+        .spacing(6)
         .height(Fill);
 
         container(content)
-            .padding([12, 16])
+            .padding([14, 16])
             .width(Fill)
-            .height(340)
+            .height(372)
             .style(|theme: &Theme| summary_panel_style(theme))
             .into()
     }
@@ -182,13 +182,62 @@ fn journal_portfolio_window_row(
     PORTFOLIO_WINDOWS.iter().copied().fold(
         row![].spacing(4).align_y(Alignment::Center),
         |row, window| {
-            row.push(timeframe_button(
+            row.push(journal_timeframe_button(
                 window.label(),
                 selected_window == window,
                 Message::JournalPortfolioWindowChanged(window),
             ))
         },
     )
+}
+
+fn journal_timeframe_button(
+    label: &'static str,
+    active: bool,
+    msg: Message,
+) -> Element<'static, Message> {
+    let mint = journal_chart_mint();
+    button(
+        text(label)
+            .size(11)
+            .font(crate::app_fonts::monospace_font()),
+    )
+    .on_press(msg)
+    .padding([3, 9])
+    .style(move |theme: &Theme, status| {
+        let muted = theme.extended_palette().background.weak.text;
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let background = if active {
+            Color { a: 0.16, ..mint }
+        } else if hovered {
+            Color { a: 0.08, ..mint }
+        } else {
+            Color {
+                a: 0.025,
+                ..theme.palette().text
+            }
+        };
+        let border_color = if active || hovered {
+            Color { a: 0.38, ..mint }
+        } else {
+            Color {
+                a: 0.10,
+                ..theme.palette().text
+            }
+        };
+
+        button::Style {
+            background: Some(background.into()),
+            text_color: if active { mint } else { muted },
+            border: iced::Border {
+                radius: 999.0.into(),
+                width: 1.0,
+                color: border_color,
+            },
+            ..Default::default()
+        }
+    })
+    .into()
 }
 
 fn apply_journal_portfolio_window(
@@ -251,14 +300,40 @@ fn trade_count_label(total_closed: usize) -> String {
 }
 
 fn summary_panel_style(theme: &Theme) -> container_style::Style {
+    let mut shadow_color = Color::BLACK;
+    shadow_color.a = 0.24;
+
     container_style::Style {
-        background: Some(theme.extended_palette().background.strong.color.into()),
+        background: Some(
+            Color {
+                a: 0.94,
+                ..theme.extended_palette().background.strong.color
+            }
+            .into(),
+        ),
         border: iced::Border {
-            color: theme.extended_palette().background.weak.color,
+            color: Color {
+                a: 0.14,
+                ..journal_chart_mint()
+            },
             width: 1.0,
-            radius: 8.0.into(),
+            radius: 14.0.into(),
+        },
+        shadow: iced::Shadow {
+            color: shadow_color,
+            offset: iced::Vector::new(0.0, 8.0),
+            blur_radius: 22.0,
         },
         ..Default::default()
+    }
+}
+
+fn journal_chart_mint() -> Color {
+    Color {
+        r: 0.16,
+        g: 0.94,
+        b: 0.78,
+        a: 1.0,
     }
 }
 
