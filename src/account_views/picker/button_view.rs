@@ -2,6 +2,7 @@ use crate::account_state::AccountPickerOption;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
+use super::copy_ripple::CopyRipple;
 use iced::widget::container as container_style;
 use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{Element, Fill, Length, Theme, border};
@@ -71,8 +72,9 @@ impl TradingTerminal {
         });
 
         let label_segment: Element<'_, Message> = if can_copy_address {
+            let ripple = CopyRipple::new(label_button, theme.palette().primary);
             tooltip(
-                label_button,
+                ripple,
                 text("Copy address").size(10),
                 tooltip::Position::Bottom,
             )
