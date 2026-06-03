@@ -2,6 +2,7 @@ use super::{
     AggregatedTrade, JournalNote, JournalTradeDetails, JournalTradeSnapshot,
     JournalTradeSnapshotRequest,
 };
+use crate::portfolio_state::PortfolioWindow;
 use std::collections::{HashMap, HashSet};
 
 mod account_scope;
@@ -52,6 +53,7 @@ pub struct JournalState {
     pub sort: JournalSort,
     pub show_all_assets: bool,
     pub show_account_value_chart: bool,
+    pub portfolio_window: PortfolioWindow,
     pub error: Option<String>,
     pub warning: Option<String>,
     pub last_refresh_time: Option<u64>,
@@ -60,7 +62,7 @@ pub struct JournalState {
     pub edit_buffers: HashMap<String, JournalNote>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct JournalAccountState {
     pub loaded_address: Option<String>,
     pub entries: HashMap<String, JournalNote>,
@@ -78,4 +80,29 @@ pub struct JournalAccountState {
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
     pub show_account_value_chart: bool,
+    pub portfolio_window: PortfolioWindow,
+}
+
+impl Default for JournalAccountState {
+    fn default() -> Self {
+        Self {
+            loaded_address: None,
+            entries: HashMap::new(),
+            raw_fills: Vec::new(),
+            trades: Vec::new(),
+            trade_details: HashMap::new(),
+            expanded_snapshot_trade_ids: HashSet::new(),
+            snapshot_requests: HashMap::new(),
+            snapshots: HashMap::new(),
+            loading: false,
+            error: None,
+            warning: None,
+            last_refresh_time: None,
+            edit_modes: HashMap::new(),
+            edit_source_keys: HashMap::new(),
+            edit_buffers: HashMap::new(),
+            show_account_value_chart: false,
+            portfolio_window: PortfolioWindow::Week,
+        }
+    }
 }

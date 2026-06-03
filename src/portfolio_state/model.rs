@@ -25,6 +25,12 @@ pub(crate) enum PortfolioWindow {
     AllTime,
 }
 
+impl Default for PortfolioWindow {
+    fn default() -> Self {
+        Self::Week
+    }
+}
+
 impl PortfolioWindow {
     pub(crate) fn label(self) -> &'static str {
         match self {

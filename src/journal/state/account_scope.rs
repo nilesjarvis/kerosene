@@ -61,6 +61,7 @@ impl JournalState {
             sort: JournalSort::TimeDesc,
             show_all_assets: false,
             show_account_value_chart: false,
+            portfolio_window: crate::portfolio_state::PortfolioWindow::Week,
             error: None,
             warning: None,
             last_refresh_time: None,
@@ -157,6 +158,7 @@ impl JournalState {
             edit_source_keys: self.edit_source_keys.clone(),
             edit_buffers: self.edit_buffers.clone(),
             show_account_value_chart: self.show_account_value_chart,
+            portfolio_window: self.portfolio_window,
         }
     }
 
@@ -177,6 +179,7 @@ impl JournalState {
         self.edit_source_keys = state.edit_source_keys;
         self.edit_buffers = state.edit_buffers;
         self.show_account_value_chart = state.show_account_value_chart;
+        self.portfolio_window = state.portfolio_window;
     }
 
     pub fn clear_snapshot_data(&mut self) {

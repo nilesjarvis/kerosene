@@ -131,6 +131,9 @@ impl TradingTerminal {
             Message::JournalSortChanged(sort) => {
                 self.journal.sort = sort;
             }
+            Message::JournalPortfolioWindowChanged(window) => {
+                self.journal.portfolio_window = window;
+            }
             Message::JournalToggleAllAssets => {
                 self.journal.show_all_assets = !self.journal.show_all_assets;
             }

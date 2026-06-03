@@ -2,9 +2,11 @@ use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers::{
     format_decimal_with_commas, normalize_two_decimal_display_value, signed_number_color,
+    timeframe_button,
 };
 use crate::journal::{AggregatedTrade, JournalFilter};
 use crate::message::Message;
+use crate::portfolio_state::{PORTFOLIO_WINDOWS, PortfolioWindow};
 
 use iced::widget::container as container_style;
 use iced::widget::{Space, canvas, checkbox, column, container, row, rule, text};
@@ -32,12 +34,14 @@ impl TradingTerminal {
         total_closed: usize,
     ) -> Element<'_, Message> {
         let theme = self.theme();
-        let pnl_points = journal_cumulative_pnl_points(filtered_trades);
+        let all_pnl_points = journal_cumulative_pnl_points(filtered_trades);
+        let pnl_points = self.journal_portfolio_window_points(all_pnl_points);
+        let selected_window_pnl = journal_window_total_pnl(&pnl_points).unwrap_or(total_pnl);
         let account_value_points = self.journal_account_value_chart_points(&pnl_points);
         let show_account_value = self.journal.show_account_value_chart;
         let denomination = self.display_denomination_context();
 
-        let value_color = signed_number_color(total_pnl, &theme);
+        let value_color = signed_number_color(selected_window_pnl, &theme);
         let muted = theme.extended_palette().background.weak.text;
         let filter_label = journal_filter_label(self.journal.filter);
         let win_rate_color = if total_closed == 0 {
@@ -87,12 +91,16 @@ impl TradingTerminal {
             ]
             .spacing(8)
             .align_y(Alignment::Center),
+            journal_portfolio_window_row(self.journal.portfolio_window),
             rule::horizontal(1),
             row![
-                text(format_signed_display_full(total_pnl, &denomination))
-                    .size(22)
-                    .font(crate::app_fonts::monospace_font())
-                    .color(value_color),
+                text(format_signed_display_full(
+                    selected_window_pnl,
+                    &denomination
+                ))
+                .size(22)
+                .font(crate::app_fonts::monospace_font())
+                .color(value_color),
                 text("PNL")
                     .size(13)
                     .font(crate::app_fonts::monospace_font())
@@ -129,9 +137,13 @@ impl TradingTerminal {
         container(content)
             .padding([12, 16])
             .width(Fill)
-            .height(320)
+            .height(340)
             .style(|theme: &Theme| summary_panel_style(theme))
             .into()
+    }
+
+    fn journal_portfolio_window_points(&self, points: Vec<(u64, f64)>) -> Vec<(u64, f64)> {
+        apply_journal_portfolio_window(points, self.journal.portfolio_window, Self::now_ms())
     }
 
     fn journal_account_value_chart_points(&self, pnl_points: &[(u64, f64)]) -> Vec<(u64, f64)> {
@@ -161,6 +173,49 @@ fn journal_filter_label(filter: JournalFilter) -> &'static str {
         JournalFilter::All => "All",
         JournalFilter::Perp => "Perp",
         JournalFilter::Spot => "Spot",
+    }
+}
+
+fn journal_portfolio_window_row(
+    selected_window: PortfolioWindow,
+) -> iced::widget::Row<'static, Message> {
+    PORTFOLIO_WINDOWS.iter().copied().fold(
+        row![].spacing(4).align_y(Alignment::Center),
+        |row, window| {
+            row.push(timeframe_button(
+                window.label(),
+                selected_window == window,
+                Message::JournalPortfolioWindowChanged(window),
+            ))
+        },
+    )
+}
+
+fn apply_journal_portfolio_window(
+    points: Vec<(u64, f64)>,
+    window: PortfolioWindow,
+    now_ms: u64,
+) -> Vec<(u64, f64)> {
+    if points.is_empty() || matches!(window, PortfolioWindow::AllTime) {
+        return points;
+    }
+
+    let Some(cutoff) = window.cutoff_ms(now_ms) else {
+        return points;
+    };
+    TradingTerminal::apply_cutoff_with_baseline(&points, cutoff)
+}
+
+fn journal_window_total_pnl(points: &[(u64, f64)]) -> Option<f64> {
+    match points {
+        [] => None,
+        [(_, only)] => only.is_finite().then_some(*only),
+        points => {
+            let first = points.first().map(|(_, value)| *value)?;
+            let last = points.last().map(|(_, value)| *value)?;
+            let total = last - first;
+            total.is_finite().then_some(total)
+        }
     }
 }
 

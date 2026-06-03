@@ -340,6 +340,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalBufferChanged(_, _, _)
         | Message::JournalFilterChanged(_)
         | Message::JournalSortChanged(_)
+        | Message::JournalPortfolioWindowChanged(_)
         | Message::JournalToggleAllAssets
         | Message::JournalToggleAccountValueChart(_)
         | Message::JournalSnapshotToggle(_)

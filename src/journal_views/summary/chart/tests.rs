@@ -1,8 +1,10 @@
 use super::{
-    JournalTradeOutcome, account_value_points_for_range, finite_sorted_points,
-    format_signed_usd_full, journal_cumulative_pnl_points, journal_recent_trade_outcome_tiles,
+    JournalTradeOutcome, account_value_points_for_range, apply_journal_portfolio_window,
+    finite_sorted_points, format_signed_usd_full, journal_cumulative_pnl_points,
+    journal_recent_trade_outcome_tiles, journal_window_total_pnl,
 };
 use crate::journal::AggregatedTrade;
+use crate::portfolio_state::PortfolioWindow;
 
 fn trade(start_time: u64, end_time: Option<u64>, pnl: f64) -> AggregatedTrade {
     AggregatedTrade {
@@ -71,6 +73,31 @@ fn signed_usd_full_keeps_large_values_expanded() {
     assert_eq!(format_signed_usd_full(29_425_659.43), "+$29,425,659.43");
     assert_eq!(format_signed_usd_full(-42.5), "-$42.50");
     assert_eq!(format_signed_usd_full(0.001), "$0.00");
+}
+
+#[test]
+fn journal_portfolio_window_applies_cutoff_with_baseline() {
+    let day_ms = 24 * 60 * 60 * 1000;
+    let now_ms = 10 * day_ms;
+    let points = vec![(day_ms, 5.0), (8 * day_ms, 9.0), (9 * day_ms, 12.0)];
+
+    let windowed = apply_journal_portfolio_window(points, PortfolioWindow::Week, now_ms);
+
+    assert_eq!(
+        windowed,
+        vec![(3 * day_ms, 5.0), (8 * day_ms, 9.0), (9 * day_ms, 12.0)]
+    );
+    assert_eq!(journal_window_total_pnl(&windowed), Some(7.0));
+}
+
+#[test]
+fn journal_portfolio_all_time_keeps_all_points() {
+    let points = vec![(1_000, 5.0), (2_000, 9.0)];
+
+    assert_eq!(
+        apply_journal_portfolio_window(points.clone(), PortfolioWindow::AllTime, 3_000),
+        points
+    );
 }
 
 #[test]
