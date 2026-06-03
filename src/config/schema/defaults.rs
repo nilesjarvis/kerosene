@@ -230,6 +230,8 @@ impl Default for KeroseneConfig {
             main_window_height: None,
             main_window_x: None,
             main_window_y: None,
+            journal_window_width: None,
+            journal_window_height: None,
             accounts: Vec::new(),
             active_account_index: 0,
             agent_key: String::new().into(),

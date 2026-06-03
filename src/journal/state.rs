@@ -6,6 +6,9 @@ use std::collections::{HashMap, HashSet};
 
 mod account_scope;
 
+pub(crate) const DEFAULT_JOURNAL_WINDOW_WIDTH: f32 = 800.0;
+pub(crate) const DEFAULT_JOURNAL_WINDOW_HEIGHT: f32 = 600.0;
+
 // ---------------------------------------------------------------------------
 // Filters
 // ---------------------------------------------------------------------------

@@ -44,8 +44,8 @@ impl JournalState {
         Self {
             window_id: None,
             open: false,
-            width: 800.0,
-            height: 600.0,
+            width: super::DEFAULT_JOURNAL_WINDOW_WIDTH,
+            height: super::DEFAULT_JOURNAL_WINDOW_HEIGHT,
             active_account_key,
             account_states,
             loaded_address: None,

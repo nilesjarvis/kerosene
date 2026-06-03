@@ -84,6 +84,12 @@ pub struct KeroseneConfig {
     pub main_window_x: Option<f32>,
     #[serde(default)]
     pub main_window_y: Option<f32>,
+    /// Last trading journal window width in logical pixels.
+    #[serde(default)]
+    pub journal_window_width: Option<f32>,
+    /// Last trading journal window height in logical pixels.
+    #[serde(default)]
+    pub journal_window_height: Option<f32>,
     #[serde(default)]
     pub accounts: Vec<AccountProfile>,
     #[serde(default)]

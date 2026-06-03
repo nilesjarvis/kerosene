@@ -20,6 +20,7 @@ pub use snapshot::{
 };
 #[cfg(test)]
 pub use state::JournalAccountState;
+pub(crate) use state::{DEFAULT_JOURNAL_WINDOW_HEIGHT, DEFAULT_JOURNAL_WINDOW_WIDTH};
 pub use state::{JournalFilter, JournalSort, JournalState};
 
 #[derive(Debug, Clone, Default, Serialize)]

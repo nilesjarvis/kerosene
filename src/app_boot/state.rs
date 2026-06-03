@@ -306,11 +306,22 @@ impl TradingTerminal {
             settings_active_tab: SettingsTab::Themes,
             settings_theme_page: ThemeSettingsPage::Overview,
             custom_themes: cfg.custom_themes.clone(),
-            journal: journal::JournalState::new_for_account(
-                boot_account.journal_account_key,
-                cfg.journal_entries_by_account.clone(),
-                cfg.journal_entries.clone(),
-            ),
+            journal: {
+                let mut journal = journal::JournalState::new_for_account(
+                    boot_account.journal_account_key,
+                    cfg.journal_entries_by_account.clone(),
+                    cfg.journal_entries.clone(),
+                );
+                journal.width = cfg
+                    .journal_window_width
+                    .filter(|width| width.is_finite() && *width > 0.0)
+                    .unwrap_or(journal::DEFAULT_JOURNAL_WINDOW_WIDTH);
+                journal.height = cfg
+                    .journal_window_height
+                    .filter(|height| height.is_finite() && *height > 0.0)
+                    .unwrap_or(journal::DEFAULT_JOURNAL_WINDOW_HEIGHT);
+                journal
+            },
             spinner_phase: 0.0,
             candle_data_cache: HashMap::new(),
             candle_data_cache_order: VecDeque::new(),

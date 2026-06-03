@@ -88,6 +88,7 @@ impl TradingTerminal {
                 if Some(id) == self.journal.window_id {
                     self.journal.width = size.width;
                     self.journal.height = size.height;
+                    self.persist_config();
                 }
             }
             Message::WindowDrag(id) => {
