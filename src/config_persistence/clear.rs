@@ -105,6 +105,13 @@ impl TradingTerminal {
         self.chart_hud_readout = defaults.chart_hud_readout;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
         self.chart_backfill_source = defaults.chart_backfill_source;
+        let widget_padding = defaults.widget_padding.normalized();
+        self.widget_padding_default = widget_padding.default_px;
+        self.widget_padding_overrides = widget_padding
+            .overrides
+            .into_iter()
+            .map(|item| (item.target, item.padding_px))
+            .collect();
         self.outer_widget_border_enabled = defaults.outer_widget_border_enabled;
         self.custom_window_chrome_enabled = defaults.custom_window_chrome_enabled;
         self.custom_themes = defaults.custom_themes;

@@ -46,6 +46,12 @@ impl TradingTerminal {
             .cloned()
             .collect();
         let live_watchlists = Self::boot_live_watchlists(cfg, &muted_tickers);
+        let widget_padding = cfg.widget_padding.clone().normalized();
+        let widget_padding_overrides = widget_padding
+            .overrides
+            .iter()
+            .map(|item| (item.target.clone(), item.padding_px))
+            .collect();
         let mut advanced_order_history = VecDeque::from(cfg.advanced_order_history.clone());
         prune_advanced_order_history(&mut advanced_order_history);
 
@@ -100,6 +106,8 @@ impl TradingTerminal {
             pane_border_thickness: cfg.pane_border_thickness,
             pane_corner_radius: cfg.pane_corner_radius,
             outer_widget_border_enabled: cfg.outer_widget_border_enabled,
+            widget_padding_default: widget_padding.default_px,
+            widget_padding_overrides,
             custom_window_chrome_enabled: cfg.custom_window_chrome_enabled,
             custom_window_chrome_active: cfg.custom_window_chrome_enabled,
             focus: None,

@@ -95,6 +95,7 @@ impl TradingTerminal {
                 {
                     self.focus = Some(sibling);
                     let mut detached_window_to_close = None;
+                    self.remove_widget_padding_override_for_kind(&closed_kind);
 
                     match closed_kind {
                         PaneKind::Chart(id) => {

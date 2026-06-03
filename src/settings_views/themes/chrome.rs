@@ -9,11 +9,13 @@ use crate::config::{
     MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
     MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
     MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
-    MAX_UI_SCALE, MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
-    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH, MIN_CHART_FISHEYE_STRENGTH,
-    MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
-    MIN_UI_SCALE, default_pane_border_thickness, default_pane_corner_radius,
+    MAX_UI_SCALE, MAX_WIDGET_PADDING, MIN_CHART_CHROMATIC_ABERRATION_STRENGTH,
+    MIN_CHART_CROSSHAIR_SCALE, MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH,
+    MIN_CHART_FISHEYE_STRENGTH, MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS,
+    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, MIN_WIDGET_PADDING, default_pane_border_thickness,
+    default_pane_corner_radius, default_widget_padding,
 };
+use crate::helpers::pane_title;
 use crate::message::Message;
 use iced::widget::{Column, Row, button, checkbox, column, pick_list, row, slider, text};
 use iced::{Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
@@ -49,6 +51,14 @@ impl TradingTerminal {
                 MIN_PANE_CORNER_RADIUS..=MAX_PANE_CORNER_RADIUS,
                 Message::PaneCornerRadiusChanged,
             ),
+            chrome_slider_row(
+                &theme,
+                "Padding",
+                self.widget_padding_default,
+                MIN_WIDGET_PADDING..=MAX_WIDGET_PADDING,
+                Message::DefaultWidgetPaddingChanged,
+            ),
+            self.view_focused_widget_padding_controls(&theme),
             checkbox(self.outer_widget_border_enabled)
                 .label("Outer widget border")
                 .on_toggle(Message::ToggleOuterWidgetBorder)
@@ -148,20 +158,68 @@ impl TradingTerminal {
         content
             .push(
                 text(format!(
-                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}% lens, {:.0}% fringe, {:.0}% blur, {:.0}px divider, {:.0}px corners",
+                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}% lens, {:.0}% fringe, {:.0}% blur, {:.0}px divider, {:.0}px corners, {:.0}px padding",
                     DEFAULT_UI_SCALE * 100.0,
                     DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY * 100.0,
                     DEFAULT_CHART_FISHEYE_STRENGTH * 100.0,
                     DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH * 100.0,
                     DEFAULT_CHART_EDGE_BLUR_STRENGTH * 100.0,
                     default_pane_border_thickness(),
-                    default_pane_corner_radius()
+                    default_pane_corner_radius(),
+                    default_widget_padding()
                 ))
                 .size(11)
                 .color(theme.extended_palette().background.weak.text),
             )
             .spacing(10)
             .into()
+    }
+
+    fn view_focused_widget_padding_controls(&self, theme: &Theme) -> Element<'_, Message> {
+        let Some((pane, target)) = self.focused_widget_padding_target() else {
+            return text("Selected widget: none")
+                .size(11)
+                .color(theme.extended_palette().background.weak.text)
+                .into();
+        };
+        let Some(kind) = self.panes.get(pane) else {
+            return text("Selected widget: none")
+                .size(11)
+                .color(theme.extended_palette().background.weak.text)
+                .into();
+        };
+
+        let title = pane_title(kind);
+        let padding = self.widget_padding_for_target(&target);
+        let uses_override = self.widget_padding_overrides.contains_key(&target);
+        let reset = if uses_override {
+            button(text("Use default").size(12))
+                .on_press(Message::ResetFocusedWidgetPadding)
+                .padding([4, 8])
+        } else {
+            button(text("Use default").size(12)).padding([4, 8])
+        };
+
+        column![
+            row![
+                text(format!("Selected: {title}"))
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text)
+                    .width(Fill),
+                reset,
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+            chrome_slider_row(
+                theme,
+                "Selected",
+                padding,
+                MIN_WIDGET_PADDING..=MAX_WIDGET_PADDING,
+                Message::FocusedWidgetPaddingChanged,
+            ),
+        ]
+        .spacing(6)
+        .into()
     }
 
     pub(super) fn view_settings_crosshair_section(&self) -> Element<'_, Message> {

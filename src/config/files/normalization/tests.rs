@@ -40,6 +40,34 @@ fn normalizes_out_of_range_pane_chrome() {
         chart_edge_blur_strength: 99.0,
         pane_border_thickness: 99.0,
         pane_corner_radius: f32::NAN,
+        widget_padding: crate::config::WidgetPaddingConfig {
+            default_px: 99.0,
+            overrides: vec![
+                crate::config::WidgetPaddingOverrideConfig {
+                    target: crate::config::WidgetPaddingTargetConfig::Watchlist,
+                    padding_px: 12.0,
+                },
+                crate::config::WidgetPaddingOverrideConfig {
+                    target: crate::config::WidgetPaddingTargetConfig::Watchlist,
+                    padding_px: 99.0,
+                },
+            ],
+        },
+        saved_layouts: vec![
+            serde_json::from_value(serde_json::json!({
+                "name": "bad-padding",
+                "widget_padding": {
+                    "default_px": -10.0,
+                    "overrides": [
+                        {
+                            "target": "OrderEntry",
+                            "padding_px": 99.0
+                        }
+                    ]
+                }
+            }))
+            .expect("saved layout should deserialize"),
+        ],
         ..KeroseneConfig::default()
     };
 
@@ -73,6 +101,16 @@ fn normalizes_out_of_range_pane_chrome() {
     assert_eq!(
         config.pane_corner_radius,
         crate::config::default_pane_corner_radius()
+    );
+    assert_eq!(
+        config.widget_padding.default_px,
+        crate::config::MAX_WIDGET_PADDING
+    );
+    assert!(config.widget_padding.overrides.is_empty());
+    assert_eq!(config.saved_layouts[0].widget_padding.default_px, 0.0);
+    assert_eq!(
+        config.saved_layouts[0].widget_padding.overrides[0].padding_px,
+        crate::config::MAX_WIDGET_PADDING
     );
 }
 

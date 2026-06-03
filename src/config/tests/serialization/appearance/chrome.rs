@@ -1,10 +1,11 @@
 use super::{
     ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, ChartHudReadoutConfig,
-    KeroseneConfig, default_alfred_popup_scale, default_chart_chromatic_aberration_strength,
+    KeroseneConfig, WidgetPaddingConfig, WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig,
+    default_alfred_popup_scale, default_chart_chromatic_aberration_strength,
     default_chart_crosshair_scale, default_chart_dotted_background_opacity,
     default_chart_edge_blur_strength, default_chart_fisheye_strength, default_config_value,
-    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale, json_string,
-    object_mut, value_from_json, value_from_str,
+    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
+    default_widget_padding, json_string, object_mut, value_from_json, value_from_str,
 };
 
 #[test]
@@ -33,6 +34,13 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         pane_border_thickness: 8.0,
         pane_corner_radius: 12.0,
         outer_widget_border_enabled: true,
+        widget_padding: WidgetPaddingConfig {
+            default_px: 6.0,
+            overrides: vec![WidgetPaddingOverrideConfig {
+                target: WidgetPaddingTargetConfig::Watchlist,
+                padding_px: 14.0,
+            }],
+        },
         custom_window_chrome_enabled: false,
         ..KeroseneConfig::default()
     };
@@ -72,6 +80,13 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.pane_border_thickness, 8.0);
     assert_eq!(decoded.pane_corner_radius, 12.0);
     assert!(decoded.outer_widget_border_enabled);
+    assert_eq!(decoded.widget_padding.default_px, 6.0);
+    assert_eq!(decoded.widget_padding.overrides.len(), 1);
+    assert_eq!(
+        decoded.widget_padding.overrides[0].target,
+        WidgetPaddingTargetConfig::Watchlist
+    );
+    assert_eq!(decoded.widget_padding.overrides[0].padding_px, 14.0);
     assert!(!decoded.custom_window_chrome_enabled);
 
     let mut legacy = default_config_value();
@@ -95,6 +110,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("pane_border_thickness");
     object.remove("pane_corner_radius");
     object.remove("outer_widget_border_enabled");
+    object.remove("widget_padding");
     object.remove("custom_window_chrome_enabled");
 
     let decoded_legacy: KeroseneConfig =
@@ -155,5 +171,10 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         default_pane_corner_radius()
     );
     assert!(decoded_legacy.outer_widget_border_enabled);
+    assert_eq!(
+        decoded_legacy.widget_padding.default_px,
+        default_widget_padding()
+    );
+    assert!(decoded_legacy.widget_padding.overrides.is_empty());
     assert!(decoded_legacy.custom_window_chrome_enabled);
 }

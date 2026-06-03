@@ -52,6 +52,7 @@ impl TradingTerminal {
             live_watchlists: self.live_watchlist_configs_snapshot(),
             positioning_infos: self.positioning_info_configs_snapshot(),
             spaghetti_charts: self.spaghetti_chart_configs_snapshot(),
+            widget_padding: self.widget_padding_config_snapshot(),
             active_symbol: self.active_symbol_config_value(),
             active_timeframe: self.active_timeframe_config_value(),
             order_kind: self.order_kind_config_value(),

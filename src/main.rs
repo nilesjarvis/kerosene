@@ -97,6 +97,7 @@ mod twap_state;
 mod wallet_state;
 mod wallet_update;
 mod wallet_views;
+mod widget_padding;
 mod window_chrome;
 mod window_update;
 mod ws;

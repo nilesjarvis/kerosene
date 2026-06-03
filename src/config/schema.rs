@@ -1,5 +1,5 @@
 use super::hotkeys::{HotkeyConfig, HotkeyPrefixConfig};
-use super::layouts::{PaneLayoutConfig, SavedLayout};
+use super::layouts::{PaneLayoutConfig, SavedLayout, WidgetPaddingConfig};
 use super::live_watchlist::LiveWatchlistConfig;
 use super::order_presets::OrderPresetsConfig;
 use super::panes::{
@@ -43,21 +43,23 @@ pub use defaults::{
     MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
     MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
     MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
-    MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE, MIN_CHART_CHROMATIC_ABERRATION_STRENGTH,
-    MIN_CHART_CROSSHAIR_SCALE, MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH,
-    MIN_CHART_FISHEYE_STRENGTH, MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS,
-    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, default_alfred_popup_scale,
+    MAX_UI_SCALE, MAX_WIDGET_PADDING, MIN_ALFRED_POPUP_SCALE,
+    MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
+    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH, MIN_CHART_FISHEYE_STRENGTH,
+    MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
+    MIN_UI_SCALE, MIN_WIDGET_PADDING, default_alfred_popup_scale,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
     default_chart_fisheye_strength, default_chart_hud_order_sound_volume, default_layout_ratios,
     default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
     default_pane_border_thickness, default_pane_corner_radius, default_symbol,
     default_symbol_search_sort_mode, default_tick_size, default_timeframe, default_ui_scale,
-    new_secret_id, normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
-    normalize_chart_crosshair_scale, normalize_chart_dotted_background_opacity,
-    normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
-    normalize_chart_hud_order_sound_volume, normalize_market_slippage_pct,
-    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
+    default_widget_padding, new_secret_id, normalize_alfred_popup_scale,
+    normalize_chart_chromatic_aberration_strength, normalize_chart_crosshair_scale,
+    normalize_chart_dotted_background_opacity, normalize_chart_edge_blur_strength,
+    normalize_chart_fisheye_strength, normalize_chart_hud_order_sound_volume,
+    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
+    normalize_ui_scale, normalize_widget_padding,
 };
 pub use denomination::DisplayDenominationConfig;
 pub use market_universe::MarketUniverseConfig;
@@ -199,6 +201,9 @@ pub struct KeroseneConfig {
     /// Whether the main window has an exterior gutter matching pane dividers.
     #[serde(default = "default_true")]
     pub outer_widget_border_enabled: bool,
+    /// Padding applied inside pane widgets, with optional per-widget overrides.
+    #[serde(default)]
+    pub widget_padding: WidgetPaddingConfig,
     /// Whether Kerosene draws its own OS title bar instead of using native window chrome.
     #[serde(default = "default_true")]
     pub custom_window_chrome_enabled: bool,

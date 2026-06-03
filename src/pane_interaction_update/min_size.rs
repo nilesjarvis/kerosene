@@ -39,8 +39,24 @@ impl TradingTerminal {
             return ratio;
         }
 
-        let min_a = subtree_min_length(a, axis, &self.panes, base_min_size, pane_border_thickness);
-        let min_b = subtree_min_length(b, axis, &self.panes, base_min_size, pane_border_thickness);
+        let min_a = subtree_min_length(
+            a,
+            axis,
+            &self.panes,
+            base_min_size,
+            pane_border_thickness,
+            self.widget_padding_default,
+            &self.widget_padding_overrides,
+        );
+        let min_b = subtree_min_length(
+            b,
+            axis,
+            &self.panes,
+            base_min_size,
+            pane_border_thickness,
+            self.widget_padding_default,
+            &self.widget_padding_overrides,
+        );
         let axis_length = match axis {
             pane_grid::Axis::Horizontal => region.height,
             pane_grid::Axis::Vertical => region.width,
@@ -77,6 +93,8 @@ impl TradingTerminal {
                 &self.panes,
                 base_min_size,
                 self.pane_border_thickness,
+                self.widget_padding_default,
+                &self.widget_padding_overrides,
             ) + self.outer_widget_border_padding() * 2.0,
             subtree_min_length(
                 layout,
@@ -84,6 +102,8 @@ impl TradingTerminal {
                 &self.panes,
                 base_min_size,
                 self.pane_border_thickness,
+                self.widget_padding_default,
+                &self.widget_padding_overrides,
             ) + self.main_chrome_height(),
         )
     }
@@ -121,13 +141,27 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use crate::app_state::TradingTerminal;
-    use crate::config::KeroseneConfig;
+    use crate::config::{KeroseneConfig, WidgetPaddingConfig};
 
     fn terminal_with_outer_widget_border(enabled: bool) -> TradingTerminal {
         let config = KeroseneConfig {
             main_window_width: Some(1600.0),
             main_window_height: Some(960.0),
             outer_widget_border_enabled: enabled,
+            ..KeroseneConfig::default()
+        };
+        let (terminal, _task) = TradingTerminal::boot_from_config(config);
+        terminal
+    }
+
+    fn terminal_with_widget_padding(padding: f32) -> TradingTerminal {
+        let config = KeroseneConfig {
+            main_window_width: Some(1600.0),
+            main_window_height: Some(960.0),
+            widget_padding: WidgetPaddingConfig {
+                default_px: padding,
+                overrides: Vec::new(),
+            },
             ..KeroseneConfig::default()
         };
         let (terminal, _task) = TradingTerminal::boot_from_config(config);
@@ -164,6 +198,21 @@ mod tests {
         assert_eq!(
             enabled.main_window_min_size().height,
             disabled.main_window_min_size().height
+        );
+    }
+
+    #[test]
+    fn widget_padding_updates_main_window_min_size() {
+        let compact = terminal_with_widget_padding(0.0);
+        let padded = terminal_with_widget_padding(10.0);
+
+        assert_eq!(
+            padded.main_window_min_size().width,
+            compact.main_window_min_size().width + 40.0
+        );
+        assert_eq!(
+            padded.main_window_min_size().height,
+            compact.main_window_min_size().height + 40.0
         );
     }
 }

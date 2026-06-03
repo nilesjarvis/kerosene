@@ -3,7 +3,9 @@ use crate::config::wallets::{default_wallet_tracker_height, default_wallet_track
 use crate::config::{
     OrderPresetsConfig, WalletTrackerConfig, default_custom_themes, default_theme,
 };
-use crate::pane_state::{DEFAULT_PANE_BORDER_THICKNESS, DEFAULT_PANE_CORNER_RADIUS};
+use crate::pane_state::{
+    DEFAULT_PANE_BORDER_THICKNESS, DEFAULT_PANE_CORNER_RADIUS, DEFAULT_WIDGET_PADDING,
+};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -89,6 +91,8 @@ pub const MIN_PANE_BORDER_THICKNESS: f32 = 1.0;
 pub const MAX_PANE_BORDER_THICKNESS: f32 = 12.0;
 pub const MIN_PANE_CORNER_RADIUS: f32 = 0.0;
 pub const MAX_PANE_CORNER_RADIUS: f32 = 16.0;
+pub const MIN_WIDGET_PADDING: f32 = 0.0;
+pub const MAX_WIDGET_PADDING: f32 = 32.0;
 
 pub fn default_ui_scale() -> f32 {
     DEFAULT_UI_SCALE
@@ -203,6 +207,10 @@ pub fn default_pane_corner_radius() -> f32 {
     DEFAULT_PANE_CORNER_RADIUS
 }
 
+pub fn default_widget_padding() -> f32 {
+    DEFAULT_WIDGET_PADDING
+}
+
 pub fn normalize_pane_border_thickness(value: f32) -> f32 {
     if value.is_finite() {
         value.clamp(MIN_PANE_BORDER_THICKNESS, MAX_PANE_BORDER_THICKNESS)
@@ -216,6 +224,14 @@ pub fn normalize_pane_corner_radius(value: f32) -> f32 {
         value.clamp(MIN_PANE_CORNER_RADIUS, MAX_PANE_CORNER_RADIUS)
     } else {
         default_pane_corner_radius()
+    }
+}
+
+pub fn normalize_widget_padding(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_WIDGET_PADDING, MAX_WIDGET_PADDING)
+    } else {
+        default_widget_padding()
     }
 }
 
@@ -267,6 +283,7 @@ impl Default for KeroseneConfig {
             pane_border_thickness: default_pane_border_thickness(),
             pane_corner_radius: default_pane_corner_radius(),
             outer_widget_border_enabled: true,
+            widget_padding: Default::default(),
             custom_window_chrome_enabled: true,
             book_tick_size: default_tick_size(),
             symbol_search_sort_mode: default_symbol_search_sort_mode(),

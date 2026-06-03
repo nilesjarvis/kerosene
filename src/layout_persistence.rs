@@ -77,6 +77,7 @@ impl TradingTerminal {
         self.prune_chart_surface_state();
 
         self.restore_layout_panes(&layout);
+        self.apply_widget_padding_config(&layout.widget_padding);
         boot_tasks.push(self.restore_layout_order_books(&layout));
         self.restore_layout_live_watchlists(&layout);
         boot_tasks.push(self.restore_layout_positioning_infos(&layout));

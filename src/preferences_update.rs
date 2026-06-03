@@ -177,6 +177,28 @@ impl TradingTerminal {
                 self.persist_config();
                 return self.sync_main_window_min_size();
             }
+            Message::DefaultWidgetPaddingChanged(value) => {
+                let before = self.widget_padding_default;
+                self.set_default_widget_padding(value);
+                if (self.widget_padding_default - before).abs() > f32::EPSILON {
+                    self.persist_config();
+                    return self.sync_main_window_min_size();
+                }
+            }
+            Message::FocusedWidgetPaddingChanged(value) => {
+                let before = self.focused_widget_padding();
+                if self.set_focused_widget_padding(value) && self.focused_widget_padding() != before
+                {
+                    self.persist_config();
+                    return self.sync_main_window_min_size();
+                }
+            }
+            Message::ResetFocusedWidgetPadding => {
+                if self.reset_focused_widget_padding() {
+                    self.persist_config();
+                    return self.sync_main_window_min_size();
+                }
+            }
             Message::ToggleCustomWindowChrome(enabled)
                 if self.custom_window_chrome_enabled != enabled =>
             {

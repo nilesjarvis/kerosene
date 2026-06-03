@@ -1,6 +1,8 @@
+use crate::config::WidgetPaddingTargetConfig;
 use crate::pane_state::PaneKind;
 
 use iced::widget::pane_grid;
+use std::collections::BTreeMap;
 
 const ORDER_ENTRY_MIN_WIDTH: f32 = 300.0;
 const ORDER_ENTRY_MIN_HEIGHT: f32 = 360.0;
@@ -45,6 +47,8 @@ pub(super) fn subtree_min_length(
     panes: &pane_grid::State<PaneKind>,
     base_min_size: f32,
     pane_border_thickness: f32,
+    widget_padding_default: f32,
+    widget_padding_overrides: &BTreeMap<WidgetPaddingTargetConfig, f32>,
 ) -> f32 {
     match node {
         pane_grid::Node::Split { axis, a, b, .. } => {
@@ -54,6 +58,8 @@ pub(super) fn subtree_min_length(
                 panes,
                 base_min_size,
                 pane_border_thickness,
+                widget_padding_default,
+                widget_padding_overrides,
             );
             let min_b = subtree_min_length(
                 b,
@@ -61,6 +67,8 @@ pub(super) fn subtree_min_length(
                 panes,
                 base_min_size,
                 pane_border_thickness,
+                widget_padding_default,
+                widget_padding_overrides,
             );
 
             if *axis == measured_axis {
@@ -71,17 +79,45 @@ pub(super) fn subtree_min_length(
         }
         pane_grid::Node::Pane(pane) => panes
             .get(*pane)
-            .map(|kind| pane_min_length(kind, measured_axis, base_min_size))
+            .map(|kind| {
+                pane_min_length(
+                    kind,
+                    measured_axis,
+                    base_min_size,
+                    widget_padding_default,
+                    widget_padding_overrides,
+                )
+            })
             .unwrap_or(base_min_size),
     }
 }
 
-fn pane_min_length(kind: &PaneKind, axis: pane_grid::Axis, base_min_size: f32) -> f32 {
-    match (kind, axis) {
+fn pane_min_length(
+    kind: &PaneKind,
+    axis: pane_grid::Axis,
+    base_min_size: f32,
+    widget_padding_default: f32,
+    widget_padding_overrides: &BTreeMap<WidgetPaddingTargetConfig, f32>,
+) -> f32 {
+    let content_min = match (kind, axis) {
         (PaneKind::OrderEntry, pane_grid::Axis::Horizontal) => ORDER_ENTRY_MIN_HEIGHT,
         (PaneKind::OrderEntry, pane_grid::Axis::Vertical) => ORDER_ENTRY_MIN_WIDTH,
         _ => base_min_size,
-    }
+    };
+    content_min
+        + widget_padding_for_kind(kind, widget_padding_default, widget_padding_overrides) * 2.0
+}
+
+fn widget_padding_for_kind(
+    kind: &PaneKind,
+    widget_padding_default: f32,
+    widget_padding_overrides: &BTreeMap<WidgetPaddingTargetConfig, f32>,
+) -> f32 {
+    let target = WidgetPaddingTargetConfig::from_pane_kind(kind);
+    widget_padding_overrides
+        .get(&target)
+        .copied()
+        .unwrap_or(widget_padding_default)
 }
 
 pub(in crate::pane_interaction_update) fn clamp_split_ratio(

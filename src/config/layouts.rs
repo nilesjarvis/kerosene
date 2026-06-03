@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 use super::{
     ChartConfig, CustomThemeConfig, LiveWatchlistConfig, OrderBookConfig, OrderPresetsConfig,
     PositioningInfoConfig, SpaghettiChartConfig, default_custom_themes, default_order_kind,
-    default_symbol, default_timeframe,
+    default_symbol, default_timeframe, default_widget_padding, normalize_widget_padding,
 };
+use std::collections::BTreeMap;
 
 /// Persisted axis for a pane split.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -67,6 +68,77 @@ pub enum PaneKindConfig {
     Unsupported,
 }
 
+/// Stable identity for widget-level appearance overrides.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum WidgetPaddingTargetConfig {
+    Chart { chart_id: u64 },
+    OrderBook { id: u64 },
+    Watchlist,
+    LiveWatchlist { id: u64 },
+    PositioningInfo { id: u64 },
+
+    Portfolio,
+    Income,
+    BottomTabs,
+    OrderEntry,
+    AdvancedOrders,
+    SpaghettiChart { spaghetti_id: u64 },
+    Settings,
+    Calendar,
+    Liquidations,
+    LiquidationsDistribution,
+    TrackedTrades,
+    TelegramFeed,
+    XFeed,
+    Outcomes,
+    HypeEtfs,
+    HypeUnstakingQueue,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WidgetPaddingOverrideConfig {
+    pub target: WidgetPaddingTargetConfig,
+    pub padding_px: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WidgetPaddingConfig {
+    #[serde(default = "default_widget_padding")]
+    pub default_px: f32,
+    #[serde(default)]
+    pub overrides: Vec<WidgetPaddingOverrideConfig>,
+}
+
+impl Default for WidgetPaddingConfig {
+    fn default() -> Self {
+        Self {
+            default_px: default_widget_padding(),
+            overrides: Vec::new(),
+        }
+    }
+}
+
+impl WidgetPaddingConfig {
+    pub fn normalized(self) -> Self {
+        let default_px = normalize_widget_padding(self.default_px);
+        let mut overrides = BTreeMap::new();
+
+        for item in self.overrides {
+            let padding_px = normalize_widget_padding(item.padding_px);
+            overrides.insert(item.target, padding_px);
+        }
+
+        Self {
+            default_px,
+            overrides: overrides
+                .into_iter()
+                .filter(|(_, padding_px)| (*padding_px - default_px).abs() > f32::EPSILON)
+                .map(|(target, padding_px)| WidgetPaddingOverrideConfig { target, padding_px })
+                .collect(),
+        }
+    }
+}
+
 /// Persisted pane-grid tree.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PaneLayoutConfig {
@@ -120,6 +192,8 @@ pub struct SavedLayout {
     pub positioning_infos: Vec<PositioningInfoConfig>,
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,
+    #[serde(default)]
+    pub widget_padding: WidgetPaddingConfig,
 
     #[serde(default = "default_symbol")]
     pub active_symbol: String,

@@ -47,6 +47,16 @@ impl TradingTerminal {
             }
 
             let content = self.view_pane_content(pane, kind, chart_count);
+            let widget_padding = self.widget_padding_for_kind(kind);
+            let content = if widget_padding > 0.0 {
+                container(content)
+                    .width(Fill)
+                    .height(Fill)
+                    .padding(widget_padding)
+                    .into()
+            } else {
+                content
+            };
             let close_btn = pane_close_button(pane, pane_count, kind.can_be_closed());
             let controls_row = if let PaneKind::Chart(chart_id) = kind {
                 let header_collapsed = self

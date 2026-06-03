@@ -29,6 +29,7 @@ pub use fonts::{CustomFontConfig, DisplayFontConfig};
 pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};
 pub use layouts::{
     AxisConfig, BottomTabConfig, PaneKindConfig, PaneLayoutConfig, SavedLayout,
+    WidgetPaddingConfig, WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig,
     prune_unsupported_pane_layout,
 };
 pub use live_watchlist::{
@@ -58,20 +59,22 @@ pub use schema::{
     MAX_ALFRED_POPUP_SCALE, MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
     MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
     MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
-    MAX_UI_SCALE, MIN_ALFRED_POPUP_SCALE, MIN_CHART_CHROMATIC_ABERRATION_STRENGTH,
-    MIN_CHART_CROSSHAIR_SCALE, MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH,
-    MIN_CHART_FISHEYE_STRENGTH, MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS,
-    MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, MarketUniverseConfig, ToastPosition,
+    MAX_UI_SCALE, MAX_WIDGET_PADDING, MIN_ALFRED_POPUP_SCALE,
+    MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
+    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH, MIN_CHART_FISHEYE_STRENGTH,
+    MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
+    MIN_UI_SCALE, MIN_WIDGET_PADDING, MarketUniverseConfig, ToastPosition,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
     default_chart_fisheye_strength, default_layout_ratios, default_liquidation_alert_threshold,
     default_market_slippage_pct, default_order_kind, default_pane_border_thickness,
     default_pane_corner_radius, default_symbol, default_tick_size, default_timeframe,
-    new_secret_id, normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
-    normalize_chart_crosshair_scale, normalize_chart_dotted_background_opacity,
-    normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
-    normalize_chart_hud_order_sound_volume, normalize_market_slippage_pct,
-    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
+    default_widget_padding, new_secret_id, normalize_alfred_popup_scale,
+    normalize_chart_chromatic_aberration_strength, normalize_chart_crosshair_scale,
+    normalize_chart_dotted_background_opacity, normalize_chart_edge_blur_strength,
+    normalize_chart_fisheye_strength, normalize_chart_hud_order_sound_volume,
+    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
+    normalize_ui_scale, normalize_widget_padding,
 };
 pub use screenshot::ChartScreenshotSettingsConfig;
 pub(crate) use secrets::load_profile_secrets as load_legacy_profile_secrets;

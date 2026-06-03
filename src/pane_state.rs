@@ -6,6 +6,7 @@ use crate::spaghetti_state::SpaghettiChartId;
 
 pub(crate) const DEFAULT_PANE_BORDER_THICKNESS: f32 = 4.0;
 pub(crate) const DEFAULT_PANE_CORNER_RADIUS: f32 = 6.0;
+pub(crate) const DEFAULT_WIDGET_PADDING: f32 = 0.0;
 
 #[derive(Debug, Clone)]
 pub(crate) enum PaneKind {

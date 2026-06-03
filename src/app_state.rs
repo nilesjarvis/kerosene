@@ -83,6 +83,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) pane_border_thickness: f32,
     pub(crate) pane_corner_radius: f32,
     pub(crate) outer_widget_border_enabled: bool,
+    pub(crate) widget_padding_default: f32,
+    pub(crate) widget_padding_overrides: BTreeMap<config::WidgetPaddingTargetConfig, f32>,
     pub(crate) custom_window_chrome_enabled: bool,
     pub(crate) custom_window_chrome_active: bool,
     pub(crate) hotkeys: Vec<config::HotkeyConfig>,

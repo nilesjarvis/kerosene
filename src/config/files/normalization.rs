@@ -71,6 +71,10 @@ fn normalize_pane_chrome(config: &mut KeroseneConfig) {
         normalize_chart_hud_order_sound_volume(config.chart_hud_order_sound_volume);
     config.pane_border_thickness = normalize_pane_border_thickness(config.pane_border_thickness);
     config.pane_corner_radius = normalize_pane_corner_radius(config.pane_corner_radius);
+    config.widget_padding = config.widget_padding.clone().normalized();
+    for layout in &mut config.saved_layouts {
+        layout.widget_padding = layout.widget_padding.clone().normalized();
+    }
 }
 
 fn normalize_fonts(config: &mut KeroseneConfig) {
