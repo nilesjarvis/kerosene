@@ -4,12 +4,12 @@ use crate::helpers::{
     format_decimal_with_commas, normalize_two_decimal_display_value, signed_number_color,
 };
 use crate::journal::{AggregatedTrade, JournalFilter};
+use crate::journal_views::style::{JOURNAL_PANEL_PADDING, journal_panel_style, journal_pill_style};
 use crate::message::Message;
 use crate::portfolio_state::{PORTFOLIO_WINDOWS, PortfolioWindow};
 
-use iced::widget::container as container_style;
 use iced::widget::{Space, button, canvas, checkbox, column, container, row, rule, text};
-use iced::{Alignment, Color, Element, Fill, Theme};
+use iced::{Alignment, Element, Fill};
 
 mod drawing;
 mod outcome;
@@ -135,10 +135,10 @@ impl TradingTerminal {
         .height(Fill);
 
         container(content)
-            .padding([14, 16])
+            .padding(JOURNAL_PANEL_PADDING)
             .width(Fill)
             .height(372)
-            .style(|theme: &Theme| summary_panel_style(theme))
+            .style(journal_panel_style)
             .into()
     }
 
@@ -196,7 +196,6 @@ fn journal_timeframe_button(
     active: bool,
     msg: Message,
 ) -> Element<'static, Message> {
-    let mint = journal_chart_mint();
     button(
         text(label)
             .size(11)
@@ -204,39 +203,7 @@ fn journal_timeframe_button(
     )
     .on_press(msg)
     .padding([3, 9])
-    .style(move |theme: &Theme, status| {
-        let muted = theme.extended_palette().background.weak.text;
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        let background = if active {
-            Color { a: 0.16, ..mint }
-        } else if hovered {
-            Color { a: 0.08, ..mint }
-        } else {
-            Color {
-                a: 0.025,
-                ..theme.palette().text
-            }
-        };
-        let border_color = if active || hovered {
-            Color { a: 0.38, ..mint }
-        } else {
-            Color {
-                a: 0.10,
-                ..theme.palette().text
-            }
-        };
-
-        button::Style {
-            background: Some(background.into()),
-            text_color: if active { mint } else { muted },
-            border: iced::Border {
-                radius: 999.0.into(),
-                width: 1.0,
-                color: border_color,
-            },
-            ..Default::default()
-        }
-    })
+    .style(journal_pill_style(active))
     .into()
 }
 
@@ -296,44 +263,6 @@ fn trade_count_label(total_closed: usize) -> String {
         "1 Trade".to_string()
     } else {
         format!("{total_closed} Trades")
-    }
-}
-
-fn summary_panel_style(theme: &Theme) -> container_style::Style {
-    let mut shadow_color = Color::BLACK;
-    shadow_color.a = 0.24;
-
-    container_style::Style {
-        background: Some(
-            Color {
-                a: 0.94,
-                ..theme.extended_palette().background.strong.color
-            }
-            .into(),
-        ),
-        border: iced::Border {
-            color: Color {
-                a: 0.14,
-                ..journal_chart_mint()
-            },
-            width: 1.0,
-            radius: 14.0.into(),
-        },
-        shadow: iced::Shadow {
-            color: shadow_color,
-            offset: iced::Vector::new(0.0, 8.0),
-            blur_radius: 22.0,
-        },
-        ..Default::default()
-    }
-}
-
-fn journal_chart_mint() -> Color {
-    Color {
-        r: 0.16,
-        g: 0.94,
-        b: 0.78,
-        a: 1.0,
     }
 }
 

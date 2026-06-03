@@ -1,8 +1,9 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::journal_views::style::journal_accent_mint;
 use crate::message::Message;
 use iced::widget::container as container_style;
-use iced::widget::{Column, container, text};
+use iced::widget::{Column, Space, container, row, text};
 use iced::{Fill, Theme};
 
 impl TradingTerminal {
@@ -55,29 +56,48 @@ impl TradingTerminal {
         visible_trade_count: usize,
         theme: &Theme,
     ) -> Column<'a, Message> {
-        let mut status_parts = Vec::new();
-        if visible_fill_count > 0 || visible_trade_count > 0 {
-            status_parts.push(format!("{} fills", visible_fill_count));
-            status_parts.push(format!("{} trades", visible_trade_count));
-        }
-        if let Some(last_refresh_time) = self.journal.last_refresh_time {
-            status_parts.push(format!(
-                "Synced {}",
-                helpers::format_timestamp_exact(last_refresh_time)
-            ));
-        }
-        if self.journal.loading && visible_trade_count > 0 {
-            status_parts.push("Syncing history".to_string());
+        let muted = theme.extended_palette().background.weak.text;
+        let has_counts = visible_fill_count > 0 || visible_trade_count > 0;
+        let is_syncing = self.journal.loading && visible_trade_count > 0;
+
+        if !has_counts && self.journal.last_refresh_time.is_none() && !is_syncing {
+            return content;
         }
 
-        if status_parts.is_empty() {
-            content
-        } else {
-            content.push(
-                text(status_parts.join("  |  "))
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text),
-            )
+        let mut status_row = row![].spacing(8).align_y(iced::Alignment::Center);
+
+        if has_counts {
+            status_row = status_row.push(
+                text(format!(
+                    "{} fills  |  {} trades",
+                    visible_fill_count, visible_trade_count
+                ))
+                .size(11)
+                .color(muted),
+            );
         }
+
+        if let Some(last_refresh_time) = self.journal.last_refresh_time {
+            status_row = status_row.push(
+                text(format!(
+                    "Synced {}",
+                    helpers::format_timestamp_exact(last_refresh_time)
+                ))
+                .size(11)
+                .color(theme.palette().success),
+            );
+        }
+
+        status_row = status_row.push(Space::new().width(Fill));
+
+        if is_syncing {
+            status_row = status_row.push(
+                text("Syncing history...")
+                    .size(11)
+                    .color(journal_accent_mint()),
+            );
+        }
+
+        content.push(status_row)
     }
 }

@@ -3,10 +3,10 @@ mod rows;
 
 use super::stats::JournalAssetStats;
 use crate::app_state::TradingTerminal;
+use crate::journal_views::style::{JOURNAL_PANEL_PADDING, journal_panel_style};
 use crate::message::Message;
-use iced::widget::container as container_style;
 use iced::widget::{Column, Space, button, container, row, scrollable, text};
-use iced::{Element, Fill, Theme, color};
+use iced::{Element, Fill};
 
 impl TradingTerminal {
     pub(super) fn view_journal_top_assets_box<'a>(
@@ -27,8 +27,8 @@ impl TradingTerminal {
                 } else {
                     "Most Traded"
                 })
-                .size(11)
-                .color(color!(0x888888)),
+                .size(14)
+                .color(theme.palette().text),
                 Space::new().width(Fill),
                 button(
                     text(if self.journal.show_all_assets {
@@ -87,17 +87,9 @@ impl TradingTerminal {
         }
 
         container(top_assets_col)
-            .padding([12, 16])
+            .padding(JOURNAL_PANEL_PADDING)
             .width(Fill)
-            .style(move |theme: &Theme| container_style::Style {
-                background: Some(theme.extended_palette().background.strong.color.into()),
-                border: iced::Border {
-                    color: theme.extended_palette().background.weak.color,
-                    width: 1.0,
-                    radius: 8.0.into(),
-                },
-                ..Default::default()
-            })
+            .style(journal_panel_style)
             .into()
     }
 }

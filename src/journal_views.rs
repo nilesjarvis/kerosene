@@ -1,5 +1,6 @@
 mod header;
 mod status;
+mod style;
 mod summary;
 mod trade_card;
 mod trades;
