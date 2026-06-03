@@ -20,7 +20,9 @@ pub(super) fn push_asset_context_columns<'a>(
     theme: &Theme,
     chart_id: ChartId,
     ctx: &'a AssetContext,
+    symbol_display: &str,
     chart_price: f64,
+    asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
 ) -> Row<'a, Message> {
@@ -30,11 +32,20 @@ pub(super) fn push_asset_context_columns<'a>(
             theme,
             chart_id,
             ctx,
+            symbol_display,
             chart_price,
+            asset_volume_as_notional,
             open_interest_as_notional,
             visibility,
         )
     } else {
-        push_spot_metric_columns(header_row, theme, ctx)
+        push_spot_metric_columns(
+            header_row,
+            theme,
+            chart_id,
+            ctx,
+            symbol_display,
+            asset_volume_as_notional,
+        )
     }
 }

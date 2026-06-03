@@ -11,9 +11,12 @@ mod formatting;
 
 #[cfg(test)]
 use formatting::format_open_interest_notional;
+#[cfg(test)]
+use formatting::format_volume;
 use formatting::{
-    format_funding_pct, format_metric_price, format_open_interest, format_outcome_volume,
-    format_volume, open_interest_label, outcome_volume_label, parse_ctx_f64,
+    asset_volume_label, format_asset_volume, format_funding_pct, format_metric_price,
+    format_open_interest, format_outcome_volume, open_interest_label, outcome_volume_label,
+    parse_ctx_f64,
 };
 
 const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
@@ -79,7 +82,9 @@ pub(super) fn push_perp_metric_columns<'a>(
     theme: &Theme,
     chart_id: ChartId,
     ctx: &'a AssetContext,
+    symbol_display: &str,
     chart_price: f64,
+    asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
 ) -> Row<'a, Message> {
@@ -92,6 +97,23 @@ pub(super) fn push_perp_metric_columns<'a>(
     let mark = parse_ctx_f64(ctx.mark_px.as_deref());
     let oracle = parse_ctx_f64(ctx.oracle_px.as_deref());
     let oi = parse_ctx_f64(ctx.open_interest.as_deref());
+    let base_volume = parse_ctx_f64(ctx.day_base_vlm.as_deref());
+    let notional_volume = parse_ctx_f64(ctx.day_ntl_vlm.as_deref());
+
+    if visibility.show_24h_volume {
+        header_row = header_row.push(clickable_metric_column(
+            asset_volume_label(asset_volume_as_notional),
+            format_asset_volume(
+                base_volume,
+                notional_volume,
+                asset_volume_as_notional,
+                symbol_display,
+            ),
+            theme.palette().text,
+            theme,
+            Message::ToggleAssetVolumeNotional(chart_id),
+        ));
+    }
 
     if visibility.show_mark_oracle {
         header_row = header_row.push(metric_column(
@@ -131,14 +153,24 @@ pub(super) fn push_perp_metric_columns<'a>(
 pub(super) fn push_spot_metric_columns<'a>(
     mut header_row: Row<'a, Message>,
     theme: &Theme,
+    chart_id: ChartId,
     ctx: &'a AssetContext,
+    symbol_display: &str,
+    asset_volume_as_notional: bool,
 ) -> Row<'a, Message> {
-    let vlm = parse_ctx_f64(ctx.day_ntl_vlm.as_deref());
-    header_row = header_row.push(metric_column(
-        "24h Vol".to_string(),
-        format_volume(vlm),
+    let base_volume = parse_ctx_f64(ctx.day_base_vlm.as_deref());
+    let notional_volume = parse_ctx_f64(ctx.day_ntl_vlm.as_deref());
+    header_row = header_row.push(clickable_metric_column(
+        asset_volume_label(asset_volume_as_notional),
+        format_asset_volume(
+            base_volume,
+            notional_volume,
+            asset_volume_as_notional,
+            symbol_display,
+        ),
         theme.palette().text,
         theme,
+        Message::ToggleAssetVolumeNotional(chart_id),
     ));
 
     if let Some(mid) = &ctx.mid_px {

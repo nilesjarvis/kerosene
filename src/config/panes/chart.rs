@@ -101,6 +101,9 @@ pub struct ChartConfig {
     /// Whether open interest is displayed as USD notional instead of coin amount.
     #[serde(default)]
     pub open_interest_as_notional: bool,
+    /// Whether 24h volume is displayed as USD notional instead of coin amount.
+    #[serde(default = "default_true")]
+    pub asset_volume_as_notional: bool,
     /// Whether HIP-4 volume is displayed as USD notional instead of contracts.
     #[serde(default)]
     pub outcome_volume_as_notional: bool,
@@ -121,6 +124,7 @@ impl ChartConfig {
             funding_panel_height: default_funding_panel_height(),
             macro_indicators: MacroIndicatorsConfig::default(),
             open_interest_as_notional: false,
+            asset_volume_as_notional: true,
             outcome_volume_as_notional: false,
         }
     }

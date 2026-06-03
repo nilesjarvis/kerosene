@@ -555,6 +555,7 @@ pub(crate) enum Message {
     ToggleFundingRateDisplayMode(ChartId),
     FundingRefreshTick,
     ToggleOpenInterestNotional(ChartId),
+    ToggleAssetVolumeNotional(ChartId),
     ToggleOutcomeVolumeNotional(ChartId),
     ChartSymbolSelected(ChartId, String),
     ToggleChartInvert(ChartId),

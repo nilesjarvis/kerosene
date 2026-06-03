@@ -47,6 +47,34 @@ pub(super) fn format_volume(vlm: Option<f64>) -> String {
     format_compact_usd(vlm)
 }
 
+pub(super) fn asset_volume_label(as_notional: bool) -> String {
+    if as_notional {
+        "24h Vol $".to_string()
+    } else {
+        "24h Vol".to_string()
+    }
+}
+
+pub(super) fn format_asset_volume(
+    base_volume: Option<f64>,
+    notional_volume: Option<f64>,
+    as_notional: bool,
+    symbol: &str,
+) -> String {
+    if as_notional {
+        return format_volume(notional_volume);
+    }
+
+    let Some(base_volume) = base_volume else {
+        return invalid_data_placeholder();
+    };
+    if !base_volume.is_finite() || base_volume < 0.0 {
+        return invalid_data_placeholder();
+    }
+
+    format!("{} {}", format_compact_amount(base_volume), symbol)
+}
+
 pub(super) fn outcome_volume_label(as_notional: bool) -> String {
     if as_notional {
         "24h Vol $".to_string()
@@ -78,6 +106,20 @@ fn format_outcome_contract_volume(value: f64) -> String {
         format!("{value:.0} contracts")
     } else {
         format!("{value:.2} contracts")
+    }
+}
+
+fn format_compact_amount(value: f64) -> String {
+    if value >= 1_000_000_000.0 {
+        format!("{:.1}B", value / 1_000_000_000.0)
+    } else if value >= 1_000_000.0 {
+        format!("{:.1}M", value / 1_000_000.0)
+    } else if value >= 1_000.0 {
+        format!("{:.1}K", value / 1_000.0)
+    } else if value >= 1.0 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.4}")
     }
 }
 

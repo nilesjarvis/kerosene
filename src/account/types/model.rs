@@ -125,6 +125,8 @@ pub struct AssetContext {
     pub prev_day_px: Option<String>,
     #[serde(default)]
     pub day_ntl_vlm: Option<String>,
+    #[serde(default)]
+    pub day_base_vlm: Option<String>,
     #[serde(default, rename = "impactPxs")]
     pub impact_pxs: Option<Vec<String>>,
 }

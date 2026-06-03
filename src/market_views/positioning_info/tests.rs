@@ -38,6 +38,7 @@ fn asset_ctx(mark_px: Option<&str>, mid_px: Option<&str>) -> AssetContext {
         mid_px: mid_px.map(str::to_string),
         prev_day_px: None,
         day_ntl_vlm: None,
+        day_base_vlm: None,
         impact_pxs: None,
     }
 }

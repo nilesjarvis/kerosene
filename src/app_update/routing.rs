@@ -438,6 +438,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleFundingRateDisplayMode(_)
         | Message::FundingRefreshTick
         | Message::ToggleOpenInterestNotional(_)
+        | Message::ToggleAssetVolumeNotional(_)
         | Message::ToggleOutcomeVolumeNotional(_)
         | Message::ChartSymbolSelected(_, _)
         | Message::ToggleChartInvert(_)

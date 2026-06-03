@@ -13,6 +13,7 @@ fn asset_ctx(impact_pxs: Option<Vec<&str>>) -> AssetContext {
         mid_px: None,
         prev_day_px: None,
         day_ntl_vlm: None,
+        day_base_vlm: None,
         impact_pxs: impact_pxs.map(|values| values.into_iter().map(str::to_string).collect()),
     }
 }

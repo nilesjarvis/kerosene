@@ -15,6 +15,7 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         funding_panel_height: 56,
         macro_indicators: MacroIndicatorsConfig::default(),
         open_interest_as_notional: false,
+        asset_volume_as_notional: false,
         outcome_volume_as_notional: false,
     }];
 
@@ -40,4 +41,10 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
             .show_earnings_markers
     );
     assert!(charts.get(&3).expect("chart instance").header_collapsed);
+    assert!(
+        !charts
+            .get(&3)
+            .expect("chart instance")
+            .asset_volume_as_notional
+    );
 }

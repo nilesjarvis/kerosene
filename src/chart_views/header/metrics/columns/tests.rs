@@ -1,7 +1,7 @@
 use super::{
-    ChartHeaderMetricVisibility, format_funding_pct, format_open_interest,
-    format_open_interest_notional, format_outcome_volume, format_volume, open_interest_label,
-    outcome_volume_label, parse_ctx_f64,
+    ChartHeaderMetricVisibility, asset_volume_label, format_asset_volume, format_funding_pct,
+    format_open_interest, format_open_interest_notional, format_outcome_volume, format_volume,
+    open_interest_label, outcome_volume_label, parse_ctx_f64,
 };
 use crate::api::OutcomeVolume24h;
 
@@ -54,6 +54,28 @@ fn outcome_volume_formats_contracts_and_notional() {
     assert_eq!(format_outcome_volume(volume, true), "$4.5K");
     assert_eq!(outcome_volume_label(false), "24h Vol");
     assert_eq!(outcome_volume_label(true), "24h Vol $");
+}
+
+#[test]
+fn asset_volume_formats_coin_and_notional_modes() {
+    assert_eq!(
+        format_asset_volume(Some(1_500.0), Some(3_750_000.0), false, "HYPE"),
+        "1.5K HYPE"
+    );
+    assert_eq!(
+        format_asset_volume(Some(1_500.0), Some(3_750_000.0), true, "HYPE"),
+        "$3.75M"
+    );
+    assert_eq!(
+        format_asset_volume(None, Some(3_750_000.0), false, "HYPE"),
+        "Invalid data"
+    );
+    assert_eq!(
+        format_asset_volume(Some(1_500.0), None, true, "HYPE"),
+        "Invalid data"
+    );
+    assert_eq!(asset_volume_label(false), "24h Vol");
+    assert_eq!(asset_volume_label(true), "24h Vol $");
 }
 
 #[test]
