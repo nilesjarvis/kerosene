@@ -86,6 +86,9 @@ pub struct ChartConfig {
     /// Whether user fills are shown as buy/sell trade dots.
     #[serde(default)]
     pub show_trade_markers: bool,
+    /// Whether SEC earnings-release markers are shown for eligible stock charts.
+    #[serde(default)]
+    pub show_earnings_markers: bool,
     /// Whether the chart header is collapsed to a ticker-only strip.
     #[serde(default)]
     pub header_collapsed: bool,
@@ -113,6 +116,7 @@ impl ChartConfig {
             annotations: Vec::new(),
             inverted: false,
             show_trade_markers: false,
+            show_earnings_markers: false,
             header_collapsed: false,
             funding_panel_height: default_funding_panel_height(),
             macro_indicators: MacroIndicatorsConfig::default(),

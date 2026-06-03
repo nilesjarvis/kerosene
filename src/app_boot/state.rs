@@ -342,6 +342,9 @@ impl TradingTerminal {
             heatmap_data_cache: HashMap::new(),
             heatmap_data_cache_order: VecDeque::new(),
             heatmap_pending_charts: HashMap::new(),
+            sec_earnings_cache: HashMap::new(),
+            sec_earnings_cache_order: VecDeque::new(),
+            sec_earnings_pending_charts: HashMap::new(),
             liquidation_pending_charts: HashMap::new(),
             liquidation_distribution: {
                 let symbol = cfg.liquidation_distribution_symbol.trim().to_string();

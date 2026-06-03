@@ -5,6 +5,7 @@ use iced::Task;
 
 mod candles;
 mod detached;
+mod earnings;
 mod editor;
 mod macro_indicators;
 
@@ -15,6 +16,10 @@ impl TradingTerminal {
             | Message::ToggleMacroIndicator(_, _)
             | Message::MacroCandlesLoaded(_, _, _, _)) => {
                 return self.update_chart_macro_indicators(message);
+            }
+            message @ (Message::ToggleChartEarningsMarkers(_)
+            | Message::ChartEarningsEventsLoaded(_, _)) => {
+                return self.update_chart_earnings(message);
             }
             message @ (Message::ChartSymbolSelected(_, _)
             | Message::ToggleChartInvert(_)
@@ -84,18 +89,32 @@ impl TradingTerminal {
                     }
                 }
             }
-            Message::ChartOrderCancelHoverChanged(id, surface_id, oid, hovering_plot) => {
+            Message::ChartHoverStateChanged(
+                id,
+                surface_id,
+                oid,
+                hovering_plot,
+                earnings_marker_time_ms,
+            ) => {
                 let now_ms = Self::now_ms();
                 if let Some(instance) = self.charts.get_mut(&id)
                     && instance.chart.surface_id() == surface_id
                 {
                     instance.chart.set_order_cancel_hover(oid);
+                    instance
+                        .chart
+                        .set_earnings_marker_hover(earnings_marker_time_ms);
                     instance.chart.record_hud_activity(now_ms, hovering_plot);
                 }
             }
             Message::ChartOrderCancelHoverAnimationTick => {
                 for instance in self.charts.values_mut() {
                     instance.chart.advance_order_cancel_hover_animation();
+                }
+            }
+            Message::ChartEarningsMarkerHoverAnimationTick => {
+                for instance in self.charts.values_mut() {
+                    instance.chart.advance_earnings_marker_hover_animation();
                 }
             }
             Message::ChartWsAssetCtxUpdate(_id, symbol, ctx) => {

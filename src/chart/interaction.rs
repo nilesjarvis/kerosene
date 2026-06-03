@@ -5,7 +5,7 @@ mod hud;
 mod press;
 mod zoom;
 
-use super::{CandlestickChart, ChartState};
+use super::{CandlestickChart, ChartState, VOLUME_REGION_RATIO};
 use crate::chart::fisheye::ChartFisheye;
 use crate::message::Message;
 use iced::Point;
@@ -152,6 +152,14 @@ impl CandlestickChart {
                         )
                     })
                 };
+                let price_h = chart_h * (1.0 - VOLUME_REGION_RATIO);
+                let earnings_marker_time_ms = if was_dragging {
+                    None
+                } else {
+                    projected_cursor.and_then(|cursor| {
+                        self.hit_test_earnings_marker_at(state, cursor.source, chart_w, price_h)
+                    })
+                };
                 let action = self.handle_cursor_moved(
                     state,
                     projected_cursor,
@@ -159,9 +167,11 @@ impl CandlestickChart {
                     layout,
                     needs_redraw_for_cursor,
                 );
-                if let Some(hover_action) =
-                    self.hover_state_action(order_cancel_hover_oid, hovering_plot)
-                {
+                if let Some(hover_action) = self.hover_state_action(
+                    order_cancel_hover_oid,
+                    hovering_plot,
+                    earnings_marker_time_ms,
+                ) {
                     Some(hover_action)
                 } else {
                     action

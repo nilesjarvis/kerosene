@@ -114,6 +114,7 @@ impl TradingTerminal {
                 Self::clear_heatmap_display(instance);
                 Self::clear_liquidation_display(instance);
                 Self::clear_funding_display(instance);
+                Self::clear_earnings_display(instance);
 
                 if let Some(candles) = cached_candles {
                     cached_last_time = candles.last().map(|c| c.open_time);
@@ -133,6 +134,13 @@ impl TradingTerminal {
                 let mut tasks =
                     vec![self.queue_candle_fetch_for(primary_id, &valid_key, tf, cached_last_time)];
                 tasks.extend(Self::fetch_macro_candles_tasks(primary_id, &valid_key));
+                if self
+                    .charts
+                    .get(&primary_id)
+                    .is_some_and(|instance| instance.show_earnings_markers)
+                {
+                    tasks.push(self.maybe_fetch_chart_earnings(primary_id));
+                }
                 candle_task = Task::batch(tasks);
             }
         }

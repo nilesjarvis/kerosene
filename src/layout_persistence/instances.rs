@@ -42,6 +42,8 @@ impl TradingTerminal {
             let tf = Timeframe::from_config_str(&chart_cfg.timeframe);
             let mut instance = ChartInstance::new(id, chart_cfg.symbol.clone(), tf);
             instance.chart.inverted = chart_cfg.inverted;
+            instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
+            instance.show_earnings_markers = chart_cfg.show_earnings_markers;
             instance.header_collapsed = chart_cfg.header_collapsed;
             instance
                 .chart
@@ -81,6 +83,7 @@ impl TradingTerminal {
         }
         self.charts = charts;
         self.next_chart_id = next_chart_id;
+        boot_tasks.push(self.refresh_enabled_earnings_charts());
     }
 
     fn restore_saved_spaghetti_instances(

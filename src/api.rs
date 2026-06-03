@@ -6,6 +6,7 @@ mod hype_unstaking_queue;
 mod order_book;
 mod order_status;
 mod outcome_volume;
+mod sec;
 mod user_fills;
 mod watchlist;
 
@@ -21,6 +22,7 @@ pub(crate) use order_status::{
     OrderStatusResult, fetch_order_status_by_cloid, fetch_order_status_by_oid,
 };
 pub(crate) use outcome_volume::{OutcomeVolume24h, fetch_outcome_volumes_24h};
+pub(crate) use sec::{SecEarningsEvent, fetch_sec_earnings_events};
 pub use user_fills::{UserFill, UserFillsPage, UserFillsRequest, fetch_user_fills};
 pub use watchlist::{
     WatchlistContext, fetch_screener_history, fetch_watchlist_contexts, fetch_watchlist_history,

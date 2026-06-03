@@ -57,6 +57,8 @@ pub struct CandlestickChart {
     pub active_orders: Vec<OrderOverlay>,
     /// Recent user fills on the currently viewed symbol.
     pub trade_markers: Vec<TradeMarker>,
+    /// SEC earnings-release dates rendered as chart time markers.
+    pub earnings_markers: Vec<EarningsMarker>,
     /// Whether recent user fills should be rendered as trade dots.
     pub show_trade_markers: bool,
     /// Whether chart plot backgrounds use a dotted pattern instead of grid lines.
@@ -144,6 +146,10 @@ pub struct CandlestickChart {
     pub(crate) hover_order_cancel_oid: Option<u64>,
     /// Smoothed hover progress for the chart order cancel button.
     pub(crate) order_cancel_hover_progress: f32,
+    /// SEC earnings marker timestamp currently hovered by the cursor.
+    pub(crate) hover_earnings_marker_time_ms: Option<u64>,
+    /// Smoothed hover progress for the SEC earnings marker dot.
+    pub(crate) earnings_marker_hover_progress: f32,
     /// Display-only conversion context for the chart header symbol price.
     pub(crate) display_denomination: DisplayDenominationContext,
 }
@@ -223,6 +229,15 @@ pub struct TradeMarker {
     pub price: f64,
     pub size: f64,
     pub is_buy: bool,
+}
+
+/// Lightweight SEC earnings event info passed to the chart for marker rendering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EarningsMarker {
+    pub time_ms: u64,
+    pub filing_date: String,
+    pub accession_number: String,
+    pub quarter_label: Option<String>,
 }
 
 /// Status of chart data loading.

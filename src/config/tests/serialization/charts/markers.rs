@@ -17,6 +17,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
             annotations: Vec::new(),
             inverted: false,
             show_trade_markers: true,
+            show_earnings_markers: true,
             header_collapsed: true,
             funding_panel_height: 56,
             macro_indicators,
@@ -30,6 +31,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
 
     assert!(decoded.charts[0].show_trade_markers);
+    assert!(decoded.charts[0].show_earnings_markers);
     assert!(decoded.charts[0].header_collapsed);
     assert!(decoded.charts[0].open_interest_as_notional);
     assert!(decoded.charts[0].outcome_volume_as_notional);
@@ -41,8 +43,16 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         value_from_json(legacy_chart, "legacy chart config should deserialize");
 
     assert!(!decoded_chart.show_trade_markers);
+    assert!(decoded_chart.show_earnings_markers);
     assert!(decoded_chart.header_collapsed);
     assert!(decoded_chart.open_interest_as_notional);
+
+    let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
+    object_mut(&mut legacy_chart, "chart config is an object").remove("show_earnings_markers");
+    let decoded_chart: ChartConfig =
+        value_from_json(legacy_chart, "legacy chart config should deserialize");
+
+    assert!(!decoded_chart.show_earnings_markers);
 
     let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
     object_mut(&mut legacy_chart, "chart config is an object").remove("header_collapsed");

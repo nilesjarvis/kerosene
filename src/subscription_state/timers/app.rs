@@ -100,6 +100,17 @@ impl TradingTerminal {
         if self
             .charts
             .values()
+            .any(|instance| instance.chart.earnings_marker_hover_animation_active())
+        {
+            subs.push(
+                iced::time::every(std::time::Duration::from_millis(16))
+                    .map(|_| Message::ChartEarningsMarkerHoverAnimationTick),
+            );
+        }
+
+        if self
+            .charts
+            .values()
             .any(|instance| instance.chart.hud_armed())
         {
             subs.push(

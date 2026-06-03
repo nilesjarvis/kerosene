@@ -1,9 +1,10 @@
+use super::candle_layer::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
 use super::countdown::next_candle_countdown_label;
 use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
 use super::order_cancel_hover::ease_out_cubic;
 use super::state::{ChartState, HudMarketSide, HudOrderKind};
-use super::tooltips::TooltipSurface;
+use super::tooltips::{TooltipLine, TooltipSurface};
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
 use crate::helpers::format_price;
@@ -43,6 +44,7 @@ const HUD_CHAR_WIDTH: f32 = 6.4;
 const HUD_PANEL_PAD: f32 = 7.0;
 const HUD_MARKET_TARGET_RADIUS: f32 = 11.5;
 const HUD_MARKET_TARGET_LINE_GAP: f32 = HUD_MARKET_TARGET_RADIUS + 6.0;
+const EARNINGS_HOVER_RADIUS: f32 = 8.5;
 
 pub(super) struct CrosshairOverlayContext<'a, PriceToY>
 where
@@ -75,6 +77,10 @@ impl CandlestickChart {
         };
         let drawable_h = ctx.chart_h + ctx.funding_panel_h;
         if data_pos.x >= ctx.chart_w || data_pos.y >= drawable_h {
+            return;
+        }
+        if self.earnings_marker_hover_overlay_active(ctx.state, ctx.chart_w) {
+            self.draw_earnings_marker_hover(ctx);
             return;
         }
         if hud_game_panels_visible(
@@ -167,6 +173,7 @@ impl CandlestickChart {
         }
 
         if data_pos.y > ctx.price_h || ctx.price_range <= 0.0 {
+            self.draw_earnings_marker_hover(ctx);
             return;
         }
 
@@ -223,6 +230,121 @@ impl CandlestickChart {
             },
             &projected_price_to_y,
         );
+        self.draw_earnings_marker_hover(ctx);
+    }
+
+    fn earnings_marker_hover_overlay_active(&self, state: &ChartState, chart_w: f32) -> bool {
+        let Some(time_ms) = self.hover_earnings_marker_time_ms else {
+            return false;
+        };
+        self.earnings_markers
+            .iter()
+            .any(|marker| marker.time_ms == time_ms)
+            && self
+                .timestamp_to_x(time_ms, state, chart_w)
+                .is_some_and(|x| x.is_finite() && x >= 0.0 && x <= chart_w)
+    }
+
+    fn draw_earnings_marker_hover<PriceToY>(&self, ctx: &mut CrosshairOverlayContext<'_, PriceToY>)
+    where
+        PriceToY: Fn(f64) -> f32,
+    {
+        let Some(time_ms) = self.hover_earnings_marker_time_ms else {
+            return;
+        };
+        let hover = self.earnings_marker_hover_progress_for(time_ms);
+        if hover <= 0.01 || ctx.chart_w <= 0.0 || ctx.price_h <= 0.0 {
+            return;
+        }
+        let Some(marker) = self
+            .earnings_markers
+            .iter()
+            .find(|marker| marker.time_ms == time_ms)
+        else {
+            return;
+        };
+        let Some(x) = self.timestamp_to_x(time_ms, ctx.state, ctx.chart_w) else {
+            return;
+        };
+        if !x.is_finite() || x < 0.0 || x > ctx.chart_w {
+            return;
+        }
+
+        let source_center = Point::new(x, earnings_marker_dot_y(ctx.price_h));
+        let visual_center = ctx.fisheye.project(source_center);
+        let accent = ctx.theme.palette().primary;
+        let radius = hud_lerp(EARNINGS_DOT_RADIUS, EARNINGS_HOVER_RADIUS, hover);
+        ctx.fisheye.fill_projected_circle(
+            ctx.frame,
+            source_center,
+            radius + 3.5 * hover,
+            Color {
+                a: 0.14 * hover,
+                ..accent
+            },
+        );
+        ctx.fisheye.fill_projected_circle(
+            ctx.frame,
+            source_center,
+            radius,
+            Color {
+                a: hud_lerp(0.72, 0.9, hover),
+                ..accent
+            },
+        );
+        ctx.fisheye.stroke_projected_circle(
+            ctx.frame,
+            source_center,
+            radius,
+            canvas::Stroke::default()
+                .with_color(Color {
+                    a: 0.32 + 0.38 * hover,
+                    ..Color::WHITE
+                })
+                .with_width(0.75 + 0.35 * hover),
+        );
+
+        let mut lines = Vec::with_capacity(3);
+        lines.push(TooltipLine {
+            content: format!(
+                "EARN {}",
+                marker.quarter_label.as_deref().unwrap_or("Quarter unknown")
+            ),
+            color: Color {
+                a: 0.74,
+                ..ctx.theme.palette().text
+            },
+        });
+        if !marker.accession_number.is_empty() {
+            lines.push(TooltipLine {
+                content: format!("Filing # {}", marker.accession_number),
+                color: accent,
+            });
+        }
+        if !marker.filing_date.is_empty() {
+            lines.push(TooltipLine {
+                content: format!("Filed {}", marker.filing_date),
+                color: Color {
+                    a: 0.62,
+                    ..ctx.theme.palette().text
+                },
+            });
+        }
+
+        let card_size = TooltipSurface::card_size_for_lines(&lines, 150.0);
+        let card_x = (visual_center.x + 12.0)
+            .min(ctx.chart_w - card_size.width - 4.0)
+            .max(4.0);
+        let max_card_y = (ctx.price_h - card_size.height).max(0.0);
+        let card_y = (visual_center.y - card_size.height - 10.0).clamp(0.0, max_card_y);
+        let mut tooltip_surface = TooltipSurface::new(
+            ctx.frame,
+            ctx.theme,
+            visual_center,
+            ctx.chart_w,
+            ctx.price_h,
+        );
+        tooltip_surface.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
 
     fn draw_hud_game_panels<PriceToY>(&self, ctx: &mut CrosshairOverlayContext<'_, PriceToY>)

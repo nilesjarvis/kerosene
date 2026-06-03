@@ -62,6 +62,7 @@ impl TradingTerminal {
                 Self::clear_heatmap_display(instance);
                 Self::clear_liquidation_display(instance);
                 Self::clear_funding_display(instance);
+                Self::clear_earnings_display(instance);
             }
 
             let switch_task = self.switch_active_symbol_internal(key);
@@ -127,6 +128,7 @@ impl TradingTerminal {
             Self::clear_heatmap_display(instance);
             Self::clear_liquidation_display(instance);
             Self::clear_funding_display(instance);
+            Self::clear_earnings_display(instance);
             tf = instance.interval;
         }
         self.sync_chart_position_for(id);
@@ -136,6 +138,13 @@ impl TradingTerminal {
         self.persist_config();
         let mut tasks = vec![self.queue_candle_fetch_for(id, &key, tf, cached_last_time)];
         tasks.extend(Self::fetch_macro_candles_tasks(id, &key));
+        if self
+            .charts
+            .get(&id)
+            .is_some_and(|instance| instance.show_earnings_markers)
+        {
+            tasks.push(self.maybe_fetch_chart_earnings(id));
+        }
         Task::batch(tasks)
     }
 }

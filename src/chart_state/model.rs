@@ -1,5 +1,6 @@
 use crate::account::AssetContext;
 use crate::annotations::{Annotation, AnnotationId};
+use crate::api::SecEarningsEvent;
 use crate::app_state::TradingTerminal;
 use crate::chart::{CandlestickChart, ChartViewport};
 use crate::config;
@@ -120,6 +121,16 @@ pub(crate) struct ChartInstance {
     pub(crate) candle_fetch_error: Option<String>,
     /// Transient direction flash for price-derived header numbers after WS updates.
     pub(crate) last_price_flash: Option<PriceFlash>,
+    /// Whether SEC earnings-release markers are enabled for this chart.
+    pub(crate) show_earnings_markers: bool,
+    /// Cached SEC earnings data applied to this chart.
+    pub(crate) earnings_events: Option<Vec<SecEarningsEvent>>,
+    /// Whether SEC earnings events are currently being fetched for this chart.
+    pub(crate) earnings_fetching: bool,
+    /// Persistent earnings status shown near the chart controls.
+    pub(crate) earnings_status: Option<(String, bool)>,
+    /// Ticker for the latest in-flight SEC earnings request.
+    pub(crate) earnings_pending_ticker: Option<String>,
     /// Latest in-flight funding history request for stale-response guards.
     pub(crate) funding_fetch_request: Option<FundingFetchRequest>,
     /// Last time this chart attempted a funding history fetch.

@@ -169,6 +169,7 @@ impl TradingTerminal {
                             inst.asset_ctx = None;
                             inst.candle_fetch_error = None;
                             inst.last_price_flash = None;
+                            Self::clear_earnings_display(inst);
                             let request = Self::build_candle_fetch_request(
                                 *id,
                                 &valid.key,
@@ -188,6 +189,7 @@ impl TradingTerminal {
                     }
                 }
 
+                tasks.push(self.refresh_enabled_earnings_charts());
                 tasks.push(self.scrub_hidden_symbol_state());
                 self.refresh_symbol_search_results();
                 self.refresh_live_watchlist_row_caches();

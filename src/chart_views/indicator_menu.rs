@@ -78,9 +78,13 @@ impl TradingTerminal {
             ));
 
         if !instance.symbol.is_empty() && self.is_perp_coin(&instance.symbol) {
-            menu_col = menu_col
-                .push(separator())
-                .push(overlay_group(chart_id, instance, &theme));
+            let earnings_available = self.chart_earnings_markers_available(instance);
+            menu_col = menu_col.push(separator()).push(overlay_group(
+                chart_id,
+                instance,
+                &theme,
+                earnings_available,
+            ));
         }
 
         let menu_card = container(scrollable(menu_col).height(iced::Length::Shrink))

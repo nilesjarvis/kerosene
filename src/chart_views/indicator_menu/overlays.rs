@@ -13,8 +13,9 @@ pub(super) fn overlay_group(
     chart_id: ChartId,
     instance: &ChartInstance,
     theme: &Theme,
+    earnings_available: bool,
 ) -> Element<'static, Message> {
-    let option_row = row![
+    let mut option_row = row![
         menu_checkbox(
             "LIQ",
             instance.show_liquidations,
@@ -29,6 +30,14 @@ pub(super) fn overlay_group(
     .spacing(8)
     .align_y(Alignment::Center)
     .width(Fill);
+
+    if earnings_available {
+        option_row = option_row.push(menu_checkbox(
+            "EARN",
+            instance.show_earnings_markers,
+            Message::ToggleChartEarningsMarkers(chart_id),
+        ));
+    }
 
     let mut content = Column::new().spacing(2).width(Fill).push(option_row);
 
@@ -60,6 +69,15 @@ fn overlay_status(instance: &ChartInstance, theme: &Theme) -> Option<Element<'st
         if instance.heatmap_fetching {
             parts.push("HEAT loading".to_string());
         } else if let Some((status, status_is_error)) = &instance.heatmap_status {
+            parts.push(status.clone());
+            is_error |= *status_is_error;
+        }
+    }
+
+    if instance.show_earnings_markers {
+        if instance.earnings_fetching {
+            parts.push("EARN loading".to_string());
+        } else if let Some((status, status_is_error)) = &instance.earnings_status {
             parts.push(status.clone());
             is_error |= *status_is_error;
         }

@@ -103,16 +103,19 @@ impl CandlestickChart {
         &self,
         order_cancel_hover_oid: Option<u64>,
         hovering: bool,
+        earnings_marker_time_ms: Option<u64>,
     ) -> Option<canvas::Action<Message>> {
         let cancel_hover_changed = self.hover_order_cancel_oid != order_cancel_hover_oid;
+        let earnings_hover_changed = self.hover_earnings_marker_time_ms != earnings_marker_time_ms;
         let hud_activity_needed = self.hud_game_mode_enabled()
             && (self.hud_hovering != hovering || (self.hud_armed && hovering));
-        (cancel_hover_changed || hud_activity_needed).then(|| {
-            canvas::Action::publish(Message::ChartOrderCancelHoverChanged(
+        (cancel_hover_changed || earnings_hover_changed || hud_activity_needed).then(|| {
+            canvas::Action::publish(Message::ChartHoverStateChanged(
                 self.id,
                 self.surface_id,
                 order_cancel_hover_oid,
                 hovering,
+                earnings_marker_time_ms,
             ))
         })
     }

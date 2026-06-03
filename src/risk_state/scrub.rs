@@ -34,6 +34,7 @@ impl TradingTerminal {
         instance.heatmap_fetching = false;
         Self::clear_heatmap_display(instance);
         Self::clear_liquidation_display(instance);
+        Self::clear_earnings_display(instance);
     }
 
     pub(crate) fn scrub_muted_ticker_state(&mut self) -> Task<Message> {

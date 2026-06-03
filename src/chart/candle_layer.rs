@@ -1,8 +1,10 @@
 mod axes;
 mod candles;
+mod earnings;
 mod funding;
 mod liquidity;
 
+pub(in crate::chart) use earnings::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
 pub(in crate::chart) use funding::format_funding_rate_percent;
 
 use super::fisheye::ChartFisheye;
@@ -84,6 +86,7 @@ impl CandlestickChart {
                     self.draw_price_volume_separator(ctx, frame);
                     self.draw_historical_heatmap(ctx, frame);
                     self.draw_candles_and_volume(ctx, frame);
+                    self.draw_earnings_markers(ctx, frame);
                     self.draw_volume_profile(ctx, frame);
 
                     let mut moving_average_layer = MovingAverageLayer {

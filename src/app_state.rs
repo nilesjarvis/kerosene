@@ -326,6 +326,10 @@ pub(crate) struct TradingTerminal {
     pub(crate) heatmap_data_cache: HashMap<String, LiquidationHeatmap>,
     pub(crate) heatmap_data_cache_order: VecDeque<String>,
     pub(crate) heatmap_pending_charts: HashMap<String, Vec<ChartId>>,
+    // Shared cache/dedupe for SEC earnings-event requests
+    pub(crate) sec_earnings_cache: HashMap<String, Vec<api::SecEarningsEvent>>,
+    pub(crate) sec_earnings_cache_order: VecDeque<String>,
+    pub(crate) sec_earnings_pending_charts: HashMap<String, Vec<ChartId>>,
     // Shared in-flight dedupe for HyperDash liquidation level requests
     pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
     pub(crate) liquidation_distribution: LiquidationDistributionState,

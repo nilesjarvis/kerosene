@@ -1,4 +1,5 @@
 mod candles;
+mod earnings;
 mod funding;
 
 use super::{CandlestickChart, ChartStatus, DEFAULT_FUNDING_PANEL_HEIGHT};
@@ -27,6 +28,7 @@ impl CandlestickChart {
             active_position: None,
             active_orders: Vec::new(),
             trade_markers: Vec::new(),
+            earnings_markers: Vec::new(),
             show_trade_markers: false,
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
@@ -72,6 +74,8 @@ impl CandlestickChart {
             hide_positions_and_orders: false,
             hover_order_cancel_oid: None,
             order_cancel_hover_progress: 0.0,
+            hover_earnings_marker_time_ms: None,
+            earnings_marker_hover_progress: 0.0,
             display_denomination: DisplayDenominationContext::default(),
         }
     }
@@ -90,6 +94,7 @@ impl CandlestickChart {
             active_position: self.active_position.clone(),
             active_orders: self.active_orders.clone(),
             trade_markers: self.trade_markers.clone(),
+            earnings_markers: self.earnings_markers.clone(),
             show_trade_markers: self.show_trade_markers,
             dotted_background: self.dotted_background,
             dotted_background_opacity: self.dotted_background_opacity,
@@ -134,6 +139,8 @@ impl CandlestickChart {
             hide_positions_and_orders: self.hide_positions_and_orders,
             hover_order_cancel_oid: None,
             order_cancel_hover_progress: 0.0,
+            hover_earnings_marker_time_ms: None,
+            earnings_marker_hover_progress: 0.0,
             display_denomination: self.display_denomination.clone(),
         }
     }

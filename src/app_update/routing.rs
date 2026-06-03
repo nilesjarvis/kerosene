@@ -419,6 +419,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartSwitchTimeframe(_, _)
         | Message::ToggleMacroMenu(_)
         | Message::ToggleMacroIndicator(_, _)
+        | Message::ToggleChartEarningsMarkers(_)
+        | Message::ChartEarningsEventsLoaded(_, _)
         | Message::MacroCandlesLoaded(_, _, _, _)
         | Message::ChartCandlesLoaded(_, _)
         | Message::ChartFundingHistoryLoaded(_, _)
@@ -427,8 +429,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartHudOrderAnimationTick
         | Message::ChartHudArmToggled(_, _)
         | Message::ChartHudSafetyTick
-        | Message::ChartOrderCancelHoverChanged(_, _, _, _)
+        | Message::ChartHoverStateChanged(_, _, _, _, _)
         | Message::ChartOrderCancelHoverAnimationTick
+        | Message::ChartEarningsMarkerHoverAnimationTick
         | Message::ChartWsAssetCtxUpdate(_, _, _)
         | Message::ChartViewportChanged(_, _, _)
         | Message::ChartFundingPanelHeightChanged(_, _, _)

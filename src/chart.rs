@@ -5,6 +5,7 @@ mod crosshair;
 pub(crate) mod crosshair_style;
 mod data;
 mod drawing;
+mod earnings_hover;
 pub(crate) mod fisheye;
 mod formatting;
 mod geometry;
@@ -31,7 +32,7 @@ mod volume_profile;
 pub use self::model::PRICE_AXIS_WIDTH;
 pub use self::model::{
     CANDLE_GAP_RATIO, CandlestickChart, ChartStatus, ChartViewport, DEFAULT_CANDLE_WIDTH,
-    DEFAULT_FUNDING_PANEL_HEIGHT, FUNDING_PANEL_RESIZE_HIT_PX, MAX_CANDLE_WIDTH,
+    DEFAULT_FUNDING_PANEL_HEIGHT, EarningsMarker, FUNDING_PANEL_RESIZE_HIT_PX, MAX_CANDLE_WIDTH,
     MAX_FUNDING_PANEL_HEIGHT, MIN_CANDLE_WIDTH, MIN_FUNDING_PANEL_HEIGHT, MIN_MAIN_CHART_HEIGHT,
     OrderOverlay, OrderOverlayPendingState, PAN_SPEED, PRICE_PADDING_PCT, PositionOverlay,
     TIME_AXIS_HEIGHT, TradeMarker, VOLUME_REGION_RATIO, ZOOM_SPEED,
