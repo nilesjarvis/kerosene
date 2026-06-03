@@ -1,5 +1,15 @@
 # Kerosene
 
+```text
+⣿   ⣿  ⣿⣿⣿⣿⣿  ⣿⣿⣿⣿   ⣿⣿⣿   ⣿⣿⣿⣿   ⣿⣿⣿⣿⣿  ⣿   ⣿  ⣿⣿⣿⣿⣿
+⣿  ⣿   ⣿        ⣿   ⣿  ⣿   ⣿  ⣿        ⣿        ⣿⣿  ⣿  ⣿
+⣿ ⣿    ⣿        ⣿   ⣿  ⣿   ⣿  ⣿        ⣿        ⣿ ⣿ ⣿  ⣿
+⣿⣿     ⣿⣿⣿⣿   ⣿⣿⣿⣿   ⣿   ⣿   ⣿⣿⣿    ⣿⣿⣿⣿   ⣿  ⣿⣿  ⣿⣿⣿⣿
+⣿ ⣿    ⣿        ⣿ ⣿    ⣿   ⣿       ⣿   ⣿        ⣿   ⣿  ⣿
+⣿  ⣿   ⣿        ⣿  ⣿   ⣿   ⣿       ⣿   ⣿        ⣿   ⣿  ⣿
+⣿   ⣿  ⣿⣿⣿⣿⣿  ⣿   ⣿  ⣿⣿⣿   ⣿⣿⣿⣿   ⣿⣿⣿⣿⣿  ⣿   ⣿  ⣿⣿⣿⣿⣿
+```
+
 Kerosene is a GPU-accelerated desktop trading terminal for [Hyperliquid](https://hyperliquid.xyz), built in Rust with [iced](https://iced.rs).
 
 > **Risk notice:** Kerosene is trading software. Use it at your own risk, test with small order sizes first, and verify behavior before relying on it with real funds. Nothing in this project is financial advice.
