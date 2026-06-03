@@ -16,6 +16,7 @@ impl TradingTerminal {
                 self.account_data = None;
                 self.pending_order_indicators.clear();
                 self.pending_leverage_update = None;
+                self.order_leverage_dropdown_open = false;
                 self.account_loading = false;
                 self.account_reconciliation_required = false;
                 self.account_error = Some("Invalid wallet address".to_string());
@@ -77,6 +78,7 @@ impl TradingTerminal {
         self.account_data = None;
         self.pending_order_indicators.clear();
         self.pending_leverage_update = None;
+        self.order_leverage_dropdown_open = false;
         for instance in self.charts.values_mut() {
             instance.chart.clear_hud_armed();
         }
@@ -136,6 +138,7 @@ impl TradingTerminal {
         self.account_data = None;
         self.pending_order_indicators.clear();
         self.pending_leverage_update = None;
+        self.order_leverage_dropdown_open = false;
         self.account_loading = false;
         self.account_reconciliation_required = false;
         self.account_error = None;

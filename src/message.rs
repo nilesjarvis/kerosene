@@ -132,6 +132,7 @@ pub(crate) enum Message {
     OrderPercentageChanged(f32),
     PrefillOutcomeSell(String),
     ToggleReduceOnly,
+    ToggleOrderLeverageDropdown,
     OrderLeverageInputChanged(String),
     SetOrderLeverageCross(bool),
     SubmitOrderLeverage,

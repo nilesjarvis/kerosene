@@ -110,6 +110,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PrefillOutcomeSell(_)
         | Message::SetOrderKind(_)
         | Message::ToggleReduceOnly
+        | Message::ToggleOrderLeverageDropdown
         | Message::OrderLeverageInputChanged(_)
         | Message::SetOrderLeverageCross(_)
         | Message::SubmitOrderLeverage

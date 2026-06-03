@@ -30,8 +30,10 @@ impl TradingTerminal {
         let context_row = self.view_order_entry_context_row(margin_used, &theme);
         let type_row = self.view_order_entry_type_row();
         let mut form = column![symbol_row, context_row].spacing(8);
-        if let Some(leverage_row) = self.view_order_entry_leverage_row(can_trade) {
-            form = form.push(leverage_row);
+        if self.order_leverage_dropdown_open
+            && let Some(leverage_dropdown) = self.view_order_entry_leverage_dropdown(can_trade)
+        {
+            form = form.push(leverage_dropdown);
         }
         form = form.push(type_row);
 

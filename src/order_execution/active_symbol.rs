@@ -12,6 +12,7 @@ impl TradingTerminal {
         if self.active_symbol != key {
             self.order_quantity.clear();
             self.order_percentage = 0.0;
+            self.order_leverage_dropdown_open = false;
         }
 
         let is_outcome = self.is_outcome_coin(&key);

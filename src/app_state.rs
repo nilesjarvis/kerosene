@@ -99,6 +99,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) order_reduce_only: bool,
     pub(crate) order_leverage_input: String,
     pub(crate) order_leverage_is_cross: bool,
+    pub(crate) order_leverage_dropdown_open: bool,
     pub(crate) pending_leverage_update: Option<PendingLeverageUpdateContext>,
     // Order status feedback (message, is_error)
     pub(crate) order_status: Option<(String, bool)>,

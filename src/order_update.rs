@@ -34,6 +34,7 @@ impl TradingTerminal {
             }
             Message::SetOrderKind(kind) => self.handle_set_order_kind(kind),
             Message::ToggleReduceOnly => self.handle_toggle_reduce_only(),
+            Message::ToggleOrderLeverageDropdown => self.handle_toggle_order_leverage_dropdown(),
             Message::OrderLeverageInputChanged(value) => {
                 self.handle_order_leverage_input_changed(value)
             }

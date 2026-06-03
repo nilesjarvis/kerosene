@@ -17,6 +17,14 @@ struct OrderLeverageConstraints {
 }
 
 impl TradingTerminal {
+    pub(crate) fn handle_toggle_order_leverage_dropdown(&mut self) {
+        if self.active_order_leverage_constraints().is_some() {
+            self.order_leverage_dropdown_open = !self.order_leverage_dropdown_open;
+        } else {
+            self.order_leverage_dropdown_open = false;
+        }
+    }
+
     pub(crate) fn handle_order_leverage_input_changed(&mut self, value: String) {
         self.order_leverage_input = sanitize_leverage_input(&value);
     }
@@ -144,6 +152,7 @@ impl TradingTerminal {
 
         match result {
             Ok(response) if !response.is_error() => {
+                self.order_leverage_dropdown_open = false;
                 if self.active_symbol == context.symbol_key {
                     self.order_leverage_input = context.leverage.to_string();
                     self.order_leverage_is_cross = context.is_cross;
@@ -182,6 +191,7 @@ impl TradingTerminal {
         let Some(symbol) = self.active_order_leverage_symbol() else {
             self.order_leverage_input = DEFAULT_ORDER_LEVERAGE.to_string();
             self.order_leverage_is_cross = false;
+            self.order_leverage_dropdown_open = false;
             return;
         };
 
@@ -299,6 +309,23 @@ mod tests {
         assert!(constraints.cross_allowed);
     }
 
+    #[test]
+    fn leverage_dropdown_toggles_only_for_active_leverage_symbol() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.active_symbol = "BTC".to_string();
+        terminal.exchange_symbols = vec![symbol("BTC", 50, false)];
+
+        terminal.handle_toggle_order_leverage_dropdown();
+        assert!(terminal.order_leverage_dropdown_open);
+
+        terminal.handle_toggle_order_leverage_dropdown();
+        assert!(!terminal.order_leverage_dropdown_open);
+
+        terminal.active_symbol = "ETH".to_string();
+        terminal.handle_toggle_order_leverage_dropdown();
+        assert!(!terminal.order_leverage_dropdown_open);
+    }
+
     fn pending_context(
         symbol_key: &str,
         is_cross: bool,
@@ -329,12 +356,14 @@ mod tests {
         terminal.active_symbol = "BTC".to_string();
         terminal.order_leverage_input = "99".to_string();
         terminal.order_leverage_is_cross = false;
+        terminal.order_leverage_dropdown_open = true;
         let context = pending_context("BTC", true, 12);
         terminal.pending_leverage_update = Some(context.clone());
 
         let _ = terminal.handle_order_leverage_result(context, Ok(ok_exchange_response()));
 
         assert_eq!(terminal.pending_leverage_update, None);
+        assert!(!terminal.order_leverage_dropdown_open);
         assert_eq!(terminal.order_leverage_input, "12");
         assert!(terminal.order_leverage_is_cross);
         assert_eq!(

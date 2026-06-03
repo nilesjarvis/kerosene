@@ -71,9 +71,11 @@ impl TradingTerminal {
             if let Some((is_cross, lev, is_actual)) =
                 data.get_leverage_for(&self.active_symbol, &self.exchange_symbols)
             {
-                symbol_row = symbol_row.push(order_leverage_badge(order_leverage_label(
-                    is_cross, lev, is_actual,
-                )));
+                let leverage_label = order_leverage_label(is_cross, lev, is_actual);
+                symbol_row = symbol_row.push(order_leverage_badge(
+                    leverage_label,
+                    self.order_leverage_dropdown_open,
+                ));
             }
         }
 
@@ -119,7 +121,7 @@ impl TradingTerminal {
         .into()
     }
 
-    pub(super) fn view_order_entry_leverage_row(
+    pub(super) fn view_order_entry_leverage_dropdown(
         &self,
         can_update: bool,
     ) -> Option<Element<'_, Message>> {
@@ -150,36 +152,41 @@ impl TradingTerminal {
             leverage_apply_button(can_apply)
         };
 
+        let controls = row![
+            text("Leverage")
+                .size(12)
+                .color(theme.extended_palette().background.weak.text),
+            leverage_mode_button(
+                "Cross",
+                cross_selected,
+                cross_allowed,
+                Message::SetOrderLeverageCross(true),
+            ),
+            leverage_mode_button(
+                "Isolated",
+                isolated_selected,
+                true,
+                Message::SetOrderLeverageCross(false),
+            ),
+            Space::new().width(Fill),
+            input,
+            text("x")
+                .size(12)
+                .color(theme.extended_palette().background.weak.text),
+            text(format!("Max {max_leverage}x"))
+                .size(11)
+                .color(theme.extended_palette().background.weak.text),
+            apply_button,
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+
         Some(
-            row![
-                text("Leverage")
-                    .size(12)
-                    .color(theme.extended_palette().background.weak.text),
-                leverage_mode_button(
-                    "Cross",
-                    cross_selected,
-                    cross_allowed,
-                    Message::SetOrderLeverageCross(true),
-                ),
-                leverage_mode_button(
-                    "Isolated",
-                    isolated_selected,
-                    true,
-                    Message::SetOrderLeverageCross(false),
-                ),
-                Space::new().width(Fill),
-                input,
-                text("x")
-                    .size(12)
-                    .color(theme.extended_palette().background.weak.text),
-                text(format!("Max {max_leverage}x"))
-                    .size(11)
-                    .color(theme.extended_palette().background.weak.text),
-                apply_button,
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center)
-            .into(),
+            container(controls)
+                .width(Fill)
+                .padding(8)
+                .style(leverage_dropdown_container_style)
+                .into(),
         )
     }
 
@@ -235,16 +242,30 @@ fn order_leverage_label(is_cross: bool, leverage: u32, is_actual: bool) -> Strin
     }
 }
 
-fn order_leverage_badge(label: String) -> Element<'static, Message> {
-    container(text(label).size(10).color(Color::WHITE))
+fn order_leverage_badge(label: String, open: bool) -> Element<'static, Message> {
+    button(text(label).size(10).color(Color::WHITE))
         .padding([2, 6])
-        .style(move |theme: &Theme| container::Style {
-            background: Some(theme.extended_palette().background.strong.color.into()),
-            border: iced::Border {
-                radius: 4.0.into(),
+        .on_press(Message::ToggleOrderLeverageDropdown)
+        .style(move |theme: &Theme, status| {
+            let background = if matches!(status, button::Status::Hovered) {
+                theme.palette().primary
+            } else {
+                theme.extended_palette().background.strong.color
+            };
+            button::Style {
+                background: Some(background.into()),
+                text_color: Color::WHITE,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: if open { 1.0 } else { 0.0 },
+                    color: if open {
+                        theme.palette().primary
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                },
                 ..Default::default()
-            },
-            ..Default::default()
+            }
         })
         .into()
 }
@@ -350,6 +371,21 @@ fn leverage_apply_container_style(theme: &Theme) -> container::Style {
         border: iced::Border {
             radius: 4.0.into(),
             ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn leverage_dropdown_container_style(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: Color {
+                a: 0.25,
+                ..theme.extended_palette().background.strong.text
+            },
         },
         ..Default::default()
     }

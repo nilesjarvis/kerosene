@@ -111,6 +111,7 @@ impl TradingTerminal {
             order_reduce_only: cfg.reduce_only,
             order_leverage_input: "1".to_string(),
             order_leverage_is_cross: true,
+            order_leverage_dropdown_open: false,
             pending_leverage_update: None,
             order_status: None,
             pending_order_action: None,
