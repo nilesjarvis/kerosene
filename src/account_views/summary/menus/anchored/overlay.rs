@@ -1,30 +1,124 @@
 use crate::message::Message;
 
-use super::MenuAlignment;
+use super::{MenuAlignment, MenuKind};
+use iced::advanced::renderer::Renderer as _;
 use iced::advanced::widget::tree;
 use iced::advanced::{Clipboard, Layout, Shell, layout, mouse, overlay, renderer};
 use iced::{Element, Event, Point, Rectangle, Size, Theme};
+use std::time::{Duration, Instant};
 
 // ---------------------------------------------------------------------------
 // Anchored Menu Overlay
 // ---------------------------------------------------------------------------
 
-const MENU_VERTICAL_OFFSET: f32 = 34.0;
+const MENU_VERTICAL_GAP: f32 = 6.0;
 const MENU_HORIZONTAL_INSET: f32 = 12.0;
 const MENU_VIEWPORT_MARGIN: f32 = 4.0;
+
+/// Duration of the open reveal animation.
+const MENU_OPEN_DURATION: Duration = Duration::from_millis(140);
+/// Vertical distance the menu slides into place while opening.
+const MENU_OPEN_SLIDE: f32 = 8.0;
+
+// ---------------------------------------------------------------------------
+// Animation State
+// ---------------------------------------------------------------------------
+
+/// Persistent open-animation state stored in the anchored-menu widget tree.
+///
+/// The overlay is only present while a menu is open, so we drive a short
+/// reveal animation from a fresh `progress` of `0.0` each time it mounts.
+#[derive(Debug, Default)]
+pub(in crate::account_views::summary::menus) struct MenuAnimation {
+    progress: f32,
+    last_frame: Option<Instant>,
+    mounted: Option<MenuKind>,
+}
+
+impl MenuAnimation {
+    /// Arms the reveal so that it plays from the start the next time a menu
+    /// mounts. Called while no menu is showing.
+    pub(in crate::account_views::summary::menus) fn reset(&mut self) {
+        self.mounted = None;
+        self.progress = 0.0;
+        self.last_frame = None;
+    }
+
+    /// Restarts the reveal whenever a different menu mounts so each distinct
+    /// menu animates open, even when switching directly between them.
+    fn ensure_mounted(&mut self, kind: MenuKind) {
+        if self.mounted != Some(kind) {
+            self.mounted = Some(kind);
+            self.progress = 0.0;
+            self.last_frame = None;
+        }
+    }
+
+    /// Advances the animation based on elapsed wall-clock time, returning
+    /// `true` while the reveal is still in progress.
+    fn advance(&mut self, now: Instant) -> bool {
+        let delta = self
+            .last_frame
+            .map(|last| now.saturating_duration_since(last))
+            .unwrap_or_default();
+        self.last_frame = Some(now);
+
+        if self.progress < 1.0 {
+            let step = delta.as_secs_f32() / MENU_OPEN_DURATION.as_secs_f32().max(f32::EPSILON);
+            self.progress = (self.progress + step).min(1.0);
+        }
+
+        self.progress < 1.0
+    }
+
+    fn eased(&self) -> f32 {
+        ease_out_cubic(self.progress)
+    }
+}
 
 pub(super) struct AnchoredMenuOverlay<'a, 'b> {
     pub(super) content: &'b mut Element<'a, Message>,
     pub(super) tree: &'b mut tree::Tree,
+    pub(super) animation: &'b mut MenuAnimation,
+    pub(super) kind: MenuKind,
     pub(super) anchor: Rectangle,
     pub(super) alignment: MenuAlignment,
     pub(super) viewport: Rectangle,
+}
+
+impl AnchoredMenuOverlay<'_, '_> {
+    /// The top-left corner where the menu rests once fully open.
+    fn resting_position(&self, menu_size: Size) -> Point {
+        let x = match self.alignment {
+            MenuAlignment::Start => self.anchor.x + MENU_HORIZONTAL_INSET,
+            MenuAlignment::End => {
+                self.anchor.x + self.anchor.width - menu_size.width - MENU_HORIZONTAL_INSET
+            }
+        };
+        let x = clamp_to_viewport(x, menu_size.width, self.viewport.x, self.viewport.width);
+
+        // Open directly below the anchoring bar so the dropdown never overlaps
+        // the button that triggered it.
+        let preferred_y = self.anchor.y + self.anchor.height + MENU_VERTICAL_GAP;
+        let y = if preferred_y + menu_size.height + MENU_VIEWPORT_MARGIN
+            <= self.viewport.y + self.viewport.height
+        {
+            preferred_y
+        } else {
+            self.anchor.y - menu_size.height - MENU_VERTICAL_GAP
+        };
+        let y = clamp_to_viewport(y, menu_size.height, self.viewport.y, self.viewport.height);
+
+        Point::new(x, y)
+    }
 }
 
 impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_, '_> {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
         let viewport = Rectangle::with_size(bounds);
         self.viewport = viewport;
+
+        self.animation.ensure_mounted(self.kind);
 
         let mut node = self.content.as_widget_mut().layout(
             self.tree,
@@ -33,25 +127,12 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
         );
         let menu_size = node.size();
 
-        let x = match self.alignment {
-            MenuAlignment::Start => self.anchor.x + MENU_HORIZONTAL_INSET,
-            MenuAlignment::End => {
-                self.anchor.x + self.anchor.width - menu_size.width - MENU_HORIZONTAL_INSET
-            }
-        };
-        let x = clamp_to_viewport(x, menu_size.width, viewport.x, viewport.width);
+        let position = self.resting_position(menu_size);
 
-        let preferred_y = self.anchor.y + MENU_VERTICAL_OFFSET;
-        let y = if preferred_y + menu_size.height + MENU_VIEWPORT_MARGIN
-            <= viewport.y + viewport.height
-        {
-            preferred_y
-        } else {
-            self.anchor.y - menu_size.height - MENU_VIEWPORT_MARGIN
-        };
-        let y = clamp_to_viewport(y, menu_size.height, viewport.y, viewport.height);
-
-        node.move_to_mut(Point::new(x, y));
+        // Slide the menu down into place while opening. Layout reflects the
+        // animated offset so pointer hit-testing matches what is drawn.
+        let slide = (1.0 - self.animation.eased()) * MENU_OPEN_SLIDE;
+        node.move_to_mut(Point::new(position.x, position.y - slide));
         node
     }
 
@@ -64,6 +145,12 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
     ) {
+        if let Event::Window(iced::window::Event::RedrawRequested(now)) = event
+            && self.animation.advance(*now)
+        {
+            shell.request_redraw();
+        }
+
         if let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event
             && cursor
                 .position()
@@ -94,15 +181,27 @@ impl overlay::Overlay<Message, Theme, iced::Renderer> for AnchoredMenuOverlay<'_
         layout: Layout<'_>,
         cursor: mouse::Cursor,
     ) {
-        self.content.as_widget().draw(
-            self.tree,
-            renderer,
-            theme,
-            style,
-            layout,
-            cursor,
-            &self.viewport,
-        );
+        let bounds = layout.bounds();
+
+        // Reveal the menu by clipping it to a height that grows from the top
+        // edge while opening, producing a subtle unfold.
+        let revealed_height = (bounds.height * self.animation.eased()).max(0.0);
+        let clip = Rectangle {
+            height: revealed_height,
+            ..bounds
+        };
+
+        renderer.with_layer(clip, |renderer| {
+            self.content.as_widget().draw(
+                self.tree,
+                renderer,
+                theme,
+                style,
+                layout,
+                cursor,
+                &self.viewport,
+            );
+        });
     }
 
     fn mouse_interaction(
@@ -143,4 +242,11 @@ pub(super) fn clamp_to_viewport(
     } else {
         value.clamp(min, max)
     }
+}
+
+/// Cubic ease-out used to settle the open animation smoothly.
+pub(super) fn ease_out_cubic(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    let inv = 1.0 - t;
+    1.0 - inv * inv * inv
 }

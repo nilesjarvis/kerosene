@@ -4,7 +4,7 @@ use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
-use anchored::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment};
+use anchored::{AnchoredAccountMenu, AnchoredMenuLayer, MenuAlignment, MenuKind};
 use iced::Element;
 use iced::widget::opaque;
 
@@ -25,16 +25,19 @@ impl TradingTerminal {
 
         let menu = if self.account_picker_open {
             Some(AnchoredMenuLayer {
+                kind: MenuKind::AccountPicker,
                 alignment: MenuAlignment::Start,
                 content: opaque(self.view_account_picker_dropdown()),
             })
         } else if self.layout_menu_open {
             Some(AnchoredMenuLayer {
+                kind: MenuKind::LayoutSwitcher,
                 alignment: MenuAlignment::End,
                 content: opaque(self.view_layout_switcher_dropdown()),
             })
         } else if self.add_widget_menu_open {
             Some(AnchoredMenuLayer {
+                kind: MenuKind::AddWidget,
                 alignment: MenuAlignment::End,
                 content: opaque(self.view_add_widget_menu_card(&theme, can_add_income)),
             })

@@ -3,7 +3,7 @@ mod tests;
 
 mod overlay;
 
-use self::overlay::AnchoredMenuOverlay;
+use self::overlay::{AnchoredMenuOverlay, MenuAnimation};
 use crate::message::Message;
 
 use iced::advanced::widget::tree;
@@ -13,7 +13,7 @@ use iced::advanced::{
 use iced::{Element, Event, Length, Rectangle, Size, Theme, Vector};
 
 #[cfg(test)]
-use overlay::clamp_to_viewport;
+use overlay::{clamp_to_viewport, ease_out_cubic};
 
 // ---------------------------------------------------------------------------
 // Anchored Overlay Widget
@@ -25,7 +25,17 @@ pub(super) enum MenuAlignment {
     End,
 }
 
+/// Identifies which summary menu is being shown so the reveal animation can
+/// replay when switching directly between different menus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MenuKind {
+    AccountPicker,
+    LayoutSwitcher,
+    AddWidget,
+}
+
 pub(super) struct AnchoredMenuLayer<'a> {
+    pub(super) kind: MenuKind,
     pub(super) alignment: MenuAlignment,
     pub(super) content: Element<'a, Message>,
 }
@@ -42,6 +52,14 @@ impl<'a> AnchoredAccountMenu<'a> {
 }
 
 impl Widget<Message, Theme, iced::Renderer> for AnchoredAccountMenu<'_> {
+    fn tag(&self) -> tree::Tag {
+        tree::Tag::of::<MenuAnimation>()
+    }
+
+    fn state(&self) -> tree::State {
+        tree::State::new(MenuAnimation::default())
+    }
+
     fn children(&self) -> Vec<tree::Tree> {
         let mut children = vec![tree::Tree::new(&self.content)];
         if let Some(menu) = &self.menu {
@@ -157,6 +175,7 @@ impl Widget<Message, Theme, iced::Renderer> for AnchoredAccountMenu<'_> {
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<iced_overlay::Element<'b, Message, Theme, iced::Renderer>> {
+        let animation = tree.state.downcast_mut::<MenuAnimation>();
         let (content_trees, menu_trees) = tree.children.split_at_mut(1);
         let content_overlay = self.content.as_widget_mut().overlay(
             &mut content_trees[0],
@@ -166,15 +185,22 @@ impl Widget<Message, Theme, iced::Renderer> for AnchoredAccountMenu<'_> {
             translation,
         );
 
-        let menu_overlay = self.menu.as_mut().map(|menu| {
-            iced_overlay::Element::new(Box::new(AnchoredMenuOverlay {
+        let menu_overlay = match self.menu.as_mut() {
+            Some(menu) => Some(iced_overlay::Element::new(Box::new(AnchoredMenuOverlay {
                 content: &mut menu.content,
                 tree: &mut menu_trees[0],
+                animation,
+                kind: menu.kind,
                 anchor: layout.bounds() + translation,
                 alignment: menu.alignment,
                 viewport: *viewport,
-            }))
-        });
+            }))),
+            None => {
+                // No menu is showing, so arm the reveal for the next open.
+                animation.reset();
+                None
+            }
+        };
 
         match (content_overlay, menu_overlay) {
             (None, None) => None,
