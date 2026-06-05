@@ -1,13 +1,12 @@
 use crate::app_state::TradingTerminal;
-use crate::hyperdash_api::{PerpDeltas, TickerPositions};
+use crate::hyperdash_api::TickerPositions;
 use crate::message::Message;
-use crate::positioning_state::{POSITIONING_CHANGE_ROW_LIMIT, PositioningInfoInstance};
+use crate::positioning_state::PositioningInfoInstance;
 
-use super::super::columns::{PositioningChangeColumns, PositioningInfoColumns};
-use super::super::metrics::{positioning_live_mark, sorted_change_rows};
+use super::super::columns::PositioningInfoColumns;
+use super::super::metrics::positioning_live_mark;
 use super::super::table::{
-    PositioningRowContext, positioning_change_row, positioning_change_table_header,
-    positioning_position_row, positioning_table_header,
+    PositioningRowContext, positioning_position_row, positioning_table_header,
 };
 use iced::widget::{Column, container, rule, scrollable, text};
 use iced::{Element, Fill, Theme};
@@ -62,66 +61,6 @@ impl TradingTerminal {
                     row_context,
                     position,
                     self.wallet_display(&position.address),
-                    columns,
-                ));
-            }
-        }
-
-        scrollable(rows).width(Fill).height(Fill).into()
-    }
-
-    pub(super) fn view_positioning_info_change_table(
-        &self,
-        data: &PerpDeltas,
-        instance: &PositioningInfoInstance,
-        available_width: f32,
-        theme: &Theme,
-    ) -> Element<'static, Message> {
-        let columns = PositioningChangeColumns::for_width(available_width);
-        let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
-        let denomination = self.display_denomination_context();
-        let hovered_wallet_action_key = self.hovered_wallet_address_actions.as_deref();
-        let row_context = PositioningRowContext {
-            instance_id: instance.id,
-            hovered_wallet_action_key,
-            theme,
-            live_mark,
-            denomination: &denomination,
-        };
-        let sorted = sorted_change_rows(
-            &data.deltas,
-            instance.change_sort_field,
-            instance.change_sort_direction,
-            live_mark,
-        );
-        let mut rows = Column::new()
-            .spacing(3)
-            .push(positioning_change_table_header(
-                instance.id,
-                instance.change_sort_field,
-                instance.change_sort_direction,
-                columns,
-                theme,
-                &denomination,
-            ))
-            .push(rule::horizontal(1));
-
-        if sorted.is_empty() {
-            rows = rows.push(
-                container(
-                    text("No changes found")
-                        .size(12)
-                        .color(theme.extended_palette().background.weak.text),
-                )
-                .width(Fill)
-                .padding([8, 0]),
-            );
-        } else {
-            for entry in sorted.into_iter().take(POSITIONING_CHANGE_ROW_LIMIT) {
-                rows = rows.push(positioning_change_row(
-                    row_context,
-                    entry,
-                    self.wallet_display(&entry.address),
                     columns,
                 ));
             }

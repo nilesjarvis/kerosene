@@ -1,10 +1,9 @@
 use crate::config;
 use crate::message::Message;
-use crate::positioning_state::{
-    PositioningInfoChangeSortField, PositioningInfoId, PositioningInfoSortField,
-};
+use crate::positioning_state::{PositioningInfoId, PositioningInfoSortField};
 
 use iced::alignment::Horizontal;
+use iced::widget::text::Wrapping;
 use iced::widget::{Row, button, text};
 use iced::{Alignment, Color, Element, Fill, Length, Theme};
 
@@ -33,6 +32,7 @@ pub(super) fn header_cell_aligned(
         .color(color)
         .width(width)
         .align_x(alignment)
+        .wrapping(Wrapping::None)
         .into()
 }
 
@@ -49,68 +49,59 @@ pub(super) fn sort_header_cell(
     let mut content = Row::new().spacing(2).align_y(Alignment::Center).push(
         text(label)
             .size(10)
-            .color(color)
             .width(Fill)
-            .align_x(Horizontal::Right),
+            .align_x(Horizontal::Right)
+            .wrapping(Wrapping::None),
     );
-    if is_active {
-        let icon = if sort_direction == config::SortDirection::Ascending {
-            "\u{2191}"
-        } else {
-            "\u{2193}"
-        };
-        content = content.push(text(icon).size(10).color(color));
-    }
+    content = content.push(sort_arrow(is_active, sort_direction, color));
 
     button(content)
         .on_press(Message::PositioningInfoSortChanged(id, field))
-        .style(|_theme: &Theme, _status| button::Style {
-            background: None,
-            ..Default::default()
-        })
-        .padding(0)
+        .style(sort_header_button_style)
+        .padding([1, 2])
         .width(width)
         .into()
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn change_sort_header_cell(
-    label: impl Into<String>,
-    field: PositioningInfoChangeSortField,
-    id: PositioningInfoId,
-    sort_field: PositioningInfoChangeSortField,
+fn sort_arrow(
+    is_active: bool,
     sort_direction: config::SortDirection,
-    width: Length,
     color: Color,
-    alignment: Horizontal,
 ) -> Element<'static, Message> {
-    let is_active = sort_field == field;
-    let label = label.into();
-    let mut content = Row::new().spacing(2).align_y(Alignment::Center).push(
-        text(label)
-            .size(10)
-            .color(color)
-            .width(Fill)
-            .align_x(alignment),
-    );
-    if is_active {
-        let icon = if sort_direction == config::SortDirection::Ascending {
-            "\u{2191}"
-        } else {
-            "\u{2193}"
-        };
-        content = content.push(text(icon).size(10).color(color));
-    }
+    let icon = if !is_active {
+        // Faint neutral marker that signals the column is sortable.
+        "\u{2195}"
+    } else if sort_direction == config::SortDirection::Ascending {
+        "\u{2191}"
+    } else {
+        "\u{2193}"
+    };
+    let color = Color {
+        a: if is_active { color.a } else { color.a * 0.4 },
+        ..color
+    };
+    text(icon).size(9).color(color).into()
+}
 
-    button(content)
-        .on_press(Message::PositioningInfoChangeSortChanged(id, field))
-        .style(|_theme: &Theme, _status| button::Style {
-            background: None,
+fn sort_header_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    button::Style {
+        background: if hovered {
+            Some(theme.extended_palette().background.weak.color.into())
+        } else {
+            None
+        },
+        text_color: if hovered {
+            theme.palette().text
+        } else {
+            theme.extended_palette().background.weak.text
+        },
+        border: iced::Border {
+            radius: 3.0.into(),
             ..Default::default()
-        })
-        .padding(0)
-        .width(width)
-        .into()
+        },
+        ..Default::default()
+    }
 }
 
 pub(super) fn value_cell(
@@ -123,7 +114,8 @@ pub(super) fn value_cell(
         .size(11)
         .font(crate::app_fonts::monospace_font())
         .color(color)
-        .width(width);
+        .width(width)
+        .wrapping(Wrapping::None);
     if align_right {
         cell.align_x(Horizontal::Right).into()
     } else {

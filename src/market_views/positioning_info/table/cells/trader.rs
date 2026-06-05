@@ -43,19 +43,16 @@ pub(in crate::market_views::positioning_info::table) fn positioning_trader_cell(
     };
     let label_limit = trader_text_limit(identity_width, 34);
     let tooltip_label = format!("Copy {address}");
-    let content = wallet_address_action_cell(
-        WalletAddressActionCell {
-            address,
-            label: truncate_ascii(&identity_label, label_limit),
-            tooltip_label,
-            hover_key,
-            hovered_key: show_actions.then_some(hovered_key).flatten(),
-            width,
-            text_size: 11,
-            text_color: theme.palette().text,
-        },
-        theme,
-    );
+    let content = wallet_address_action_cell(WalletAddressActionCell {
+        address,
+        label: truncate_ascii(&identity_label, label_limit),
+        tooltip_label,
+        hover_key,
+        hovered_key: show_actions.then_some(hovered_key).flatten(),
+        width,
+        text_size: 11,
+        text_color: theme.palette().text,
+    });
 
     container(content)
         .width(Length::Fixed(width))

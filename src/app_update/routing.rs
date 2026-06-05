@@ -193,7 +193,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::PositioningInfoSideChanged(_, _)
         | Message::PositioningInfoSortChanged(_, _)
         | Message::PositioningInfoChangeTimeframeChanged(_, _)
-        | Message::PositioningInfoChangeSortChanged(_, _)
         | Message::ClearPositioningInfoFilters(_)
         | Message::RefreshPositioningInfoPane(_)
         | Message::RefreshPositioningInfo

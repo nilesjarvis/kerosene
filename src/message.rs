@@ -27,8 +27,8 @@ use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
 use crate::positioning_state::{
-    PositioningInfoChangeSortField, PositioningInfoChangeTimeframe, PositioningInfoId,
-    PositioningInfoPage, PositioningInfoSide, PositioningInfoSortField,
+    PositioningInfoChangeTimeframe, PositioningInfoId, PositioningInfoPage, PositioningInfoSide,
+    PositioningInfoSortField,
 };
 use crate::screener_state::{ScreenerExchangeFilter, ScreenerSortColumn};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
@@ -90,7 +90,6 @@ pub(crate) enum Message {
     PositioningInfoSideChanged(PositioningInfoId, PositioningInfoSide),
     PositioningInfoSortChanged(PositioningInfoId, PositioningInfoSortField),
     PositioningInfoChangeTimeframeChanged(PositioningInfoId, PositioningInfoChangeTimeframe),
-    PositioningInfoChangeSortChanged(PositioningInfoId, PositioningInfoChangeSortField),
     ClearPositioningInfoFilters(PositioningInfoId),
     RefreshPositioningInfoPane(PositioningInfoId),
     RefreshPositioningInfo,

@@ -35,19 +35,16 @@ pub(super) fn wallet_identity_cell(
             .size(11)
             .padding([3, 6])
             .width(185),
-        wallet_address_action_cell(
-            WalletAddressActionCell {
-                address: address.clone(),
-                label: address_text,
-                tooltip_label,
-                hover_key: format!("wallet-tracker:{address}"),
-                hovered_key: hovered_wallet_action_key,
-                width: 185.0,
-                text_size: 10,
-                text_color: secondary_text,
-            },
-            theme,
-        ),
+        wallet_address_action_cell(WalletAddressActionCell {
+            address: address.clone(),
+            label: address_text,
+            tooltip_label,
+            hover_key: format!("wallet-tracker:{address}"),
+            hovered_key: hovered_wallet_action_key,
+            width: 185.0,
+            text_size: 10,
+            text_color: secondary_text,
+        }),
     ]
     .spacing(3)
     .width(205)

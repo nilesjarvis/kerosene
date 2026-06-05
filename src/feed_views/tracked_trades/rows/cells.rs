@@ -31,19 +31,16 @@ impl TradingTerminal {
             format!("Copy {address}")
         };
 
-        wallet_address_action_cell(
-            WalletAddressActionCell {
-                address: address.clone(),
-                label: display.primary,
-                tooltip_label,
-                hover_key: format!("tracked-trades:{address}"),
-                hovered_key: self.hovered_wallet_address_actions.as_deref(),
-                width: WALLET_COLUMN_WIDTH,
-                text_size: 12,
-                text_color: theme.palette().primary,
-            },
-            &theme,
-        )
+        wallet_address_action_cell(WalletAddressActionCell {
+            address: address.clone(),
+            label: display.primary,
+            tooltip_label,
+            hover_key: format!("tracked-trades:{address}"),
+            hovered_key: self.hovered_wallet_address_actions.as_deref(),
+            width: WALLET_COLUMN_WIDTH,
+            text_size: 12,
+            text_color: theme.palette().primary,
+        })
     }
 
     pub(super) fn view_tracked_trade_coin_cell(&self, coin: String) -> Element<'_, Message> {

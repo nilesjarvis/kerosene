@@ -35,9 +35,11 @@ fn positioning_columns_shrink_trader_width_on_narrow_panes() {
 
 #[test]
 fn positioning_columns_hide_requested_columns_in_compact_panes() {
+    // At this width only the base columns fit comfortably; the reveal margin
+    // keeps optional columns hidden until they have breathing room.
     let columns = PositioningInfoColumns::for_width(450.0);
 
-    assert!(columns.show_entry);
+    assert!(!columns.show_entry);
     assert!(!columns.show_size);
     assert!(!columns.show_liq);
     assert!(!columns.show_funding);
@@ -46,25 +48,52 @@ fn positioning_columns_hide_requested_columns_in_compact_panes() {
 }
 
 #[test]
-fn positioning_change_columns_reserve_scrollbar_width() {
-    let width = 900.0;
-    let columns = PositioningChangeColumns::for_width(width);
-    let content_width = PositioningInfoColumns::available_content_width(width);
+fn positioning_columns_reveal_optional_columns_progressively() {
+    // The first optional column (Entry) appears at a mid width.
+    let mid = PositioningInfoColumns::for_width(620.0);
+    assert!(mid.show_entry);
+    assert!(!mid.show_account);
+    assert!(mid.compact_money);
 
-    assert!((columns.total_width() - content_width).abs() < 0.01);
-    assert!(columns.trader_width > POSITIONING_CHANGE_TRADER_MIN_WIDTH);
+    // A wider pane reveals strictly more optional columns than a narrower one.
+    let wider = PositioningInfoColumns::for_width(900.0);
+    let mid_optional = usize::from(mid.show_size)
+        + usize::from(mid.show_entry)
+        + usize::from(mid.show_liq)
+        + usize::from(mid.show_funding)
+        + usize::from(mid.show_account);
+    let wider_optional = usize::from(wider.show_size)
+        + usize::from(wider.show_entry)
+        + usize::from(wider.show_liq)
+        + usize::from(wider.show_funding)
+        + usize::from(wider.show_account);
+    assert!(wider_optional > mid_optional);
 }
 
 #[test]
-fn positioning_change_trader_column_shows_compact_actions_before_positions_threshold() {
-    let columns = PositioningChangeColumns::for_width(610.0);
-
-    assert!(columns.trader_width < POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH);
+fn positioning_trader_actions_appear_with_width() {
+    // Below the compact threshold: no actions.
     assert_eq!(
         positioning_trader_action_visibility(
-            columns.trader_width,
-            POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
+            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH - 1.0,
+            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
+        ),
+        (false, false)
+    );
+    // Compact actions only.
+    assert_eq!(
+        positioning_trader_action_visibility(
+            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
+            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
         ),
         (true, false)
+    );
+    // Full actions once wide enough.
+    assert_eq!(
+        positioning_trader_action_visibility(
+            POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH,
+            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
+        ),
+        (true, true)
     );
 }

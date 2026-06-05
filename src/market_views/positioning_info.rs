@@ -7,6 +7,7 @@ use iced::{Element, Fill};
 
 mod columns;
 mod controls;
+mod flow;
 mod metrics;
 mod pages;
 mod summary;
@@ -54,9 +55,7 @@ impl TradingTerminal {
             PositioningInfoPage::Positions => {
                 self.view_positioning_info_positions_page(instance, available_width, &theme)
             }
-            PositioningInfoPage::Change => {
-                self.view_positioning_info_change_page(instance, available_width, &theme)
-            }
+            PositioningInfoPage::Change => self.view_positioning_info_change_page(instance, &theme),
         };
 
         container(column![navigation, rule::horizontal(1), body])

@@ -2,11 +2,12 @@ use crate::message::Message;
 
 use iced::widget::svg::Handle as SvgHandle;
 use iced::widget::text::Wrapping;
-use iced::widget::{button, container, mouse_area, row, svg, text, tooltip};
+use iced::widget::{Row, button, container, mouse_area, rule, svg, text, tooltip};
 use iced::{Color, Element, Fill, Length, Theme, mouse};
 
 const WALLET_ACTION_CELL_HEIGHT: f32 = 20.0;
-const WALLET_ACTION_ICON_SIZE: f32 = 12.0;
+const WALLET_ACTION_ICON_SIZE: f32 = 13.0;
+const WALLET_ACTION_SEPARATOR_HEIGHT: f32 = 12.0;
 
 const COPY_ICON_SVG: &[u8] = br#"
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
@@ -47,14 +48,13 @@ pub(crate) struct WalletAddressActionCell<'a> {
 
 pub(crate) fn wallet_address_action_cell(
     config: WalletAddressActionCell<'_>,
-    theme: &Theme,
 ) -> Element<'static, Message> {
     let hovered = config.hovered_key == Some(config.hover_key.as_str());
     let hover_key = config.hover_key;
     let width = config.width.max(0.0);
 
     let content = if hovered {
-        wallet_address_segments(config.address, theme)
+        wallet_address_segments(config.address)
     } else {
         wallet_address_label(
             config.address,
@@ -105,64 +105,76 @@ fn wallet_address_label(
     .into()
 }
 
-fn wallet_address_segments(address: String, theme: &Theme) -> Element<'static, Message> {
-    row![
-        wallet_action_segment(
+fn wallet_address_segments(address: String) -> Element<'static, Message> {
+    let segments = Row::new()
+        .push(wallet_action_segment(
             COPY_ICON_SVG,
-            "Copy address",
             Message::CopyToClipboard(address.clone()),
-            theme.palette().primary,
-        ),
-        wallet_action_segment(
+        ))
+        .push(wallet_action_separator())
+        .push(wallet_action_segment(
             DETACH_ICON_SVG,
-            "Open detachable wallet details",
             Message::OpenWalletDetailsWindow(address.clone()),
-            theme.palette().primary,
-        ),
-        wallet_action_segment(
+        ))
+        .push(wallet_action_separator())
+        .push(wallet_action_segment(
             GHOST_ICON_SVG,
-            "Open in ghost mode",
             Message::GhostWallet(address),
-            theme.palette().primary,
-        ),
-    ]
-    .spacing(0)
-    .width(Fill)
-    .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))
+        ))
+        .width(Fill)
+        .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))
+        .align_y(iced::Alignment::Center);
+
+    // A single unified pill holds the icons with hairline dividers between
+    // them, rather than three separate bordered buttons.
+    container(segments)
+        .width(Fill)
+        .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))
+        .style(wallet_action_group_style)
+        .into()
+}
+
+fn wallet_action_separator() -> Element<'static, Message> {
+    container(rule::vertical(1).style(|theme: &Theme| rule::Style {
+        color: Color {
+            a: 0.22,
+            ..theme.extended_palette().background.weak.text
+        },
+        radius: 0.0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
+    }))
+    .height(Length::Fixed(WALLET_ACTION_SEPARATOR_HEIGHT))
+    .center_y(Fill)
     .into()
 }
 
-fn wallet_action_segment(
-    icon_svg: &'static [u8],
-    tooltip_label: &'static str,
-    message: Message,
-    icon_color: Color,
-) -> Element<'static, Message> {
+fn wallet_action_segment(icon_svg: &'static [u8], message: Message) -> Element<'static, Message> {
     let icon = svg(SvgHandle::from_memory(icon_svg))
         .width(Length::Fixed(WALLET_ACTION_ICON_SIZE))
         .height(Length::Fixed(WALLET_ACTION_ICON_SIZE))
-        .style(move |_theme: &Theme, _status| svg::Style {
-            color: Some(icon_color),
+        .style(move |theme: &Theme, status| {
+            // Muted at rest, brightening to the accent color on hover -- no
+            // jarring fill/inversion.
+            let color = match status {
+                svg::Status::Hovered => theme.palette().primary,
+                _ => theme.extended_palette().background.weak.text,
+            };
+            svg::Style { color: Some(color) }
         });
 
-    tooltip(
-        button(
-            container(icon)
-                .width(Fill)
-                .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))
-                .center_x(Fill)
-                .center_y(Length::Fixed(WALLET_ACTION_CELL_HEIGHT)),
-        )
-        .on_press(message)
-        .padding(0)
-        .width(Length::FillPortion(1))
-        .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))
-        .style(wallet_action_segment_style),
-        text(tooltip_label)
-            .size(10)
-            .font(crate::app_fonts::monospace_font()),
-        tooltip::Position::Top,
+    button(
+        container(icon)
+            .width(Fill)
+            .height(Fill)
+            .center_x(Fill)
+            .center_y(Fill),
     )
+    .on_press(message)
+    .padding(0)
+    .width(Length::FillPortion(1))
+    .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))
+    .style(wallet_action_segment_style)
     .into()
 }
 
@@ -185,25 +197,41 @@ fn wallet_address_label_button_style(theme: &Theme, status: button::Status) -> b
     }
 }
 
-fn wallet_action_segment_style(theme: &Theme, status: button::Status) -> button::Style {
-    let background_color = match status {
-        button::Status::Hovered => theme.extended_palette().background.strong.color,
-        _ => Color {
-            a: 0.35,
-            ..theme.extended_palette().background.weak.color
+fn wallet_action_group_style(theme: &Theme) -> container::Style {
+    // The unified pill: a single soft surface with one hairline border.
+    container::Style {
+        background: Some(theme.extended_palette().background.base.color.into()),
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: theme.extended_palette().background.strong.color,
         },
+        ..Default::default()
+    }
+}
+
+fn wallet_action_segment_style(theme: &Theme, status: button::Status) -> button::Style {
+    // Flat at rest; a gentle accent-tinted wash on hover signals the target
+    // without the harshness of a solid fill.
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    let background = if hovered {
+        Some(
+            Color {
+                a: 0.16,
+                ..theme.palette().primary
+            }
+            .into(),
+        )
+    } else {
+        None
     };
 
     button::Style {
-        background: Some(background_color.into()),
-        text_color: theme.palette().primary,
+        background,
+        text_color: theme.palette().text,
         border: iced::Border {
             radius: 3.0.into(),
-            width: 1.0,
-            color: Color {
-                a: 0.45,
-                ..theme.palette().primary
-            },
+            ..Default::default()
         },
         ..Default::default()
     }

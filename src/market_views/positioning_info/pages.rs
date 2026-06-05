@@ -1,9 +1,8 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers;
 use crate::message::Message;
 use crate::positioning_state::PositioningInfoInstance;
 
-use iced::widget::{column, container, row, rule, scrollable, text, text_input};
+use iced::widget::{column, container, row, rule, scrollable, text};
 use iced::{Alignment, Element, Fill, Theme};
 
 mod tables;
@@ -19,22 +18,14 @@ impl TradingTerminal {
         available_width: f32,
         theme: &Theme,
     ) -> Element<'a, Message> {
-        let search = text_input("Select perp ticker...", &instance.search_query)
-            .style(helpers::text_input_style)
-            .on_input(move |q| Message::PositioningInfoSearchChanged(instance.id, q))
-            .size(12)
-            .padding([5, 8]);
-        let autocomplete =
-            self.view_positioning_info_autocomplete(instance.id, &instance.search_query, theme);
         let controls = self.view_positioning_info_controls(instance);
 
-        let mut content = column![
-            self.view_positioning_info_title(instance, theme, false),
-            search,
-            autocomplete,
-            controls,
-        ]
-        .spacing(8);
+        let mut content =
+            column![self.view_positioning_info_title(instance, theme, true)].spacing(8);
+        if instance.symbol_picker_open {
+            content = content.push(self.view_positioning_info_symbol_dropdown(instance, theme));
+        }
+        content = content.push(controls);
 
         if let Some(error) = &instance.error {
             content = content.push(text(error.clone()).size(11).color(
@@ -89,7 +80,6 @@ impl TradingTerminal {
     pub(super) fn view_positioning_info_change_page<'a>(
         &'a self,
         instance: &'a PositioningInfoInstance,
-        available_width: f32,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let controls = self.view_positioning_info_change_controls(instance);
@@ -116,12 +106,7 @@ impl TradingTerminal {
                 .push(rule::horizontal(1))
                 .push(self.view_positioning_info_change_summary(data, instance, theme))
                 .push(rule::horizontal(1))
-                .push(self.view_positioning_info_change_table(
-                    data,
-                    instance,
-                    available_width,
-                    theme,
-                ));
+                .push(self.view_positioning_info_flow(instance));
         } else {
             let status: Element<'_, Message> = if instance.change_loading {
                 row![

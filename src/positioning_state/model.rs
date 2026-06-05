@@ -45,8 +45,8 @@ impl PositioningInfoSide {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::All => "All",
-            Self::Long => "Long",
-            Self::Short => "Short",
+            Self::Long => "\u{2191} Long",
+            Self::Short => "\u{2193} Short",
         }
     }
 }

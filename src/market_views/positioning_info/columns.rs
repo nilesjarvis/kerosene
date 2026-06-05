@@ -1,13 +1,3 @@
-mod change;
-
-pub(super) use change::PositioningChangeColumns;
-
-pub(super) const POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH: f32 =
-    change::POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH;
-#[cfg(test)]
-pub(super) const POSITIONING_CHANGE_TRADER_MIN_WIDTH: f32 =
-    change::POSITIONING_CHANGE_TRADER_MIN_WIDTH;
-
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PositioningInfoColumns {
     pub(super) trader_width: f32,
@@ -31,15 +21,21 @@ const POSITIONING_TABLE_CONTENT_PADDING: f32 = 20.0;
 const POSITIONING_TABLE_SCROLLBAR_RESERVE: f32 = 14.0;
 pub(super) const POSITIONING_TABLE_CELL_PADDING: f32 = 16.0;
 pub(super) const POSITIONING_TABLE_COLUMN_SPACING: f32 = 6.0;
-pub(super) const POSITIONING_TRADER_MIN_WIDTH: f32 = 112.0;
-const POSITIONING_SIDE_WIDTH: f32 = 44.0;
-pub(super) const POSITIONING_SIZE_WIDTH: f32 = 64.0;
-const POSITIONING_NOTIONAL_WIDTH: f32 = 76.0;
-const POSITIONING_UPNL_WIDTH: f32 = 74.0;
-const POSITIONING_ENTRY_WIDTH: f32 = 70.0;
-const POSITIONING_LIQ_WIDTH: f32 = 70.0;
-const POSITIONING_FUNDING_WIDTH: f32 = 74.0;
-const POSITIONING_ACCOUNT_WIDTH: f32 = 76.0;
+pub(super) const POSITIONING_TRADER_MIN_WIDTH: f32 = 124.0;
+const POSITIONING_SIDE_WIDTH: f32 = 48.0;
+pub(super) const POSITIONING_SIZE_WIDTH: f32 = 72.0;
+const POSITIONING_NOTIONAL_WIDTH: f32 = 90.0;
+const POSITIONING_UPNL_WIDTH: f32 = 88.0;
+const POSITIONING_ENTRY_WIDTH: f32 = 78.0;
+const POSITIONING_LIQ_WIDTH: f32 = 78.0;
+const POSITIONING_FUNDING_WIDTH: f32 = 84.0;
+const POSITIONING_ACCOUNT_WIDTH: f32 = 90.0;
+
+// A column is only revealed when it fits with this much headroom to spare, so
+// optional columns appear with breathing room rather than the instant they
+// barely fit. Lower-priority columns require progressively more headroom.
+const POSITIONING_COLUMN_REVEAL_MARGIN: f32 = 28.0;
+const POSITIONING_COLUMN_REVEAL_MARGIN_STEP: f32 = 12.0;
 const POSITIONING_TRADER_WEIGHT: f32 = 2.4;
 const POSITIONING_SIDE_WEIGHT: f32 = 0.7;
 const POSITIONING_SIZE_WEIGHT: f32 = 1.0;
@@ -68,10 +64,14 @@ impl PositioningInfoColumns {
             POSITIONING_TRADER_MIN_WIDTH
         };
         let mut used_width = base_width_without_trader + trader_width;
+        let mut revealed = 0u32;
         let mut include_column = |column_width: f32| {
+            let margin = POSITIONING_COLUMN_REVEAL_MARGIN
+                + POSITIONING_COLUMN_REVEAL_MARGIN_STEP * revealed as f32;
             let next_width = used_width + POSITIONING_TABLE_COLUMN_SPACING + column_width;
-            if next_width <= content_width {
+            if next_width + margin <= content_width {
                 used_width = next_width;
+                revealed += 1;
                 true
             } else {
                 false

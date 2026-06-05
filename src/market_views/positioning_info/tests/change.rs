@@ -40,68 +40,77 @@ fn positioning_change_side_totals_count_flips_by_side_exposure() {
 }
 
 #[test]
-fn positioning_change_sort_defaults_to_largest_absolute_change() {
+fn positioning_flow_ranks_by_largest_usd_magnitude() {
     let rows = vec![
         delta("0xaaa", 100.0, -5.0),
         delta("0xbbb", 10.0, 50.0),
         delta("0xccc", -10.0, -75.0),
     ];
 
-    let sorted = sorted_change_rows(
-        &rows,
-        PositioningInfoChangeSortField::Change,
-        config::SortDirection::Descending,
-        Some(10.0),
-    );
+    let data = positioning_flow_data(&rows, Some(10.0), 10);
 
-    assert_eq!(sorted[0].address, "0xccc");
-    assert_eq!(sorted[1].address, "0xbbb");
-    assert_eq!(sorted[2].address, "0xaaa");
+    // Sorted by |delta * mark| descending: 75 > 50 > 5.
+    assert_eq!(data.rows[0].address, "0xccc");
+    assert_eq!(data.rows[1].address, "0xbbb");
+    assert_eq!(data.rows[2].address, "0xaaa");
+    assert!(data.usd_scaled);
+    assert_eq!(data.max_magnitude, 750.0);
 }
 
 #[test]
-fn positioning_change_sort_can_use_derived_previous_size() {
-    let rows = vec![
-        delta("0xaaa", 0.0, -10.0),
-        delta("0xbbb", 30.0, 5.0),
-        delta("0xccc", -20.0, 5.0),
-    ];
+fn positioning_flow_falls_back_to_size_without_live_mark() {
+    let rows = vec![delta("0xaaa", 100.0, -5.0), delta("0xbbb", 10.0, 50.0)];
 
-    let sorted = sorted_change_rows(
-        &rows,
-        PositioningInfoChangeSortField::Previous,
-        config::SortDirection::Descending,
-        Some(10.0),
-    );
+    let data = positioning_flow_data(&rows, None, 10);
 
-    assert_eq!(sorted[0].address, "0xbbb");
-    assert_eq!(sorted[1].address, "0xaaa");
-    assert_eq!(sorted[2].address, "0xccc");
+    assert!(!data.usd_scaled);
+    // Ranked by raw |delta|: 50 > 5.
+    assert_eq!(data.rows[0].address, "0xbbb");
+    assert_eq!(data.max_magnitude, 50.0);
 }
 
 #[test]
-fn positioning_change_sort_keeps_invalid_values_last() {
+fn positioning_flow_classifies_add_cut_and_flip() {
+    // Grew an existing long (prev 95 -> now 100).
+    let add = positioning_flow_data(&[delta("0xaaa", 100.0, 5.0)], Some(10.0), 10);
+    assert_eq!(add.rows[0].kind, PositioningFlowKind::Add);
+
+    // Shrank a long toward zero (prev 60 -> now 10).
+    let cut = positioning_flow_data(&[delta("0xbbb", 10.0, -50.0)], Some(10.0), 10);
+    assert_eq!(cut.rows[0].kind, PositioningFlowKind::Cut);
+
+    // Crossed zero short -> long (prev -20 -> now 30).
+    let flip = positioning_flow_data(&[delta("0xccc", 30.0, 50.0)], Some(10.0), 10);
+    assert_eq!(flip.rows[0].kind, PositioningFlowKind::Flip);
+}
+
+#[test]
+fn positioning_flow_aggregates_net_long_and_short_flow() {
     let rows = vec![
-        delta("0xaaa", f64::NAN, 1.0),
-        delta("0xbbb", 5.0, 1.0),
-        delta("0xccc", 10.0, 1.0),
+        delta("0xaaa", 0.0, 4.0),  // +4 long-ward
+        delta("0xbbb", 0.0, -3.0), // -3 short-ward
+        delta("0xccc", f64::NAN, 1.0),
     ];
 
-    let descending = sorted_change_rows(
-        &rows,
-        PositioningInfoChangeSortField::Current,
-        config::SortDirection::Descending,
-        Some(10.0),
-    );
-    let ascending = sorted_change_rows(
-        &rows,
-        PositioningInfoChangeSortField::Current,
-        config::SortDirection::Ascending,
-        Some(10.0),
-    );
+    let data = positioning_flow_data(&rows, Some(10.0), 10);
 
-    assert_eq!(descending[0].address, "0xccc");
-    assert_eq!(descending[2].address, "0xaaa");
-    assert_eq!(ascending[0].address, "0xbbb");
-    assert_eq!(ascending[2].address, "0xaaa");
+    // Long flow = 4 * 10, short flow = 3 * 10; non-finite current is skipped.
+    assert_eq!(data.long_flow, 40.0);
+    assert_eq!(data.short_flow, 30.0);
+}
+
+#[test]
+fn positioning_flow_respects_row_limit() {
+    let rows = vec![
+        delta("0xaaa", 100.0, -5.0),
+        delta("0xbbb", 10.0, 50.0),
+        delta("0xccc", -10.0, -75.0),
+    ];
+
+    let data = positioning_flow_data(&rows, Some(10.0), 2);
+
+    assert_eq!(data.rows.len(), 2);
+    // Keeps the two largest moves.
+    assert_eq!(data.rows[0].address, "0xccc");
+    assert_eq!(data.rows[1].address, "0xbbb");
 }

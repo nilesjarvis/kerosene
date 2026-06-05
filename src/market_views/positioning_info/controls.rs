@@ -9,7 +9,7 @@ use buttons::{
     positioning_clear_filters_button, positioning_control_button, positioning_navigation_button,
 };
 use iced::widget::{Row, Space, container, row, text};
-use iced::{Alignment, Element, Fill, Length, color};
+use iced::{Alignment, Element, Fill, Length};
 
 mod buttons;
 mod symbol_picker;
@@ -41,6 +41,7 @@ impl TradingTerminal {
         &self,
         instance: &PositioningInfoInstance,
     ) -> Element<'static, Message> {
+        let muted = self.theme().extended_palette().background.weak.text;
         let can_clear = instance.has_active_filters() || instance.error.is_some();
         let side_row = PositioningInfoSide::ALL
             .iter()
@@ -54,7 +55,7 @@ impl TradingTerminal {
         row![
             text("Side")
                 .size(10)
-                .color(color!(0x888888))
+                .color(muted)
                 .width(Length::Fixed(34.0)),
             side_row,
             Space::new().width(Fill),
@@ -70,6 +71,7 @@ impl TradingTerminal {
         &self,
         instance: &PositioningInfoInstance,
     ) -> Element<'static, Message> {
+        let muted = self.theme().extended_palette().background.weak.text;
         let timeframe_row = PositioningInfoChangeTimeframe::ALL.iter().fold(
             Row::new().spacing(4),
             |row, &timeframe| {
@@ -84,7 +86,7 @@ impl TradingTerminal {
         row![
             text("Time")
                 .size(10)
-                .color(color!(0x888888))
+                .color(muted)
                 .width(Length::Fixed(34.0)),
             timeframe_row,
             Space::new().width(Fill),

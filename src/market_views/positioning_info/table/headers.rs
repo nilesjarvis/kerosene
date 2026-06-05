@@ -1,11 +1,8 @@
 use super::super::columns::*;
-use super::cells::{change_sort_header_cell, header_cell, header_cell_aligned, sort_header_cell};
+use super::cells::{header_cell, header_cell_aligned, sort_header_cell};
 use crate::config;
-use crate::denomination::DisplayDenominationContext;
 use crate::message::Message;
-use crate::positioning_state::{
-    PositioningInfoChangeSortField, PositioningInfoId, PositioningInfoSortField,
-};
+use crate::positioning_state::{PositioningInfoId, PositioningInfoSortField};
 
 use iced::alignment::Horizontal;
 use iced::widget::Row;
@@ -101,79 +98,4 @@ pub(in crate::market_views::positioning_info) fn positioning_table_header(
     }
 
     header.into()
-}
-
-pub(in crate::market_views::positioning_info) fn positioning_change_table_header(
-    id: PositioningInfoId,
-    sort_field: PositioningInfoChangeSortField,
-    sort_direction: config::SortDirection,
-    columns: PositioningChangeColumns,
-    theme: &Theme,
-    denomination: &DisplayDenominationContext,
-) -> Element<'static, Message> {
-    let muted = theme.extended_palette().background.weak.text;
-    Row::new()
-        .spacing(POSITIONING_TABLE_COLUMN_SPACING)
-        .padding([0, 8])
-        .push(change_sort_header_cell(
-            "Trader",
-            PositioningInfoChangeSortField::Trader,
-            id,
-            sort_field,
-            sort_direction,
-            Length::Fixed(columns.trader_width),
-            muted,
-            Horizontal::Left,
-        ))
-        .push(change_sort_header_cell(
-            "Previous",
-            PositioningInfoChangeSortField::Previous,
-            id,
-            sort_field,
-            sort_direction,
-            Length::Fixed(columns.previous_width),
-            muted,
-            Horizontal::Right,
-        ))
-        .push(change_sort_header_cell(
-            "Current",
-            PositioningInfoChangeSortField::Current,
-            id,
-            sort_field,
-            sort_direction,
-            Length::Fixed(columns.current_width),
-            muted,
-            Horizontal::Right,
-        ))
-        .push(change_sort_header_cell(
-            "\u{0394} Change",
-            PositioningInfoChangeSortField::Change,
-            id,
-            sort_field,
-            sort_direction,
-            Length::Fixed(columns.delta_width),
-            muted,
-            Horizontal::Right,
-        ))
-        .push(change_sort_header_cell(
-            format!("Current {}", denomination.active_symbol()),
-            PositioningInfoChangeSortField::CurrentUsd,
-            id,
-            sort_field,
-            sort_direction,
-            Length::Fixed(columns.current_usd_width),
-            muted,
-            Horizontal::Right,
-        ))
-        .push(change_sort_header_cell(
-            format!("Change {}", denomination.active_symbol()),
-            PositioningInfoChangeSortField::ChangeUsd,
-            id,
-            sort_field,
-            sort_direction,
-            Length::Fixed(columns.delta_usd_width),
-            muted,
-            Horizontal::Right,
-        ))
-        .into()
 }

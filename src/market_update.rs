@@ -96,7 +96,6 @@ fn is_positioning_info_market_message(message: &Message) -> bool {
             | Message::PositioningInfoSideChanged(_, _)
             | Message::PositioningInfoSortChanged(_, _)
             | Message::PositioningInfoChangeTimeframeChanged(_, _)
-            | Message::PositioningInfoChangeSortChanged(_, _)
             | Message::ClearPositioningInfoFilters(_)
             | Message::RefreshPositioningInfoPane(_)
             | Message::RefreshPositioningInfo

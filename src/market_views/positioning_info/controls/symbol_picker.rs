@@ -3,7 +3,7 @@ use crate::helpers;
 use crate::message::Message;
 use crate::positioning_state::{PositioningInfoInstance, PositioningInfoPage};
 
-use iced::widget::{Row, button, column, container, row, text, text_input};
+use iced::widget::{Row, button, column, container, row, text, text_input, tooltip};
 use iced::{Alignment, Color, Element, Fill, Theme};
 
 mod autocomplete;
@@ -92,43 +92,60 @@ impl TradingTerminal {
             PositioningInfoPage::Change => (instance.change_loading, instance.change_last_fetch_ms),
         };
 
-        let status: Element<'_, Message> = if loading {
-            row![
-                self.view_spinner(14),
-                text("Refreshing")
-                    .size(10)
-                    .color(theme.extended_palette().background.weak.text),
-            ]
-            .spacing(5)
-            .align_y(Alignment::Center)
-            .into()
+        let muted = theme.extended_palette().background.weak.text;
+        let tooltip_label = if loading {
+            "Refreshing…".to_string()
         } else {
-            text(
-                last_fetch_ms
-                    .map(|last| {
-                        format!(
-                            "{} ago",
-                            helpers::format_relative_time(last, TradingTerminal::now_ms())
-                        )
-                    })
-                    .unwrap_or_else(|| "Not loaded".to_string()),
-            )
-            .size(10)
-            .color(theme.extended_palette().background.weak.text)
-            .into()
+            last_fetch_ms
+                .map(|last| {
+                    format!(
+                        "Refresh • updated {} ago",
+                        helpers::format_relative_time(last, TradingTerminal::now_ms())
+                    )
+                })
+                .unwrap_or_else(|| "Refresh • not loaded".to_string())
         };
 
-        row![
-            symbol_row.width(Fill),
-            status,
-            button(text("Refresh").size(10))
-                .style(button::text)
-                .on_press(Message::RefreshPositioningInfoPane(instance.id))
-                .padding([2, 6]),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .into()
+        let icon: Element<'_, Message> = if loading {
+            self.view_spinner(14)
+        } else {
+            text("\u{21bb}")
+                .size(13)
+                .center()
+                .font(crate::app_fonts::monospace_font())
+                .color(muted)
+                .into()
+        };
+
+        let mut refresh_button = button(icon)
+            .padding([2, 6])
+            .style(positioning_refresh_button_style);
+        if !loading {
+            refresh_button =
+                refresh_button.on_press(Message::RefreshPositioningInfoPane(instance.id));
+        }
+
+        let refresh = tooltip(
+            refresh_button,
+            container(text(tooltip_label).size(10))
+                .padding([4, 8])
+                .style(|theme: &Theme| iced::widget::container::Style {
+                    background: Some(theme.extended_palette().background.strong.color.into()),
+                    text_color: Some(theme.palette().text),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        width: 1.0,
+                        color: theme.extended_palette().background.weak.color,
+                    },
+                    ..Default::default()
+                }),
+            tooltip::Position::Top,
+        );
+
+        row![symbol_row.width(Fill), refresh]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into()
     }
 
     pub(in crate::market_views::positioning_info) fn view_positioning_info_symbol_dropdown<'a>(
@@ -174,5 +191,23 @@ impl TradingTerminal {
                     .to_string()
             })
             .unwrap_or_else(|| symbol.to_string())
+    }
+}
+
+fn positioning_refresh_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let bg = match status {
+        button::Status::Hovered | button::Status::Pressed => {
+            theme.extended_palette().background.strong.color
+        }
+        _ => Color::TRANSPARENT,
+    };
+    button::Style {
+        background: Some(bg.into()),
+        text_color: theme.palette().text,
+        border: iced::Border {
+            radius: 3.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
     }
 }

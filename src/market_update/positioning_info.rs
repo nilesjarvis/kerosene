@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::positioning_state::{PositioningInfoId, PositioningInfoPage};
+use crate::positioning_state::PositioningInfoId;
 
 use iced::Task;
 
@@ -36,9 +36,7 @@ impl TradingTerminal {
             Message::PositioningInfoSearchChanged(id, query) => {
                 if let Some(instance) = self.positioning_infos.get_mut(&id) {
                     instance.search_query = query;
-                    if instance.page == PositioningInfoPage::Change {
-                        instance.symbol_picker_open = true;
-                    }
+                    instance.symbol_picker_open = true;
                 }
                 Task::none()
             }
@@ -107,25 +105,6 @@ impl TradingTerminal {
                 }
                 self.persist_config();
                 self.request_positioning_info_change_refresh(id, true)
-            }
-            Message::PositioningInfoChangeSortChanged(id, sort_field) => {
-                if let Some(instance) = self.positioning_infos.get_mut(&id) {
-                    if instance.change_sort_field == sort_field {
-                        instance.change_sort_direction = match instance.change_sort_direction {
-                            crate::config::SortDirection::Ascending => {
-                                crate::config::SortDirection::Descending
-                            }
-                            crate::config::SortDirection::Descending => {
-                                crate::config::SortDirection::Ascending
-                            }
-                        };
-                    } else {
-                        instance.change_sort_field = sort_field;
-                        instance.change_sort_direction = sort_field.default_direction();
-                    }
-                }
-                self.persist_config();
-                Task::none()
             }
             Message::ClearPositioningInfoFilters(id) => {
                 let should_refresh = if let Some(instance) = self.positioning_infos.get_mut(&id) {

@@ -3,7 +3,7 @@ use super::super::metrics::*;
 use super::cells::{positioning_trader_cell, value_cell};
 use crate::denomination::DisplayDenominationContext;
 use crate::helpers;
-use crate::hyperdash_api::{PerpDeltaEntry, TickerPositionEntry};
+use crate::hyperdash_api::TickerPositionEntry;
 use crate::message::Message;
 use crate::positioning_state::PositioningInfoId;
 use crate::wallet_state::address_book::WalletDisplay;
@@ -37,6 +37,14 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
         live_mark,
         denomination,
     } = context;
+    let actions_hovered = hovered_wallet_action_key
+        == Some(
+            format!(
+                "positioning-info:{instance_id}:positions:{}",
+                position.address
+            )
+            .as_str(),
+        );
     let side = position_side_label(position.size);
     let side_color = position_side_color(position.size, theme);
     let notional = positioning_live_notional(position, live_mark).unwrap_or(position.notional_size);
@@ -139,104 +147,35 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
 
     container(row)
         .width(Fill)
-        .style(row_accent_style(side_color, 0.15))
-        .into()
-}
-
-pub(in crate::market_views::positioning_info) fn positioning_change_row(
-    context: PositioningRowContext<'_>,
-    entry: &PerpDeltaEntry,
-    wallet_display: WalletDisplay,
-    columns: PositioningChangeColumns,
-) -> Element<'static, Message> {
-    let PositioningRowContext {
-        instance_id,
-        hovered_wallet_action_key,
-        theme,
-        live_mark,
-        denomination,
-    } = context;
-    let previous = positioning_previous_change_size(entry);
-    let previous_color = previous
-        .map(|value| signed_value_color(value, theme))
-        .unwrap_or_else(|| theme.extended_palette().background.weak.text);
-    let current_color = signed_value_color(entry.current, theme);
-    let delta_color = signed_value_color(entry.delta, theme);
-    let current_usd = positioning_live_change_usd(entry.current, live_mark)
-        .map(|value| format_signed_usd(value, denomination))
-        .unwrap_or_else(|| "-".to_string());
-    let delta_usd = positioning_live_change_usd(entry.delta, live_mark)
-        .map(|value| format_signed_usd(value, denomination))
-        .unwrap_or_else(|| "-".to_string());
-
-    let row = Row::new()
-        .spacing(POSITIONING_TABLE_COLUMN_SPACING)
-        .padding([4, 8])
-        .align_y(Alignment::Center)
-        .push(positioning_trader_cell(
-            &entry.address,
-            wallet_display,
-            columns.trader_width,
-            POSITIONING_CHANGE_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
-            format!("positioning-info:{instance_id}:changes:{}", entry.address),
-            hovered_wallet_action_key,
-            theme,
-        ))
-        .push(value_cell(
-            previous
-                .map(|value| format_signed_size(value, false))
-                .unwrap_or_else(|| "-".to_string()),
-            Length::Fixed(columns.previous_width),
-            previous_color,
-            true,
-        ))
-        .push(value_cell(
-            format_signed_size(entry.current, false),
-            Length::Fixed(columns.current_width),
-            current_color,
-            true,
-        ))
-        .push(value_cell(
-            format_signed_size(entry.delta, true),
-            Length::Fixed(columns.delta_width),
-            delta_color,
-            true,
-        ))
-        .push(value_cell(
-            current_usd,
-            Length::Fixed(columns.current_usd_width),
-            current_color,
-            true,
-        ))
-        .push(value_cell(
-            delta_usd,
-            Length::Fixed(columns.delta_usd_width),
-            delta_color,
-            true,
-        ));
-
-    container(row)
-        .width(Fill)
-        .style(row_accent_style(delta_color, 0.12))
+        .style(row_accent_style(side_color, 0.15, actions_hovered))
         .into()
 }
 
 fn row_accent_style(
     accent_color: iced::Color,
     alpha: f32,
+    actions_hovered: bool,
 ) -> impl Fn(&Theme) -> iced::widget::container::Style {
     move |_theme: &Theme| {
         use iced::gradient;
         let mut base_color = accent_color;
         base_color.a = alpha;
-        iced::widget::container::Style {
-            background: Some(
+        // While the trader actions are hovered, the address swaps to the action
+        // pill (which carries its own surface). Drop the row's directional
+        // accent so the pill stands alone instead of stacking box-on-box.
+        let background = if actions_hovered {
+            None
+        } else {
+            Some(
                 gradient::Linear::new(iced::Degrees(90.0))
                     .add_stop(0.0, base_color)
                     .add_stop(0.20, iced::Color::TRANSPARENT)
                     .add_stop(1.0, iced::Color::TRANSPARENT)
                     .into(),
-            ),
+            )
+        };
+        iced::widget::container::Style {
+            background,
             border: iced::Border {
                 radius: 4.0.into(),
                 ..Default::default()

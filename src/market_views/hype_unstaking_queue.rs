@@ -706,19 +706,16 @@ fn hype_unstaking_wallet_cell(
     let label = hype_unstaking_wallet_label(&display, 26);
     let tooltip_label = hype_unstaking_wallet_tooltip(&display, &address);
 
-    wallet_address_action_cell(
-        WalletAddressActionCell {
-            address: address.clone(),
-            label,
-            tooltip_label,
-            hover_key: format!("hype-unstaking:{address}"),
-            hovered_key: hovered_wallet_action_key,
-            width: HYPE_UNSTAKING_WALLET_ACTION_WIDTH,
-            text_size: 11,
-            text_color: theme.palette().text,
-        },
-        theme,
-    )
+    wallet_address_action_cell(WalletAddressActionCell {
+        address: address.clone(),
+        label,
+        tooltip_label,
+        hover_key: format!("hype-unstaking:{address}"),
+        hovered_key: hovered_wallet_action_key,
+        width: HYPE_UNSTAKING_WALLET_ACTION_WIDTH,
+        text_size: 11,
+        text_color: theme.palette().text,
+    })
 }
 
 fn hype_unstaking_wallet_label(display: &WalletDisplay, max_chars: usize) -> String {
