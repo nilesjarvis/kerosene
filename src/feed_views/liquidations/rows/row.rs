@@ -55,12 +55,17 @@ impl TradingTerminal {
 
         if row_layout.show_size {
             row_ui = row_ui.push(
-                text(format!("{:.4}", liq.size).trim_end_matches('0').trim_end_matches('.').to_string())
-                    .size(12)
-                    .font(crate::app_fonts::monospace_font())
-                    .color(theme.palette().text)
-                    .wrapping(Wrapping::None)
-                    .width(NUMBER_WIDTH),
+                text(
+                    format!("{:.4}", liq.size)
+                        .trim_end_matches('0')
+                        .trim_end_matches('.')
+                        .to_string(),
+                )
+                .size(12)
+                .font(crate::app_fonts::monospace_font())
+                .color(theme.palette().text)
+                .wrapping(Wrapping::None)
+                .width(NUMBER_WIDTH),
             );
         }
 
