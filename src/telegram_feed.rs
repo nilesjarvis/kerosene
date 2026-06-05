@@ -289,6 +289,12 @@ impl TelegramFeedState {
             .any(|channel| channel.peer_id == peer_id)
     }
 
+    pub(crate) fn feed_source_selected(&self, source: &str) -> bool {
+        self.channels.iter().any(|channel| channel == source)
+            || telegram_private_channel_peer_id_from_key(source)
+                .is_some_and(|peer_id| self.private_channel_selected(peer_id))
+    }
+
     pub(crate) fn available_private_channel_candidates(
         &self,
     ) -> Vec<TelegramPrivateChannelCandidate> {

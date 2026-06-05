@@ -520,12 +520,7 @@ impl TradingTerminal {
             .background_loading_channels
             .retain(|loading| loading != &channel);
 
-        if !self
-            .telegram_feed
-            .channels
-            .iter()
-            .any(|existing| existing == &channel)
-        {
+        if !self.telegram_feed.feed_source_selected(&channel) {
             return Task::none();
         }
 
@@ -749,12 +744,7 @@ impl TradingTerminal {
         request_id: u64,
         result: Result<Vec<u8>, String>,
     ) {
-        if !self
-            .telegram_feed
-            .channels
-            .iter()
-            .any(|existing| existing == &channel)
-        {
+        if !self.telegram_feed.feed_source_selected(&channel) {
             return;
         }
 
@@ -1321,6 +1311,41 @@ mod tests {
             terminal.telegram_feed.fast_reconnect_nonce,
             nonce.saturating_add(1)
         );
+    }
+
+    #[test]
+    fn selected_private_channel_fast_event_is_inserted() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = crate::telegram_feed::telegram_private_channel_key(42);
+        terminal.telegram_feed.private_channels =
+            vec![crate::telegram_feed::TelegramFeedPrivateChannelConfig {
+                peer_id: 42,
+                title: "Private Macro".to_string(),
+            }];
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            TelegramFastFeedEvent::Loaded(
+                key.clone(),
+                Box::new(Ok(sample_page(&key, vec![sample_post(&key, 7)]))),
+            ),
+        ));
+
+        assert_eq!(terminal.telegram_feed.posts.len(), 1);
+        assert_eq!(terminal.telegram_feed.posts[0].channel, key);
+        assert_eq!(terminal.telegram_feed.posts[0].message_id, 7);
+    }
+
+    #[test]
+    fn unselected_private_channel_fast_event_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = crate::telegram_feed::telegram_private_channel_key(42);
+        let page = sample_page(&key, vec![sample_post(&key, 7)]);
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            TelegramFastFeedEvent::Loaded(key, Box::new(Ok(page))),
+        ));
+
+        assert!(terminal.telegram_feed.posts.is_empty());
     }
 
     #[test]
