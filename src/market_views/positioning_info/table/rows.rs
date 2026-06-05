@@ -176,7 +176,7 @@ fn row_accent_style(
         let background = if actions_hovered {
             None
         } else {
-            let fade_stop = (gradient_width as f32).max(0.05).min(0.6);
+            let fade_stop = (gradient_width as f32).clamp(0.05, 0.6);
             Some(
                 gradient::Linear::new(iced::Degrees(90.0))
                     .add_stop(0.0, base_color)

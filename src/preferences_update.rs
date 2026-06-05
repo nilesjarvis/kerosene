@@ -193,11 +193,9 @@ impl TradingTerminal {
                     return self.sync_main_window_min_size();
                 }
             }
-            Message::ResetFocusedWidgetPadding => {
-                if self.reset_focused_widget_padding() {
-                    self.persist_config();
-                    return self.sync_main_window_min_size();
-                }
+            Message::ResetFocusedWidgetPadding if self.reset_focused_widget_padding() => {
+                self.persist_config();
+                return self.sync_main_window_min_size();
             }
             Message::ToggleCustomWindowChrome(enabled)
                 if self.custom_window_chrome_enabled != enabled =>
