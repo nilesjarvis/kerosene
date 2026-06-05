@@ -9,6 +9,7 @@ impl TradingTerminal {
         &self,
     ) -> Element<'static, Message> {
         let menu_open = self.liquidation_settings_menu_open;
+        let corner_radius = self.pane_corner_radius;
 
         tooltip(
             button(text("\u{2699}").size(13).center())
@@ -30,7 +31,7 @@ impl TradingTerminal {
                             theme.palette().text
                         },
                         border: iced::Border {
-                            radius: 3.0.into(),
+                            radius: crate::config::effective_radius(corner_radius, 3.0).into(),
                             width: if menu_open { 1.0 } else { 0.0 },
                             color: Color {
                                 a: 0.45,

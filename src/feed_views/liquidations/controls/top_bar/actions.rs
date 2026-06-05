@@ -31,10 +31,11 @@ impl TradingTerminal {
     pub(in crate::feed_views::liquidations::controls) fn view_clear_liquidations_button(
         &self,
     ) -> Element<'static, Message> {
+        let corner_radius = self.pane_corner_radius;
         button(text("Clear").size(10).center())
             .on_press(Message::ClearLiquidations)
             .padding([2, 6])
-            .style(|theme: &Theme, status| {
+            .style(move |theme: &Theme, status| {
                 let bg = match status {
                     button::Status::Hovered => theme.extended_palette().background.strong.color,
                     _ => theme.extended_palette().background.weak.color,
@@ -43,7 +44,7 @@ impl TradingTerminal {
                     background: Some(bg.into()),
                     text_color: theme.palette().text,
                     border: iced::Border {
-                        radius: 3.0.into(),
+                        radius: crate::config::effective_radius(corner_radius, 3.0).into(),
                         ..Default::default()
                     },
                     ..Default::default()

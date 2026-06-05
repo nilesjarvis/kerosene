@@ -227,6 +227,18 @@ pub fn normalize_pane_corner_radius(value: f32) -> f32 {
     }
 }
 
+/// Returns the effective border radius for a widget element given the user's
+/// configured pane corner radius. When corners are square (`corner_radius == 0`),
+/// all child element radii resolve to `0.0`; otherwise the element's own default
+/// radius is used.
+pub fn effective_radius(corner_radius: f32, element_radius: f32) -> f32 {
+    if corner_radius == 0.0 {
+        0.0
+    } else {
+        element_radius
+    }
+}
+
 pub fn normalize_widget_padding(value: f32) -> f32 {
     if value.is_finite() {
         value.clamp(MIN_WIDGET_PADDING, MAX_WIDGET_PADDING)

@@ -54,7 +54,7 @@ pub use defaults::{
     default_liquidation_alert_threshold, default_market_slippage_pct, default_order_kind,
     default_pane_border_thickness, default_pane_corner_radius, default_symbol,
     default_symbol_search_sort_mode, default_tick_size, default_timeframe, default_ui_scale,
-    default_widget_padding, new_secret_id, normalize_alfred_popup_scale,
+    default_widget_padding, effective_radius, new_secret_id, normalize_alfred_popup_scale,
     normalize_chart_chromatic_aberration_strength, normalize_chart_crosshair_scale,
     normalize_chart_dotted_background_opacity, normalize_chart_edge_blur_strength,
     normalize_chart_fisheye_strength, normalize_chart_hud_order_sound_volume,

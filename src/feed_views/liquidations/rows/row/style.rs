@@ -29,7 +29,13 @@ pub(super) fn liquidation_row_color(theme: &Theme, is_buy: bool, notional: f64) 
     (color, opacity)
 }
 
-pub(super) fn liquidation_row_style(color: Color, opacity: f32) -> container_style::Style {
+pub(super) fn liquidation_row_style(
+    color: Color,
+    opacity: f32,
+    corner_radius: f32,
+) -> container_style::Style {
+    let effective_radius = crate::config::effective_radius(corner_radius, 4.0);
+
     container_style::Style {
         background: Some(
             Color {
@@ -39,7 +45,7 @@ pub(super) fn liquidation_row_style(color: Color, opacity: f32) -> container_sty
             .into(),
         ),
         border: iced::Border {
-            radius: 4.0.into(),
+            radius: effective_radius.into(),
             ..Default::default()
         },
         ..Default::default()

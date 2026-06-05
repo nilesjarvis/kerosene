@@ -29,6 +29,7 @@ impl TradingTerminal {
         let method_label = self.liquidation_method_label(&liq);
         let coin = liq.coin.clone();
         let liquidated_user = liq.liquidated_user.clone();
+        let corner_radius = self.pane_corner_radius;
 
         let mut row_ui = row![
             text(helpers::format_relative_time(liq.time_ms, now_ms))
@@ -106,7 +107,7 @@ impl TradingTerminal {
         container(row_ui)
             .width(Fill)
             .padding([4, 8])
-            .style(move |_| liquidation_row_style(color, opacity))
+            .style(move |_| liquidation_row_style(color, opacity, corner_radius))
             .into()
     }
 
