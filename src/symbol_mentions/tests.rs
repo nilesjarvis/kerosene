@@ -152,6 +152,20 @@ fn skips_spot_only_symbols() {
 }
 
 #[test]
+fn curated_hyperliquid_keyword_maps_to_hype() {
+    let symbols = vec![symbol("HYPE", "HYPE", MarketType::Perp)];
+
+    let mentions = resolve_symbol_mentions("hyperliquid protocol update", &symbols);
+
+    assert_eq!(
+        pairs(&mentions),
+        vec![("HYPE".to_string(), "HYPE".to_string())]
+    );
+    assert_eq!(mentions[0].matched_text, "hyperliquid");
+    assert_eq!(mentions[0].source, SymbolAliasSource::CuratedKeyword);
+}
+
+#[test]
 fn curated_zcash_keyword_maps_to_zec() {
     let symbols = vec![symbol("ZEC", "ZEC", MarketType::Perp)];
 

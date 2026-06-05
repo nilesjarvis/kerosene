@@ -199,6 +199,7 @@ pub(crate) fn resolve_symbol_mentions(
 
 fn default_curated_symbol_alias_rules() -> Vec<SymbolAliasRule> {
     vec![
+        SymbolAliasRule::new("hyperliquid", ["HYPE"], 82),
         SymbolAliasRule::new("sonic", ["S"], 82),
         SymbolAliasRule::new("zcash", ["ZEC"], 82),
         SymbolAliasRule::new("crude oil", DEFAULT_OIL_SYMBOL_KEYS.iter().copied(), 80),
