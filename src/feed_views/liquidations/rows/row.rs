@@ -106,7 +106,7 @@ impl TradingTerminal {
 
         container(row_ui)
             .width(Fill)
-            .padding([4, 8])
+            .padding([5, 8])
             .style(move |_| liquidation_row_style(color, opacity, corner_radius))
             .into()
     }

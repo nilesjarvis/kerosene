@@ -28,7 +28,7 @@ impl TradingTerminal {
                 row![
                     status_dot,
                     text(liquidations_status_label)
-                        .size(10)
+                        .size(11)
                         .color(theme.extended_palette().background.weak.text),
                 ]
                 .spacing(8)

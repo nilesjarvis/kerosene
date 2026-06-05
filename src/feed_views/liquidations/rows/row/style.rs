@@ -1,30 +1,33 @@
+use iced::Color;
 use iced::widget::container as container_style;
-use iced::{Color, Theme};
 
-pub(super) fn liquidation_row_color(theme: &Theme, is_buy: bool, notional: f64) -> (Color, f32) {
-    let mut color = if is_buy {
-        theme.palette().success
-    } else {
-        theme.palette().danger
+// Neutral magnitude colors — row background conveys attention level, not side.
+// The Side cell carries the buy/sell semantic color separately.
+pub(super) fn liquidation_row_color(
+    _theme: &iced::Theme,
+    _is_buy: bool,
+    notional: f64,
+) -> (Color, f32) {
+    let color = Color {
+        r: 0.55,
+        g: 0.45,
+        b: 0.35,
+        a: 1.0,
     };
 
-    let (opacity, brightness) = if notional < 1_000.0 {
-        (0.02, 0.4)
+    let opacity = if notional < 1_000.0 {
+        0.02
     } else if notional < 10_000.0 {
-        (0.05, 0.55)
+        0.05
     } else if notional < 50_000.0 {
-        (0.1, 0.7)
+        0.1
     } else if notional < 100_000.0 {
-        (0.2, 0.85)
+        0.2
     } else if notional < 500_000.0 {
-        (0.35, 1.0)
+        0.35
     } else {
-        (0.6, 1.2)
+        0.6
     };
-
-    color.r = (color.r * brightness).min(1.0);
-    color.g = (color.g * brightness).min(1.0);
-    color.b = (color.b * brightness).min(1.0);
 
     (color, opacity)
 }

@@ -1,9 +1,19 @@
 use crate::app_state::TradingTerminal;
+use crate::feed_state::liquidation_feed_scroll_id;
 use crate::message::Message;
 use crate::ws;
 use iced::Task;
 
+const LIQUIDATION_FEED_FOLLOW_TOP_TOLERANCE_PX: f32 = 2.0;
+
 impl TradingTerminal {
+    pub(crate) fn snap_liquidation_feed_to_latest(&self) -> Task<Message> {
+        iced::widget::operation::snap_to(
+            liquidation_feed_scroll_id(),
+            iced::widget::scrollable::RelativeOffset::START,
+        )
+    }
+
     pub(super) fn update_liquidation_feed(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::WsHydromancerLiquidation(msg) => match msg {
@@ -103,6 +113,10 @@ impl TradingTerminal {
                     let chart_cutoff = (now_ms / 1000).saturating_sub(120);
                     self.liquidation_chart_buckets
                         .retain(|&bucket, _| bucket >= chart_cutoff);
+
+                    if self.liquidation_feed_following {
+                        return self.snap_liquidation_feed_to_latest();
+                    }
                 }
                 ws::HydromancerWsMessage::TrackedTrade(_) => {}
             },
@@ -110,6 +124,10 @@ impl TradingTerminal {
                 self.liquidations.clear();
                 self.liquidation_summary_buckets.clear();
                 self.liquidation_chart_buckets.clear();
+            }
+            Message::LiquidationFeedScrolled(viewport) => {
+                self.liquidation_feed_following =
+                    viewport.absolute_offset().y <= LIQUIDATION_FEED_FOLLOW_TOP_TOLERANCE_PX;
             }
             _ => {}
         }

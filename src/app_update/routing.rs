@@ -84,6 +84,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleLiquidationFeedAggregation
         | Message::ToggleLiquidationChart
         | Message::ToggleLiquidationSummary
+        | Message::ToggleLiquidationFollow
         | Message::ToggleLiquidationSettingsMenu
         | Message::LiquidationAlertThresholdChanged(_)
         | Message::SaveLiquidationAlertThreshold
@@ -487,6 +488,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WsHydromancerLiquidation(_)
         | Message::WsHydromancerTrackedTrades(_)
         | Message::ClearLiquidations
+        | Message::LiquidationFeedScrolled(_)
         | Message::ClearTrackedTrades
         | Message::RefreshTelegramFeed
         | Message::TelegramFeedRefreshTick

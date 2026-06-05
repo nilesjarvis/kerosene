@@ -15,6 +15,7 @@ impl TradingTerminal {
             self.view_liquidations_connection_controls(now_ms, &theme),
             Space::new().width(Fill),
             self.view_liquidation_threshold_controls(&theme),
+            self.view_liquidation_follow_button(),
             self.view_liquidation_settings_button(),
             Space::new().width(8),
             self.view_clear_liquidations_button(),

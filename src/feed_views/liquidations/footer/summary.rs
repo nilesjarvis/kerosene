@@ -65,7 +65,7 @@ impl TradingTerminal {
                 (0.5, 0.5)
             };
 
-            let bar_height = 3.0;
+            let bar_height = 4.0;
 
             let ratio_bar = row![
                 container(Space::new())

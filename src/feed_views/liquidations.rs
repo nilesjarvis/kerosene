@@ -4,6 +4,7 @@ mod layout;
 mod rows;
 
 use crate::app_state::TradingTerminal;
+use crate::feed_state::liquidation_feed_scroll_id;
 use crate::message::Message;
 use iced::widget::{column, container, responsive, scrollable};
 use iced::{Element, Fill};
@@ -32,11 +33,19 @@ impl TradingTerminal {
     fn view_liquidations_sized(&self, now_ms: u64, available_width: f32) -> Element<'_, Message> {
         let row_layout = layout::LiquidationFeedRowLayout::from_width(available_width);
 
+        // Sticky header: only the rows scroll, header stays visible
+        let scroll_content = column![
+            iced::widget::rule::horizontal(1),
+            self.view_liquidation_feed_rows(now_ms, row_layout),
+        ]
+        .spacing(0);
+
         let content = column![
             self.view_liquidations_top_bar(now_ms),
             self.view_liquidations_header(row_layout),
-            iced::widget::rule::horizontal(1),
-            scrollable(self.view_liquidation_feed_rows(now_ms, row_layout))
+            scrollable(scroll_content)
+                .id(liquidation_feed_scroll_id())
+                .on_scroll(Message::LiquidationFeedScrolled)
                 .direction(iced::widget::scrollable::Direction::Vertical(
                     iced::widget::scrollable::Scrollbar::new()
                         .width(4)

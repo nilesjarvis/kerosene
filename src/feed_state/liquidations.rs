@@ -2,12 +2,19 @@ mod model;
 
 use crate::app_state::TradingTerminal;
 use crate::ws::LiquidationEvent;
+use iced::widget::Id;
 use std::collections::HashMap;
 
 use super::LIQUIDATION_FEED_RENDER_LIMIT;
 use model::LiquidationAggregationKey;
 
 pub(crate) use model::LiquidationFeedRow;
+
+const LIQUIDATION_SCROLL_ID: &str = "liquidation_feed_scroll";
+
+pub(crate) fn liquidation_feed_scroll_id() -> Id {
+    Id::new(LIQUIDATION_SCROLL_ID)
+}
 
 // ---------------------------------------------------------------------------
 // Liquidation Feed State

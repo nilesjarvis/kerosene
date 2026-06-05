@@ -5,6 +5,51 @@ use iced::widget::{button, container, row, text, tooltip};
 use iced::{Color, Element, Theme};
 
 impl TradingTerminal {
+    pub(in crate::feed_views::liquidations::controls) fn view_liquidation_follow_button(
+        &self,
+    ) -> Element<'static, Message> {
+        let following = self.liquidation_feed_following;
+        let corner_radius = self.pane_corner_radius;
+        let label = if following { "FOLLOW" } else { "PAUSED" };
+
+        tooltip(
+            button(text(label).size(10).center().width(48))
+                .on_press(Message::ToggleLiquidationFollow)
+                .width(60)
+                .padding([2, 6])
+                .style(move |theme: &Theme, status| {
+                    let bg = match (following, status) {
+                        (_, button::Status::Hovered) => {
+                            theme.extended_palette().background.strong.color
+                        }
+                        (true, _) => theme.extended_palette().background.strong.color,
+                        (false, _) => theme.extended_palette().background.weak.color,
+                    };
+                    button::Style {
+                        background: Some(bg.into()),
+                        text_color: if following {
+                            theme.palette().primary
+                        } else {
+                            theme.extended_palette().background.weak.text
+                        },
+                        border: iced::Border {
+                            radius: crate::config::effective_radius(corner_radius, 3.0).into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                }),
+            text(if following {
+                "Auto-scroll: ON"
+            } else {
+                "Auto-scroll: OFF"
+            })
+            .size(10),
+            tooltip::Position::Top,
+        )
+        .into()
+    }
+
     pub(in crate::feed_views::liquidations::controls) fn view_liquidation_settings_button(
         &self,
     ) -> Element<'static, Message> {
@@ -12,7 +57,7 @@ impl TradingTerminal {
         let corner_radius = self.pane_corner_radius;
 
         tooltip(
-            button(text("\u{2699}").size(13).center())
+            button(text("\u{2699}").size(14).center())
                 .on_press(Message::ToggleLiquidationSettingsMenu)
                 .padding([2, 7])
                 .style(move |theme: &Theme, status| {
@@ -124,7 +169,7 @@ fn liquidation_toggle_button(
     primary_when_enabled: bool,
     message: Message,
 ) -> Element<'static, Message> {
-    button(text(label).size(10))
+    button(text(label).size(11))
         .on_press(message)
         .padding([2, 6])
         .style(move |theme: &Theme, status| {

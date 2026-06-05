@@ -15,7 +15,9 @@ impl TradingTerminal {
             | Message::SaveHydromancerKey
             | Message::ReconnectLiquidations
             | Message::ReconnectTrackedTrades) => return self.update_feed_connection(message),
-            message @ (Message::WsHydromancerLiquidation(_) | Message::ClearLiquidations) => {
+            message @ (Message::WsHydromancerLiquidation(_)
+            | Message::ClearLiquidations
+            | Message::LiquidationFeedScrolled(_)) => {
                 return self.update_liquidation_feed(message);
             }
             message @ (Message::WsHydromancerTrackedTrades(_) | Message::ClearTrackedTrades) => {

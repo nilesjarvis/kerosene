@@ -216,6 +216,7 @@ impl TradingTerminal {
             liquidation_chart_enabled: false,
             liquidation_summary_enabled: true,
             liquidation_settings_menu_open: false,
+            liquidation_feed_following: true,
             liquidation_chart_buckets: BTreeMap::new(),
             connected_address: None,
             account_data: None,

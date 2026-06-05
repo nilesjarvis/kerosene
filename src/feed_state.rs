@@ -2,7 +2,7 @@ mod hydromancer_status;
 mod liquidations;
 mod tracked_trades;
 
-pub(crate) use liquidations::LiquidationFeedRow;
+pub(crate) use liquidations::{LiquidationFeedRow, liquidation_feed_scroll_id};
 #[cfg(test)]
 pub(crate) use tracked_trades::TrackedTradeFeedRow;
 pub(crate) use tracked_trades::TrackedTradeIntent;

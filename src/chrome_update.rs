@@ -44,6 +44,12 @@ impl TradingTerminal {
             Message::ToggleLiquidationSummary => {
                 self.liquidation_summary_enabled = !self.liquidation_summary_enabled;
             }
+            Message::ToggleLiquidationFollow => {
+                self.liquidation_feed_following = !self.liquidation_feed_following;
+                if self.liquidation_feed_following {
+                    return self.snap_liquidation_feed_to_latest();
+                }
+            }
             Message::ToggleLiquidationSettingsMenu => {
                 let opening = !self.liquidation_settings_menu_open;
                 if opening {
