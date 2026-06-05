@@ -45,10 +45,6 @@ const POSITIONING_ENTRY_WEIGHT: f32 = 1.0;
 const POSITIONING_LIQ_WEIGHT: f32 = 1.0;
 const POSITIONING_FUNDING_WEIGHT: f32 = 1.1;
 const POSITIONING_ACCOUNT_WEIGHT: f32 = 1.15;
-pub(super) const POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH: f32 = 168.0;
-pub(super) const POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH: f32 = 240.0;
-pub(super) const POSITIONING_TRADER_COMPACT_ACTIONS_WIDTH: f32 = 42.0;
-pub(super) const POSITIONING_TRADER_FULL_ACTIONS_WIDTH: f32 = 106.0;
 impl PositioningInfoColumns {
     pub(super) fn for_width(width: f32) -> Self {
         let content_width = Self::available_content_width(width);

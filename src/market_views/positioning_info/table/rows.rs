@@ -22,6 +22,7 @@ pub(in crate::market_views::positioning_info) struct PositioningRowContext<'a> {
     pub theme: &'a Theme,
     pub live_mark: Option<f64>,
     pub denomination: &'a DisplayDenominationContext,
+    pub max_notional: f64,
 }
 
 pub(in crate::market_views::positioning_info) fn positioning_position_row(
@@ -36,6 +37,7 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
         theme,
         live_mark,
         denomination,
+        max_notional,
     } = context;
     let actions_hovered = hovered_wallet_action_key
         == Some(
@@ -71,7 +73,6 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
             &position.address,
             wallet_display,
             columns.trader_width,
-            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
             format!(
                 "positioning-info:{instance_id}:positions:{}",
                 position.address
@@ -145,9 +146,17 @@ pub(in crate::market_views::positioning_info) fn positioning_position_row(
         ));
     }
 
+    // Scale the gradient width relative to this position's notional vs the max
+    // across all rows so larger positions get a more visible accent.
+    let gradient_width = (notional.abs() / max_notional).max(0.05);
     container(row)
         .width(Fill)
-        .style(row_accent_style(side_color, 0.15, actions_hovered))
+        .style(row_accent_style(
+            side_color,
+            0.15,
+            actions_hovered,
+            gradient_width,
+        ))
         .into()
 }
 
@@ -155,6 +164,7 @@ fn row_accent_style(
     accent_color: iced::Color,
     alpha: f32,
     actions_hovered: bool,
+    gradient_width: f64,
 ) -> impl Fn(&Theme) -> iced::widget::container::Style {
     move |_theme: &Theme| {
         use iced::gradient;
@@ -166,10 +176,11 @@ fn row_accent_style(
         let background = if actions_hovered {
             None
         } else {
+            let fade_stop = (gradient_width as f32).max(0.05).min(0.6);
             Some(
                 gradient::Linear::new(iced::Degrees(90.0))
                     .add_stop(0.0, base_color)
-                    .add_stop(0.20, iced::Color::TRANSPARENT)
+                    .add_stop(fade_stop, iced::Color::TRANSPARENT)
                     .add_stop(1.0, iced::Color::TRANSPARENT)
                     .into(),
             )

@@ -71,29 +71,9 @@ fn positioning_columns_reveal_optional_columns_progressively() {
 }
 
 #[test]
-fn positioning_trader_actions_appear_with_width() {
-    // Below the compact threshold: no actions.
-    assert_eq!(
-        positioning_trader_action_visibility(
-            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH - 1.0,
-            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
-        ),
-        (false, false)
-    );
-    // Compact actions only.
-    assert_eq!(
-        positioning_trader_action_visibility(
-            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
-            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
-        ),
-        (true, false)
-    );
-    // Full actions once wide enough.
-    assert_eq!(
-        positioning_trader_action_visibility(
-            POSITIONING_TRADER_FULL_ACTIONS_MIN_WIDTH,
-            POSITIONING_TRADER_COMPACT_ACTIONS_MIN_WIDTH,
-        ),
-        (true, true)
-    );
+fn positioning_trader_actions_match_change_tab_label_width() {
+    // The change tab uses a 120px address slot and still swaps the address for
+    // the three-button action pill on hover; positions should match that.
+    assert!(!positioning_trader_actions_enabled(119.0));
+    assert!(positioning_trader_actions_enabled(120.0));
 }

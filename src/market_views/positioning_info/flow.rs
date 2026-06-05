@@ -12,7 +12,7 @@ use crate::wallet_views::{WalletAddressActionCell, wallet_address_action_cell};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::canvas::{self, Frame, Path, Stroke, Text};
 use iced::widget::{Column, Space, canvas as canvas_widget, container, responsive, row, stack};
-use iced::{Color, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme, mouse};
+use iced::{Color, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme, mouse, time};
 
 /// Number of top movers visualized as bars. The flow view is a ranking of the
 /// largest moves, so a focused cap keeps it scannable instead of endless.
@@ -135,6 +135,10 @@ const ROW_HEIGHT: f32 = 22.0;
 const ROW_GAP: f32 = 3.0;
 const SIDE_PADDING: f32 = 8.0;
 const MIN_BAR_PX: f32 = 2.0;
+const TOOLTIP_ANIMATION_EASE: f32 = 0.34;
+const TOOLTIP_ANIMATION_EPSILON: f32 = 0.01;
+const TOOLTIP_ANIMATION_FRAME_MS: u64 = 16;
+const TOOLTIP_ANIMATION_OFFSET_PX: f32 = 5.0;
 
 // Aggressive, stepped collapsing (mirrors the positioning column toggle): the
 // bar is always shown; labels/value/tag are revealed only with real headroom.
@@ -149,6 +153,51 @@ const TAG_WIDTH: f32 = 42.0;
 #[derive(Debug, Default)]
 pub(in crate::market_views::positioning_info) struct PositioningFlowState {
     hovered: Option<usize>,
+    tooltip_progress: f32,
+}
+
+impl PositioningFlowState {
+    fn set_hovered(&mut self, hovered: Option<usize>) -> bool {
+        if self.hovered == hovered {
+            return false;
+        }
+
+        self.hovered = hovered;
+        if hovered.is_some() {
+            self.tooltip_progress = self.tooltip_progress.min(0.25);
+        } else {
+            self.tooltip_progress = 0.0;
+        }
+        true
+    }
+
+    fn tooltip_animation_active(&self) -> bool {
+        self.hovered.is_some() && self.tooltip_progress < 1.0
+    }
+
+    fn advance_tooltip_animation(&mut self) {
+        if self.hovered.is_none() {
+            self.tooltip_progress = 0.0;
+            return;
+        }
+
+        let delta = 1.0 - self.tooltip_progress;
+        if delta <= TOOLTIP_ANIMATION_EPSILON {
+            self.tooltip_progress = 1.0;
+            return;
+        }
+
+        self.tooltip_progress =
+            (self.tooltip_progress + delta * TOOLTIP_ANIMATION_EASE).clamp(0.0, 1.0);
+    }
+
+    fn tooltip_visibility(&self) -> f32 {
+        if self.hovered.is_some() {
+            ease_out_cubic(self.tooltip_progress)
+        } else {
+            0.0
+        }
+    }
 }
 
 /// A single row prepared for rendering. Labels and tooltip text are resolved at
@@ -296,6 +345,18 @@ impl canvas::Program<Message> for PositioningFlowChart {
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<canvas::Action<Message>> {
+        if let iced::Event::Window(iced::window::Event::RedrawRequested(now)) = event {
+            if state.tooltip_animation_active() {
+                state.advance_tooltip_animation();
+                if state.tooltip_animation_active() {
+                    return Some(canvas::Action::request_redraw_at(
+                        *now + time::Duration::from_millis(TOOLTIP_ANIMATION_FRAME_MS),
+                    ));
+                }
+            }
+            return None;
+        }
+
         let next = match event {
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
                 self.row_index_at(bounds, cursor)
@@ -303,8 +364,7 @@ impl canvas::Program<Message> for PositioningFlowChart {
             iced::Event::Mouse(mouse::Event::CursorLeft) => None,
             _ => return None,
         };
-        if next != state.hovered {
-            state.hovered = next;
+        if state.set_hovered(next) {
             return Some(canvas::Action::request_redraw());
         }
         None
@@ -369,7 +429,15 @@ impl canvas::Program<Message> for PositioningFlowChart {
         if let Some(index) = state.hovered
             && let Some(row) = self.rows.get(index)
         {
-            draw_tooltip(&mut frame, theme, bounds, &layout, row, index);
+            draw_tooltip(
+                &mut frame,
+                theme,
+                bounds,
+                &layout,
+                row,
+                index,
+                state.tooltip_visibility(),
+            );
         }
 
         vec![frame.into_geometry()]
@@ -590,8 +658,10 @@ fn draw_tooltip(
     layout: &FlowLayout,
     row: &PositioningFlowChartRow,
     index: usize,
+    visibility: f32,
 ) {
-    if row.tooltip.is_empty() {
+    let visibility = visibility.clamp(0.0, 1.0);
+    if row.tooltip.is_empty() || visibility <= 0.0 {
         return;
     }
     let line_h = 14.0;
@@ -607,25 +677,30 @@ fn draw_tooltip(
     if y + box_h > bounds.height {
         y = (row_top - box_h - 2.0).max(0.0);
     }
+    y = (y + (1.0 - visibility) * TOOLTIP_ANIMATION_OFFSET_PX)
+        .clamp(0.0, (bounds.height - box_h).max(0.0));
     let x = (layout.center_x - box_w / 2.0).clamp(2.0, (bounds.width - box_w - 2.0).max(2.0));
 
     frame.fill_rectangle(
         Point::new(x, y),
         Size::new(box_w, box_h),
-        theme.extended_palette().background.strong.color,
+        scale_alpha(theme.extended_palette().background.strong.color, visibility),
     );
     let border = Path::rectangle(Point::new(x, y), Size::new(box_w, box_h));
     frame.stroke(
         &border,
         Stroke::default()
-            .with_color(theme.extended_palette().background.weak.color)
+            .with_color(scale_alpha(
+                theme.extended_palette().background.weak.color,
+                visibility,
+            ))
             .with_width(1.0),
     );
 
     frame.fill_text(Text {
         content: row.label.clone(),
         position: Point::new(x + pad, y + pad),
-        color: theme.palette().text,
+        color: scale_alpha(theme.palette().text, visibility),
         size: iced::Pixels(11.0),
         align_x: Horizontal::Left.into(),
         align_y: Vertical::Top,
@@ -637,7 +712,7 @@ fn draw_tooltip(
         frame.fill_text(Text {
             content: label.clone(),
             position: Point::new(x + pad, line_y),
-            color: theme.extended_palette().background.weak.text,
+            color: scale_alpha(theme.extended_palette().background.weak.text, visibility),
             size: iced::Pixels(10.0),
             align_x: Horizontal::Left.into(),
             align_y: Vertical::Top,
@@ -646,7 +721,7 @@ fn draw_tooltip(
         frame.fill_text(Text {
             content: value.clone(),
             position: Point::new(x + box_w - pad, line_y),
-            color: theme.palette().text,
+            color: scale_alpha(theme.palette().text, visibility),
             size: iced::Pixels(10.0),
             align_x: Horizontal::Right.into(),
             align_y: Vertical::Top,
@@ -662,6 +737,18 @@ fn draw_tooltip(
 
 fn faint(color: Color, alpha: f32) -> Color {
     Color { a: alpha, ..color }
+}
+
+fn scale_alpha(color: Color, scale: f32) -> Color {
+    Color {
+        a: color.a * scale.clamp(0.0, 1.0),
+        ..color
+    }
+}
+
+fn ease_out_cubic(value: f32) -> f32 {
+    let value = value.clamp(0.0, 1.0);
+    1.0 - (1.0 - value).powi(3)
 }
 
 fn axis_color(theme: &Theme) -> Color {

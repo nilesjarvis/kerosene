@@ -10,7 +10,7 @@ use iced::{Alignment, Color, Element, Fill, Length, Theme};
 mod trader;
 
 #[cfg(test)]
-pub(in crate::market_views::positioning_info) use trader::positioning_trader_action_visibility;
+pub(in crate::market_views::positioning_info) use trader::positioning_trader_actions_enabled;
 pub(super) use trader::positioning_trader_cell;
 
 pub(super) fn header_cell(
