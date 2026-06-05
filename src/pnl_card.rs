@@ -18,7 +18,5 @@ pub(crate) use model::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget, Pn
 use style::*;
 #[cfg(test)]
 use update::pnl_card_account_matches;
-pub(crate) use view::pnl_card_icon_button;
-
 #[cfg(test)]
 mod tests;

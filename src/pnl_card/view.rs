@@ -9,8 +9,8 @@ use super::model::PnlCardWindowState;
 use editor::view_pnl_card_editor;
 
 use iced::widget::container as container_style;
-use iced::widget::{button, column, container, scrollable, text, tooltip};
-use iced::{Color, Element, Fill, Length, Theme, window};
+use iced::widget::{column, container, scrollable, text};
+use iced::{Element, Fill, Length, Theme, window};
 
 // ---------------------------------------------------------------------------
 // PnL Card Views
@@ -56,39 +56,6 @@ impl TradingTerminal {
             .height(Length::Shrink)
             .into()
     }
-}
-
-pub(crate) fn pnl_card_icon_button(
-    message: Option<Message>,
-    tooltip_label: &'static str,
-) -> Element<'static, Message> {
-    let button = button(text("\u{25F0}").size(10).center())
-        .on_press_maybe(message)
-        .padding([1, 4])
-        .style(|theme: &Theme, status| {
-            let background = match status {
-                button::Status::Hovered => theme.extended_palette().background.strong.color,
-                _ => Color::TRANSPARENT,
-            };
-            button::Style {
-                background: Some(background.into()),
-                text_color: theme.palette().primary,
-                border: iced::Border {
-                    radius: 3.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        });
-
-    tooltip(
-        button,
-        text(tooltip_label)
-            .size(10)
-            .font(crate::app_fonts::monospace_font()),
-        tooltip::Position::Top,
-    )
-    .into()
 }
 
 fn missing_pnl_card_view<'a>(theme: &Theme, message: impl Into<String>) -> Element<'a, Message> {

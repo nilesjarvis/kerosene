@@ -1,6 +1,6 @@
 use crate::helpers;
 use crate::message::Message;
-use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
+use crate::pnl_card::PnlCardTarget;
 
 use iced::widget::{Space, button, row, text};
 use iced::{Color, Element, Theme};
@@ -45,19 +45,27 @@ pub(super) fn position_upnl_cell(
     upnl: String,
     color: Color,
 ) -> Element<'static, Message> {
-    row![
+    let coin_key = coin.to_string();
+    button(
         text(upnl)
             .size(12)
             .font(crate::app_fonts::monospace_font())
             .color(color),
-        pnl_card_icon_button(
-            Some(Message::OpenPnlCard(PnlCardTarget::Position(
-                coin.to_string()
-            ))),
-            "Open PnL card",
-        ),
-    ]
-    .spacing(3)
-    .align_y(iced::Alignment::Center)
+    )
+    .on_press(Message::OpenPnlCard(PnlCardTarget::Position(coin_key)))
+    .padding([1, 2])
+    .style(move |theme: &Theme, status| {
+        let mut text_color = color;
+        let mut bg: Option<Color> = None;
+        if status == button::Status::Hovered {
+            text_color = theme.palette().text;
+            bg = Some(Color { a: 0.12, ..color });
+        }
+        button::Style {
+            background: bg.map(Into::into),
+            text_color,
+            ..Default::default()
+        }
+    })
     .into()
 }

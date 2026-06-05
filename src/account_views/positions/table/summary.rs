@@ -1,9 +1,9 @@
 use crate::account;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::pnl_card::{PnlCardTarget, pnl_card_icon_button};
+use crate::pnl_card::PnlCardTarget;
 
-use iced::widget::{container, row, text};
+use iced::widget::{button, container, row, text};
 use iced::{Alignment, Color, Element, Fill, Theme};
 
 use super::super::PositionNumberMode;
@@ -101,10 +101,7 @@ impl TradingTerminal {
                     .value()
                     .map(|value| self.direction_color(theme, value))
                     .unwrap_or(weak_text),
-                totals
-                    .upnl
-                    .value()
-                    .map(|_| Message::OpenPnlCard(PnlCardTarget::Summary)),
+                totals.upnl.value().is_some(),
             ),
             summary_cell(
                 "Total PnL",
@@ -172,19 +169,46 @@ fn summary_cell_with_action(
     value: String,
     label_color: Color,
     value_color: Color,
-    action: Option<Message>,
+    clickable: bool,
 ) -> Element<'static, Message> {
-    container(
-        row![
-            text(label).size(10).color(label_color),
+    let value_element: Element<'static, Message> = if clickable {
+        button(
             text(value)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
                 .color(value_color),
-            pnl_card_icon_button(action, "Open summary PnL card"),
-        ]
-        .spacing(4)
-        .align_y(Alignment::Center),
+        )
+        .on_press(Message::OpenPnlCard(PnlCardTarget::Summary))
+        .padding([1, 2])
+        .style(move |theme: &Theme, status| {
+            let mut text_color = value_color;
+            let mut bg: Option<Color> = None;
+            if status == button::Status::Hovered {
+                text_color = theme.palette().text;
+                bg = Some(Color {
+                    a: 0.12,
+                    ..value_color
+                });
+            }
+            button::Style {
+                background: bg.map(Into::into),
+                text_color,
+                ..Default::default()
+            }
+        })
+        .into()
+    } else {
+        text(value)
+            .size(11)
+            .font(crate::app_fonts::monospace_font())
+            .color(value_color)
+            .into()
+    };
+
+    container(
+        row![text(label).size(10).color(label_color), value_element,]
+            .spacing(4)
+            .align_y(Alignment::Center),
     )
     .width(Fill)
     .into()
