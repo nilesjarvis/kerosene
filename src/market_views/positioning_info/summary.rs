@@ -1,6 +1,7 @@
 use super::metrics::*;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::helpers::format_decimal_with_commas;
 use crate::hyperdash_api::{PerpDeltas, TickerPositions};
 use crate::message::Message;
 use crate::positioning_state::{
@@ -59,7 +60,10 @@ impl TradingTerminal {
             .spacing(12)
             .align_y(Alignment::Center),
             row![
-                helpers::label_value("Traders", data.total_count.to_string()),
+                helpers::label_value(
+                    "Traders",
+                    format_decimal_with_commas(data.total_count as f64, 0),
+                ),
                 helpers::label_value("Rows", rows_label),
                 helpers::label_value("Updated", updated),
                 helpers::label_value("Fetched", last_fetch),
