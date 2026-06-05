@@ -336,28 +336,57 @@ mod tests {
     }
 
     #[test]
-    fn filtering_keeps_future_rows_inside_window_and_amount_floor() {
+    fn filtering_excludes_past_events() {
         let data = HypeUnstakingQueueData::new(vec![
-            event(900, "0xpast", 1),
-            event(1_500, "0xsmall", 99),
-            event(2_000, "0xkeep", 100),
-            event(3_700_000, "0xlate", 10_000),
+            event(900, "0xpast", 100),
+            event(2_000, "0xfuture", 100),
+        ]);
+
+        let filtered = data.filtered_events(HypeUnstakingFilter {
+            now_ms: 1_000,
+            window: HypeUnstakingWindowFilter::All,
+            amount: HypeUnstakingAmountFilter::All,
+            mine_address: None,
+        });
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].user, "0xfuture");
+    }
+
+    #[test]
+    fn filtering_excludes_events_past_window_end() {
+        let data = HypeUnstakingQueueData::new(vec![
+            event(2_000, "0xinside", 100),
+            event(3_700_000, "0xlate", 100),
         ]);
 
         let filtered = data.filtered_events(HypeUnstakingFilter {
             now_ms: 1_000,
             window: HypeUnstakingWindowFilter::OneHour,
+            amount: HypeUnstakingAmountFilter::All,
+            mine_address: None,
+        });
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].user, "0xinside");
+    }
+
+    #[test]
+    fn filtering_excludes_events_below_amount_floor() {
+        let data = HypeUnstakingQueueData::new(vec![
+            event(2_000, "0xsmall", 99),
+            event(3_000, "0xbig", 100),
+        ]);
+
+        let filtered = data.filtered_events(HypeUnstakingFilter {
+            now_ms: 1_000,
+            window: HypeUnstakingWindowFilter::All,
             amount: HypeUnstakingAmountFilter::AtLeast100,
             mine_address: None,
         });
 
-        assert_eq!(
-            filtered
-                .iter()
-                .map(|event| event.user.as_str())
-                .collect::<Vec<_>>(),
-            vec!["0xkeep"]
-        );
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].user, "0xbig");
     }
 
     #[test]
@@ -431,11 +460,15 @@ mod tests {
     }
 
     #[test]
-    fn formatting_handles_hype_amounts_and_countdowns() {
+    fn formats_hype_wei_amounts() {
         assert_eq!(format_hype_wei(123_450_000_000), "1,234 HYPE");
         assert_eq!(format_hype_wei(150_000_000), "1.5 HYPE");
         assert_eq!(format_hype_wei(12_345), "0.0001 HYPE");
         assert_eq!(format_hype_wei(1), "<0.0001 HYPE");
+    }
+
+    #[test]
+    fn formats_countdowns() {
         assert_eq!(format_countdown(1_000, 1_000), "Unlocked");
         assert_eq!(format_countdown(91_000, 1_000), "1m 30s");
         assert_eq!(format_countdown(3_661_000, 1_000), "1h 1m");

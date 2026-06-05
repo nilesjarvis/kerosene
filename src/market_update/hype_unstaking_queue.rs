@@ -99,14 +99,25 @@ mod tests {
     use iced::widget::pane_grid;
 
     #[test]
-    fn boot_refresh_only_starts_when_hype_unstaking_queue_pane_is_open() {
+    fn boot_refresh_is_noop_when_pane_is_closed() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let (panes, _) = pane_grid::State::new(PaneKind::Chart(0));
+        terminal.panes = panes;
+        terminal.hype_unstaking_queue.loading = false;
+
+        let _ = terminal.request_hype_unstaking_queue_boot_refresh();
+        assert!(
+            !terminal.hype_unstaking_queue.loading,
+            "should not start refresh when pane is closed"
+        );
+    }
+
+    #[test]
+    fn boot_refresh_starts_refresh_when_pane_is_open() {
         let (mut terminal, _) = TradingTerminal::boot();
         let (panes, pane) = pane_grid::State::new(PaneKind::Chart(0));
         terminal.panes = panes;
         terminal.hype_unstaking_queue.loading = false;
-
-        let _task = terminal.request_hype_unstaking_queue_boot_refresh();
-        assert!(!terminal.hype_unstaking_queue.loading);
 
         terminal
             .panes
@@ -117,7 +128,10 @@ mod tests {
             )
             .expect("split should create HYPE unstaking queue pane");
 
-        let _task = terminal.request_hype_unstaking_queue_boot_refresh();
-        assert!(terminal.hype_unstaking_queue.loading);
+        let _ = terminal.request_hype_unstaking_queue_boot_refresh();
+        assert!(
+            terminal.hype_unstaking_queue.loading,
+            "should start refresh when pane is open"
+        );
     }
 }

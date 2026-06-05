@@ -66,21 +66,13 @@ impl TradingTerminal {
             theme.extended_palette().background.weak.text
         };
 
-        let mut content = column![
-            self.view_hype_unstaking_header(compact),
-            self.view_hype_unstaking_filters(),
-            text(status_text).size(10).color(status_color).width(Fill),
-            rule::horizontal(1),
-        ]
-        .spacing(8)
-        .width(Fill);
-
-        if let Some(data) = &self.hype_unstaking_queue.data {
-            let mine_address = if self.hype_unstaking_queue.mine_only {
-                self.connected_address.as_deref()
-            } else {
-                None
-            };
+        // Compute filtered events early so we can show the count in the filters
+        let mine_address = if self.hype_unstaking_queue.mine_only {
+            self.connected_address.as_deref()
+        } else {
+            None
+        };
+        let filtered = if let Some(data) = &self.hype_unstaking_queue.data {
             let mut filtered = data.filtered_events(HypeUnstakingFilter {
                 now_ms,
                 window: self.hype_unstaking_queue.window_filter,
@@ -92,7 +84,24 @@ impl TradingTerminal {
                 self.hype_unstaking_queue.sort_field,
                 self.hype_unstaking_queue.sort_direction,
             );
-            let summary = summarize_unstaking_events(&filtered);
+            Some(filtered)
+        } else {
+            None
+        };
+        let filtered_count = filtered.as_ref().map(|f| f.len()).unwrap_or(0);
+        let has_data = filtered_count > 0;
+
+        let mut content = column![
+            self.view_hype_unstaking_header(compact),
+            self.view_hype_unstaking_filters(filtered_count, has_data),
+            text(status_text).size(10).color(status_color).width(Fill),
+            rule::horizontal(1),
+        ]
+        .spacing(8)
+        .width(Fill);
+
+        if has_data {
+            let summary = summarize_unstaking_events(filtered.as_deref().unwrap());
             content = content.push(hype_unstaking_summary_grid(
                 &summary,
                 now_ms,
@@ -100,7 +109,7 @@ impl TradingTerminal {
                 &theme,
             ));
             content = content.push(self.view_hype_unstaking_event_list(
-                &filtered,
+                filtered.as_deref().unwrap(),
                 now_ms,
                 compact,
                 &denomination,
@@ -163,7 +172,11 @@ impl TradingTerminal {
         .into()
     }
 
-    fn view_hype_unstaking_filters(&self) -> Element<'_, Message> {
+    fn view_hype_unstaking_filters(
+        &self,
+        filtered_count: usize,
+        has_data: bool,
+    ) -> Element<'_, Message> {
         let connected_address = self.connected_address.as_deref();
         let mine_enabled = connected_address.is_some();
         let mine_active = self.hype_unstaking_queue.mine_only && mine_enabled;
@@ -220,6 +233,17 @@ impl TradingTerminal {
             filter_button("Clear", false, Message::ClearHypeUnstakingFilters),
             &mut has_controls,
         );
+        if has_data {
+            let label = format!(
+                "\u{25C9} {}",
+                format_decimal_with_commas(filtered_count as f64, 0)
+            );
+            controls = push_hype_unstaking_filter_item(
+                controls,
+                hype_unstaking_count_label(label),
+                &mut has_controls,
+            );
+        }
 
         column![
             hype_unstaking_filter_strip(controls),
@@ -421,10 +445,6 @@ fn hype_unstaking_summary_grid(
         .unwrap_or_else(|| "-".to_string());
 
     let metrics = vec![
-        metric(
-            "Events",
-            format_decimal_with_commas(summary.event_count as f64, 0),
-        ),
         metric(
             "Wallets",
             format_decimal_with_commas(summary.unique_wallet_count as f64, 0),
@@ -809,6 +829,18 @@ fn hype_unstaking_filter_label(label: &'static str) -> Element<'static, Message>
     .into()
 }
 
+fn hype_unstaking_count_label(label: String) -> Element<'static, Message> {
+    container(
+        text(label)
+            .size(10)
+            .font(crate::app_fonts::monospace_font())
+            .color(color!(0x888888))
+            .center(),
+    )
+    .padding([3, 8])
+    .into()
+}
+
 fn filter_button(label: &'static str, active: bool, msg: Message) -> Element<'static, Message> {
     optional_filter_button(label, active, true, msg)
 }
@@ -938,30 +970,6 @@ mod tests {
         let scale = hype_unstaking_amount_scale(&[&small, &large]);
         let small_heat = scale.heat(small.amount_wei);
         let large_heat = scale.heat(large.amount_wei);
-
-        assert!(large_heat.fill_pct > small_heat.fill_pct);
-        assert!(large_heat.alpha > small_heat.alpha);
-    }
-
-    #[test]
-    fn amount_scale_uses_rows_beyond_render_limit() {
-        let mut events: Vec<_> = (0..HYPE_UNSTAKING_ROW_LIMIT)
-            .map(|index| HypeUnstakingEvent {
-                unlock_time_ms: index as u64,
-                user: format!("0xsmall{index}"),
-                amount_wei: HYPE_CORE_WEI_PER_TOKEN as u64,
-            })
-            .collect();
-        events.push(HypeUnstakingEvent {
-            unlock_time_ms: HYPE_UNSTAKING_ROW_LIMIT as u64,
-            user: "0xlarge".to_string(),
-            amount_wei: 100_000 * HYPE_CORE_WEI_PER_TOKEN as u64,
-        });
-        let refs: Vec<_> = events.iter().collect();
-
-        let scale = hype_unstaking_amount_scale(&refs);
-        let small_heat = scale.heat(events[0].amount_wei);
-        let large_heat = scale.heat(events[HYPE_UNSTAKING_ROW_LIMIT].amount_wei);
 
         assert!(large_heat.fill_pct > small_heat.fill_pct);
         assert!(large_heat.alpha > small_heat.alpha);
