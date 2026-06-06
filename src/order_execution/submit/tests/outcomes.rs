@@ -9,16 +9,14 @@ fn outcome_order_preparation_builds_spot_like_probability_payload() {
 
     assert_eq!(
         prepared,
-        PreparedExchangeOrder {
-            surface: crate::order_execution::OrderSurface::Ticket,
-            symbol_key: "#650".to_string(),
+        PreparedOrderSubmission {
             asset: 100_000_650,
             is_buy: true,
             price: "0.42123".to_string(),
             size: "3".to_string(),
-            order_kind: ExchangeOrderKind::Limit,
+            order_kind: OrderKind::Limit,
             reduce_only: false,
-            market_type: MarketType::Outcome,
+            is_outcome: true,
         }
     );
 }

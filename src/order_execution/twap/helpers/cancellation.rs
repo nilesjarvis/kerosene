@@ -1,5 +1,5 @@
 use crate::message::Message;
-use crate::order_execution::{cancel_order_by_cloid_task, cancel_order_task};
+use crate::signing::{cancel_order, cancel_order_by_cloid};
 use crate::twap_state::TwapChildOrder;
 
 use iced::Task;
@@ -60,20 +60,21 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
 
     if let Some(cloid) = cloid {
         let request_cloid = cloid.clone();
-        return cancel_order_by_cloid_task(key.into(), asset, request_cloid, move |result| {
-            Message::TwapUnexpectedCancelResult {
+        return Task::perform(
+            cancel_order_by_cloid(key.into(), asset, request_cloid),
+            move |result| Message::TwapUnexpectedCancelResult {
                 twap_id,
                 oid: None,
                 cloid: Some(cloid.clone()),
                 result: Box::new(result),
-            }
-        });
+            },
+        );
     }
 
     let Some(oid) = oid else {
         return Task::none();
     };
-    cancel_order_task(key.into(), asset, oid, move |result| {
+    Task::perform(cancel_order(key.into(), asset, oid), move |result| {
         Message::TwapUnexpectedCancelResult {
             twap_id,
             oid: Some(oid),

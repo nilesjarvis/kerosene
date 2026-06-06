@@ -1,6 +1,6 @@
 use super::{
-    ExchangeOrderKind, HyperliquidL1Action, build_cancel_action, build_modify_action,
-    build_order_action, build_update_leverage_action, json_value, msgpack_named,
+    HyperliquidL1Action, OrderKind, build_cancel_action, build_modify_action, build_order_action,
+    build_update_leverage_action, json_value, msgpack_named,
 };
 
 #[test]
@@ -10,7 +10,7 @@ fn action_enum_order_constructor_round_trips_through_existing_builder() {
         true,
         "123.45".to_string(),
         "0.25".to_string(),
-        ExchangeOrderKind::Limit,
+        OrderKind::Limit,
         false,
     );
     let via_enum = HyperliquidL1Action::order(
@@ -18,7 +18,7 @@ fn action_enum_order_constructor_round_trips_through_existing_builder() {
         true,
         "123.45".to_string(),
         "0.25".to_string(),
-        ExchangeOrderKind::Limit,
+        OrderKind::Limit,
         false,
     );
 

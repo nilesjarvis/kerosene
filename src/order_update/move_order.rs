@@ -3,7 +3,7 @@ use crate::message::Message;
 use crate::signing::ExchangeResponse;
 use iced::Task;
 
-use super::results::{ExecutionOutcomeKind, classify_execution_result};
+use super::results::result_requires_account_refresh;
 
 impl TradingTerminal {
     pub(super) fn handle_move_order_modify_result(
@@ -12,23 +12,28 @@ impl TradingTerminal {
         pending_indicator_id: Option<u64>,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
+        let should_refresh = result_requires_account_refresh(&result);
         self.pending_move_order_contexts.remove(&oid);
         self.clear_pending_order_indicator(pending_indicator_id);
         self.sync_all_chart_orders();
-
-        let mut outcome = classify_execution_result(result);
-        match outcome.kind {
-            ExecutionOutcomeKind::Rejected => {
-                outcome.status = format!("Move failed: {}", outcome.status);
+        match result {
+            Ok(resp) => {
+                let is_error = resp.is_error();
+                let summary = if is_error {
+                    format!("Move failed: {}", resp.summary())
+                } else {
+                    resp.summary()
+                };
+                self.order_status = Some((summary, is_error));
             }
-            ExecutionOutcomeKind::TransportUnknown => {
-                outcome.status = format!("Move modify failed: {}", outcome.status);
+            Err(e) => {
+                self.order_status = Some((format!("Move modify failed: {e}"), true));
             }
-            ExecutionOutcomeKind::AcceptedResting
-            | ExecutionOutcomeKind::Filled
-            | ExecutionOutcomeKind::Cancelled
-            | ExecutionOutcomeKind::Ambiguous => {}
         }
-        self.apply_execution_outcome(outcome)
+        if should_refresh {
+            self.refresh_account_data()
+        } else {
+            Task::none()
+        }
     }
 }

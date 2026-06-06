@@ -1,7 +1,6 @@
 mod active_symbol;
 mod advanced;
 mod chase;
-mod core;
 mod hud;
 mod position_actions;
 pub(crate) mod pricing;
@@ -12,12 +11,6 @@ mod symbols;
 mod twap;
 
 pub(crate) use advanced::AdvancedOrderKind;
-pub(crate) use core::{
-    CancelIntent, ModifyIntent, OneShotPlacementContext, OrderOperation, OrderSurface, PlaceIntent,
-    PreparedExchangeOrder, PreparedModifyOrder, PreparedModifyOrderResult, PriceSource,
-    QuantityDenomination, QuantitySource, ReduceOnlySource, cancel_order_by_cloid_task,
-    cancel_order_task, modify_order_task, place_order_task, validate_surface_market_type,
-};
 pub(crate) use hud::{HudOrderRequest, HudOrderSide, HudOrderType};
 pub(crate) use position_actions::NukePlan;
 pub(crate) use sizing::order_size_from_quantity_input;
@@ -33,82 +26,6 @@ pub(crate) enum PendingOrderAction {
     Sell,
     ChaseBuy,
     ChaseSell,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PendingNukeExecution {
-    pub(crate) id: u64,
-    total: usize,
-    completed: usize,
-    confirmed: usize,
-    failed: usize,
-    uncertain: usize,
-    skipped: usize,
-    refresh_needed: bool,
-}
-
-impl PendingNukeExecution {
-    pub(crate) fn new(id: u64, total: usize, skipped: usize) -> Self {
-        Self {
-            id,
-            total,
-            completed: 0,
-            confirmed: 0,
-            failed: 0,
-            uncertain: 0,
-            skipped,
-            refresh_needed: false,
-        }
-    }
-
-    pub(crate) fn record_confirmed(&mut self, refresh_needed: bool) {
-        self.completed = self.completed.saturating_add(1);
-        self.confirmed = self.confirmed.saturating_add(1);
-        self.refresh_needed |= refresh_needed;
-    }
-
-    pub(crate) fn record_failed(&mut self, refresh_needed: bool) {
-        self.completed = self.completed.saturating_add(1);
-        self.failed = self.failed.saturating_add(1);
-        self.refresh_needed |= refresh_needed;
-    }
-
-    pub(crate) fn record_uncertain(&mut self) {
-        self.completed = self.completed.saturating_add(1);
-        self.uncertain = self.uncertain.saturating_add(1);
-        self.refresh_needed = true;
-    }
-
-    pub(crate) fn is_complete(&self) -> bool {
-        self.completed >= self.total
-    }
-
-    pub(crate) fn refresh_needed(&self) -> bool {
-        self.refresh_needed
-    }
-
-    pub(crate) fn has_problem(&self) -> bool {
-        self.failed > 0 || self.uncertain > 0
-    }
-
-    pub(crate) fn status_text(&self) -> String {
-        let prefix = if self.is_complete() {
-            "NUKE completed"
-        } else {
-            "NUKE progress"
-        };
-        let mut status = format!("{prefix}: {}/{} confirmed", self.confirmed, self.total);
-        if self.failed > 0 {
-            status.push_str(&format!("; {} failed", self.failed));
-        }
-        if self.uncertain > 0 {
-            status.push_str(&format!("; {} uncertain", self.uncertain));
-        }
-        if self.skipped > 0 {
-            status.push_str(&format!("; {} skipped", self.skipped));
-        }
-        status
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

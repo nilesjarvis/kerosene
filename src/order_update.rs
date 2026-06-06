@@ -69,9 +69,8 @@ impl TradingTerminal {
             }
             Message::OrderResult {
                 pending_indicator_id,
-                context,
                 result,
-            } => return self.handle_order_result(pending_indicator_id, context, *result),
+            } => return self.handle_order_result(pending_indicator_id, *result),
             Message::CancelOrder { coin, oid } => return self.execute_cancel(&coin, oid),
             Message::CancelResult {
                 pending_indicator_id,
@@ -86,27 +85,11 @@ impl TradingTerminal {
                 self.close_menu_coin = None;
                 return self.execute_close_position(&coin, fraction, use_market);
             }
-            Message::ClosePositionResult { context, result } => {
-                return self.handle_close_position_result(context, *result);
+            Message::ClosePositionResult(result) => {
+                return self.handle_close_position_result(*result);
             }
             Message::NukePositions => return self.handle_nuke_positions(),
-            Message::NukeResult {
-                execution_id,
-                context,
-                result,
-            } => {
-                return self.handle_nuke_result(execution_id, context, *result);
-            }
-            Message::NukePlacementStatusLoaded {
-                execution_id,
-                context,
-                result,
-            } => {
-                return self.handle_nuke_placement_status_result(execution_id, context, *result);
-            }
-            Message::OneShotPlacementStatusLoaded { context, result } => {
-                return self.handle_one_shot_placement_status_result(context, *result);
-            }
+            Message::NukeResult(result) => return self.handle_nuke_result(*result),
             Message::StartChase(is_buy) => return self.start_chase(is_buy),
             Message::StopChase => return self.stop_chase(),
             Message::StopChaseById(chase_id) => return self.stop_chase_by_id(chase_id),
@@ -211,15 +194,13 @@ impl TradingTerminal {
             }
             Message::QuickOrderResult {
                 pending_indicator_id,
-                context,
                 result,
-            } => return self.handle_quick_order_result(pending_indicator_id, context, *result),
+            } => return self.handle_quick_order_result(pending_indicator_id, *result),
             Message::SubmitHudOrder(request) => return self.handle_submit_hud_order(request),
             Message::HudOrderResult {
                 pending_indicator_id,
-                context,
                 result,
-            } => return self.handle_hud_order_result(pending_indicator_id, context, *result),
+            } => return self.handle_hud_order_result(pending_indicator_id, *result),
             Message::EscapePressed => self.clear_transient_order_ui(),
             Message::MoveOrderDragStarted { oid } => {
                 self.active_move_order_drag = Some(oid);

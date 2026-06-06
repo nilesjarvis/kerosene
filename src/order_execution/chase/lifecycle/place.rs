@@ -1,13 +1,12 @@
 use super::{chase_account_matches, chase_reprice_limit_reason};
 
-use crate::api::{MarketType, OrderBook};
+use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
-use crate::order_execution::{OrderSurface, PreparedExchangeOrder, place_order_task};
 use crate::signing::{
-    ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason, ExchangeOrderKind,
-    chase_place_cloid, float_to_wire,
+    ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason, OrderKind, PlaceOrderRequest,
+    chase_place_cloid, float_to_wire, place_order_with_cloid,
 };
 
 use iced::Task;
@@ -227,11 +226,6 @@ impl TradingTerminal {
         let asset = chase.asset;
         let is_buy = chase.is_buy;
         let reduce_only = chase.reduce_only;
-        let market_type = if chase.is_spot {
-            MarketType::Spot
-        } else {
-            MarketType::Perp
-        };
         let place_attempt = chase.place_attempt_count.saturating_add(1);
         let cloid = chase_place_cloid(
             &chase.account_address,
@@ -251,22 +245,23 @@ impl TradingTerminal {
         chase.desired_price = Some(rounded_best);
         self.last_advanced_exchange_request_at = Some(now);
 
-        let prepared = PreparedExchangeOrder {
-            surface: OrderSurface::Chase,
-            symbol_key: chase.coin.clone(),
-            asset,
-            is_buy,
-            price: price_wire,
-            size,
-            order_kind: ExchangeOrderKind::Limit,
-            reduce_only,
-            market_type,
-        };
-        let request = prepared.place_request_with_existing_cloid(cloid);
-
-        place_order_task(key.into(), request, move |r| Message::ChasePlaceResult {
-            chase_id,
-            result: Box::new(r),
-        })
+        Task::perform(
+            place_order_with_cloid(
+                key.into(),
+                PlaceOrderRequest {
+                    asset,
+                    is_buy,
+                    price: price_wire,
+                    size,
+                    order_kind: OrderKind::Limit,
+                    reduce_only,
+                    cloid: Some(cloid),
+                },
+            ),
+            move |r| Message::ChasePlaceResult {
+                chase_id,
+                result: Box::new(r),
+            },
+        )
     }
 }

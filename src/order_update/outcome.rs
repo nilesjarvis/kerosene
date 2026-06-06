@@ -2,7 +2,6 @@ use crate::app_state::TradingTerminal;
 use crate::config::OrderPreset;
 use crate::helpers::{format_price, parse_number, positive_finite_value};
 use crate::message::Message;
-use crate::order_execution::OrderSurface;
 use crate::signing::OrderKind;
 
 use iced::Task;
@@ -72,7 +71,11 @@ impl TradingTerminal {
         }
 
         self.presets_menu_expanded = false;
-        self.execute_order_with_surface(is_buy, OrderSurface::Preset)
+        if is_buy {
+            Task::perform(async { Message::PlaceBuy }, |m| m)
+        } else {
+            Task::perform(async { Message::PlaceSell }, |m| m)
+        }
     }
 
     pub(crate) fn handle_prefill_outcome_sell(&mut self, balance_coin: String) -> Task<Message> {

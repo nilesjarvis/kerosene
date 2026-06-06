@@ -1,11 +1,9 @@
+use super::super::pricing::{wire_market_price, wire_rounded_price};
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{finite_value, positive_finite_value};
 use crate::message::Message;
-use crate::order_execution::{
-    OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource, QuantitySource,
-    ReduceOnlySource, place_order_task,
-};
-use crate::signing::ExchangeOrderKind;
+use crate::signing::{OrderKind, float_to_wire, place_order};
 
 use iced::Task;
 
@@ -21,7 +19,7 @@ enum ClosePositionInputError {
 fn close_position_order_side_and_size(
     raw_szi: &str,
     fraction: f64,
-) -> Result<(bool, f64), ClosePositionInputError> {
+) -> Result<(bool, String), ClosePositionInputError> {
     let Some(fraction) = positive_finite_value(fraction) else {
         return Err(ClosePositionInputError::InvalidFraction);
     };
@@ -42,7 +40,7 @@ fn close_position_order_side_and_size(
 
     let is_buy = szi < 0.0;
     let close_size = szi.abs() * fraction;
-    Ok((is_buy, close_size))
+    Ok((is_buy, float_to_wire(close_size)))
 }
 
 impl TradingTerminal {
@@ -114,49 +112,49 @@ impl TradingTerminal {
             }
         };
 
+        let sym = self.exchange_symbols.iter().find(|s| s.key == coin);
+        let Some(sym) = sym else {
+            self.order_status = Some((format!("Symbol '{coin}' not found"), true));
+            return Task::none();
+        };
+        if sym.market_type == MarketType::Outcome {
+            self.outcome_read_only_status("position closing");
+            return Task::none();
+        }
+        let asset = sym.asset_index;
+        let sz_decimals = sym.sz_decimals;
+
         let order_kind = if use_market {
-            ExchangeOrderKind::Market
+            OrderKind::Market
         } else {
-            ExchangeOrderKind::Limit
-        };
-        let intent = PlaceIntent {
-            surface: OrderSurface::ClosePosition,
-            symbol_key: coin.to_string(),
-            is_buy,
-            order_kind,
-            price_source: if use_market {
-                PriceSource::MarketWithSlippage {
-                    invalid_message: None,
-                }
-            } else {
-                PriceSource::ReferenceMid
-            },
-            quantity_source: QuantitySource::CoinSize {
-                size,
-                invalid_message: "Position size is invalid",
-                precision_invalid_message: "Position size is invalid",
-            },
-            reduce_only_source: ReduceOnlySource::Fixed(true),
-        };
-        let prepared = match self.prepare_place_order(intent) {
-            Ok(prepared) => prepared,
-            Err(message) => {
-                self.order_status = Some((message, true));
-                return Task::none();
-            }
+            OrderKind::Limit
         };
 
-        self.submit_prepared_close_position_order(key, coin, fraction, use_market, prepared)
-    }
+        let Some(mid) = self.resolve_mid_for_symbol(coin) else {
+            self.order_status = Some((
+                format!(
+                    "No mid price for {coin} (tried {})",
+                    self.mid_candidates_for_symbol(coin).join(", ")
+                ),
+                true,
+            ));
+            return Task::none();
+        };
 
-    fn submit_prepared_close_position_order(
-        &mut self,
-        key: String,
-        coin: &str,
-        fraction: f64,
-        use_market: bool,
-        prepared: PreparedExchangeOrder,
-    ) -> Task<Message> {
+        let price = if use_market {
+            let coin_is_spot = self.is_spot_coin(coin);
+            wire_market_price(
+                mid,
+                is_buy,
+                self.market_slippage_fraction(),
+                sz_decimals,
+                coin_is_spot,
+            )
+        } else {
+            let coin_is_spot = self.is_spot_coin(coin);
+            wire_rounded_price(mid, sz_decimals, coin_is_spot)
+        };
+
         let pct_label = format!("{:.0}%", fraction * 100.0);
         let kind_label = if use_market { "market" } else { "limit" };
         self.order_status = Some((
@@ -164,11 +162,9 @@ impl TradingTerminal {
             false,
         ));
 
-        let account_address = self.connected_address.clone().unwrap_or_default();
-        let (request, context) = prepared.place_request_with_context(&account_address);
-        place_order_task(key.into(), request, move |r| Message::ClosePositionResult {
-            context,
-            result: Box::new(r),
-        })
+        Task::perform(
+            place_order(key.into(), asset, is_buy, price, size, order_kind, true),
+            |r| Message::ClosePositionResult(Box::new(r)),
+        )
     }
 }

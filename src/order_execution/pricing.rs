@@ -59,7 +59,6 @@ pub(super) fn wire_market_price(
     ))
 }
 
-#[cfg(test)]
 pub(super) fn wire_rounded_price(price: f64, sz_decimals: u32, is_spot: bool) -> String {
     float_to_wire(round_price(price, sz_decimals, is_spot))
 }

@@ -132,11 +132,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::CancelResult { .. }
         | Message::ToggleCloseMenu(_)
         | Message::ClosePosition { .. }
-        | Message::ClosePositionResult { .. }
+        | Message::ClosePositionResult(_)
         | Message::NukePositions
-        | Message::NukeResult { .. }
-        | Message::NukePlacementStatusLoaded { .. }
-        | Message::OneShotPlacementStatusLoaded { .. }
+        | Message::NukeResult(_)
         | Message::StartChase(_)
         | Message::StopChase
         | Message::StopChaseById(_)

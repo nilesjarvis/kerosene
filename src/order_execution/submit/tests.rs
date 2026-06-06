@@ -1,10 +1,7 @@
+use super::*;
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::{TradingTerminal, sensitive_string};
-use crate::order_execution::{
-    PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination, QuantitySource,
-    ReduceOnlySource,
-};
-use crate::signing::{ExchangeOrderKind, OrderKind};
+use crate::signing::OrderKind;
 
 mod outcomes;
 
@@ -89,37 +86,8 @@ fn prepared_order_or_panic(
     terminal: &TradingTerminal,
     symbol: &ExchangeSymbol,
     is_buy: bool,
-) -> PreparedExchangeOrder {
-    let order_kind = ExchangeOrderKind::try_from(terminal.order_kind)
-        .expect("test order kind should be exchange order kind");
-    let intent = PlaceIntent {
-        surface: crate::order_execution::OrderSurface::Ticket,
-        symbol_key: symbol.key.clone(),
-        is_buy,
-        order_kind,
-        price_source: match order_kind {
-            ExchangeOrderKind::Market => PriceSource::MarketWithSlippage {
-                invalid_message: None,
-            },
-            ExchangeOrderKind::Limit | ExchangeOrderKind::LimitIoc => PriceSource::LimitInput {
-                value: terminal.order_price.clone(),
-                invalid_message: "Invalid price",
-            },
-        },
-        quantity_source: QuantitySource::UserInput {
-            value: terminal.order_quantity.clone(),
-            denomination: if terminal.order_quantity_is_usd {
-                QuantityDenomination::UsdNotional
-            } else {
-                QuantityDenomination::Coin
-            },
-            invalid_message: "Invalid quantity",
-            precision_invalid_message: "Invalid quantity for asset precision",
-        },
-        reduce_only_source: ReduceOnlySource::Form(terminal.order_reduce_only),
-    };
-
-    match terminal.prepare_place_order(intent) {
+) -> PreparedOrderSubmission {
+    match terminal.prepare_order_submission(symbol, is_buy) {
         Ok(prepared) => prepared,
         Err(error) => panic!("valid outcome order: {error}"),
     }

@@ -2,9 +2,7 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_number, positive_finite_value};
 use crate::message::Message;
-use crate::order_execution::{
-    AdvancedOrderKind, OrderOperation, OrderSurface, validate_surface_market_type,
-};
+use crate::order_execution::AdvancedOrderKind;
 use crate::signing::float_to_wire;
 use crate::twap_state::{
     MIN_EXCHANGE_ORDER_NOTIONAL_USD, TwapOrder, TwapOrderInit, twap_min_quantized_child_notional,
@@ -78,10 +76,8 @@ impl TradingTerminal {
             ));
             return Task::none();
         };
-        if let Err(error) =
-            validate_surface_market_type(OrderSurface::Twap, OrderOperation::Place, sym.market_type)
-        {
-            self.order_status = Some((error.status_text(), true));
+        if sym.market_type == MarketType::Outcome {
+            self.outcome_read_only_status("TWAP trading");
             return Task::none();
         }
 

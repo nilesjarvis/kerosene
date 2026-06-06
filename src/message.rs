@@ -22,9 +22,7 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
-use crate::order_execution::{
-    HudOrderRequest, OneShotPlacementContext, PendingLeverageUpdateContext,
-};
+use crate::order_execution::{HudOrderRequest, PendingLeverageUpdateContext};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::{PnlValueDisplayMode, PortfolioScope, PortfolioWindow};
@@ -425,7 +423,6 @@ pub(crate) enum Message {
     PlaceSell,
     OrderResult {
         pending_indicator_id: Option<u64>,
-        context: OneShotPlacementContext,
         result: Box<Result<ExchangeResponse, String>>,
     },
     DismissOrderStatus,
@@ -454,25 +451,9 @@ pub(crate) enum Message {
         fraction: f64,
         use_market: bool,
     },
-    ClosePositionResult {
-        context: OneShotPlacementContext,
-        result: Box<Result<ExchangeResponse, String>>,
-    },
+    ClosePositionResult(Box<Result<ExchangeResponse, String>>),
     NukePositions,
-    NukeResult {
-        execution_id: u64,
-        context: OneShotPlacementContext,
-        result: Box<Result<ExchangeResponse, String>>,
-    },
-    NukePlacementStatusLoaded {
-        execution_id: u64,
-        context: OneShotPlacementContext,
-        result: Box<Result<api::OrderStatusResult, String>>,
-    },
-    OneShotPlacementStatusLoaded {
-        context: OneShotPlacementContext,
-        result: Box<Result<api::OrderStatusResult, String>>,
-    },
+    NukeResult(Box<Result<ExchangeResponse, String>>),
     StartChase(bool), // true = buy, false = sell
     StopChase,
     StopChaseById(u64),
@@ -611,13 +592,11 @@ pub(crate) enum Message {
     SubmitQuickOrder(ChartId, bool),
     QuickOrderResult {
         pending_indicator_id: Option<u64>,
-        context: OneShotPlacementContext,
         result: Box<Result<ExchangeResponse, String>>,
     },
     SubmitHudOrder(HudOrderRequest),
     HudOrderResult {
         pending_indicator_id: Option<u64>,
-        context: OneShotPlacementContext,
         result: Box<Result<ExchangeResponse, String>>,
     },
     EscapePressed,

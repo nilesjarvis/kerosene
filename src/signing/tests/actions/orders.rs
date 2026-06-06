@@ -1,6 +1,6 @@
 use super::json_value;
 use super::{
-    CLIENT_ORDER_ID, ExchangeOrderKind, build_order_action, build_order_action_with_cloid,
+    CLIENT_ORDER_ID, OrderKind, build_order_action, build_order_action_with_cloid,
     build_update_leverage_action,
 };
 
@@ -11,7 +11,7 @@ fn build_order_action_serializes_limit_payload_for_exchange() {
         true,
         "123.45".to_string(),
         "0.25".to_string(),
-        ExchangeOrderKind::Limit,
+        OrderKind::Limit,
         false,
     );
     let json = json_value(action, "order action should serialize");
@@ -44,7 +44,7 @@ fn build_order_action_can_include_client_order_id() {
         true,
         "123.45".to_string(),
         "0.25".to_string(),
-        ExchangeOrderKind::LimitIoc,
+        OrderKind::LimitIoc,
         false,
         Some(CLIENT_ORDER_ID.to_string()),
     );
@@ -55,13 +55,13 @@ fn build_order_action_can_include_client_order_id() {
 }
 
 #[test]
-fn build_order_action_uses_ioc_for_market_and_limit_ioc_and_gtc_for_limit() {
+fn build_order_action_uses_ioc_for_market_and_limit_ioc_and_gtc_for_chase() {
     let market = build_order_action(
         1,
         false,
         "100".to_string(),
         "2".to_string(),
-        ExchangeOrderKind::Market,
+        OrderKind::Market,
         true,
     );
     let limit_ioc = build_order_action(
@@ -69,26 +69,26 @@ fn build_order_action_uses_ioc_for_market_and_limit_ioc_and_gtc_for_limit() {
         true,
         "101".to_string(),
         "2".to_string(),
-        ExchangeOrderKind::LimitIoc,
+        OrderKind::LimitIoc,
         false,
     );
-    let limit = build_order_action(
+    let chase = build_order_action(
         1,
         true,
         "99".to_string(),
         "2".to_string(),
-        ExchangeOrderKind::Limit,
+        OrderKind::Chase,
         false,
     );
 
     let market_json = json_value(market, "market action should serialize");
     let limit_ioc_json = json_value(limit_ioc, "limit IOC action should serialize");
-    let limit_json = json_value(limit, "limit action should serialize");
+    let chase_json = json_value(chase, "chase action should serialize");
 
     assert_eq!(market_json["orders"][0]["t"]["limit"]["tif"], "Ioc");
     assert_eq!(market_json["orders"][0]["r"], true);
     assert_eq!(limit_ioc_json["orders"][0]["t"]["limit"]["tif"], "Ioc");
-    assert_eq!(limit_json["orders"][0]["t"]["limit"]["tif"], "Gtc");
+    assert_eq!(chase_json["orders"][0]["t"]["limit"]["tif"], "Gtc");
 }
 
 #[test]

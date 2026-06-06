@@ -2,7 +2,6 @@ use crate::app_state::TradingTerminal;
 use crate::config::OrderPreset;
 use crate::helpers::{parse_number, positive_finite_value};
 use crate::message::Message;
-use crate::order_execution::OrderSurface;
 use crate::signing::OrderKind;
 use iced::Task;
 
@@ -119,7 +118,11 @@ impl TradingTerminal {
                 }
 
                 self.presets_menu_expanded = false;
-                self.execute_order_with_surface(is_buy, OrderSurface::Preset)
+                if is_buy {
+                    Task::perform(async move { Message::PlaceBuy }, |m| m)
+                } else {
+                    Task::perform(async move { Message::PlaceSell }, |m| m)
+                }
             } else if kind == OrderKind::Chase {
                 self.presets_menu_expanded = false;
                 Task::perform(async move { Message::StartChase(is_buy) }, |m| m)
