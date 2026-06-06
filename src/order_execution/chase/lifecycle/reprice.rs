@@ -1,11 +1,12 @@
 use super::{ChaseLimitReason, chase_account_matches, chase_reprice_limit_reason};
 
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
+use crate::order_execution::{OrderSurface, PreparedModifyOrder, modify_order_task};
 use crate::signing::{
     ChaseLifecycle, ChaseQueuedAction, ChaseStopPhase, ChaseVerificationReason, float_to_wire,
-    modify_order,
 };
 
 use iced::Task;
@@ -222,7 +223,23 @@ impl TradingTerminal {
         let asset = chase.asset;
         let is_buy = chase.is_buy;
         let reduce_only = chase.reduce_only;
+        let market_type = if chase.is_spot {
+            MarketType::Spot
+        } else {
+            MarketType::Perp
+        };
         let size = float_to_wire(remaining_size);
+        let prepared = PreparedModifyOrder {
+            surface: OrderSurface::Chase,
+            symbol_key: chase.coin.clone(),
+            oid,
+            asset,
+            is_buy,
+            price: price_wire,
+            size,
+            reduce_only,
+            market_type,
+        };
         chase.record_oid(oid);
         chase.remaining_size = remaining_size;
         chase.lifecycle = ChaseLifecycle::Modifying { oid };
@@ -232,21 +249,10 @@ impl TradingTerminal {
         self.last_advanced_exchange_request_at = Some(now);
         self.order_status = Some((format!("{status} {oid}"), false));
 
-        Task::perform(
-            modify_order(
-                key.into(),
-                oid,
-                asset,
-                is_buy,
-                price_wire,
-                size,
-                reduce_only,
-            ),
-            move |r| Message::ChaseModifyResult {
-                chase_id,
-                oid,
-                result: Box::new(r),
-            },
-        )
+        modify_order_task(key.into(), prepared, move |r| Message::ChaseModifyResult {
+            chase_id,
+            oid,
+            result: Box::new(r),
+        })
     }
 }

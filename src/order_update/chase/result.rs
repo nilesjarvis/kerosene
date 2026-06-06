@@ -4,9 +4,8 @@ mod stop_cancel;
 use crate::api::fetch_order_status_by_cloid;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::signing::{
-    ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason, ExchangeResponse, cancel_order,
-};
+use crate::order_execution::cancel_order_task;
+use crate::signing::{ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason, ExchangeResponse};
 
 use iced::Task;
 use std::time::Instant;
@@ -149,8 +148,10 @@ impl TradingTerminal {
                             format!("Chase stopping: cancelling placed order {}", request.oid),
                             false,
                         ));
-                        let cancel_task = Task::perform(
-                            cancel_order(request.agent_key, request.asset, request.oid),
+                        let cancel_task = cancel_order_task(
+                            request.agent_key,
+                            request.asset,
+                            request.oid,
                             move |r| Message::ChaseCancelResult {
                                 chase_id: request.chase_id,
                                 oid: request.oid,

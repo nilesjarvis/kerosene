@@ -3,7 +3,10 @@ use crate::api::{MarketType, fetch_order_book};
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
-use crate::order_execution::{AdvancedOrderKind, PendingOrderAction};
+use crate::order_execution::{
+    AdvancedOrderKind, OrderOperation, OrderSurface, PendingOrderAction,
+    validate_surface_market_type,
+};
 use crate::signing::{ChaseLifecycle, ChaseOrder};
 use iced::Task;
 
@@ -86,11 +89,17 @@ impl TradingTerminal {
             self.order_status = Some((format!("Symbol '{}' not found", self.active_symbol), true));
             return Task::none();
         };
-        if sym.market_type == MarketType::Outcome {
-            if let Err(e) = self.validate_outcome_contract_size(raw_qty) {
+        if let Err(error) = validate_surface_market_type(
+            OrderSurface::Chase,
+            OrderOperation::Place,
+            sym.market_type,
+        ) {
+            if sym.market_type == MarketType::Outcome
+                && let Err(e) = self.validate_outcome_contract_size(raw_qty)
+            {
                 self.order_status = Some((e, true));
             } else {
-                self.outcome_read_only_status("chase trading");
+                self.order_status = Some((error.status_text(), true));
             }
             return Task::none();
         }

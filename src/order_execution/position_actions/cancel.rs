@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::signing::cancel_order;
+use crate::order_execution::{CancelIntent, OrderSurface, cancel_order_task};
 
 use iced::Task;
 
@@ -17,12 +17,17 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let sym = self.exchange_symbols.iter().find(|s| s.key == coin);
-        let Some(sym) = sym else {
-            self.order_status = Some((format!("Symbol '{coin}' not found"), true));
-            return Task::none();
+        let prepared = match self.prepare_cancel_order(CancelIntent {
+            surface: OrderSurface::Cancel,
+            symbol_key: coin.to_string(),
+            oid,
+        }) {
+            Ok(prepared) => prepared,
+            Err(message) => {
+                self.order_status = Some((message, true));
+                return Task::none();
+            }
         };
-        let asset = sym.asset_index;
         let pending_indicator_id = self.connected_address.clone().and_then(|account_address| {
             let order = self
                 .account_data
@@ -33,7 +38,7 @@ impl TradingTerminal {
         });
 
         self.order_status = Some(("Cancelling order...".into(), false));
-        Task::perform(cancel_order(key.into(), asset, oid), move |result| {
+        cancel_order_task(key.into(), prepared.asset, prepared.oid, move |result| {
             Message::CancelResult {
                 pending_indicator_id,
                 result: Box::new(result),

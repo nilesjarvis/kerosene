@@ -4,11 +4,11 @@ use super::*;
 fn close_position_inputs_build_reduce_only_side_and_fractional_size() {
     assert_eq!(
         close_position_order_side_and_size("2.5", 0.5),
-        Ok((false, "1.25".to_string()))
+        Ok((false, 1.25))
     );
     assert_eq!(
         close_position_order_side_and_size("-2.5", 1.0),
-        Ok((true, "2.5".to_string()))
+        Ok((true, 2.5))
     );
 }
 

@@ -229,6 +229,8 @@ impl TradingTerminal {
             live_watchlist_flashes: HashMap::new(),
             close_menu_coin: None,
             nuke_confirmation: None,
+            pending_nuke_execution: None,
+            next_nuke_execution_id: 1,
             positions_sort_column: PositionsSortColumn::Value,
             positions_sort_direction: config::SortDirection::Descending,
             hidden_positions_by_account: cfg

@@ -12,7 +12,7 @@ impl TradingTerminal {
         let _theme = self.theme();
         let mut out = Vec::new();
         let mut push_unique = |value: String| {
-            if !value.is_empty() && !out.iter().any(|v| v == &value) {
+            if !value.is_empty() && !out.contains(&value) {
                 out.push(value);
             }
         };

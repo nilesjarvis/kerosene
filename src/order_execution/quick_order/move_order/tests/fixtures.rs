@@ -149,10 +149,3 @@ pub(super) fn context_or_panic(
         Err(error) => panic!("valid context: {error:?}"),
     }
 }
-
-pub(super) fn reduce_only_error_or_panic(result: Result<bool, &'static str>) -> &'static str {
-    match result {
-        Ok(value) => panic!("unknown reduce-only should be rejected, got {value}"),
-        Err(error) => error,
-    }
-}

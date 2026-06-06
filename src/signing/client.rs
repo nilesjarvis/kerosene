@@ -1,6 +1,7 @@
 use super::actions::HyperliquidL1Action;
 use super::crypto::sign_l1_action;
-use super::model::{ExchangeResponse, OrderKind};
+use super::model::{ExchangeOrderKind, ExchangeResponse};
+use crate::app_time::now_ms;
 
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,16 +17,9 @@ pub struct PlaceOrderRequest {
     pub is_buy: bool,
     pub price: String,
     pub size: String,
-    pub order_kind: OrderKind,
+    pub order_kind: ExchangeOrderKind,
     pub reduce_only: bool,
     pub cloid: Option<String>,
-}
-
-fn current_time_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 fn allocate_exchange_nonce_from(last_nonce_ms: &AtomicU64, now_ms: u64) -> u64 {
@@ -44,7 +38,7 @@ fn allocate_exchange_nonce(now_ms: u64) -> u64 {
 }
 
 fn exchange_nonce_ms() -> u64 {
-    allocate_exchange_nonce(current_time_ms())
+    allocate_exchange_nonce(now_ms())
 }
 
 /// Single signing entry point for every L1 action. Builds the canonical
@@ -107,20 +101,6 @@ async fn post_exchange(
         .map_err(|e| format!("Failed to read response: {e}"))?;
 
     serde_json::from_str::<ExchangeResponse>(&raw).map_err(|_| format!("Exchange error: {raw}"))
-}
-
-/// Place an order on the exchange.
-pub async fn place_order(
-    private_key: Zeroizing<String>,
-    asset: u32,
-    is_buy: bool,
-    price: String,
-    size: String,
-    order_kind: OrderKind,
-    reduce_only: bool,
-) -> Result<ExchangeResponse, String> {
-    let action = HyperliquidL1Action::order(asset, is_buy, price, size, order_kind, reduce_only);
-    sign_and_post(private_key, &action, None).await
 }
 
 /// Place an order with a Hyperliquid client order id.
