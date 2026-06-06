@@ -2,9 +2,9 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
 use crate::order_execution::{
-    HudOrderRequest, HudOrderType, OneShotPlacementContext, OrderSurface, PendingOrderAction,
-    PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination, QuantitySource,
-    ReduceOnlySource, place_order_task,
+    HudOrderRequest, HudOrderType, MarketUsdSizeReference, OneShotPlacementContext, OrderSurface,
+    PendingOrderAction, PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination,
+    QuantitySource, ReduceOnlySource, place_order_task,
 };
 use crate::order_update::results::classify_execution_result;
 use crate::signing::{ExchangeOrderKind, ExchangeResponse};
@@ -68,6 +68,7 @@ impl TradingTerminal {
                 },
                 HudOrderType::Market => PriceSource::MarketWithSlippage {
                     invalid_message: Some("Invalid HUD market price"),
+                    usd_size_reference: MarketUsdSizeReference::ExecutionPrice,
                 },
             },
             quantity_source: QuantitySource::UserInput {

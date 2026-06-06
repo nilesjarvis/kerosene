@@ -13,10 +13,11 @@ mod twap;
 
 pub(crate) use advanced::AdvancedOrderKind;
 pub(crate) use core::{
-    CancelIntent, ModifyIntent, OneShotPlacementContext, OrderOperation, OrderSurface, PlaceIntent,
-    PreparedExchangeOrder, PreparedModifyOrder, PreparedModifyOrderResult, PriceSource,
-    QuantityDenomination, QuantitySource, ReduceOnlySource, cancel_order_by_cloid_task,
-    cancel_order_task, modify_order_task, place_order_task, validate_surface_market_type,
+    CancelIntent, MarketUsdSizeReference, ModifyIntent, OneShotPlacementContext, OrderOperation,
+    OrderSurface, PlaceIntent, PreparedExchangeOrder, PreparedModifyOrder,
+    PreparedModifyOrderResult, PriceSource, QuantityDenomination, QuantitySource, ReduceOnlySource,
+    cancel_order_by_cloid_task, cancel_order_task, modify_order_task, place_order_task,
+    validate_surface_market_type,
 };
 pub(crate) use hud::{HudOrderRequest, HudOrderSide, HudOrderType};
 pub(crate) use position_actions::NukePlan;

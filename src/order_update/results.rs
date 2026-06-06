@@ -98,6 +98,11 @@ impl TradingTerminal {
         context: OneShotPlacementContext,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
+        if !self.one_shot_context_matches_current_account(&context) {
+            self.clear_nuke_execution_if_current(execution_id);
+            return Task::none();
+        }
+
         let outcome = classify_execution_result(result);
         if matches!(
             outcome.kind,
@@ -157,11 +162,29 @@ impl TradingTerminal {
         }
     }
 
+    fn one_shot_context_matches_current_account(&self, context: &OneShotPlacementContext) -> bool {
+        self.connected_address.as_deref() == Some(context.account_address.as_str())
+    }
+
+    fn clear_nuke_execution_if_current(&mut self, execution_id: u64) {
+        if self
+            .pending_nuke_execution
+            .as_ref()
+            .is_some_and(|execution| execution.id == execution_id)
+        {
+            self.pending_nuke_execution = None;
+        }
+    }
+
     pub(crate) fn apply_one_shot_placement_outcome(
         &mut self,
         context: OneShotPlacementContext,
         outcome: ExecutionOutcome,
     ) -> Task<Message> {
+        if !self.one_shot_context_matches_current_account(&context) {
+            return Task::none();
+        }
+
         if matches!(
             outcome.kind,
             ExecutionOutcomeKind::Ambiguous | ExecutionOutcomeKind::TransportUnknown
@@ -199,6 +222,10 @@ impl TradingTerminal {
         context: OneShotPlacementContext,
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
+        if !self.one_shot_context_matches_current_account(&context) {
+            return Task::none();
+        }
+
         match result {
             Ok(status) if status.is_open() => {
                 self.set_order_status(
@@ -288,9 +315,14 @@ impl TradingTerminal {
     pub(crate) fn handle_nuke_placement_status_result(
         &mut self,
         execution_id: u64,
-        _context: OneShotPlacementContext,
+        context: OneShotPlacementContext,
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
+        if !self.one_shot_context_matches_current_account(&context) {
+            self.clear_nuke_execution_if_current(execution_id);
+            return Task::none();
+        }
+
         match result {
             Ok(status) if status.is_open() || status.is_filled() => {
                 self.record_nuke_child_outcome(execution_id, true, true)

@@ -86,8 +86,15 @@ pub(crate) enum PriceSource {
     },
     MarketWithSlippage {
         invalid_message: Option<&'static str>,
+        usd_size_reference: MarketUsdSizeReference,
     },
     ReferenceMid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MarketUsdSizeReference {
+    ExecutionPrice,
+    Mid,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -616,7 +623,7 @@ impl TradingTerminal {
             self.validate_outcome_contract_size(raw_qty)?;
         }
 
-        let price = match &intent.price_source {
+        let (price, usd_size_reference_price) = match &intent.price_source {
             PriceSource::LimitInput {
                 value,
                 invalid_message,
@@ -624,10 +631,15 @@ impl TradingTerminal {
                 let px =
                     parse_positive_number(value).ok_or_else(|| (*invalid_message).to_string())?;
                 let rounded = round_price(px, sz_decimals, is_spot_like);
+                let rounded =
+                    positive_finite_value(rounded).ok_or_else(|| (*invalid_message).to_string())?;
                 validate_prepared_price(self, symbol_key, rounded, is_outcome)?;
-                rounded
+                (rounded, rounded)
             }
-            PriceSource::MarketWithSlippage { invalid_message } => {
+            PriceSource::MarketWithSlippage {
+                invalid_message,
+                usd_size_reference,
+            } => {
                 let Some(mid) = self.resolve_mid_for_symbol(symbol_key) else {
                     return Err(format!(
                         "No mid price for {} (tried {})",
@@ -650,13 +662,17 @@ impl TradingTerminal {
                         is_spot_like,
                     )
                 };
-                if let Some(message) = invalid_message
-                    && positive_finite_value(rounded).is_none()
-                {
-                    return Err((*message).to_string());
-                }
+                let rounded = positive_finite_value(rounded).ok_or_else(|| {
+                    invalid_message
+                        .unwrap_or("Invalid market price")
+                        .to_string()
+                })?;
                 validate_prepared_price(self, symbol_key, rounded, is_outcome)?;
-                rounded
+                let usd_size_reference_price = match usd_size_reference {
+                    MarketUsdSizeReference::ExecutionPrice => rounded,
+                    MarketUsdSizeReference::Mid => mid,
+                };
+                (rounded, usd_size_reference_price)
             }
             PriceSource::ReferenceMid => {
                 let Some(mid) = self.resolve_mid_for_symbol(symbol_key) else {
@@ -667,8 +683,10 @@ impl TradingTerminal {
                     ));
                 };
                 let rounded = round_price(mid, sz_decimals, is_spot_like);
+                let rounded = positive_finite_value(rounded)
+                    .ok_or_else(|| "Invalid reference price".to_string())?;
                 validate_prepared_price(self, symbol_key, rounded, is_outcome)?;
-                rounded
+                (rounded, rounded)
             }
         };
 
@@ -688,8 +706,13 @@ impl TradingTerminal {
                 ..
             } => *precision_invalid_message,
         };
-        let qty = order_size_from_quantity_input(raw_qty, price, quantity_is_usd, sz_decimals)
-            .ok_or_else(|| precision_invalid_message.to_string())?;
+        let qty = order_size_from_quantity_input(
+            raw_qty,
+            usd_size_reference_price,
+            quantity_is_usd,
+            sz_decimals,
+        )
+        .ok_or_else(|| precision_invalid_message.to_string())?;
         if is_outcome {
             self.validate_outcome_contract_size(qty)?;
         }
@@ -804,6 +827,30 @@ mod tests {
         }
     }
 
+    fn market_usd_intent(
+        surface: OrderSurface,
+        reference: MarketUsdSizeReference,
+        is_buy: bool,
+    ) -> PlaceIntent {
+        PlaceIntent {
+            surface,
+            symbol_key: "BTC".to_string(),
+            is_buy,
+            order_kind: ExchangeOrderKind::Market,
+            price_source: PriceSource::MarketWithSlippage {
+                invalid_message: Some("Invalid market price"),
+                usd_size_reference: reference,
+            },
+            quantity_source: QuantitySource::UserInput {
+                value: "250".to_string(),
+                denomination: QuantityDenomination::UsdNotional,
+                invalid_message: "Invalid quantity",
+                precision_invalid_message: "Invalid quantity for asset precision",
+            },
+            reduce_only_source: ReduceOnlySource::Form(false),
+        }
+    }
+
     fn move_modify_intent(symbol_key: &str) -> ModifyIntent {
         ModifyIntent {
             surface: OrderSurface::Move,
@@ -912,6 +959,98 @@ mod tests {
                 market_type: MarketType::Perp,
             }
         );
+    }
+
+    #[test]
+    fn prepare_quick_market_usd_order_sizes_from_mid_not_slipped_execution_price() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.market_slippage_pct = 5.0;
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+        let buy = terminal
+            .prepare_place_order(market_usd_intent(
+                OrderSurface::QuickOrder,
+                MarketUsdSizeReference::Mid,
+                true,
+            ))
+            .expect("valid quick market buy");
+        let sell = terminal
+            .prepare_place_order(market_usd_intent(
+                OrderSurface::QuickOrder,
+                MarketUsdSizeReference::Mid,
+                false,
+            ))
+            .expect("valid quick market sell");
+
+        assert_eq!(buy.price, "105");
+        assert_eq!(sell.price, "95");
+        assert_eq!(buy.size, "2.5");
+        assert_eq!(sell.size, "2.5");
+    }
+
+    #[test]
+    fn prepare_ticket_market_usd_order_can_size_from_slipped_execution_price() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.market_slippage_pct = 5.0;
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+        let prepared = terminal
+            .prepare_place_order(market_usd_intent(
+                OrderSurface::Ticket,
+                MarketUsdSizeReference::ExecutionPrice,
+                true,
+            ))
+            .expect("valid ticket market buy");
+
+        assert_eq!(prepared.price, "105");
+        assert_eq!(prepared.size, "2.3809");
+    }
+
+    #[test]
+    fn prepare_limit_order_rejects_prices_that_round_to_zero() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut intent = ticket_limit_intent("BTC");
+        intent.price_source = PriceSource::LimitInput {
+            value: "0.0000001".to_string(),
+            invalid_message: "Invalid price",
+        };
+
+        let error = terminal.prepare_place_order(intent).unwrap_err();
+
+        assert_eq!(error, "Invalid price");
+    }
+
+    #[test]
+    fn prepare_market_order_rejects_prices_that_round_to_zero() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 0.0000001);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+        let error = terminal
+            .prepare_place_order(market_usd_intent(
+                OrderSurface::QuickOrder,
+                MarketUsdSizeReference::Mid,
+                true,
+            ))
+            .unwrap_err();
+
+        assert_eq!(error, "Invalid market price");
     }
 
     #[test]

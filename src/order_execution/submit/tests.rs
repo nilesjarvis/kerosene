@@ -1,8 +1,8 @@
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::order_execution::{
-    PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination, QuantitySource,
-    ReduceOnlySource,
+    MarketUsdSizeReference, PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination,
+    QuantitySource, ReduceOnlySource,
 };
 use crate::signing::{ExchangeOrderKind, OrderKind};
 
@@ -100,6 +100,7 @@ fn prepared_order_or_panic(
         price_source: match order_kind {
             ExchangeOrderKind::Market => PriceSource::MarketWithSlippage {
                 invalid_message: None,
+                usd_size_reference: MarketUsdSizeReference::ExecutionPrice,
             },
             ExchangeOrderKind::Limit | ExchangeOrderKind::LimitIoc => PriceSource::LimitInput {
                 value: terminal.order_price.clone(),
