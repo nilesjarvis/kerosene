@@ -2,8 +2,8 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{finite_value, positive_finite_value};
 use crate::message::Message;
 use crate::order_execution::{
-    OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource, QuantitySource,
-    ReduceOnlySource, place_order_task,
+    MarketUsdSizeReference, OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource,
+    QuantitySource, ReduceOnlySource, place_order_task,
 };
 use crate::signing::ExchangeOrderKind;
 
@@ -127,6 +127,7 @@ impl TradingTerminal {
             price_source: if use_market {
                 PriceSource::MarketWithSlippage {
                     invalid_message: None,
+                    usd_size_reference: MarketUsdSizeReference::ExecutionPrice,
                 }
             } else {
                 PriceSource::ReferenceMid

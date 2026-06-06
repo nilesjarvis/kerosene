@@ -3,6 +3,9 @@ use crate::api::OrderStatusResult;
 use crate::app_state::TradingTerminal;
 use crate::order_execution::{OneShotPlacementContext, OrderSurface, PendingNukeExecution};
 
+const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
+
 fn exchange_response(statuses: Vec<serde_json::Value>) -> ExchangeResponse {
     serde_json::from_value(serde_json::json!({
         "status": "ok",
@@ -31,7 +34,7 @@ fn malformed_ok_response() -> ExchangeResponse {
 
 fn one_shot_context() -> OneShotPlacementContext {
     OneShotPlacementContext {
-        account_address: "0xabc0000000000000000000000000000000000000".to_string(),
+        account_address: TEST_ACCOUNT.to_string(),
         cloid: "0x00000000000000000000000000000000".to_string(),
         surface: OrderSurface::Ticket,
         symbol_key: "BTC".to_string(),
@@ -40,11 +43,17 @@ fn one_shot_context() -> OneShotPlacementContext {
 
 fn nuke_context(symbol_key: &str) -> OneShotPlacementContext {
     OneShotPlacementContext {
-        account_address: "0xabc0000000000000000000000000000000000000".to_string(),
+        account_address: TEST_ACCOUNT.to_string(),
         cloid: format!("0x{symbol_key:0<32}"),
         surface: OrderSurface::Nuke,
         symbol_key: symbol_key.to_string(),
     }
+}
+
+fn terminal_with_connected_account() -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal
 }
 
 fn order_status(status: &str) -> OrderStatusResult {
@@ -165,7 +174,7 @@ fn execution_result_classifier_separates_rejected_ambiguous_and_transport_unknow
 
 #[test]
 fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
-    let (mut terminal, _) = TradingTerminal::boot();
+    let mut terminal = terminal_with_connected_account();
 
     let _task = terminal.apply_one_shot_placement_outcome(
         one_shot_context(),
@@ -186,7 +195,7 @@ fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
 
 #[test]
 fn one_shot_order_status_result_normalizes_terminal_statuses() {
-    let (mut terminal, _) = TradingTerminal::boot();
+    let mut terminal = terminal_with_connected_account();
 
     let _task = terminal
         .handle_one_shot_placement_status_result(one_shot_context(), Ok(order_status("open")));
@@ -202,8 +211,31 @@ fn one_shot_order_status_result_normalizes_terminal_statuses() {
 }
 
 #[test]
-fn nuke_results_aggregate_until_all_children_settle() {
+fn one_shot_results_are_ignored_after_account_switch() {
     let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
+
+    let _task = terminal.apply_one_shot_placement_outcome(
+        one_shot_context(),
+        ExecutionOutcome {
+            kind: ExecutionOutcomeKind::AcceptedResting,
+            status: "Resting (oid 42)".to_string(),
+            is_error: false,
+            refresh_account: true,
+        },
+    );
+
+    assert!(terminal.order_status.is_none());
+
+    let _task = terminal
+        .handle_one_shot_placement_status_result(one_shot_context(), Ok(order_status("open")));
+
+    assert!(terminal.order_status.is_none());
+}
+
+#[test]
+fn nuke_results_aggregate_until_all_children_settle() {
+    let mut terminal = terminal_with_connected_account();
     terminal.pending_nuke_execution = Some(PendingNukeExecution::new(7, 2, 1));
 
     let _task = terminal.handle_nuke_result(
@@ -240,7 +272,7 @@ fn nuke_results_aggregate_until_all_children_settle() {
 
 #[test]
 fn nuke_uncertain_child_waits_for_order_status_before_aggregating() {
-    let (mut terminal, _) = TradingTerminal::boot();
+    let mut terminal = terminal_with_connected_account();
     terminal.pending_nuke_execution = Some(PendingNukeExecution::new(9, 1, 0));
 
     let _task = terminal.handle_nuke_result(
@@ -264,4 +296,34 @@ fn nuke_uncertain_child_waits_for_order_status_before_aggregating() {
     assert!(!is_error);
     assert_eq!(message, "NUKE completed: 1/1 confirmed");
     assert!(terminal.pending_nuke_execution.is_none());
+}
+
+#[test]
+fn nuke_results_after_account_switch_clear_stale_execution_without_status() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
+    terminal.pending_nuke_execution = Some(PendingNukeExecution::new(11, 1, 0));
+
+    let _task = terminal.handle_nuke_result(
+        11,
+        nuke_context("BTC"),
+        Ok(exchange_response(vec![serde_json::json!({
+            "resting": {
+                "oid": 42_u64
+            }
+        })])),
+    );
+
+    assert!(terminal.pending_nuke_execution.is_none());
+    assert!(terminal.order_status.is_none());
+
+    terminal.pending_nuke_execution = Some(PendingNukeExecution::new(12, 1, 0));
+    let _task = terminal.handle_nuke_placement_status_result(
+        12,
+        nuke_context("BTC"),
+        Ok(order_status("open")),
+    );
+
+    assert!(terminal.pending_nuke_execution.is_none());
+    assert!(terminal.order_status.is_none());
 }

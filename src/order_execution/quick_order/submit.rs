@@ -2,8 +2,8 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::message::Message;
 use crate::order_execution::{
-    OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination,
-    QuantitySource, QuickOrderForm, ReduceOnlySource, place_order_task,
+    MarketUsdSizeReference, OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource,
+    QuantityDenomination, QuantitySource, QuickOrderForm, ReduceOnlySource, place_order_task,
 };
 use crate::signing::ExchangeOrderKind;
 
@@ -57,6 +57,7 @@ impl TradingTerminal {
             } else {
                 PriceSource::MarketWithSlippage {
                     invalid_message: Some("Invalid market price"),
+                    usd_size_reference: MarketUsdSizeReference::Mid,
                 }
             },
             quantity_source: QuantitySource::UserInput {

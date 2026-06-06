@@ -3,8 +3,8 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::order_execution::{
-    OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination,
-    QuantitySource, ReduceOnlySource, place_order_task,
+    MarketUsdSizeReference, OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource,
+    QuantityDenomination, QuantitySource, ReduceOnlySource, place_order_task,
 };
 use crate::signing::{ExchangeOrderKind, OrderKind};
 
@@ -54,6 +54,7 @@ impl TradingTerminal {
             price_source: match exchange_order_kind {
                 ExchangeOrderKind::Market => PriceSource::MarketWithSlippage {
                     invalid_message: None,
+                    usd_size_reference: MarketUsdSizeReference::ExecutionPrice,
                 },
                 ExchangeOrderKind::Limit | ExchangeOrderKind::LimitIoc => PriceSource::LimitInput {
                     value: self.order_price.clone(),
