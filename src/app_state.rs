@@ -18,7 +18,7 @@ use crate::market_state::{
 };
 use crate::notification_state::Toast;
 use crate::order_execution::{
-    PendingLeverageUpdateContext, PendingMoveOrderContext, PendingOrderAction,
+    PendingLeverageUpdateContext, PendingMoveOrderContext, PendingNukeExecution, PendingOrderAction,
 };
 use crate::order_pending_indicators::PendingOrderIndicator;
 use crate::pane_management::AddWidgetPlacement;
@@ -226,6 +226,8 @@ pub(crate) struct TradingTerminal {
     // Close-position menu: which coin's menu is currently expanded (if any)
     pub(crate) close_menu_coin: Option<String>,
     pub(crate) nuke_confirmation: Option<std::time::Instant>,
+    pub(crate) pending_nuke_execution: Option<PendingNukeExecution>,
+    pub(crate) next_nuke_execution_id: u64,
     pub(crate) positions_sort_column: PositionsSortColumn,
     pub(crate) positions_sort_direction: config::SortDirection,
     pub(crate) hidden_positions_by_account: HashMap<String, HashSet<String>>,

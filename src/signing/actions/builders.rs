@@ -2,25 +2,18 @@ use super::wire::{
     CancelAction, CancelByCloidAction, CancelByCloidWire, CancelWire, LimitOrderWire, ModifyAction,
     ModifyWire, OrderAction, OrderTypeWire, OrderWire, UpdateLeverageAction,
 };
-use crate::signing::model::OrderKind;
+use crate::signing::model::ExchangeOrderKind;
 
 // ---------------------------------------------------------------------------
 // Action Builders
 // ---------------------------------------------------------------------------
-
-fn order_tif(order_kind: OrderKind) -> &'static str {
-    match order_kind {
-        OrderKind::Market | OrderKind::Twap | OrderKind::LimitIoc => "Ioc",
-        OrderKind::Limit | OrderKind::Chase => "Gtc",
-    }
-}
 
 fn build_order_wire(
     asset: u32,
     is_buy: bool,
     price: String,
     size: String,
-    order_kind: OrderKind,
+    order_kind: ExchangeOrderKind,
     reduce_only: bool,
     cloid: Option<String>,
 ) -> OrderWire {
@@ -32,19 +25,20 @@ fn build_order_wire(
         r: reduce_only,
         t: OrderTypeWire {
             limit: LimitOrderWire {
-                tif: order_tif(order_kind).to_string(),
+                tif: order_kind.tif().to_string(),
             },
         },
         c: cloid,
     }
 }
 
+#[cfg(test)]
 pub(in crate::signing) fn build_order_action(
     asset: u32,
     is_buy: bool,
     price: String,
     size: String,
-    order_kind: OrderKind,
+    order_kind: ExchangeOrderKind,
     reduce_only: bool,
 ) -> OrderAction {
     build_order_action_with_cloid(asset, is_buy, price, size, order_kind, reduce_only, None)
@@ -55,7 +49,7 @@ pub(in crate::signing) fn build_order_action_with_cloid(
     is_buy: bool,
     price: String,
     size: String,
-    order_kind: OrderKind,
+    order_kind: ExchangeOrderKind,
     reduce_only: bool,
     cloid: Option<String>,
 ) -> OrderAction {
@@ -108,7 +102,7 @@ pub(in crate::signing) fn build_modify_action(
                 is_buy,
                 price,
                 size,
-                OrderKind::Limit,
+                ExchangeOrderKind::Limit,
                 reduce_only,
                 None,
             ),

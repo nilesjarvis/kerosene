@@ -1,8 +1,10 @@
 use self::planning::validate_twap_planned_slice;
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::message::Message;
-use crate::signing::{OrderKind, PlaceOrderRequest, float_to_wire, place_order_with_cloid};
+use crate::order_execution::{OrderSurface, PreparedExchangeOrder, place_order_task};
+use crate::signing::{ExchangeOrderKind, float_to_wire};
 use crate::twap_state::{
     TWAP_BOOK_STALE_AFTER, TwapChildOrder, TwapChildStatus, TwapEventKind, TwapPauseReason,
     TwapPendingOp, TwapPendingSlice, TwapStatus, quantize_twap_slice_size, twap_child_cloid,
@@ -227,25 +229,31 @@ impl TradingTerminal {
 
         let asset = twap.asset;
         let reduce_only = twap.reduce_only;
+        let market_type = if twap.is_spot {
+            MarketType::Spot
+        } else {
+            MarketType::Perp
+        };
         self.last_advanced_exchange_request_at = Some(now);
 
-        Task::perform(
-            place_order_with_cloid(
-                key.into(),
-                PlaceOrderRequest {
-                    asset,
-                    is_buy,
-                    price: float_to_wire(limit_price),
-                    size: float_to_wire(planned_size),
-                    order_kind: OrderKind::LimitIoc,
-                    reduce_only,
-                    cloid: Some(pending_slice.cloid),
-                },
-            ),
-            move |result| Message::TwapSliceResult {
+        let prepared = PreparedExchangeOrder {
+            surface: OrderSurface::Twap,
+            symbol_key: twap.coin.clone(),
+            asset,
+            is_buy,
+            price: float_to_wire(limit_price),
+            size: float_to_wire(planned_size),
+            order_kind: ExchangeOrderKind::LimitIoc,
+            reduce_only,
+            market_type,
+        };
+        let request = prepared.place_request_with_existing_cloid(pending_slice.cloid);
+
+        place_order_task(key.into(), request, move |result| {
+            Message::TwapSliceResult {
                 twap_id,
                 result: Box::new(result),
-            },
-        )
+            }
+        })
     }
 }

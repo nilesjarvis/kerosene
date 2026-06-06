@@ -1,8 +1,8 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
-use crate::order_execution::PendingOrderAction;
-use crate::signing::{ChaseLifecycle, ChaseStopPhase, cancel_order};
+use crate::order_execution::{PendingOrderAction, cancel_order_task};
+use crate::signing::{ChaseLifecycle, ChaseStopPhase};
 
 use super::{ChaseLimitReason, chase_reprice_limit_reason};
 
@@ -68,7 +68,7 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
-                Task::perform(cancel_order(key.into(), asset, oid), move |r| {
+                cancel_order_task(key.into(), asset, oid, move |r| {
                     Message::ChaseCancelResult {
                         chase_id,
                         oid,
@@ -167,7 +167,7 @@ impl TradingTerminal {
 
         let asset = chase.asset;
         self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
-        Task::perform(cancel_order(key.into(), asset, oid), move |r| {
+        cancel_order_task(key.into(), asset, oid, move |r| {
             Message::ChaseCancelResult {
                 chase_id,
                 oid,

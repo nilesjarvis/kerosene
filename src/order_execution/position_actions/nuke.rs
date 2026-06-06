@@ -1,18 +1,36 @@
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::signing::{OrderKind, place_order};
+use crate::order_execution::{
+    OrderSurface, PendingNukeExecution, PreparedExchangeOrder, place_order_task,
+};
+use crate::signing::ExchangeOrderKind;
 
 use iced::Task;
 
 mod planning;
 
-pub(crate) use planning::NukePlan;
-use planning::{NukePositionInput, NukeSymbolInfo, plan_nuke_positions_from_inputs};
 #[cfg(test)]
-pub(crate) use planning::{NukePositionOrder, NukeSkipReason};
+pub(crate) use planning::NukeSkipReason;
+pub(crate) use planning::{NukePlan, NukePositionOrder};
+use planning::{NukePositionInput, NukeSymbolInfo, plan_nuke_positions_from_inputs};
 
 #[cfg(test)]
 mod tests;
+
+fn nuke_prepared_order(coin: String, order: NukePositionOrder) -> PreparedExchangeOrder {
+    PreparedExchangeOrder {
+        surface: OrderSurface::Nuke,
+        symbol_key: coin,
+        asset: order.asset,
+        is_buy: order.is_buy,
+        price: order.price,
+        size: order.size,
+        order_kind: ExchangeOrderKind::Market,
+        reduce_only: true,
+        market_type: MarketType::Perp,
+    }
+}
 
 impl TradingTerminal {
     /// Plan a NUKE: classify every active visible non-muted position into
@@ -59,6 +77,10 @@ impl TradingTerminal {
         let key = self.wallet_key_input.trim().to_string();
         if key.is_empty() || self.connected_address.is_none() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+            return Task::none();
+        }
+        if self.pending_nuke_execution.is_some() {
+            self.order_status = Some(("NUKE already in progress".into(), true));
             return Task::none();
         }
 
@@ -122,21 +144,26 @@ impl TradingTerminal {
         let skip_summary = plan.format_skip_list();
         let NukePlan { ready, .. } = plan;
 
+        let account_address = self.connected_address.clone().unwrap_or_default();
+        let execution_id = self.next_nuke_execution_id;
+        self.next_nuke_execution_id = self.next_nuke_execution_id.saturating_add(1);
+        self.pending_nuke_execution = Some(PendingNukeExecution::new(
+            execution_id,
+            ready_count,
+            skipped_count,
+        ));
         let mut tasks = Vec::with_capacity(ready_count);
-        for (_coin, order) in ready {
+        for (coin, order) in ready {
             let k = key.clone();
-            tasks.push(Task::perform(
-                place_order(
-                    k.into(),
-                    order.asset,
-                    order.is_buy,
-                    order.price,
-                    order.size,
-                    OrderKind::Market,
-                    true,
-                ),
-                |r| Message::NukeResult(Box::new(r)),
-            ));
+            let prepared = nuke_prepared_order(coin, order);
+            let (request, context) = prepared.place_request_with_context(&account_address);
+            tasks.push(place_order_task(k.into(), request, move |r| {
+                Message::NukeResult {
+                    execution_id,
+                    context,
+                    result: Box::new(r),
+                }
+            }));
         }
 
         let total = ready_count + skipped_count;
