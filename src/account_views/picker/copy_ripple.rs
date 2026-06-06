@@ -1,3 +1,4 @@
+use crate::helpers::ease_out_cubic;
 use crate::message::Message;
 
 use iced::advanced::renderer::Renderer as _;
@@ -288,13 +289,6 @@ fn max_ripple_radius(size: Size, origin: Point) -> f32 {
 fn ripple_alpha(progress: f32) -> f32 {
     let fade = 1.0 - progress.clamp(0.0, 1.0);
     RIPPLE_PEAK_ALPHA * fade * fade
-}
-
-/// Cubic ease-out used to settle the ripple expansion.
-fn ease_out_cubic(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    let inv = 1.0 - t;
-    1.0 - inv * inv * inv
 }
 
 #[cfg(test)]

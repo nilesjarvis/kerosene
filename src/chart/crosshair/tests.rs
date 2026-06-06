@@ -8,15 +8,12 @@ use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
 use iced::Point;
 
 fn candle_at(open_time: u64, close: f64) -> Candle {
-    Candle {
+    Candle::test_ohlcv(
         open_time,
-        close_time: open_time + 999,
-        open: close,
-        high: close + 1.0,
-        low: close - 1.0,
-        close,
-        volume: 10.0,
-    }
+        open_time + 999,
+        [close, close + 1.0, close - 1.0, close],
+        10.0,
+    )
 }
 
 #[test]

@@ -1,5 +1,5 @@
 use super::AlfredTradeSide;
-use crate::helpers::format_decimal_with_commas;
+use crate::helpers::{format_decimal_with_commas, trim_decimal_zeros};
 use crate::signing::OrderKind;
 
 pub(super) fn trade_amount_label(value: f64, is_usd: bool) -> String {
@@ -14,18 +14,6 @@ fn display_amount(value: f64) -> String {
 
 pub(super) fn plain_amount(value: f64) -> String {
     trim_decimal_zeros(format!("{value:.8}"))
-}
-
-fn trim_decimal_zeros(mut value: String) -> String {
-    if value.contains('.') {
-        while value.ends_with('0') {
-            value.pop();
-        }
-        if value.ends_with('.') {
-            value.pop();
-        }
-    }
-    value
 }
 
 pub(super) fn trade_title(

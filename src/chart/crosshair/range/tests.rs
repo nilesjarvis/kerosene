@@ -1,12 +1,6 @@
 use super::*;
+use crate::helpers::assert_close_fine as assert_near_f32;
 use iced::Point;
-
-fn assert_near_f32(actual: f32, expected: f32) {
-    assert!(
-        (actual - expected).abs() < 1e-6,
-        "expected {expected}, got {actual}"
-    );
-}
 
 #[test]
 fn calculates_positive_range_measurement_label_and_bounds() {

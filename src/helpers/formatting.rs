@@ -7,7 +7,12 @@ pub use numbers::{
     format_size, format_usd, format_with_commas, invalid_data_placeholder,
     normalize_two_decimal_display_value, not_available_placeholder, parse_finite_json_number,
     parse_finite_number, parse_number, parse_positive_finite_number, parse_positive_number,
-    positive_finite_value,
+    positive_finite_value, trim_decimal_zeros,
 };
-pub use text::{ellipsized_text, response_excerpt, response_snippet, text_excerpt};
-pub use time::{format_duration, format_relative_time, format_timestamp, format_timestamp_exact};
+pub use text::{
+    ellipsized_text, fallback_initials, response_excerpt, response_snippet, text_excerpt,
+};
+pub use time::{
+    format_duration, format_relative_time, format_seen_latency_label, format_timestamp,
+    format_timestamp_exact,
+};

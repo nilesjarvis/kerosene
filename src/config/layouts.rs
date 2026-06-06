@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use super::{
     ChartConfig, CustomThemeConfig, LiveWatchlistConfig, OrderBookConfig, OrderPresetsConfig,
     PositioningInfoConfig, SpaghettiChartConfig, default_custom_themes, default_order_kind,
-    default_symbol, default_timeframe, default_widget_padding, normalize_widget_padding,
+    default_symbol, default_timeframe, default_true, default_widget_padding,
+    normalize_widget_padding,
 };
 use std::collections::BTreeMap;
 
@@ -236,8 +237,4 @@ pub struct SavedLayout {
     pub preset_is_usd: bool,
     #[serde(default)]
     pub order_presets: OrderPresetsConfig,
-}
-
-fn default_true() -> bool {
-    true
 }

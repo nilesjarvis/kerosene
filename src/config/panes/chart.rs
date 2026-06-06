@@ -1,7 +1,7 @@
 use crate::annotations::AnnotationConfig;
 use serde::{Deserialize, Serialize};
 
-use super::super::{default_symbol, default_timeframe};
+use super::super::{default_symbol, default_timeframe, default_true};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MacroIndicatorsConfig {
@@ -148,10 +148,6 @@ pub struct DetachedChartWindowConfig {
     /// Last window Y position.
     #[serde(default)]
     pub y: Option<f32>,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 fn default_funding_panel_height() -> u16 {

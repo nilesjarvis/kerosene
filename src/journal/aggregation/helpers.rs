@@ -35,7 +35,7 @@ pub(super) fn legacy_flip_trade_id(coin: &str, time: u64) -> String {
 }
 
 pub(super) fn add_legacy_note_id(trade: &mut AggregatedTrade, id: String) {
-    if !trade.legacy_note_ids.iter().any(|existing| existing == &id) {
+    if !trade.legacy_note_ids.contains(&id) {
         trade.legacy_note_ids.push(id);
     }
 }

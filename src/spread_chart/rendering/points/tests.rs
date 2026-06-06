@@ -1,11 +1,5 @@
 use super::*;
-
-fn assert_close(actual: f32, expected: f32) {
-    assert!(
-        (actual - expected).abs() < 1e-6,
-        "expected {expected}, got {actual}"
-    );
-}
+use crate::helpers::assert_close_fine as assert_close;
 
 #[test]
 fn scale_maps_window_bounds_to_chart_edges() {

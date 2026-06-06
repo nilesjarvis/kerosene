@@ -1,16 +1,6 @@
 use super::{history_baselines, screener_history_baselines};
-use crate::api::Candle;
-
-fn candle(open_time: u64, open: f64) -> Candle {
-    Candle {
-        open_time,
-        close_time: open_time + 60_000,
-        open,
-        high: open,
-        low: open,
-        close: open,
-        volume: 1.0,
-    }
+fn candle(open_time: u64, open: f64) -> crate::api::Candle {
+    crate::api::Candle::test_ohlcv(open_time, open_time + 60_000, [open, open, open, open], 1.0)
 }
 
 #[test]

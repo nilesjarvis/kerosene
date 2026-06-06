@@ -1,3 +1,4 @@
+use crate::helpers::ease_out_cubic;
 use crate::message::Message;
 
 use super::{MenuAlignment, MenuKind};
@@ -242,11 +243,4 @@ pub(super) fn clamp_to_viewport(
     } else {
         value.clamp(min, max)
     }
-}
-
-/// Cubic ease-out used to settle the open animation smoothly.
-pub(super) fn ease_out_cubic(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    let inv = 1.0 - t;
-    1.0 - inv * inv * inv
 }

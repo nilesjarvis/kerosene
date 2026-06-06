@@ -1,3 +1,4 @@
+use crate::app_time::now_ms;
 use crate::telegram_feed::{
     TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS, TELEGRAM_FEED_FETCH_LIMIT, TelegramChannelProfile,
     TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
@@ -19,7 +20,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 const TELEGRAM_FAST_UPDATE_QUEUE_LIMIT: usize = 2_000;
@@ -794,17 +795,17 @@ fn fast_post_from_message(
         text = "[media]".to_string();
     }
     let timestamp_ms = u64::try_from(message.date().timestamp_millis()).ok()?;
-    let now_ms = system_time_ms();
+    let fetched_at_ms = now_ms();
 
     Some(TelegramFeedPost {
         channel: channel.to_string(),
         message_id,
         text,
         timestamp_ms,
-        fetched_at_ms: now_ms,
-        request_started_ms: now_ms,
+        fetched_at_ms,
+        request_started_ms: fetched_at_ms,
         request_duration_ms: 0,
-        first_seen_ms: if live_update { now_ms } else { 0 },
+        first_seen_ms: if live_update { fetched_at_ms } else { 0 },
         url: telegram_post_url(channel, message_id),
         ticker_mentions: Vec::new(),
     })
@@ -850,13 +851,6 @@ fn status_event(connected: bool, auth_required: bool, message: &str) -> Telegram
         auth_required,
         message: message.to_string(),
     }
-}
-
-fn system_time_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

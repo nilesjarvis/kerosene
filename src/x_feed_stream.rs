@@ -1,4 +1,5 @@
 use crate::api::CLIENT;
+use crate::app_time::now_ms;
 use crate::helpers::text_excerpt;
 use crate::x_feed::{
     XFeedStreamEvent, build_x_feed_query, normalize_x_bearer_token_input, normalized_x_handle_list,
@@ -129,7 +130,7 @@ async fn run_x_feed_stream_session(
                     if line.iter().all(|byte| byte.is_ascii_whitespace()) {
                         continue;
                     }
-                    let fetched_at_ms = system_time_ms();
+                    let fetched_at_ms = now_ms();
                     match parse_x_stream_page(line, fetched_at_ms) {
                         Ok(page) if !page.posts.is_empty() => {
                             if output
@@ -286,13 +287,6 @@ fn next_x_reconnect_delay(current: Duration) -> Duration {
     } else {
         next
     }
-}
-
-fn system_time_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 #[derive(Debug, Deserialize)]

@@ -6,6 +6,7 @@ mod trade_card;
 mod trades;
 
 use crate::app_state::TradingTerminal;
+use crate::app_time::now_ms;
 use crate::message::Message;
 
 use iced::widget::container as container_style;
@@ -55,10 +56,7 @@ impl TradingTerminal {
             content = self.push_journal_summary(content, &filtered_trades);
 
             let mut has_trades = false;
-            let current_time_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64;
+            let current_time_ms = now_ms();
 
             for trade in filtered_trades {
                 has_trades = true;

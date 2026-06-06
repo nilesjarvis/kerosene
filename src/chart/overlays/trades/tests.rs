@@ -6,15 +6,12 @@ mod geometry;
 mod grouping;
 
 fn candle(open_time: u64) -> Candle {
-    Candle {
+    Candle::test_ohlcv(
         open_time,
-        close_time: open_time + 59_999,
-        open: 100.0,
-        high: 110.0,
-        low: 90.0,
-        close: 105.0,
-        volume: 1.0,
-    }
+        open_time + 59_999,
+        [100.0, 110.0, 90.0, 105.0],
+        1.0,
+    )
 }
 
 fn marker(time_ms: u64, price: f64, size: f64, is_buy: bool) -> TradeMarker {

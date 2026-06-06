@@ -1,16 +1,11 @@
 use iced::Point;
 
+use crate::helpers::assert_close_loose as assert_near;
+
 use super::*;
 
 fn bars() -> Vec<(String, f64)> {
     vec![("Jan".to_string(), -10.0), ("Feb".to_string(), 10.0)]
-}
-
-fn assert_near(actual: f32, expected: f32) {
-    assert!(
-        (actual - expected).abs() < 1e-4,
-        "expected {expected}, got {actual}"
-    );
 }
 
 #[test]

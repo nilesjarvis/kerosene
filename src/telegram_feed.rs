@@ -1,12 +1,15 @@
 use crate::api::{CLIENT, ExchangeSymbol};
-use crate::helpers::text_excerpt;
+use crate::app_time::{cooldown_heat, now_ms};
+use crate::helpers::{
+    fallback_initials, format_seen_latency_label, positive_percent_change, text_excerpt,
+};
 use crate::symbol_mentions::{SymbolAliasSource, SymbolMention, SymbolMentionResolver};
 use chrono::{DateTime, Utc};
 use iced::widget::image::Handle as ImageHandle;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use zeroize::Zeroizing;
 
 const TELEGRAM_WEB_BASE: &str = "https://t.me/s/";
@@ -330,7 +333,7 @@ pub(crate) fn normalized_channel_list(channels: &[String]) -> Vec<String> {
     let mut normalized = Vec::new();
     for channel in channels {
         if let Ok(channel) = normalize_public_channel_input(channel)
-            && !normalized.iter().any(|existing| existing == &channel)
+            && !normalized.contains(&channel)
         {
             normalized.push(channel);
         }
@@ -341,14 +344,12 @@ pub(crate) fn normalized_channel_list(channels: &[String]) -> Vec<String> {
 pub(crate) fn normalized_private_channel_list(
     channels: &[TelegramFeedPrivateChannelConfig],
 ) -> Vec<TelegramFeedPrivateChannelConfig> {
-    let mut normalized = Vec::new();
+    let mut normalized: Vec<TelegramFeedPrivateChannelConfig> = Vec::new();
     for channel in channels {
         if let Some(channel) = channel.normalized()
             && !normalized
                 .iter()
-                .any(|existing: &TelegramFeedPrivateChannelConfig| {
-                    existing.peer_id == channel.peer_id
-                })
+                .any(|existing| existing.peer_id == channel.peer_id)
         {
             normalized.push(channel);
         }
@@ -427,7 +428,7 @@ pub(crate) async fn fetch_telegram_channel_posts(
 ) -> Result<TelegramFeedPage, String> {
     let channel = normalize_public_channel_input(&channel)?;
     let url = format!("{TELEGRAM_WEB_BASE}{channel}");
-    let request_started_ms = system_time_ms();
+    let request_started_ms = now_ms();
     let response = CLIENT
         .get(&url)
         .header(USER_AGENT, TELEGRAM_USER_AGENT)
@@ -440,7 +441,7 @@ pub(crate) async fn fetch_telegram_channel_posts(
         .bytes()
         .await
         .map_err(|e| format!("@{channel} response read failed: {e}"))?;
-    let fetched_at_ms = system_time_ms();
+    let fetched_at_ms = now_ms();
     let request_duration_ms = fetched_at_ms.saturating_sub(request_started_ms);
 
     if body_bytes.len() > TELEGRAM_FEED_MAX_BODY_BYTES {
@@ -549,7 +550,7 @@ pub(crate) fn parse_telegram_channel_profile(channel: &str, html: &str) -> Teleg
     let initials = attr_value(photo_block, "data-content=\"")
         .map(|value| html_to_plain_text(&value))
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| channel_initials(&title, &channel));
+        .unwrap_or_else(|| fallback_initials(&title, &channel));
 
     TelegramChannelProfile {
         channel,
@@ -575,7 +576,7 @@ pub(crate) fn telegram_channel_profile_from_title(
         .unwrap_or_else(|| format!("@{channel}"));
 
     TelegramChannelProfile {
-        initials: channel_initials(&title, &channel),
+        initials: fallback_initials(&title, &channel),
         channel,
         title,
         avatar_url: None,
@@ -737,28 +738,6 @@ fn normalize_telegram_asset_url(url: &str) -> Option<String> {
     }
 }
 
-fn channel_initials(title: &str, channel: &str) -> String {
-    let mut initials = title
-        .split_whitespace()
-        .filter_map(|part| part.chars().find(|ch| ch.is_ascii_alphanumeric()))
-        .take(2)
-        .map(|ch| ch.to_ascii_uppercase())
-        .collect::<String>();
-    if initials.is_empty() {
-        initials = channel
-            .chars()
-            .filter(|ch| ch.is_ascii_alphanumeric())
-            .take(2)
-            .map(|ch| ch.to_ascii_uppercase())
-            .collect();
-    }
-    if initials.is_empty() {
-        "?".to_string()
-    } else {
-        initials
-    }
-}
-
 fn telegram_message_fallback_text(block: &str) -> String {
     if block.contains("tgme_widget_message_photo") {
         "[photo]".to_string()
@@ -826,56 +805,18 @@ pub(crate) fn telegram_age_countdown_label(sent_at_ms: u64, now_ms: u64) -> Stri
 }
 
 pub(crate) fn telegram_new_message_heat(first_seen_ms: u64, now_ms: u64) -> f32 {
-    if first_seen_ms == 0 {
-        return 0.0;
-    }
-
-    let age_ms = now_ms.saturating_sub(first_seen_ms);
-    if age_ms >= TELEGRAM_NEW_MESSAGE_COOLDOWN_MS {
-        0.0
-    } else {
-        1.0 - (age_ms as f32 / TELEGRAM_NEW_MESSAGE_COOLDOWN_MS as f32)
-    }
+    cooldown_heat(first_seen_ms, now_ms, TELEGRAM_NEW_MESSAGE_COOLDOWN_MS)
 }
 
 pub(crate) fn telegram_arrival_latency_label(post: &TelegramFeedPost) -> Option<String> {
-    if post.fetched_at_ms == 0 || post.first_seen_ms == 0 {
-        return None;
-    }
-
-    Some(format!(
-        "seen +{}",
-        telegram_duration_label(post.fetched_at_ms.saturating_sub(post.timestamp_ms))
-    ))
+    format_seen_latency_label(post.timestamp_ms, post.fetched_at_ms, post.first_seen_ms)
 }
 
 pub(crate) fn telegram_price_impact_pct(
     reference_price: Option<f64>,
     current_price: Option<f64>,
 ) -> Option<f64> {
-    let reference = reference_price.filter(|price| price.is_finite() && *price > 0.0)?;
-    let current = current_price.filter(|price| price.is_finite() && *price > 0.0)?;
-    Some(((current / reference) - 1.0) * 100.0)
-}
-
-fn telegram_duration_label(duration_ms: u64) -> String {
-    if duration_ms < 1_000 {
-        format!("{duration_ms} ms")
-    } else if duration_ms < 60_000 {
-        format!("{}.{:03} s", duration_ms / 1_000, duration_ms % 1_000)
-    } else if duration_ms < 3_600_000 {
-        format!(
-            "{}m {}s",
-            duration_ms / 60_000,
-            (duration_ms % 60_000) / 1_000
-        )
-    } else {
-        format!(
-            "{}h {}m",
-            duration_ms / 3_600_000,
-            (duration_ms % 3_600_000) / 60_000
-        )
-    }
+    positive_percent_change(current_price, reference_price)
 }
 
 fn telegram_countdown_duration_label(duration_ms: u64) -> String {
@@ -896,13 +837,6 @@ fn telegram_countdown_duration_label(duration_ms: u64) -> String {
             (duration_ms % 3_600_000) / 60_000
         )
     }
-}
-
-fn system_time_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

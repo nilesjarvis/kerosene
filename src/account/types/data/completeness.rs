@@ -112,7 +112,7 @@ impl AccountDataCompleteness {
     fn warning_messages(&self) -> Vec<String> {
         let mut messages = Vec::new();
         for (_, warning) in &self.warnings {
-            if !messages.iter().any(|existing| existing == warning) {
+            if !messages.contains(warning) {
                 messages.push(warning.clone());
             }
         }

@@ -18,6 +18,44 @@ pub struct Candle {
     pub volume: f64,
 }
 
+#[cfg(test)]
+impl Candle {
+    pub(crate) fn test_price(open_time: u64, close: f64) -> Self {
+        Self::test_ohlcv(
+            open_time,
+            open_time + 59_999,
+            [close, close + 1.0, close - 1.0, close],
+            10.0,
+        )
+    }
+
+    pub(crate) fn test_flat(open_time: u64, value: f64) -> Self {
+        Self::test_ohlcv(
+            open_time,
+            open_time + 59_999,
+            [value, value, value, value],
+            1.0,
+        )
+    }
+
+    pub(crate) fn test_ohlcv(
+        open_time: u64,
+        close_time: u64,
+        [open, high, low, close]: [f64; 4],
+        volume: f64,
+    ) -> Self {
+        Self {
+            open_time,
+            close_time,
+            open,
+            high,
+            low,
+            close,
+            volume,
+        }
+    }
+}
+
 /// Deserialize a value that may be either a JSON string (e.g. `"29258.0"`)
 /// or a JSON number (e.g. `29258.0`) into an f64. The Hyperliquid API is
 /// inconsistent: some assets return strings, others return raw numbers.

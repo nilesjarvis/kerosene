@@ -20,6 +20,13 @@ fn grouped_decimal_formatter_keeps_requested_precision() {
 }
 
 #[test]
+fn decimal_zero_trimmer_removes_fraction_padding() {
+    assert_eq!(trim_decimal_zeros("12,345.6700".to_string()), "12,345.67");
+    assert_eq!(trim_decimal_zeros("100.0000".to_string()), "100");
+    assert_eq!(trim_decimal_zeros("42".to_string()), "42");
+}
+
+#[test]
 fn signed_percent_formatter_marks_positive_values_and_suppresses_tiny_values() {
     assert_eq!(format_signed_percent_value(1.234), "+1.23%");
     assert_eq!(format_signed_percent_value(-1.234), "-1.23%");

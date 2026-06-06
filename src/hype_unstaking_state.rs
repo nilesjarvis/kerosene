@@ -1,5 +1,5 @@
 use crate::config::SortDirection;
-use crate::helpers::format_decimal_with_commas;
+use crate::helpers::{format_decimal_with_commas, trim_decimal_zeros};
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -291,18 +291,6 @@ pub(crate) fn format_countdown(unlock_time_ms: u64, now_ms: u64) -> String {
         format!("{minutes}m {seconds}s")
     } else {
         format!("{seconds}s")
-    }
-}
-
-fn trim_decimal_zeros(value: String) -> String {
-    let Some((whole, fraction)) = value.rsplit_once('.') else {
-        return value;
-    };
-    let trimmed = fraction.trim_end_matches('0');
-    if trimmed.is_empty() {
-        whole.to_string()
-    } else {
-        format!("{whole}.{trimmed}")
     }
 }
 

@@ -1,4 +1,5 @@
 use super::{API_URL, CLIENT};
+use crate::app_time::now_ms;
 
 mod model;
 mod pagination;
@@ -16,12 +17,7 @@ pub async fn fetch_user_fills(
     }
 
     let current_start = request.start_time;
-    let end_time = request.end_time.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-    });
+    let end_time = request.end_time.unwrap_or_else(now_ms);
 
     let client = CLIENT.clone();
     let body = serde_json::json!({

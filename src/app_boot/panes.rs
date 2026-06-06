@@ -26,32 +26,21 @@ impl TradingTerminal {
             }
         }
 
-        if chart_ids_in_layout.is_empty() {
-            let anchor = self.panes.iter().next().map(|(p, _)| *p);
-            if let Some(anchor) = anchor {
-                let _ = self.panes.split(
-                    pane_grid::Axis::Vertical,
-                    anchor,
-                    PaneKind::Chart(first_chart_id),
-                );
-                chart_ids_in_layout.insert(first_chart_id);
-            }
+        if chart_ids_in_layout.is_empty()
+            && let Some(anchor) = self.chart_anchor_pane()
+        {
+            let _ = self.panes.split(
+                pane_grid::Axis::Vertical,
+                anchor,
+                PaneKind::Chart(first_chart_id),
+            );
+            chart_ids_in_layout.insert(first_chart_id);
         }
 
         self.ensure_loaded_chart_panes(&mut chart_ids_in_layout, detached_chart_ids);
         self.ensure_loaded_spaghetti_panes(&mut spaghetti_ids_in_layout);
 
-        self.primary_chart_id = self
-            .panes
-            .iter()
-            .find_map(|(_, kind)| {
-                if let PaneKind::Chart(id) = kind {
-                    Some(*id)
-                } else {
-                    None
-                }
-            })
-            .or_else(|| self.charts.keys().copied().min());
+        self.sync_primary_chart_id_from_panes();
     }
 
     fn ensure_loaded_chart_panes(
@@ -67,12 +56,7 @@ impl TradingTerminal {
                 continue;
             }
 
-            let anchor = self
-                .panes
-                .iter()
-                .find_map(|(p, kind)| matches!(kind, PaneKind::Chart(_)).then_some(*p))
-                .or_else(|| self.panes.iter().next().map(|(p, _)| *p));
-            if let Some(anchor) = anchor
+            if let Some(anchor) = self.chart_anchor_pane()
                 && let Some((new_pane, _)) =
                     self.panes
                         .split(pane_grid::Axis::Vertical, anchor, PaneKind::Chart(id))
@@ -96,12 +80,7 @@ impl TradingTerminal {
                 continue;
             }
 
-            let anchor = self
-                .panes
-                .iter()
-                .find_map(|(p, kind)| matches!(kind, PaneKind::Chart(_)).then_some(*p))
-                .or_else(|| self.panes.iter().next().map(|(p, _)| *p));
-            if let Some(anchor) = anchor
+            if let Some(anchor) = self.chart_anchor_pane()
                 && let Some((new_pane, _)) = self.panes.split(
                     pane_grid::Axis::Vertical,
                     anchor,

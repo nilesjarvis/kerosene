@@ -3,15 +3,7 @@ use crate::chart::model::CandlestickChart;
 use crate::chart::state::ChartState;
 
 fn candle_at(open_time: u64) -> Candle {
-    Candle {
-        open_time,
-        close_time: open_time + 59_999,
-        open: 10.0,
-        high: 11.0,
-        low: 9.0,
-        close: 10.0,
-        volume: 1.0,
-    }
+    Candle::test_ohlcv(open_time, open_time + 59_999, [10.0, 11.0, 9.0, 10.0], 1.0)
 }
 
 fn chart_with(candles: usize) -> CandlestickChart {

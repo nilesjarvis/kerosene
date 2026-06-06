@@ -1,6 +1,6 @@
 use crate::denomination::DisplayDenominationContext;
 use crate::feed_state::TrackedTradeIntent;
-use crate::helpers::format_decimal_with_commas;
+use crate::helpers::{format_decimal_with_commas, trim_decimal_zeros};
 
 pub(super) fn tracked_trade_side_label(is_buy: bool) -> &'static str {
     if is_buy { "BUY" } else { "SELL" }
@@ -91,18 +91,6 @@ fn format_display_trimmed(
     } else {
         denomination
             .format_active_amount(sign, trim_decimal_zeros(format_decimal_with_commas(abs, 2)))
-    }
-}
-
-fn trim_decimal_zeros(value: String) -> String {
-    let Some((whole, fraction)) = value.rsplit_once('.') else {
-        return value;
-    };
-    let trimmed = fraction.trim_end_matches('0');
-    if trimmed.is_empty() {
-        whole.to_string()
-    } else {
-        format!("{whole}.{trimmed}")
     }
 }
 

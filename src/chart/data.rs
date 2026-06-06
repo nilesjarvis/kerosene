@@ -3,6 +3,7 @@ mod earnings;
 mod funding;
 
 use super::{CandlestickChart, ChartStatus, DEFAULT_FUNDING_PANEL_HEIGHT};
+use crate::app_time::now_ms;
 use crate::chart_state::ChartSurfaceId;
 use crate::denomination::DisplayDenominationContext;
 use crate::timeframe::Timeframe;
@@ -20,7 +21,7 @@ impl CandlestickChart {
             surface_id: ChartSurfaceId::Docked(id),
             symbol_label: String::new(),
             timeframe: Timeframe::H1,
-            clock_now_ms: current_unix_ms(),
+            clock_now_ms: now_ms(),
             candles: Vec::new(),
             status: ChartStatus::Loading,
             candle_cache: canvas::Cache::new(),
@@ -291,11 +292,4 @@ impl CandlestickChart {
             self.candle_cache.clear();
         }
     }
-}
-
-fn current_unix_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or_default()
 }

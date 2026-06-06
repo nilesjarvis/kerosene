@@ -4,6 +4,7 @@ use super::super::{
 };
 use super::merge::{merge_hip3_open_orders, merge_hip3_positions};
 use crate::api::API_URL;
+use crate::app_time::now_ms;
 use responses::{
     account_abstraction_from_best_effort_value, clearinghouse_from_required_value,
     fee_rates_from_response, funding_history_from_response, hip3_clearinghouse_from_response,
@@ -184,21 +185,14 @@ pub async fn fetch_account_data_scoped(
         funding_history,
         fee_rates,
         completeness,
-        fetched_at_ms: current_time_ms(),
+        fetched_at_ms: now_ms(),
     })
 }
 
 fn funding_history_start_ms() -> u64 {
-    funding_history_start_ms_from(current_time_ms())
+    funding_history_start_ms_from(now_ms())
 }
 
 fn funding_history_start_ms_from(now_ms: u64) -> u64 {
     now_ms.saturating_sub(FUNDING_HISTORY_LOOKBACK_MS)
-}
-
-fn current_time_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }

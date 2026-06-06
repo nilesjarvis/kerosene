@@ -19,6 +19,28 @@ pub fn ellipsized_text(text: &str, max_chars: usize) -> String {
     format!("{prefix}...")
 }
 
+pub fn fallback_initials(primary: &str, fallback: &str) -> String {
+    let mut initials = primary
+        .split_whitespace()
+        .filter_map(|part| part.chars().find(|ch| ch.is_ascii_alphanumeric()))
+        .take(2)
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect::<String>();
+    if initials.is_empty() {
+        initials = fallback
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .take(2)
+            .map(|ch| ch.to_ascii_uppercase())
+            .collect();
+    }
+    if initials.is_empty() {
+        "?".to_string()
+    } else {
+        initials
+    }
+}
+
 pub fn response_excerpt(text: &str) -> String {
     text_excerpt(text, RESPONSE_SNIPPET_CHARS)
 }

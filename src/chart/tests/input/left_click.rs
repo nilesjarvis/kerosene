@@ -51,11 +51,9 @@ fn pending_order_line_left_click_does_not_start_order_drag() {
     let mut chart = chart_with_input_candles();
     chart.active_orders.push(pending_btc_buy_order(42));
     let mut state = ChartState::default();
-    let Some((price_hi, price_range, price_h)) =
-        chart.visible_price_params(&state, CHART_W, CHART_H)
-    else {
-        panic!("visible price params");
-    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, CHART_W, CHART_H)
+        .expect("visible price params");
     let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
 
     let action = action_or_panic(
@@ -81,11 +79,9 @@ fn fisheye_left_click_on_order_cancel_button_cancels_order() {
     chart.set_fisheye(true, 1.0);
     let mut state = ChartState::default();
     let fisheye = ChartFisheye::new(true, chart.fisheye_strength, CHART_W, CHART_H);
-    let Some((price_hi, price_range, price_h)) =
-        chart.visible_price_params(&state, CHART_W, CHART_H)
-    else {
-        panic!("visible price params");
-    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, CHART_W, CHART_H)
+        .expect("visible price params");
     let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
     let label_positions = order_labels::order_label_position_slots(
         order_labels::stack_order_label_positions_avoiding(
@@ -99,9 +95,8 @@ fn fisheye_left_click_on_order_cancel_button_cancels_order() {
         ),
         chart.active_orders.len(),
     );
-    let Some(label) = order_labels::order_label_position(&label_positions, 0) else {
-        panic!("order label should be laid out");
-    };
+    let label = order_labels::order_label_position(&label_positions, 0)
+        .expect("order label should be laid out");
     let (cancel_x, cancel_end_x) = order_labels::order_cancel_x_range(&chart.active_orders[0]);
     let visual_label_y = fisheye
         .project(Point::new(order_labels::ORDER_LABEL_X, label.label_y))

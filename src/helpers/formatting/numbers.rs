@@ -45,6 +45,18 @@ pub fn format_decimal_with_commas(value: f64, decimals: usize) -> String {
     }
 }
 
+pub fn trim_decimal_zeros(value: String) -> String {
+    let Some((whole, fraction)) = value.rsplit_once('.') else {
+        return value;
+    };
+    let fraction = fraction.trim_end_matches('0');
+    if fraction.is_empty() {
+        whole.to_string()
+    } else {
+        format!("{whole}.{fraction}")
+    }
+}
+
 pub fn normalize_two_decimal_display_value(value: f64) -> f64 {
     if value.abs() < 0.005 { 0.0 } else { value }
 }

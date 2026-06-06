@@ -13,7 +13,9 @@ use iced::advanced::{
 use iced::{Element, Event, Length, Rectangle, Size, Theme, Vector};
 
 #[cfg(test)]
-use overlay::{clamp_to_viewport, ease_out_cubic};
+use crate::helpers::ease_out_cubic;
+#[cfg(test)]
+use overlay::clamp_to_viewport;
 
 // ---------------------------------------------------------------------------
 // Anchored Overlay Widget

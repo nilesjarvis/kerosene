@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartId;
 use crate::pane_state::PaneKind;
 
 use crate::helpers::pane_title;
@@ -21,6 +22,26 @@ pub(crate) enum AddWidgetPlacement {
 }
 
 impl TradingTerminal {
+    pub(crate) fn first_chart_pane(&self) -> Option<(pane_grid::Pane, ChartId)> {
+        self.panes.iter().find_map(|(pane, kind)| match kind {
+            PaneKind::Chart(id) => Some((*pane, *id)),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn chart_anchor_pane(&self) -> Option<pane_grid::Pane> {
+        self.first_chart_pane()
+            .map(|(pane, _)| pane)
+            .or_else(|| self.panes.iter().next().map(|(pane, _)| *pane))
+    }
+
+    pub(crate) fn sync_primary_chart_id_from_panes(&mut self) {
+        self.primary_chart_id = self
+            .first_chart_pane()
+            .map(|(_, id)| id)
+            .or_else(|| self.charts.keys().copied().min());
+    }
+
     pub(crate) fn find_pane_matching<F>(&self, predicate: F) -> Option<pane_grid::Pane>
     where
         F: Fn(&PaneKind) -> bool,

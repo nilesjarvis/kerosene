@@ -1,5 +1,6 @@
 use super::series::{ChartPoint, prepare_chart_layout};
 use crate::denomination::DisplayDenominationContext;
+use crate::helpers::ease_out_cubic;
 use crate::message::Message;
 
 use iced::widget::canvas;
@@ -319,10 +320,6 @@ fn account_value_line_color(theme: &Theme) -> Color {
         a: 0.42,
         ..theme.palette().primary
     }
-}
-
-fn ease_out_cubic(progress: f32) -> f32 {
-    1.0 - (1.0 - progress).powi(3)
 }
 
 fn nearest_chart_point(points: &[ChartPoint], cursor_x: f32) -> Option<ChartPoint> {

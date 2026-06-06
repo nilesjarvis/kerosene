@@ -3,15 +3,23 @@ use crate::chart_state::ChartInstance;
 use crate::timeframe::Timeframe;
 
 fn candle(open_time: u64, close: f64) -> Candle {
-    Candle {
+    Candle::test_ohlcv(
         open_time,
-        close_time: open_time + 60_000,
-        open: close,
-        high: close,
-        low: close,
-        close,
-        volume: 1.0,
-    }
+        open_time + 60_000,
+        [close, close, close, close],
+        1.0,
+    )
+}
+
+fn last_close(terminal: &TradingTerminal, id: ChartId) -> Option<f64> {
+    terminal
+        .charts
+        .get(&id)
+        .expect("chart")
+        .chart
+        .candles
+        .last()
+        .map(|candle| candle.close)
 }
 
 #[test]
@@ -44,37 +52,7 @@ fn ws_candle_update_fans_out_to_matching_chart_instances() {
         candle(2_000, 101.0),
     );
 
-    assert_eq!(
-        terminal
-            .charts
-            .get(&1)
-            .expect("first chart")
-            .chart
-            .candles
-            .last()
-            .map(|candle| candle.close),
-        Some(101.0)
-    );
-    assert_eq!(
-        terminal
-            .charts
-            .get(&2)
-            .expect("second chart")
-            .chart
-            .candles
-            .last()
-            .map(|candle| candle.close),
-        Some(101.0)
-    );
-    assert_eq!(
-        terminal
-            .charts
-            .get(&3)
-            .expect("different timeframe")
-            .chart
-            .candles
-            .last()
-            .map(|candle| candle.close),
-        Some(100.0)
-    );
+    assert_eq!(last_close(&terminal, 1), Some(101.0));
+    assert_eq!(last_close(&terminal, 2), Some(101.0));
+    assert_eq!(last_close(&terminal, 3), Some(100.0));
 }

@@ -2,7 +2,7 @@ use crate::account;
 use crate::account_views::invalid_account_data;
 use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
-use crate::helpers::format_decimal_with_commas;
+use crate::helpers::{format_decimal_with_commas, trim_decimal_zeros};
 use crate::message::Message;
 
 use super::{PositionColumnVisibility, PositionNumberMode};
@@ -88,16 +88,4 @@ fn format_position_compact_bucket(value: f64) -> String {
     }
 
     format_decimal_with_commas(value, 0)
-}
-
-fn trim_decimal_zeros(value: String) -> String {
-    let Some((whole, fraction)) = value.split_once('.') else {
-        return value;
-    };
-    let fraction = fraction.trim_end_matches('0');
-    if fraction.is_empty() {
-        whole.to_string()
-    } else {
-        format!("{whole}.{fraction}")
-    }
 }

@@ -7,15 +7,7 @@ use crate::chart::state::ChartState;
 use crate::hydromancer_api::FundingRatePoint;
 
 fn candle(open_time: u64) -> Candle {
-    Candle {
-        open_time,
-        close_time: open_time + 59_999,
-        open: 1.0,
-        high: 1.0,
-        low: 1.0,
-        close: 1.0,
-        volume: 1.0,
-    }
+    Candle::test_flat(open_time, 1.0)
 }
 
 fn chart_with_funding() -> CandlestickChart {

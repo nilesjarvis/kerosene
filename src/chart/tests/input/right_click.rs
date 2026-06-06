@@ -33,11 +33,9 @@ fn quick_order_open_right_click_on_order_line_still_replaces_card_not_cancel_ord
     let mut chart = quick_order_chart();
     chart.active_orders.push(btc_buy_order(42));
     let mut state = ChartState::default();
-    let Some((price_hi, price_range, price_h)) =
-        chart.visible_price_params(&state, CHART_W, CHART_H)
-    else {
-        panic!("visible price params");
-    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, CHART_W, CHART_H)
+        .expect("visible price params");
     let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
     let click = Point::new(120.0, order_y);
 
@@ -86,11 +84,9 @@ fn pending_order_line_right_click_opens_quick_order_instead_of_canceling() {
     let mut chart = super::chart_with_input_candles();
     chart.active_orders.push(pending_btc_buy_order(42));
     let mut state = ChartState::default();
-    let Some((price_hi, price_range, price_h)) =
-        chart.visible_price_params(&state, CHART_W, CHART_H)
-    else {
-        panic!("visible price params");
-    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, CHART_W, CHART_H)
+        .expect("visible price params");
     let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
     let click = Point::new(120.0, order_y);
 

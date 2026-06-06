@@ -1,23 +1,8 @@
 use super::*;
-use crate::api::Candle;
+use crate::helpers::assert_close_tight as assert_close;
 
 fn candle_at(open_time: u64, open: f64, high: f64, low: f64, close: f64) -> Candle {
-    Candle {
-        open_time,
-        close_time: open_time + 59_999,
-        open,
-        high,
-        low,
-        close,
-        volume: 1.0,
-    }
-}
-
-fn assert_close(actual: f64, expected: f64) {
-    assert!(
-        (actual - expected).abs() < 1e-12,
-        "expected {expected}, got {actual}"
-    );
+    Candle::test_ohlcv(open_time, open_time + 59_999, [open, high, low, close], 1.0)
 }
 
 #[test]

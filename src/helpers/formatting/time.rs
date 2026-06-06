@@ -28,6 +28,41 @@ pub fn format_duration(ms: u64) -> String {
     parts.join(" ")
 }
 
+pub fn format_precise_duration(duration_ms: u64) -> String {
+    if duration_ms < 1_000 {
+        format!("{duration_ms} ms")
+    } else if duration_ms < 60_000 {
+        format!("{}.{:03} s", duration_ms / 1_000, duration_ms % 1_000)
+    } else if duration_ms < 3_600_000 {
+        format!(
+            "{}m {}s",
+            duration_ms / 60_000,
+            (duration_ms % 60_000) / 1_000
+        )
+    } else {
+        format!(
+            "{}h {}m",
+            duration_ms / 3_600_000,
+            (duration_ms % 3_600_000) / 60_000
+        )
+    }
+}
+
+pub fn format_seen_latency_label(
+    timestamp_ms: u64,
+    fetched_at_ms: u64,
+    first_seen_ms: u64,
+) -> Option<String> {
+    if fetched_at_ms == 0 || first_seen_ms == 0 {
+        None
+    } else {
+        Some(format!(
+            "seen +{}",
+            format_precise_duration(fetched_at_ms.saturating_sub(timestamp_ms))
+        ))
+    }
+}
+
 pub fn format_timestamp_exact(unix_ms: u64) -> String {
     chrono::DateTime::<chrono::Utc>::from_timestamp_millis(unix_ms as i64)
         .map(|dt| {

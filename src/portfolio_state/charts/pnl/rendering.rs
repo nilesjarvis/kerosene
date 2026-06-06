@@ -402,6 +402,7 @@ fn segment_area_gradient(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::helpers::assert_close_loose as assert_near;
 
     fn chart_point(x: f32, y: f32, pnl: f64) -> PnlChartPoint {
         PnlChartPoint {
@@ -409,13 +410,6 @@ mod tests {
             timestamp_ms: x as u64,
             pnl,
         }
-    }
-
-    fn assert_near(actual: f32, expected: f32) {
-        assert!(
-            (actual - expected).abs() < 1e-4,
-            "expected {expected}, got {actual}"
-        );
     }
 
     #[test]

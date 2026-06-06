@@ -7,6 +7,7 @@ use super::super::{
     WalletDetailsData, WalletOpenOrderDetail, WalletPositionDetail,
 };
 use crate::api::API_URL;
+use crate::app_time::now_ms;
 
 /// Fetch detailed watch-only wallet state for a detachable details window.
 ///
@@ -84,17 +85,12 @@ pub async fn fetch_wallet_details_scoped(
     append_hip3_positions(hip3_ch_results, &mut positions, &mut warnings).await;
     append_hip3_open_orders(hip3_order_results, &mut open_orders, &mut warnings).await;
 
-    let fetched_at_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-
     Ok(WalletDetailsData {
         clearinghouse,
         spot,
         positions,
         open_orders,
         warnings,
-        fetched_at_ms,
+        fetched_at_ms: now_ms(),
     })
 }

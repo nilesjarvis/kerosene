@@ -3,13 +3,7 @@ use super::{
     anchored_scroll_offset_for_zoom, minimum_scroll_offset, ratio_zoom_speed,
     scroll_offset_for_zoom, zoomed_px_per_ms,
 };
-
-fn assert_close(actual: f64, expected: f64) {
-    assert!(
-        (actual - expected).abs() < 1e-9,
-        "expected {expected}, got {actual}"
-    );
-}
+use crate::helpers::assert_close;
 
 #[test]
 fn ratio_zoom_speed_scales_with_pair_ratio_magnitude() {

@@ -1,22 +1,8 @@
 use super::*;
+use crate::helpers::assert_close;
 
 fn candle(low: f64, high: f64, volume: f64) -> Candle {
-    Candle {
-        open_time: 1_000,
-        close_time: 61_000,
-        open: low,
-        high,
-        low,
-        close: high,
-        volume,
-    }
-}
-
-fn assert_close(actual: f64, expected: f64) {
-    assert!(
-        (actual - expected).abs() < 1e-9,
-        "expected {expected}, got {actual}"
-    );
+    Candle::test_ohlcv(1_000, 61_000, [low, high, low, high], volume)
 }
 
 #[test]
@@ -60,15 +46,7 @@ fn zero_range_candle_assigns_volume_to_matching_bucket() {
 
 #[test]
 fn invalid_or_non_positive_candles_are_skipped() {
-    let invalid = Candle {
-        open_time: 1_000,
-        close_time: 61_000,
-        open: 100.0,
-        high: f64::NAN,
-        low: 99.0,
-        close: 101.0,
-        volume: 20.0,
-    };
+    let invalid = Candle::test_ohlcv(1_000, 61_000, [100.0, f64::NAN, 99.0, 101.0], 20.0);
     let zero_volume = candle(100.0, 104.0, 0.0);
 
     assert_eq!(

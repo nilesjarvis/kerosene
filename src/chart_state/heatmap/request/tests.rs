@@ -1,5 +1,6 @@
 use crate::api::Candle;
 use crate::chart::ChartViewport;
+use crate::helpers::assert_close as assert_near;
 use crate::hyperdash_api::HeatmapFetchParams;
 
 use super::*;
@@ -11,15 +12,7 @@ mod skips;
 mod viewport;
 
 fn candle(open_time: u64, low: f64, high: f64) -> Candle {
-    Candle {
-        open_time,
-        close_time: open_time + 59_999,
-        open: low,
-        high,
-        low,
-        close: high,
-        volume: 10.0,
-    }
+    Candle::test_ohlcv(open_time, open_time + 59_999, [low, high, low, high], 10.0)
 }
 
 fn context<'a>(
@@ -37,13 +30,6 @@ fn context<'a>(
         previous,
         now_time: 10_000,
     }
-}
-
-fn assert_near(actual: f64, expected: f64) {
-    assert!(
-        (actual - expected).abs() < 1e-9,
-        "expected {expected}, got {actual}"
-    );
 }
 
 fn request_or_panic(ctx: HeatmapRequestContext<'_>) -> HeatmapFetchParams {

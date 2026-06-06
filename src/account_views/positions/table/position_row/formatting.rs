@@ -1,5 +1,6 @@
 use crate::account_views::invalid_account_data;
 use crate::helpers::format_price;
+pub(super) use crate::helpers::trim_decimal_zeros;
 
 use super::super::{PositionNumberMode, format_position_compact_number};
 
@@ -34,18 +35,6 @@ fn format_signed_compact_amount(
         ""
     };
     context.format_active_amount(sign, compact_value)
-}
-
-pub(super) fn trim_decimal_zeros(value: String) -> String {
-    let Some((whole, fraction)) = value.split_once('.') else {
-        return value;
-    };
-    let fraction = fraction.trim_end_matches('0');
-    if fraction.is_empty() {
-        whole.to_string()
-    } else {
-        format!("{whole}.{fraction}")
-    }
 }
 
 pub(super) fn format_position_entry_price(entry_px: Option<f64>, raw: &str) -> String {

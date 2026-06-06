@@ -22,17 +22,7 @@ impl TradingTerminal {
 
         self.panes = pane_grid::State::with_configuration(pane_config);
         self.reconcile_layout_widget_panes(first_chart_id);
-        self.primary_chart_id = self
-            .panes
-            .iter()
-            .find_map(|(_, kind)| {
-                if let PaneKind::Chart(id) = kind {
-                    Some(*id)
-                } else {
-                    None
-                }
-            })
-            .or_else(|| self.charts.keys().copied().min());
+        self.sync_primary_chart_id_from_panes();
     }
 
     fn reconcile_layout_widget_panes(&mut self, first_chart_id: ChartId) {
@@ -50,16 +40,15 @@ impl TradingTerminal {
             }
         }
 
-        if chart_ids_in_layout.is_empty() {
-            let anchor = self.panes.iter().next().map(|(pane, _)| *pane);
-            if let Some(anchor) = anchor {
-                let _ = self.panes.split(
-                    pane_grid::Axis::Vertical,
-                    anchor,
-                    PaneKind::Chart(first_chart_id),
-                );
-                chart_ids_in_layout.insert(first_chart_id);
-            }
+        if chart_ids_in_layout.is_empty()
+            && let Some(anchor) = self.chart_anchor_pane()
+        {
+            let _ = self.panes.split(
+                pane_grid::Axis::Vertical,
+                anchor,
+                PaneKind::Chart(first_chart_id),
+            );
+            chart_ids_in_layout.insert(first_chart_id);
         }
 
         let mut all_chart_ids: Vec<ChartId> = self.charts.keys().copied().collect();
@@ -96,13 +85,6 @@ impl TradingTerminal {
                 }
             }
         }
-    }
-
-    fn chart_anchor_pane(&self) -> Option<pane_grid::Pane> {
-        self.panes
-            .iter()
-            .find_map(|(pane, kind)| matches!(kind, PaneKind::Chart(_)).then_some(*pane))
-            .or_else(|| self.panes.iter().next().map(|(pane, _)| *pane))
     }
 }
 

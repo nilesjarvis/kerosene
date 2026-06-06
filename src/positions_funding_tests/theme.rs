@@ -1,6 +1,10 @@
 use crate::app_state::TradingTerminal;
 use iced::Color;
 
+fn assert_rgba(color: Color, expected: [u8; 4]) {
+    assert_eq!(color.into_rgba8(), expected);
+}
+
 #[test]
 fn hyperliquid_theme_uses_source_palette_after_extended_processing() {
     let source_palette = iced::theme::Palette {
@@ -17,34 +21,13 @@ fn hyperliquid_theme_uses_source_palette_after_extended_processing() {
     ));
 
     let extended = TradingTerminal::hyperliquid_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x0F, 0x1A, 0x1E, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x1B, 0x24, 0x29, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x27, 0x30, 0x35, 255]
-    );
-    assert_eq!(
-        extended.background.weak.text.into_rgba8(),
-        [0x94, 0x9E, 0x9C, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0x50, 0xD2, 0xC1, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x50, 0xD2, 0xC1, 255]
-    );
-    assert_eq!(
-        extended.danger.base.color.into_rgba8(),
-        [0xED, 0x70, 0x88, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x0F, 0x1A, 0x1E, 255]);
+    assert_rgba(extended.background.weak.color, [0x1B, 0x24, 0x29, 255]);
+    assert_rgba(extended.background.strong.color, [0x27, 0x30, 0x35, 255]);
+    assert_rgba(extended.background.weak.text, [0x94, 0x9E, 0x9C, 255]);
+    assert_rgba(extended.primary.base.color, [0x50, 0xD2, 0xC1, 255]);
+    assert_rgba(extended.success.base.color, [0x50, 0xD2, 0xC1, 255]);
+    assert_rgba(extended.danger.base.color, [0xED, 0x70, 0x88, 255]);
 }
 
 #[test]
@@ -63,26 +46,11 @@ fn bloomberg_theme_keeps_primary_backgrounds_true_black() {
     ));
 
     let extended = TradingTerminal::bloomberg_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x00, 0x00, 0x00, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x00, 0x00, 0x00, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x00, 0x00, 0x00, 255]
-    );
-    assert_eq!(
-        extended.background.stronger.color.into_rgba8(),
-        [0x05, 0x05, 0x05, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0xFF, 0x9F, 0x1A, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x00, 0x00, 0x00, 255]);
+    assert_rgba(extended.background.weak.color, [0x00, 0x00, 0x00, 255]);
+    assert_rgba(extended.background.strong.color, [0x00, 0x00, 0x00, 255]);
+    assert_rgba(extended.background.stronger.color, [0x05, 0x05, 0x05, 255]);
+    assert_rgba(extended.primary.base.color, [0xFF, 0x9F, 0x1A, 255]);
 }
 
 #[test]
@@ -101,30 +69,12 @@ fn kraken_theme_uses_aubergine_panels_and_trade_accents() {
     ));
 
     let extended = TradingTerminal::kraken_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x0B, 0x07, 0x11, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x17, 0x13, 0x1D, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x21, 0x1D, 0x28, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0x71, 0x32, 0xF5, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x2B, 0xB6, 0x7B, 255]
-    );
-    assert_eq!(
-        extended.danger.strong.color.into_rgba8(),
-        [0xE3, 0x4A, 0x6F, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x0B, 0x07, 0x11, 255]);
+    assert_rgba(extended.background.weak.color, [0x17, 0x13, 0x1D, 255]);
+    assert_rgba(extended.background.strong.color, [0x21, 0x1D, 0x28, 255]);
+    assert_rgba(extended.primary.base.color, [0x71, 0x32, 0xF5, 255]);
+    assert_rgba(extended.success.base.color, [0x2B, 0xB6, 0x7B, 255]);
+    assert_rgba(extended.danger.strong.color, [0xE3, 0x4A, 0x6F, 255]);
 }
 
 #[test]
@@ -141,30 +91,12 @@ fn ftx_theme_uses_screenshot_navy_panels_and_teal_accents() {
     assert!(TradingTerminal::palette_matches_ftx_source(source_palette));
 
     let extended = TradingTerminal::ftx_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x10, 0x18, 0x24, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x12, 0x1A, 0x27, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x18, 0x22, 0x32, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0x00, 0xA8, 0xB8, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x08, 0xA6, 0x7A, 255]
-    );
-    assert_eq!(
-        extended.danger.base.color.into_rgba8(),
-        [0xF0, 0x30, 0x60, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x10, 0x18, 0x24, 255]);
+    assert_rgba(extended.background.weak.color, [0x12, 0x1A, 0x27, 255]);
+    assert_rgba(extended.background.strong.color, [0x18, 0x22, 0x32, 255]);
+    assert_rgba(extended.primary.base.color, [0x00, 0xA8, 0xB8, 255]);
+    assert_rgba(extended.success.base.color, [0x08, 0xA6, 0x7A, 255]);
+    assert_rgba(extended.danger.base.color, [0xF0, 0x30, 0x60, 255]);
 }
 
 #[test]
@@ -183,30 +115,12 @@ fn ibkr_dark_theme_uses_tws_blue_panels_and_trade_accents() {
     ));
 
     let extended = TradingTerminal::ibkr_dark_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x10, 0x10, 0x18, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x15, 0x17, 0x24, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x20, 0x28, 0x38, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0x28, 0x78, 0xF0, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x2E, 0xBF, 0x7A, 255]
-    );
-    assert_eq!(
-        extended.danger.base.color.into_rgba8(),
-        [0xF8, 0x30, 0x48, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x10, 0x10, 0x18, 255]);
+    assert_rgba(extended.background.weak.color, [0x15, 0x17, 0x24, 255]);
+    assert_rgba(extended.background.strong.color, [0x20, 0x28, 0x38, 255]);
+    assert_rgba(extended.primary.base.color, [0x28, 0x78, 0xF0, 255]);
+    assert_rgba(extended.success.base.color, [0x2E, 0xBF, 0x7A, 255]);
+    assert_rgba(extended.danger.base.color, [0xF8, 0x30, 0x48, 255]);
 }
 
 #[test]
@@ -225,30 +139,12 @@ fn bybit_theme_uses_charcoal_panels_and_amber_actions() {
     ));
 
     let extended = TradingTerminal::bybit_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x10, 0x10, 0x14, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x17, 0x18, 0x1D, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x20, 0x21, 0x24, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0xF4, 0xB4, 0x44, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x55, 0xAF, 0x72, 255]
-    );
-    assert_eq!(
-        extended.danger.base.color.into_rgba8(),
-        [0xDC, 0x53, 0x51, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x10, 0x10, 0x14, 255]);
+    assert_rgba(extended.background.weak.color, [0x17, 0x18, 0x1D, 255]);
+    assert_rgba(extended.background.strong.color, [0x20, 0x21, 0x24, 255]);
+    assert_rgba(extended.primary.base.color, [0xF4, 0xB4, 0x44, 255]);
+    assert_rgba(extended.success.base.color, [0x55, 0xAF, 0x72, 255]);
+    assert_rgba(extended.danger.base.color, [0xDC, 0x53, 0x51, 255]);
 }
 
 #[test]
@@ -267,30 +163,12 @@ fn kwenta_theme_uses_screenshot_black_panels_and_gold_actions() {
     ));
 
     let extended = TradingTerminal::kwenta_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x13, 0x12, 0x12, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x1A, 0x19, 0x19, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x25, 0x25, 0x25, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0xFE, 0xB7, 0x00, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x71, 0xD2, 0x7A, 255]
-    );
-    assert_eq!(
-        extended.danger.base.color.into_rgba8(),
-        [0xF0, 0x50, 0x50, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x13, 0x12, 0x12, 255]);
+    assert_rgba(extended.background.weak.color, [0x1A, 0x19, 0x19, 255]);
+    assert_rgba(extended.background.strong.color, [0x25, 0x25, 0x25, 255]);
+    assert_rgba(extended.primary.base.color, [0xFE, 0xB7, 0x00, 255]);
+    assert_rgba(extended.success.base.color, [0x71, 0xD2, 0x7A, 255]);
+    assert_rgba(extended.danger.base.color, [0xF0, 0x50, 0x50, 255]);
     assert!(extended.is_dark);
 }
 
@@ -310,30 +188,12 @@ fn coinbase_dark_theme_uses_sampled_black_panels_and_blue_actions() {
     ));
 
     let extended = TradingTerminal::coinbase_dark_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0x09, 0x0B, 0x0C, 255]
-    );
-    assert_eq!(
-        extended.background.weak.color.into_rgba8(),
-        [0x13, 0x15, 0x19, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0x24, 0x26, 0x2D, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0x34, 0x74, 0xF4, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x44, 0xC4, 0x8C, 255]
-    );
-    assert_eq!(
-        extended.danger.base.color.into_rgba8(),
-        [0xEC, 0x64, 0x74, 255]
-    );
+    assert_rgba(extended.background.base.color, [0x09, 0x0B, 0x0C, 255]);
+    assert_rgba(extended.background.weak.color, [0x13, 0x15, 0x19, 255]);
+    assert_rgba(extended.background.strong.color, [0x24, 0x26, 0x2D, 255]);
+    assert_rgba(extended.primary.base.color, [0x34, 0x74, 0xF4, 255]);
+    assert_rgba(extended.success.base.color, [0x44, 0xC4, 0x8C, 255]);
+    assert_rgba(extended.danger.base.color, [0xEC, 0x64, 0x74, 255]);
     assert!(extended.is_dark);
 }
 
@@ -353,25 +213,10 @@ fn coinbase_light_theme_uses_clean_portfolio_surfaces_and_blue_actions() {
     ));
 
     let extended = TradingTerminal::coinbase_light_source_extended_palette();
-    assert_eq!(
-        extended.background.base.color.into_rgba8(),
-        [0xFF, 0xFF, 0xFF, 255]
-    );
-    assert_eq!(
-        extended.background.weaker.color.into_rgba8(),
-        [0xF5, 0xF8, 0xFF, 255]
-    );
-    assert_eq!(
-        extended.background.strong.color.into_rgba8(),
-        [0xE0, 0xE4, 0xEA, 255]
-    );
-    assert_eq!(
-        extended.primary.base.color.into_rgba8(),
-        [0x00, 0x52, 0xFF, 255]
-    );
-    assert_eq!(
-        extended.success.base.color.into_rgba8(),
-        [0x09, 0x85, 0x51, 255]
-    );
+    assert_rgba(extended.background.base.color, [0xFF, 0xFF, 0xFF, 255]);
+    assert_rgba(extended.background.weaker.color, [0xF5, 0xF8, 0xFF, 255]);
+    assert_rgba(extended.background.strong.color, [0xE0, 0xE4, 0xEA, 255]);
+    assert_rgba(extended.primary.base.color, [0x00, 0x52, 0xFF, 255]);
+    assert_rgba(extended.success.base.color, [0x09, 0x85, 0x51, 255]);
     assert!(!extended.is_dark);
 }

@@ -47,6 +47,7 @@ pub use panes::{
 pub use schema::MAX_MARKET_SLIPPAGE_PCT;
 #[cfg(test)]
 pub use schema::default_alfred_popup_scale;
+pub(crate) use schema::default_true;
 #[cfg(test)]
 pub use schema::default_ui_scale;
 pub use schema::{

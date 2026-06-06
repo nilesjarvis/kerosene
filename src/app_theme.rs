@@ -16,6 +16,14 @@ mod kwenta;
 
 use self::color_parse::parse_hex_color;
 
+pub(super) fn rgba8_eq(color: Color, rgb: [u8; 3]) -> bool {
+    color.into_rgba8() == [rgb[0], rgb[1], rgb[2], 255]
+}
+
+pub(super) fn pair(color: Color, text: Color) -> iced::theme::palette::Pair {
+    iced::theme::palette::Pair { color, text }
+}
+
 // ---------------------------------------------------------------------------
 // Theme construction
 // ---------------------------------------------------------------------------
@@ -99,7 +107,7 @@ impl TradingTerminal {
             palette,
             move |p| {
                 use iced::theme::palette::{
-                    Background, Danger, Extended, Pair, Primary, Secondary, Success, Warning,
+                    Background, Danger, Extended, Primary, Secondary, Success, Warning,
                 };
 
                 if use_hyperliquid_source_palette
@@ -151,35 +159,14 @@ impl TradingTerminal {
 
                 Extended {
                     background: Background {
-                        base: Pair { color: bg, text },
-                        weak: Pair {
-                            color: mix(bg, text, 0.04),
-                            text,
-                        },
-                        strong: Pair {
-                            color: mix(bg, text, 0.08),
-                            text,
-                        },
-                        weaker: Pair {
-                            color: mix(bg, text, 0.02),
-                            text,
-                        },
-                        weakest: Pair {
-                            color: mix(bg, text, 0.01),
-                            text,
-                        },
-                        neutral: Pair {
-                            color: mix(bg, text, 0.06),
-                            text,
-                        },
-                        stronger: Pair {
-                            color: mix(bg, text, 0.12),
-                            text,
-                        },
-                        strongest: Pair {
-                            color: mix(bg, text, 0.16),
-                            text,
-                        },
+                        base: pair(bg, text),
+                        weak: pair(mix(bg, text, 0.04), text),
+                        strong: pair(mix(bg, text, 0.08), text),
+                        weaker: pair(mix(bg, text, 0.02), text),
+                        weakest: pair(mix(bg, text, 0.01), text),
+                        neutral: pair(mix(bg, text, 0.06), text),
+                        stronger: pair(mix(bg, text, 0.12), text),
+                        strongest: pair(mix(bg, text, 0.16), text),
                     },
                     primary: Primary::generate(p.primary, bg, text),
                     secondary: Secondary::generate(p.primary, text),

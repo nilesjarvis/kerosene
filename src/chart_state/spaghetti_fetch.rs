@@ -1,5 +1,6 @@
 use crate::api;
 use crate::app_state::TradingTerminal;
+use crate::app_time::now_ms;
 use crate::chart_state::ChartBackfillFetchContext;
 use crate::message::Message;
 use crate::spaghetti;
@@ -18,10 +19,7 @@ impl TradingTerminal {
         cached_start_ms: Option<u64>,
         backfill: ChartBackfillFetchContext,
     ) -> Task<Message> {
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let now_ms = now_ms();
         let (api_tf, mut start) =
             Self::spaghetti_fetch_plan(tf, session, session_granularity, now_ms);
         if let Some(c) = cached_start_ms

@@ -1,3 +1,5 @@
+pub(crate) use crate::app_time::now_ms;
+
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -30,13 +32,6 @@ static WS_TELEMETRY: OnceLock<WsTelemetry> = OnceLock::new();
 
 fn ws_telemetry() -> &'static WsTelemetry {
     WS_TELEMETRY.get_or_init(WsTelemetry::default)
-}
-
-pub fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 pub(crate) fn telemetry_on_connect() {

@@ -16,7 +16,7 @@ pub fn default_symbol() -> String {
     "HYPE".to_string()
 }
 
-pub(super) fn default_true() -> bool {
+pub(crate) fn default_true() -> bool {
     true
 }
 

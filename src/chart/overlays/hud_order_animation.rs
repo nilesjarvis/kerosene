@@ -1,5 +1,6 @@
 use super::TradingOverlayContext;
 use crate::chart::model::CandlestickChart;
+use crate::helpers::ease_out_cubic;
 use iced::widget::canvas;
 use iced::{Color, Point};
 
@@ -180,8 +181,4 @@ fn draw_dot_wave<PriceToY, IdxToCx>(
         }
         y += DOT_SPACING;
     }
-}
-
-fn ease_out_cubic(t: f32) -> f32 {
-    1.0 - (1.0 - t).powi(3)
 }

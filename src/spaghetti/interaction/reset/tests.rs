@@ -1,25 +1,16 @@
 use super::*;
 use crate::api::Candle;
+use crate::helpers::assert_close_tight as assert_close;
 use crate::spaghetti::Series;
 use iced::Color;
 
-fn assert_close(actual: f64, expected: f64) {
-    assert!(
-        (actual - expected).abs() < 1e-12,
-        "expected {expected}, got {actual}"
-    );
-}
-
 fn candle_at(open_time: u64, close: f64) -> Candle {
-    Candle {
+    Candle::test_ohlcv(
         open_time,
-        close_time: open_time + 59_999,
-        open: close,
-        high: close + 1.0,
-        low: close - 1.0,
-        close,
-        volume: 1.0,
-    }
+        open_time + 59_999,
+        [close, close + 1.0, close - 1.0, close],
+        1.0,
+    )
 }
 
 fn series(symbol: &str, candles: Vec<Candle>) -> Series {

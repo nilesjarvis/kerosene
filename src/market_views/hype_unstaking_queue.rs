@@ -100,8 +100,8 @@ impl TradingTerminal {
         .spacing(8)
         .width(Fill);
 
-        if has_data {
-            let summary = summarize_unstaking_events(filtered.as_deref().unwrap());
+        if let Some(filtered_events) = filtered.as_deref().filter(|events| !events.is_empty()) {
+            let summary = summarize_unstaking_events(filtered_events);
             content = content.push(hype_unstaking_summary_grid(
                 &summary,
                 now_ms,
@@ -109,7 +109,7 @@ impl TradingTerminal {
                 &theme,
             ));
             content = content.push(self.view_hype_unstaking_event_list(
-                filtered.as_deref().unwrap(),
+                filtered_events,
                 now_ms,
                 compact,
                 &denomination,

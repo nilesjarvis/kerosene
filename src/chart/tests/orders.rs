@@ -35,10 +35,9 @@ fn order_hit_testing_follows_stacked_left_labels() {
     chart.active_orders.push(btc_buy_order(41, 1.0));
     chart.active_orders.push(btc_buy_order(42, 2.0));
     let state = ChartState::default();
-    let Some((price_hi, price_range, price_h)) = chart.visible_price_params(&state, 400.0, 240.0)
-    else {
-        panic!("visible price params");
-    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, 400.0, 240.0)
+        .expect("visible price params");
     let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
     let label_positions = order_labels::order_label_position_slots(
         order_labels::stack_order_label_positions_avoiding(
@@ -59,15 +58,12 @@ fn order_hit_testing_follows_stacked_left_labels() {
         ),
         chart.active_orders.len(),
     );
-    let Some(second_label) = order_labels::order_label_position(&label_positions, 1) else {
-        panic!("second label should be laid out");
-    };
+    let second_label = order_labels::order_label_position(&label_positions, 1)
+        .expect("second label should be laid out");
 
-    let Some(hit) =
-        chart.hit_test_order_line(&state, Point::new(6.0, second_label.label_y), 400.0, 240.0)
-    else {
-        panic!("stacked label should be hittable");
-    };
+    let hit = chart
+        .hit_test_order_line(&state, Point::new(6.0, second_label.label_y), 400.0, 240.0)
+        .expect("stacked label should be hittable");
 
     assert_eq!(hit.order.oid, 42);
     assert!(hit.is_label_hit());
@@ -79,10 +75,9 @@ fn order_label_hit_testing_avoids_active_position_label() {
     chart.active_position = Some(btc_position(105.0));
     chart.active_orders.push(btc_buy_order(42, 1.0));
     let state = ChartState::default();
-    let Some((price_hi, price_range, price_h)) = chart.visible_price_params(&state, 400.0, 240.0)
-    else {
-        panic!("visible price params");
-    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, 400.0, 240.0)
+        .expect("visible price params");
     let price_to_y = |price| chart.price_to_y_with(price, price_hi, price_range, price_h);
     let order_y = price_to_y(105.0);
     let label_positions = order_labels::order_label_position_slots(
@@ -97,16 +92,14 @@ fn order_label_hit_testing_avoids_active_position_label() {
         ),
         chart.active_orders.len(),
     );
-    let Some(label) = order_labels::order_label_position(&label_positions, 0) else {
-        panic!("order label should be laid out");
-    };
+    let label = order_labels::order_label_position(&label_positions, 0)
+        .expect("order label should be laid out");
 
     assert!(label.label_y > order_y);
 
-    let Some(hit) = chart.hit_test_order_line(&state, Point::new(6.0, label.label_y), 400.0, 240.0)
-    else {
-        panic!("shifted order label should be hittable");
-    };
+    let hit = chart
+        .hit_test_order_line(&state, Point::new(6.0, label.label_y), 400.0, 240.0)
+        .expect("shifted order label should be hittable");
 
     assert_eq!(hit.order.oid, 42);
     assert!(hit.is_label_hit());
@@ -117,10 +110,9 @@ fn order_cancel_hit_testing_uses_expanded_circle_target() {
     let mut chart = chart_with_order_candles();
     chart.active_orders.push(btc_buy_order(42, 1.0));
     let state = ChartState::default();
-    let Some((price_hi, price_range, price_h)) = chart.visible_price_params(&state, 400.0, 240.0)
-    else {
-        panic!("visible price params");
-    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, 400.0, 240.0)
+        .expect("visible price params");
     let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
     let label_positions = order_labels::order_label_position_slots(
         order_labels::stack_order_label_positions_avoiding(
@@ -134,9 +126,8 @@ fn order_cancel_hit_testing_uses_expanded_circle_target() {
         ),
         chart.active_orders.len(),
     );
-    let Some(label) = order_labels::order_label_position(&label_positions, 0) else {
-        panic!("order label should be laid out");
-    };
+    let label = order_labels::order_label_position(&label_positions, 0)
+        .expect("order label should be laid out");
     let (_, cancel_end_x) = order_labels::order_cancel_x_range(&chart.active_orders[0]);
 
     let pos = Point::new(cancel_end_x + 4.0, label.label_y);

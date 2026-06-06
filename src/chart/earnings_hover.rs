@@ -1,5 +1,5 @@
 use super::CandlestickChart;
-use super::order_cancel_hover::ease_out_cubic;
+use crate::helpers::ease_out_cubic;
 
 // ---------------------------------------------------------------------------
 // Earnings Marker Hover Animation

@@ -1,13 +1,8 @@
 use iced::Point;
 
-use super::*;
+use crate::helpers::assert_close_loose as assert_near;
 
-fn assert_near(actual: f32, expected: f32) {
-    assert!(
-        (actual - expected).abs() < 1e-4,
-        "expected {expected}, got {actual}"
-    );
-}
+use super::*;
 
 #[test]
 fn layout_rejects_too_few_points_or_flat_time_range() {

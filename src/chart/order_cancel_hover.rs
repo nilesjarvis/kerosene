@@ -1,4 +1,5 @@
 use super::CandlestickChart;
+use crate::helpers::ease_out_cubic;
 
 // ---------------------------------------------------------------------------
 // Order Cancel Hover Animation
@@ -49,9 +50,4 @@ impl CandlestickChart {
             0.0
         }
     }
-}
-
-pub(in crate::chart) fn ease_out_cubic(value: f32) -> f32 {
-    let value = value.clamp(0.0, 1.0);
-    1.0 - (1.0 - value).powi(3)
 }

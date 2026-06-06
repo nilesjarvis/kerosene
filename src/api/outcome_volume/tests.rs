@@ -1,15 +1,7 @@
 use super::*;
 
 fn candle(volume: f64, close: f64) -> Candle {
-    Candle {
-        open_time: 0,
-        close_time: 0,
-        open: 0.0,
-        high: 0.0,
-        low: 0.0,
-        close,
-        volume,
-    }
+    Candle::test_ohlcv(0, 0, [0.0, 0.0, 0.0, close], volume)
 }
 
 #[test]

@@ -1,9 +1,11 @@
 use crate::api::CLIENT;
+use crate::app_time::{cooldown_heat, now_ms};
+use crate::helpers::{fallback_initials, format_seen_latency_label, positive_percent_change};
 use chrono::{DateTime, Utc};
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use zeroize::Zeroizing;
 
 const X_API_BASE: &str = "https://api.x.com/2";
@@ -158,7 +160,7 @@ pub(crate) fn normalized_x_handle_list(handles: &[String]) -> Vec<String> {
     let mut normalized = Vec::new();
     for handle in handles {
         if let Ok(handle) = normalize_x_handle_input(handle)
-            && !normalized.iter().any(|existing| existing == &handle)
+            && !normalized.contains(&handle)
         {
             normalized.push(handle);
             if normalized.len() >= X_FEED_MAX_SOURCES {
@@ -253,7 +255,7 @@ pub(crate) async fn fetch_x_recent_posts(
     let handles = normalized_x_handle_list(&handles);
     let query = build_x_feed_query(&handles)?;
     let url = format!("{X_API_BASE}/tweets/search/recent");
-    let request_started_ms = system_time_ms();
+    let request_started_ms = now_ms();
     let max_results = X_FEED_FETCH_LIMIT.to_string();
     let response = CLIENT
         .get(&url)
@@ -283,7 +285,7 @@ pub(crate) async fn fetch_x_recent_posts(
         .bytes()
         .await
         .map_err(|e| format!("X recent search response read failed: {e}"))?;
-    let fetched_at_ms = system_time_ms();
+    let fetched_at_ms = now_ms();
     let request_duration_ms = fetched_at_ms.saturating_sub(request_started_ms);
 
     if body.len() > X_FEED_MAX_BODY_BYTES {
@@ -357,36 +359,18 @@ pub(crate) fn x_age_countdown_label(sent_at_ms: u64, now_ms: u64) -> String {
 }
 
 pub(crate) fn x_new_post_heat(first_seen_ms: u64, now_ms: u64) -> f32 {
-    if first_seen_ms == 0 {
-        return 0.0;
-    }
-
-    let age_ms = now_ms.saturating_sub(first_seen_ms);
-    if age_ms >= X_NEW_POST_COOLDOWN_MS {
-        0.0
-    } else {
-        1.0 - (age_ms as f32 / X_NEW_POST_COOLDOWN_MS as f32)
-    }
+    cooldown_heat(first_seen_ms, now_ms, X_NEW_POST_COOLDOWN_MS)
 }
 
 pub(crate) fn x_arrival_latency_label(post: &XFeedPost) -> Option<String> {
-    if post.fetched_at_ms == 0 || post.first_seen_ms == 0 {
-        return None;
-    }
-
-    Some(format!(
-        "seen +{}",
-        x_duration_label(post.fetched_at_ms.saturating_sub(post.timestamp_ms))
-    ))
+    format_seen_latency_label(post.timestamp_ms, post.fetched_at_ms, post.first_seen_ms)
 }
 
 pub(crate) fn x_price_impact_pct(
     reference_price: Option<f64>,
     current_price: Option<f64>,
 ) -> Option<f64> {
-    let reference = reference_price.filter(|price| price.is_finite() && *price > 0.0)?;
-    let current = current_price.filter(|price| price.is_finite() && *price > 0.0)?;
-    Some(((current / reference) - 1.0) * 100.0)
+    positive_percent_change(current_price, reference_price)
 }
 
 pub(crate) fn x_api_auth_guidance(body: &str) -> Option<String> {
@@ -441,7 +425,7 @@ fn x_profile_from_payload(user: XUserPayload) -> XFeedAuthorProfile {
     let name = user.name.unwrap_or_else(|| format!("@{username}"));
     XFeedAuthorProfile {
         id: user.id,
-        initials: profile_initials(&name, &username),
+        initials: fallback_initials(&name, &username),
         username,
         name,
         verified: user.verified.unwrap_or(false),
@@ -459,7 +443,7 @@ fn x_post_from_payload(
         .created_at
         .as_deref()
         .and_then(parse_x_timestamp_ms)
-        .unwrap_or_else(system_time_ms);
+        .unwrap_or_else(now_ms);
     let text = normalize_x_text(&post.text);
     if text.trim().is_empty() {
         return None;
@@ -498,35 +482,6 @@ fn parse_x_timestamp_ms(value: &str) -> Option<u64> {
         .ok()
 }
 
-fn profile_initials(name: &str, username: &str) -> String {
-    let mut initials = name
-        .split_whitespace()
-        .filter_map(|part| part.chars().find(|ch| ch.is_ascii_alphanumeric()))
-        .take(2)
-        .map(|ch| ch.to_ascii_uppercase())
-        .collect::<String>();
-    if initials.is_empty() {
-        initials = username
-            .chars()
-            .filter(|ch| ch.is_ascii_alphanumeric())
-            .take(2)
-            .map(|ch| ch.to_ascii_uppercase())
-            .collect();
-    }
-    if initials.is_empty() {
-        "?".to_string()
-    } else {
-        initials
-    }
-}
-
-fn system_time_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
-
 fn x_countdown_duration_label(duration_ms: u64) -> String {
     if duration_ms < 1_000 {
         format!("{duration_ms} ms")
@@ -538,26 +493,6 @@ fn x_countdown_duration_label(duration_ms: u64) -> String {
         format!("{}h", duration_ms / 3_600_000)
     } else {
         format!("{}d", duration_ms / 86_400_000)
-    }
-}
-
-fn x_duration_label(duration_ms: u64) -> String {
-    if duration_ms < 1_000 {
-        format!("{duration_ms} ms")
-    } else if duration_ms < 60_000 {
-        format!("{}.{:03} s", duration_ms / 1_000, duration_ms % 1_000)
-    } else if duration_ms < 3_600_000 {
-        format!(
-            "{}m {}s",
-            duration_ms / 60_000,
-            (duration_ms % 60_000) / 1_000
-        )
-    } else {
-        format!(
-            "{}h {}m",
-            duration_ms / 3_600_000,
-            (duration_ms % 3_600_000) / 60_000
-        )
     }
 }
 

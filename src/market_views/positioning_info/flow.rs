@@ -4,6 +4,7 @@ use super::metrics::{
 };
 use crate::app_state::TradingTerminal;
 use crate::denomination::DisplayDenominationContext;
+use crate::helpers::ease_out_cubic;
 use crate::message::Message;
 use crate::positioning_state::PositioningInfoInstance;
 
@@ -744,11 +745,6 @@ fn scale_alpha(color: Color, scale: f32) -> Color {
         a: color.a * scale.clamp(0.0, 1.0),
         ..color
     }
-}
-
-fn ease_out_cubic(value: f32) -> f32 {
-    let value = value.clamp(0.0, 1.0);
-    1.0 - (1.0 - value).powi(3)
 }
 
 fn axis_color(theme: &Theme) -> Color {

@@ -1,28 +1,22 @@
 use crate::app_state::TradingTerminal;
 use iced::Color;
 
-fn rgba8_eq(color: Color, rgb: [u8; 3]) -> bool {
-    color.into_rgba8() == [rgb[0], rgb[1], rgb[2], 255]
-}
-
 impl TradingTerminal {
     pub(crate) fn palette_matches_bloomberg_source(palette: iced::theme::Palette) -> bool {
-        rgba8_eq(palette.background, [0x00, 0x00, 0x00])
-            && rgba8_eq(palette.text, [0xF2, 0xF2, 0xE8])
-            && rgba8_eq(palette.primary, [0xFF, 0x9F, 0x1A])
-            && rgba8_eq(palette.success, [0x00, 0xB0, 0x50])
-            && rgba8_eq(palette.warning, [0xFF, 0xD8, 0x4A])
-            && rgba8_eq(palette.danger, [0xB0, 0x00, 0x24])
+        super::rgba8_eq(palette.background, [0x00, 0x00, 0x00])
+            && super::rgba8_eq(palette.text, [0xF2, 0xF2, 0xE8])
+            && super::rgba8_eq(palette.primary, [0xFF, 0x9F, 0x1A])
+            && super::rgba8_eq(palette.success, [0x00, 0xB0, 0x50])
+            && super::rgba8_eq(palette.warning, [0xFF, 0xD8, 0x4A])
+            && super::rgba8_eq(palette.danger, [0xB0, 0x00, 0x24])
     }
 
     pub(crate) fn bloomberg_source_extended_palette() -> iced::theme::palette::Extended {
         use iced::theme::palette::{
-            Background, Danger, Extended, Pair, Primary, Secondary, Success, Warning,
+            Background, Danger, Extended, Primary, Secondary, Success, Warning,
         };
 
         let color = Color::from_rgb8;
-        let pair = |color, text| Pair { color, text };
-
         let black = color(0x00, 0x00, 0x00);
         let panel_black = color(0x05, 0x05, 0x05);
         let panel_black_high = color(0x0A, 0x0A, 0x0A);
@@ -41,39 +35,39 @@ impl TradingTerminal {
 
         Extended {
             background: Background {
-                base: pair(black, text),
-                weakest: pair(black, text_dim),
-                weaker: pair(black, text_muted),
-                weak: pair(black, text_muted),
-                neutral: pair(black, text),
-                strong: pair(black, text),
-                stronger: pair(panel_black, text),
-                strongest: pair(panel_black_high, text),
+                base: super::pair(black, text),
+                weakest: super::pair(black, text_dim),
+                weaker: super::pair(black, text_muted),
+                weak: super::pair(black, text_muted),
+                neutral: super::pair(black, text),
+                strong: super::pair(black, text),
+                stronger: super::pair(panel_black, text),
+                strongest: super::pair(panel_black_high, text),
             },
             primary: Primary {
-                base: pair(amber, black),
-                weak: pair(amber_dark, amber),
-                strong: pair(amber_soft, black),
+                base: super::pair(amber, black),
+                weak: super::pair(amber_dark, amber),
+                strong: super::pair(amber_soft, black),
             },
             secondary: Secondary {
-                base: pair(text_muted, black),
-                weak: pair(text_dim, black),
-                strong: pair(text, black),
+                base: super::pair(text_muted, black),
+                weak: super::pair(text_dim, black),
+                strong: super::pair(text, black),
             },
             success: Success {
-                base: pair(green, black),
-                weak: pair(green_dark, green_bright),
-                strong: pair(green_bright, black),
+                base: super::pair(green, black),
+                weak: super::pair(green_dark, green_bright),
+                strong: super::pair(green_bright, black),
             },
             warning: Warning {
-                base: pair(amber_soft, black),
-                weak: pair(amber_dark, amber_soft),
-                strong: pair(color(0xFF, 0xE6, 0x6D), black),
+                base: super::pair(amber_soft, black),
+                weak: super::pair(amber_dark, amber_soft),
+                strong: super::pair(color(0xFF, 0xE6, 0x6D), black),
             },
             danger: Danger {
-                base: pair(red, text),
-                weak: pair(red_dark, red_bright),
-                strong: pair(red_bright, text),
+                base: super::pair(red, text),
+                weak: super::pair(red_dark, red_bright),
+                strong: super::pair(red_bright, text),
             },
             is_dark: true,
         }

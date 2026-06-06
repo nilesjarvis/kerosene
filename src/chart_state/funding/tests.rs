@@ -2,15 +2,7 @@ use super::planning::{funding_attempt_allowed, funding_incremental_due, funding_
 use crate::api::Candle;
 
 fn candle(open_time: u64) -> Candle {
-    Candle {
-        open_time,
-        close_time: open_time,
-        open: 1.0,
-        high: 1.0,
-        low: 1.0,
-        close: 1.0,
-        volume: 1.0,
-    }
+    Candle::test_ohlcv(open_time, open_time, [1.0, 1.0, 1.0, 1.0], 1.0)
 }
 
 #[test]

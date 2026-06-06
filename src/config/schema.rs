@@ -34,7 +34,7 @@ pub use crosshair::{
 };
 #[cfg(test)]
 pub use defaults::MAX_MARKET_SLIPPAGE_PCT;
-use defaults::default_true;
+pub(crate) use defaults::default_true;
 pub use defaults::{
     DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH, DEFAULT_CHART_CROSSHAIR_SCALE,
     DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY, DEFAULT_CHART_EDGE_BLUR_STRENGTH,

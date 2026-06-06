@@ -6,7 +6,8 @@ mod user_streams;
 
 pub use manager::WsCommand;
 pub(crate) use manager::{SubscriptionGuard, get_manager};
-pub use telemetry::{now_ms, telemetry_snapshot};
+pub(crate) use telemetry::now_ms;
+pub use telemetry::telemetry_snapshot;
 pub(crate) use telemetry::{
     telemetry_add_rx, telemetry_add_tx, telemetry_on_connect, telemetry_on_disconnect,
 };

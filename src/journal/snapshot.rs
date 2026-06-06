@@ -396,15 +396,7 @@ mod tests {
     use crate::journal::{FillIdentity, JournalAttributedFill};
 
     fn candle(open_time: u64, close_time: u64, low: f64, high: f64, close: f64) -> Candle {
-        Candle {
-            open_time,
-            close_time,
-            open: close,
-            high,
-            low,
-            close,
-            volume: 1.0,
-        }
+        Candle::test_ohlcv(open_time, close_time, [close, high, low, close], 1.0)
     }
 
     fn trade(is_long: bool) -> AggregatedTrade {

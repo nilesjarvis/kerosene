@@ -1,5 +1,5 @@
 use crate::denomination::DisplayDenominationContext;
-use crate::helpers;
+use crate::helpers::{self, trim_decimal_zeros};
 use crate::wallet_state::address_book::WalletDisplay;
 
 use iced::{Color, Theme};
@@ -180,18 +180,6 @@ fn format_compact_display_bucket(value: f64) -> String {
     }
 
     helpers::format_decimal_with_commas(value, 0)
-}
-
-fn trim_decimal_zeros(value: String) -> String {
-    let Some((whole, fraction)) = value.split_once('.') else {
-        return value;
-    };
-    let fraction = fraction.trim_end_matches('0');
-    if fraction.is_empty() {
-        whole.to_string()
-    } else {
-        format!("{whole}.{fraction}")
-    }
 }
 
 pub(in crate::market_views::positioning_info) fn format_positioning_timestamp(

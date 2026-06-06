@@ -2,12 +2,11 @@ use super::candle_layer::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
 use super::countdown::next_candle_countdown_label;
 use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
-use super::order_cancel_hover::ease_out_cubic;
 use super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::tooltips::{TooltipLine, TooltipSurface};
 use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
 use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
-use crate::helpers::format_price;
+use crate::helpers::{ease_out_cubic, format_price};
 use iced::widget::canvas;
 use iced::{Color, Point, Radians, Size, Theme, alignment};
 

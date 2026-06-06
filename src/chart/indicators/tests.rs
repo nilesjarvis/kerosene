@@ -2,25 +2,13 @@ use crate::api::Candle;
 
 use super::*;
 
-fn candle_at(open_time: u64, close: f64) -> Candle {
-    Candle {
-        open_time,
-        close_time: open_time + 59_999,
-        open: close,
-        high: close,
-        low: close,
-        close,
-        volume: 1.0,
-    }
-}
-
 #[test]
 fn sma_uses_sliding_window() {
     let candles = vec![
-        candle_at(1_000, 10.0),
-        candle_at(2_000, 20.0),
-        candle_at(3_000, 30.0),
-        candle_at(4_000, 40.0),
+        Candle::test_flat(1_000, 10.0),
+        Candle::test_flat(2_000, 20.0),
+        Candle::test_flat(3_000, 30.0),
+        Candle::test_flat(4_000, 40.0),
     ];
 
     assert_eq!(
@@ -32,10 +20,10 @@ fn sma_uses_sliding_window() {
 #[test]
 fn ema_seeds_from_initial_sma() {
     let candles = vec![
-        candle_at(1_000, 10.0),
-        candle_at(2_000, 20.0),
-        candle_at(3_000, 30.0),
-        candle_at(4_000, 40.0),
+        Candle::test_flat(1_000, 10.0),
+        Candle::test_flat(2_000, 20.0),
+        Candle::test_flat(3_000, 30.0),
+        Candle::test_flat(4_000, 40.0),
     ];
 
     assert_eq!(
@@ -46,6 +34,6 @@ fn ema_seeds_from_initial_sma() {
 
 #[test]
 fn zero_period_returns_empty_series() {
-    assert!(calculate_sma(&[candle_at(1_000, 10.0)], 0).is_empty());
-    assert!(calculate_ema(&[candle_at(1_000, 10.0)], 0).is_empty());
+    assert!(calculate_sma(&[Candle::test_flat(1_000, 10.0)], 0).is_empty());
+    assert!(calculate_ema(&[Candle::test_flat(1_000, 10.0)], 0).is_empty());
 }

@@ -3,6 +3,7 @@ use crate::account_analytics::model::{
     BorrowLendInterestEntry, BorrowLendReserveState, BorrowLendUserState, IncomeHourlyPayment,
     IncomeSnapshot, IncomeTokenRow,
 };
+use crate::app_time::now_ms;
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -86,10 +87,7 @@ pub(super) fn build_income_snapshot(
     let earned_total: f64 = dedup_by_day.values.values().sum();
     let recent_hourly = recent_hourly_payments(interest_entries, token_name_by_id);
 
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
+    let now_ms = now_ms();
     let day_ms: u64 = 24 * 60 * 60 * 1000;
 
     let sum_since_days = |days: u64| -> f64 {
