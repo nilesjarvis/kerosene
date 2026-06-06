@@ -1,12 +1,27 @@
-use super::*;
+use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::chart_state::{ChartId, ChartInstance};
 use crate::order_execution::QuickOrderForm;
 use crate::timeframe::Timeframe;
 
-mod price;
 mod restoration;
-mod size;
+
+fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "crypto".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 7,
+        collateral_token: None,
+        sz_decimals: 4,
+        max_leverage: 50,
+        only_isolated: false,
+        market_type,
+        outcome: None,
+    }
+}
 
 fn quick_order_form() -> QuickOrderForm {
     QuickOrderForm {

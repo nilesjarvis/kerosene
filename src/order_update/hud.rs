@@ -1,13 +1,13 @@
-use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{parse_number, positive_finite_value};
+use crate::helpers::positive_finite_value;
 use crate::message::Message;
 use crate::order_execution::{
-    HudOrderRequest, HudOrderType, PendingOrderAction, order_size_from_quantity_input,
-    pricing::rounded_market_price,
+    HudOrderRequest, HudOrderType, OneShotPlacementContext, OrderSurface, PendingOrderAction,
+    PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination, QuantitySource,
+    ReduceOnlySource, place_order_task,
 };
-use crate::order_update::results::result_requires_account_refresh;
-use crate::signing::{ExchangeResponse, OrderKind, float_to_wire, place_order, round_price};
+use crate::order_update::results::classify_execution_result;
+use crate::signing::{ExchangeOrderKind, ExchangeResponse};
 use crate::sound;
 
 use iced::{Point, Size, Task};
@@ -45,123 +45,86 @@ impl TradingTerminal {
             self.order_status = Some(("Select a chart symbol before HUD trading".into(), true));
             return Task::none();
         }
-        if self.symbol_key_is_hidden(&chart_symbol) {
-            self.order_status = Some(("Chart ticker is hidden in Settings > Risk".into(), true));
-            return Task::none();
-        }
 
-        let Some(sym) = self
-            .exchange_symbols
-            .iter()
-            .find(|symbol| symbol.key == chart_symbol)
-        else {
-            self.order_status = Some((format!("Symbol '{}' not found", chart_symbol), true));
-            return Task::none();
+        let is_market_order = request.order_type == HudOrderType::Market;
+        let order_kind = if is_market_order {
+            ExchangeOrderKind::Market
+        } else {
+            ExchangeOrderKind::Limit
         };
-        if let Err(message) = self.validate_exchange_symbol_orderable(sym, "Chart") {
-            self.order_status = Some((message, true));
-            return Task::none();
-        }
-        if sym.market_type == MarketType::Outcome {
-            self.outcome_read_only_status("HUD trading");
-            return Task::none();
-        }
-
-        let asset = sym.asset_index;
-        let sz_decimals = sym.sz_decimals;
-        let market_type = sym.market_type;
-        let is_spot_like = Self::market_type_is_spot_like(market_type);
-
-        let raw_quantity = match parse_number(&request.quantity).and_then(positive_finite_value) {
-            Some(quantity) => quantity,
-            None => {
-                self.order_status = Some(("Invalid HUD order size".into(), true));
+        let intent = PlaceIntent {
+            surface: OrderSurface::Hud,
+            symbol_key: chart_symbol,
+            is_buy: if is_market_order {
+                request.market_side.is_buy()
+            } else {
+                false
+            },
+            order_kind,
+            price_source: match request.order_type {
+                HudOrderType::Limit => PriceSource::LimitInput {
+                    value: request.price.to_string(),
+                    invalid_message: "Invalid HUD limit price",
+                },
+                HudOrderType::Market => PriceSource::MarketWithSlippage {
+                    invalid_message: Some("Invalid HUD market price"),
+                },
+            },
+            quantity_source: QuantitySource::UserInput {
+                value: request.quantity.clone(),
+                denomination: QuantityDenomination::Coin,
+                invalid_message: "Invalid HUD order size",
+                precision_invalid_message: "Invalid HUD size for asset precision",
+            },
+            reduce_only_source: ReduceOnlySource::Form(self.order_reduce_only),
+        };
+        let mut prepared = match self.prepare_place_order(intent) {
+            Ok(prepared) => prepared,
+            Err(message) => {
+                self.order_status = Some((message, true));
                 return Task::none();
             }
         };
-
-        let is_market_order = request.order_type == HudOrderType::Market;
-        let (is_buy, order_kind, price, reference_price) = match request.order_type {
-            HudOrderType::Limit => {
-                let Some(rounded) =
-                    positive_finite_value(round_price(request.price, sz_decimals, is_spot_like))
-                else {
-                    self.order_status = Some(("Invalid HUD limit price".into(), true));
-                    return Task::none();
-                };
-                if let Err(e) = self.validate_order_price_band(&chart_symbol, rounded) {
-                    self.order_status = Some((e, true));
+        if !is_market_order {
+            prepared.is_buy = match self.hud_limit_order_is_buy(&prepared.symbol_key, request.price)
+            {
+                Some(is_buy) => is_buy,
+                None => {
+                    self.order_status =
+                        Some(("No reference price for HUD limit side".into(), true));
                     return Task::none();
                 }
-                let is_buy = match self.hud_limit_order_is_buy(&chart_symbol, request.price) {
-                    Some(is_buy) => is_buy,
-                    None => {
-                        self.order_status =
-                            Some(("No reference price for HUD limit side".into(), true));
-                        return Task::none();
-                    }
-                };
-                (is_buy, OrderKind::Limit, float_to_wire(rounded), rounded)
-            }
-            HudOrderType::Market => {
-                let Some(mid) = self.resolve_mid_for_symbol(&chart_symbol) else {
-                    self.order_status = Some((
-                        format!(
-                            "No mid price for {} (tried {})",
-                            chart_symbol,
-                            self.mid_candidates_for_symbol(&chart_symbol).join(", ")
-                        ),
-                        true,
-                    ));
-                    return Task::none();
-                };
-                let is_buy = request.market_side.is_buy();
-                let Some(rounded) = positive_finite_value(rounded_market_price(
-                    mid,
-                    is_buy,
-                    self.market_slippage_fraction(),
-                    sz_decimals,
-                    is_spot_like,
-                )) else {
-                    self.order_status = Some(("Invalid HUD market price".into(), true));
-                    return Task::none();
-                };
-                if let Err(e) = self.validate_order_price_band(&chart_symbol, rounded) {
-                    self.order_status = Some((e, true));
-                    return Task::none();
-                }
-                (is_buy, OrderKind::Market, float_to_wire(rounded), mid)
-            }
-        };
+            };
+        }
 
-        let Some(size) =
-            order_size_from_quantity_input(raw_quantity, reference_price, false, sz_decimals)
-                .map(float_to_wire)
-        else {
-            self.order_status = Some(("Invalid HUD size for asset precision".into(), true));
-            return Task::none();
-        };
+        self.submit_prepared_hud_order(key, request, prepared, is_market_order)
+    }
 
-        let reduce_only = if is_spot_like {
-            false
-        } else {
-            self.order_reduce_only
-        };
+    fn submit_prepared_hud_order(
+        &mut self,
+        key: String,
+        request: HudOrderRequest,
+        prepared: PreparedExchangeOrder,
+        is_market_order: bool,
+    ) -> Task<Message> {
         let kind_label = match request.order_type {
             HudOrderType::Limit => "limit",
             HudOrderType::Market => "market",
         };
-        let side_label = if is_buy { "LONG" } else { "SHORT" };
+        let side_label = if prepared.is_buy { "LONG" } else { "SHORT" };
         self.order_status = Some((
-            format!("Placing HUD {kind_label} {side_label} {size} {chart_symbol}..."),
+            format!(
+                "Placing HUD {kind_label} {side_label} {} {}...",
+                prepared.size, prepared.symbol_key
+            ),
             false,
         ));
-        self.pending_order_action = Some(if is_buy {
+        self.pending_order_action = Some(if prepared.is_buy {
             PendingOrderAction::Buy
         } else {
             PendingOrderAction::Sell
         });
-        self.start_hud_order_animation(&request, is_buy, !is_market_order);
+        self.start_hud_order_animation(&request, prepared.is_buy, !is_market_order);
         if self.sound_enabled {
             sound::play_hud_order(
                 self.chart_hud_order_sound,
@@ -170,62 +133,43 @@ impl TradingTerminal {
             );
         }
 
+        let account_address = self.connected_address.clone().unwrap_or_default();
         let pending_indicator_id = if is_market_order {
             self.add_pending_market_order_placement_indicator(
-                self.connected_address.clone().unwrap_or_default(),
-                chart_symbol,
-                is_buy,
-                size.clone(),
-                price.clone(),
+                account_address.clone(),
+                prepared.symbol_key.clone(),
+                prepared.is_buy,
+                prepared.size.clone(),
+                prepared.price.clone(),
             )
         } else {
             self.add_pending_order_placement_indicator(
-                self.connected_address.clone().unwrap_or_default(),
-                chart_symbol,
-                is_buy,
-                size.clone(),
-                price.clone(),
+                account_address.clone(),
+                prepared.symbol_key.clone(),
+                prepared.is_buy,
+                prepared.size.clone(),
+                prepared.price.clone(),
             )
         };
 
-        Task::perform(
-            place_order(
-                key.into(),
-                asset,
-                is_buy,
-                price,
-                size,
-                order_kind,
-                reduce_only,
-            ),
-            move |result| Message::HudOrderResult {
-                pending_indicator_id,
-                result: Box::new(result),
-            },
-        )
+        let (request, context) = prepared.place_request_with_context(&account_address);
+        place_order_task(key.into(), request, move |result| Message::HudOrderResult {
+            pending_indicator_id,
+            context,
+            result: Box::new(result),
+        })
     }
 
     pub(crate) fn handle_hud_order_result(
         &mut self,
         pending_indicator_id: Option<u64>,
+        context: OneShotPlacementContext,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
+        self.pending_order_action = None;
         self.clear_pending_order_indicator(pending_indicator_id);
-        let should_refresh = result_requires_account_refresh(&result);
-        match result {
-            Ok(resp) => {
-                let is_err = resp.is_error();
-                self.set_order_status(resp.summary(), is_err);
-            }
-            Err(e) => {
-                self.set_order_status(e, true);
-            }
-        }
-        if should_refresh {
-            self.refresh_account_data()
-        } else {
-            Task::none()
-        }
+        let outcome = classify_execution_result(result);
+        self.apply_one_shot_placement_outcome(context, outcome)
     }
 
     fn hud_limit_order_is_buy(&self, chart_symbol: &str, price: f64) -> Option<bool> {
@@ -269,11 +213,29 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::{ExchangeSymbol, MarketType};
     use crate::app_state::sensitive_string;
     use crate::chart_state::{ChartInstance, ChartSurfaceId};
     use crate::config::ChartCrosshairStyle;
-    use crate::order_execution::HudOrderSide;
+    use crate::order_execution::{HudOrderSide, PendingOrderAction};
     use crate::timeframe::Timeframe;
+
+    fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 7,
+            collateral_token: None,
+            sz_decimals: 4,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type,
+            outcome: None,
+        }
+    }
 
     fn terminal_with_hud_chart(armed: bool) -> TradingTerminal {
         let (mut terminal, _) = TradingTerminal::boot();
@@ -334,6 +296,44 @@ mod tests {
                 .as_ref()
                 .map(|(message, is_error)| (message.as_str(), *is_error)),
             Some(("HUD order ignored: chart surface changed", true))
+        );
+        assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn hud_order_result_clears_pending_order_action() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+        let _task = terminal.handle_hud_order_result(
+            None,
+            OneShotPlacementContext {
+                account_address: "0xabc".to_string(),
+                cloid: "0x00000000000000000000000000000000".to_string(),
+                surface: OrderSurface::Hud,
+                symbol_key: "BTC".to_string(),
+            },
+            Err("exchange request failed".into()),
+        );
+
+        assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn hud_order_submission_uses_shared_preflight_quantity_error() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.quantity = "0".to_string();
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("Invalid HUD order size", true))
         );
         assert!(terminal.pending_order_action.is_none());
     }
