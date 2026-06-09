@@ -2,7 +2,7 @@ use super::model::{
     WALLET_DETAILS_DEFAULT_HEIGHT, WALLET_DETAILS_DEFAULT_WIDTH, WalletDetailsWindowState,
 };
 use crate::account::{
-    AccountDataFetchScope, WalletOpenOrderDetail, fetch_wallet_details_scoped,
+    AccountDataFetchScope, WalletOpenOrderDetail, fetch_wallet_details_scoped_with_provider,
     normalize_dex_open_order_coins,
 };
 use crate::app_state::TradingTerminal;
@@ -13,12 +13,20 @@ use iced::{Size, Task, window};
 
 impl TradingTerminal {
     pub(crate) fn wallet_details_fetch_task(
+        &self,
         window_id: window::Id,
         address: String,
         scope: AccountDataFetchScope,
     ) -> Task<Message> {
+        let provider = self.read_data_provider;
+        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
         Task::perform(
-            fetch_wallet_details_scoped(address.clone(), scope),
+            fetch_wallet_details_scoped_with_provider(
+                address.clone(),
+                scope,
+                provider,
+                hydromancer_key,
+            ),
             move |r| Message::WalletDetailsLoaded(window_id, address.clone(), Box::new(r)),
         )
     }
@@ -48,7 +56,7 @@ impl TradingTerminal {
         let scope = self.account_data_fetch_scope();
         Task::batch([
             open_task.map(Message::WindowOpened),
-            Self::wallet_details_fetch_task(window_id, address, scope),
+            self.wallet_details_fetch_task(window_id, address, scope),
         ])
     }
 
@@ -63,7 +71,7 @@ impl TradingTerminal {
         state.error = None;
         let address = state.address.clone();
         let scope = self.account_data_fetch_scope();
-        Self::wallet_details_fetch_task(window_id, address, scope)
+        self.wallet_details_fetch_task(window_id, address, scope)
     }
 
     pub(crate) fn apply_wallet_details_ws_update(

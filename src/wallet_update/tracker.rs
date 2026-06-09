@@ -28,6 +28,7 @@ impl TradingTerminal {
                 self.update_wallet_tracker_refresh(message)
             }
             message @ (Message::WalletTrackerLoaded(_, _)
+            | Message::WalletTrackerBatchLoaded(_)
             | Message::WalletTrackerOrdersLoaded(_, _)) => {
                 self.apply_wallet_tracker_results(message)
             }

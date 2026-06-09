@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::ws::ws_spaghetti_candle_stream;
+use crate::ws::{ws_hydromancer_spaghetti_candle_stream, ws_spaghetti_candle_stream};
 
 use iced::Subscription;
 
@@ -14,6 +14,7 @@ impl TradingTerminal {
         subs: &mut Vec<Subscription<Message>>,
     ) {
         let now_ms = Self::now_ms();
+        let hydromancer_key = self.hydromancer_read_provider_key();
         for inst in self.spaghetti_charts.values() {
             let (ws_tf, _) = Self::spaghetti_fetch_plan(
                 inst.interval,
@@ -26,23 +27,44 @@ impl TradingTerminal {
                     && !series.symbol.is_empty()
                     && !self.symbol_key_is_hidden(&series.symbol)
                 {
-                    subs.push(
-                        Subscription::run_with(
-                            (
-                                10000 + inst.id,
-                                series.symbol.clone(),
-                                ws_tf.api_str().to_string(),
-                            ),
-                            ws_spaghetti_candle_stream,
-                        )
-                        .map(|(sid, coin, candle)| {
-                            Message::SpaghettiWsCandleUpdate(
-                                sid.saturating_sub(10000),
-                                coin,
-                                candle,
+                    if let Some(api_key) = hydromancer_key.clone() {
+                        subs.push(
+                            Subscription::run_with(
+                                (
+                                    api_key,
+                                    10000 + inst.id,
+                                    series.symbol.clone(),
+                                    ws_tf.api_str().to_string(),
+                                ),
+                                ws_hydromancer_spaghetti_candle_stream,
                             )
-                        }),
-                    );
+                            .map(|(sid, coin, candle)| {
+                                Message::SpaghettiWsCandleUpdate(
+                                    sid.saturating_sub(10000),
+                                    coin,
+                                    candle,
+                                )
+                            }),
+                        );
+                    } else {
+                        subs.push(
+                            Subscription::run_with(
+                                (
+                                    10000 + inst.id,
+                                    series.symbol.clone(),
+                                    ws_tf.api_str().to_string(),
+                                ),
+                                ws_spaghetti_candle_stream,
+                            )
+                            .map(|(sid, coin, candle)| {
+                                Message::SpaghettiWsCandleUpdate(
+                                    sid.saturating_sub(10000),
+                                    coin,
+                                    candle,
+                                )
+                            }),
+                        );
+                    }
                 }
             }
         }

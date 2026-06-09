@@ -3,10 +3,22 @@ use crate::wallet_state::model::{WALLET_TRACKER_CORE_MIN_AGE_MS, WALLET_TRACKER_
 
 impl TradingTerminal {
     pub(crate) fn wallet_tracker_next_core_address(&mut self, now_ms: u64) -> Option<String> {
+        self.wallet_tracker_next_core_addresses(now_ms, 1)
+            .into_iter()
+            .next()
+    }
+
+    pub(crate) fn wallet_tracker_next_core_addresses(
+        &mut self,
+        now_ms: u64,
+        max_count: usize,
+    ) -> Vec<String> {
         if self.wallet_tracker.rows.values().any(|row| row.loading) {
-            return None;
+            return Vec::new();
         }
 
+        let max_count = max_count.max(1);
+        let mut addresses = Vec::new();
         while !self.wallet_tracker.core_refresh_queue.is_empty() {
             let address = self.wallet_tracker.core_refresh_queue.remove(0);
             let Some(row) = self.wallet_tracker.rows.get(&address) else {
@@ -18,10 +30,16 @@ impl TradingTerminal {
             {
                 continue;
             }
-            return Some(address);
+            addresses.push(address);
+            if addresses.len() >= max_count {
+                return addresses;
+            }
+        }
+        if !addresses.is_empty() {
+            return addresses;
         }
 
-        let mut selected: Option<(u64, String)> = None;
+        let mut selected = Vec::new();
         for address in &self.wallet_tracker.tracked_addresses {
             let row = self.wallet_tracker.rows.get(address);
             if row.is_some_and(|row| {
@@ -37,14 +55,14 @@ impl TradingTerminal {
                 continue;
             }
 
-            if selected
-                .as_ref()
-                .is_none_or(|(selected_at, _)| last_updated < *selected_at)
-            {
-                selected = Some((last_updated, address.clone()));
-            }
+            selected.push((last_updated, address.clone()));
         }
-        selected.map(|(_, address)| address)
+        selected.sort_by_key(|(last_updated, _)| *last_updated);
+        selected
+            .into_iter()
+            .take(max_count)
+            .map(|(_, address)| address)
+            .collect()
     }
 
     pub(crate) fn wallet_tracker_next_order_address(&mut self, now_ms: u64) -> Option<String> {

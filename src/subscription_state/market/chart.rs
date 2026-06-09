@@ -1,7 +1,10 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::message::Message;
-use crate::ws::{ws_asset_ctx_stream_keyed, ws_candle_stream_keyed};
+use crate::ws::{
+    ws_asset_ctx_stream_keyed, ws_candle_stream_keyed, ws_hydromancer_asset_ctx_stream_keyed,
+    ws_hydromancer_candle_stream_keyed,
+};
 
 use iced::Subscription;
 use std::collections::BTreeMap;
@@ -43,20 +46,43 @@ impl TradingTerminal {
             }
         }
 
+        let hydromancer_key = self.hydromancer_read_provider_key();
         for ((symbol, interval), id) in candle_streams {
-            subs.push(
-                Subscription::run_with((id, symbol, interval), ws_candle_stream_keyed).map(
-                    |(id, symbol, interval, candle)| {
+            if let Some(api_key) = hydromancer_key.clone() {
+                subs.push(
+                    Subscription::run_with(
+                        (api_key, id, symbol, interval),
+                        ws_hydromancer_candle_stream_keyed,
+                    )
+                    .map(|(id, symbol, interval, candle)| {
                         Message::ChartWsCandleUpdate(id, symbol, interval, candle)
-                    },
-                ),
-            );
+                    }),
+                );
+            } else {
+                subs.push(
+                    Subscription::run_with((id, symbol, interval), ws_candle_stream_keyed).map(
+                        |(id, symbol, interval, candle)| {
+                            Message::ChartWsCandleUpdate(id, symbol, interval, candle)
+                        },
+                    ),
+                );
+            }
         }
         for (symbol, id) in asset_ctx_streams {
-            subs.push(
-                Subscription::run_with((id, symbol), ws_asset_ctx_stream_keyed)
+            if let Some(api_key) = hydromancer_key.clone() {
+                subs.push(
+                    Subscription::run_with(
+                        (api_key, id, symbol),
+                        ws_hydromancer_asset_ctx_stream_keyed,
+                    )
                     .map(|(id, symbol, ctx)| Message::ChartWsAssetCtxUpdate(id, symbol, ctx)),
-            );
+                );
+            } else {
+                subs.push(
+                    Subscription::run_with((id, symbol), ws_asset_ctx_stream_keyed)
+                        .map(|(id, symbol, ctx)| Message::ChartWsAssetCtxUpdate(id, symbol, ctx)),
+                );
+            }
         }
     }
 }

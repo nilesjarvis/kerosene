@@ -53,11 +53,12 @@ impl TradingTerminal {
             next_chart_id,
             next_spaghetti_id,
         } = Self::boot_layout_widget_configs(&cfg, &symbol);
+        let chart_backfill_source = cfg.read_data_provider.chart_backfill_source();
 
         let (charts, chart_tasks) = Self::boot_chart_instances(
             &chart_configs,
             &muted_tickers,
-            cfg.chart_backfill_source,
+            chart_backfill_source,
             cfg.hydromancer_api_key.trim().to_string(),
         );
         boot_tasks.extend(chart_tasks);
@@ -65,7 +66,7 @@ impl TradingTerminal {
         let (spaghetti_charts, spaghetti_tasks) = Self::boot_spaghetti_instances(
             &spaghetti_configs,
             &muted_tickers,
-            cfg.chart_backfill_source,
+            chart_backfill_source,
             cfg.hydromancer_api_key.trim().to_string(),
         );
         boot_tasks.extend(spaghetti_tasks);

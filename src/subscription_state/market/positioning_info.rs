@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use crate::ws::ws_asset_ctx_stream_symbol;
+use crate::ws::{ws_asset_ctx_stream_symbol, ws_hydromancer_asset_ctx_stream_symbol};
 
 use iced::Subscription;
 
@@ -36,11 +36,22 @@ impl TradingTerminal {
             symbols.push(instance.symbol.clone());
         }
 
+        let hydromancer_key = self.hydromancer_read_provider_key();
         for symbol in symbols {
-            subs.push(
-                Subscription::run_with((symbol.clone(),), ws_asset_ctx_stream_symbol)
+            if let Some(api_key) = hydromancer_key.clone() {
+                subs.push(
+                    Subscription::run_with(
+                        (api_key, symbol.clone()),
+                        ws_hydromancer_asset_ctx_stream_symbol,
+                    )
                     .map(|(symbol, ctx)| Message::PositioningInfoWsAssetCtxUpdate(symbol, ctx)),
-            );
+                );
+            } else {
+                subs.push(
+                    Subscription::run_with((symbol.clone(),), ws_asset_ctx_stream_symbol)
+                        .map(|(symbol, ctx)| Message::PositioningInfoWsAssetCtxUpdate(symbol, ctx)),
+                );
+            }
         }
     }
 }

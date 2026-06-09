@@ -45,6 +45,7 @@ impl TradingTerminal {
                 let mut tasks = vec![self.refresh_enabled_funding_charts()];
                 if self.chart_backfill_source == crate::config::ChartBackfillSource::Hydromancer {
                     tasks.push(self.reload_chart_backfills_for_source_change());
+                    tasks.push(self.refresh_account_data());
                 }
                 return Task::batch(tasks);
             }

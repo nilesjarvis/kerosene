@@ -5,7 +5,7 @@ mod orders;
 use fills::apply_fills_update;
 use orders::preserve_open_order_reduce_only;
 
-use crate::account::{fetch_account_data_scoped, normalize_dex_open_order_coins};
+use crate::account::{fetch_account_data_scoped_with_provider, normalize_dex_open_order_coins};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::ws::WsUserData;
@@ -161,10 +161,19 @@ impl TradingTerminal {
                             wallet_details_update,
                         );
                         let scope = self.account_data_fetch_scope();
-                        let account_task =
-                            Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
+                        let provider = self.read_data_provider;
+                        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
+                        let account_task = Task::perform(
+                            fetch_account_data_scoped_with_provider(
+                                addr,
+                                scope,
+                                provider,
+                                hydromancer_key,
+                            ),
+                            move |r| {
                                 Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
-                            });
+                            },
+                        );
                         return Task::batch([wallet_task, account_task]);
                     }
                 }

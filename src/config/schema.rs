@@ -28,7 +28,7 @@ mod market_universe;
 mod toast;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
-pub use candles::{ChartBackfillSource, ChartHollowCandleMode};
+pub use candles::{ChartBackfillSource, ChartHollowCandleMode, ReadDataProvider};
 pub use crosshair::{
     ChartCrosshairStyle, ChartHudOrderSound, ChartHudReadoutConfig, ChartHudReadoutElement,
 };
@@ -180,8 +180,12 @@ pub struct KeroseneConfig {
     /// User-controlled scale for the Alfred command popup.
     #[serde(default = "default_alfred_popup_scale")]
     pub alfred_popup_scale: f32,
-    /// REST provider used for historical chart candle backfills.
+    /// Global read-only data provider for supported market/account data.
     #[serde(default)]
+    pub read_data_provider: ReadDataProvider,
+    /// Legacy REST provider used for historical chart candle backfills.
+    #[serde(default)]
+    #[serde(skip_serializing)]
     pub chart_backfill_source: ChartBackfillSource,
     /// Global display font used by default UI text.
     #[serde(default)]

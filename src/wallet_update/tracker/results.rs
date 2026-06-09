@@ -9,27 +9,11 @@ impl TradingTerminal {
     pub(super) fn apply_wallet_tracker_results(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::WalletTrackerLoaded(address, result) => {
-                if !self.wallet_tracker.tracked_addresses.contains(&address) {
-                    self.wallet_tracker.rows.remove(&address);
-                    return Task::none();
-                }
-                let row = self.wallet_tracker.rows.entry(address).or_default();
-                row.loading = false;
-                match *result {
-                    Ok(mut data) => {
-                        if let Some(open_order_count) = row.open_order_count {
-                            data.open_order_count = open_order_count;
-                        }
-                        row.error = None;
-                        row.next_core_retry_ms = None;
-                        row.last_updated_ms = Some(Self::now_ms());
-                        row.snapshot = Some(data);
-                    }
-                    Err(e) => {
-                        row.error = Some(e);
-                        row.next_core_retry_ms =
-                            Some(Self::now_ms() + WALLET_TRACKER_CORE_ERROR_BACKOFF_MS);
-                    }
+                self.apply_wallet_tracker_snapshot_result(address, *result);
+            }
+            Message::WalletTrackerBatchLoaded(results) => {
+                for (address, result) in results {
+                    self.apply_wallet_tracker_snapshot_result(address, result);
                 }
             }
             Message::WalletTrackerOrdersLoaded(address, result) => {
@@ -59,5 +43,34 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    fn apply_wallet_tracker_snapshot_result(
+        &mut self,
+        address: String,
+        result: Result<crate::account::WalletTrackerSnapshot, String>,
+    ) {
+        if !self.wallet_tracker.tracked_addresses.contains(&address) {
+            self.wallet_tracker.rows.remove(&address);
+            return;
+        }
+        let row = self.wallet_tracker.rows.entry(address).or_default();
+        row.loading = false;
+        match result {
+            Ok(mut data) => {
+                if let Some(open_order_count) = row.open_order_count {
+                    data.open_order_count = open_order_count;
+                }
+                row.error = None;
+                row.next_core_retry_ms = None;
+                row.last_updated_ms = Some(Self::now_ms());
+                row.snapshot = Some(data);
+            }
+            Err(e) => {
+                row.error = Some(e);
+                row.next_core_retry_ms =
+                    Some(Self::now_ms() + WALLET_TRACKER_CORE_ERROR_BACKOFF_MS);
+            }
+        }
     }
 }

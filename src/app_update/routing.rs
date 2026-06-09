@@ -264,7 +264,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ImportChartHudOrderSound
         | Message::ChartHudOrderSoundImported(_)
         | Message::TestChartHudOrderSound
-        | Message::ChartBackfillSourceChanged(_)
+        | Message::ReadDataProviderChanged(_)
         | Message::AlfredPopupScaleChanged(_)
         | Message::DisplayFontChanged(_)
         | Message::MonospaceFontChanged(_)
@@ -407,6 +407,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::RefreshIncome
         | Message::IncomeLoaded(_, _)
         | Message::SetPortfolioPnlValueMode(_)
+        | Message::WalletTrackerBatchLoaded(_)
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,
 

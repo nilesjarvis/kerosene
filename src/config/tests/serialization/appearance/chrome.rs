@@ -7,6 +7,7 @@ use super::{
     default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
     default_widget_padding, json_string, object_mut, value_from_json, value_from_str,
 };
+use crate::config::ReadDataProvider;
 
 #[test]
 fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
@@ -30,7 +31,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
             ..ChartHudReadoutConfig::default()
         },
         alfred_popup_scale: 1.35,
-        chart_backfill_source: ChartBackfillSource::Hydromancer,
+        read_data_provider: ReadDataProvider::Hydromancer,
         pane_border_thickness: 8.0,
         pane_corner_radius: 12.0,
         outer_widget_border_enabled: true,
@@ -73,9 +74,10 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert!(!decoded.chart_hud_readout.clock);
     assert!(decoded.chart_hud_readout.candle_close);
     assert_eq!(decoded.alfred_popup_scale, 1.35);
+    assert_eq!(decoded.read_data_provider, ReadDataProvider::Hydromancer);
     assert_eq!(
         decoded.chart_backfill_source,
-        ChartBackfillSource::Hydromancer
+        ChartBackfillSource::Hyperliquid
     );
     assert_eq!(decoded.pane_border_thickness, 8.0);
     assert_eq!(decoded.pane_corner_radius, 12.0);
@@ -106,6 +108,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("chart_crosshair_scale");
     object.remove("chart_hud_readout");
     object.remove("alfred_popup_scale");
+    object.remove("read_data_provider");
     object.remove("chart_backfill_source");
     object.remove("pane_border_thickness");
     object.remove("pane_corner_radius");
@@ -157,6 +160,10 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(
         decoded_legacy.alfred_popup_scale,
         default_alfred_popup_scale()
+    );
+    assert_eq!(
+        decoded_legacy.read_data_provider,
+        ReadDataProvider::Hyperliquid
     );
     assert_eq!(
         decoded_legacy.chart_backfill_source,

@@ -1,6 +1,6 @@
 mod refresh;
 
-use crate::account::fetch_account_data_scoped;
+use crate::account::fetch_account_data_scoped_with_provider;
 use crate::account_analytics::fetch_portfolio_history;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -99,8 +99,15 @@ impl TradingTerminal {
 
         let account_addr = addr.clone();
         let account_scope = self.account_data_fetch_scope();
+        let account_provider = self.read_data_provider;
+        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
         let account_task = Task::perform(
-            fetch_account_data_scoped(addr.clone(), account_scope),
+            fetch_account_data_scoped_with_provider(
+                addr.clone(),
+                account_scope,
+                account_provider,
+                hydromancer_key,
+            ),
             move |r| Message::AccountDataLoaded(account_addr.clone(), Box::new(r)),
         );
         let mut tasks = vec![account_task];

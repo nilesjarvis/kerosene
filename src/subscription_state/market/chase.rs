@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::signing::{ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason};
-use crate::ws::ws_book_stream_keyed;
+use crate::ws::{ws_book_stream_keyed, ws_hydromancer_book_stream_keyed};
 
 use iced::Subscription;
 
@@ -47,19 +47,35 @@ impl TradingTerminal {
                 continue;
             }
             let sigfigs = self.canonical_l2_book_sigfigs(&chase.coin);
-            subs.push(
-                Subscription::run_with(
-                    (chase.id, chase.coin.clone(), sigfigs),
-                    ws_book_stream_keyed,
-                )
-                .map(
-                    |(chase_id, coin, _sigfigs, book)| Message::ChaseBookUpdate {
-                        chase_id,
-                        coin,
-                        book,
-                    },
-                ),
-            );
+            if let Some(api_key) = self.hydromancer_read_provider_key() {
+                subs.push(
+                    Subscription::run_with(
+                        (api_key, chase.id, chase.coin.clone(), sigfigs),
+                        ws_hydromancer_book_stream_keyed,
+                    )
+                    .map(|(chase_id, coin, _sigfigs, book)| {
+                        Message::ChaseBookUpdate {
+                            chase_id,
+                            coin,
+                            book,
+                        }
+                    }),
+                );
+            } else {
+                subs.push(
+                    Subscription::run_with(
+                        (chase.id, chase.coin.clone(), sigfigs),
+                        ws_book_stream_keyed,
+                    )
+                    .map(|(chase_id, coin, _sigfigs, book)| {
+                        Message::ChaseBookUpdate {
+                            chase_id,
+                            coin,
+                            book,
+                        }
+                    }),
+                );
+            }
         }
     }
 }

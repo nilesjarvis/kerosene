@@ -57,19 +57,41 @@ pub async fn fetch_chart_backfill_candles(
         ChartBackfillSource::Hydromancer => {
             let api_key = hydromancer_api_key.trim().to_string();
             if api_key.is_empty() {
-                return Err("Hydromancer API key required for chart backfill".to_string());
+                return fetch_candles_from_endpoint(
+                    API_URL, None, coin, interval, start_time, end_time,
+                )
+                .await;
             }
 
             let interval_ms = candle_interval_ms(&interval);
-            let candles = fetch_candles_from_endpoint(
+            let hydromancer_result = fetch_candles_from_endpoint(
                 HYDROMANCER_API_URL,
                 Some(api_key),
-                coin,
-                interval,
+                coin.clone(),
+                interval.clone(),
                 start_time,
                 end_time,
             )
-            .await?;
+            .await;
+            let candles = match hydromancer_result {
+                Ok(candles) => candles,
+                Err(hydromancer_error) => {
+                    return fetch_candles_from_endpoint(
+                        API_URL,
+                        None,
+                        coin,
+                        interval,
+                        start_time,
+                        end_time,
+                    )
+                    .await
+                    .map_err(|fallback_error| {
+                        format!(
+                            "Hydromancer chart backfill failed: {hydromancer_error}; Hyperliquid fallback failed: {fallback_error}"
+                        )
+                    });
+                }
+            };
             Ok(match interval_ms {
                 Some(interval_ms) => fill_zero_volume_candle_gaps(candles, interval_ms),
                 None => candles,

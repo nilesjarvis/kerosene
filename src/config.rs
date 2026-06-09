@@ -64,7 +64,7 @@ pub use schema::{
     MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
     MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH, MIN_CHART_FISHEYE_STRENGTH,
     MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS, MIN_PANE_CORNER_RADIUS,
-    MIN_UI_SCALE, MIN_WIDGET_PADDING, MarketUniverseConfig, ToastPosition,
+    MIN_UI_SCALE, MIN_WIDGET_PADDING, MarketUniverseConfig, ReadDataProvider, ToastPosition,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
     default_chart_fisheye_strength, default_layout_ratios, default_liquidation_alert_threshold,

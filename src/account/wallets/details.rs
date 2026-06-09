@@ -3,8 +3,9 @@ mod hip3;
 use self::hip3::{append_hip3_open_orders, append_hip3_positions, fetch_hip3_wallet_details};
 use super::super::http::{best_effort_response_vec, post_info_json_with_retries};
 use super::super::{
-    AccountDataFetchScope, ClearinghouseState, OpenOrder, SpotClearinghouseState,
+    AccountDataFetchScope, ClearinghouseState, HIP3_DEXES, OpenOrder, SpotClearinghouseState,
     WalletDetailsData, WalletOpenOrderDetail, WalletPositionDetail,
+    fetch_hydromancer_frontend_open_orders_scoped, fetch_hydromancer_portfolio_state,
 };
 use crate::api::API_URL;
 use crate::app_time::now_ms;
@@ -93,4 +94,97 @@ pub async fn fetch_wallet_details_scoped(
         warnings,
         fetched_at_ms: now_ms(),
     })
+}
+
+pub async fn fetch_wallet_details_scoped_with_provider(
+    address: String,
+    scope: AccountDataFetchScope,
+    provider: crate::config::ReadDataProvider,
+    hydromancer_api_key: String,
+) -> Result<WalletDetailsData, String> {
+    if provider != crate::config::ReadDataProvider::Hydromancer {
+        return fetch_wallet_details_scoped(address, scope).await;
+    }
+
+    let api_key = hydromancer_api_key.trim().to_string();
+    if api_key.is_empty() {
+        return fetch_wallet_details_scoped(address, scope).await;
+    }
+
+    match fetch_wallet_details_scoped_hydromancer(address.clone(), scope.clone(), api_key).await {
+        Ok(data) => Ok(data),
+        Err(hydromancer_error) => {
+            let mut data = fetch_wallet_details_scoped(address, scope).await?;
+            data.warnings
+                .push(crate::read_data_provider::fallback_warning(
+                    "wallet details",
+                    &hydromancer_error,
+                ));
+            Ok(data)
+        }
+    }
+}
+
+async fn fetch_wallet_details_scoped_hydromancer(
+    address: String,
+    scope: AccountDataFetchScope,
+    api_key: String,
+) -> Result<WalletDetailsData, String> {
+    let portfolio_fut =
+        fetch_hydromancer_portfolio_state(address.clone(), scope.clone(), api_key.clone());
+    let orders_fut = fetch_hydromancer_frontend_open_orders_scoped(address, scope.clone(), api_key);
+    let (portfolio, orders_result) = futures::future::join(portfolio_fut, orders_fut).await;
+    let portfolio = portfolio?;
+    let (clearinghouse, clearinghouses_by_dex, _) = portfolio.clearinghouses_for_scope(&scope)?;
+    let spot = portfolio.spot_clearinghouse()?;
+    let mut positions = Vec::new();
+    for (dex, clearinghouse) in &clearinghouses_by_dex {
+        positions.extend(
+            clearinghouse
+                .asset_positions
+                .iter()
+                .cloned()
+                .map(|asset_position| WalletPositionDetail {
+                    dex: dex.clone(),
+                    asset_position,
+                }),
+        );
+    }
+    let mut warnings = Vec::new();
+    let orders = match orders_result {
+        Ok(orders) => orders,
+        Err(error) => {
+            warnings.push(error);
+            Vec::new()
+        }
+    };
+
+    let open_orders = orders
+        .iter()
+        .cloned()
+        .map(|order| WalletOpenOrderDetail {
+            dex: order_detail_dex(&order),
+            order,
+        })
+        .collect();
+
+    Ok(WalletDetailsData {
+        clearinghouse,
+        spot,
+        positions,
+        open_orders,
+        warnings,
+        fetched_at_ms: now_ms(),
+    })
+}
+
+fn order_detail_dex(order: &OpenOrder) -> String {
+    let Some((dex, _)) = order.coin.split_once(':') else {
+        return String::new();
+    };
+    if HIP3_DEXES.iter().any(|known| known == &dex) {
+        dex.to_string()
+    } else {
+        String::new()
+    }
 }

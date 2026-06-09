@@ -138,16 +138,30 @@ impl TradingTerminal {
             | Message::TestChartHudOrderSound) => {
                 return self.update_sound_preferences(message);
             }
-            Message::ChartBackfillSourceChanged(source) if self.chart_backfill_source != source => {
-                self.chart_backfill_source = source;
+            Message::ReadDataProviderChanged(provider) if self.read_data_provider != provider => {
+                self.read_data_provider = provider;
+                self.chart_backfill_source = provider.chart_backfill_source();
                 self.journal.clear_snapshot_cache();
                 self.journal.expanded_snapshot_trade_ids.clear();
                 self.persist_config();
-                self.push_toast(
-                    format!("Chart backfill source set to {}", source.label()),
-                    false,
-                );
-                return self.reload_chart_backfills_for_source_change();
+                if provider == crate::config::ReadDataProvider::Hydromancer
+                    && self.hydromancer_api_key.trim().is_empty()
+                {
+                    self.push_toast(
+                        "Hydromancer selected; read data will use Hyperliquid until an API key is saved"
+                            .to_string(),
+                        true,
+                    );
+                } else {
+                    self.push_toast(
+                        format!("Read data provider set to {}", provider.label()),
+                        false,
+                    );
+                }
+                return Task::batch([
+                    self.reload_chart_backfills_for_source_change(),
+                    self.refresh_account_data(),
+                ]);
             }
             Message::AlfredPopupScaleChanged(value) => {
                 self.alfred_popup_scale = normalize_alfred_popup_scale(value);

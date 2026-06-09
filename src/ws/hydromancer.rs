@@ -1,11 +1,17 @@
 mod liquidations;
 mod manager;
+mod market_streams;
 mod parsing;
 mod recent;
 mod tracked_trades;
 
 pub use liquidations::ws_hydromancer_liquidations;
 pub use manager::{evict_hydromancer_manager, reconnect_hydromancer};
+pub use market_streams::{
+    ws_hydromancer_asset_ctx_stream_keyed, ws_hydromancer_asset_ctx_stream_symbol,
+    ws_hydromancer_book_stream_keyed, ws_hydromancer_candle_stream_keyed,
+    ws_hydromancer_spaghetti_candle_stream,
+};
 pub use tracked_trades::ws_hydromancer_tracked_trades;
 
 const HYDROMANCER_RECONNECT_DELAY_SECS: u64 = 2;

@@ -4,11 +4,18 @@ mod spot;
 mod types;
 mod wallets;
 
-pub use data::{fetch_account_data_scoped, fetch_all_mids};
+pub(crate) use data::{
+    HydromancerPortfolioState, fetch_hydromancer_frontend_open_orders_scoped,
+    fetch_hydromancer_portfolio_state, fetch_hydromancer_portfolio_states,
+    hydromancer_portfolio_chunk_size,
+};
+pub use data::{fetch_account_data_scoped_with_provider, fetch_all_mids};
 pub use types::*;
 pub use wallets::{
-    fetch_wallet_details_scoped, fetch_wallet_tracker_open_order_count_scoped,
-    fetch_wallet_tracker_snapshot_scoped,
+    fetch_wallet_details_scoped_with_provider,
+    fetch_wallet_tracker_open_order_count_scoped_with_provider,
+    fetch_wallet_tracker_snapshot_scoped_with_provider,
+    fetch_wallet_tracker_snapshots_scoped_with_provider,
 };
 
 /// Known HIP-3 perp dex names. The main dex uses "" (empty string).

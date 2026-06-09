@@ -136,6 +136,33 @@ fn migrates_legacy_hollow_candle_toggle_to_up_candles() {
 }
 
 #[test]
+fn migrates_legacy_chart_backfill_source_to_read_data_provider() {
+    let mut value =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config serializes");
+    let object = value
+        .as_object_mut()
+        .expect("config should serialize to object");
+    object.remove("read_data_provider");
+    object.insert(
+        "chart_backfill_source".to_string(),
+        serde_json::json!("Hydromancer"),
+    );
+    let mut config: KeroseneConfig =
+        serde_json::from_value(value).expect("test config deserializes");
+
+    normalize_loaded_config(&mut config);
+
+    assert_eq!(
+        config.read_data_provider,
+        crate::config::ReadDataProvider::Hydromancer
+    );
+    assert_eq!(
+        config.chart_backfill_source,
+        crate::config::ChartBackfillSource::Hydromancer
+    );
+}
+
+#[test]
 fn prunes_unsupported_panes_from_loaded_layouts() {
     let mut config = KeroseneConfig {
         pane_layout: Some(crate::config::PaneLayoutConfig::Split {

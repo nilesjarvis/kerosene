@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::ws::ws_book_stream_keyed;
+use crate::ws::{ws_book_stream_keyed, ws_hydromancer_book_stream_keyed};
 
 use iced::Subscription;
 
@@ -31,14 +31,35 @@ impl TradingTerminal {
                 continue;
             }
             let sigfigs = self.canonical_l2_book_sigfigs(&twap.coin);
-            subs.push(
-                Subscription::run_with((twap.id, twap.coin.clone(), sigfigs), ws_book_stream_keyed)
-                    .map(|(twap_id, coin, _sigfigs, book)| Message::TwapBookUpdate {
-                        twap_id,
-                        coin,
-                        book,
+            if let Some(api_key) = self.hydromancer_read_provider_key() {
+                subs.push(
+                    Subscription::run_with(
+                        (api_key, twap.id, twap.coin.clone(), sigfigs),
+                        ws_hydromancer_book_stream_keyed,
+                    )
+                    .map(|(twap_id, coin, _sigfigs, book)| {
+                        Message::TwapBookUpdate {
+                            twap_id,
+                            coin,
+                            book,
+                        }
                     }),
-            );
+                );
+            } else {
+                subs.push(
+                    Subscription::run_with(
+                        (twap.id, twap.coin.clone(), sigfigs),
+                        ws_book_stream_keyed,
+                    )
+                    .map(|(twap_id, coin, _sigfigs, book)| {
+                        Message::TwapBookUpdate {
+                            twap_id,
+                            coin,
+                            book,
+                        }
+                    }),
+                );
+            }
         }
     }
 }

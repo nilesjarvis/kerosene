@@ -1,4 +1,4 @@
-use crate::account::{AccountData, AccountDataFetchScope, fetch_account_data_scoped};
+use crate::account::{AccountData, AccountDataFetchScope, fetch_account_data_scoped_with_provider};
 use crate::account_analytics::fetch_income_data;
 use crate::app_state::TradingTerminal;
 use crate::journal;
@@ -137,27 +137,33 @@ impl TradingTerminal {
             return Task::none();
         }
         let requested_addr = addr.clone();
+        let provider = self.read_data_provider;
+        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
         self.account_loading = true;
         self.account_reconciliation_required = true;
         self.account_error = None;
-        Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
-            Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
-        })
+        Task::perform(
+            fetch_account_data_scoped_with_provider(addr, scope, provider, hydromancer_key),
+            move |r| Message::AccountDataLoaded(requested_addr.clone(), Box::new(r)),
+        )
     }
 
     pub(crate) fn refresh_account_data_for_twap_reconciliation(
         &mut self,
         addr: String,
     ) -> Task<Message> {
+        let provider = self.read_data_provider;
+        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
         if self.connected_address.as_deref() == Some(addr.as_str()) {
             return self.force_refresh_account_data_for_reconciliation(addr);
         }
 
         let requested_addr = addr.clone();
         let scope = self.account_data_fetch_scope();
-        Task::perform(fetch_account_data_scoped(addr, scope), move |r| {
-            Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
-        })
+        Task::perform(
+            fetch_account_data_scoped_with_provider(addr, scope, provider, hydromancer_key),
+            move |r| Message::AccountDataLoaded(requested_addr.clone(), Box::new(r)),
+        )
     }
 }
 

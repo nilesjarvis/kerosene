@@ -49,6 +49,7 @@ pub(super) fn broadcast_hydromancer_json(
 ) -> Result<usize, broadcast::error::SendError<HydromancerRoutedMessage>> {
     let msg_type = json
         .get("type")
+        .or_else(|| json.get("channel"))
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_string();

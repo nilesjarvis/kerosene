@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::config::ChartBackfillSource;
+use crate::config::ReadDataProvider;
 use crate::helpers;
 use crate::message::Message;
 use iced::widget::{button, column, pick_list, row, rule, text, text_input};
@@ -27,6 +27,20 @@ impl TradingTerminal {
             current_theme.palette().danger
         } else {
             current_theme.palette().success
+        };
+        let read_provider_status = match self.read_data_provider {
+            ReadDataProvider::Hyperliquid => "Native Hyperliquid",
+            ReadDataProvider::Hydromancer if self.hydromancer_api_key.trim().is_empty() => {
+                "Fallback: key missing"
+            }
+            ReadDataProvider::Hydromancer => "Hydromancer",
+        };
+        let read_provider_status_color = match self.read_data_provider {
+            ReadDataProvider::Hyperliquid => current_theme.extended_palette().background.weak.text,
+            ReadDataProvider::Hydromancer if self.hydromancer_api_key.trim().is_empty() => {
+                current_theme.palette().danger
+            }
+            ReadDataProvider::Hydromancer => current_theme.palette().success,
         };
 
         column![
@@ -64,14 +78,14 @@ impl TradingTerminal {
                     .size(11)
                     .color(current_theme.extended_palette().background.weak.text),
                 row![
-                    text("Chart backfill")
+                    text("Read data provider")
                         .size(12)
                         .color(current_theme.palette().text)
                         .width(Fill),
                     pick_list(
-                        ChartBackfillSource::ALL.to_vec(),
-                        Some(self.chart_backfill_source),
-                        Message::ChartBackfillSourceChanged,
+                        ReadDataProvider::ALL.to_vec(),
+                        Some(self.read_data_provider),
+                        Message::ReadDataProviderChanged,
                     )
                     .padding([4, 8])
                     .text_size(12)
@@ -79,6 +93,9 @@ impl TradingTerminal {
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center),
+                text(read_provider_status)
+                    .size(11)
+                    .color(read_provider_status_color),
             ]
             .spacing(8),
             rule::horizontal(1),

@@ -14,6 +14,7 @@ use zeroize::Zeroize;
 // ---------------------------------------------------------------------------
 
 pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
+    migrate_read_data_provider(config);
     merge_default_themes(config);
     ensure_layout_ratios(config);
     prune_unsupported_pane_layouts(config);
@@ -23,6 +24,15 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     migrate_legacy_single_account(config);
     ensure_account_profile(config);
     clamp_active_account(config);
+}
+
+fn migrate_read_data_provider(config: &mut KeroseneConfig) {
+    if config.read_data_provider == crate::config::ReadDataProvider::Hyperliquid
+        && config.chart_backfill_source == crate::config::ChartBackfillSource::Hydromancer
+    {
+        config.read_data_provider = crate::config::ReadDataProvider::Hydromancer;
+    }
+    config.chart_backfill_source = config.read_data_provider.chart_backfill_source();
 }
 
 fn prune_unsupported_pane_layouts(config: &mut KeroseneConfig) {

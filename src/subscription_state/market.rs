@@ -2,7 +2,10 @@ use crate::app_state::TradingTerminal;
 use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use crate::ws::{ws_asset_ctx_stream_keyed, ws_book_stream_keyed};
+use crate::ws::{
+    ws_asset_ctx_stream_keyed, ws_book_stream_keyed, ws_hydromancer_asset_ctx_stream_keyed,
+    ws_hydromancer_book_stream_keyed,
+};
 use iced::Subscription;
 
 mod chart;
@@ -58,22 +61,54 @@ impl TradingTerminal {
             );
             if streams.l2_book {
                 let sigfigs = self.canonical_l2_book_sigfigs(&symbol);
-                subs.push(
-                    Subscription::run_with((ob.id, symbol.clone(), sigfigs), ws_book_stream_keyed)
-                        .map(|(id, coin, sigfigs, book)| Message::WsBookUpdate {
-                            id,
-                            coin,
-                            sigfigs,
-                            book,
+                if let Some(api_key) = self.hydromancer_read_provider_key() {
+                    subs.push(
+                        Subscription::run_with(
+                            (api_key, ob.id, symbol.clone(), sigfigs),
+                            ws_hydromancer_book_stream_keyed,
+                        )
+                        .map(|(id, coin, sigfigs, book)| {
+                            Message::WsBookUpdate {
+                                id,
+                                coin,
+                                sigfigs,
+                                book,
+                            }
                         }),
-                );
+                    );
+                } else {
+                    subs.push(
+                        Subscription::run_with(
+                            (ob.id, symbol.clone(), sigfigs),
+                            ws_book_stream_keyed,
+                        )
+                        .map(|(id, coin, sigfigs, book)| {
+                            Message::WsBookUpdate {
+                                id,
+                                coin,
+                                sigfigs,
+                                book,
+                            }
+                        }),
+                    );
+                }
             }
 
             if streams.asset_ctx {
-                subs.push(
-                    Subscription::run_with((ob.id, symbol.clone()), ws_asset_ctx_stream_keyed)
+                if let Some(api_key) = self.hydromancer_read_provider_key() {
+                    subs.push(
+                        Subscription::run_with(
+                            (api_key, ob.id, symbol.clone()),
+                            ws_hydromancer_asset_ctx_stream_keyed,
+                        )
                         .map(|(id, _symbol, ctx)| Message::OrderBookWsAssetCtxUpdate(id, ctx)),
-                );
+                    );
+                } else {
+                    subs.push(
+                        Subscription::run_with((ob.id, symbol.clone()), ws_asset_ctx_stream_keyed)
+                            .map(|(id, _symbol, ctx)| Message::OrderBookWsAssetCtxUpdate(id, ctx)),
+                    );
+                }
             }
         }
     }
