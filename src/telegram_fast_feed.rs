@@ -756,8 +756,11 @@ async fn resolve_fast_channel_targets(
             .write()
             .await
             .insert(channel.id(), identity.clone());
+        let mut profile = telegram_channel_profile_from_title(&identity.key, Some(&identity.title));
+        profile.avatar_handle =
+            download_private_channel_avatar_handle(client, Peer::Channel(channel.clone())).await;
         targets.push(FastChannelTarget {
-            profile: telegram_channel_profile_from_title(&identity.key, Some(&identity.title)),
+            profile,
             identity,
             peer_ref,
         });

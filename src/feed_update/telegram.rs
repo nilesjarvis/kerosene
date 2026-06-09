@@ -243,6 +243,22 @@ impl TradingTerminal {
         self.telegram_feed
             .private_channels
             .push(candidate.to_config());
+        let profile = candidate.to_profile();
+        self.telegram_feed
+            .channel_profiles
+            .entry(profile.channel.clone())
+            .and_modify(|existing| {
+                existing.title = profile.title.clone();
+                existing.initials = profile.initials.clone();
+                if profile.avatar_handle.is_some() {
+                    existing.avatar_handle = profile.avatar_handle.clone();
+                    existing.avatar_url = None;
+                    existing.avatar_loading_url = None;
+                    existing.avatar_request_id = 0;
+                    existing.avatar_failed_at_ms = None;
+                }
+            })
+            .or_insert(profile);
         self.telegram_feed.last_error = None;
         self.telegram_feed.fast_reconnect_nonce =
             self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
@@ -695,7 +711,9 @@ impl TradingTerminal {
             .get(&profile.channel)
             .filter(|existing| existing.avatar_url == profile.avatar_url)
         {
-            profile.avatar_handle = existing.avatar_handle.clone();
+            if profile.avatar_handle.is_none() {
+                profile.avatar_handle = existing.avatar_handle.clone();
+            }
             profile.avatar_loading_url = existing.avatar_loading_url.clone();
             profile.avatar_request_id = existing.avatar_request_id;
             profile.avatar_failed_at_ms = existing.avatar_failed_at_ms;
@@ -1299,7 +1317,7 @@ mod tests {
             crate::telegram_feed::TelegramPrivateChannelCandidate {
                 peer_id: 42,
                 title: "Private Macro".to_string(),
-                avatar_handle: None,
+                avatar_handle: Some(ImageHandle::from_bytes(vec![0x89, b'P', b'N', b'G'])),
             },
         );
         let nonce = terminal.telegram_feed.fast_reconnect_nonce;
@@ -1316,6 +1334,13 @@ mod tests {
             terminal.telegram_feed.fast_reconnect_nonce,
             nonce.saturating_add(1)
         );
+        let profile = terminal
+            .telegram_feed
+            .channel_profiles
+            .get("private:42")
+            .expect("selected private channel should cache scanned profile");
+        assert_eq!(profile.title, "Private Macro");
+        assert!(profile.avatar_handle.is_some());
     }
 
     #[test]
@@ -1345,6 +1370,34 @@ mod tests {
         );
         assert_eq!(terminal.telegram_feed.posts[0].received_at_ms, 1_100);
         assert!(terminal.telegram_feed.posts[0].applied_at_ms > 0);
+    }
+
+    #[test]
+    fn fast_profile_update_with_private_avatar_keeps_incoming_handle() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = crate::telegram_feed::telegram_private_channel_key(42);
+        terminal.telegram_feed.private_channels =
+            vec![crate::telegram_feed::TelegramFeedPrivateChannelConfig {
+                peer_id: 42,
+                title: "Private Macro".to_string(),
+            }];
+        terminal
+            .telegram_feed
+            .channel_profiles
+            .insert(key.clone(), sample_profile(&key, None));
+        let mut profile = sample_profile(&key, None);
+        profile.title = "Private Macro".to_string();
+        profile.avatar_handle = Some(ImageHandle::from_bytes(vec![0x89, b'P', b'N', b'G']));
+
+        let _task = terminal.store_telegram_channel_profile(profile);
+
+        let profile = terminal
+            .telegram_feed
+            .channel_profiles
+            .get(&key)
+            .expect("private profile should be stored");
+        assert_eq!(profile.title, "Private Macro");
+        assert!(profile.avatar_handle.is_some());
     }
 
     #[test]

@@ -141,6 +141,20 @@ impl TelegramPrivateChannelCandidate {
             title: self.title.clone(),
         }
     }
+
+    pub(crate) fn to_profile(&self) -> TelegramChannelProfile {
+        let channel = telegram_private_channel_key(self.peer_id);
+        TelegramChannelProfile {
+            initials: fallback_initials(&self.title, &channel),
+            channel,
+            title: self.title.clone(),
+            avatar_url: None,
+            avatar_handle: self.avatar_handle.clone(),
+            avatar_loading_url: None,
+            avatar_request_id: 0,
+            avatar_failed_at_ms: None,
+        }
+    }
 }
 
 impl TelegramFeedPost {
