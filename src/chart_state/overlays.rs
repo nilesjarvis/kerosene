@@ -1,6 +1,8 @@
 use super::ChartId;
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart::{OrderOverlay, OrderOverlayPendingState, PositionOverlay};
+use crate::helpers::positive_finite_value;
 use crate::order_pending_indicators::PendingOrderIndicatorKind;
 
 mod trades;
@@ -217,13 +219,42 @@ impl TradingTerminal {
         let references: Vec<_> = self
             .charts
             .iter()
-            .map(|(id, instance)| (*id, self.resolve_mid_for_symbol(&instance.symbol)))
+            .map(|(id, instance)| {
+                (
+                    *id,
+                    self.resolve_mid_for_symbol(&instance.symbol),
+                    self.chart_hud_max_notional_for_symbol(&instance.symbol),
+                )
+            })
             .collect();
-        for (id, price) in references {
+        for (id, price, max_notional) in references {
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.chart.set_market_reference_price(price);
+                instance.chart.set_hud_max_notional(max_notional);
             }
         }
+    }
+
+    pub(crate) fn chart_hud_max_notional_for_symbol(&self, symbol: &str) -> Option<f64> {
+        let exchange_symbol = self
+            .exchange_symbols
+            .iter()
+            .find(|exchange_symbol| exchange_symbol.key == symbol)?;
+        if exchange_symbol.market_type == MarketType::Outcome
+            || !self.exchange_symbol_is_orderable(exchange_symbol)
+        {
+            return None;
+        }
+
+        let data = self.account_data.as_ref()?;
+        let available_margin = positive_finite_value(self.visible_available_margin_usdc(data)?)?;
+        let leverage = data
+            .get_leverage_for(symbol, &self.exchange_symbols)
+            .filter(|(_, _, is_actual)| *is_actual)
+            .map(|(_, leverage, _)| leverage as f64)
+            .unwrap_or(1.0);
+
+        positive_finite_value(available_margin * leverage)
     }
 
     /// Sync only trade marker overlays for all chart instances.
@@ -238,8 +269,78 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::account::{
+        AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
+        Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
+    };
+    use crate::api::{ExchangeSymbol, MarketType};
     use crate::chart_state::ChartInstance;
     use crate::timeframe::Timeframe;
+
+    fn symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 5,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
+
+    fn account_data_with_leverage(coin: &str, leverage: u32) -> AccountData {
+        AccountData {
+            fetch_scope: Default::default(),
+            request_weight_estimate: 0,
+            account_abstraction: Default::default(),
+            clearinghouse: ClearinghouseState {
+                margin_summary: MarginSummary {
+                    account_value: "1000".to_string(),
+                    total_ntl_pos: "0".to_string(),
+                    total_margin_used: "0".to_string(),
+                },
+                cross_margin_summary: None,
+                cross_maintenance_margin_used: None,
+                withdrawable: "1000".to_string(),
+                asset_positions: vec![AssetPosition {
+                    position: Position {
+                        coin: coin.to_string(),
+                        szi: "1".to_string(),
+                        entry_px: "100".to_string(),
+                        position_value: "100".to_string(),
+                        unrealized_pnl: "0".to_string(),
+                        liquidation_px: None,
+                        leverage: PositionLeverage {
+                            leverage_type: "cross".to_string(),
+                            value: leverage,
+                        },
+                        margin_used: "0".to_string(),
+                        cum_funding: None,
+                    },
+                    liquidation_px: None,
+                }],
+            },
+            clearinghouses_by_dex: std::collections::HashMap::new(),
+            spot: SpotClearinghouseState {
+                balances: Vec::new(),
+                portfolio_margin_enabled: false,
+                portfolio_margin_ratio: None,
+                token_to_available_after_maintenance: None,
+            },
+            open_orders: Vec::new(),
+            fills: Vec::new(),
+            funding_history: Vec::new(),
+            fee_rates: UserFeeRates::default(),
+            completeness: AccountDataCompleteness::default(),
+            fetched_at_ms: TradingTerminal::now_ms(),
+        }
+    }
 
     #[test]
     fn market_reference_prices_sync_from_live_mids() {
@@ -263,6 +364,24 @@ mod tests {
                 .chart
                 .market_reference_price,
             Some(50_000.0)
+        );
+    }
+
+    #[test]
+    fn hud_max_notional_syncs_from_visible_margin_and_actual_leverage() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.exchange_symbols = vec![symbol("BTC")];
+        terminal.account_data = Some(account_data_with_leverage("BTC", 10));
+        terminal
+            .charts
+            .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+
+        terminal.sync_chart_market_reference_prices();
+
+        assert_eq!(
+            terminal.charts.get(&1).unwrap().chart.hud_max_notional,
+            Some(10_000.0)
         );
     }
 }

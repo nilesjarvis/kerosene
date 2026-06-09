@@ -3,6 +3,8 @@ use super::{
     hud_game_panels_visible, hud_readout_lines,
 };
 use crate::api::Candle;
+use crate::chart::crosshair_style::RacingHudMetrics;
+use crate::chart::state::{HudMarketSide, HudOrderKind};
 use crate::chart::{CandlestickChart, ChartState, EarningsMarker};
 use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
 use iced::Point;
@@ -93,6 +95,12 @@ fn hud_game_panels_require_hover_inside_chart_area() {
         300.0,
         200.0
     ));
+    assert!(hud_game_panels_visible(
+        ChartCrosshairStyle::RacingHud,
+        Some(Point::new(120.0, 80.0)),
+        300.0,
+        200.0
+    ));
     assert!(!hud_game_panels_visible(
         ChartCrosshairStyle::Hud,
         None,
@@ -168,4 +176,42 @@ fn hud_readout_lines_follow_visibility_config() {
         vec!["HYPE 1H".to_string(), "XY  12.0  34.0".to_string()]
     );
     assert_eq!(right, vec!["T  01/01 00:00:00".to_string()]);
+}
+
+#[test]
+fn racing_hud_metrics_use_current_size_relative_to_max_size() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_crosshair_style(ChartCrosshairStyle::RacingHud);
+    chart.set_market_reference_price(Some(50.0));
+    chart.set_hud_max_notional(Some(1_000.0));
+    let state = ChartState {
+        hud_order_kind: HudOrderKind::Limit,
+        hud_market_side: HudMarketSide::Long,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+
+    assert_eq!(
+        chart.racing_hud_metrics(&state, Some(100.0)),
+        Some(RacingHudMetrics::new(Some(2.5), Some(20.0), Some(0.0)))
+    );
+}
+
+#[test]
+fn racing_hud_metrics_use_latest_candle_before_hover_price() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_crosshair_style(ChartCrosshairStyle::RacingHud);
+    chart.set_hud_max_notional(Some(1_000.0));
+    chart.set_candles(vec![candle_at(1_000, 25.0)]);
+    let state = ChartState {
+        hud_order_kind: HudOrderKind::Limit,
+        hud_market_side: HudMarketSide::Long,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+
+    assert_eq!(
+        chart.racing_hud_metrics(&state, Some(100.0)),
+        Some(RacingHudMetrics::new(Some(2.5), Some(40.0), Some(0.0)))
+    );
 }

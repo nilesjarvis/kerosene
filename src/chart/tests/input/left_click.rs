@@ -168,6 +168,38 @@ fn hud_left_click_submits_hud_order_without_starting_pan() {
 }
 
 #[test]
+fn racing_hud_left_click_submits_hud_order_without_starting_pan() {
+    let mut chart = chart_with_input_candles();
+    chart.set_crosshair_style(ChartCrosshairStyle::RacingHud);
+    chart.set_hud_armed_at(true, 0);
+    let mut state = ChartState {
+        hud_order_kind: HudOrderKind::Market,
+        hud_market_side: HudMarketSide::Short,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+
+    let action = action_or_panic(
+        chart.handle_left_press(&mut state, Point::new(120.0, 80.0), CHART_W, CHART_H, 260.0),
+        "Racing HUD left click should submit an order request",
+    );
+    let (message, _, status) = action.into_inner();
+
+    match message_or_panic(message, "submit HUD order message") {
+        Message::SubmitHudOrder(request) => {
+            assert_eq!(request.chart_id, chart.id);
+            assert_eq!(request.surface_id, chart.surface_id);
+            assert_eq!(request.quantity, "2.5");
+            assert_eq!(request.order_type, HudOrderType::Market);
+            assert_eq!(request.market_side, HudOrderSide::Short);
+        }
+        other => panic!("expected SubmitHudOrder, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(state.drag.is_none());
+}
+
+#[test]
 fn hud_left_click_is_pan_when_not_armed() {
     let mut chart = chart_with_input_candles();
     chart.set_crosshair_style(ChartCrosshairStyle::Hud);

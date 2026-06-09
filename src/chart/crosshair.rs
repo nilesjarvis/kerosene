@@ -4,7 +4,7 @@ use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
 use super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::tooltips::{TooltipLine, TooltipSurface};
-use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
+use crate::chart::crosshair_style::{CrosshairStyleRender, RacingHudMetrics, draw_crosshair_style};
 use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
 use crate::helpers::{ease_out_cubic, format_price};
 use iced::widget::canvas;
@@ -92,7 +92,12 @@ impl CandlestickChart {
         }
         let visual_pos = ctx.fisheye.project(data_pos);
         let hover_timestamp_ms = self.x_to_timestamp(data_pos.x, ctx.state, ctx.chart_w);
-        let hud_accent = (self.crosshair_style.normalized() == ChartCrosshairStyle::Hud)
+        let hover_price = (data_pos.y <= ctx.price_h && ctx.price_range > 0.0)
+            .then(|| self.y_to_price_with(data_pos.y, ctx.price_hi, ctx.price_range, ctx.price_h))
+            .filter(|price| price.is_finite() && *price > 0.0);
+        let hud_accent = self
+            .crosshair_style
+            .is_game_hud()
             .then(|| self.hud_accent_color(ctx.theme, ctx.state));
         let hud_cancel_hover_progress =
             hud_accent.map_or(0.0, |_| ease_out_cubic(self.order_cancel_hover_progress()));
@@ -107,9 +112,7 @@ impl CandlestickChart {
                 accent,
                 hud_cancel_hover_progress,
             );
-        } else if self.crosshair_style.normalized() == ChartCrosshairStyle::Hud
-            && ctx.state.ctrl_down
-        {
+        } else if self.crosshair_style.is_game_hud() && ctx.state.ctrl_down {
             draw_hud_size_scroller(
                 ctx.frame,
                 visual_pos,
@@ -129,6 +132,7 @@ impl CandlestickChart {
                     height: drawable_h,
                     fisheye: ctx.fisheye,
                     accent_color: hud_accent,
+                    racing_hud_metrics: self.racing_hud_metrics(ctx.state, hover_price),
                 },
             );
         }
@@ -171,13 +175,10 @@ impl CandlestickChart {
             });
         }
 
-        if data_pos.y > ctx.price_h || ctx.price_range <= 0.0 {
+        let Some(hover_price) = hover_price else {
             self.draw_earnings_marker_hover(ctx);
             return;
-        }
-
-        let hover_price =
-            self.y_to_price_with(data_pos.y, ctx.price_hi, ctx.price_range, ctx.price_h);
+        };
 
         self.draw_range_measurement(ctx, data_pos, visual_pos, hover_price);
         if hud_cancel_hover_progress <= 0.01 {
@@ -446,10 +447,7 @@ impl CandlestickChart {
     ) where
         PriceToY: Fn(f64) -> f32,
     {
-        if self.crosshair_style.normalized() != ChartCrosshairStyle::Hud
-            || ctx.chart_w < 180.0
-            || ctx.price_h < 90.0
-        {
+        if !self.crosshair_style.is_game_hud() || ctx.chart_w < 180.0 || ctx.price_h < 90.0 {
             return;
         }
 
@@ -579,7 +577,7 @@ impl CandlestickChart {
         state: &ChartState,
         fallback: Color,
     ) -> Color {
-        if self.crosshair_style.normalized() == ChartCrosshairStyle::Hud {
+        if self.crosshair_style.is_game_hud() {
             self.hud_accent_color(theme, state)
         } else {
             fallback
@@ -600,6 +598,33 @@ impl CandlestickChart {
                 Color { a: 1.0, ..color }
             }
         }
+    }
+
+    fn racing_hud_metrics(
+        &self,
+        state: &ChartState,
+        hover_price: Option<f64>,
+    ) -> Option<RacingHudMetrics> {
+        if self.crosshair_style.normalized() != ChartCrosshairStyle::RacingHud {
+            return None;
+        }
+
+        let current_size = parse_hud_size_value(hud_display_size(state));
+        let price_for_max_size = self
+            .market_reference_price
+            .or_else(|| self.candles.last().map(|candle| candle.close))
+            .or(hover_price)
+            .and_then(positive_finite_value);
+        let max_size = self
+            .hud_max_notional
+            .zip(price_for_max_size)
+            .and_then(|(max_notional, price)| positive_finite_value(max_notional / price));
+
+        Some(RacingHudMetrics::new(
+            current_size,
+            max_size,
+            Some(state.hud_cursor_speed_px_per_s),
+        ))
     }
 
     fn draw_hud_market_price_vector<PriceToY>(
@@ -642,7 +667,7 @@ fn hud_game_panels_visible(
     chart_w: f32,
     drawable_h: f32,
 ) -> bool {
-    style.normalized() == ChartCrosshairStyle::Hud
+    style.is_game_hud()
         && chart_w > 0.0
         && drawable_h > 0.0
         && cursor_position.is_some_and(|pos| {
@@ -712,6 +737,15 @@ fn hud_size_panel_label(state: &ChartState) -> String {
 fn hud_display_size(state: &ChartState) -> &str {
     let size = state.hud_size_input.trim();
     if size.is_empty() { "0" } else { size }
+}
+
+fn parse_hud_size_value(input: &str) -> Option<f64> {
+    let value = input.trim().parse::<f64>().ok()?;
+    (value.is_finite() && value >= 0.0).then_some(value)
+}
+
+fn positive_finite_value(value: f64) -> Option<f64> {
+    (value.is_finite() && value > 0.0).then_some(value)
 }
 
 fn draw_hud_center_order_summary(

@@ -21,7 +21,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         chart_chromatic_aberration_strength: 0.66,
         chart_edge_blur_enabled: true,
         chart_edge_blur_strength: 0.57,
-        chart_crosshair_style: ChartCrosshairStyle::Rangefinder,
+        chart_crosshair_style: ChartCrosshairStyle::RacingHud,
         chart_crosshair_guides_enabled: false,
         chart_crosshair_scale: 1.55,
         chart_hud_readout: ChartHudReadoutConfig {
@@ -62,7 +62,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.chart_edge_blur_strength, 0.57);
     assert_eq!(
         decoded.chart_crosshair_style,
-        ChartCrosshairStyle::Rangefinder
+        ChartCrosshairStyle::RacingHud
     );
     assert!(!decoded.chart_crosshair_guides_enabled);
     assert_eq!(decoded.chart_crosshair_scale, 1.55);

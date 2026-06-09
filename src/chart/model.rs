@@ -105,6 +105,8 @@ pub struct CandlestickChart {
     pub funding_panel_height: f32,
     /// Fresh executable mid/reference price used by HUD market-mode targeting.
     pub(crate) market_reference_price: Option<f64>,
+    /// Account-derived notional cap used to render HUD size-as-percent gauges.
+    pub(crate) hud_max_notional: Option<f64>,
     /// Render funding as hourly rate or annualized rate.
     pub funding_annualized: bool,
     // Macro MAs

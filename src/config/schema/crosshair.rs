@@ -14,6 +14,7 @@ pub enum ChartCrosshairStyle {
     Scope,
     Rangefinder,
     Hud,
+    RacingHud,
     Target,
     Rectangle,
     /// Legacy value kept so older saved configs continue to deserialize.
@@ -21,15 +22,16 @@ pub enum ChartCrosshairStyle {
 }
 
 impl ChartCrosshairStyle {
-    pub const ALL: [Self; 7] = [
+    pub const CROSSHAIRS: [Self; 6] = [
         Self::Classic,
         Self::Circle,
         Self::Scope,
         Self::Rangefinder,
-        Self::Hud,
         Self::Target,
         Self::Rectangle,
     ];
+
+    pub const GAME_HUDS: [Self; 2] = [Self::Hud, Self::RacingHud];
 
     pub fn normalized(self) -> Self {
         match self {
@@ -45,10 +47,15 @@ impl ChartCrosshairStyle {
             Self::Scope => "Scope",
             Self::Rangefinder => "Rangefinder",
             Self::Hud => "HUD",
+            Self::RacingHud => "Racing HUD",
             Self::Target => "Target",
             Self::Rectangle => "Rectangle",
             Self::StackedRectangles => unreachable!("legacy crosshair style is normalized"),
         }
+    }
+
+    pub fn is_game_hud(self) -> bool {
+        matches!(self.normalized(), Self::Hud | Self::RacingHud)
     }
 }
 
@@ -173,5 +180,21 @@ impl ChartHudReadoutElement {
             Self::Clock => "Current clock",
             Self::CandleClose => "Candle close countdown",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChartCrosshairStyle;
+
+    #[test]
+    fn racing_hud_is_selectable_game_hud_style() {
+        assert!(ChartCrosshairStyle::GAME_HUDS.contains(&ChartCrosshairStyle::RacingHud));
+        assert!(
+            !ChartCrosshairStyle::CROSSHAIRS
+                .iter()
+                .any(|style| style.is_game_hud())
+        );
+        assert!(ChartCrosshairStyle::RacingHud.is_game_hud());
     }
 }

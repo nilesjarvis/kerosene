@@ -31,6 +31,7 @@ pub(super) fn draw_crosshair_overlay(
                 height: ctx.chart_h,
                 fisheye: crate::chart::fisheye::ChartFisheye::disabled(),
                 accent_color: None,
+                racing_hud_metrics: None,
             },
         );
 

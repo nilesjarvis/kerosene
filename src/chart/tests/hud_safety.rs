@@ -27,3 +27,26 @@ fn hud_safety_timeout_clears_when_chart_is_safe() {
     assert!(!chart.hud_armed());
     assert!(!chart.hud_safety_timeout_due(60_000));
 }
+
+#[test]
+fn racing_hud_uses_hud_safety_timeout() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_crosshair_style(ChartCrosshairStyle::RacingHud);
+    chart.set_hud_armed_at(true, 1_000);
+    chart.record_hud_activity(2_000, false);
+
+    assert!(chart.hud_order_submission_enabled());
+    assert!(chart.hud_safety_timeout_due(17_000));
+}
+
+#[test]
+fn hud_style_changes_clear_armed_state() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_hud_armed_at(true, 1_000);
+
+    chart.set_crosshair_style(ChartCrosshairStyle::RacingHud);
+
+    assert!(!chart.hud_armed());
+    assert!(!chart.hud_order_submission_enabled());
+}

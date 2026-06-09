@@ -156,13 +156,13 @@ pub struct KeroseneConfig {
     /// Strength of the chart edge blur effect.
     #[serde(default = "default_chart_edge_blur_strength")]
     pub chart_edge_blur_strength: f32,
-    /// Crosshair reticle style used by chart canvases.
+    /// Crosshair or gaming HUD style used by chart canvases.
     #[serde(default)]
     pub chart_crosshair_style: ChartCrosshairStyle,
     /// Whether chart crosshairs draw full-width/full-height guide lines.
     #[serde(default = "default_true")]
     pub chart_crosshair_guides_enabled: bool,
-    /// User-controlled multiplier for local chart crosshair reticle size.
+    /// User-controlled multiplier for local chart crosshair or HUD size.
     #[serde(default = "default_chart_crosshair_scale")]
     pub chart_crosshair_scale: f32,
     /// Sound effect played when HUD chart trading submits an order.

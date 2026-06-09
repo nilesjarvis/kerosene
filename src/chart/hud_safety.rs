@@ -1,6 +1,4 @@
 use super::CandlestickChart;
-use crate::config::ChartCrosshairStyle;
-
 // ---------------------------------------------------------------------------
 // HUD Safety Arm
 // ---------------------------------------------------------------------------
@@ -13,7 +11,7 @@ impl CandlestickChart {
     }
 
     pub(crate) fn hud_order_submission_enabled(&self) -> bool {
-        self.hud_armed && self.crosshair_style.normalized() == ChartCrosshairStyle::Hud
+        self.hud_armed && self.crosshair_style.is_game_hud()
     }
 
     pub(crate) fn toggle_hud_armed_at(&mut self, now_ms: u64) {
@@ -52,10 +50,7 @@ impl CandlestickChart {
     }
 
     pub(crate) fn hud_safety_timeout_due(&self, now_ms: u64) -> bool {
-        if !self.hud_armed
-            || self.hud_hovering
-            || self.crosshair_style.normalized() != ChartCrosshairStyle::Hud
-        {
+        if !self.hud_armed || self.hud_hovering || !self.crosshair_style.is_game_hud() {
             return false;
         }
 

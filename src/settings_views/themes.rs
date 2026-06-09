@@ -18,8 +18,10 @@ impl TradingTerminal {
                 "Widget Chrome",
                 self.view_settings_widget_chrome_section(),
             ),
-            ThemeSettingsPage::Crosshair => self
-                .view_settings_theme_subpage("Crosshair", self.view_settings_crosshair_section()),
+            ThemeSettingsPage::Crosshair => self.view_settings_theme_subpage(
+                "Crosshair & HUD",
+                self.view_settings_crosshair_section(),
+            ),
             ThemeSettingsPage::Notifications => self.view_settings_theme_subpage(
                 "Notifications",
                 self.view_settings_notifications_section(),
@@ -110,7 +112,11 @@ impl TradingTerminal {
                 chrome_summary,
                 ThemeSettingsPage::WidgetChrome,
             ),
-            theme_overview_button("Crosshair", crosshair_summary, ThemeSettingsPage::Crosshair),
+            theme_overview_button(
+                "Crosshair & HUD",
+                crosshair_summary,
+                ThemeSettingsPage::Crosshair,
+            ),
             theme_overview_button(
                 "Notifications",
                 notifications_summary,

@@ -1,5 +1,5 @@
 use crate::app_state::TradingTerminal;
-use crate::chart::crosshair_style::{CrosshairStyleRender, draw_crosshair_style};
+use crate::chart::crosshair_style::{CrosshairStyleRender, RacingHudMetrics, draw_crosshair_style};
 use crate::config::{
     ChartCrosshairStyle, ChartHollowCandleMode, ChartHudOrderSound, ChartHudReadoutConfig,
     ChartHudReadoutElement, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
@@ -224,47 +224,72 @@ impl TradingTerminal {
 
     pub(super) fn view_settings_crosshair_section(&self) -> Element<'_, Message> {
         let theme = self.theme();
-
-        column![
-            checkbox(self.chart_crosshair_guides_enabled)
-                .label("Full-span guide lines")
-                .on_toggle(Message::ToggleChartCrosshairGuides)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
-            scale_slider_row(
-                &theme,
-                "Size",
-                self.chart_crosshair_scale,
-                MIN_CHART_CROSSHAIR_SCALE..=MAX_CHART_CROSSHAIR_SCALE,
-                Message::ChartCrosshairScaleChanged,
-            ),
-            crosshair_style_grid(
-                &theme,
-                self.chart_crosshair_style,
-                self.chart_crosshair_guides_enabled,
-                self.chart_crosshair_scale,
-            ),
-            hud_readout_settings(&theme, self.chart_hud_readout),
-            hud_order_sound_settings(
-                &theme,
-                self.chart_hud_order_sound,
-                self.chart_hud_order_sound_file.as_deref(),
-                self.chart_hud_order_sound_volume,
-            ),
-            text(format!(
+        let game_hud_selected = self.chart_crosshair_style.is_game_hud();
+        let defaults = if game_hud_selected {
+            format!(
                 "Defaults: {} style, full-span guides on, {:.0}% size, {} HUD sound, {:.0}% HUD volume",
                 ChartCrosshairStyle::default().label(),
                 DEFAULT_CHART_CROSSHAIR_SCALE * 100.0,
                 ChartHudOrderSound::default().label(),
                 DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME * 100.0,
+            )
+        } else {
+            format!(
+                "Defaults: {} style, full-span guides on, {:.0}% size",
+                ChartCrosshairStyle::default().label(),
+                DEFAULT_CHART_CROSSHAIR_SCALE * 100.0,
+            )
+        };
+
+        let mut content = Column::new()
+            .push(
+                checkbox(self.chart_crosshair_guides_enabled)
+                    .label("Full-span guide lines")
+                    .on_toggle(Message::ToggleChartCrosshairGuides)
+                    .size(12)
+                    .spacing(8)
+                    .text_size(12)
+                    .font(crate::app_fonts::monospace_font()),
+            )
+            .push(scale_slider_row(
+                &theme,
+                "Size",
+                self.chart_crosshair_scale,
+                MIN_CHART_CROSSHAIR_SCALE..=MAX_CHART_CROSSHAIR_SCALE,
+                Message::ChartCrosshairScaleChanged,
             ))
-            .size(11)
-            .color(theme.extended_palette().background.weak.text),
-        ]
-        .spacing(10)
-        .into()
+            .push(crosshair_style_grid(
+                &theme,
+                self.chart_crosshair_style,
+                self.chart_crosshair_guides_enabled,
+                self.chart_crosshair_scale,
+            ));
+
+        if game_hud_selected {
+            content = content
+                .push(gaming_hud_style_grid(
+                    &theme,
+                    self.chart_crosshair_style,
+                    self.chart_crosshair_guides_enabled,
+                    self.chart_crosshair_scale,
+                ))
+                .push(hud_readout_settings(&theme, self.chart_hud_readout))
+                .push(hud_order_sound_settings(
+                    &theme,
+                    self.chart_hud_order_sound,
+                    self.chart_hud_order_sound_file.as_deref(),
+                    self.chart_hud_order_sound_volume,
+                ));
+        }
+
+        content
+            .push(
+                text(defaults)
+                    .size(11)
+                    .color(theme.extended_palette().background.weak.text),
+            )
+            .spacing(10)
+            .into()
     }
 }
 
@@ -363,22 +388,104 @@ fn crosshair_style_grid(
     crosshair_scale: f32,
 ) -> Element<'static, Message> {
     let mut grid = Column::new().spacing(6).width(Fill);
+    let mut entries = Vec::with_capacity(ChartCrosshairStyle::CROSSHAIRS.len() + 1);
+    entries.extend(
+        ChartCrosshairStyle::CROSSHAIRS
+            .iter()
+            .take(4)
+            .copied()
+            .map(CrosshairPickerEntry::Style),
+    );
+    entries.push(CrosshairPickerEntry::GamingHud);
+    entries.extend(
+        ChartCrosshairStyle::CROSSHAIRS
+            .iter()
+            .skip(4)
+            .copied()
+            .map(CrosshairPickerEntry::Style),
+    );
 
-    for styles in ChartCrosshairStyle::ALL.chunks(2) {
+    for entries in entries.chunks(2) {
         let mut style_row = Row::new().spacing(6).width(Fill);
-        for style in styles {
-            style_row = style_row.push(crosshair_style_card(
-                theme,
-                *style,
-                selected,
-                guide_lines_enabled,
-                crosshair_scale,
-            ));
+        for entry in entries {
+            style_row = match entry {
+                CrosshairPickerEntry::Style(style) => style_row.push(crosshair_style_card(
+                    theme,
+                    *style,
+                    selected,
+                    guide_lines_enabled,
+                    crosshair_scale,
+                )),
+                CrosshairPickerEntry::GamingHud => style_row.push(gaming_hud_picker_card(
+                    theme,
+                    selected,
+                    guide_lines_enabled,
+                    crosshair_scale,
+                )),
+            };
         }
         grid = grid.push(style_row);
     }
 
     grid.into()
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CrosshairPickerEntry {
+    Style(ChartCrosshairStyle),
+    GamingHud,
+}
+
+fn gaming_hud_style_grid(
+    theme: &Theme,
+    selected: ChartCrosshairStyle,
+    guide_lines_enabled: bool,
+    crosshair_scale: f32,
+) -> Element<'static, Message> {
+    let mut row = Row::new().spacing(6).width(Fill);
+    for style in ChartCrosshairStyle::GAME_HUDS {
+        row = row.push(crosshair_style_card(
+            theme,
+            style,
+            selected,
+            guide_lines_enabled,
+            crosshair_scale,
+        ));
+    }
+
+    Column::new()
+        .push(text("Gaming HUD").size(13).color(theme.palette().text))
+        .push(row)
+        .spacing(7)
+        .into()
+}
+
+fn gaming_hud_picker_card(
+    theme: &Theme,
+    selected: ChartCrosshairStyle,
+    guide_lines_enabled: bool,
+    crosshair_scale: f32,
+) -> Element<'static, Message> {
+    let preview_style = if selected.is_game_hud() {
+        selected
+    } else {
+        ChartCrosshairStyle::Hud
+    };
+    let on_press_style = if selected.is_game_hud() {
+        selected
+    } else {
+        ChartCrosshairStyle::Hud
+    };
+
+    crosshair_style_button(
+        theme,
+        preview_style,
+        "Gaming HUD",
+        selected.is_game_hud(),
+        guide_lines_enabled,
+        crosshair_scale,
+        on_press_style,
+    )
 }
 
 fn crosshair_style_card(
@@ -388,7 +495,26 @@ fn crosshair_style_card(
     guide_lines_enabled: bool,
     crosshair_scale: f32,
 ) -> Element<'static, Message> {
-    let is_selected = style == selected;
+    crosshair_style_button(
+        theme,
+        style,
+        style.label(),
+        style == selected,
+        guide_lines_enabled,
+        crosshair_scale,
+        style,
+    )
+}
+
+fn crosshair_style_button(
+    theme: &Theme,
+    preview_style: ChartCrosshairStyle,
+    label: &'static str,
+    is_selected: bool,
+    guide_lines_enabled: bool,
+    crosshair_scale: f32,
+    on_press_style: ChartCrosshairStyle,
+) -> Element<'static, Message> {
     let label_color = if is_selected {
         theme.palette().primary
     } else {
@@ -396,7 +522,7 @@ fn crosshair_style_card(
     };
 
     let preview: Element<'static, Message> = iced::widget::canvas(CrosshairStylePreview {
-        style,
+        style: preview_style,
         guide_lines_enabled,
         crosshair_scale,
     })
@@ -406,7 +532,7 @@ fn crosshair_style_card(
 
     let content = column![
         preview,
-        text(style.label())
+        text(label)
             .size(10)
             .color(label_color)
             .font(crate::app_fonts::monospace_font())
@@ -416,7 +542,7 @@ fn crosshair_style_card(
     .width(Fill);
 
     button(content)
-        .on_press(Message::ChartCrosshairStyleChanged(style))
+        .on_press(Message::ChartCrosshairStyleChanged(on_press_style))
         .padding([6, 7])
         .width(Fill)
         .style(move |theme: &Theme, status| {
@@ -503,6 +629,8 @@ impl iced::widget::canvas::Program<Message> for CrosshairStylePreview {
                 height: bounds.height,
                 fisheye: crate::chart::fisheye::ChartFisheye::disabled(),
                 accent_color: None,
+                racing_hud_metrics: (self.style == ChartCrosshairStyle::RacingHud)
+                    .then(RacingHudMetrics::preview),
             },
         );
 

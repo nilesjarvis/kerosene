@@ -54,6 +54,7 @@ impl CandlestickChart {
             funding_status: None,
             funding_panel_height: DEFAULT_FUNDING_PANEL_HEIGHT,
             market_reference_price: None,
+            hud_max_notional: None,
             funding_annualized: false,
             macro_indicators: crate::config::MacroIndicatorsConfig::default(),
             daily_candles: Vec::new(),
@@ -119,6 +120,7 @@ impl CandlestickChart {
             funding_status: self.funding_status.clone(),
             funding_panel_height: self.funding_panel_height,
             market_reference_price: self.market_reference_price,
+            hud_max_notional: self.hud_max_notional,
             funding_annualized: self.funding_annualized,
             macro_indicators: self.macro_indicators.clone(),
             daily_candles: self.daily_candles.clone(),
@@ -195,6 +197,10 @@ impl CandlestickChart {
         }
     }
 
+    pub(crate) fn set_hud_max_notional(&mut self, max_notional: Option<f64>) {
+        self.hud_max_notional = max_notional.and_then(crate::helpers::positive_finite_value);
+    }
+
     pub fn set_chart_colors(&mut self, bull: Option<Color>, bear: Option<Color>) {
         if self.chart_bull_color != bull || self.chart_bear_color != bear {
             self.chart_bull_color = bull;
@@ -256,8 +262,9 @@ impl CandlestickChart {
     pub(crate) fn set_crosshair_style(&mut self, style: crate::config::ChartCrosshairStyle) {
         let style = style.normalized();
         if self.crosshair_style != style {
+            let was_game_hud = self.crosshair_style.is_game_hud();
             self.crosshair_style = style;
-            if style != crate::config::ChartCrosshairStyle::Hud {
+            if was_game_hud || style.is_game_hud() {
                 self.clear_hud_armed();
             }
             self.candle_cache.clear();

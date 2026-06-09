@@ -1,6 +1,5 @@
 use super::super::state::{HudMarketSide, HudOrderKind};
 use super::super::{CandlestickChart, ChartState};
-use crate::config::ChartCrosshairStyle;
 use crate::message::Message;
 use iced::keyboard::{self, key};
 use iced::widget::canvas;
@@ -96,7 +95,7 @@ impl CandlestickChart {
     }
 
     pub(in crate::chart) fn hud_game_mode_enabled(&self) -> bool {
-        self.crosshair_style.normalized() == ChartCrosshairStyle::Hud
+        self.crosshair_style.is_game_hud()
     }
 
     pub(super) fn hover_state_action(
