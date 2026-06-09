@@ -27,3 +27,16 @@ fn same_precision_update_replaces_snapshot() {
     assert_eq!(inst.book.bids[0].sz, 1.0);
     assert_eq!(inst.book.asks[0].sz, 1.0);
 }
+
+#[test]
+fn same_precision_update_replaces_source_mid() {
+    let mut inst = active_instance(
+        &[(100.0, 10.0), (95.0, 20.0)],
+        &[(105.0, 10.0), (110.0, 20.0)],
+    );
+    assert_eq!(inst.book_source_mid(), Some(102.5));
+
+    apply_update(&mut inst, &[(110.0, 1.0)], &[(115.0, 1.0)], SNAPSHOT_SCOPE);
+
+    assert_eq!(inst.book_source_mid(), Some(112.5));
+}

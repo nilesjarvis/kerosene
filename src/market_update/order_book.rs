@@ -53,7 +53,7 @@ impl TradingTerminal {
                     && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
                 {
                     let now = std::time::Instant::now();
-                    inst.apply_book_update_preserving_scope(book.clone(), source_tick);
+                    inst.apply_book_update_preserving_scope(book, source_tick);
                     inst.record_mid_price_sample(now);
                     inst.book_loading = false;
                     inst.book_error = None;

@@ -63,6 +63,13 @@ impl HydromancerCoalescedSender {
     }
 
     pub(super) fn submit(&mut self, message: HydromancerRoutedMessage) {
+        if let Some(messages) = split_l2_book_batch_message(&message) {
+            for message in messages {
+                self.submit(message);
+            }
+            return;
+        }
+
         let Some(key) = coalesce_key(&message) else {
             let _ = self.inner.send(message);
             return;
@@ -125,6 +132,41 @@ fn hydromancer_msg_type(json: &Value) -> String {
         .and_then(|value| value.as_str())
         .unwrap_or_default()
         .to_string()
+}
+
+fn split_l2_book_batch_message(
+    message: &HydromancerRoutedMessage,
+) -> Option<Vec<HydromancerRoutedMessage>> {
+    if message.msg_type != "l2Book" {
+        return None;
+    }
+
+    let items = l2_book_batch_items(message.data.as_ref())?;
+    if items.len() <= 1
+        || !items
+            .iter()
+            .all(|item| item.get("coin").and_then(Value::as_str).is_some())
+    {
+        return None;
+    }
+
+    Some(
+        items
+            .into_iter()
+            .map(|item| HydromancerRoutedMessage {
+                msg_type: message.msg_type.clone(),
+                data: Arc::new(item),
+            })
+            .collect(),
+    )
+}
+
+fn l2_book_batch_items(value: &Value) -> Option<Vec<Value>> {
+    value
+        .get("data")
+        .and_then(Value::as_array)
+        .or_else(|| value.get("books").and_then(Value::as_array))
+        .map(|items| items.iter().cloned().collect())
 }
 
 fn coalesce_key(message: &HydromancerRoutedMessage) -> Option<CoalesceKey> {

@@ -3,7 +3,7 @@ use super::planning::{
     order_book_response_matches_expected_precision, plan_order_book_fetch,
 };
 use super::*;
-use crate::market_state::OrderBookSymbolMode;
+use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 
 mod availability;
 mod planning;

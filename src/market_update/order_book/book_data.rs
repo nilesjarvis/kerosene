@@ -204,6 +204,7 @@ impl TradingTerminal {
                 order_book_needs_precision_refresh(
                     inst.tick_size,
                     inst.book_source_tick_size(),
+                    inst.book_source_mid(),
                     inst.pending_book_sigfigs(),
                     inst.book_loading,
                     self.resolve_mid_for_symbol(&symbol),

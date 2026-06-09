@@ -13,6 +13,29 @@ fn receive(
     receiver.try_recv().expect("message should be routed")
 }
 
+fn receive_sequences_by_coin(
+    receiver: &mut broadcast::Receiver<HydromancerRoutedMessage>,
+    count: usize,
+) -> std::collections::HashMap<String, i64> {
+    let mut sequences = std::collections::HashMap::new();
+    for _ in 0..count {
+        let message = receive(receiver);
+        let coin = message
+            .data
+            .get("coin")
+            .and_then(Value::as_str)
+            .expect("split book item should include coin")
+            .to_string();
+        let seq = message
+            .data
+            .get("seq")
+            .and_then(Value::as_i64)
+            .expect("split book item should include seq");
+        sequences.insert(coin, seq);
+    }
+    sequences
+}
+
 #[test]
 fn non_book_messages_pass_through_immediately() {
     let (sender, mut receiver) = broadcast::channel(8);
@@ -82,7 +105,7 @@ fn book_messages_are_coalesced_independently_by_coin() {
 }
 
 #[test]
-fn multi_coin_book_batches_pass_through() {
+fn multi_coin_book_batches_are_coalesced_independently_by_coin() {
     let (sender, mut receiver) = broadcast::channel(8);
     let mut coalescer = HydromancerCoalescedSender::with_interval(sender, Duration::from_secs(60));
 
@@ -107,7 +130,35 @@ fn multi_coin_book_batches_pass_through() {
         }),
     ));
 
-    assert_eq!(receive(&mut receiver).data["data"][0]["seq"], 1);
-    assert_eq!(receive(&mut receiver).data["data"][0]["seq"], 2);
+    let first_batch = receive_sequences_by_coin(&mut receiver, 2);
+    assert_eq!(first_batch.get("BTC"), Some(&1));
+    assert_eq!(first_batch.get("ETH"), Some(&1));
+    assert!(receiver.try_recv().is_err());
+
+    assert_eq!(coalescer.flush_all(), 2);
+    let second_batch = receive_sequences_by_coin(&mut receiver, 2);
+    assert_eq!(second_batch.get("BTC"), Some(&2));
+    assert_eq!(second_batch.get("ETH"), Some(&2));
+}
+
+#[test]
+fn ambiguous_book_batches_pass_through_without_splitting() {
+    let (sender, mut receiver) = broadcast::channel(8);
+    let mut coalescer = HydromancerCoalescedSender::with_interval(sender, Duration::from_secs(60));
+
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({
+            "type": "l2Book",
+            "data": [
+                {"coin": "BTC", "seq": 1},
+                {"seq": 2}
+            ]
+        }),
+    ));
+
+    let message = receive(&mut receiver);
+    assert_eq!(message.data["data"][0]["seq"], 1);
+    assert_eq!(message.data["data"][1]["seq"], 2);
     assert_eq!(coalescer.flush_all(), 0);
 }

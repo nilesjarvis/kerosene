@@ -13,6 +13,11 @@ pub(in crate::market_update::order_book) struct OrderBookFetchPlan {
     pub(in crate::market_update::order_book) sigfigs: (Option<u8>, Option<u8>),
 }
 
+// REST l2Book snapshots return roughly 20 levels per side. Refresh once the
+// market has moved halfway through that remembered coarse-depth window.
+const ORDER_BOOK_SOURCE_LEVELS_PER_SIDE: f64 = 20.0;
+const ORDER_BOOK_SCOPE_REFRESH_FRACTION: f64 = 0.5;
+
 pub(in crate::market_update::order_book) fn plan_order_book_fetch(
     id: OrderBookId,
     mode: &OrderBookSymbolMode,
@@ -47,6 +52,7 @@ pub(in crate::market_update::order_book) fn plan_order_book_fetch(
 pub(in crate::market_update::order_book) fn order_book_needs_precision_refresh(
     selected_tick: f64,
     source_tick: Option<f64>,
+    source_mid: Option<f64>,
     pending_sigfigs: Option<(Option<u8>, Option<u8>)>,
     book_loading: bool,
     mid: Option<f64>,
@@ -70,7 +76,11 @@ pub(in crate::market_update::order_book) fn order_book_needs_precision_refresh(
     let Some(expected_source_tick) = helpers::sigfig_server_tick(expected_sigfigs, mid) else {
         return false;
     };
-    !source_tick.is_some_and(|actual| helpers::tick_sizes_match(actual, expected_source_tick))
+    if !source_tick.is_some_and(|actual| helpers::tick_sizes_match(actual, expected_source_tick)) {
+        return true;
+    }
+
+    order_book_source_scope_is_stale(source_mid, source_tick, mid)
 }
 
 fn saved_tick_requires_aggregated_fetch(selected_tick: f64, mid: f64) -> bool {
@@ -94,4 +104,21 @@ pub(in crate::market_update::order_book) fn order_book_response_matches_expected
     }
 
     sigfigs == helpers::compute_sigfigs(tick_size, mid)
+}
+
+fn order_book_source_scope_is_stale(
+    source_mid: Option<f64>,
+    source_tick: Option<f64>,
+    current_mid: f64,
+) -> bool {
+    let Some(source_mid) = source_mid.and_then(helpers::positive_finite_value) else {
+        return false;
+    };
+    let Some(source_tick) = source_tick.and_then(helpers::positive_finite_value) else {
+        return false;
+    };
+
+    let refresh_distance =
+        source_tick * ORDER_BOOK_SOURCE_LEVELS_PER_SIDE * ORDER_BOOK_SCOPE_REFRESH_FRACTION;
+    (current_mid - source_mid).abs() >= refresh_distance
 }

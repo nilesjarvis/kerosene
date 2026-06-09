@@ -23,6 +23,25 @@ fn finer_live_update_preserves_coarse_snapshot_scope() {
 }
 
 #[test]
+fn finer_live_update_preserves_source_mid_for_scope_refresh() {
+    let mut inst = active_instance(
+        &[(100.0, 10.0), (95.0, 20.0), (90.0, 30.0)],
+        &[(105.0, 10.0), (110.0, 20.0), (115.0, 30.0)],
+    );
+    let source_mid = inst.book_source_mid();
+
+    apply_update(
+        &mut inst,
+        &[(110.0, 1.0), (109.0, 2.0)],
+        &[(111.0, 1.0), (112.0, 2.0)],
+        FINER_SCOPE,
+    );
+
+    assert_eq!(inst.book_source_mid(), source_mid);
+    assert_eq!(inst.book.mid_price(), 110.5);
+}
+
+#[test]
 fn finer_bid_update_drops_stale_bids_above_fresh_scope() {
     let mut inst = active_instance(
         &[(105.0, 10.0), (100.0, 20.0), (95.0, 30.0)],

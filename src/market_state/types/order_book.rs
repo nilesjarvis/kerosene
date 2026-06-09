@@ -1,6 +1,6 @@
 use crate::account::AssetContext;
 use crate::api::OrderBook;
-use crate::helpers::tick_sizes_match;
+use crate::helpers::{positive_finite_value, tick_sizes_match};
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -68,6 +68,7 @@ pub struct OrderBookInstance {
     pub spread_chart_height: f32,
     pub(super) mid_price_history: VecDeque<(Instant, f64)>,
     book_source_tick_size: Option<f64>,
+    book_source_mid: Option<f64>,
     pending_book_sigfigs: Option<(Option<u8>, Option<u8>)>,
     pub(super) book_revision: u64,
     aggregated: RefCell<AggregatedDepth>,
@@ -95,6 +96,7 @@ impl OrderBookInstance {
             spread_chart_height: DEFAULT_ORDER_BOOK_SPREAD_CHART_HEIGHT,
             mid_price_history: VecDeque::new(),
             book_source_tick_size: None,
+            book_source_mid: None,
             pending_book_sigfigs: None,
             book_revision: 0,
             aggregated: RefCell::new(AggregatedDepth::default()),
@@ -109,13 +111,19 @@ impl OrderBookInstance {
     }
 
     pub fn set_book_with_source(&mut self, book: OrderBook, source_tick_size: Option<f64>) {
+        let source_mid = positive_finite_value(book.mid_price());
         self.book = book;
         self.book_source_tick_size = source_tick_size;
+        self.book_source_mid = source_mid;
         self.book_revision = self.book_revision.wrapping_add(1);
     }
 
     pub fn book_source_tick_size(&self) -> Option<f64> {
         self.book_source_tick_size
+    }
+
+    pub fn book_source_mid(&self) -> Option<f64> {
+        self.book_source_mid
     }
 
     pub fn pending_book_sigfigs(&self) -> Option<(Option<u8>, Option<u8>)> {
