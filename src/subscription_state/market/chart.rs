@@ -35,10 +35,7 @@ impl TradingTerminal {
                     .and_modify(|id| *id = (*id).min(instance.id))
                     .or_insert(instance.id);
             }
-            if !instance.symbol.is_empty()
-                && !self.symbol_key_is_hidden(&instance.symbol)
-                && !self.is_outcome_coin(&instance.symbol)
-            {
+            if !instance.symbol.is_empty() && !self.symbol_key_is_hidden(&instance.symbol) {
                 asset_ctx_streams
                     .entry(instance.symbol.clone())
                     .and_modify(|id| *id = (*id).min(instance.id))

@@ -1,6 +1,8 @@
 mod columns;
 
-pub(super) use self::columns::{ChartHeaderMetricVisibility, push_outcome_volume_column};
+pub(super) use self::columns::{
+    ChartHeaderMetricVisibility, push_outcome_asset_context_columns, push_outcome_volume_column,
+};
 use self::columns::{push_perp_metric_columns, push_spot_metric_columns};
 
 use crate::account::AssetContext;

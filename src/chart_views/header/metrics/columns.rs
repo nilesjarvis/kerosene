@@ -15,8 +15,8 @@ use formatting::format_open_interest_notional;
 use formatting::format_volume;
 use formatting::{
     asset_volume_label, format_asset_volume, format_funding_pct, format_metric_price,
-    format_open_interest, format_outcome_volume, open_interest_label, outcome_volume_label,
-    parse_ctx_f64,
+    format_open_interest, format_outcome_asset_volume, format_outcome_volume, open_interest_label,
+    outcome_volume_label, parse_ctx_f64,
 };
 
 const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
@@ -73,6 +73,59 @@ pub(in crate::chart_views::header) fn push_outcome_volume_column<'a>(
             ));
         }
     }
+    header_row
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(in crate::chart_views::header) fn push_outcome_asset_context_columns<'a>(
+    mut header_row: Row<'a, Message>,
+    theme: &Theme,
+    chart_id: ChartId,
+    ctx: &'a AssetContext,
+    fallback_volume: Option<OutcomeVolume24h>,
+    time_left: Option<String>,
+    chart_price: f64,
+    volume_as_notional: bool,
+    open_interest_as_notional: bool,
+    visibility: ChartHeaderMetricVisibility,
+) -> Row<'a, Message> {
+    let base_volume = parse_ctx_f64(ctx.day_base_vlm.as_deref());
+    let notional_volume = parse_ctx_f64(ctx.day_ntl_vlm.as_deref());
+    let oi = parse_ctx_f64(ctx.open_interest.as_deref());
+
+    if visibility.show_24h_volume {
+        header_row = header_row.push(clickable_metric_column(
+            outcome_volume_label(volume_as_notional),
+            format_outcome_asset_volume(
+                base_volume,
+                notional_volume,
+                fallback_volume,
+                volume_as_notional,
+            ),
+            theme.palette().text,
+            theme,
+            Message::ToggleOutcomeVolumeNotional(chart_id),
+        ));
+        if let Some(time_left) = time_left {
+            header_row = header_row.push(metric_column(
+                "Time Left".to_string(),
+                time_left,
+                theme.palette().text,
+                theme,
+            ));
+        }
+    }
+
+    if visibility.show_open_interest {
+        header_row = header_row.push(clickable_metric_column(
+            open_interest_label(open_interest_as_notional),
+            format_open_interest(oi, chart_price, open_interest_as_notional),
+            theme.palette().text,
+            theme,
+            Message::ToggleOpenInterestNotional(chart_id),
+        ));
+    }
+
     header_row
 }
 

@@ -1,7 +1,7 @@
 use super::{
     ChartHeaderMetricVisibility, asset_volume_label, format_asset_volume, format_funding_pct,
-    format_open_interest, format_open_interest_notional, format_outcome_volume, format_volume,
-    open_interest_label, outcome_volume_label, parse_ctx_f64,
+    format_open_interest, format_open_interest_notional, format_outcome_asset_volume,
+    format_outcome_volume, format_volume, open_interest_label, outcome_volume_label, parse_ctx_f64,
 };
 use crate::api::OutcomeVolume24h;
 
@@ -54,6 +54,35 @@ fn outcome_volume_formats_contracts_and_notional() {
     assert_eq!(format_outcome_volume(volume, true), "$4.5K");
     assert_eq!(outcome_volume_label(false), "24h Vol");
     assert_eq!(outcome_volume_label(true), "24h Vol $");
+}
+
+#[test]
+fn outcome_asset_volume_prefers_live_context_and_falls_back_to_candle_volume() {
+    let fallback = OutcomeVolume24h {
+        contract: 18_055.0,
+        notional: 4_513.75,
+    };
+
+    assert_eq!(
+        format_outcome_asset_volume(Some(20_000.0), Some(5_000.0), Some(fallback), false),
+        "20.0K contracts"
+    );
+    assert_eq!(
+        format_outcome_asset_volume(Some(20_000.0), Some(5_000.0), Some(fallback), true),
+        "$5.0K"
+    );
+    assert_eq!(
+        format_outcome_asset_volume(None, Some(5_000.0), Some(fallback), false),
+        "18.1K contracts"
+    );
+    assert_eq!(
+        format_outcome_asset_volume(Some(20_000.0), None, Some(fallback), true),
+        "$4.5K"
+    );
+    assert_eq!(
+        format_outcome_asset_volume(None, None, None, false),
+        "Invalid data"
+    );
 }
 
 #[test]

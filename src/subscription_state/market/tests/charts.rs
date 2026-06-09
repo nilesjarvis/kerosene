@@ -24,3 +24,19 @@ fn duplicate_chart_market_streams_are_deduplicated_by_market_key() {
 
     assert_eq!(subscriptions.len(), 5);
 }
+
+#[test]
+fn outcome_charts_subscribe_to_asset_context_for_header_metrics() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.exchange_symbols = vec![exchange_symbol("#650", MarketType::Outcome)];
+
+    terminal
+        .charts
+        .insert(1, ChartInstance::new(1, "#650".to_string(), Timeframe::H1));
+
+    let mut subscriptions = Vec::new();
+    terminal.push_chart_market_subscriptions(&mut subscriptions);
+
+    assert_eq!(subscriptions.len(), 1);
+}

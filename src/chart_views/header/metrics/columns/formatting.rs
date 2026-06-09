@@ -91,6 +91,22 @@ pub(super) fn format_outcome_volume(volume: OutcomeVolume24h, as_notional: bool)
     }
 }
 
+pub(super) fn format_outcome_asset_volume(
+    base_volume: Option<f64>,
+    notional_volume: Option<f64>,
+    fallback: Option<OutcomeVolume24h>,
+    as_notional: bool,
+) -> String {
+    if as_notional {
+        format_volume(notional_volume.or_else(|| fallback.map(|volume| volume.notional)))
+    } else {
+        let contract_volume = base_volume.or_else(|| fallback.map(|volume| volume.contract));
+        contract_volume
+            .map(format_outcome_contract_volume)
+            .unwrap_or_else(invalid_data_placeholder)
+    }
+}
+
 fn format_outcome_contract_volume(value: f64) -> String {
     if !value.is_finite() || value < 0.0 {
         return invalid_data_placeholder();

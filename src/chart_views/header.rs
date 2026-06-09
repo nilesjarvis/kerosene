@@ -5,7 +5,8 @@ mod symbol;
 
 use self::feedback::format_signed_usd_change;
 use self::metrics::{
-    ChartHeaderMetricVisibility, push_asset_context_columns, push_outcome_volume_column,
+    ChartHeaderMetricVisibility, push_asset_context_columns, push_outcome_asset_context_columns,
+    push_outcome_volume_column,
 };
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
@@ -91,27 +92,42 @@ impl TradingTerminal {
             header_row = header_row.push(Space::new().width(8)).push(col_chg);
         }
 
-        if self.is_outcome_coin(&instance.symbol)
-            && let Some(volume) = self.outcome_volumes_24h.get(&instance.symbol)
-        {
+        let is_outcome = self.is_outcome_coin(&instance.symbol);
+        if is_outcome {
             let outcome_time_left = self
                 .exchange_symbols
                 .iter()
                 .find(|symbol| symbol.key == instance.symbol)
                 .and_then(|symbol| symbol.outcome.as_ref())
                 .and_then(|info| info.time_left_label(Self::now_ms()));
-            header_row = push_outcome_volume_column(
-                header_row,
-                &theme,
-                chart_id,
-                *volume,
-                outcome_time_left,
-                instance.outcome_volume_as_notional,
-                metric_visibility,
-            );
+
+            if let Some(ctx) = &instance.asset_ctx {
+                header_row = push_outcome_asset_context_columns(
+                    header_row,
+                    &theme,
+                    chart_id,
+                    ctx,
+                    self.outcome_volumes_24h.get(&instance.symbol).copied(),
+                    outcome_time_left,
+                    last.close,
+                    instance.outcome_volume_as_notional,
+                    instance.open_interest_as_notional,
+                    metric_visibility,
+                );
+            } else if let Some(volume) = self.outcome_volumes_24h.get(&instance.symbol) {
+                header_row = push_outcome_volume_column(
+                    header_row,
+                    &theme,
+                    chart_id,
+                    *volume,
+                    outcome_time_left,
+                    instance.outcome_volume_as_notional,
+                    metric_visibility,
+                );
+            }
         }
 
-        if let Some(ctx) = &instance.asset_ctx {
+        if !is_outcome && let Some(ctx) = &instance.asset_ctx {
             header_row = push_asset_context_columns(
                 header_row,
                 &theme,
