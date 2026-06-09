@@ -34,6 +34,26 @@ fn realtime_candle_update_rejects_malformed_candles() {
 }
 
 #[test]
+fn set_normalized_candles_uses_cache_ready_data() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_normalized_candles(vec![candle_at(1_000, 10.0), candle_at(2_000, 20.0)]);
+
+    assert_eq!(
+        chart
+            .candles
+            .iter()
+            .map(|candle| candle.open_time)
+            .collect::<Vec<_>>(),
+        vec![1_000, 2_000]
+    );
+    assert!(matches!(chart.status, ChartStatus::Loaded));
+
+    chart.set_normalized_candles(Vec::new());
+
+    assert!(matches!(chart.status, ChartStatus::Error(_)));
+}
+
+#[test]
 fn merge_funding_history_updates_overlaps_and_keeps_sorted_order() {
     let mut chart = CandlestickChart::new(1);
     chart.set_funding_history(vec![

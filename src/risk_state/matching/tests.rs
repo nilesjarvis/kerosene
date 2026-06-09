@@ -111,3 +111,22 @@ fn account_data_with_mode(
         fetched_at_ms: 1,
     }
 }
+
+#[test]
+fn empty_muted_ticker_set_matches_no_symbols() {
+    let symbols = vec![
+        symbol("BTC", "BTC", MarketType::Perp),
+        symbol("xyz:NVDA", "NVDA", MarketType::Perp),
+    ];
+    let muted = std::collections::HashSet::new();
+
+    assert!(!TradingTerminal::key_matches_muted_tickers(
+        &symbols, &muted, "BTC"
+    ));
+    assert!(!TradingTerminal::key_matches_muted_tickers(
+        &symbols, &muted, "NVDA"
+    ));
+    assert!(!TradingTerminal::key_matches_muted_tickers(
+        &symbols, &muted, "xyz:NVDA"
+    ));
+}

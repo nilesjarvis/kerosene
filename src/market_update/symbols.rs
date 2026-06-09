@@ -149,7 +149,8 @@ impl TradingTerminal {
                 }
 
                 let chart_backfill_source = self.chart_backfill_source;
-                let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+                let hydromancer_api_key =
+                    self.hydromancer_key_for_chart_backfill_source(chart_backfill_source);
                 for (id, inst) in self.charts.iter_mut() {
                     let key = inst.symbol.clone();
                     let symbol = resolve_exchange_symbol(&self.exchange_symbols, &key);

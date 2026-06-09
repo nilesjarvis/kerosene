@@ -82,7 +82,7 @@ impl TradingTerminal {
             ));
         }
         if let Some((old_tf, old_symbol, old_candles)) = old_cache_data {
-            self.cache_candles(&old_symbol, old_tf, old_candles);
+            self.cache_loaded_chart_candles(&old_symbol, old_tf, old_candles);
         }
         self.clear_all_chart_surface_state(id);
 
@@ -108,7 +108,7 @@ impl TradingTerminal {
 
             if let Some(candles) = cached_candles {
                 cached_last_time = candles.last().map(|c| c.open_time);
-                instance.chart.set_candles(candles);
+                instance.chart.set_normalized_candles(candles);
             } else {
                 instance.chart.status = ChartStatus::Loading;
                 instance.chart.candles.clear();

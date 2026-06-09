@@ -9,7 +9,7 @@ use iced::Task;
 
 mod cache;
 
-use self::cache::{get_fresh_cached_candles, store_normalized_candles};
+use self::cache::{get_fresh_cached_candles, store_cached_candles, store_normalized_candles};
 
 pub(crate) const CANDLE_FETCH_MAX_ATTEMPTS: u8 = 4;
 
@@ -116,6 +116,23 @@ impl TradingTerminal {
         )
     }
 
+    pub(crate) fn chart_backfill_hydromancer_key(
+        source: ChartBackfillSource,
+        hydromancer_api_key: &str,
+    ) -> String {
+        match source {
+            ChartBackfillSource::Hyperliquid => String::new(),
+            ChartBackfillSource::Hydromancer => hydromancer_api_key.trim().to_string(),
+        }
+    }
+
+    pub(crate) fn hydromancer_key_for_chart_backfill_source(
+        &self,
+        source: ChartBackfillSource,
+    ) -> String {
+        Self::chart_backfill_hydromancer_key(source, self.hydromancer_api_key.trim())
+    }
+
     pub(crate) fn queue_candle_fetch(&mut self, request: CandleFetchRequest) -> Task<Message> {
         if let Some(instance) = self.charts.get_mut(&request.chart_id) {
             instance.candle_fetch_request = Some(request.clone());
@@ -124,7 +141,8 @@ impl TradingTerminal {
                 instance.chart.status = ChartStatus::Loading;
             }
         }
-        Self::fetch_candles_task(request, self.hydromancer_api_key.trim().to_string())
+        let hydromancer_api_key = self.hydromancer_key_for_chart_backfill_source(request.source);
+        Self::fetch_candles_task(request, hydromancer_api_key)
     }
 
     pub(crate) fn queue_candle_fetch_for(
@@ -150,7 +168,7 @@ impl TradingTerminal {
         self.candle_data_cache_order.clear();
 
         let source = self.chart_backfill_source;
-        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_key = self.hydromancer_key_for_chart_backfill_source(source);
         let chart_requests: Vec<_> = self
             .charts
             .iter()
@@ -245,6 +263,21 @@ impl TradingTerminal {
         );
     }
 
+    pub(crate) fn cache_loaded_chart_candles(
+        &mut self,
+        symbol: &str,
+        tf: Timeframe,
+        candles: Vec<Candle>,
+    ) {
+        store_cached_candles(
+            &mut self.candle_data_cache,
+            &mut self.candle_data_cache_order,
+            symbol,
+            tf,
+            candles,
+        );
+    }
+
     pub(crate) fn get_cached_candles(
         &mut self,
         symbol: &str,
@@ -257,5 +290,28 @@ impl TradingTerminal {
             tf,
             Self::now_ms(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chart_backfill_hydromancer_key_is_source_aware() {
+        assert_eq!(
+            TradingTerminal::chart_backfill_hydromancer_key(
+                ChartBackfillSource::Hyperliquid,
+                "  hydromancer-secret  "
+            ),
+            ""
+        );
+        assert_eq!(
+            TradingTerminal::chart_backfill_hydromancer_key(
+                ChartBackfillSource::Hydromancer,
+                "  hydromancer-secret  "
+            ),
+            "hydromancer-secret"
+        );
     }
 }

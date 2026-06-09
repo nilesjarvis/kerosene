@@ -19,6 +19,8 @@ mod order_cancel_hover;
 mod order_hit;
 mod order_labels;
 mod overlays;
+#[cfg(test)]
+pub(crate) mod perf_probe;
 mod price_badges;
 mod price_range;
 mod program;

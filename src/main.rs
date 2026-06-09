@@ -66,6 +66,8 @@ mod pane_interaction_update;
 mod pane_management;
 mod pane_state;
 mod pane_update;
+#[cfg(test)]
+mod perf_harness;
 mod pnl_card;
 mod portfolio_state;
 mod portfolio_update;

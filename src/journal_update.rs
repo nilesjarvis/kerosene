@@ -476,7 +476,7 @@ impl TradingTerminal {
 
         let account_key = request.account_key.clone();
         let address = request.address.clone();
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_api_key = self.hydromancer_key_for_chart_backfill_source(request.source);
         let fetch_request = request.clone();
 
         Task::perform(

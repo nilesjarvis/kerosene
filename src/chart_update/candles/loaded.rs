@@ -91,14 +91,15 @@ impl TradingTerminal {
         }
 
         if let Some(request) = retry_request {
-            return Self::fetch_candles_task(request, self.hydromancer_api_key.trim().to_string());
+            let hydromancer_key = self.hydromancer_key_for_chart_backfill_source(request.source);
+            return Self::fetch_candles_task(request, hydromancer_key);
         }
 
         if let Some((symbol, tf, new_cache)) = new_cache_data {
             self.sync_chart_position_for(id);
             self.sync_chart_orders_for(id);
             self.sync_chart_trade_markers_for(id);
-            self.cache_candles(&symbol, tf, new_cache);
+            self.cache_loaded_chart_candles(&symbol, tf, new_cache);
         } else if let Some((symbol, tf)) = remove_cache_data {
             let key = (symbol, tf);
             self.candle_data_cache.remove(&key);

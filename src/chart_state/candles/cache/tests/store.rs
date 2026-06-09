@@ -31,6 +31,25 @@ fn store_normalized_candles_sorts_and_moves_key_to_back() {
 }
 
 #[test]
+fn store_cached_candles_keeps_cache_ready_data_and_moves_key_to_back() {
+    let mut cache = HashMap::new();
+    let mut order = VecDeque::from([cache_key("BTC", Timeframe::M1)]);
+
+    store_cached_candles(
+        &mut cache,
+        &mut order,
+        "BTC",
+        Timeframe::M1,
+        vec![candle(1_000, 101.0), candle(2_000, 102.0)],
+    );
+
+    let cached = cached_candles_or_panic(&cache, "BTC", Timeframe::M1);
+    assert_eq!(cached[0].open_time, 1_000);
+    assert_eq!(cached[1].open_time, 2_000);
+    assert_eq!(order, VecDeque::from([cache_key("BTC", Timeframe::M1)]));
+}
+
+#[test]
 fn store_normalized_candles_evicts_oldest_key_after_capacity() {
     let mut cache = HashMap::new();
     let mut order = VecDeque::new();

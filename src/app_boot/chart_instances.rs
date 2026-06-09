@@ -18,6 +18,8 @@ impl TradingTerminal {
     ) -> (HashMap<ChartId, ChartInstance>, Vec<Task<Message>>) {
         let mut boot_tasks = Vec::new();
         let mut charts = HashMap::new();
+        let backfill_hydromancer_key =
+            Self::chart_backfill_hydromancer_key(chart_backfill_source, &hydromancer_api_key);
 
         for chart_cfg in chart_configs {
             let id = chart_cfg.id;
@@ -60,7 +62,7 @@ impl TradingTerminal {
                 instance.candle_fetch_request = Some(request.clone());
                 boot_tasks.push(Self::fetch_candles_task(
                     request,
-                    hydromancer_api_key.clone(),
+                    backfill_hydromancer_key.clone(),
                 ));
                 boot_tasks.extend(Self::fetch_macro_candles_tasks(id, &chart_cfg.symbol));
             } else if !chart_cfg.symbol.is_empty() {
@@ -84,6 +86,8 @@ impl TradingTerminal {
     ) {
         let mut boot_tasks = Vec::new();
         let mut spaghetti_charts = HashMap::new();
+        let backfill_hydromancer_key =
+            Self::chart_backfill_hydromancer_key(chart_backfill_source, &hydromancer_api_key);
 
         for scfg in spaghetti_configs {
             let sid = scfg.id;
@@ -133,7 +137,7 @@ impl TradingTerminal {
                     None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,
-                        hydromancer_api_key.clone(),
+                        backfill_hydromancer_key.clone(),
                     ),
                 ));
             }

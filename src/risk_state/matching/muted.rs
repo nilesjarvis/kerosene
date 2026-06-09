@@ -70,6 +70,10 @@ impl TradingTerminal {
         muted_tickers: &HashSet<String>,
         key_or_coin: &str,
     ) -> bool {
+        if muted_tickers.is_empty() {
+            return false;
+        }
+
         let normalized = match Self::normalize_muted_ticker_input(key_or_coin) {
             Some(value) => value,
             None => return false,

@@ -32,6 +32,7 @@ pub(crate) struct ScreenerState {
     pub(crate) sort_column: ScreenerSortColumn,
     pub(crate) sort_direction: SortDirection,
     samples: HashMap<String, VecDeque<ScreenerPriceSample>>,
+    samples_last_record_ms: Option<u64>,
 }
 
 impl Default for ScreenerState {
@@ -50,6 +51,7 @@ impl Default for ScreenerState {
             sort_column: ScreenerSortColumn::Volume,
             sort_direction: SortDirection::Descending,
             samples: HashMap::new(),
+            samples_last_record_ms: None,
         }
     }
 }
@@ -142,7 +144,33 @@ impl ScreenerState {
     }
 
     pub(crate) fn record_mid_samples(&mut self, mids: &HashMap<String, f64>, now_ms: u64) {
+        self.record_mid_samples_with_options(mids, now_ms, false);
+    }
+
+    pub(crate) fn force_record_mid_samples(&mut self, mids: &HashMap<String, f64>, now_ms: u64) {
+        self.record_mid_samples_with_options(mids, now_ms, true);
+    }
+
+    fn record_mid_samples_with_options(
+        &mut self,
+        mids: &HashMap<String, f64>,
+        now_ms: u64,
+        force: bool,
+    ) {
+        if mids.is_empty() {
+            return;
+        }
+        if !force
+            && !self.samples.is_empty()
+            && self.samples_last_record_ms.is_some_and(|last_record| {
+                now_ms.saturating_sub(last_record) < SCREENER_SAMPLE_INTERVAL_MS
+            })
+        {
+            return;
+        }
+
         let cutoff = now_ms.saturating_sub(SCREENER_SAMPLE_RETENTION_MS);
+        self.samples_last_record_ms = Some(now_ms);
 
         for (symbol, price) in mids {
             if !price.is_finite() || *price <= 0.0 {
@@ -196,6 +224,14 @@ impl ScreenerState {
 impl TradingTerminal {
     pub(crate) fn record_screener_mid_samples(&mut self, mids: &HashMap<String, f64>, now_ms: u64) {
         self.screener.record_mid_samples(mids, now_ms);
+    }
+
+    pub(crate) fn force_record_screener_mid_samples(
+        &mut self,
+        mids: &HashMap<String, f64>,
+        now_ms: u64,
+    ) {
+        self.screener.force_record_mid_samples(mids, now_ms);
     }
 
     pub(crate) fn screener_symbols(&self) -> Vec<&ExchangeSymbol> {
@@ -426,6 +462,49 @@ mod tests {
         let samples = state.samples.get("BTC").expect("BTC samples");
         assert_eq!(samples.len(), 1);
         assert_eq!(samples[0].price, 102.0);
+    }
+
+    #[test]
+    fn samples_skip_full_sweep_until_interval_elapsed() {
+        let mut state = ScreenerState::default();
+        let mut mids = HashMap::from([("BTC".to_string(), 100.0)]);
+
+        state.record_mid_samples(&mids, 1_000);
+        mids.insert("BTC".to_string(), 101.0);
+        mids.insert("ETH".to_string(), 2_000.0);
+        state.record_mid_samples(&mids, 30_000);
+
+        assert!(!state.samples.contains_key("ETH"));
+        let samples = state.samples.get("BTC").expect("BTC samples");
+        assert_eq!(samples.len(), 1);
+        assert_eq!(samples[0].price, 100.0);
+
+        state.record_mid_samples(&mids, 61_000);
+
+        let btc_samples = state.samples.get("BTC").expect("BTC samples");
+        assert_eq!(btc_samples.len(), 2);
+        assert_eq!(btc_samples[1].price, 101.0);
+        let eth_samples = state.samples.get("ETH").expect("ETH samples");
+        assert_eq!(eth_samples.len(), 1);
+        assert_eq!(eth_samples[0].price, 2_000.0);
+    }
+
+    #[test]
+    fn forced_samples_record_new_symbols_inside_interval() {
+        let mut state = ScreenerState::default();
+        let mut mids = HashMap::from([("BTC".to_string(), 100.0)]);
+
+        state.record_mid_samples(&mids, 1_000);
+        mids.insert("BTC".to_string(), 101.0);
+        mids.insert("ETH".to_string(), 2_000.0);
+        state.force_record_mid_samples(&mids, 30_000);
+
+        let btc_samples = state.samples.get("BTC").expect("BTC samples");
+        assert_eq!(btc_samples.len(), 1);
+        assert_eq!(btc_samples[0].price, 100.0);
+        let eth_samples = state.samples.get("ETH").expect("ETH samples");
+        assert_eq!(eth_samples.len(), 1);
+        assert_eq!(eth_samples[0].price, 2_000.0);
     }
 
     #[test]

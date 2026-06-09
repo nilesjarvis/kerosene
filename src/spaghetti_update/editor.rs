@@ -53,7 +53,8 @@ impl TradingTerminal {
             .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
         let theme = self.theme();
         let chart_backfill_source = self.chart_backfill_source;
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_api_key =
+            self.hydromancer_key_for_chart_backfill_source(chart_backfill_source);
         let mut task = Task::none();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id)
             && !inst.canvas.series.iter().any(|s| s.symbol == key)

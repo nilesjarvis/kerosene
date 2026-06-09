@@ -21,6 +21,16 @@ pub(super) fn store_normalized_candles(
     candles: Vec<Candle>,
 ) {
     let candles = api::normalize_candles(candles);
+    store_cached_candles(cache, order, symbol, timeframe, candles);
+}
+
+pub(super) fn store_cached_candles(
+    cache: &mut HashMap<CandleCacheKey, Vec<Candle>>,
+    order: &mut VecDeque<CandleCacheKey>,
+    symbol: &str,
+    timeframe: Timeframe,
+    candles: Vec<Candle>,
+) {
     if candles.is_empty() {
         return;
     }

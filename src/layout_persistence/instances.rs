@@ -74,7 +74,7 @@ impl TradingTerminal {
                 instance.candle_fetch_request = Some(request.clone());
                 boot_tasks.push(Self::fetch_candles_task(
                     request,
-                    self.hydromancer_api_key.trim().to_string(),
+                    self.hydromancer_key_for_chart_backfill_source(self.chart_backfill_source),
                 ));
                 boot_tasks.extend(Self::fetch_macro_candles_tasks(id, &chart_cfg.symbol));
             } else if !chart_cfg.symbol.is_empty() {
@@ -142,7 +142,7 @@ impl TradingTerminal {
                     None,
                     ChartBackfillFetchContext::new(
                         self.chart_backfill_source,
-                        self.hydromancer_api_key.trim().to_string(),
+                        self.hydromancer_key_for_chart_backfill_source(self.chart_backfill_source),
                     ),
                 ));
             }

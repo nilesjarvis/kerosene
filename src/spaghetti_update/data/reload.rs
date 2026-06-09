@@ -12,7 +12,8 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let mut tasks = Vec::new();
         let chart_backfill_source = self.chart_backfill_source;
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_api_key =
+            self.hydromancer_key_for_chart_backfill_source(chart_backfill_source);
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
             let target_tf = Self::spaghetti_effective_timeframe_for(

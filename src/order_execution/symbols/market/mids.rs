@@ -9,7 +9,6 @@ use crate::signing::OrderKind;
 
 impl TradingTerminal {
     pub(crate) fn mid_candidates_for_symbol(&self, symbol: &str) -> Vec<String> {
-        let _theme = self.theme();
         let mut out = Vec::new();
         let mut push_unique = |value: String| {
             if !value.is_empty() && !out.contains(&value) {
@@ -45,7 +44,6 @@ impl TradingTerminal {
     }
 
     pub(crate) fn resolve_mid_for_symbol(&self, symbol: &str) -> Option<f64> {
-        let _theme = self.theme();
         resolve_live_mid_from_candidates(
             &self.mid_candidates_for_symbol(symbol),
             &self.all_mids,

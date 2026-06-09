@@ -6,9 +6,21 @@ use crate::api::{Candle, is_valid_candle, normalize_candles};
 // ---------------------------------------------------------------------------
 
 impl CandlestickChart {
-    /// Replace all candle data (e.g. after initial fetch or interval change).
+    /// Replace all candle data for tests and deterministic harness setup.
+    #[cfg(test)]
     pub fn set_candles(&mut self, candles: Vec<Candle>) {
         self.candles = normalize_candles(candles);
+        self.status = if self.candles.is_empty() {
+            ChartStatus::Error("No candle data returned".to_string())
+        } else {
+            ChartStatus::Loaded
+        };
+        self.candle_cache.clear();
+    }
+
+    /// Replace candle data that has already been normalized by the candle cache.
+    pub(crate) fn set_normalized_candles(&mut self, candles: Vec<Candle>) {
+        self.candles = candles;
         self.status = if self.candles.is_empty() {
             ChartStatus::Error("No candle data returned".to_string())
         } else {

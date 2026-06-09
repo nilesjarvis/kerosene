@@ -57,7 +57,7 @@ impl TradingTerminal {
 
         let now_ms = Self::now_ms();
         let mids = self.all_mids.clone();
-        self.record_screener_mid_samples(&mids, now_ms);
+        self.force_record_screener_mid_samples(&mids, now_ms);
 
         Task::batch([
             task.map(Message::WindowOpened),

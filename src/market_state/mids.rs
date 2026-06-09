@@ -20,18 +20,18 @@ impl TradingTerminal {
         let now_ms = Self::now_ms();
         self.record_screener_mid_samples(&mids, now_ms);
 
-        let exchange_symbols = self.exchange_symbols.clone();
-        let muted_tickers = self.muted_tickers.clone();
-        let market_universe = self.market_universe.clone();
+        let exchange_symbols = &self.exchange_symbols;
+        let muted_tickers = &self.muted_tickers;
+        let market_universe = &self.market_universe;
         let denomination_rate_key = self.display_denomination_rate_symbol_key();
         let is_hidden = |symbol: &str| {
             if denomination_rate_key.as_deref() == Some(symbol) {
                 return false;
             }
             Self::symbol_key_is_hidden_with(
-                &exchange_symbols,
-                &muted_tickers,
-                &market_universe,
+                exchange_symbols,
+                muted_tickers,
+                market_universe,
                 symbol,
             )
         };
