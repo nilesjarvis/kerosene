@@ -532,6 +532,7 @@ impl TradingTerminal {
                 let had_seen_posts = self.telegram_feed.has_seen_posts_for_channel(&channel);
                 let mut new_posts = Vec::new();
                 for mut post in page.posts {
+                    post.mark_applied(now_ms);
                     let already_seen = self
                         .telegram_feed
                         .record_seen_post(&channel, post.message_id);
@@ -553,6 +554,7 @@ impl TradingTerminal {
                         existing_post.timestamp_ms = post.timestamp_ms;
                         existing_post.url = post.url;
                         existing_post.ticker_mentions = mentions;
+                        existing_post.applied_at_ms = post.applied_at_ms;
                     } else {
                         if had_seen_posts && !already_seen {
                             post.first_seen_ms = now_ms;
@@ -835,6 +837,9 @@ mod tests {
             message_id,
             text: "sample".to_string(),
             timestamp_ms: 1_000,
+            source: crate::telegram_feed::TelegramFeedPostSource::PublicPoll,
+            received_at_ms: 1_100,
+            applied_at_ms: 0,
             fetched_at_ms: 1_100,
             request_started_ms: 1_050,
             request_duration_ms: 50,
@@ -1322,17 +1327,24 @@ mod tests {
                 peer_id: 42,
                 title: "Private Macro".to_string(),
             }];
+        let mut post = sample_post(&key, 7);
+        post.source = crate::telegram_feed::TelegramFeedPostSource::FastLive;
+        post.received_at_ms = 1_100;
+        post.first_seen_ms = 1_100;
 
         let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
-            TelegramFastFeedEvent::Loaded(
-                key.clone(),
-                Box::new(Ok(sample_page(&key, vec![sample_post(&key, 7)]))),
-            ),
+            TelegramFastFeedEvent::Loaded(key.clone(), Box::new(Ok(sample_page(&key, vec![post])))),
         ));
 
         assert_eq!(terminal.telegram_feed.posts.len(), 1);
         assert_eq!(terminal.telegram_feed.posts[0].channel, key);
         assert_eq!(terminal.telegram_feed.posts[0].message_id, 7);
+        assert_eq!(
+            terminal.telegram_feed.posts[0].source,
+            crate::telegram_feed::TelegramFeedPostSource::FastLive
+        );
+        assert_eq!(terminal.telegram_feed.posts[0].received_at_ms, 1_100);
+        assert!(terminal.telegram_feed.posts[0].applied_at_ms > 0);
     }
 
     #[test]

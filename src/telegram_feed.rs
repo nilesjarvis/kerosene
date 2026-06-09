@@ -46,12 +46,22 @@ pub(crate) struct TelegramFeedPost {
     pub(crate) message_id: u64,
     pub(crate) text: String,
     pub(crate) timestamp_ms: u64,
+    pub(crate) source: TelegramFeedPostSource,
+    pub(crate) received_at_ms: u64,
+    pub(crate) applied_at_ms: u64,
     pub(crate) fetched_at_ms: u64,
     pub(crate) request_started_ms: u64,
     pub(crate) request_duration_ms: u64,
     pub(crate) first_seen_ms: u64,
     pub(crate) url: String,
     pub(crate) ticker_mentions: Vec<TelegramTickerMention>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TelegramFeedPostSource {
+    PublicPoll,
+    FastBackfill,
+    FastLive,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,8 +152,13 @@ impl TelegramFeedPost {
     ) -> Self {
         self.request_started_ms = request_started_ms;
         self.fetched_at_ms = fetched_at_ms;
+        self.received_at_ms = fetched_at_ms;
         self.request_duration_ms = request_duration_ms;
         self
+    }
+
+    pub(crate) fn mark_applied(&mut self, applied_at_ms: u64) {
+        self.applied_at_ms = applied_at_ms;
     }
 }
 
@@ -651,6 +666,9 @@ fn parse_telegram_message_block(channel: &str, block: &str) -> Option<TelegramFe
         message_id,
         text,
         timestamp_ms,
+        source: TelegramFeedPostSource::PublicPoll,
+        received_at_ms: 0,
+        applied_at_ms: 0,
         fetched_at_ms: 0,
         request_started_ms: 0,
         request_duration_ms: 0,
@@ -809,7 +827,12 @@ pub(crate) fn telegram_new_message_heat(first_seen_ms: u64, now_ms: u64) -> f32 
 }
 
 pub(crate) fn telegram_arrival_latency_label(post: &TelegramFeedPost) -> Option<String> {
-    format_seen_latency_label(post.timestamp_ms, post.fetched_at_ms, post.first_seen_ms)
+    let observed_at_ms = if post.received_at_ms == 0 {
+        post.fetched_at_ms
+    } else {
+        post.received_at_ms
+    };
+    format_seen_latency_label(post.timestamp_ms, observed_at_ms, post.first_seen_ms)
 }
 
 pub(crate) fn telegram_price_impact_pct(
@@ -1019,6 +1042,9 @@ mod tests {
             message_id: 1,
             text: "fast".to_string(),
             timestamp_ms: 1_000,
+            source: TelegramFeedPostSource::PublicPoll,
+            received_at_ms: 1_250,
+            applied_at_ms: 1_260,
             fetched_at_ms: 1_250,
             request_started_ms: 1_100,
             request_duration_ms: 150,
@@ -1040,6 +1066,9 @@ mod tests {
             message_id: 1,
             text: "old".to_string(),
             timestamp_ms: 1_000,
+            source: TelegramFeedPostSource::PublicPoll,
+            received_at_ms: 9_000,
+            applied_at_ms: 9_010,
             fetched_at_ms: 9_000,
             request_started_ms: 8_850,
             request_duration_ms: 150,
