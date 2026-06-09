@@ -1,4 +1,4 @@
-use super::super::fills::{chase_completed_summary, chase_fill_totals};
+use super::super::fills::{chase_completed_summary, chase_fill_totals_for_chase};
 use super::super::orders::first_open_chase_oid;
 
 use crate::account::{OpenOrder, UserFill};
@@ -44,8 +44,7 @@ impl TradingTerminal {
             let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                 continue;
             };
-            let oids = chase.known_oids_with_current();
-            let Some(totals) = chase_fill_totals(fills, &oids) else {
+            let Some(totals) = chase_fill_totals_for_chase(fills, chase) else {
                 continue;
             };
             chase.set_filled_size(totals.filled_size);

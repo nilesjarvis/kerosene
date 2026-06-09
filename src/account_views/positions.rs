@@ -1,6 +1,7 @@
 mod header;
 mod table;
 
+use self::header::position_size_is_nonzero;
 use super::table_helpers::{account_table_scroll, empty_account_table};
 use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
@@ -71,16 +72,26 @@ impl TradingTerminal {
         let can_close =
             self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
 
-        let all_positions: Vec<account::AssetPosition> = self
-            .account_positions_with_outcomes()
+        let account_positions = self.account_positions_with_outcomes();
+        let has_nuke_positions = can_close
+            && account_positions.iter().any(|ap| {
+                position_size_is_nonzero(&ap.position.szi)
+                    && !self.is_outcome_coin(&ap.position.coin)
+            });
+        let symbol_hidden_count = account_positions
+            .iter()
+            .filter(|ap| self.symbol_key_is_hidden(&ap.position.coin))
+            .count();
+        let visible_symbol_positions: Vec<account::AssetPosition> = account_positions
             .into_iter()
             .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
             .collect();
-        let hidden_count = all_positions
+        let account_hidden_count = visible_symbol_positions
             .iter()
             .filter(|ap| self.position_is_hidden(&ap.position.coin))
             .count();
-        let positions: Vec<account::AssetPosition> = all_positions
+        let hidden_count = symbol_hidden_count + account_hidden_count;
+        let positions: Vec<account::AssetPosition> = visible_symbol_positions
             .into_iter()
             .filter(|ap| self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
             .collect();
@@ -89,8 +100,14 @@ impl TradingTerminal {
                 .section_warning(AccountDataSection::Positions)
         });
 
-        let header =
-            self.view_positions_header(can_close, &positions, hidden_count, &theme, columns);
+        let header = self.view_positions_header(
+            can_close,
+            &positions,
+            account_hidden_count,
+            has_nuke_positions,
+            &theme,
+            columns,
+        );
 
         if positions.is_empty() {
             let msg = if let Some(warning) = warning {

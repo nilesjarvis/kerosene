@@ -173,7 +173,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::QuickOrderResult { .. }
         | Message::SubmitHudOrder(_)
         | Message::HudOrderResult { .. }
-        | Message::EscapePressed
+        | Message::EscapePressed(_)
         | Message::MoveOrderDragStarted { .. }
         | Message::MoveOrder { .. }
         | Message::MoveOrderModifyResult { .. }
@@ -295,7 +295,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SaveMarketSlippage
         | Message::StartRecordingHotkey(_)
         | Message::ClearHotkey(_)
-        | Message::KeyboardEvent(_, _)
+        | Message::KeyboardEvent(_, _, _)
         | Message::ExecuteHotkey(_) => UpdateRoute::Preferences,
 
         Message::ToggleAlfred

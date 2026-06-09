@@ -46,8 +46,7 @@ impl TradingTerminal {
         let animate = self.toast_animations_enabled;
 
         let mut toast_col = Column::new().spacing(8).width(Length::Fixed(TOAST_WIDTH));
-        // Newest toast nearest the anchored edge.
-        for toast in self.toasts.iter().rev().take(VISIBLE_TOASTS) {
+        for toast in visible_toasts(&self.toasts) {
             toast_col = toast_col.push(toast_card(theme, toast, now, animate, position));
         }
 
@@ -80,6 +79,30 @@ impl TradingTerminal {
                 .into(),
         )
     }
+}
+
+fn visible_toasts(toasts: &[Toast]) -> Vec<&Toast> {
+    let mut visible = Vec::with_capacity(VISIBLE_TOASTS);
+
+    visible.extend(
+        toasts
+            .iter()
+            .rev()
+            .filter(|toast| toast.is_error)
+            .take(VISIBLE_TOASTS),
+    );
+
+    if visible.len() < VISIBLE_TOASTS {
+        visible.extend(
+            toasts
+                .iter()
+                .rev()
+                .filter(|toast| !toast.is_error)
+                .take(VISIBLE_TOASTS - visible.len()),
+        );
+    }
+
+    visible
 }
 
 fn toast_card<'a>(
@@ -207,4 +230,53 @@ fn toast_card<'a>(
         .width(Length::Fill)
         .padding(slide_padding)
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn toast(id: u64, is_error: bool) -> Toast {
+        Toast {
+            id,
+            message: format!("toast {id}"),
+            is_error,
+            created_at: std::time::Instant::now(),
+            dismissing_at: None,
+        }
+    }
+
+    #[test]
+    fn visible_toasts_prioritize_errors_over_newer_info() {
+        let mut toasts = vec![toast(0, true)];
+        for id in 1..=VISIBLE_TOASTS as u64 {
+            toasts.push(toast(id, false));
+        }
+
+        let visible = visible_toasts(&toasts);
+
+        assert_eq!(visible.len(), VISIBLE_TOASTS);
+        assert!(visible.iter().any(|toast| toast.id == 0 && toast.is_error));
+        assert!(
+            !visible.iter().any(|toast| toast.id == 1 && !toast.is_error),
+            "oldest info toast should yield the visible slot to the error"
+        );
+    }
+
+    #[test]
+    fn visible_toasts_keep_latest_errors_first() {
+        let toasts = vec![
+            toast(0, true),
+            toast(1, false),
+            toast(2, true),
+            toast(3, false),
+        ];
+
+        let visible = visible_toasts(&toasts);
+
+        assert_eq!(
+            visible.iter().map(|toast| toast.id).collect::<Vec<_>>(),
+            vec![2, 0, 3, 1]
+        );
+    }
 }

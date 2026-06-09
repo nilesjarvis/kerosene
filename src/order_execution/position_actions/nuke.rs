@@ -33,7 +33,7 @@ fn nuke_prepared_order(coin: String, order: NukePositionOrder) -> PreparedExchan
 }
 
 impl TradingTerminal {
-    /// Plan a NUKE: classify every active visible non-muted position into
+    /// Plan a NUKE: classify every active position in the account snapshot into
     /// `(coin, order)` for submission or `(coin, reason)` for skip.
     /// Returns `Err` only when a position's `szi` field cannot be parsed
     /// (malformed account data), in which case the whole action is aborted
@@ -48,7 +48,7 @@ impl TradingTerminal {
         let slippage = self.market_slippage_fraction();
         let inputs = positions.into_iter().map(|ap| {
             let coin = ap.position.coin;
-            let is_visible = !self.symbol_key_is_hidden(&coin) && !self.position_is_hidden(&coin);
+            let is_hidden = self.symbol_key_is_hidden(&coin) || self.position_is_hidden(&coin);
             let sym = self
                 .exchange_symbols
                 .iter()
@@ -63,7 +63,7 @@ impl TradingTerminal {
             NukePositionInput {
                 coin,
                 raw_size: ap.position.szi,
-                is_visible,
+                is_hidden,
                 sym,
                 mid,
             }
@@ -121,6 +121,16 @@ impl TradingTerminal {
 
         if plan.is_empty() {
             self.order_status = Some(("No positions to close".into(), true));
+            return Task::none();
+        }
+        if !plan.hidden_skipped.is_empty() {
+            self.order_status = Some((
+                format!(
+                    "NUKE aborted: hidden exposure could not be routed. Hidden skipped: {}",
+                    plan.format_hidden_skip_list()
+                ),
+                true,
+            ));
             return Task::none();
         }
         if plan.ready.is_empty() {

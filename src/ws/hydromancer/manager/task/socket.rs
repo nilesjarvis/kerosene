@@ -8,7 +8,7 @@ use super::messages::{
 };
 use super::session::HydromancerSessionState;
 use super::subscriptions::{ActiveHydromancerSubscriptions, HydromancerUnsubscribeResult};
-use crate::ws::{telemetry_add_rx, telemetry_add_tx};
+use crate::ws::{telemetry_add_hydromancer_rx, telemetry_add_hydromancer_tx};
 
 use futures::{Sink, SinkExt as _};
 use tokio::sync::broadcast;
@@ -73,7 +73,7 @@ where
 {
     match msg {
         WsMsg::Text(text) => {
-            telemetry_add_rx(text.len() as u64);
+            telemetry_add_hydromancer_rx(text.len() as u64);
             handle_hydromancer_text_frame(&text, active_subs, session, msg_tx, coalescer, write)
                 .await
         }
@@ -150,6 +150,6 @@ async fn send_text<W>(write: &mut W, text: String) -> bool
 where
     W: Sink<WsMsg> + Unpin,
 {
-    telemetry_add_tx(text.len() as u64);
+    telemetry_add_hydromancer_tx(text.len() as u64);
     write.send(WsMsg::Text(text.into())).await.is_ok()
 }

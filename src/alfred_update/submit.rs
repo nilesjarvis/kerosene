@@ -85,9 +85,15 @@ impl TradingTerminal {
             self.push_toast(format!("Cannot trade {symbol_key}"), true);
             return switch_task;
         }
+        if draft.quantity_is_usd && self.is_outcome_coin(&symbol_key) {
+            let message = "USD sizing is not supported for outcome markets; use contracts";
+            self.order_status = Some((message.to_string(), true));
+            self.push_toast(message.to_string(), true);
+            return switch_task;
+        }
 
         self.order_kind = draft.order_kind;
-        self.order_quantity_is_usd = draft.quantity_is_usd && !self.is_outcome_coin(&symbol_key);
+        self.order_quantity_is_usd = draft.quantity_is_usd;
         self.order_price = match draft.order_kind {
             OrderKind::Limit => draft.limit_price_input().unwrap_or_default(),
             OrderKind::Market => String::new(),
@@ -179,4 +185,85 @@ impl TradingTerminal {
 fn selected_command(commands: &[AlfredCommand], selected_index: usize) -> Option<&AlfredCommand> {
     let index = selected_index.min(commands.len().checked_sub(1)?);
     commands.get(index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
+
+    fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 5,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type,
+            outcome: None,
+        }
+    }
+
+    fn outcome_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            market_type: MarketType::Outcome,
+            outcome: Some(OutcomeSymbolInfo {
+                outcome_id: 66,
+                question_id: Some(12),
+                question_name: Some("Recurring".to_string()),
+                question_description: None,
+                question_class: Some("priceBucket".to_string()),
+                question_underlying: Some("BTC".to_string()),
+                question_expiry: Some("20260520-0600".to_string()),
+                question_price_thresholds: vec!["75348".to_string(), "78423".to_string()],
+                question_period: Some("1d".to_string()),
+                question_named_outcomes: vec![67, 68, 69],
+                question_settled_named_outcomes: Vec::new(),
+                question_fallback_outcome: Some(66),
+                bucket_index: Some(0),
+                is_question_fallback: false,
+                side_index: 0,
+                side_name: "Yes".to_string(),
+                outcome_name: "Recurring Named Outcome".to_string(),
+                description: "index:0".to_string(),
+                class: None,
+                underlying: None,
+                expiry: None,
+                target_price: None,
+                period: None,
+                quote_symbol: "USDH".to_string(),
+                quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+                encoding: 660,
+            }),
+            ..symbol(key, MarketType::Outcome)
+        }
+    }
+
+    #[test]
+    fn alfred_trade_rejects_usd_sizing_for_outcome_markets() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![outcome_symbol("#660")];
+        terminal.active_symbol = "#660".to_string();
+        terminal.order_quantity = "old".to_string();
+        terminal.order_quantity_is_usd = false;
+        terminal.alfred.open = true;
+        terminal.alfred.query = "buy $10 #660".to_string();
+
+        let _task = terminal.submit_alfred_command(AlfredCommandId::NaturalLanguageTrading);
+
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "USD sizing is not supported for outcome markets; use contracts".to_string(),
+                true
+            ))
+        );
+        assert_eq!(terminal.order_quantity, "old");
+        assert!(!terminal.order_quantity_is_usd);
+    }
 }

@@ -128,6 +128,10 @@ impl TradingTerminal {
                 initial_price: rounded_px,
                 started_at,
                 started_at_ms,
+                fill_cutoff_ms_by_oid: vec![(
+                    oid,
+                    ChaseOrder::adopted_fill_cutoff_ms(started_at_ms),
+                )],
                 reprice_count: 0,
                 lifecycle: ChaseLifecycle::Resting,
                 last_reprice_at: None,

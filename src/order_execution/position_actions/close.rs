@@ -65,11 +65,6 @@ impl TradingTerminal {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return Task::none();
         }
-        if self.symbol_key_is_hidden(coin) {
-            self.order_status = Some(("Position ticker is hidden in Settings > Risk".into(), true));
-            return Task::none();
-        }
-
         if self.account_loading {
             self.order_status = Some((
                 "Account refresh in progress; wait for fresh account data before closing".into(),

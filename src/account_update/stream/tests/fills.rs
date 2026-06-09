@@ -32,36 +32,88 @@ fn recent_fills_drop_extra_incoming_when_batch_exceeds_limit() {
 }
 
 #[test]
-fn fill_snapshot_replaces_existing_history_and_filters_muted_symbols() {
+fn fill_snapshot_replaces_existing_history_without_dropping_hidden_symbols() {
     let mut existing = vec![fill(10)];
-    let mut muted_fill = fill(1);
-    muted_fill.coin = "ETH".to_string();
+    let mut hidden_fill = fill(1);
+    hidden_fill.coin = "ETH".to_string();
 
-    let toasts = apply_fills_update(&mut existing, vec![fill(2), muted_fill], true, |coin| {
+    let toasts = apply_fills_update(&mut existing, vec![fill(2), hidden_fill], true, |coin| {
         coin == "ETH"
     });
 
     assert!(toasts.is_empty());
     let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
-    assert_eq!(times, vec![2]);
+    assert_eq!(times, vec![2, 1]);
+    assert_eq!(existing[1].coin, "ETH");
 }
 
 #[test]
-fn live_fill_update_prepends_history_and_returns_toasts() {
+fn live_fill_update_prepends_history_and_returns_visible_toasts() {
     let mut existing = vec![fill(3)];
     let mut sell_fill = fill(1);
     sell_fill.side = "A".to_string();
+    let mut hidden_fill = fill(2);
+    hidden_fill.coin = "ETH".to_string();
 
-    let toasts = apply_fills_update(&mut existing, vec![sell_fill, fill(2)], false, |_| false);
+    let toasts = apply_fills_update(&mut existing, vec![sell_fill, hidden_fill], false, |coin| {
+        coin == "ETH"
+    });
 
     let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
     assert_eq!(times, vec![1, 2, 3]);
+    assert_eq!(existing[1].coin, "ETH");
+    assert_eq!(toasts, vec!["Filled SELL 0.1 BTC @ $100".to_string()]);
+}
+
+#[test]
+fn live_fill_update_deduplicates_existing_history_by_stable_identity() {
+    let mut existing_fill = fill(3);
+    existing_fill.tid = Some(77);
+    let mut duplicate = fill(1);
+    duplicate.tid = Some(77);
+    duplicate.px = "101".to_string();
+    let mut new_fill = fill(2);
+    new_fill.tid = Some(78);
+    let mut existing = vec![existing_fill];
+
+    let toasts = apply_fills_update(&mut existing, vec![duplicate, new_fill], false, |_| false);
+
+    let tids: Vec<Option<u64>> = existing.iter().map(|fill| fill.tid).collect();
+    assert_eq!(tids, vec![Some(78), Some(77)]);
+    assert_eq!(toasts, vec!["Filled BUY 0.1 BTC @ $100".to_string()]);
+}
+
+#[test]
+fn fill_snapshot_deduplicates_exact_hash_identity() {
+    let mut first = fill(1);
+    first.hash = Some("0xabc".to_string());
+    let mut duplicate = first.clone();
+    duplicate.hash = Some("0xabc".to_string());
+    let mut existing = Vec::new();
+
+    let toasts = apply_fills_update(&mut existing, vec![first, duplicate], true, |_| false);
+
+    assert!(toasts.is_empty());
+    assert_eq!(existing.len(), 1);
+    assert_eq!(existing[0].time, 1);
+}
+
+#[test]
+fn fill_snapshot_keeps_distinct_fills_from_same_transaction_hash() {
+    let mut first = fill(1);
+    first.hash = Some("0xabc".to_string());
+    let mut second = fill(2);
+    second.hash = Some("0xabc".to_string());
+    second.px = "101".to_string();
+    let mut existing = Vec::new();
+
+    let toasts = apply_fills_update(&mut existing, vec![first, second], true, |_| false);
+
+    assert!(toasts.is_empty());
+    assert_eq!(existing.len(), 2);
     assert_eq!(
-        toasts,
-        vec![
-            "Filled SELL 0.1 BTC @ $100".to_string(),
-            "Filled BUY 0.1 BTC @ $100".to_string(),
-        ]
+        existing.iter().map(|fill| fill.time).collect::<Vec<_>>(),
+        vec![1, 2]
     );
 }
 
@@ -77,6 +129,19 @@ fn chase_fill_summary_reports_weighted_fill_for_matching_oid() {
             42,
         ),
         Some("Chase filled: BUY 0.3 BTC @ $106.66666667 (oid 42)".to_string())
+    );
+}
+
+#[test]
+fn chase_fill_summary_deduplicates_matching_fills_by_stable_identity() {
+    let mut first = fill_with_oid(1, 42, "100", "0.1");
+    first.tid = Some(99);
+    let mut duplicate = fill_with_oid(2, 42, "110", "0.1");
+    duplicate.tid = Some(99);
+
+    assert_eq!(
+        chase_fill_summary(&[first, duplicate], 42),
+        Some("Chase filled: BUY 0.1 BTC @ $100 (oid 42)".to_string())
     );
 }
 

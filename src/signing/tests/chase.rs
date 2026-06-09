@@ -23,6 +23,7 @@ fn chase_order(agent_key: &str) -> ChaseOrder {
         initial_price: 100.0,
         started_at: std::time::Instant::now(),
         started_at_ms: 1_000,
+        fill_cutoff_ms_by_oid: Vec::new(),
         reprice_count: 0,
         lifecycle: ChaseLifecycle::Resting,
         last_reprice_at: None,

@@ -40,6 +40,7 @@ fn chase() -> ChaseOrder {
         initial_price: 98.0,
         started_at,
         started_at_ms: 1_000,
+        fill_cutoff_ms_by_oid: Vec::new(),
         reprice_count: 0,
         lifecycle: ChaseLifecycle::Resting,
         last_reprice_at: None,

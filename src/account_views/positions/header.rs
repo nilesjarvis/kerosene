@@ -13,17 +13,12 @@ impl TradingTerminal {
     pub(super) fn view_positions_header<'a>(
         &'a self,
         can_close: bool,
-        positions: &[account::AssetPosition],
+        _positions: &[account::AssetPosition],
         hidden_count: usize,
+        has_nuke_positions: bool,
         theme: &Theme,
         columns: PositionColumnVisibility,
     ) -> Element<'a, Message> {
-        let has_positions = can_close
-            && positions.iter().any(|ap| {
-                position_size_is_nonzero(&ap.position.szi)
-                    && !self.is_outcome_coin(&ap.position.coin)
-            });
-
         let hidden_toggle: Element<'a, Message> = if hidden_count > 0 {
             let label = if self.show_hidden_positions {
                 format!("\u{25C9}{hidden_count}")
@@ -68,7 +63,7 @@ impl TradingTerminal {
             text("").size(12).into()
         };
 
-        let nuke_cell: Element<'a, Message> = if has_positions {
+        let nuke_cell: Element<'a, Message> = if can_close && has_nuke_positions {
             let nuke_armed = self.nuke_confirmation.is_some();
             let nuke_label = if nuke_armed {
                 "\u{2622} CONFIRM"
@@ -172,7 +167,7 @@ fn nuke_button_style(theme: &Theme, status: button::Status, nuke_armed: bool) ->
     }
 }
 
-fn position_size_is_nonzero(raw: &str) -> bool {
+pub(super) fn position_size_is_nonzero(raw: &str) -> bool {
     parse_finite_number(raw).is_some_and(|szi| szi.abs() > 1e-12)
 }
 

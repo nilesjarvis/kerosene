@@ -76,7 +76,12 @@ impl TradingTerminal {
         let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
             return true;
         };
-        if now < twap.ends_at || twap.pending_op.is_some() || twap.status.is_terminal() {
+        if now < twap.ends_at
+            || twap.pending_op.is_some()
+            || twap.status_check_cloid.is_some()
+            || twap.has_status_unknown_child()
+            || twap.status.is_terminal()
+        {
             return false;
         }
         twap.slices_attempted = twap.slice_count;

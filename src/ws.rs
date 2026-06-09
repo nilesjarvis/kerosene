@@ -9,7 +9,8 @@ pub(crate) use manager::{SubscriptionGuard, get_manager};
 pub(crate) use telemetry::now_ms;
 pub use telemetry::telemetry_snapshot;
 pub(crate) use telemetry::{
-    telemetry_add_rx, telemetry_add_tx, telemetry_on_connect, telemetry_on_disconnect,
+    telemetry_add_hydromancer_rx, telemetry_add_hydromancer_tx, telemetry_on_hydromancer_connect,
+    telemetry_on_hydromancer_disconnect,
 };
 
 pub use hydromancer::{

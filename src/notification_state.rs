@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use std::sync::Once;
 
-/// How long toasts are visible before auto-dismissing (seconds).
+/// How long non-error toasts are visible before auto-dismissing (seconds).
 pub(crate) const TOAST_LIFETIME_SECS: u64 = 5;
 /// Maximum toasts visible at once.
 const MAX_TOASTS: usize = 8;
@@ -107,36 +107,53 @@ impl Toast {
     }
 }
 
+pub(crate) fn toast_auto_dismiss_due(toast: &Toast, now: std::time::Instant) -> bool {
+    if toast.is_error {
+        return false;
+    }
+
+    now.duration_since(toast.created_at).as_secs() >= TOAST_LIFETIME_SECS
+}
+
+fn push_toast_entry(
+    toasts: &mut Vec<Toast>,
+    next_toast_id: &mut u64,
+    message: String,
+    is_error: bool,
+) {
+    toasts.push(Toast {
+        id: *next_toast_id,
+        message,
+        is_error,
+        created_at: std::time::Instant::now(),
+        dismissing_at: None,
+    });
+    *next_toast_id += 1;
+    prune_toast_queue(toasts);
+}
+
+fn prune_toast_queue(toasts: &mut Vec<Toast>) {
+    while toasts.len() > MAX_TOASTS {
+        let remove_index = toasts.iter().position(|toast| !toast.is_error).unwrap_or(0);
+        toasts.remove(remove_index);
+    }
+}
+
 impl TradingTerminal {
     pub(crate) fn push_silent_toast(&mut self, message: String, is_error: bool) {
-        self.toasts.push(Toast {
-            id: self.next_toast_id,
-            message,
-            is_error,
-            created_at: std::time::Instant::now(),
-            dismissing_at: None,
-        });
-        self.next_toast_id += 1;
-        if self.toasts.len() > MAX_TOASTS {
-            self.toasts.remove(0);
-        }
+        push_toast_entry(&mut self.toasts, &mut self.next_toast_id, message, is_error);
     }
 
     /// Push a toast notification. Also plays sound and sends desktop
     /// notification if enabled.
     pub(crate) fn push_toast(&mut self, message: String, is_error: bool) {
         let _theme = self.theme();
-        self.toasts.push(Toast {
-            id: self.next_toast_id,
-            message: message.clone(),
+        push_toast_entry(
+            &mut self.toasts,
+            &mut self.next_toast_id,
+            message.clone(),
             is_error,
-            created_at: std::time::Instant::now(),
-            dismissing_at: None,
-        });
-        self.next_toast_id += 1;
-        if self.toasts.len() > MAX_TOASTS {
-            self.toasts.remove(0);
-        }
+        );
         // Sound
         self.play_notification_sound(is_error);
         // Desktop notification
@@ -153,17 +170,12 @@ impl TradingTerminal {
     /// Push a positive interest alert with dedicated sound and summary.
     pub(crate) fn push_interest_alert(&mut self, message: String) {
         let _theme = self.theme();
-        self.toasts.push(Toast {
-            id: self.next_toast_id,
-            message: message.clone(),
-            is_error: false,
-            created_at: std::time::Instant::now(),
-            dismissing_at: None,
-        });
-        self.next_toast_id += 1;
-        if self.toasts.len() > MAX_TOASTS {
-            self.toasts.remove(0);
-        }
+        push_toast_entry(
+            &mut self.toasts,
+            &mut self.next_toast_id,
+            message.clone(),
+            false,
+        );
 
         if self.sound_enabled {
             sound::play_interest();
@@ -178,17 +190,12 @@ impl TradingTerminal {
     /// Trades pane button and intentionally emits both sound and desktop
     /// notification when enabled.
     pub(crate) fn push_tracked_trade_alert(&mut self, message: String) {
-        self.toasts.push(Toast {
-            id: self.next_toast_id,
-            message: message.clone(),
-            is_error: false,
-            created_at: std::time::Instant::now(),
-            dismissing_at: None,
-        });
-        self.next_toast_id += 1;
-        if self.toasts.len() > MAX_TOASTS {
-            self.toasts.remove(0);
-        }
+        push_toast_entry(
+            &mut self.toasts,
+            &mut self.next_toast_id,
+            message.clone(),
+            false,
+        );
 
         if self.sound_enabled {
             sound::play_fill();
@@ -200,17 +207,12 @@ impl TradingTerminal {
     }
 
     pub(crate) fn push_telegram_feed_alert(&mut self, message: String) {
-        self.toasts.push(Toast {
-            id: self.next_toast_id,
-            message: message.clone(),
-            is_error: false,
-            created_at: std::time::Instant::now(),
-            dismissing_at: None,
-        });
-        self.next_toast_id += 1;
-        if self.toasts.len() > MAX_TOASTS {
-            self.toasts.remove(0);
-        }
+        push_toast_entry(
+            &mut self.toasts,
+            &mut self.next_toast_id,
+            message.clone(),
+            false,
+        );
 
         if self.sound_enabled {
             sound::play_fill();
@@ -222,17 +224,12 @@ impl TradingTerminal {
     }
 
     pub(crate) fn push_x_feed_alert(&mut self, message: String) {
-        self.toasts.push(Toast {
-            id: self.next_toast_id,
-            message: message.clone(),
-            is_error: false,
-            created_at: std::time::Instant::now(),
-            dismissing_at: None,
-        });
-        self.next_toast_id += 1;
-        if self.toasts.len() > MAX_TOASTS {
-            self.toasts.remove(0);
-        }
+        push_toast_entry(
+            &mut self.toasts,
+            &mut self.next_toast_id,
+            message.clone(),
+            false,
+        );
 
         if self.sound_enabled {
             sound::play_fill();
@@ -265,5 +262,70 @@ impl TradingTerminal {
         } else {
             self.play_notification_sound(is_error);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn toast(id: u64, is_error: bool) -> Toast {
+        Toast {
+            id,
+            message: format!("toast {id}"),
+            is_error,
+            created_at: std::time::Instant::now(),
+            dismissing_at: None,
+        }
+    }
+
+    #[test]
+    fn error_toasts_do_not_auto_dismiss() {
+        let mut error = toast(1, true);
+        error.created_at = error
+            .created_at
+            .checked_sub(std::time::Duration::from_secs(TOAST_LIFETIME_SECS + 60))
+            .expect("test timestamp should be representable");
+
+        assert!(!toast_auto_dismiss_due(&error, std::time::Instant::now()));
+    }
+
+    #[test]
+    fn stale_info_toasts_auto_dismiss() {
+        let mut info = toast(1, false);
+        info.created_at = info
+            .created_at
+            .checked_sub(std::time::Duration::from_secs(TOAST_LIFETIME_SECS))
+            .expect("test timestamp should be representable");
+
+        assert!(toast_auto_dismiss_due(&info, std::time::Instant::now()));
+    }
+
+    #[test]
+    fn pruning_removes_oldest_non_error_before_error() {
+        let mut toasts = vec![toast(0, true)];
+        for id in 1..=MAX_TOASTS as u64 {
+            toasts.push(toast(id, false));
+        }
+
+        prune_toast_queue(&mut toasts);
+
+        assert_eq!(toasts.len(), MAX_TOASTS);
+        assert!(toasts.iter().any(|toast| toast.id == 0 && toast.is_error));
+        assert!(!toasts.iter().any(|toast| toast.id == 1));
+    }
+
+    #[test]
+    fn info_toast_does_not_evict_full_error_queue() {
+        let mut toasts = (0..MAX_TOASTS as u64)
+            .map(|id| toast(id, true))
+            .collect::<Vec<_>>();
+        toasts.push(toast(MAX_TOASTS as u64, false));
+
+        prune_toast_queue(&mut toasts);
+
+        assert_eq!(toasts.len(), MAX_TOASTS);
+        assert!(toasts.iter().all(|toast| toast.is_error));
+        assert!(!toasts.iter().any(|toast| toast.id == MAX_TOASTS as u64));
     }
 }

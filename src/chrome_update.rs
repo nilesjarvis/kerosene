@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::notification_state::TOAST_LIFETIME_SECS;
+use crate::notification_state::toast_auto_dismiss_due;
 use crate::sound;
 use iced::{Task, clipboard};
 use std::time::Instant;
@@ -103,17 +103,13 @@ impl TradingTerminal {
                 let now = Instant::now();
                 if self.toast_animations_enabled {
                     for toast in &mut self.toasts {
-                        if toast.dismissing_at.is_none()
-                            && now.duration_since(toast.created_at).as_secs() >= TOAST_LIFETIME_SECS
-                        {
+                        if toast.dismissing_at.is_none() && toast_auto_dismiss_due(toast, now) {
                             toast.dismissing_at = Some(now);
                         }
                     }
                     self.toasts.retain(|t| t.exit_progress(now) < 1.0);
                 } else {
-                    self.toasts.retain(|t| {
-                        now.duration_since(t.created_at).as_secs() < TOAST_LIFETIME_SECS
-                    });
+                    self.toasts.retain(|t| !toast_auto_dismiss_due(t, now));
                 }
                 if self.nuke_confirmation.is_some_and(|armed_at| {
                     !crate::order_update::nuke_confirmation_is_armed(Some(armed_at), now)

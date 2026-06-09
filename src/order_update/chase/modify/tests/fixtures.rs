@@ -29,6 +29,7 @@ pub(super) fn chase() -> ChaseOrder {
         initial_price: 100.0,
         started_at,
         started_at_ms: 1_000,
+        fill_cutoff_ms_by_oid: Vec::new(),
         reprice_count: 1,
         lifecycle: ChaseLifecycle::Modifying { oid: 42 },
         last_reprice_at: Some(started_at),

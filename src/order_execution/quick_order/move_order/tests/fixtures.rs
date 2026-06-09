@@ -76,6 +76,10 @@ pub(super) fn open_order(coin: &str, oid: u64, limit_px: &str) -> OpenOrder {
         oid,
         timestamp: 1,
         reduce_only: Some(false),
+        is_trigger: None,
+        order_type: None,
+        tif: None,
+        trigger_px: None,
     }
 }
 

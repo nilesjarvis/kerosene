@@ -39,3 +39,12 @@ pub(in crate::order_execution::twap::tests) fn filled_status(
         raw_summary: format!("filled oid={oid} cloid={cloid}"),
     }
 }
+
+pub(in crate::order_execution::twap::tests) fn missing_status(cloid: &str) -> OrderStatusResult {
+    OrderStatusResult {
+        status: "unknownOid".to_string(),
+        oid: None,
+        cloid: Some(cloid.to_string()),
+        raw_summary: format!("unknownOid cloid={cloid}"),
+    }
+}

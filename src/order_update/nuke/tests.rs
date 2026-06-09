@@ -19,6 +19,7 @@ fn nuke_arm_status_lists_all_ready_positions_when_nothing_is_skipped() {
     let plan = NukePlan {
         ready: vec![("BTC".to_string(), order()), ("ETH".to_string(), order())],
         skipped: vec![],
+        hidden_skipped: vec![],
     };
 
     assert_eq!(
@@ -32,6 +33,7 @@ fn nuke_arm_status_warns_before_partial_nuke() {
     let plan = NukePlan {
         ready: vec![("BTC".to_string(), order())],
         skipped: vec![("SHIB".to_string(), NukeSkipReason::NoMidPrice)],
+        hidden_skipped: vec![],
     };
 
     assert_eq!(
@@ -51,11 +53,26 @@ fn nuke_arm_status_refuses_all_unrouteable_positions() {
             ("SHIB".to_string(), NukeSkipReason::NoMidPrice),
             ("DOGE".to_string(), NukeSkipReason::UnknownAsset),
         ],
+        hidden_skipped: vec![],
     };
 
     assert_eq!(
         nuke_arm_status_for_plan(&plan),
         "Cannot NUKE: 2 positions unresolvable: SHIB (no mid price), DOGE (unknown asset)"
+    );
+}
+
+#[test]
+fn nuke_arm_status_refuses_hidden_unrouteable_exposure() {
+    let plan = NukePlan {
+        ready: vec![("BTC".to_string(), order())],
+        skipped: vec![("HIDDEN".to_string(), NukeSkipReason::NoMidPrice)],
+        hidden_skipped: vec![("HIDDEN".to_string(), NukeSkipReason::NoMidPrice)],
+    };
+
+    assert_eq!(
+        nuke_arm_status_for_plan(&plan),
+        "Cannot NUKE: hidden exposure unresolvable: HIDDEN (no mid price)"
     );
 }
 

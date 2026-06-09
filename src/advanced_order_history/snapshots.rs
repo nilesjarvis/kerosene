@@ -36,17 +36,7 @@ impl AdvancedOrderHistoryEntry {
             if !oids.contains(&oid) {
                 continue;
             }
-            let fill_key = (
-                oid,
-                fill.time,
-                fill.px.as_str(),
-                fill.sz.as_str(),
-                fill.side.as_str(),
-                fill.dir.as_str(),
-                fill.closed_pnl.as_str(),
-                fill.fee.as_str(),
-            );
-            if !seen.insert(fill_key) {
+            if !seen.insert(fill.dedup_key()) {
                 continue;
             }
             matched = true;

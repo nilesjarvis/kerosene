@@ -69,3 +69,35 @@ fn status_unknown_twap_reconciles_to_partial_or_completed_from_account_fills() {
     assert_eq!(completed.status, TwapStatus::Completed);
     assert_eq!(completed.remaining_size, 0.0);
 }
+
+#[test]
+fn twap_fill_reconciliation_deduplicates_fills_by_stable_identity() {
+    let now = Instant::now();
+    let mut twap = test_twap_order(now, 2.0, false, 2);
+    twap.child_orders.push(TwapChildOrder {
+        index: 1,
+        requested_at: now,
+        planned_size: 1.0,
+        limit_price: 100.0,
+        oid: Some(42),
+        cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
+        status: TwapChildStatus::AwaitingReconciliation,
+        exchange_summary: "filled".to_string(),
+        filled_size: 0.0,
+        avg_price: None,
+        fee: 0.0,
+        retry_count: 0,
+    });
+
+    let mut first = user_fill(42, "1.0", "100");
+    first.tid = Some(123);
+    let mut duplicate = user_fill(42, "1.0", "110");
+    duplicate.tid = Some(123);
+
+    twap.reconcile_fills(&[first, duplicate]);
+
+    assert_eq!(twap.child_orders[0].filled_size, 1.0);
+    assert_eq!(twap.child_orders[0].avg_price, Some(100.0));
+    assert_eq!(twap.filled_size, 1.0);
+    assert_eq!(twap.remaining_size, 1.0);
+}

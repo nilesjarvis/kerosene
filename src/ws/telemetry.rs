@@ -10,19 +10,24 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WsTelemetrySnapshot {
     pub open_connections: u64,
+    pub exchange_open_connections: u64,
+    pub hydromancer_open_connections: u64,
     pub bytes_received: u64,
     pub bytes_sent: u64,
-    pub last_rx_ms: u64,
+    pub exchange_last_rx_ms: u64,
+    pub hydromancer_last_rx_ms: u64,
     pub ws_latency_ms: u64,
     pub api_latency_ms: u64,
 }
 
 #[derive(Debug, Default)]
 struct WsTelemetry {
-    open_connections: AtomicU64,
+    exchange_open_connections: AtomicU64,
+    hydromancer_open_connections: AtomicU64,
     bytes_received: AtomicU64,
     bytes_sent: AtomicU64,
-    last_rx_ms: AtomicU64,
+    exchange_last_rx_ms: AtomicU64,
+    hydromancer_last_rx_ms: AtomicU64,
     ws_ping_start_ms: AtomicU64,
     ws_latency_ms: AtomicU64,
     api_latency_ms: AtomicU64,
@@ -36,13 +41,25 @@ fn ws_telemetry() -> &'static WsTelemetry {
 
 pub(crate) fn telemetry_on_connect() {
     ws_telemetry()
-        .open_connections
+        .exchange_open_connections
         .fetch_add(1, Ordering::Relaxed);
 }
 
 pub(crate) fn telemetry_on_disconnect() {
     ws_telemetry()
-        .open_connections
+        .exchange_open_connections
+        .fetch_sub(1, Ordering::Relaxed);
+}
+
+pub(crate) fn telemetry_on_hydromancer_connect() {
+    ws_telemetry()
+        .hydromancer_open_connections
+        .fetch_add(1, Ordering::Relaxed);
+}
+
+pub(crate) fn telemetry_on_hydromancer_disconnect() {
+    ws_telemetry()
+        .hydromancer_open_connections
         .fetch_sub(1, Ordering::Relaxed);
 }
 
@@ -56,7 +73,22 @@ pub(crate) fn telemetry_add_rx(bytes: u64) {
     ws_telemetry()
         .bytes_received
         .fetch_add(bytes, Ordering::Relaxed);
-    ws_telemetry().last_rx_ms.store(now_ms(), Ordering::Relaxed);
+    ws_telemetry()
+        .exchange_last_rx_ms
+        .store(now_ms(), Ordering::Relaxed);
+}
+
+pub(crate) fn telemetry_add_hydromancer_rx(bytes: u64) {
+    ws_telemetry()
+        .bytes_received
+        .fetch_add(bytes, Ordering::Relaxed);
+    ws_telemetry()
+        .hydromancer_last_rx_ms
+        .store(now_ms(), Ordering::Relaxed);
+}
+
+pub(crate) fn telemetry_add_hydromancer_tx(bytes: u64) {
+    telemetry_add_tx(bytes);
 }
 
 pub(super) fn telemetry_mark_ws_ping_start() {
@@ -83,11 +115,18 @@ pub(super) fn telemetry_update_api_latency(latency: u64) {
 
 pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
     let t = ws_telemetry();
+    let exchange_open_connections = t.exchange_open_connections.load(Ordering::Relaxed);
+    let hydromancer_open_connections = t.hydromancer_open_connections.load(Ordering::Relaxed);
+    let exchange_last_rx_ms = t.exchange_last_rx_ms.load(Ordering::Relaxed);
+    let hydromancer_last_rx_ms = t.hydromancer_last_rx_ms.load(Ordering::Relaxed);
     WsTelemetrySnapshot {
-        open_connections: t.open_connections.load(Ordering::Relaxed),
+        open_connections: exchange_open_connections + hydromancer_open_connections,
+        exchange_open_connections,
+        hydromancer_open_connections,
         bytes_received: t.bytes_received.load(Ordering::Relaxed),
         bytes_sent: t.bytes_sent.load(Ordering::Relaxed),
-        last_rx_ms: t.last_rx_ms.load(Ordering::Relaxed),
+        exchange_last_rx_ms,
+        hydromancer_last_rx_ms,
         ws_latency_ms: t.ws_latency_ms.load(Ordering::Relaxed),
         api_latency_ms: t.api_latency_ms.load(Ordering::Relaxed),
     }

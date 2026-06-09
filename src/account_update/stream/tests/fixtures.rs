@@ -16,6 +16,10 @@ pub(crate) fn open_order(oid: u64, reduce_only: Option<bool>) -> OpenOrder {
         oid,
         timestamp: 1,
         reduce_only,
+        is_trigger: None,
+        order_type: None,
+        tif: None,
+        trigger_px: None,
     }
 }
 
@@ -26,6 +30,8 @@ pub(crate) fn fill(time: u64) -> UserFill {
         sz: "0.1".to_string(),
         side: "B".to_string(),
         time,
+        hash: None,
+        tid: None,
         oid: None,
         dir: "Open Long".to_string(),
         closed_pnl: "0".to_string(),
@@ -64,6 +70,7 @@ pub(crate) fn chase_order() -> ChaseOrder {
         initial_price: 100.0,
         started_at: Instant::now(),
         started_at_ms: 1_000,
+        fill_cutoff_ms_by_oid: Vec::new(),
         reprice_count: 0,
         lifecycle: ChaseLifecycle::Verifying {
             reason: ChaseVerificationReason::Placement,

@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use std::collections::HashSet;
+
 #[cfg(test)]
 mod tests;
 
@@ -159,6 +161,14 @@ pub struct OpenOrder {
     pub timestamp: u64,
     #[serde(default)]
     pub reduce_only: Option<bool>,
+    #[serde(default, rename = "isTrigger")]
+    pub is_trigger: Option<bool>,
+    #[serde(default, rename = "orderType")]
+    pub order_type: Option<String>,
+    #[serde(default)]
+    pub tif: Option<String>,
+    #[serde(default, rename = "triggerPx")]
+    pub trigger_px: Option<String>,
 }
 
 /// A user's fill (trade).
@@ -171,10 +181,48 @@ pub struct UserFill {
     pub side: String, // "A" or "B"
     pub time: u64,
     #[serde(default)]
+    pub hash: Option<String>,
+    #[serde(default)]
+    pub tid: Option<u64>,
+    #[serde(default)]
     pub oid: Option<u64>,
     pub dir: String, // "Open Long", "Close Short", etc.
     pub closed_pnl: String,
     pub fee: String,
+}
+
+impl UserFill {
+    pub(crate) fn dedup_key(&self) -> String {
+        if let Some(tid) = self.tid {
+            return format!("tid:{tid}");
+        }
+        let fill_fields = format!(
+            "{:?}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            self.oid,
+            self.time,
+            self.coin,
+            self.px,
+            self.sz,
+            self.side,
+            self.dir,
+            self.closed_pnl,
+            self.fee
+        );
+        if let Some(hash) = self.hash.as_deref().map(str::trim)
+            && !hash.is_empty()
+        {
+            return format!("hash:{hash}\u{1f}{fill_fields}");
+        }
+        format!("fallback:{fill_fields}")
+    }
+}
+
+pub(crate) fn dedupe_user_fills_preserving_order(fills: Vec<UserFill>) -> Vec<UserFill> {
+    let mut seen = HashSet::with_capacity(fills.len());
+    fills
+        .into_iter()
+        .filter(|fill| seen.insert(fill.dedup_key()))
+        .collect()
 }
 
 /// A single funding payment record from the `userFunding` endpoint.

@@ -1,4 +1,7 @@
-use crate::account::{AccountData, AccountDataFetchScope, fetch_account_data_scoped_with_provider};
+use crate::account::{
+    AccountData, AccountDataFetchScope, dedupe_user_fills_preserving_order,
+    fetch_account_data_scoped_with_provider,
+};
 use crate::account_analytics::fetch_income_data;
 use crate::app_state::TradingTerminal;
 use crate::journal;
@@ -51,17 +54,18 @@ impl TradingTerminal {
         result: Result<AccountData, String>,
     ) -> Task<Message> {
         if self.connected_address.as_deref() != Some(address.as_str()) {
-            if let Ok(data) = result {
+            if let Ok(mut data) = result {
+                data.fills = dedupe_user_fills_preserving_order(data.fills);
                 self.reconcile_twap_fills_for_account(&address, &data.fills);
             }
             return Task::none();
         }
         self.account_loading = false;
         match result {
-            Ok(data) => {
+            Ok(mut data) => {
                 self.account_refresh_backoff_until_ms = None;
                 self.account_reconciliation_required = false;
-                let data = self.filter_account_data_for_muted_tickers(data);
+                data.fills = dedupe_user_fills_preserving_order(data.fills);
                 let is_pm = data.is_portfolio_margin();
                 self.account_data = Some(data);
                 let position_reconciliation =
@@ -170,6 +174,58 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::account::{
+        AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary, Position,
+        PositionLeverage, SpotClearinghouseState, UserFeeRates,
+    };
+
+    fn account_data_with_position(coin: &str) -> AccountData {
+        AccountData {
+            fetch_scope: Default::default(),
+            request_weight_estimate: 0,
+            account_abstraction: Default::default(),
+            clearinghouse: ClearinghouseState {
+                margin_summary: MarginSummary {
+                    account_value: "0".to_string(),
+                    total_ntl_pos: "0".to_string(),
+                    total_margin_used: "0".to_string(),
+                },
+                cross_margin_summary: None,
+                cross_maintenance_margin_used: None,
+                withdrawable: "0".to_string(),
+                asset_positions: vec![AssetPosition {
+                    position: Position {
+                        coin: coin.to_string(),
+                        szi: "1".to_string(),
+                        entry_px: "100".to_string(),
+                        position_value: "100".to_string(),
+                        unrealized_pnl: "0".to_string(),
+                        liquidation_px: None,
+                        leverage: PositionLeverage {
+                            leverage_type: "cross".to_string(),
+                            value: 1,
+                        },
+                        margin_used: "0".to_string(),
+                        cum_funding: None,
+                    },
+                    liquidation_px: None,
+                }],
+            },
+            clearinghouses_by_dex: std::collections::HashMap::new(),
+            spot: SpotClearinghouseState {
+                balances: Vec::new(),
+                portfolio_margin_enabled: false,
+                portfolio_margin_ratio: None,
+                token_to_available_after_maintenance: None,
+            },
+            open_orders: Vec::new(),
+            fills: Vec::new(),
+            funding_history: Vec::new(),
+            fee_rates: UserFeeRates::default(),
+            completeness: AccountDataCompleteness::default(),
+            fetched_at_ms: crate::app_time::now_ms(),
+        }
+    }
 
     #[test]
     fn expired_account_refresh_backoff_does_not_overflow() {
@@ -177,5 +233,25 @@ mod tests {
         terminal.account_refresh_backoff_until_ms = Some(1);
 
         assert_eq!(terminal.account_refresh_backoff_remaining_ms(), None);
+    }
+
+    #[test]
+    fn account_refresh_keeps_hidden_positions_in_stored_snapshot() {
+        let mut terminal = TradingTerminal::boot().0;
+        let address = "0xabc0000000000000000000000000000000000000".to_string();
+        terminal.connected_address = Some(address.clone());
+        terminal.muted_tickers.insert("HYPE".to_string());
+
+        let _task =
+            terminal.apply_account_data_loaded(address, Ok(account_data_with_position("HYPE")));
+
+        let positions = &terminal
+            .account_data
+            .as_ref()
+            .expect("account data")
+            .clearinghouse
+            .asset_positions;
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "HYPE");
     }
 }

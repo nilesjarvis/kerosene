@@ -43,13 +43,6 @@ impl TradingTerminal {
             }
         }
 
-        if let Some(mid) = selection.book_mid {
-            self.all_mids.insert(self.active_symbol.clone(), mid);
-            self.all_mids_updated_at_ms
-                .insert(self.active_symbol.clone(), Self::now_ms());
-            self.sync_chart_market_reference_prices();
-        }
-
         self.order_kind = OrderKind::Limit;
         self.order_price = selection.selected_price;
         self.persist_config();

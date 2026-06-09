@@ -102,6 +102,9 @@ impl TradingTerminal {
 
     pub(crate) fn handle_twap_tick(&mut self) -> Task<Message> {
         let now = Instant::now();
+        if self.expire_twap_reconciliation_timeouts(now) {
+            return Task::none();
+        }
         if let Some(twap_id) = self
             .twap_orders
             .iter()

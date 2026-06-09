@@ -8,6 +8,8 @@ fn fill(coin: &str, time: u64, px: &str, sz: &str, side: &str) -> UserFill {
         sz: sz.to_string(),
         side: side.to_string(),
         time,
+        hash: None,
+        tid: None,
         oid: None,
         dir: "Open Long".to_string(),
         closed_pnl: "0".to_string(),

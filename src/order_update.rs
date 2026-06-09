@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartSurfaceId;
 use crate::message::Message;
 
 use iced::Task;
@@ -220,7 +221,7 @@ impl TradingTerminal {
                 context,
                 result,
             } => return self.handle_hud_order_result(pending_indicator_id, context, *result),
-            Message::EscapePressed => self.clear_transient_order_ui(),
+            Message::EscapePressed(window_id) => self.handle_order_escape_pressed(window_id),
             Message::MoveOrderDragStarted { oid } => {
                 self.active_move_order_drag = Some(oid);
             }
@@ -256,5 +257,30 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    fn handle_order_escape_pressed(&mut self, window_id: iced::window::Id) {
+        if self
+            .main_window_id
+            .is_none_or(|main_id| main_id == window_id)
+        {
+            self.clear_transient_order_ui();
+            return;
+        }
+
+        let Some(chart_id) = self
+            .detached_chart_windows
+            .get(&window_id)
+            .map(|state| state.chart_id)
+        else {
+            return;
+        };
+
+        self.clear_chart_surface_state(chart_id, ChartSurfaceId::Detached(window_id));
+        if let Some(instance) = self.charts.get_mut(&chart_id) {
+            instance.editor_open = false;
+            instance.editor_search_query.clear();
+            instance.editor_selected_index = None;
+        }
     }
 }

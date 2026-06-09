@@ -1,6 +1,7 @@
 use super::*;
 use crate::api::OrderStatusResult;
 use crate::app_state::TradingTerminal;
+use crate::order_execution::PendingOrderAction;
 use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseStopPhase, ChaseVerificationReason};
 use std::time::Instant;
 
@@ -35,6 +36,7 @@ fn chase() -> ChaseOrder {
         initial_price: 100.0,
         started_at,
         started_at_ms: 1_000,
+        fill_cutoff_ms_by_oid: Vec::new(),
         reprice_count: 0,
         lifecycle: ChaseLifecycle::LoadingBook,
         last_reprice_at: None,
@@ -101,4 +103,50 @@ fn order_status_is_error_containing(terminal: &TradingTerminal, needle: &str) ->
         .order_status
         .as_ref()
         .is_some_and(|(message, is_error)| *is_error && message.contains(needle))
+}
+
+#[test]
+fn rejected_initial_place_result_removes_chase_and_clears_owned_pending_action() {
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Placing;
+    chase.current_cloid = Some(TEST_CLOID.to_string());
+    chase.place_attempt_count = 1;
+    let mut terminal = terminal_with_chase(chase);
+    terminal.selected_chase_id = Some(1);
+    terminal.pending_order_action = Some(PendingOrderAction::ChaseBuy);
+
+    let response = exchange_response(vec![serde_json::json!({
+        "error": "tick rejected"
+    })]);
+    let _task = terminal.handle_chase_place_result(1, Ok(response));
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(terminal.pending_order_action, None);
+    assert!(order_status_is_error_containing(
+        &terminal,
+        "Chase place failed"
+    ));
+}
+
+#[test]
+fn replacement_place_result_preserves_unrelated_pending_order_action() {
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Placing;
+    chase.current_cloid = Some(TEST_CLOID.to_string());
+    chase.place_attempt_count = 2;
+    chase.known_oids.push(42);
+    let mut terminal = terminal_with_chase(chase);
+    terminal.selected_chase_id = Some(1);
+    terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+    let response = exchange_response(vec![serde_json::json!({
+        "resting": {
+            "oid": 9001_u64
+        }
+    })]);
+    let _task = terminal.handle_chase_place_result(1, Ok(response));
+
+    assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+    let chase = chase_from_terminal(&terminal, 1);
+    assert_eq!(chase.current_oid, Some(9001));
 }

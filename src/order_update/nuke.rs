@@ -30,6 +30,10 @@ impl TradingTerminal {
                 self.order_status = Some(("No positions to close".into(), true));
                 return Task::none();
             }
+            if !plan.hidden_skipped.is_empty() {
+                self.order_status = Some((nuke_arm_status_for_plan(&plan), true));
+                return Task::none();
+            }
             if plan.ready.is_empty() {
                 // Nothing routable — refuse to arm so the user sees the
                 // problem (degraded mid feed, missing symbol metadata, ...)

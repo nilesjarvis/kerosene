@@ -12,6 +12,12 @@ pub(super) fn nuke_arm_status_for_plan(plan: &NukePlan) -> String {
     if plan.is_empty() {
         return "No positions to close".to_string();
     }
+    if !plan.hidden_skipped.is_empty() {
+        return format!(
+            "Cannot NUKE: hidden exposure unresolvable: {}",
+            plan.format_hidden_skip_list()
+        );
+    }
     if plan.ready.is_empty() {
         return format!(
             "Cannot NUKE: {} position{} unresolvable: {}",

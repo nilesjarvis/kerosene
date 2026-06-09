@@ -59,7 +59,7 @@ impl TradingTerminal {
                 }),
         );
 
-        let spot_value = if include_spot {
+        let visible_spot_value = || {
             sum_optional(
                 data.spot
                     .balances
@@ -74,6 +74,9 @@ impl TradingTerminal {
                         )
                     }),
             )
+        };
+        let spot_value = if include_spot {
+            visible_spot_value()
         } else {
             Some(0.0)
         };
@@ -98,16 +101,7 @@ impl TradingTerminal {
                 })
             })
         } else if data.uses_shared_account_balance() {
-            shared_account_total_value(data, || {
-                sum_optional(data.spot.balances.iter().map(|balance| {
-                    spot_balance_value(
-                        &balance.coin,
-                        &balance.total,
-                        &balance.entry_ntl,
-                        self.resolve_mid_for_symbol(&balance.coin),
-                    )
-                }))
-            })
+            shared_account_total_value(data, visible_spot_value)
         } else {
             let perp_equity = parse_summary_number(&clearinghouse.margin_summary.account_value);
             match (perp_equity, spot_value, live_upnl, stale_upnl) {

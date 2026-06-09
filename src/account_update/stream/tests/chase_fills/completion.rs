@@ -1,6 +1,7 @@
 use super::{
-    ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason, chase_order, chase_order_by_id,
-    connected_terminal_with_chase_account, fill_with_oid, open_order, terminal_with_chase_fills,
+    ChaseLifecycle, ChaseOrder, ChaseStopPhase, ChaseVerificationReason, chase_order,
+    chase_order_by_id, connected_terminal_with_chase_account, fill_with_oid, open_order,
+    terminal_with_chase_fills,
 };
 
 #[test]
@@ -17,6 +18,23 @@ fn chase_fill_reconciliation_removes_fully_filled_chase() {
             .as_ref()
             .is_some_and(|(message, is_error)| !*is_error && message.contains("Chase filled"))
     );
+}
+
+#[test]
+fn historical_resting_oid_fills_do_not_complete_adopted_chase() {
+    let mut chase = chase_order();
+    chase.started_at_ms = 120_000;
+    chase.fill_cutoff_ms_by_oid =
+        vec![(42, ChaseOrder::adopted_fill_cutoff_ms(chase.started_at_ms))];
+    let mut terminal =
+        terminal_with_chase_fills(chase, vec![fill_with_oid(10_000, 42, "100", "1.0")]);
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.filled_size, 0.0);
+    assert_eq!(chase.remaining_size, 1.0);
+    assert!(terminal.chase_orders.contains_key(&1));
 }
 
 #[test]

@@ -48,7 +48,11 @@ impl TradingTerminal {
                     instance.chart.active_tool = None;
                 }
             }
-            Message::EscapePressed => {
+            Message::EscapePressed(window_id)
+                if self
+                    .main_window_id
+                    .is_none_or(|main_id| main_id == window_id) =>
+            {
                 self.chart_surface_active_tools.clear();
                 for instance in self.charts.values_mut() {
                     instance.chart.active_tool = None;

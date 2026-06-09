@@ -30,6 +30,7 @@ pub(crate) struct HudOrderRequest {
     pub(crate) quantity: String,
     pub(crate) order_type: HudOrderType,
     pub(crate) market_side: HudOrderSide,
+    pub(crate) limit_side: Option<HudOrderSide>,
     pub(crate) click_x: f32,
     pub(crate) click_y: f32,
     pub(crate) chart_w: f32,

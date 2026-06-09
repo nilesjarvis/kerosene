@@ -42,7 +42,7 @@ impl HydromancerCoalescedSender {
         Self::with_interval(inner, HYDROMANCER_BOOK_COALESCE_INTERVAL)
     }
 
-    fn with_interval(
+    pub(super) fn with_interval(
         inner: broadcast::Sender<HydromancerRoutedMessage>,
         interval: Duration,
     ) -> Self {
@@ -82,6 +82,7 @@ impl HydromancerCoalescedSender {
                 self.pending.insert(key, PendingEntry { deadline, message });
             }
             _ => {
+                self.pending.remove(&key);
                 let _ = self.inner.send(message);
                 self.last_emitted.insert(key, now);
             }

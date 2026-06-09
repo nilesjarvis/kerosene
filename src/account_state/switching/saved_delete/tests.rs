@@ -40,6 +40,7 @@ fn chase_order(account_address: &str) -> ChaseOrder {
         initial_price: 50_000.0,
         started_at: Instant::now(),
         started_at_ms: 1,
+        fill_cutoff_ms_by_oid: Vec::new(),
         reprice_count: 0,
         lifecycle: ChaseLifecycle::Resting,
         last_reprice_at: None,

@@ -40,6 +40,24 @@ impl TradingTerminal {
         }
     }
 
+    fn finish_definitive_chase_place_failure(&mut self, chase_id: u64, summary: String) {
+        self.clear_chase_startup_pending_if_owned(chase_id);
+        let mut summary = summary;
+        let mut is_error = true;
+        if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+            if chase.lifecycle.is_stopping() {
+                (summary, is_error) = chase
+                    .stop_reason
+                    .clone()
+                    .unwrap_or_else(|| ("Chase stopped".to_string(), false));
+            }
+            chase.desired_price = None;
+            chase.stop_reason = Some((summary.clone(), is_error));
+        }
+        self.order_status = Some((summary.clone(), is_error));
+        self.remove_chase_order_with_summary(chase_id, Some(summary));
+    }
+
     pub(crate) fn check_chase_place_status_by_cloid(
         &mut self,
         chase_id: u64,
@@ -99,7 +117,7 @@ impl TradingTerminal {
         chase_id: u64,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        self.pending_order_action = None;
+        let owns_startup_pending = self.chase_place_result_owns_startup_pending(chase_id);
         let should_refresh = result_requires_account_refresh(&result);
         if !self.chase_orders.contains_key(&chase_id) {
             return self.refresh_after_chase_result(should_refresh);
@@ -111,11 +129,14 @@ impl TradingTerminal {
         {
             return self.refresh_after_chase_result(should_refresh);
         }
+        if owns_startup_pending {
+            self.clear_chase_startup_pending_if_owned(chase_id);
+        }
 
         match result {
             Ok(resp) => {
                 if resp.is_error() {
-                    self.fail_chase_order(
+                    self.finish_definitive_chase_place_failure(
                         chase_id,
                         format!("Chase place failed: {}", resp.summary()),
                     );

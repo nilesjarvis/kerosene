@@ -69,7 +69,9 @@ impl TradingTerminal {
                             Some(("Chart ticker is hidden in Settings > Risk".into(), true));
                         return Task::none();
                     }
+                    let selected_symbol = sym.clone();
                     self.apply_active_symbol_selection(sym, display);
+                    self.refresh_order_price_for_symbol(&selected_symbol);
                     for inst in self.order_books.values_mut() {
                         if inst.mode == OrderBookSymbolMode::Active {
                             inst.set_book(OrderBook::empty());

@@ -102,6 +102,8 @@ impl TradingTerminal {
                 preset_size
             };
             self.order_quantity = format!("{qty:.6}");
+            self.order_quantity_is_usd = false;
+            self.order_percentage = 0.0;
 
             if kind == OrderKind::Limit || kind == OrderKind::Market {
                 if kind == OrderKind::Limit {
@@ -133,5 +135,39 @@ impl TradingTerminal {
             self.order_status = Some(("Preset size must be a positive finite value".into(), true));
             Task::none()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::OrderPreset;
+    use crate::signing::OrderKind;
+
+    #[test]
+    fn usd_preset_writes_coin_quantity_and_clears_ticket_usd_denomination() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.active_symbol = "BTC".to_string();
+        terminal.all_mids.insert("BTC".to_string(), 50_000.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        terminal.preset_is_usd = true;
+        terminal.order_quantity_is_usd = true;
+        terminal.order_percentage = 25.0;
+
+        let _task = terminal.handle_execute_preset(
+            OrderKind::Market,
+            OrderPreset {
+                label: "$100".to_string(),
+                size: 100.0,
+                price_offset_pct: None,
+            },
+            true,
+        );
+
+        assert_eq!(terminal.order_quantity, "0.002000");
+        assert!(!terminal.order_quantity_is_usd);
+        assert_eq!(terminal.order_percentage, 0.0);
     }
 }

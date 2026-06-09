@@ -9,6 +9,41 @@ fn subscribe_cmd(topic: &str) -> HydromancerCommand {
 }
 
 #[test]
+fn connected_session_cleanup_flushes_pending_and_balances_hydromancer_telemetry() {
+    let before = crate::ws::telemetry_snapshot().hydromancer_open_connections;
+    let (msg_tx, mut msg_rx) = broadcast::channel(8);
+    let mut coalescer = HydromancerCoalescedSender::with_interval(msg_tx, Duration::from_secs(60));
+
+    telemetry_on_hydromancer_connect();
+    coalescer.submit_json(json!({
+        "type": "l2Book",
+        "data": { "coin": "BTC", "seq": 1 },
+    }));
+    coalescer.submit_json(json!({
+        "type": "l2Book",
+        "data": { "coin": "BTC", "seq": 2 },
+    }));
+
+    finish_connected_hydromancer_session(&mut coalescer);
+
+    assert_eq!(
+        msg_rx.try_recv().expect("initial book should emit").data["data"]["seq"],
+        1
+    );
+    assert_eq!(
+        msg_rx
+            .try_recv()
+            .expect("pending book should flush during cleanup")
+            .data["data"]["seq"],
+        2
+    );
+    assert_eq!(
+        crate::ws::telemetry_snapshot().hydromancer_open_connections,
+        before
+    );
+}
+
+#[test]
 fn drain_pending_shutdown_handles_queued_rotation_before_reconnect() {
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut active_subs = ActiveHydromancerSubscriptions::default();

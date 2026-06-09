@@ -54,7 +54,7 @@ pub(in crate::order_execution::position_actions::nuke) struct NukeSymbolInfo {
 pub(in crate::order_execution::position_actions::nuke) struct NukePositionInput {
     pub(in crate::order_execution::position_actions::nuke) coin: String,
     pub(in crate::order_execution::position_actions::nuke) raw_size: String,
-    pub(in crate::order_execution::position_actions::nuke) is_visible: bool,
+    pub(in crate::order_execution::position_actions::nuke) is_hidden: bool,
     pub(in crate::order_execution::position_actions::nuke) sym: Option<NukeSymbolInfo>,
     pub(in crate::order_execution::position_actions::nuke) mid: Option<f64>,
 }
@@ -92,6 +92,7 @@ pub(in crate::order_execution::position_actions::nuke) fn classify_nuke_position
 pub(crate) struct NukePlan {
     pub(crate) ready: Vec<(String, NukePositionOrder)>,
     pub(crate) skipped: Vec<(String, NukeSkipReason)>,
+    pub(crate) hidden_skipped: Vec<(String, NukeSkipReason)>,
 }
 
 impl NukePlan {
@@ -103,6 +104,14 @@ impl NukePlan {
     /// string when nothing was skipped.
     pub(crate) fn format_skip_list(&self) -> String {
         self.skipped
+            .iter()
+            .map(|(coin, reason)| format!("{coin} ({})", reason.label()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    pub(crate) fn format_hidden_skip_list(&self) -> String {
+        self.hidden_skipped
             .iter()
             .map(|(coin, reason)| format!("{coin} ({})", reason.label()))
             .collect::<Vec<_>>()
@@ -171,14 +180,10 @@ pub(in crate::order_execution::position_actions::nuke) fn plan_nuke_positions_fr
         let NukePositionInput {
             coin,
             raw_size,
-            is_visible,
+            is_hidden,
             sym,
             mid,
         } = input;
-
-        if !is_visible {
-            continue;
-        }
 
         let szi = match parse_nuke_position_size(&coin, &raw_size)? {
             Some(szi) => szi,
@@ -187,7 +192,12 @@ pub(in crate::order_execution::position_actions::nuke) fn plan_nuke_positions_fr
 
         match classify_nuke_position(szi, sym, mid, slippage) {
             NukePositionClassification::Order(order) => plan.ready.push((coin, order)),
-            NukePositionClassification::Skip(reason) => plan.skipped.push((coin, reason)),
+            NukePositionClassification::Skip(reason) => {
+                if is_hidden {
+                    plan.hidden_skipped.push((coin.clone(), reason));
+                }
+                plan.skipped.push((coin, reason));
+            }
         }
     }
 

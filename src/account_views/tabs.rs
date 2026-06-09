@@ -320,6 +320,10 @@ mod tests {
             oid,
             timestamp: 1,
             reduce_only: None,
+            is_trigger: None,
+            order_type: None,
+            tif: None,
+            trigger_px: None,
         }
     }
 

@@ -10,6 +10,10 @@ fn open_order(coin: &str, side: &str, limit_px: &str, oid: u64) -> OpenOrder {
         oid,
         timestamp: oid,
         reduce_only: None,
+        is_trigger: None,
+        order_type: None,
+        tif: None,
+        trigger_px: None,
     }
 }
 

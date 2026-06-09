@@ -1,5 +1,4 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers::positive_finite_value;
 use crate::message::Message;
 use crate::order_execution::{
     HudOrderRequest, HudOrderType, MarketUsdSizeReference, OneShotPlacementContext, OrderSurface,
@@ -94,12 +93,11 @@ impl TradingTerminal {
             }
         };
         if !is_market_order {
-            prepared.is_buy = match self.hud_limit_order_is_buy(&prepared.symbol_key, request.price)
-            {
-                Some(is_buy) => is_buy,
+            prepared.is_buy = match request.limit_side {
+                Some(side) => side.is_buy(),
                 None => {
                     self.order_status =
-                        Some(("No reference price for HUD limit side".into(), true));
+                        Some(("No click-time side for HUD limit order".into(), true));
                     return Task::none();
                 }
             };
@@ -180,21 +178,6 @@ impl TradingTerminal {
         self.apply_one_shot_placement_outcome(context, outcome)
     }
 
-    fn hud_limit_order_is_buy(&self, chart_symbol: &str, price: f64) -> Option<bool> {
-        let reference = self
-            .resolve_mid_for_symbol(chart_symbol)
-            .or_else(|| {
-                self.charts
-                    .values()
-                    .find(|inst| inst.symbol == chart_symbol)
-                    .and_then(|inst| inst.chart.candles.last())
-                    .map(|candle| candle.close)
-            })
-            .and_then(positive_finite_value)?;
-
-        Some(price <= reference)
-    }
-
     fn start_hud_order_animation(
         &mut self,
         request: &HudOrderRequest,
@@ -269,6 +252,7 @@ mod tests {
             quantity: "1".to_string(),
             order_type: HudOrderType::Limit,
             market_side: HudOrderSide::Long,
+            limit_side: Some(HudOrderSide::Long),
             click_x: 120.0,
             click_y: 80.0,
             chart_w: 400.0,
@@ -362,6 +346,54 @@ mod tests {
                 .as_ref()
                 .map(|(message, is_error)| (message.as_str(), *is_error)),
             Some(("Invalid HUD order size", true))
+        );
+        assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn hud_limit_submission_uses_click_time_side_when_mid_moves() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 90.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        terminal.order_reduce_only = true;
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.price = 100.0;
+        request.limit_side = Some(HudOrderSide::Long);
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("Placing HUD limit LONG 1 BTC...", false))
+        );
+    }
+
+    #[test]
+    fn hud_limit_submission_rejects_missing_click_time_side() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.limit_side = None;
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("No click-time side for HUD limit order", true))
         );
         assert!(terminal.pending_order_action.is_none());
     }

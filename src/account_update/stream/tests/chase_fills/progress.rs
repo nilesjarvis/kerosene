@@ -1,4 +1,4 @@
-use super::{chase_order, chase_order_by_id, fill_with_oid, terminal_with_chase_fills};
+use super::{ChaseOrder, chase_order, chase_order_by_id, fill_with_oid, terminal_with_chase_fills};
 
 #[test]
 fn chase_fill_reconciliation_updates_filled_and_remaining_size() {
@@ -32,41 +32,60 @@ fn chase_fill_reconciliation_sums_known_reprice_oids() {
 }
 
 #[test]
-fn chase_fill_reconciliation_counts_matching_oids_before_local_chase_start() {
+fn chase_fill_reconciliation_ignores_matching_oids_before_local_chase_start() {
     let mut chase = chase_order();
-    chase.started_at_ms = 1_000;
+    chase.started_at_ms = 120_000;
+    chase.fill_cutoff_ms_by_oid =
+        vec![(42, ChaseOrder::adopted_fill_cutoff_ms(chase.started_at_ms))];
     let mut terminal = terminal_with_chase_fills(
         chase,
         vec![
-            fill_with_oid(900, 42, "100", "0.4"),
-            fill_with_oid(1_001, 42, "101", "0.1"),
+            fill_with_oid(10_000, 42, "100", "0.4"),
+            fill_with_oid(120_001, 42, "101", "0.1"),
         ],
     );
 
     let _task = terminal.reconcile_chase_fills_from_account();
 
     let chase = chase_order_by_id(&terminal, 1);
-    assert!((chase.filled_size - 0.5).abs() < 1e-12);
-    assert!((chase.remaining_size - 0.5).abs() < 1e-12);
+    assert!((chase.filled_size - 0.1).abs() < 1e-12);
+    assert!((chase.remaining_size - 0.9).abs() < 1e-12);
 }
 
 #[test]
 fn chase_fill_reconciliation_deduplicates_matching_oid_fills() {
     let mut chase = chase_order();
-    chase.started_at_ms = 1_000;
-    let duplicate = fill_with_oid(900, 42, "100", "0.4");
+    chase.started_at_ms = 120_000;
+    chase.fill_cutoff_ms_by_oid =
+        vec![(42, ChaseOrder::adopted_fill_cutoff_ms(chase.started_at_ms))];
+    let duplicate = fill_with_oid(10_000, 42, "100", "0.4");
     let mut terminal = terminal_with_chase_fills(
         chase,
         vec![
             duplicate.clone(),
             duplicate,
-            fill_with_oid(1_001, 42, "101", "0.1"),
+            fill_with_oid(120_001, 42, "101", "0.1"),
         ],
     );
 
     let _task = terminal.reconcile_chase_fills_from_account();
 
     let chase = chase_order_by_id(&terminal, 1);
-    assert!((chase.filled_size - 0.5).abs() < 1e-12);
-    assert!((chase.remaining_size - 0.5).abs() < 1e-12);
+    assert!((chase.filled_size - 0.1).abs() < 1e-12);
+    assert!((chase.remaining_size - 0.9).abs() < 1e-12);
+}
+
+#[test]
+fn chase_fill_reconciliation_credits_locally_placed_oid_despite_clock_skew() {
+    let mut chase = chase_order();
+    chase.started_at_ms = 120_000;
+    chase.fill_cutoff_ms_by_oid.clear();
+    let mut terminal =
+        terminal_with_chase_fills(chase, vec![fill_with_oid(119_500, 42, "100", "0.4")]);
+
+    let _task = terminal.reconcile_chase_fills_from_account();
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert!((chase.filled_size - 0.4).abs() < 1e-12);
+    assert!((chase.remaining_size - 0.6).abs() < 1e-12);
 }

@@ -20,7 +20,6 @@ fn selection_uses_active_or_fixed_symbol_and_trims_price() {
         Ok(OrderBookPriceSelection {
             selected_price: "100.5".to_string(),
             target_symbol: "BTC".to_string(),
-            book_mid: Some(100.0),
         })
     );
     assert_eq!(
@@ -28,7 +27,6 @@ fn selection_uses_active_or_fixed_symbol_and_trims_price() {
         Ok(OrderBookPriceSelection {
             selected_price: "2500".to_string(),
             target_symbol: "ETH".to_string(),
-            book_mid: Some(100.0),
         })
     );
 }

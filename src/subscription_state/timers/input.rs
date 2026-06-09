@@ -15,9 +15,9 @@ impl TradingTerminal {
             || self.chart_timeframe_hotkey_prefix.is_some()
             || self.charts.values().any(|inst| inst.editor_open)
         {
-            subs.push(iced::event::listen_with(|event, status, _window| {
+            subs.push(iced::event::listen_with(|event, status, window_id| {
                 if let iced::Event::Keyboard(keyboard_event) = event {
-                    Some(Message::KeyboardEvent(keyboard_event, status))
+                    Some(Message::KeyboardEvent(window_id, keyboard_event, status))
                 } else {
                     None
                 }
@@ -28,13 +28,13 @@ impl TradingTerminal {
             inst.quick_order.is_some() || inst.editor_open || inst.chart.active_tool.is_some()
         }) || !self.chart_surface_active_tools.is_empty()
         {
-            subs.push(iced::event::listen_with(|event, _status, _id| {
+            subs.push(iced::event::listen_with(|event, _status, window_id| {
                 if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                     key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
                     ..
                 }) = event
                 {
-                    Some(Message::EscapePressed)
+                    Some(Message::EscapePressed(window_id))
                 } else {
                     None
                 }

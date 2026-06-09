@@ -45,6 +45,16 @@ fn user_fill_value_with_oid(oid: Option<u64>) -> serde_json::Value {
     fill
 }
 
+fn user_fill_value_with_identity(tid: u64, hash: &str) -> serde_json::Value {
+    let mut fill = user_fill_value_with_oid(Some(42));
+    let Some(fill_obj) = fill.as_object_mut() else {
+        panic!("test fill should serialize as object");
+    };
+    fill_obj.insert("tid".to_string(), serde_json::json!(tid));
+    fill_obj.insert("hash".to_string(), serde_json::json!(hash));
+    fill
+}
+
 fn open_order_or_panic(value: serde_json::Value) -> OpenOrder {
     match serde_json::from_value(value) {
         Ok(order) => order,

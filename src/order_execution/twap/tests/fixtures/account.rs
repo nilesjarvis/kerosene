@@ -47,6 +47,8 @@ pub(in crate::order_execution::twap::tests) fn user_fill(
         sz: size.to_string(),
         side: "B".to_string(),
         time: 1,
+        hash: None,
+        tid: None,
         oid: Some(oid),
         dir: "Open Long".to_string(),
         closed_pnl: "0".to_string(),

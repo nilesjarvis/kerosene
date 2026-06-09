@@ -9,7 +9,7 @@ use self::messages::{
 use self::session::HydromancerSessionState;
 use self::socket::{handle_hydromancer_command, handle_hydromancer_ws_message};
 use self::subscriptions::ActiveHydromancerSubscriptions;
-use super::super::super::{telemetry_on_connect, telemetry_on_disconnect};
+use super::super::super::{telemetry_on_hydromancer_connect, telemetry_on_hydromancer_disconnect};
 use super::super::HYDROMANCER_RECONNECT_DELAY_SECS;
 use super::{
     HYDROMANCER_MAX_CONNECT_RETRY_SECS, HYDROMANCER_READ_TIMEOUT_SECS, HydromancerCommand,
@@ -125,7 +125,7 @@ pub(super) async fn hydromancer_manager_task(
         };
 
         retry_delay = 1;
-        telemetry_on_connect();
+        telemetry_on_hydromancer_connect();
         let (mut write, mut read) = ws_stream.split();
         let mut disconnected = false;
         let mut last_rx_at = Instant::now();
@@ -143,6 +143,7 @@ pub(super) async fn hydromancer_manager_task(
                     // Rotation / clear path: stop the task so the owned
                     // `api_key` String is dropped instead of resident for
                     // the process lifetime.
+                    finish_connected_hydromancer_session(&mut coalescer);
                     return;
                 }
                 Either::Left((Some(cmd), _)) => {
@@ -195,8 +196,7 @@ pub(super) async fn hydromancer_manager_task(
             }
         }
 
-        coalescer.flush_all();
-        telemetry_on_disconnect();
+        finish_connected_hydromancer_session(&mut coalescer);
         if hydromancer_sleep_or_shutdown(
             &mut cmd_rx,
             &mut active_subs,
@@ -208,4 +208,9 @@ pub(super) async fn hydromancer_manager_task(
             return;
         }
     }
+}
+
+fn finish_connected_hydromancer_session(coalescer: &mut HydromancerCoalescedSender) {
+    coalescer.flush_all();
+    telemetry_on_hydromancer_disconnect();
 }

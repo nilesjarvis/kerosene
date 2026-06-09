@@ -125,20 +125,35 @@ impl CandlestickChart {
         {
             let clamped_y = pos.y.clamp(0.0, price_h);
             let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
+            let order_type = match state.hud_order_kind {
+                super::super::state::HudOrderKind::Limit => HudOrderType::Limit,
+                super::super::state::HudOrderKind::Market => HudOrderType::Market,
+            };
+            let limit_side = if order_type == HudOrderType::Limit {
+                self.market_reference_price
+                    .or_else(|| self.candles.last().map(|candle| candle.close))
+                    .map(|reference| {
+                        if price <= reference {
+                            HudOrderSide::Long
+                        } else {
+                            HudOrderSide::Short
+                        }
+                    })
+            } else {
+                None
+            };
             return Some(
                 canvas::Action::publish(Message::SubmitHudOrder(HudOrderRequest {
                     chart_id: self.id,
                     surface_id: self.surface_id,
                     price,
                     quantity: hud_order_quantity(state),
-                    order_type: match state.hud_order_kind {
-                        super::super::state::HudOrderKind::Limit => HudOrderType::Limit,
-                        super::super::state::HudOrderKind::Market => HudOrderType::Market,
-                    },
+                    order_type,
                     market_side: match state.hud_market_side {
                         super::super::state::HudMarketSide::Long => HudOrderSide::Long,
                         super::super::state::HudMarketSide::Short => HudOrderSide::Short,
                     },
+                    limit_side,
                     click_x: pos.x,
                     click_y: pos.y,
                     chart_w,

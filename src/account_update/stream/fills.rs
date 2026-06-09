@@ -1,4 +1,4 @@
-use crate::account::UserFill;
+use crate::account::{UserFill, dedupe_user_fills_preserving_order};
 use crate::helpers::positive_finite_value;
 use crate::signing::ChaseOrder;
 
@@ -18,11 +18,17 @@ pub(super) fn prepend_recent_fills(
         return;
     }
 
+    let mut seen = HashSet::with_capacity(existing.len().saturating_add(incoming.len()));
     let mut updated =
         Vec::with_capacity(max_len.min(existing.len().saturating_add(incoming.len())));
-    updated.extend(incoming.into_iter().take(max_len));
-    let remaining = max_len.saturating_sub(updated.len());
-    updated.extend(existing.drain(..).take(remaining));
+    for fill in incoming.into_iter().chain(existing.drain(..)) {
+        if seen.insert(fill.dedup_key()) {
+            updated.push(fill);
+            if updated.len() == max_len {
+                break;
+            }
+        }
+    }
     *existing = updated;
 }
 
@@ -30,21 +36,23 @@ pub(super) fn apply_fills_update<F>(
     existing: &mut Vec<UserFill>,
     fills: Vec<UserFill>,
     is_snapshot: bool,
-    is_muted: F,
+    is_hidden: F,
 ) -> Vec<String>
 where
     F: Fn(&str) -> bool,
 {
-    let fills: Vec<_> = fills
-        .into_iter()
-        .filter(|fill| !is_muted(&fill.coin))
-        .collect();
     if is_snapshot {
-        *existing = fills;
+        *existing = dedupe_user_fills_preserving_order(fills);
         Vec::new()
     } else {
+        let mut seen: HashSet<String> = existing.iter().map(UserFill::dedup_key).collect();
+        let fills: Vec<UserFill> = fills
+            .into_iter()
+            .filter(|fill| seen.insert(fill.dedup_key()))
+            .collect();
         let toast_msgs: Vec<String> = fills
             .iter()
+            .filter(|fill| !is_hidden(&fill.coin))
             .map(|fill| {
                 let side = if fill.side == "B" { "BUY" } else { "SELL" };
                 format!("Filled {side} {} {} @ ${}", fill.sz, fill.coin, fill.px)
@@ -67,7 +75,27 @@ pub(super) struct ChaseFillTotals {
     pub(super) total_notional: f64,
 }
 
+#[cfg(test)]
 pub(super) fn chase_fill_totals(fills: &[UserFill], oids: &[u64]) -> Option<ChaseFillTotals> {
+    chase_fill_totals_with_cutoff(fills, oids, |_| None)
+}
+
+pub(super) fn chase_fill_totals_for_chase(
+    fills: &[UserFill],
+    chase: &ChaseOrder,
+) -> Option<ChaseFillTotals> {
+    let oids = chase.known_oids_with_current();
+    chase_fill_totals_with_cutoff(fills, &oids, |oid| chase.fill_cutoff_ms_for_oid(oid))
+}
+
+fn chase_fill_totals_with_cutoff<F>(
+    fills: &[UserFill],
+    oids: &[u64],
+    fill_cutoff_ms_for_oid: F,
+) -> Option<ChaseFillTotals>
+where
+    F: Fn(u64) -> Option<u64>,
+{
     if oids.is_empty() {
         return None;
     }
@@ -85,17 +113,10 @@ pub(super) fn chase_fill_totals(fills: &[UserFill], oids: &[u64]) -> Option<Chas
         if !oids.contains(&oid) {
             continue;
         }
-        let fill_key = (
-            oid,
-            fill.time,
-            fill.px.as_str(),
-            fill.sz.as_str(),
-            fill.side.as_str(),
-            fill.dir.as_str(),
-            fill.closed_pnl.as_str(),
-            fill.fee.as_str(),
-        );
-        if !seen.insert(fill_key) {
+        if fill_cutoff_ms_for_oid(oid).is_some_and(|cutoff_ms| fill.time < cutoff_ms) {
+            continue;
+        }
+        if !seen.insert(fill.dedup_key()) {
             continue;
         }
         matched = true;
@@ -126,6 +147,7 @@ pub(super) fn chase_fill_totals(fills: &[UserFill], oids: &[u64]) -> Option<Chas
     })
 }
 
+#[cfg(test)]
 pub(super) fn chase_fill_summary_for_oids(fills: &[UserFill], oids: &[u64]) -> Option<String> {
     let totals = chase_fill_totals(fills, oids)?;
 
@@ -147,8 +169,7 @@ pub(super) fn chase_fill_summary_for_chase(
     fills: &[UserFill],
     chase: &ChaseOrder,
 ) -> Option<String> {
-    let oids = chase.known_oids_with_current();
-    let totals = chase_fill_totals(fills, &oids)?;
+    let totals = chase_fill_totals_for_chase(fills, chase)?;
 
     if totals.filled_size > 0.0 {
         let avg_px = totals.total_notional / totals.filled_size;
@@ -164,6 +185,7 @@ pub(super) fn chase_fill_summary_for_chase(
     }
 }
 
+#[cfg(test)]
 pub(super) fn chase_fill_summary(fills: &[UserFill], oid: u64) -> Option<String> {
     chase_fill_summary_for_oids(fills, &[oid]).map(|summary| {
         if summary == "Chase filled" {

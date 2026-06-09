@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
-use crate::order_execution::{PendingOrderAction, cancel_order_task};
+use crate::order_execution::cancel_order_task;
 use crate::signing::{ChaseLifecycle, ChaseStopPhase};
 
 use super::{ChaseLimitReason, chase_reprice_limit_reason};
@@ -39,14 +39,14 @@ impl TradingTerminal {
         is_error: bool,
     ) -> Task<Message> {
         let _theme = self.theme();
+        let clear_startup_pending = self.chase_orders.get(&chase_id).is_some_and(|chase| {
+            self.chase_owns_startup_pending_action(chase_id, chase)
+                && chase.current_cloid.is_none()
+                && !chase.has_pending_op()
+        });
         let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
-        let clear_startup_pending = matches!(
-            self.pending_order_action,
-            Some(PendingOrderAction::ChaseBuy | PendingOrderAction::ChaseSell)
-        ) && chase.current_oid.is_none()
-            && !chase.has_pending_op();
         if clear_startup_pending {
             self.pending_order_action = None;
         }

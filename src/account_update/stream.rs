@@ -5,7 +5,7 @@ mod orders;
 use fills::apply_fills_update;
 use orders::preserve_open_order_reduce_only;
 
-use crate::account::{fetch_account_data_scoped_with_provider, normalize_dex_open_order_coins};
+use crate::account::normalize_dex_open_order_coins;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::ws::WsUserData;
@@ -75,9 +75,6 @@ impl TradingTerminal {
                 symbol,
             )
         };
-        let is_muted = |symbol: &str| {
-            Self::key_matches_muted_tickers(&exchange_symbols, &muted_tickers, symbol)
-        };
         if let Some(data) = &mut self.account_data {
             match ws_data {
                 WsUserData::AllDexPositions {
@@ -86,22 +83,13 @@ impl TradingTerminal {
                     all_positions,
                     position_details: _,
                 } => {
-                    let mut states_by_dex = states_by_dex;
-                    for state in states_by_dex.values_mut() {
-                        state
-                            .asset_positions
-                            .retain(|position| !is_hidden(&position.position.coin));
-                    }
                     data.fetched_at_ms = Self::now_ms();
                     data.clearinghouse.margin_summary = main_state.margin_summary;
                     data.clearinghouse.withdrawable = main_state.withdrawable;
                     data.clearinghouse.cross_margin_summary = main_state.cross_margin_summary;
                     data.clearinghouse.cross_maintenance_margin_used =
                         main_state.cross_maintenance_margin_used;
-                    data.clearinghouse.asset_positions = all_positions
-                        .into_iter()
-                        .filter(|position| !is_hidden(&position.position.coin))
-                        .collect();
+                    data.clearinghouse.asset_positions = all_positions;
                     data.clearinghouses_by_dex = states_by_dex;
                     positions_changed = true;
                 }
@@ -117,9 +105,7 @@ impl TradingTerminal {
                         let prefix = format!("{dex}:");
                         data.open_orders.retain(|o| !o.coin.starts_with(&prefix));
                     }
-                    data.open_orders.retain(|order| !is_hidden(&order.coin));
-                    data.open_orders
-                        .extend(orders.into_iter().filter(|order| !is_hidden(&order.coin)));
+                    data.open_orders.extend(orders);
                     orders_changed = true;
                 }
                 WsUserData::Fills { fills, is_snapshot } => {
@@ -128,10 +114,7 @@ impl TradingTerminal {
                     fills_changed = true;
                 }
                 WsUserData::SpotBalances(balances) => {
-                    data.spot.balances = balances
-                        .into_iter()
-                        .filter(|balance| !is_muted(&balance.coin))
-                        .collect();
+                    data.spot.balances = balances;
                 }
                 WsUserData::AllMids(mids) => {
                     mids_task = self.handle_mids_update(mids);
@@ -153,27 +136,11 @@ impl TradingTerminal {
                     ) && let Some(addr) = &self.connected_address
                     {
                         let addr = addr.clone();
-                        let requested_addr = addr.clone();
-                        self.account_loading = true;
-                        self.account_error = None;
                         let wallet_task = self.apply_wallet_details_ws_update(
                             source_address.clone(),
                             wallet_details_update,
                         );
-                        let scope = self.account_data_fetch_scope();
-                        let provider = self.read_data_provider;
-                        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
-                        let account_task = Task::perform(
-                            fetch_account_data_scoped_with_provider(
-                                addr,
-                                scope,
-                                provider,
-                                hydromancer_key,
-                            ),
-                            move |r| {
-                                Message::AccountDataLoaded(requested_addr.clone(), Box::new(r))
-                            },
-                        );
+                        let account_task = self.force_refresh_account_data_for_reconciliation(addr);
                         return Task::batch([wallet_task, account_task]);
                     }
                 }

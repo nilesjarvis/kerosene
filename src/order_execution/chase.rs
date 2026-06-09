@@ -20,6 +20,37 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    pub(crate) fn chase_owns_startup_pending_action(
+        &self,
+        _chase_id: u64,
+        chase: &ChaseOrder,
+    ) -> bool {
+        if !chase.known_oids.is_empty()
+            || chase.current_oid.is_some()
+            || chase.place_attempt_count > 1
+        {
+            return false;
+        }
+
+        matches!(
+            (self.pending_order_action, chase.is_buy),
+            (Some(PendingOrderAction::ChaseBuy), true)
+                | (Some(PendingOrderAction::ChaseSell), false)
+        )
+    }
+
+    pub(crate) fn chase_place_result_owns_startup_pending(&self, chase_id: u64) -> bool {
+        self.chase_orders
+            .get(&chase_id)
+            .is_some_and(|chase| self.chase_owns_startup_pending_action(chase_id, chase))
+    }
+
+    pub(crate) fn clear_chase_startup_pending_if_owned(&mut self, chase_id: u64) {
+        if self.chase_place_result_owns_startup_pending(chase_id) {
+            self.pending_order_action = None;
+        }
+    }
+
     pub(crate) fn selected_chase_id(&self) -> Option<u64> {
         self.selected_chase_id
             .filter(|id| self.chase_orders.contains_key(id))
@@ -40,6 +71,11 @@ impl TradingTerminal {
         chase_id: u64,
         summary: Option<String>,
     ) {
+        let clear_startup_pending = self.chase_orders.get(&chase_id).is_some_and(|chase| {
+            self.chase_owns_startup_pending_action(chase_id, chase)
+                && chase.current_cloid.is_none()
+                && !chase.has_pending_op()
+        });
         let removed = self.chase_orders.contains_key(&chase_id);
         if let Some(chase) = self.chase_orders.remove(&chase_id) {
             let summary = summary.unwrap_or_else(|| {
@@ -53,6 +89,9 @@ impl TradingTerminal {
         }
         if self.selected_chase_id == Some(chase_id) {
             self.selected_chase_id = self.chase_orders.keys().next_back().copied();
+        }
+        if clear_startup_pending {
+            self.pending_order_action = None;
         }
         if removed {
             self.sync_all_chart_orders();
@@ -170,6 +209,7 @@ impl TradingTerminal {
                 initial_price: 0.0,
                 started_at,
                 started_at_ms,
+                fill_cutoff_ms_by_oid: Vec::new(),
                 reprice_count: 0,
                 lifecycle: ChaseLifecycle::LoadingBook,
                 last_reprice_at: None,

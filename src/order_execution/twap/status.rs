@@ -37,7 +37,63 @@ impl TradingTerminal {
             }
 
             match result {
-                Ok(status) if status.is_missing() || status.is_no_fill_terminal() => {
+                Ok(status) if status.is_missing() => {
+                    let retry = next_twap_status_retry(twap.status_check_retries);
+                    twap.status_check_retries = retry.attempt();
+                    match retry {
+                        TwapStatusRetryDecision::Exhausted { .. } => {
+                            twap.status_check_cloid = None;
+                            twap.status_check_retries = 0;
+                            twap.retry_slice = None;
+                            twap.update_child_orders_matching(
+                                |child| child.cloid.as_deref() == Some(cloid.as_str()),
+                                |child| {
+                                    child.oid = status.oid.or(child.oid);
+                                    child.status = TwapChildStatus::NoFill;
+                                    child.exchange_summary = status.raw_summary.clone();
+                                },
+                            );
+                            twap.clear_pause();
+                            twap.push_event(
+                                TwapEventKind::Reconciled,
+                                format!(
+                                    "Slice status remained missing after retries: {}",
+                                    status.raw_summary
+                                ),
+                                false,
+                            );
+                            self.order_status = Some((
+                                format!("TWAP status reconciled: {}", status.raw_summary),
+                                false,
+                            ));
+                            finish_attempt = true;
+                        }
+                        TwapStatusRetryDecision::Retry { attempt, delay } => {
+                            twap.update_child_orders_matching(
+                                |child| child.cloid.as_deref() == Some(cloid.as_str()),
+                                |child| {
+                                    child.oid = status.oid.or(child.oid);
+                                    child.status = TwapChildStatus::StatusUnknown;
+                                    child.exchange_summary = status.raw_summary.clone();
+                                },
+                            );
+                            twap.pause(
+                                TwapPauseReason::StatusUnknown,
+                                Some(now + delay),
+                                format!(
+                                    "Slice status missing ({}); retry {}/{} in about {}s",
+                                    status.status,
+                                    attempt,
+                                    TWAP_MAX_RETRY_ATTEMPTS,
+                                    delay.as_secs()
+                                ),
+                                true,
+                            );
+                            retry_status_check = Some((cloid.clone(), delay));
+                        }
+                    }
+                }
+                Ok(status) if status.is_no_fill_terminal() => {
                     twap.status_check_cloid = None;
                     twap.status_check_retries = 0;
                     twap.retry_slice = None;
@@ -45,11 +101,7 @@ impl TradingTerminal {
                         |child| child.cloid.as_deref() == Some(cloid.as_str()),
                         |child| {
                             child.oid = status.oid.or(child.oid);
-                            child.status = if status.is_missing() {
-                                TwapChildStatus::NoFill
-                            } else {
-                                TwapChildStatus::Rejected
-                            };
+                            child.status = TwapChildStatus::Rejected;
                             child.exchange_summary = status.raw_summary.clone();
                         },
                     );

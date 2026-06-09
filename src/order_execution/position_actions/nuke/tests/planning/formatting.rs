@@ -8,6 +8,7 @@ fn plan_skip_list_renders_each_position_with_its_reason() {
             ("SHIB".to_string(), NukeSkipReason::NoMidPrice),
             ("BTC-SPOT".to_string(), NukeSkipReason::NonPerp),
         ],
+        hidden_skipped: vec![],
     };
     assert_eq!(
         plan.format_skip_list(),
@@ -28,6 +29,7 @@ fn plan_ready_list_renders_each_coin_in_order() {
             ("SOL".to_string(), order),
         ],
         skipped: vec![],
+        hidden_skipped: vec![],
     };
     assert_eq!(plan.format_ready_list(), "BTC, ETH, SOL");
 }
@@ -38,6 +40,7 @@ fn plan_is_empty_iff_both_lists_are_empty() {
     let with_skip = NukePlan {
         ready: vec![],
         skipped: vec![("X".to_string(), NukeSkipReason::UnknownAsset)],
+        hidden_skipped: vec![],
     };
     assert!(!with_skip.is_empty());
 }

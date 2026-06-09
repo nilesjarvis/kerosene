@@ -4,10 +4,10 @@ use super::planning::{
     plan_nuke_positions_from_inputs,
 };
 use crate::account::{
-    AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
-    SpotClearinghouseState, UserFeeRates,
+    AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
+    Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
 };
-use crate::api::MarketType;
+use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::order_execution::pricing::DEFAULT_MARKET_SLIPPAGE_PCT;
 
@@ -29,14 +29,14 @@ fn perp_sym() -> NukeSymbolInfo {
 fn nuke_input(
     coin: &str,
     raw_size: &str,
-    is_visible: bool,
+    is_hidden: bool,
     sym: Option<NukeSymbolInfo>,
     mid: Option<f64>,
 ) -> NukePositionInput {
     NukePositionInput {
         coin: coin.to_string(),
         raw_size: raw_size.to_string(),
-        is_visible,
+        is_hidden,
         sym,
         mid,
     }
@@ -71,6 +71,43 @@ fn stale_account_data() -> AccountData {
         fee_rates: UserFeeRates::default(),
         completeness: AccountDataCompleteness::default(),
         fetched_at_ms: 1,
+    }
+}
+
+fn active_position(coin: &str, szi: &str) -> AssetPosition {
+    AssetPosition {
+        position: Position {
+            coin: coin.to_string(),
+            szi: szi.to_string(),
+            entry_px: "100".to_string(),
+            position_value: "100".to_string(),
+            unrealized_pnl: "0".to_string(),
+            liquidation_px: None,
+            leverage: PositionLeverage {
+                leverage_type: "cross".to_string(),
+                value: 1,
+            },
+            margin_used: "0".to_string(),
+            cum_funding: None,
+        },
+        liquidation_px: None,
+    }
+}
+
+fn exchange_symbol(key: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "crypto".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 7,
+        collateral_token: None,
+        sz_decimals: 4,
+        max_leverage: 50,
+        only_isolated: false,
+        market_type: MarketType::Perp,
+        outcome: None,
     }
 }
 

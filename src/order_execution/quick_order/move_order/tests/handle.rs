@@ -42,6 +42,25 @@ fn handle_move_order_allows_in_band_drag_price() {
 }
 
 #[test]
+fn handle_move_order_rejects_trigger_orders_before_building_modify_wire() {
+    let mut terminal = terminal_with_move_order("BTC", "BTC", 100.0);
+    let order = terminal
+        .account_data
+        .as_mut()
+        .and_then(|data| data.open_orders.first_mut())
+        .expect("fixture order");
+    order.is_trigger = Some(true);
+    order.trigger_px = Some("95".to_string());
+
+    let _task = terminal.handle_move_order(42, 101.0);
+
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(is_error);
+    assert!(message.contains("trigger orders"));
+    assert!(!terminal.pending_move_order_contexts.contains_key(&42));
+}
+
+#[test]
 fn handle_move_order_rejects_non_tradable_fallback_outcome() {
     let mut terminal = terminal_with_move_order("#660", "#660", 0.42);
     terminal.exchange_symbols = vec![outcome_symbol("#660", true)];

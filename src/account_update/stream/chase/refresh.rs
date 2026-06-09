@@ -1,4 +1,4 @@
-use super::super::fills::{chase_fill_summary, chase_fill_summary_for_chase};
+use super::super::fills::chase_fill_summary_for_chase;
 use super::super::orders::{apply_open_order_to_chase, first_open_chase_oid};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -204,7 +204,6 @@ impl TradingTerminal {
                         ChaseVerificationReason::MissingOrderResolvedNoFill
                     ) {
                         let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
-                            .or_else(|| chase_fill_summary(&fills, oid))
                             .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
                         self.order_status = Some((status.clone(), false));
                         remove_ids.push((chase_id, status, false));

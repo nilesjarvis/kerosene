@@ -102,6 +102,7 @@ impl CoalescedSender {
                 self.pending.insert(key, PendingEntry { deadline, data });
             }
             _ => {
+                self.pending.remove(&key);
                 let _ = self.inner.send(WsRoutedMessage { channel, data });
                 self.last_emitted.insert(key, now);
             }

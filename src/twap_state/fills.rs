@@ -2,6 +2,8 @@ use crate::account::UserFill;
 use crate::helpers::{finite_value, positive_finite_value};
 use crate::signing::ExchangeResponse;
 
+use std::collections::HashSet;
+
 // ---------------------------------------------------------------------------
 // TWAP Fill Summaries
 // ---------------------------------------------------------------------------
@@ -61,8 +63,12 @@ pub(super) fn fill_summary_for_oid(fills: &[UserFill], oid: u64) -> Option<FillS
     let mut filled_size = 0.0;
     let mut notional = 0.0;
     let mut fee = 0.0;
+    let mut seen = HashSet::new();
 
     for fill in fills.iter().filter(|fill| fill.oid == Some(oid)) {
+        if !seen.insert(fill.dedup_key()) {
+            continue;
+        }
         let Ok(size) = fill.sz.parse::<f64>() else {
             continue;
         };

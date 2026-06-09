@@ -106,9 +106,6 @@ impl TradingTerminal {
             form.quantity = quantity;
             form.percentage = percentage;
         }
-
-        self.order_quantity_is_usd = target_is_usd;
-        self.persist_config();
     }
 
     pub(crate) fn handle_quick_order_toggle_type(&mut self, id: ChartId) {

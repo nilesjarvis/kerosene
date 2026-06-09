@@ -5,6 +5,9 @@ use crate::account::{
 };
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
+use crate::chart_state::ChartInstance;
+use crate::order_execution::QuickOrderForm;
+use crate::timeframe::Timeframe;
 
 fn symbol(key: &str) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -110,4 +113,36 @@ fn quick_order_max_notional_uses_one_x_when_leverage_is_only_symbol_limit() {
     terminal.account_data = Some(account_data_without_positions());
 
     assert_eq!(terminal.quick_order_max_notional("BTC"), Some(1_000.0));
+}
+
+#[test]
+fn quick_order_toggle_denomination_does_not_change_main_ticket_denomination() {
+    let chart_id = 7;
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.order_quantity_is_usd = false;
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance.set_quick_order(QuickOrderForm {
+        price: 100.0,
+        quantity: "1".to_string(),
+        quantity_is_usd: false,
+        percentage: 0.0,
+        is_limit: true,
+        click_x: 0.0,
+        click_y: 0.0,
+        chart_w: 400.0,
+        chart_h: 240.0,
+    });
+    terminal.charts.insert(chart_id, instance);
+
+    terminal.handle_quick_order_toggle_denomination(chart_id);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert!(form.quantity_is_usd);
+    assert_eq!(form.quantity, "100.00");
+    assert!(!terminal.order_quantity_is_usd);
 }

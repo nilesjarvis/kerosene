@@ -12,13 +12,24 @@ pub(super) fn append_perp_symbols(
     annotations_raw: &Value,
     dexs_raw: &Value,
 ) -> Result<(), String> {
-    let dex_offsets = dex_offsets_from(dexs_raw);
+    let dex_offsets = dex_offsets_from(dexs_raw)?;
     let annotation_map = annotation_map_from(annotations_raw);
     let empty_vec = Vec::new();
     let dexes = metas_raw.as_array().ok_or("Expected array of dex metas")?;
+    if dex_offsets.len() < dexes.len() {
+        return Err(format!(
+            "perpDexs metadata has {} entries but allPerpMetas has {}; cannot build asset indices",
+            dex_offsets.len(),
+            dexes.len()
+        ));
+    }
 
     for (dex_idx, dex_meta) in dexes.iter().enumerate() {
-        let offset = dex_offsets.get(dex_idx).copied().unwrap_or(0);
+        let offset = dex_offsets.get(dex_idx).copied().ok_or_else(|| {
+            format!(
+                "perpDexs metadata missing entry for allPerpMetas dex index {dex_idx}; cannot build asset indices"
+            )
+        })?;
         let universe = dex_meta
             .get("universe")
             .and_then(|v| v.as_array())
@@ -108,18 +119,19 @@ pub(super) fn append_perp_symbols(
     Ok(())
 }
 
-fn dex_offsets_from(dexs_raw: &Value) -> Vec<u32> {
+fn dex_offsets_from(dexs_raw: &Value) -> Result<Vec<u32>, String> {
     let mut dex_offsets = Vec::new();
-    if let Some(dexs) = dexs_raw.as_array() {
-        for (i, _dex) in dexs.iter().enumerate() {
-            if i == 0 {
-                dex_offsets.push(0);
-            } else {
-                dex_offsets.push(110_000 + (i as u32 - 1) * 10_000);
-            }
+    let dexs = dexs_raw
+        .as_array()
+        .ok_or("Expected array of perp dex metadata")?;
+    for (i, _dex) in dexs.iter().enumerate() {
+        if i == 0 {
+            dex_offsets.push(0);
+        } else {
+            dex_offsets.push(110_000 + (i as u32 - 1) * 10_000);
         }
     }
-    dex_offsets
+    Ok(dex_offsets)
 }
 
 fn margin_mode_disallows_cross(asset: &Value) -> bool {
@@ -152,7 +164,8 @@ fn annotation_map_from(annotations_raw: &Value) -> HashMap<String, Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::margin_mode_disallows_cross;
+    use super::{append_perp_symbols, margin_mode_disallows_cross};
+    use crate::api::MarketType;
 
     #[test]
     fn margin_mode_strict_isolated_disallows_cross() {
@@ -174,5 +187,63 @@ mod tests {
             "marginMode": "cross"
         })));
         assert!(!margin_mode_disallows_cross(&serde_json::json!({})));
+    }
+
+    #[test]
+    fn hip3_asset_index_uses_matching_dex_offset() {
+        let mut symbols = Vec::new();
+
+        append_perp_symbols(
+            &mut symbols,
+            &serde_json::json!([
+                {
+                    "collateralToken": 0,
+                    "universe": [{ "name": "BTC", "szDecimals": 5, "maxLeverage": 50 }]
+                },
+                {
+                    "collateralToken": 1,
+                    "universe": [{ "name": "xyz:NVDA", "szDecimals": 2, "maxLeverage": 5 }]
+                }
+            ]),
+            &serde_json::json!([]),
+            &serde_json::json!([{ "name": "" }, { "name": "xyz" }]),
+        )
+        .expect("valid perp metadata");
+
+        let hip3 = symbols
+            .iter()
+            .find(|symbol| symbol.key == "xyz:NVDA")
+            .expect("hip3 symbol");
+        assert_eq!(hip3.asset_index, 110_000);
+        assert_eq!(hip3.collateral_token, Some(1));
+        assert_eq!(hip3.market_type, MarketType::Perp);
+    }
+
+    #[test]
+    fn hip3_asset_index_fails_when_dex_metadata_is_missing() {
+        let mut symbols = Vec::new();
+
+        let err = append_perp_symbols(
+            &mut symbols,
+            &serde_json::json!([
+                {
+                    "collateralToken": 0,
+                    "universe": [{ "name": "BTC", "szDecimals": 5, "maxLeverage": 50 }]
+                },
+                {
+                    "collateralToken": 1,
+                    "universe": [{ "name": "xyz:NVDA", "szDecimals": 2, "maxLeverage": 5 }]
+                }
+            ]),
+            &serde_json::json!([]),
+            &serde_json::json!([{ "name": "" }]),
+        )
+        .expect_err("missing dex metadata should fail");
+
+        assert_eq!(
+            err,
+            "perpDexs metadata has 1 entries but allPerpMetas has 2; cannot build asset indices"
+        );
+        assert!(symbols.is_empty());
     }
 }

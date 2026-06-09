@@ -606,7 +606,7 @@ pub(crate) enum Message {
     ChartScreenshotSaved(Result<Option<PathBuf>, String>),
     CloseChartScreenshotWindow,
     // Hotkeys related messages
-    KeyboardEvent(iced::keyboard::Event, iced::event::Status),
+    KeyboardEvent(window::Id, iced::keyboard::Event, iced::event::Status),
     AddChart(pane_grid::Pane),
     ClosePane(pane_grid::Pane),
     ToggleHidePnl,
@@ -629,7 +629,7 @@ pub(crate) enum Message {
         context: OneShotPlacementContext,
         result: Box<Result<ExchangeResponse, String>>,
     },
-    EscapePressed,
+    EscapePressed(window::Id),
     // Order drag-to-move (from chart canvas)
     MoveOrderDragStarted {
         oid: u64,

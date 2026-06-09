@@ -50,9 +50,6 @@ impl TradingTerminal {
                 } else if self.account_data.is_none() {
                     error = Some("No account data available".to_string());
                 } else if let Some((coin, position)) = self.resolve_close_position(symbol) {
-                    if self.symbol_key_is_hidden(&coin) {
-                        error = Some("Position ticker is hidden in Settings > Risk".to_string());
-                    }
                     resolved_position = Some((coin, position.clone()));
                 } else {
                     error = Some(format!(

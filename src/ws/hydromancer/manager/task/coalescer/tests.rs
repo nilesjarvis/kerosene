@@ -77,6 +77,43 @@ fn book_messages_keep_latest_snapshot_per_coin() {
 }
 
 #[test]
+fn immediate_book_emit_drops_older_pending_for_same_key() {
+    let (sender, mut receiver) = broadcast::channel(8);
+    let mut coalescer =
+        HydromancerCoalescedSender::with_interval(sender, Duration::from_millis(50));
+
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"type": "l2Book", "data": {"coin": "BTC", "seq": 1}}),
+    ));
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"type": "l2Book", "data": {"coin": "BTC", "seq": 2}}),
+    ));
+
+    assert_eq!(receive(&mut receiver).data["data"]["seq"], 1);
+    assert!(receiver.try_recv().is_err());
+
+    std::thread::sleep(Duration::from_millis(70));
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"type": "l2Book", "data": {"coin": "BTC", "seq": 3}}),
+    ));
+
+    assert_eq!(
+        receive(&mut receiver).data["data"]["seq"],
+        3,
+        "newer immediate emit should reach subscribers before any flush"
+    );
+    assert_eq!(
+        coalescer.flush_due(),
+        0,
+        "older pending book should be removed when a newer book emits"
+    );
+    assert!(receiver.try_recv().is_err());
+}
+
+#[test]
 fn book_messages_are_coalesced_independently_by_coin() {
     let (sender, mut receiver) = broadcast::channel(8);
     let mut coalescer = HydromancerCoalescedSender::with_interval(sender, Duration::from_secs(60));

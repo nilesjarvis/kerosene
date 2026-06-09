@@ -155,6 +155,7 @@ fn hud_left_click_submits_hud_order_without_starting_pan() {
             assert_eq!(request.quantity, "2.5");
             assert_eq!(request.order_type, HudOrderType::Market);
             assert_eq!(request.market_side, HudOrderSide::Short);
+            assert_eq!(request.limit_side, None);
             assert_eq!(request.click_x, 120.0);
             assert_eq!(request.click_y, 80.0);
             assert_eq!(request.chart_w, CHART_W);
@@ -192,6 +193,86 @@ fn racing_hud_left_click_submits_hud_order_without_starting_pan() {
             assert_eq!(request.quantity, "2.5");
             assert_eq!(request.order_type, HudOrderType::Market);
             assert_eq!(request.market_side, HudOrderSide::Short);
+            assert_eq!(request.limit_side, None);
+        }
+        other => panic!("expected SubmitHudOrder, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(state.drag.is_none());
+}
+
+#[test]
+fn hud_limit_left_click_captures_click_time_side() {
+    let mut chart = chart_with_input_candles();
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_hud_armed_at(true, 0);
+    let mut state = ChartState {
+        hud_order_kind: HudOrderKind::Limit,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, CHART_W, CHART_H)
+        .expect("visible price params");
+    let click_y = chart.price_to_y_with(100.0, price_hi, price_range, price_h);
+
+    let action = action_or_panic(
+        chart.handle_left_press(
+            &mut state,
+            Point::new(120.0, click_y),
+            CHART_W,
+            CHART_H,
+            260.0,
+        ),
+        "HUD limit left click should submit an order request",
+    );
+    let (message, _, status) = action.into_inner();
+
+    match message_or_panic(message, "submit HUD order message") {
+        Message::SubmitHudOrder(request) => {
+            assert_eq!(request.order_type, HudOrderType::Limit);
+            assert_eq!(request.limit_side, Some(HudOrderSide::Long));
+            assert!(request.price <= 110.0);
+        }
+        other => panic!("expected SubmitHudOrder, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(state.drag.is_none());
+}
+
+#[test]
+fn hud_limit_left_click_uses_live_reference_for_click_time_side() {
+    let mut chart = chart_with_input_candles();
+    chart.set_market_reference_price(Some(90.0));
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_hud_armed_at(true, 0);
+    let mut state = ChartState {
+        hud_order_kind: HudOrderKind::Limit,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, CHART_W, CHART_H)
+        .expect("visible price params");
+    let click_y = chart.price_to_y_with(100.0, price_hi, price_range, price_h);
+
+    let action = action_or_panic(
+        chart.handle_left_press(
+            &mut state,
+            Point::new(120.0, click_y),
+            CHART_W,
+            CHART_H,
+            260.0,
+        ),
+        "HUD limit left click should submit an order request",
+    );
+    let (message, _, status) = action.into_inner();
+
+    match message_or_panic(message, "submit HUD order message") {
+        Message::SubmitHudOrder(request) => {
+            assert_eq!(request.order_type, HudOrderType::Limit);
+            assert_eq!(request.limit_side, Some(HudOrderSide::Short));
+            assert!(request.price > 90.0);
         }
         other => panic!("expected SubmitHudOrder, got {other:?}"),
     }

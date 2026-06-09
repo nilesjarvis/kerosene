@@ -9,7 +9,6 @@ use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 pub(super) struct OrderBookPriceSelection {
     pub(super) selected_price: String,
     pub(super) target_symbol: String,
-    pub(super) book_mid: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +45,6 @@ pub(super) fn order_book_price_selection(
     Ok(OrderBookPriceSelection {
         selected_price,
         target_symbol,
-        book_mid: positive_finite_value(inst.book.mid_price()),
     })
 }
 

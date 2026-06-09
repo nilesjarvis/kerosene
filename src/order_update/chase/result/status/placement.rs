@@ -93,18 +93,18 @@ impl TradingTerminal {
                 self.refresh_account_data()
             }
             Ok(status) if status.is_definitive_no_fill_terminal() => {
-                if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-                    chase.lifecycle = ChaseLifecycle::Verifying {
-                        reason: ChaseVerificationReason::MissingOrderResolvedNoFill,
-                    };
+                if let Some(chase) = self.chase_orders.get_mut(&chase_id)
+                    && let Some(oid) = status.oid
+                {
+                    chase.record_oid(oid);
                 }
-                self.order_status = Some((
+                self.finish_definitive_chase_place_failure(
+                    chase_id,
                     format!(
-                        "Chase checking account state: placement resolved without fill as {}",
+                        "Chase stopped: placement resolved without fill as {}",
                         status.raw_summary
                     ),
-                    false,
-                ));
+                );
                 self.refresh_account_data()
             }
             Ok(status) if status.is_no_fill_terminal() => {
@@ -115,12 +115,31 @@ impl TradingTerminal {
                     ),
                     status.raw_summary
                 );
+                let was_stopping = self
+                    .chase_orders
+                    .get(&chase_id)
+                    .is_some_and(|chase| chase.lifecycle.is_stopping());
+                if status.oid.is_none() && !was_stopping {
+                    self.finish_definitive_chase_place_failure(chase_id, summary);
+                    return self.refresh_account_data();
+                }
+                let mut display_status = (summary.clone(), true);
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
+                    if was_stopping {
+                        display_status = chase
+                            .stop_reason
+                            .clone()
+                            .unwrap_or_else(|| ("Chase stopped".to_string(), false));
+                    }
                     if let Some(oid) = status.oid {
                         chase.record_oid(oid);
                         chase.current_oid = Some(oid);
                         chase.lifecycle = ChaseLifecycle::Stopping {
                             phase: ChaseStopPhase::VerifyingCancel { oid },
+                        };
+                    } else if was_stopping {
+                        chase.lifecycle = ChaseLifecycle::Stopping {
+                            phase: ChaseStopPhase::AwaitingPlace,
                         };
                     } else {
                         chase.lifecycle = ChaseLifecycle::Verifying {
@@ -128,17 +147,23 @@ impl TradingTerminal {
                         };
                     }
                     chase.desired_price = None;
-                    chase.stop_reason = Some((summary.clone(), true));
+                    chase.stop_reason = Some(display_status.clone());
                     chase.last_reprice_at = Some(Instant::now());
                 }
-                self.order_status = Some((summary, true));
+                self.order_status = Some(display_status);
                 self.refresh_account_data()
             }
             Ok(status) if status.is_missing() => {
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
-                    chase.lifecycle = ChaseLifecycle::Verifying {
-                        reason: ChaseVerificationReason::Placement,
-                    };
+                    if chase.lifecycle.is_stopping() {
+                        chase.lifecycle = ChaseLifecycle::Stopping {
+                            phase: ChaseStopPhase::AwaitingPlace,
+                        };
+                    } else {
+                        chase.lifecycle = ChaseLifecycle::Verifying {
+                            reason: ChaseVerificationReason::Placement,
+                        };
+                    }
                     chase.last_reprice_at = Some(Instant::now());
                 }
                 self.order_status = Some((

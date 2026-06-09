@@ -67,15 +67,26 @@ impl TradingTerminal {
         let theme = self.theme();
         let ws_stats = ws::telemetry_snapshot();
         let now_ms = Self::now_ms();
-        let ws_live = ws_stats.open_connections > 0
-            && ws_stats.last_rx_ms > 0
-            && now_ms.saturating_sub(ws_stats.last_rx_ms) <= 5_000;
+        let ws_live = ws_stats.exchange_open_connections > 0
+            && ws_stats.exchange_last_rx_ms > 0
+            && now_ms.saturating_sub(ws_stats.exchange_last_rx_ms) <= 5_000;
         let (ws_label, ws_color) = if ws_live {
-            ("WS LIVE", theme.palette().success)
-        } else if ws_stats.open_connections > 0 {
-            ("WS STALE", theme.palette().primary)
+            ("EXCH LIVE", theme.palette().success)
+        } else if ws_stats.exchange_open_connections > 0 {
+            ("EXCH STALE", theme.palette().primary)
         } else {
-            ("WS OFFLINE", theme.palette().danger)
+            ("EXCH OFFLINE", theme.palette().danger)
+        };
+
+        let hydromancer_live = ws_stats.hydromancer_open_connections > 0
+            && ws_stats.hydromancer_last_rx_ms > 0
+            && now_ms.saturating_sub(ws_stats.hydromancer_last_rx_ms) <= 5_000;
+        let (hydromancer_label, hydromancer_color) = if hydromancer_live {
+            ("HYDRO LIVE", theme.palette().success)
+        } else if ws_stats.hydromancer_open_connections > 0 {
+            ("HYDRO STALE", theme.palette().primary)
+        } else {
+            ("HYDRO OFF", theme.extended_palette().background.weak.text)
         };
 
         let row = row![ws_status_badge(
@@ -92,13 +103,23 @@ impl TradingTerminal {
                 .size(10)
                 .color(theme.palette().primary),
         );
+        let row = push_status_gap(row, separated).push(
+            text(format!(
+                "{} exch / {} hydro",
+                ws_stats.exchange_open_connections, ws_stats.hydromancer_open_connections
+            ))
+            .size(10)
+            .color(theme.palette().primary),
+        );
+        let row = push_status_gap(row, separated)
+            .push(text(hydromancer_label).size(10).color(hydromancer_color));
         let row = push_status_gap(row, separated).push(status_tooltip(
             format!("RX {}", format_bytes_human(ws_stats.bytes_received)),
-            "RX = cumulative data received from exchange WebSocket streams since app launch",
+            "RX = cumulative data received from exchange and Hydromancer WebSocket streams since app launch",
         ));
         let row = push_status_gap(row, separated).push(status_tooltip(
             format!("TX {}", format_bytes_human(ws_stats.bytes_sent)),
-            "TX = cumulative data sent to exchange WebSocket streams since app launch",
+            "TX = cumulative data sent to exchange and Hydromancer WebSocket streams since app launch",
         ));
         let row = push_status_gap(row, separated).push(
             text(format!(

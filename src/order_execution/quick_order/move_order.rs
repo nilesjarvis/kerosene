@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::parse_positive_finite_number;
 use crate::message::Message;
 use crate::order_execution::{
     ModifyIntent, OrderSurface, PendingMoveOrderContext, PreparedModifyOrderResult,
@@ -16,6 +17,33 @@ fn moved_order_is_buy(side: &str) -> Option<bool> {
         "A" => Some(false),
         _ => None,
     }
+}
+
+fn move_order_wire_is_supported(order: &crate::account::OpenOrder) -> Result<(), &'static str> {
+    if order.is_trigger == Some(true)
+        || order
+            .trigger_px
+            .as_deref()
+            .and_then(parse_positive_finite_number)
+            .is_some()
+    {
+        return Err("Move failed: trigger orders cannot be moved safely yet");
+    }
+    if order
+        .order_type
+        .as_deref()
+        .is_some_and(|kind| !kind.eq_ignore_ascii_case("limit"))
+    {
+        return Err("Move failed: order type cannot be moved safely yet");
+    }
+    if order
+        .tif
+        .as_deref()
+        .is_some_and(|tif| !tif.eq_ignore_ascii_case("Gtc"))
+    {
+        return Err("Move failed: non-GTC orders cannot be moved safely yet");
+    }
+    Ok(())
 }
 
 impl TradingTerminal {
@@ -46,6 +74,10 @@ impl TradingTerminal {
         let order = order.clone();
 
         let coin = order.coin.clone();
+        if let Err(message) = move_order_wire_is_supported(&order) {
+            self.order_status = Some((message.into(), true));
+            return Task::none();
+        }
         if self.symbol_key_is_hidden(&coin) {
             self.order_status = Some(("Order ticker is hidden in Settings > Risk".into(), true));
             return Task::none();

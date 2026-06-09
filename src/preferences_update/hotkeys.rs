@@ -11,7 +11,7 @@ impl TradingTerminal {
         match message {
             message @ Message::StartRecordingHotkey(_) => self.start_recording_hotkey(message),
             message @ Message::ClearHotkey(_) => self.clear_configured_hotkey(message),
-            message @ Message::KeyboardEvent(_, _) => self.handle_hotkey_keyboard_event(message),
+            message @ Message::KeyboardEvent(_, _, _) => self.handle_hotkey_keyboard_event(message),
             message @ Message::ExecuteHotkey(_) => self.execute_configured_hotkey(message),
             _ => Task::none(),
         }

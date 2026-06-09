@@ -12,11 +12,6 @@ impl TradingTerminal {
             self.order_status = Some(("Enter agent key to cancel orders".into(), true));
             return Task::none();
         }
-        if self.symbol_key_is_hidden(coin) {
-            self.order_status = Some(("Order ticker is hidden in Settings > Risk".into(), true));
-            return Task::none();
-        }
-
         let prepared = match self.prepare_cancel_order(CancelIntent {
             surface: OrderSurface::Cancel,
             symbol_key: coin.to_string(),

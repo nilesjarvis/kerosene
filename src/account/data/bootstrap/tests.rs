@@ -14,6 +14,10 @@ fn open_order(coin: &str) -> OpenOrder {
         oid: 1,
         timestamp: 1,
         reduce_only: Some(false),
+        is_trigger: None,
+        order_type: None,
+        tif: None,
+        trigger_px: None,
     }
 }
 

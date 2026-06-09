@@ -7,6 +7,8 @@ use zeroize::Zeroizing;
 // Chase Order State
 // ---------------------------------------------------------------------------
 
+const CHASE_ADOPTED_FILL_CUTOFF_GRACE_MS: u64 = 60_000;
+
 /// Client-side chase order state. Continuously reprices a limit order toward
 /// execution until fully filled.
 #[derive(Clone)]
@@ -47,6 +49,10 @@ pub struct ChaseOrder {
     /// Wall-clock start time for history snapshots. Live chase state is not
     /// persisted or resumed across restarts.
     pub started_at_ms: u64,
+    /// Per-OID lower bounds for fill reconciliation. Used for adopted resting
+    /// orders so fills from before adoption are not credited to the local
+    /// chase lifecycle.
+    pub fill_cutoff_ms_by_oid: Vec<(u64, u64)>,
     /// Number of attempted cancel/place replacement cycles.
     pub reprice_count: u32,
     /// Explicit lifecycle state. Chase only sends exchange mutations from
@@ -66,10 +72,20 @@ pub struct ChaseOrder {
 }
 
 impl ChaseOrder {
+    pub fn adopted_fill_cutoff_ms(started_at_ms: u64) -> u64 {
+        started_at_ms.saturating_sub(CHASE_ADOPTED_FILL_CUTOFF_GRACE_MS)
+    }
+
     pub fn record_oid(&mut self, oid: u64) {
         if !self.known_oids.contains(&oid) {
             self.known_oids.push(oid);
         }
+    }
+
+    pub fn fill_cutoff_ms_for_oid(&self, oid: u64) -> Option<u64> {
+        self.fill_cutoff_ms_by_oid
+            .iter()
+            .find_map(|(cutoff_oid, cutoff_ms)| (*cutoff_oid == oid).then_some(*cutoff_ms))
     }
 
     pub fn known_oids_with_current(&self) -> Vec<u64> {
@@ -195,6 +211,7 @@ impl std::fmt::Debug for ChaseOrder {
             .field("initial_price", &self.initial_price)
             .field("started_at", &self.started_at)
             .field("started_at_ms", &self.started_at_ms)
+            .field("fill_cutoff_ms_by_oid", &self.fill_cutoff_ms_by_oid)
             .field("reprice_count", &self.reprice_count)
             .field("lifecycle", &self.lifecycle)
             .field("last_reprice_at", &self.last_reprice_at)
