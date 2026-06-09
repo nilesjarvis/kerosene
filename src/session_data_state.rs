@@ -181,7 +181,8 @@ impl SessionDataInstance {
     }
 }
 
-pub(crate) fn session_return_bars(candles: &[Candle]) -> Vec<SessionReturnBar> {
+#[cfg(test)]
+fn session_return_bars(candles: &[Candle]) -> Vec<SessionReturnBar> {
     let mut bars = candles
         .iter()
         .filter_map(session_return_bar)
@@ -344,5 +345,25 @@ mod tests {
         assert_eq!(tuesday.sample_count, 1);
         crate::helpers::assert_close(tuesday.average_return_pct, 2.0);
         crate::helpers::assert_close(tuesday.win_rate_pct, 100.0);
+    }
+
+    #[test]
+    fn weekday_summaries_include_all_weekdays() {
+        let bars = session_return_bars(&[candle(0, 100.0, 110.0)]);
+
+        let summaries = weekday_summaries(&bars);
+
+        assert_eq!(summaries.len(), SessionWeekday::ALL.len());
+        for (idx, weekday) in SessionWeekday::ALL.into_iter().enumerate() {
+            assert_eq!(summaries[idx].weekday, weekday);
+        }
+
+        let monday = &summaries[SessionWeekday::Mon.index()];
+        let tuesday = &summaries[SessionWeekday::Tue.index()];
+        assert_eq!(monday.sample_count, 1);
+        crate::helpers::assert_close(monday.average_return_pct, 10.0);
+        assert_eq!(tuesday.sample_count, 0);
+        crate::helpers::assert_close(tuesday.average_return_pct, 0.0);
+        crate::helpers::assert_close(tuesday.win_rate_pct, 0.0);
     }
 }
