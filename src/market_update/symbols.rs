@@ -189,6 +189,7 @@ impl TradingTerminal {
                     }
                 }
 
+                tasks.push(self.reconcile_session_data_symbols());
                 tasks.push(self.refresh_enabled_earnings_charts());
                 tasks.push(self.scrub_hidden_symbol_state());
                 self.refresh_symbol_search_results();

@@ -27,6 +27,7 @@ use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
 use crate::positioning_state::{PositioningInfoId, PositioningInfoInstance};
 use crate::screener_state::ScreenerState;
+use crate::session_data_state::{SessionDataId, SessionDataInstance};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ChaseOrder, OrderKind};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
@@ -76,8 +77,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_hud_order_sound_volume: f32,
     pub(crate) chart_hud_readout: config::ChartHudReadoutConfig,
     pub(crate) alfred_popup_scale: f32,
-    pub(crate) chart_backfill_source: config::ChartBackfillSource,
     pub(crate) read_data_provider: config::ReadDataProvider,
+    pub(crate) chart_backfill_source: config::ChartBackfillSource,
     pub(crate) display_font: config::DisplayFontConfig,
     pub(crate) monospace_font: config::DisplayFontConfig,
     pub(crate) custom_fonts: Vec<config::CustomFontConfig>,
@@ -313,6 +314,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) positioning_infos: HashMap<PositioningInfoId, PositioningInfoInstance>,
     pub(crate) next_positioning_info_id: PositioningInfoId,
     pub(crate) positioning_info_pending: HashMap<String, Vec<PositioningInfoId>>,
+    pub(crate) session_data: HashMap<SessionDataId, SessionDataInstance>,
+    pub(crate) next_session_data_id: SessionDataId,
 
     pub(crate) live_watchlist_ctxs: HashMap<String, crate::api::WatchlistContext>,
     pub(crate) live_watchlist_history: HashMap<String, (f64, f64, f64)>,

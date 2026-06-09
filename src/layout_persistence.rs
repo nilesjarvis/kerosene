@@ -8,6 +8,7 @@ mod live_watchlists;
 mod order_books;
 mod panes;
 mod positioning_info;
+mod session_data;
 mod snapshots;
 mod widget_configs;
 
@@ -81,6 +82,7 @@ impl TradingTerminal {
         boot_tasks.push(self.restore_layout_order_books(&layout));
         self.restore_layout_live_watchlists(&layout);
         boot_tasks.push(self.restore_layout_positioning_infos(&layout));
+        boot_tasks.push(self.restore_layout_session_data(&layout));
 
         if self.is_calendar_open() {
             boot_tasks.push(self.request_calendar_refresh(false));

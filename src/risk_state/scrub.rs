@@ -145,16 +145,78 @@ impl TradingTerminal {
             inst.editor_search_query.clear();
         }
 
+        let mut session_data_refresh_ids = Vec::new();
+        let fallback_session_symbol = self.visible_session_data_symbol("");
+        for inst in self.session_data.values_mut() {
+            if !inst.symbol.is_empty() && is_hidden(&inst.symbol) {
+                inst.symbol = fallback_session_symbol.clone();
+                inst.search_query.clear();
+                inst.symbol_picker_open = false;
+                inst.clear_history();
+                session_data_refresh_ids.push(inst.id);
+            }
+        }
+
         self.refresh_live_watchlist_row_caches();
+
+        let mut tasks = session_data_refresh_ids
+            .into_iter()
+            .map(|id| self.request_session_data_refresh(id, true))
+            .collect::<Vec<_>>();
 
         if !self.active_symbol.is_empty() && is_hidden(&self.active_symbol) {
             if let Some(fallback) = self.fallback_unmuted_symbol_key() {
-                return self.switch_active_symbol_internal(fallback);
+                tasks.push(self.switch_active_symbol_internal(fallback));
+            } else {
+                self.apply_active_symbol_selection(String::new(), String::new());
+                self.order_status = Some(("No visible market symbols are available".into(), true));
             }
-            self.apply_active_symbol_selection(String::new(), String::new());
-            self.order_status = Some(("No visible market symbols are available".into(), true));
         }
 
-        Task::none()
+        Task::batch(tasks)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::{ExchangeSymbol, MarketType};
+    use crate::session_data_state::{SessionDataInstance, SessionDataLookback};
+
+    fn perp_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 2,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
+
+    #[test]
+    fn scrub_hidden_symbol_state_refreshes_session_data_when_active_symbol_changes() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.active_symbol = "HYPE".to_string();
+        terminal.exchange_symbols = vec![perp_symbol("HYPE"), perp_symbol("BTC")];
+        terminal.muted_tickers.insert("HYPE".to_string());
+        terminal.session_data.insert(
+            4,
+            SessionDataInstance::new(4, "HYPE".to_string(), SessionDataLookback::FourWeeks),
+        );
+
+        let _task = terminal.scrub_hidden_symbol_state();
+
+        let instance = terminal.session_data.get(&4).expect("session data");
+        assert_eq!(instance.symbol, "BTC");
+        assert!(instance.loading);
+        assert!(instance.pending_request.is_some());
+        assert_eq!(terminal.active_symbol, "BTC");
     }
 }

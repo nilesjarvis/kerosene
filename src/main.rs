@@ -77,6 +77,7 @@ mod screener_state;
 mod screener_update;
 mod screener_views;
 mod secret_storage;
+mod session_data_state;
 mod settings_state;
 mod settings_update;
 mod settings_views;

@@ -33,4 +33,11 @@ pub(in crate::add_widget_menu::body) fn add_chart_section(
             context.can_add_pane,
             theme,
         ))
+        .push(menu_item(
+            "Session Data",
+            "Pane",
+            Some(Message::AddSessionDataPane),
+            context.can_add_pane,
+            theme,
+        ))
 }

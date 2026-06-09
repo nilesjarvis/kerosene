@@ -6,6 +6,7 @@ mod live_watchlists;
 mod order_books;
 mod panes;
 mod positioning_info;
+mod session_data;
 mod state;
 mod symbols;
 mod widget_configs;

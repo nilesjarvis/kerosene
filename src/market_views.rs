@@ -5,5 +5,6 @@ mod live_watchlist;
 mod order_book;
 mod outcomes;
 mod positioning_info;
+mod session_data;
 mod ticker_tape;
 mod watchlist;

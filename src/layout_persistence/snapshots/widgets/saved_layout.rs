@@ -51,6 +51,7 @@ impl TradingTerminal {
             order_books: self.order_book_configs_snapshot(),
             live_watchlists: self.live_watchlist_configs_snapshot(),
             positioning_infos: self.positioning_info_configs_snapshot(),
+            session_data: self.session_data_configs_snapshot(),
             spaghetti_charts: self.spaghetti_chart_configs_snapshot(),
             widget_padding: self.widget_padding_config_snapshot(),
             active_symbol: self.active_symbol_config_value(),

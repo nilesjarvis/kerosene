@@ -75,4 +75,21 @@ impl TradingTerminal {
             })
             .collect()
     }
+
+    pub(crate) fn session_data_configs_snapshot(&self) -> Vec<config::SessionDataConfig> {
+        let mut instances: Vec<_> = self.session_data.values().collect();
+        instances.sort_by_key(|instance| instance.id);
+        instances
+            .into_iter()
+            .map(|instance| config::SessionDataConfig {
+                id: instance.id,
+                symbol: if self.symbol_key_is_hidden(&instance.symbol) {
+                    self.fallback_unmuted_symbol_key().unwrap_or_default()
+                } else {
+                    instance.symbol.clone()
+                },
+                lookback: instance.lookback,
+            })
+            .collect()
+    }
 }

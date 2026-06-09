@@ -10,6 +10,7 @@ enum KnownPaneKindConfig {
     Watchlist,
     LiveWatchlist { id: u64 },
     PositioningInfo { id: u64 },
+    SessionData { id: u64 },
 
     Portfolio,
     Income,
@@ -45,6 +46,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::Watchlist => Self::Watchlist,
             KnownPaneKindConfig::LiveWatchlist { id } => Self::LiveWatchlist { id },
             KnownPaneKindConfig::PositioningInfo { id } => Self::PositioningInfo { id },
+            KnownPaneKindConfig::SessionData { id } => Self::SessionData { id },
             KnownPaneKindConfig::Portfolio => Self::Portfolio,
             KnownPaneKindConfig::Income => Self::Income,
             KnownPaneKindConfig::BottomTabs { active_tab } => Self::BottomTabs { active_tab },

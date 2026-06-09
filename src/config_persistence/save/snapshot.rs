@@ -96,6 +96,7 @@ impl TradingTerminal {
 
             live_watchlists: layout_snapshot.live_watchlists,
             positioning_infos: layout_snapshot.positioning_infos,
+            session_data: layout_snapshot.session_data,
 
             ticker_tape_enabled: layout_snapshot.ticker_tape_enabled,
             favourite_symbols: layout_snapshot.favourite_symbols,

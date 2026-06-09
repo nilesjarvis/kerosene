@@ -228,6 +228,13 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleHypeUnstakingMineOnly
         | Message::ClearHypeUnstakingFilters
         | Message::HypeUnstakingQueueLoaded(_)
+        | Message::AddSessionDataPane
+        | Message::SessionDataSearchChanged(_, _)
+        | Message::ToggleSessionDataSymbolPicker(_)
+        | Message::SessionDataSymbolSelected(_, _)
+        | Message::SessionDataLookbackChanged(_, _)
+        | Message::RefreshSessionData(_)
+        | Message::SessionDataCandlesLoaded(_, _)
         | Message::SymbolSelected(_)
         | Message::BookLoaded { .. }
         | Message::OrderBookWsAssetCtxUpdate(_, _)
@@ -400,6 +407,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WalletTrackerRefreshOrdersDue
         | Message::WalletTrackerRefreshOrders(_)
         | Message::WalletTrackerLoaded(_, _)
+        | Message::WalletTrackerBatchLoaded(_)
         | Message::WalletTrackerOrdersLoaded(_, _) => UpdateRoute::WalletTracker,
 
         Message::RefreshPortfolio
@@ -407,7 +415,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::RefreshIncome
         | Message::IncomeLoaded(_, _)
         | Message::SetPortfolioPnlValueMode(_)
-        | Message::WalletTrackerBatchLoaded(_)
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,
 

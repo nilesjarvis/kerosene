@@ -124,6 +124,7 @@ impl TradingTerminal {
         state.ensure_boot_layout_chart_panes(first_chart_id, &detached_chart_ids);
         state.boot_order_book_instances(&cfg, &muted_tickers);
         state.boot_positioning_info_instances(&cfg, &muted_tickers);
+        state.boot_session_data_instances(&cfg, &muted_tickers);
         let book_task = state.boot_order_book_tasks();
         let positioning_task = state.boot_positioning_info_tasks();
 
@@ -138,6 +139,7 @@ impl TradingTerminal {
         boot_tasks.push(symbols_task);
         boot_tasks.push(book_task);
         boot_tasks.push(positioning_task);
+        boot_tasks.push(state.request_session_data_refresh_all(false));
         boot_tasks.push(connect_task);
 
         boot_tasks.extend(state.boot_window_tasks(&cfg));

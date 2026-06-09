@@ -4,7 +4,7 @@ use super::live_watchlist::LiveWatchlistConfig;
 use super::order_presets::OrderPresetsConfig;
 use super::panes::{
     ChartConfig, DetachedChartWindowConfig, OrderBookConfig, PositioningInfoConfig,
-    SpaghettiChartConfig,
+    SessionDataConfig, SpaghettiChartConfig,
 };
 use super::screenshot::ChartScreenshotSettingsConfig;
 use super::secrets::EncryptedSecretsConfig;
@@ -250,6 +250,8 @@ pub struct KeroseneConfig {
     pub live_watchlists: Vec<LiveWatchlistConfig>,
     #[serde(default)]
     pub positioning_infos: Vec<PositioningInfoConfig>,
+    #[serde(default)]
+    pub session_data: Vec<SessionDataConfig>,
 
     /// Whether the favourites ticker tape is visible below the account bar.
     #[serde(default)]

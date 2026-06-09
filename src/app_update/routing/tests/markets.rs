@@ -32,4 +32,13 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::OutcomeMarketGroupToggled("question:19".to_string()),
         UpdateRoute::Market,
     );
+    assert_route(Message::AddSessionDataPane, UpdateRoute::Market);
+    assert_route(Message::RefreshSessionData(3), UpdateRoute::Market);
+    assert_route(
+        Message::SessionDataLookbackChanged(
+            3,
+            crate::session_data_state::SessionDataLookback::EightWeeks,
+        ),
+        UpdateRoute::Market,
+    );
 }

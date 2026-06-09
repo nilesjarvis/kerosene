@@ -2,6 +2,7 @@ use crate::account_state::BottomTab;
 use crate::chart_state::ChartId;
 use crate::market_state::{LiveWatchlistId, OrderBookId};
 use crate::positioning_state::PositioningInfoId;
+use crate::session_data_state::SessionDataId;
 use crate::spaghetti_state::SpaghettiChartId;
 
 pub(crate) const DEFAULT_PANE_BORDER_THICKNESS: f32 = 4.0;
@@ -15,6 +16,7 @@ pub(crate) enum PaneKind {
     Watchlist,
     LiveWatchlist(LiveWatchlistId),
     PositioningInfo(PositioningInfoId),
+    SessionData(SessionDataId),
 
     Portfolio,
     Income,

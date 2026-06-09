@@ -1,6 +1,7 @@
 mod chart;
 mod order_book;
 mod positioning;
+mod session_data;
 mod spaghetti;
 
 pub use chart::{
@@ -9,6 +10,7 @@ pub use chart::{
 };
 pub use order_book::{OrderBookConfig, OrderBookDisplayModeConfig, OrderBookSymbolModeConfig};
 pub use positioning::PositioningInfoConfig;
+pub use session_data::SessionDataConfig;
 pub use spaghetti::SpaghettiChartConfig;
 
 #[cfg(test)]

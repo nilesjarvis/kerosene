@@ -3,6 +3,7 @@ mod hype_unstaking_queue;
 mod live_watchlist;
 mod order_book;
 mod positioning_info;
+mod session_data;
 mod symbols;
 mod ticker_tape;
 
@@ -47,6 +48,9 @@ impl TradingTerminal {
             }
             message if is_positioning_info_market_message(&message) => {
                 return self.update_positioning_info_market(message);
+            }
+            message if is_session_data_market_message(&message) => {
+                return self.update_session_data_market(message);
             }
             _ => {}
         }
@@ -121,6 +125,19 @@ fn is_order_book_market_message(message: &Message) -> bool {
             | Message::OrderBookSearchChanged(_, _)
             | Message::OrderBookSetMode(_, _)
             | Message::SetOrderBookDisplayMode(_, _)
+    )
+}
+
+fn is_session_data_market_message(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::AddSessionDataPane
+            | Message::SessionDataSearchChanged(_, _)
+            | Message::ToggleSessionDataSymbolPicker(_)
+            | Message::SessionDataSymbolSelected(_, _)
+            | Message::SessionDataLookbackChanged(_, _)
+            | Message::RefreshSessionData(_)
+            | Message::SessionDataCandlesLoaded(_, _)
     )
 }
 

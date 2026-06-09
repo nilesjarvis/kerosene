@@ -33,6 +33,7 @@ use crate::positioning_state::{
     PositioningInfoSortField,
 };
 use crate::screener_state::{ScreenerExchangeFilter, ScreenerSortColumn};
+use crate::session_data_state::{SessionDataId, SessionDataLookback, SessionDataRequest};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
@@ -205,6 +206,13 @@ pub(crate) enum Message {
     AddOutcomesPane,
     AddHypeEtfsPane,
     AddHypeUnstakingQueuePane,
+    AddSessionDataPane,
+    SessionDataSearchChanged(SessionDataId, String),
+    ToggleSessionDataSymbolPicker(SessionDataId),
+    SessionDataSymbolSelected(SessionDataId, String),
+    SessionDataLookbackChanged(SessionDataId, SessionDataLookback),
+    RefreshSessionData(SessionDataId),
+    SessionDataCandlesLoaded(SessionDataRequest, Result<Vec<Candle>, String>),
     AddTradingJournal,
     RefreshCalendar,
     CalendarLoaded(Result<Vec<api::CalendarEvent>, String>),
@@ -344,6 +352,7 @@ pub(crate) enum Message {
     WalletTrackerRefreshOrdersDue,
     WalletTrackerRefreshOrders(String),
     WalletTrackerLoaded(String, Box<Result<WalletTrackerSnapshot, String>>),
+    WalletTrackerBatchLoaded(Vec<(String, Result<WalletTrackerSnapshot, String>)>),
     WalletTrackerOrdersLoaded(String, Box<Result<usize, String>>),
     RefreshPortfolio,
     PortfolioLoaded(String, Box<Result<PortfolioHistory, String>>),
@@ -352,7 +361,6 @@ pub(crate) enum Message {
     ToggleIncomeAlerts,
     ToggleLiquidationAlerts,
     ToggleTrackedTradeAlerts,
-    WalletTrackerBatchLoaded(Vec<(String, Result<WalletTrackerSnapshot, String>)>),
     ToggleTrackedTradeAggregation,
     ToggleTrackedTradeSettingsMenu,
     ToggleLiquidationFeedAggregation,

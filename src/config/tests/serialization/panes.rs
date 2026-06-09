@@ -1,5 +1,6 @@
 use super::{json_string, value_from_json};
 use crate::config::{KeroseneConfig, PaneKindConfig, PaneLayoutConfig};
+use crate::session_data_state::SessionDataLookback;
 
 #[test]
 fn legacy_assistant_pane_deserializes_as_unsupported() {
@@ -31,6 +32,35 @@ fn x_feed_pane_round_trips() {
         serde_json::from_str(&json).expect("x feed pane should deserialize");
 
     assert_eq!(decoded, layout);
+}
+
+#[test]
+fn session_data_pane_and_config_round_trip() {
+    let layout = PaneLayoutConfig::Leaf(PaneKindConfig::SessionData { id: 42 });
+
+    let json = json_string(&layout, "session data pane should serialize");
+    let decoded: PaneLayoutConfig =
+        serde_json::from_str(&json).expect("session data pane should deserialize");
+
+    assert_eq!(decoded, layout);
+
+    let mut config = KeroseneConfig::default();
+    config.session_data.push(crate::config::SessionDataConfig {
+        id: 42,
+        symbol: "@107".to_string(),
+        lookback: SessionDataLookback::EightWeeks,
+    });
+    let json = json_string(&config, "session data config should serialize");
+    let decoded: KeroseneConfig =
+        serde_json::from_str(&json).expect("session data config should deserialize");
+
+    assert_eq!(decoded.session_data.len(), 1);
+    assert_eq!(decoded.session_data[0].id, 42);
+    assert_eq!(decoded.session_data[0].symbol, "@107");
+    assert_eq!(
+        decoded.session_data[0].lookback,
+        SessionDataLookback::EightWeeks
+    );
 }
 
 #[test]

@@ -129,6 +129,9 @@ impl TradingTerminal {
                         PaneKind::OrderBook(id) => {
                             self.order_books.remove(&id);
                         }
+                        PaneKind::SessionData(id) => {
+                            self.session_data.remove(&id);
+                        }
                         _ => {}
                     }
                     self.persist_config();
