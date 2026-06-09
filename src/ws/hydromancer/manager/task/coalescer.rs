@@ -166,7 +166,7 @@ fn l2_book_batch_items(value: &Value) -> Option<Vec<Value>> {
         .get("data")
         .and_then(Value::as_array)
         .or_else(|| value.get("books").and_then(Value::as_array))
-        .map(|items| items.iter().cloned().collect())
+        .map(|items| items.to_vec())
 }
 
 fn coalesce_key(message: &HydromancerRoutedMessage) -> Option<CoalesceKey> {

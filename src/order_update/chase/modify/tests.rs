@@ -1,3 +1,4 @@
+mod failure;
 mod fixtures;
 mod reconciliation;
 mod retry;

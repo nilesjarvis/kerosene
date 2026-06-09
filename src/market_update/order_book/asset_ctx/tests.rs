@@ -22,17 +22,17 @@ fn asset_ctx(impact_pxs: Option<Vec<&str>>) -> AssetContext {
 fn impact_spread_uses_ask_minus_bid() {
     let ctx = asset_ctx(Some(vec!["100.25", "100.75"]));
 
-    assert_eq!(impact_spread(&ctx), Some(0.5));
+    assert_eq!(ctx.impact_spread(), Some(0.5));
 }
 
 #[test]
 fn impact_spread_ignores_missing_or_invalid_prices() {
-    assert_eq!(impact_spread(&asset_ctx(None)), None);
-    assert_eq!(impact_spread(&asset_ctx(Some(vec!["100.25"]))), None);
-    assert_eq!(impact_spread(&asset_ctx(Some(vec!["bad", "100.75"]))), None);
-    assert_eq!(impact_spread(&asset_ctx(Some(vec!["100.25", "NaN"]))), None);
+    assert_eq!(asset_ctx(None).impact_spread(), None);
+    assert_eq!(asset_ctx(Some(vec!["100.25"])).impact_spread(), None);
+    assert_eq!(asset_ctx(Some(vec!["bad", "100.75"])).impact_spread(), None);
+    assert_eq!(asset_ctx(Some(vec!["100.25", "NaN"])).impact_spread(), None);
     assert_eq!(
-        impact_spread(&asset_ctx(Some(vec!["100.75", "100.25"]))),
+        asset_ctx(Some(vec!["100.75", "100.25"])).impact_spread(),
         None
     );
 }

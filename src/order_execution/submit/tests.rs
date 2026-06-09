@@ -1,8 +1,8 @@
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::order_execution::{
-    MarketUsdSizeReference, PlaceIntent, PreparedExchangeOrder, PriceSource, QuantityDenomination,
-    QuantitySource, ReduceOnlySource,
+    MarketUsdSizeReference, PendingOrderAction, PlaceIntent, PreparedExchangeOrder, PriceSource,
+    QuantityDenomination, QuantitySource, ReduceOnlySource,
 };
 use crate::signing::{ExchangeOrderKind, OrderKind};
 
@@ -131,4 +131,18 @@ fn order_status_or_panic(terminal: &TradingTerminal) -> (&str, bool) {
         Some((message, is_error)) => (message.as_str(), *is_error),
         None => panic!("missing order status"),
     }
+}
+
+#[test]
+fn execute_order_rejects_while_order_action_pending() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.order_kind = OrderKind::Market;
+    terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+    let _task = terminal.execute_order(true);
+
+    let (status, is_error) = order_status_or_panic(&terminal);
+    assert!(is_error);
+    assert_eq!(status, "Wait for the pending order action to finish");
+    assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
 }

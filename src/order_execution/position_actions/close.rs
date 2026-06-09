@@ -2,8 +2,8 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{finite_value, positive_finite_value};
 use crate::message::Message;
 use crate::order_execution::{
-    MarketUsdSizeReference, OrderSurface, PlaceIntent, PreparedExchangeOrder, PriceSource,
-    QuantitySource, ReduceOnlySource, place_order_task,
+    MarketUsdSizeReference, OrderSurface, PendingOrderAction, PlaceIntent, PreparedExchangeOrder,
+    PriceSource, QuantitySource, ReduceOnlySource, place_order_task,
 };
 use crate::signing::ExchangeOrderKind;
 
@@ -53,6 +53,13 @@ impl TradingTerminal {
         use_market: bool,
     ) -> Task<Message> {
         let _theme = self.theme();
+        // The close menu closes after the first click, but a second queued
+        // click still dispatches; without this gate a double-fired partial
+        // close stacks (two 50% closes flatten the position).
+        if self.pending_order_action.is_some() {
+            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
+            return Task::none();
+        }
         let key = self.wallet_key_input.trim().to_string();
         if key.is_empty() || self.connected_address.is_none() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
@@ -164,6 +171,7 @@ impl TradingTerminal {
             format!("Closing {pct_label} of {coin} ({kind_label})..."),
             false,
         ));
+        self.pending_order_action = Some(PendingOrderAction::ClosePosition);
 
         let account_address = self.connected_address.clone().unwrap_or_default();
         let (request, context) = prepared.place_request_with_context(&account_address);

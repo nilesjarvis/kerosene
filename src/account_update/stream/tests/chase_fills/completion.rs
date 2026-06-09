@@ -84,3 +84,23 @@ fn overfilled_chase_preserves_raw_total_and_cancels_live_known_order() {
             .is_some_and(|(message, is_error)| { *is_error && message.contains("over target") })
     );
 }
+
+#[test]
+fn completed_chase_with_in_flight_modify_defers_safety_cancel() {
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Modifying { oid: 42 };
+    let mut terminal = connected_terminal_with_chase_account(
+        chase,
+        vec![fill_with_oid(1_001, 42, "100", "1.0")],
+        vec![open_order(42, Some(false))],
+    );
+
+    let _task = terminal.reconcile_chase_fills_from_account();
+
+    // Fills are credited, but the safety cancel must wait for the in-flight
+    // modify result; forcing it now would put two exchange mutations in
+    // flight for the same order.
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.filled_size, 1.0);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Modifying { oid: 42 });
+}

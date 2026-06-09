@@ -193,7 +193,7 @@ fn racing_hud_metrics_use_current_size_relative_to_max_size() {
 
     assert_eq!(
         chart.racing_hud_metrics(&state, Some(100.0)),
-        Some(RacingHudMetrics::new(Some(2.5), Some(20.0), Some(0.0)))
+        Some(RacingHudMetrics::new(Some(2.5), Some(20.0), None, None))
     );
 }
 
@@ -212,6 +212,30 @@ fn racing_hud_metrics_use_latest_candle_before_hover_price() {
 
     assert_eq!(
         chart.racing_hud_metrics(&state, Some(100.0)),
-        Some(RacingHudMetrics::new(Some(2.5), Some(40.0), Some(0.0)))
+        Some(RacingHudMetrics::new(Some(2.5), Some(40.0), None, None))
+    );
+}
+
+#[test]
+fn racing_hud_metrics_include_current_spread() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_crosshair_style(ChartCrosshairStyle::RacingHud);
+    chart.set_market_reference_price(Some(50.0));
+    chart.set_current_spread_at(Some(0.025), 1_000);
+    let state = ChartState {
+        hud_order_kind: HudOrderKind::Limit,
+        hud_market_side: HudMarketSide::Long,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+
+    assert_eq!(
+        chart.racing_hud_metrics(&state, Some(100.0)),
+        Some(RacingHudMetrics::new(
+            Some(2.5),
+            None,
+            Some(0.025),
+            Some((0.025, 0.025))
+        ))
     );
 }

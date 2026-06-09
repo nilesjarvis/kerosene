@@ -50,6 +50,14 @@ impl TradingTerminal {
             };
             chase.set_filled_size(totals.filled_size);
             if chase.residual_size() <= f64::EPSILON {
+                if chase.has_pending_op() {
+                    // An exchange mutation is already in flight for this
+                    // chase; forcing a safety cancel now would put two
+                    // mutations in flight for the same order. The in-flight
+                    // result triggers an account refresh, and the next
+                    // reconcile pass closes the chase out.
+                    continue;
+                }
                 let summary = chase_completed_summary(fills, chase, totals.filled_size);
                 let is_error = chase.target_size.is_finite()
                     && chase.target_size > 0.0

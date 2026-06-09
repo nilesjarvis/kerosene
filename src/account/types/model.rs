@@ -131,6 +131,22 @@ pub struct AssetContext {
     pub impact_pxs: Option<Vec<String>>,
 }
 
+impl AssetContext {
+    /// Bid/ask spread derived from `impact_pxs` (`[bid, ask]`).
+    /// Returns `None` when impact prices are missing, unparseable, or crossed.
+    pub(crate) fn impact_spread(&self) -> Option<f64> {
+        let impact = self.impact_pxs.as_deref()?;
+        if impact.len() < 2 {
+            return None;
+        }
+
+        let bid = impact[0].parse::<f64>().ok()?;
+        let ask = impact[1].parse::<f64>().ok()?;
+        let spread = ask - bid;
+        (spread.is_finite() && spread >= 0.0).then_some(spread)
+    }
+}
+
 /// A user's open order.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

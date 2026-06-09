@@ -131,9 +131,10 @@ impl TradingTerminal {
                         .then_some(*chart_id)
                     })
                     .collect();
+                let now_ms = Self::now_ms();
                 for instance in self.charts.values_mut() {
                     if instance.symbol == symbol {
-                        instance.asset_ctx = Some(ctx.clone());
+                        instance.set_asset_context_at(Some(ctx.clone()), now_ms);
                     }
                 }
                 if !fetch_liquidation_ids.is_empty() {

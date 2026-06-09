@@ -34,6 +34,7 @@ pub(crate) enum PendingOrderAction {
     Sell,
     ChaseBuy,
     ChaseSell,
+    ClosePosition,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

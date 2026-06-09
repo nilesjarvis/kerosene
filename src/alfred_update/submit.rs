@@ -1,8 +1,10 @@
 use crate::alfred_state::{AlfredCommand, AlfredCommandId, alfred_query_is_nuke};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::order_update::nuke_confirmation_is_armed;
 use crate::signing::OrderKind;
 use iced::Task;
+use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // Alfred Command Submission
@@ -132,10 +134,19 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        self.alfred.close();
-        self.close_menu_coin = None;
-        self.nuke_confirmation = None;
-        self.execute_nuke_positions()
+        // Route through the same two-press arming flow as the NUKE button so
+        // a single Enter in the palette can never flatten every position.
+        let was_armed = nuke_confirmation_is_armed(self.nuke_confirmation, Instant::now());
+        let task = self.handle_nuke_positions();
+        if was_armed {
+            // Second press: the nuke is executing; the palette's job is done.
+            self.alfred.close();
+        } else if let Some((status, is_error)) = self.order_status.clone() {
+            // First press armed (or refused to arm); echo the plan where the
+            // user is looking and keep the palette open for the confirm press.
+            self.push_toast(status, is_error);
+        }
+        task
     }
 
     fn submit_alfred_close_position(&mut self) -> Task<Message> {

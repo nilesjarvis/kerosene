@@ -71,12 +71,13 @@ impl TradingTerminal {
                     return self.refresh_after_chase_result(true);
                 }
 
-                let stop_status = self.finish_successful_chase_modify(chase_id, oid);
+                let resting_oid = resp.order_oid().unwrap_or(oid);
+                let stop_status = self.finish_successful_chase_modify(chase_id, oid, resting_oid);
                 if let Some((reason, is_error)) = stop_status {
                     return self.stop_chase_by_id_with_reason(chase_id, reason, is_error);
                 }
                 self.order_status = Some((
-                    format!("Chasing (oid {oid}); refreshing account data..."),
+                    format!("Chasing (oid {resting_oid}); refreshing account data..."),
                     false,
                 ));
                 self.refresh_after_chase_result(true)
@@ -129,6 +130,14 @@ impl TradingTerminal {
             } else {
                 chase.last_reprice_at = Some(now);
                 chase.desired_price = None;
+                // The exchange definitively rejected the modify, so no result
+                // is in flight and the order still rests at its old price.
+                // Return to Resting so the stop below cancels the resting
+                // order instead of parking in Stopping::AwaitingModify waiting
+                // on a modify result that has already been consumed.
+                chase.record_oid(oid);
+                chase.current_oid = Some(oid);
+                chase.lifecycle = ChaseLifecycle::Resting;
                 Some((format!("Chase stopped: modify failed: {summary}"), true))
             }
         } else {
@@ -152,11 +161,17 @@ impl TradingTerminal {
     fn finish_successful_chase_modify(
         &mut self,
         chase_id: u64,
-        oid: u64,
+        request_oid: u64,
+        resting_oid: u64,
     ) -> Option<(String, bool)> {
         let chase = self.chase_orders.get_mut(&chase_id)?;
-        chase.record_oid(oid);
-        chase.current_oid = Some(oid);
+        chase.record_oid(request_oid);
+        // Hyperliquid modifies have kept the oid stable so far, but adopt the
+        // oid echoed in the response in case a modify ever re-keys the order;
+        // tracking only the request oid would leave reconciliation following
+        // a dead oid while the replacement rests unmanaged.
+        chase.record_oid(resting_oid);
+        chase.current_oid = Some(resting_oid);
         let was_stopping = chase.lifecycle.is_stopping();
         chase.lifecycle = ChaseLifecycle::Verifying {
             reason: ChaseVerificationReason::Modify,

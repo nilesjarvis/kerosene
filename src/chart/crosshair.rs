@@ -633,7 +633,8 @@ impl CandlestickChart {
         Some(RacingHudMetrics::new(
             current_size,
             max_size,
-            Some(state.hud_cursor_speed_px_per_s),
+            self.current_spread,
+            self.spread_history_bounds(),
         ))
     }
 

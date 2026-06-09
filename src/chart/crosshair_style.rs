@@ -16,7 +16,7 @@ const HUD_ALPHA: f32 = 0.78;
 const HUD_GUIDE_ALPHA: f32 = 0.34;
 const RACING_HUD_ALPHA: f32 = 0.88;
 const RACING_HUD_MUTED_ALPHA: f32 = 0.26;
-const RACING_HUD_MAX_CURSOR_SPEED_PX_PER_S: f32 = 2_400.0;
+const RACING_HUD_HIGH_SPREAD_DEGREE: f32 = 0.995;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CrosshairStyleRender {
@@ -35,24 +35,27 @@ pub(crate) struct CrosshairStyleRender {
 pub(crate) struct RacingHudMetrics {
     current_size: Option<f64>,
     max_size: Option<f64>,
-    cursor_speed_px_per_s: Option<f32>,
+    current_spread: Option<f64>,
+    spread_bounds: Option<(f64, f64)>,
 }
 
 impl RacingHudMetrics {
     pub(crate) fn new(
         current_size: Option<f64>,
         max_size: Option<f64>,
-        cursor_speed_px_per_s: Option<f32>,
+        current_spread: Option<f64>,
+        spread_bounds: Option<(f64, f64)>,
     ) -> Self {
         Self {
             current_size: current_size.and_then(nonnegative_finite_value),
             max_size: max_size.and_then(positive_finite_value),
-            cursor_speed_px_per_s: cursor_speed_px_per_s.and_then(nonnegative_finite_f32),
+            current_spread: current_spread.and_then(nonnegative_finite_value),
+            spread_bounds: spread_bounds.and_then(valid_spread_bounds),
         }
     }
 
     pub(crate) fn preview() -> Self {
-        Self::new(Some(2.5), Some(5.0), Some(940.0))
+        Self::new(Some(2.5), Some(5.0), Some(0.025), Some((0.01, 0.05)))
     }
 
     fn usage_ratio(self) -> Option<f32> {
@@ -62,18 +65,30 @@ impl RacingHudMetrics {
         ratio.is_finite().then_some(ratio.max(0.0) as f32)
     }
 
-    fn cursor_speed_ratio(self) -> f32 {
-        self.cursor_speed_px_per_s
-            .map(|speed| speed / RACING_HUD_MAX_CURSOR_SPEED_PX_PER_S)
-            .filter(|ratio| ratio.is_finite())
-            .unwrap_or(0.0)
-            .max(0.0)
+    fn spread_ratio(self) -> Option<f32> {
+        let spread = self.current_spread?;
+        let (min_spread, max_spread) = self.spread_bounds?;
+        let range = max_spread - min_spread;
+        if range <= f64::EPSILON {
+            return Some(0.0);
+        }
+        let ratio = ((spread - min_spread) / range).clamp(0.0, 1.0);
+        ratio.is_finite().then_some(ratio as f32)
+    }
+
+    fn spread_degree(self) -> f32 {
+        self.spread_ratio().unwrap_or(0.0)
+    }
+
+    fn spread_is_recent_high(self) -> bool {
+        self.spread_ratio()
+            .is_some_and(|ratio| ratio >= RACING_HUD_HIGH_SPREAD_DEGREE)
     }
 }
 
 impl Default for RacingHudMetrics {
     fn default() -> Self {
-        Self::new(None, None, None)
+        Self::new(None, None, None, None)
     }
 }
 
@@ -487,9 +502,17 @@ fn draw_racing_hud_reticle(
     let muted = hud_accent_color(accent_color, RACING_HUD_MUTED_ALPHA);
     let usage_ratio = metrics.usage_ratio();
     let size_needle_t = usage_ratio.unwrap_or(0.0).clamp(0.0, 1.0);
-    let speed_needle_t = metrics.cursor_speed_ratio().clamp(0.0, 1.0);
+    let spread_needle_t = metrics.spread_degree().clamp(0.0, 1.0);
     let size_value = format_racing_hud_size(metrics.current_size);
-    let speed_value = format_racing_hud_speed(metrics.cursor_speed_px_per_s);
+    let spread_value = format_racing_hud_spread(metrics.current_spread);
+    let spread_accent = if metrics.spread_is_recent_high() {
+        Color {
+            a: RACING_HUD_ALPHA,
+            ..theme.palette().danger
+        }
+    } else {
+        accent
+    };
 
     let (left_center, right_center) = if can_draw_pair {
         let left_center = Point::new(cluster_x - offset, cluster_y);
@@ -542,11 +565,11 @@ fn draw_racing_hud_reticle(
                 center: right_center,
                 radius,
                 scale: gauge_scale,
-                title: "SPEED",
-                value: &speed_value,
-                unit: "PX/S",
-                needle_t: speed_needle_t,
-                accent,
+                title: "SPREAD",
+                value: &spread_value,
+                unit: "PRICE",
+                needle_t: spread_needle_t,
+                accent: spread_accent,
             },
         );
     }
@@ -849,15 +872,30 @@ fn format_racing_hud_size(size: Option<f64>) -> String {
     label
 }
 
-fn format_racing_hud_speed(speed: Option<f32>) -> String {
-    let Some(speed) = speed.filter(|value| value.is_finite() && *value >= 0.0) else {
+fn format_racing_hud_spread(spread: Option<f64>) -> String {
+    let Some(spread) = spread.filter(|value| value.is_finite() && *value >= 0.0) else {
         return "--".to_string();
     };
-    if speed >= 1_000.0 {
-        format!("{:.1}K", (speed / 1_000.0).min(9.9))
+
+    let mut label = if spread >= 1_000.0 {
+        format!("{spread:.0}")
+    } else if spread >= 100.0 {
+        format!("{spread:.1}")
+    } else if spread >= 1.0 {
+        format!("{spread:.2}")
+    } else if spread >= 0.01 {
+        format!("{spread:.4}")
     } else {
-        format!("{:.0}", speed)
+        format!("{spread:.5}")
+    };
+
+    while label.contains('.') && label.ends_with('0') {
+        label.pop();
     }
+    if label.ends_with('.') {
+        label.pop();
+    }
+    label
 }
 
 fn positive_finite_value(value: f64) -> Option<f64> {
@@ -868,8 +906,13 @@ fn nonnegative_finite_value(value: f64) -> Option<f64> {
     (value.is_finite() && value >= 0.0).then_some(value)
 }
 
-fn nonnegative_finite_f32(value: f32) -> Option<f32> {
-    (value.is_finite() && value >= 0.0).then_some(value)
+fn valid_spread_bounds(bounds: (f64, f64)) -> Option<(f64, f64)> {
+    let (min_spread, max_spread) = bounds;
+    (min_spread.is_finite()
+        && max_spread.is_finite()
+        && min_spread >= 0.0
+        && max_spread >= min_spread)
+        .then_some(bounds)
 }
 
 fn draw_hud_side_brackets(
@@ -1267,7 +1310,7 @@ fn style_scale(width: f32, height: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{RacingHudMetrics, format_racing_hud_size, format_racing_hud_speed, style_scale};
+    use super::{RacingHudMetrics, format_racing_hud_size, format_racing_hud_spread, style_scale};
 
     #[test]
     fn style_scale_keeps_chart_reticles_full_size() {
@@ -1282,25 +1325,24 @@ mod tests {
 
     #[test]
     fn racing_hud_metrics_report_size_relative_to_max_size() {
-        let metrics = RacingHudMetrics::new(Some(2.5), Some(10.0), Some(1_200.0));
+        let metrics = RacingHudMetrics::new(Some(2.5), Some(10.0), Some(0.25), Some((0.0, 0.5)));
 
         assert_eq!(metrics.usage_ratio(), Some(0.25));
-        assert_eq!(metrics.cursor_speed_ratio(), 0.5);
+        assert_eq!(metrics.spread_ratio(), Some(0.5));
+        assert_eq!(metrics.spread_degree(), 0.5);
         assert_eq!(format_racing_hud_size(metrics.current_size), "2.5");
-        assert_eq!(
-            format_racing_hud_speed(metrics.cursor_speed_px_per_s),
-            "1.2K"
-        );
+        assert_eq!(format_racing_hud_spread(metrics.current_spread), "0.25");
     }
 
     #[test]
     fn racing_hud_metrics_handle_missing_or_invalid_max_size() {
-        let metrics = RacingHudMetrics::new(Some(2.5), Some(0.0), Some(f32::NAN));
+        let metrics = RacingHudMetrics::new(Some(2.5), Some(0.0), Some(f64::NAN), Some((0.0, 0.0)));
 
         assert_eq!(metrics.usage_ratio(), None);
-        assert_eq!(metrics.cursor_speed_ratio(), 0.0);
+        assert_eq!(metrics.spread_ratio(), None);
+        assert_eq!(metrics.spread_degree(), 0.0);
         assert_eq!(format_racing_hud_size(metrics.current_size), "2.5");
-        assert_eq!(format_racing_hud_speed(metrics.cursor_speed_px_per_s), "--");
+        assert_eq!(format_racing_hud_spread(metrics.current_spread), "--");
     }
 
     #[test]
@@ -1308,8 +1350,34 @@ mod tests {
         let metrics = RacingHudMetrics::default();
 
         assert_eq!(metrics.usage_ratio(), None);
-        assert_eq!(metrics.cursor_speed_ratio(), 0.0);
+        assert_eq!(metrics.spread_ratio(), None);
+        assert_eq!(metrics.spread_degree(), 0.0);
         assert_eq!(format_racing_hud_size(metrics.current_size), "--");
-        assert_eq!(format_racing_hud_speed(metrics.cursor_speed_px_per_s), "--");
+        assert_eq!(format_racing_hud_spread(metrics.current_spread), "--");
+    }
+
+    #[test]
+    fn racing_hud_spread_degree_uses_recent_bounds() {
+        let min = RacingHudMetrics::new(None, None, Some(0.1), Some((0.1, 0.5)));
+        let mid = RacingHudMetrics::new(None, None, Some(0.3), Some((0.1, 0.5)));
+        let max = RacingHudMetrics::new(None, None, Some(0.5), Some((0.1, 0.5)));
+        let flat = RacingHudMetrics::new(None, None, Some(0.5), Some((0.5, 0.5)));
+
+        assert_eq!(min.spread_degree(), 0.0);
+        assert_eq!(mid.spread_degree(), 0.5);
+        assert_eq!(max.spread_degree(), 1.0);
+        assert_eq!(flat.spread_degree(), 0.0);
+        assert!(!min.spread_is_recent_high());
+        assert!(!mid.spread_is_recent_high());
+        assert!(max.spread_is_recent_high());
+        assert!(!flat.spread_is_recent_high());
+    }
+
+    #[test]
+    fn racing_hud_spread_format_keeps_small_values_readable() {
+        assert_eq!(format_racing_hud_spread(Some(0.0)), "0");
+        assert_eq!(format_racing_hud_spread(Some(0.000125)), "0.00013");
+        assert_eq!(format_racing_hud_spread(Some(0.0125)), "0.0125");
+        assert_eq!(format_racing_hud_spread(Some(1.5)), "1.5");
     }
 }

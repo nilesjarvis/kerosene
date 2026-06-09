@@ -7,8 +7,8 @@ use crate::order_execution::{
 };
 use crate::signing::float_to_wire;
 use crate::twap_state::{
-    MIN_EXCHANGE_ORDER_NOTIONAL_USD, TwapOrder, TwapOrderInit, twap_min_quantized_child_notional,
-    twap_required_slice_rate, twap_target_size_from_quantity,
+    MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_DUPLICATE_START_WINDOW, TwapOrder, TwapOrderInit,
+    twap_min_quantized_child_notional, twap_required_slice_rate, twap_target_size_from_quantity,
 };
 use iced::Task;
 use std::time::Instant;
@@ -64,6 +64,25 @@ impl TradingTerminal {
             return Task::none();
         };
 
+        let now = Instant::now();
+        // start_twap completes synchronously, so the pending-order flag never
+        // covers it; this window is what absorbs a double click that would
+        // otherwise start two full-size TWAPs.
+        if self.twap_orders.values().any(|twap| {
+            !twap.status.is_terminal()
+                && !twap.stop_requested
+                && twap.coin == self.active_symbol
+                && twap.is_buy == is_buy
+                && now.saturating_duration_since(twap.started_at) < TWAP_DUPLICATE_START_WINDOW
+        }) {
+            self.order_status = Some((
+                "A TWAP for this symbol and side just started; wait a moment to start another"
+                    .into(),
+                true,
+            ));
+            return Task::none();
+        }
+
         let Some(sym) = self
             .exchange_symbols
             .iter()
@@ -95,7 +114,6 @@ impl TradingTerminal {
                 return Task::none();
             }
         };
-        let now = Instant::now();
         let active_slice_rate = self.active_twap_slice_rate(now);
         if let Err(message) = validate_twap_schedule_capacity(
             active_slice_rate,

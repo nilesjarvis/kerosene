@@ -256,7 +256,14 @@ impl TradingTerminal {
 
     pub(crate) fn set_order_status(&mut self, message: String, is_error: bool) {
         let _theme = self.theme();
-        self.order_status = Some((message, is_error));
-        self.play_notification_sound(is_error);
+        self.order_status = Some((message.clone(), is_error));
+        if is_error {
+            // Execution failures must stay visible when the order ticket pane
+            // is closed (HUD/quick-order trading from a chart); push_toast
+            // also covers the error sound and desktop notification.
+            self.push_toast(message, true);
+        } else {
+            self.play_notification_sound(is_error);
+        }
     }
 }

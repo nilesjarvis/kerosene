@@ -88,6 +88,7 @@ impl TradingTerminal {
         context: OneShotPlacementContext,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
+        self.pending_order_action = None;
         let outcome = classify_execution_result(result);
         self.apply_one_shot_placement_outcome(context, outcome)
     }

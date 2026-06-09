@@ -348,8 +348,14 @@ impl TradingTerminal {
             }
         }
 
-        if let Some(status) = status_update {
-            self.order_status = Some(status);
+        if let Some((status, is_error)) = status_update {
+            if is_error {
+                // TWAPs run unattended; failures need the toast/sound path,
+                // not just the closable order ticket pane.
+                self.set_order_status(status, true);
+            } else {
+                self.order_status = Some((status, false));
+            }
         }
 
         if let Some((key, asset, oid, cloid)) = cancel_unexpected {

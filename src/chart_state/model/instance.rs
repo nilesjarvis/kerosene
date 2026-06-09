@@ -1,4 +1,5 @@
 use super::{ChartId, ChartInstance};
+use crate::account::AssetContext;
 use crate::chart::CandlestickChart;
 use crate::config;
 use crate::timeframe::Timeframe;
@@ -108,6 +109,20 @@ impl ChartInstance {
             asset_volume_as_notional: self.asset_volume_as_notional,
             outcome_volume_as_notional: self.outcome_volume_as_notional,
         }
+    }
+
+    pub(crate) fn set_asset_context(&mut self, asset_ctx: Option<AssetContext>) {
+        self.set_asset_context_at(asset_ctx, crate::app_time::now_ms());
+    }
+
+    pub(crate) fn set_asset_context_at(&mut self, asset_ctx: Option<AssetContext>, now_ms: u64) {
+        match asset_ctx.as_ref() {
+            Some(ctx) => self
+                .chart
+                .set_current_spread_at(ctx.impact_spread(), now_ms),
+            None => self.chart.clear_spread_history(),
+        }
+        self.asset_ctx = asset_ctx;
     }
 
     /// Create a new chart with the editor open and no symbol selected.

@@ -31,6 +31,14 @@ impl TradingTerminal {
             OrderKind::Market | OrderKind::Limit | OrderKind::LimitIoc => {}
         }
 
+        // The disabled-button state in the view is not a submission gate:
+        // queued click events can outrun a re-render, and presets/Alfred
+        // reach this path without any button state at all.
+        if self.pending_order_action.is_some() {
+            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
+            return Task::none();
+        }
+
         let _theme = self.theme();
         let key = self.wallet_key_input.trim().to_string();
         if key.is_empty() || self.connected_address.is_none() {

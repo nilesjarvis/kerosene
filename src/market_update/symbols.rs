@@ -166,7 +166,7 @@ impl TradingTerminal {
                             inst.chart.status = ChartStatus::Loading;
                             inst.chart.candles.clear();
                             inst.chart.candle_cache.clear();
-                            inst.asset_ctx = None;
+                            inst.set_asset_context(None);
                             inst.candle_fetch_error = None;
                             inst.last_price_flash = None;
                             Self::clear_earnings_display(inst);

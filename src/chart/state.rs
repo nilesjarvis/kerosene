@@ -1,6 +1,5 @@
 use super::DEFAULT_CANDLE_WIDTH;
 use iced::Point;
-use std::time::Instant;
 
 mod export;
 
@@ -52,12 +51,6 @@ impl HudMarketSide {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) struct CursorSpeedSample {
-    position: Point,
-    captured_at: Instant,
-}
-
 /// Widget-local mutable state for the canvas (managed by iced runtime).
 #[derive(Debug)]
 pub struct ChartState {
@@ -99,10 +92,6 @@ pub struct ChartState {
     pub(super) hud_size_replace_on_type: bool,
     /// Last Ctrl+scroll direction, used only to angle the HUD size scroller.
     pub(super) hud_size_scroll_bias: f32,
-    /// Smoothed cursor speed in chart source pixels per second for Racing HUD.
-    pub(super) hud_cursor_speed_px_per_s: f32,
-    /// Previous cursor position/time used to estimate Racing HUD cursor speed.
-    pub(super) cursor_speed_sample: Option<CursorSpeedSample>,
     /// True while HUD mode keeps the price viewport centered on the latest candle.
     pub(super) hud_follow_price: bool,
     /// Anchor price for Shift+click range measurement.
@@ -138,8 +127,6 @@ impl Default for ChartState {
             hud_size_editing: false,
             hud_size_replace_on_type: false,
             hud_size_scroll_bias: 0.0,
-            hud_cursor_speed_px_per_s: 0.0,
-            cursor_speed_sample: None,
             hud_follow_price: false,
             range_anchor_price: None,
             reset_epoch_seen: 0,
@@ -165,40 +152,9 @@ impl ChartState {
         self.drag_order_new_price = None;
         self.hover_order_oid = None;
         self.pending_anchor = None;
-        self.hud_cursor_speed_px_per_s = 0.0;
-        self.cursor_speed_sample = None;
         self.hud_follow_price = false;
         self.range_anchor_price = None;
         self.reset_epoch_seen = reset_epoch;
-    }
-
-    pub(super) fn record_cursor_speed_sample(&mut self, position: Option<Point>, now: Instant) {
-        let Some(position) = position else {
-            self.hud_cursor_speed_px_per_s = 0.0;
-            self.cursor_speed_sample = None;
-            return;
-        };
-
-        let instantaneous_speed = self.cursor_speed_sample.and_then(|sample| {
-            let dt = now
-                .saturating_duration_since(sample.captured_at)
-                .as_secs_f32();
-            if dt <= 0.001 {
-                return None;
-            }
-            let dx = position.x - sample.position.x;
-            let dy = position.y - sample.position.y;
-            Some((dx.hypot(dy) / dt).max(0.0))
-        });
-
-        if let Some(speed) = instantaneous_speed {
-            self.hud_cursor_speed_px_per_s =
-                (self.hud_cursor_speed_px_per_s * 0.55 + speed * 0.45).clamp(0.0, 9_999.0);
-        }
-        self.cursor_speed_sample = Some(CursorSpeedSample {
-            position,
-            captured_at: now,
-        });
     }
 }
 

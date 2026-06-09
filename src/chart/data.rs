@@ -9,6 +9,10 @@ use crate::denomination::DisplayDenominationContext;
 use crate::timeframe::Timeframe;
 use iced::Color;
 use iced::widget::canvas;
+use std::collections::VecDeque;
+
+const SPREAD_HISTORY_WINDOW_MS: u64 = 10_000;
+const SPREAD_HISTORY_LIMIT: usize = 2_048;
 
 // ---------------------------------------------------------------------------
 // Chart Data Lifecycle
@@ -54,6 +58,8 @@ impl CandlestickChart {
             funding_status: None,
             funding_panel_height: DEFAULT_FUNDING_PANEL_HEIGHT,
             market_reference_price: None,
+            current_spread: None,
+            spread_history: VecDeque::new(),
             hud_max_notional: None,
             funding_annualized: false,
             macro_indicators: crate::config::MacroIndicatorsConfig::default(),
@@ -120,6 +126,8 @@ impl CandlestickChart {
             funding_status: self.funding_status.clone(),
             funding_panel_height: self.funding_panel_height,
             market_reference_price: self.market_reference_price,
+            current_spread: self.current_spread,
+            spread_history: self.spread_history.clone(),
             hud_max_notional: self.hud_max_notional,
             funding_annualized: self.funding_annualized,
             macro_indicators: self.macro_indicators.clone(),
@@ -194,6 +202,53 @@ impl CandlestickChart {
         let price = price.and_then(crate::helpers::positive_finite_value);
         if self.market_reference_price != price {
             self.market_reference_price = price;
+        }
+    }
+
+    /// Record the latest spread sample. A missing or invalid spread blanks the
+    /// current readout but keeps the recent history so a transient gap in
+    /// impact prices does not reset the racing HUD gauge baseline.
+    pub(crate) fn set_current_spread_at(&mut self, spread: Option<f64>, now_ms: u64) {
+        self.current_spread = spread.filter(|spread| spread.is_finite() && *spread >= 0.0);
+        let Some(spread) = self.current_spread else {
+            return;
+        };
+        self.spread_history.push_back((now_ms, spread));
+        self.trim_spread_history(now_ms);
+    }
+
+    /// Drop all spread state. Used when the chart symbol changes or resets.
+    pub(crate) fn clear_spread_history(&mut self) {
+        self.current_spread = None;
+        self.spread_history.clear();
+    }
+
+    pub(crate) fn spread_history_bounds(&self) -> Option<(f64, f64)> {
+        self.spread_history
+            .iter()
+            .map(|(_, spread)| *spread)
+            .filter(|spread| spread.is_finite() && *spread >= 0.0)
+            .fold(None, |bounds, spread| {
+                Some(match bounds {
+                    Some((min_spread, max_spread)) => {
+                        (min_spread.min(spread), max_spread.max(spread))
+                    }
+                    None => (spread, spread),
+                })
+            })
+    }
+
+    fn trim_spread_history(&mut self, now_ms: u64) {
+        let cutoff_ms = now_ms.saturating_sub(SPREAD_HISTORY_WINDOW_MS);
+        while self
+            .spread_history
+            .front()
+            .is_some_and(|(sample_ms, _)| *sample_ms < cutoff_ms)
+        {
+            self.spread_history.pop_front();
+        }
+        while self.spread_history.len() > SPREAD_HISTORY_LIMIT {
+            self.spread_history.pop_front();
         }
     }
 
@@ -300,3 +355,6 @@ impl CandlestickChart {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

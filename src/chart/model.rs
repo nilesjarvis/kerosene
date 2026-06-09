@@ -11,6 +11,7 @@ use crate::hyperdash_api::{HeatmapRect, LiquidationBucket};
 use crate::timeframe::Timeframe;
 use iced::Color;
 use iced::widget::canvas;
+use std::collections::VecDeque;
 
 // Layout constants for chart regions.
 pub const PRICE_AXIS_WIDTH: f32 = 70.0;
@@ -105,6 +106,10 @@ pub struct CandlestickChart {
     pub funding_panel_height: f32,
     /// Fresh executable mid/reference price used by HUD market-mode targeting.
     pub(crate) market_reference_price: Option<f64>,
+    /// Fresh bid/ask spread from the chart asset context.
+    pub(crate) current_spread: Option<f64>,
+    /// Recent bid/ask spread samples used to scale the racing HUD spread gauge.
+    pub(crate) spread_history: VecDeque<(u64, f64)>,
     /// Account-derived notional cap used to render HUD size-as-percent gauges.
     pub(crate) hud_max_notional: Option<f64>,
     /// Render funding as hourly rate or annualized rate.

@@ -13,7 +13,6 @@ use iced::Rectangle;
 use iced::keyboard;
 use iced::mouse;
 use iced::widget::canvas;
-use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // Chart Interaction
@@ -136,13 +135,9 @@ impl CandlestickChart {
                 self.handle_left_press_at(state, cursor, fisheye, layout, bounds.height)
             }
             iced::Event::Mouse(mouse::Event::CursorLeft) => {
-                let had_cursor_speed =
-                    state.hud_cursor_speed_px_per_s > 0.0 || state.cursor_speed_sample.is_some();
-                state.record_cursor_speed_sample(None, Instant::now());
-                (needs_redraw_for_cursor || had_cursor_speed).then(canvas::Action::request_redraw)
+                needs_redraw_for_cursor.then(canvas::Action::request_redraw)
             }
             iced::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                state.record_cursor_speed_sample(source_pos, Instant::now());
                 let was_dragging = state.drag.is_some();
                 let hovering_plot =
                     source_pos.is_some_and(|pos| pos.x < chart_w && pos.y < chart_h);

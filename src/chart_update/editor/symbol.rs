@@ -115,7 +115,7 @@ impl TradingTerminal {
                 instance.chart.candle_cache.clear();
             }
 
-            instance.asset_ctx = None;
+            instance.set_asset_context(None);
             instance.editor_open = false;
             instance.editor_search_query.clear();
             instance.editor_selected_index = None;

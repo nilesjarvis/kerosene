@@ -34,6 +34,13 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        // Chart clicks can queue faster than results return; serialize HUD
+        // submissions on the same pending flag the one-shot results clear.
+        if self.pending_order_action.is_some() {
+            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
+            return Task::none();
+        }
+
         let key = self.wallet_key_input.trim().to_string();
         if key.is_empty() || self.connected_address.is_none() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
@@ -299,6 +306,26 @@ mod tests {
             Some(("HUD order ignored: chart surface changed", true))
         );
         assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn hud_order_submission_rejects_while_order_action_pending() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.pending_order_action = Some(PendingOrderAction::Sell);
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("Wait for the pending order action to finish", true))
+        );
+        assert_eq!(
+            terminal.pending_order_action,
+            Some(PendingOrderAction::Sell)
+        );
     }
 
     #[test]

@@ -36,6 +36,9 @@ pub(crate) const TWAP_BOOK_STALE_AFTER: Duration = Duration::from_secs(2);
 pub(crate) const ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL: Duration = Duration::from_millis(250);
 pub(crate) const MIN_EXCHANGE_ORDER_NOTIONAL_USD: f64 = 10.0;
 pub(crate) const TWAP_MAX_AGGREGATE_SLICE_RATE: f64 = 1.0;
+/// Window during which a second TWAP start for the same coin and side is
+/// treated as a duplicate click rather than a deliberate second order.
+pub(crate) const TWAP_DUPLICATE_START_WINDOW: Duration = Duration::from_secs(2);
 pub(crate) const TWAP_RETRY_BASE_DELAY: Duration = Duration::from_secs(2);
 pub(crate) const TWAP_RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
 pub(crate) const TWAP_MAX_RETRY_ATTEMPTS: u32 = 5;

@@ -29,3 +29,26 @@ fn chase_modify_success_preserves_target_until_account_confirms() {
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
 }
+
+#[test]
+fn chase_modify_success_adopts_resting_oid_from_response() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.account_loading = false;
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.chase_orders.insert(1, chase());
+
+    let _task = terminal.handle_chase_modify_result(
+        1,
+        42,
+        Ok(exchange_response(
+            serde_json::json!({"resting": {"oid": 77}}),
+        )),
+    );
+
+    // If the exchange ever re-keys an order on modify, the chase must track
+    // the oid from the response or reconciliation follows a dead order.
+    let chase = chase_by_id(&terminal, 1);
+    assert_eq!(chase.current_oid, Some(77));
+    assert!(chase.known_oids.contains(&42));
+    assert!(chase.known_oids.contains(&77));
+}
