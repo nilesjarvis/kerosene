@@ -1,3 +1,4 @@
+use self::coalescer::HydromancerCoalescedSender;
 use self::lifecycle::{
     HydromancerTaskControlFlow, drain_pending_hydromancer_shutdown,
     handle_preconnect_hydromancer_command, hydromancer_sleep_or_shutdown,
@@ -18,6 +19,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 use zeroize::Zeroizing;
 
+mod coalescer;
 mod frames;
 mod lifecycle;
 #[cfg(test)]
@@ -38,6 +40,7 @@ pub(super) async fn hydromancer_manager_task(
 ) {
     let api_key = Zeroizing::new(api_key);
     let mut active_subs = ActiveHydromancerSubscriptions::default();
+    let mut coalescer = HydromancerCoalescedSender::new(msg_tx.clone());
     let mut retry_delay = 1;
     let mut session = HydromancerSessionState::default();
 
@@ -129,10 +132,11 @@ pub(super) async fn hydromancer_manager_task(
 
         while !disconnected {
             let cmd_fut = Box::pin(cmd_rx.recv());
-            let read_fut = Box::pin(tokio::time::timeout(
-                hydromancer_read_remaining(last_rx_at.elapsed()),
-                read.next(),
-            ));
+            let read_timeout = coalescer
+                .next_due()
+                .map(|due| due.min(hydromancer_read_remaining(last_rx_at.elapsed())))
+                .unwrap_or_else(|| hydromancer_read_remaining(last_rx_at.elapsed()));
+            let read_fut = Box::pin(tokio::time::timeout(read_timeout, read.next()));
 
             match select(cmd_fut, read_fut).await {
                 Either::Left((Some(HydromancerCommand::Shutdown), _)) => {
@@ -156,6 +160,7 @@ pub(super) async fn hydromancer_manager_task(
                         &active_subs,
                         &mut session,
                         &msg_tx,
+                        &mut coalescer,
                         &mut write,
                     )
                     .await;
@@ -177,16 +182,20 @@ pub(super) async fn hydromancer_manager_task(
                     disconnected = true;
                 }
                 Either::Right((Err(_), _)) => {
-                    let _ = broadcast_hydromancer_reconnecting(
-                        &msg_tx,
-                        format!("heartbeat timeout after {}s", HYDROMANCER_READ_TIMEOUT_SECS),
-                        HYDROMANCER_RECONNECT_DELAY_SECS,
-                    );
-                    disconnected = true;
+                    coalescer.flush_due();
+                    if hydromancer_read_remaining(last_rx_at.elapsed()).is_zero() {
+                        let _ = broadcast_hydromancer_reconnecting(
+                            &msg_tx,
+                            format!("heartbeat timeout after {}s", HYDROMANCER_READ_TIMEOUT_SECS),
+                            HYDROMANCER_RECONNECT_DELAY_SECS,
+                        );
+                        disconnected = true;
+                    }
                 }
             }
         }
 
+        coalescer.flush_all();
         telemetry_on_disconnect();
         if hydromancer_sleep_or_shutdown(
             &mut cmd_rx,

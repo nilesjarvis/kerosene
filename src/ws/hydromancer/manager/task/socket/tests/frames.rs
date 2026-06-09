@@ -4,6 +4,7 @@ use super::*;
 fn connected_frame_replays_active_subscription_payloads() {
     let (mut write, mut sent) = mpsc::unbounded();
     let (msg_tx, mut msg_rx) = broadcast::channel(8);
+    let mut coalescer = HydromancerCoalescedSender::new(msg_tx.clone());
     let mut active_subs = ActiveHydromancerSubscriptions::default();
     let mut session = HydromancerSessionState::default();
     let payload = json!({
@@ -17,6 +18,7 @@ fn connected_frame_replays_active_subscription_payloads() {
         &active_subs,
         &mut session,
         &msg_tx,
+        &mut coalescer,
         &mut write,
     ));
 

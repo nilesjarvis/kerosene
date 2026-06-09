@@ -1,5 +1,6 @@
 use super::super::super::HYDROMANCER_RECONNECT_DELAY_SECS;
 use super::super::{HydromancerCommand, HydromancerRoutedMessage};
+use super::coalescer::HydromancerCoalescedSender;
 use super::frames::{HydromancerTextFrameKind, parse_hydromancer_text_frame};
 use super::messages::{
     broadcast_hydromancer_heartbeat, broadcast_hydromancer_json,
@@ -64,6 +65,7 @@ pub(super) async fn handle_hydromancer_ws_message<W>(
     active_subs: &ActiveHydromancerSubscriptions,
     session: &mut HydromancerSessionState,
     msg_tx: &broadcast::Sender<HydromancerRoutedMessage>,
+    coalescer: &mut HydromancerCoalescedSender,
     write: &mut W,
 ) -> bool
 where
@@ -72,7 +74,8 @@ where
     match msg {
         WsMsg::Text(text) => {
             telemetry_add_rx(text.len() as u64);
-            handle_hydromancer_text_frame(&text, active_subs, session, msg_tx, write).await
+            handle_hydromancer_text_frame(&text, active_subs, session, msg_tx, coalescer, write)
+                .await
         }
         WsMsg::Ping(payload) => {
             let _ = broadcast_hydromancer_heartbeat(msg_tx);
@@ -99,6 +102,7 @@ async fn handle_hydromancer_text_frame<W>(
     active_subs: &ActiveHydromancerSubscriptions,
     session: &mut HydromancerSessionState,
     msg_tx: &broadcast::Sender<HydromancerRoutedMessage>,
+    coalescer: &mut HydromancerCoalescedSender,
     write: &mut W,
 ) -> bool
 where
@@ -136,7 +140,7 @@ where
             disconnected
         }
         HydromancerTextFrameKind::Other => {
-            let _ = broadcast_hydromancer_json(msg_tx, frame.json);
+            coalescer.submit_json(frame.json);
             false
         }
     }
