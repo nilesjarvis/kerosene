@@ -137,9 +137,7 @@ impl TradingTerminal {
             );
         }
 
-        if self.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed))
-            && !self.telegram_feed.refreshing()
-        {
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed)) {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(
                     crate::telegram_feed::TELEGRAM_FEED_REFRESH_INTERVAL_SECS,

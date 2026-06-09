@@ -9,9 +9,9 @@ use crate::telegram_fast_feed::{
 };
 use crate::telegram_feed::{
     TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TelegramFastAuthOutcome, TelegramFastAuthStage,
-    TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost, TelegramTickerMention,
-    fetch_telegram_avatar_bytes, fetch_telegram_channel_posts, normalize_public_channel_input,
-    telegram_private_channel_peer_id_from_key,
+    TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost, TelegramFeedPostSource,
+    TelegramTickerMention, fetch_telegram_avatar_bytes, fetch_telegram_channel_posts,
+    normalize_public_channel_input, telegram_private_channel_peer_id_from_key,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
@@ -116,6 +116,13 @@ impl TradingTerminal {
                 "Fast Telegram mode is stale; reconnecting and using public refresh".to_string(),
                 true,
             ));
+        }
+
+        // The tick subscription stays alive while a refresh is in flight (it
+        // also drives the staleness check above), so skip duplicate fetches
+        // here instead of gating the timer.
+        if self.telegram_feed.channel_refresh_in_flight() {
+            return Task::none();
         }
 
         self.request_telegram_feed_refresh_with_visibility(false)
@@ -274,6 +281,7 @@ impl TradingTerminal {
                 .posts
                 .retain(|post| post.channel != channel);
             self.telegram_feed.clear_seen_posts_for_channel(channel);
+            crate::telegram_fast_feed::clear_fast_channel_cursor(channel);
             self.telegram_feed.channel_profiles.remove(channel);
             self.telegram_feed.fast_reconnect_nonce =
                 self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
@@ -298,6 +306,7 @@ impl TradingTerminal {
             .posts
             .retain(|post| post.channel != channel);
         self.telegram_feed.clear_seen_posts_for_channel(&channel);
+        crate::telegram_fast_feed::clear_fast_channel_cursor(&channel);
         self.telegram_feed.channel_profiles.remove(&channel);
         self.telegram_feed.last_error = None;
         self.persist_config();
@@ -572,13 +581,19 @@ impl TradingTerminal {
                         existing_post.ticker_mentions = mentions;
                         existing_post.applied_at_ms = post.applied_at_ms;
                     } else {
-                        if had_seen_posts && !already_seen {
+                        // History backfill must never read as breaking news: a
+                        // live fast message can land before its channel's
+                        // backfill, which would otherwise flag old posts new.
+                        let treat_as_new = had_seen_posts
+                            && !already_seen
+                            && post.source != TelegramFeedPostSource::FastBackfill;
+                        if treat_as_new {
                             post.first_seen_ms = now_ms;
                         }
                         let mentions =
                             self.telegram_ticker_mentions_for_text(&post.text, now_ms, &[]);
                         post.ticker_mentions = mentions;
-                        if had_seen_posts && !already_seen {
+                        if treat_as_new {
                             new_posts.push(post.clone());
                         }
                         self.telegram_feed.posts.push(post);
@@ -939,6 +954,71 @@ mod tests {
             terminal.telegram_feed.background_loading_channels,
             vec!["marketfeed".to_string()]
         );
+    }
+
+    #[test]
+    fn background_refresh_tick_skips_while_channel_fetch_in_flight() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedRefreshTick);
+
+        assert!(
+            terminal
+                .telegram_feed
+                .background_loading_channels
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn background_refresh_tick_runs_during_private_channel_scan() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.private_channel_candidates_loading = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedRefreshTick);
+
+        assert_eq!(
+            terminal.telegram_feed.background_loading_channels,
+            vec!["marketfeed".to_string()]
+        );
+    }
+
+    #[test]
+    fn fast_backfill_posts_do_not_alert_or_read_as_new() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.notifications_enabled = true;
+
+        let mut live_post = sample_post("marketfeed", 11);
+        live_post.source = crate::telegram_feed::TelegramFeedPostSource::FastLive;
+        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            TelegramFastFeedEvent::Loaded(
+                "marketfeed".to_string(),
+                Box::new(Ok(sample_page("marketfeed", vec![live_post]))),
+            ),
+        ));
+        assert!(terminal.toasts.is_empty());
+
+        let mut backfill_post = sample_post("marketfeed", 10);
+        backfill_post.source = crate::telegram_feed::TelegramFeedPostSource::FastBackfill;
+        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            TelegramFastFeedEvent::Loaded(
+                "marketfeed".to_string(),
+                Box::new(Ok(sample_page("marketfeed", vec![backfill_post]))),
+            ),
+        ));
+
+        let backfilled = terminal
+            .telegram_feed
+            .posts
+            .iter()
+            .find(|post| post.message_id == 10)
+            .expect("backfilled post should be inserted");
+        assert_eq!(backfilled.first_seen_ms, 0);
+        assert!(terminal.toasts.is_empty());
     }
 
     #[test]

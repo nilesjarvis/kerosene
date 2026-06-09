@@ -229,7 +229,7 @@ impl TradingTerminal {
             .padding([4, 8])
             .style(subtle_telegram_icon_button);
 
-        if !self.telegram_feed.refreshing() {
+        if !self.telegram_feed.channel_refresh_in_flight() {
             refresh_button = refresh_button.on_press(Message::RefreshTelegramFeed);
         }
 
@@ -554,16 +554,16 @@ impl TradingTerminal {
         }
 
         let rows = posts
-            .into_iter()
+            .iter()
             .fold(column![].spacing(8).width(Fill), |rows, post| {
                 let profile = self
                     .telegram_feed
                     .channel_profiles
                     .get(&post.channel)
                     .cloned();
-                let ticker_impacts = self.telegram_ticker_impact_cards(&post);
+                let ticker_impacts = self.telegram_ticker_impact_cards(post);
                 rows.push(telegram_post_card(
-                    post,
+                    post.clone(),
                     profile,
                     ticker_impacts,
                     now_ms,

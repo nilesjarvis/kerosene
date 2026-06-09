@@ -30,8 +30,38 @@ const TELEGRAM_FAST_RECONNECT_BASE_DELAY: Duration = Duration::from_secs(2);
 const TELEGRAM_FAST_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
 const TELEGRAM_FAST_HEALTH_CHECK_INTERVAL: Duration =
     Duration::from_secs(TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS);
+const TELEGRAM_PRIVATE_SCAN_TIMEOUT: Duration = Duration::from_secs(45);
+const TELEGRAM_FAST_RESOLVE_RETRY_ATTEMPTS: usize = 2;
+const TELEGRAM_FAST_RESOLVE_RETRY_DELAY: Duration = Duration::from_secs(10);
+const TELEGRAM_SESSION_OPEN_RETRY_ATTEMPTS: usize = 3;
+const TELEGRAM_SESSION_OPEN_RETRY_DELAY: Duration = Duration::from_millis(250);
+const TELEGRAM_POOL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 type ChannelIdMap = Arc<RwLock<HashMap<PeerId, FastChannelIdentity>>>;
 type ChannelCursorMap = Arc<RwLock<HashMap<String, u64>>>;
+
+// Cursors live for the whole process so that subscription restarts (reconnect
+// nonce bumps, channel edits) keep gap-recovery backfill instead of falling
+// back to the short initial-history fetch. Cleared on sign-out.
+fn fast_channel_cursors() -> ChannelCursorMap {
+    static CURSORS: OnceLock<ChannelCursorMap> = OnceLock::new();
+    Arc::clone(CURSORS.get_or_init(|| Arc::new(RwLock::new(HashMap::new()))))
+}
+
+// Serializes short-lived client operations (auth, private channel scans)
+// against each other; they share one session file with the live feed stream.
+fn telegram_client_op_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+// Best-effort: a removed channel must not keep its cursor, or re-adding it
+// would skip the initial history backfill. Contention is rare and losing the
+// race only degrades to the old behavior.
+pub(crate) fn clear_fast_channel_cursor(channel: &str) {
+    if let Ok(mut cursors) = fast_channel_cursors().try_write() {
+        cursors.remove(channel);
+    }
+}
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
 
@@ -264,6 +294,7 @@ pub(crate) async fn sign_out_telegram_fast(api_id: i32) -> Result<TelegramFastAu
     .await;
     clear_pending_auth();
     clear_telegram_fast_session_files();
+    fast_channel_cursors().write().await.clear();
     result
 }
 
@@ -271,45 +302,51 @@ pub(crate) async fn list_telegram_private_channel_candidates(
     api_id: i32,
 ) -> Result<Vec<TelegramPrivateChannelCandidate>, String> {
     with_telegram_client(api_id, |client| async move {
-        if !client
-            .is_authorized()
-            .await
-            .map_err(|e| format!("Telegram authorization check failed: {e}"))?
-        {
-            return Err("Sign in to Telegram fast mode first".to_string());
-        }
-
-        let mut candidates = Vec::new();
-        let mut dialogs = client.iter_dialogs().limit(500);
-        while let Some(dialog) = dialogs
-            .next()
-            .await
-            .map_err(|e| format!("Telegram channel list failed: {e}"))?
-        {
-            let Peer::Channel(channel) = dialog.peer else {
-                continue;
-            };
-            if channel.username().is_some() {
-                continue;
+        // The scan gates the feed's loading state; an unresponsive connection
+        // must not leave it stuck forever.
+        tokio::time::timeout(TELEGRAM_PRIVATE_SCAN_TIMEOUT, async move {
+            if !client
+                .is_authorized()
+                .await
+                .map_err(|e| format!("Telegram authorization check failed: {e}"))?
+            {
+                return Err("Sign in to Telegram fast mode first".to_string());
             }
-            let avatar_handle =
-                download_private_channel_avatar_handle(&client, Peer::Channel(channel.clone()))
-                    .await;
-            candidates.push(TelegramPrivateChannelCandidate {
-                peer_id: channel.id().bare_id(),
-                title: normalize_private_channel_title(channel.title(), channel.id().bare_id()),
-                avatar_handle,
-            });
-        }
 
-        candidates.sort_by(|left, right| {
-            left.title
-                .to_ascii_lowercase()
-                .cmp(&right.title.to_ascii_lowercase())
-                .then_with(|| left.peer_id.cmp(&right.peer_id))
-        });
-        candidates.dedup_by_key(|candidate| candidate.peer_id);
-        Ok(candidates)
+            let mut candidates = Vec::new();
+            let mut dialogs = client.iter_dialogs().limit(500);
+            while let Some(dialog) = dialogs
+                .next()
+                .await
+                .map_err(|e| format!("Telegram channel list failed: {e}"))?
+            {
+                let Peer::Channel(channel) = dialog.peer else {
+                    continue;
+                };
+                if channel.username().is_some() {
+                    continue;
+                }
+                let avatar_handle =
+                    download_private_channel_avatar_handle(&client, Peer::Channel(channel.clone()))
+                        .await;
+                candidates.push(TelegramPrivateChannelCandidate {
+                    peer_id: channel.id().bare_id(),
+                    title: normalize_private_channel_title(channel.title(), channel.id().bare_id()),
+                    avatar_handle,
+                });
+            }
+
+            candidates.sort_by(|left, right| {
+                left.title
+                    .to_ascii_lowercase()
+                    .cmp(&right.title.to_ascii_lowercase())
+                    .then_with(|| left.peer_id.cmp(&right.peer_id))
+            });
+            candidates.dedup_by_key(|candidate| candidate.peer_id);
+            Ok(candidates)
+        })
+        .await
+        .unwrap_or_else(|_| Err("Telegram private channel scan timed out".to_string()))
     })
     .await
 }
@@ -341,12 +378,19 @@ pub(crate) fn telegram_fast_feed_stream(
     let params = params.clone();
     Box::pin(iced::stream::channel(1000, async move |mut output| {
         let mut retry_delay = TELEGRAM_FAST_RECONNECT_BASE_DELAY;
-        let channel_cursors = Arc::new(RwLock::new(HashMap::new()));
+        let channel_cursors = fast_channel_cursors();
         loop {
-            match run_telegram_fast_feed_session(&params, Arc::clone(&channel_cursors), &mut output)
-                .await
+            let mut session_connected = false;
+            match run_telegram_fast_feed_session(
+                &params,
+                Arc::clone(&channel_cursors),
+                &mut session_connected,
+                &mut output,
+            )
+            .await
             {
                 FastFeedSessionExit::Retry => {
+                    retry_delay = fast_retry_delay_after_session(retry_delay, session_connected);
                     tokio::time::sleep(retry_delay).await;
                     retry_delay = next_fast_reconnect_delay(retry_delay);
                 }
@@ -359,6 +403,7 @@ pub(crate) fn telegram_fast_feed_stream(
 async fn run_telegram_fast_feed_session(
     params: &TelegramFastFeedStreamParams,
     channel_cursors: ChannelCursorMap,
+    session_connected: &mut bool,
     output: &mut mpsc::Sender<TelegramFastFeedEvent>,
 ) -> FastFeedSessionExit {
     let Some(session_path) = telegram_fast_session_path() else {
@@ -376,17 +421,10 @@ async fn run_telegram_fast_feed_session(
         return FastFeedSessionExit::Stop;
     }
 
-    let session = match SqliteSession::open(&session_path).await {
+    let session = match open_telegram_session(&session_path).await {
         Ok(session) => Arc::new(session),
         Err(err) => {
-            if !send_status(
-                output,
-                false,
-                false,
-                &format!("Telegram session open failed: {err}"),
-            )
-            .await
-            {
+            if !send_status(output, false, false, &err).await {
                 return FastFeedSessionExit::Stop;
             }
             return FastFeedSessionExit::Retry;
@@ -425,6 +463,7 @@ async fn run_telegram_fast_feed_session(
         handle.quit();
         return FastFeedSessionExit::Stop;
     }
+    *session_connected = true;
 
     let mut updates = client
         .stream_updates(updates, live_first_updates_configuration())
@@ -446,28 +485,25 @@ async fn run_telegram_fast_feed_session(
             "Fast Telegram mode resolving channels",
         )
         .await;
-        let targets = resolve_fast_channel_targets(
+        let unresolved = resolve_and_backfill_fast_channels(
             &background_client,
-            &background_channels,
-            &background_private_channels,
+            background_channels,
+            background_private_channels,
             &background_channel_ids,
-        )
-        .await;
-        backfill_fast_channels(
-            &background_client,
-            targets,
-            Arc::clone(&background_channel_cursors),
+            background_channel_cursors,
             &mut background_output,
         )
         .await;
         warm_dialog_update_state(&background_client).await;
-        let _ = send_status(
-            &mut background_output,
-            true,
-            false,
-            "Fast Telegram mode listening",
-        )
-        .await;
+        let listening_status = if unresolved.is_empty() {
+            "Fast Telegram mode listening".to_string()
+        } else {
+            format!(
+                "Fast Telegram mode listening; could not resolve {}",
+                unresolved.join(", ")
+            )
+        };
+        let _ = send_status(&mut background_output, true, false, &listening_status).await;
     }));
     let health_client = client.clone();
     let health_handle = handle.clone();
@@ -598,6 +634,16 @@ fn next_fast_reconnect_delay(current: Duration) -> Duration {
         .min(TELEGRAM_FAST_RECONNECT_MAX_DELAY)
 }
 
+// A session that reached Telegram resets the backoff so reconnects after a
+// long healthy run start from the base delay again.
+fn fast_retry_delay_after_session(current: Duration, session_connected: bool) -> Duration {
+    if session_connected {
+        TELEGRAM_FAST_RECONNECT_BASE_DELAY
+    } else {
+        current
+    }
+}
+
 fn clear_pending_auth() {
     if let Ok(mut pending) = pending_auths().lock() {
         pending.clear();
@@ -616,14 +662,11 @@ where
     F: FnOnce(Client) -> Fut,
     Fut: Future<Output = Result<T, String>>,
 {
+    let _op_guard = telegram_client_op_lock().lock().await;
     let session_path = telegram_fast_session_path()
         .ok_or_else(|| "Could not resolve Kerosene config directory".to_string())?;
     prepare_session_path(&session_path).await?;
-    let session = Arc::new(
-        SqliteSession::open(&session_path)
-            .await
-            .map_err(|e| format!("Telegram session open failed: {e}"))?,
-    );
+    let session = Arc::new(open_telegram_session(&session_path).await?);
     tighten_session_permissions(&session_path);
 
     let SenderPool {
@@ -635,9 +678,27 @@ where
     let pool_task = tokio::spawn(runner.run());
     let result = f(client).await;
     handle.quit();
-    let _ = pool_task.await;
+    let _ = tokio::time::timeout(TELEGRAM_POOL_SHUTDOWN_TIMEOUT, pool_task).await;
     tighten_session_permissions(&session_path);
     result
+}
+
+// The session file is shared with the live feed stream; transient SQLite lock
+// contention is expected, so retry briefly before reporting failure.
+async fn open_telegram_session(path: &Path) -> Result<SqliteSession, String> {
+    let mut attempt = 1;
+    loop {
+        match SqliteSession::open(path).await {
+            Ok(session) => return Ok(session),
+            Err(err) => {
+                if attempt >= TELEGRAM_SESSION_OPEN_RETRY_ATTEMPTS {
+                    return Err(format!("Telegram session open failed: {err}"));
+                }
+                attempt += 1;
+                tokio::time::sleep(TELEGRAM_SESSION_OPEN_RETRY_DELAY).await;
+            }
+        }
+    }
 }
 
 async fn prepare_session_path(path: &Path) -> Result<(), String> {
@@ -698,6 +759,53 @@ async fn warm_dialog_update_state(client: &Client) {
             Ok(Some(_)) => {}
             Ok(None) | Err(_) => break,
         }
+    }
+}
+
+// Resolves channels and backfills each pass's targets immediately, retrying
+// channels that failed to resolve (transient errors, FLOOD_WAIT) a bounded
+// number of times. Returns display names of channels that never resolved.
+async fn resolve_and_backfill_fast_channels(
+    client: &Client,
+    mut pending_channels: HashSet<String>,
+    mut pending_private_channels: HashMap<i64, TelegramFeedPrivateChannelConfig>,
+    channel_ids: &ChannelIdMap,
+    channel_cursors: ChannelCursorMap,
+    output: &mut mpsc::Sender<TelegramFastFeedEvent>,
+) -> Vec<String> {
+    let mut attempts = 0;
+    loop {
+        let targets = resolve_fast_channel_targets(
+            client,
+            &pending_channels,
+            &pending_private_channels,
+            channel_ids,
+        )
+        .await;
+        let resolved: HashSet<String> = targets
+            .iter()
+            .map(|target| target.identity.key.clone())
+            .collect();
+        backfill_fast_channels(client, targets, Arc::clone(&channel_cursors), output).await;
+
+        pending_channels.retain(|channel| !resolved.contains(channel));
+        pending_private_channels.retain(|_, config| !resolved.contains(&config.key()));
+        if pending_channels.is_empty() && pending_private_channels.is_empty() {
+            return Vec::new();
+        }
+        if attempts >= TELEGRAM_FAST_RESOLVE_RETRY_ATTEMPTS {
+            return pending_channels
+                .iter()
+                .map(|channel| format!("@{channel}"))
+                .chain(
+                    pending_private_channels
+                        .values()
+                        .map(|config| config.title.clone()),
+                )
+                .collect();
+        }
+        attempts += 1;
+        tokio::time::sleep(TELEGRAM_FAST_RESOLVE_RETRY_DELAY).await;
     }
 }
 
@@ -783,24 +891,47 @@ async fn backfill_fast_channels(
             .get(&target.identity.key)
             .copied()
             .unwrap_or_default();
-        let limit = if cursor == 0 {
-            TELEGRAM_FEED_FETCH_LIMIT
+        // With a cursor, every backfilled message is newer than what was
+        // already delivered, so it is live news arriving late, not history.
+        let (limit, source) = if cursor == 0 {
+            (
+                TELEGRAM_FEED_FETCH_LIMIT,
+                TelegramFeedPostSource::FastBackfill,
+            )
         } else {
-            TELEGRAM_FAST_RECONNECT_BACKFILL_LIMIT
+            (
+                TELEGRAM_FAST_RECONNECT_BACKFILL_LIMIT,
+                TelegramFeedPostSource::FastLive,
+            )
         };
         let mut messages = client.iter_messages(target.peer_ref).limit(limit);
-        while let Ok(Some(message)) = messages.next().await {
-            let Some(post) = fast_post_from_message(
-                &target.identity.key,
-                &message,
-                TelegramFeedPostSource::FastBackfill,
-            ) else {
-                continue;
-            };
-            if cursor > 0 && post.message_id <= cursor {
-                break;
+        loop {
+            match messages.next().await {
+                Ok(Some(message)) => {
+                    let Some(post) = fast_post_from_message(&target.identity.key, &message, source)
+                    else {
+                        continue;
+                    };
+                    if cursor > 0 && post.message_id <= cursor {
+                        break;
+                    }
+                    posts.push(post);
+                }
+                Ok(None) => break,
+                Err(err) => {
+                    let _ = send_status(
+                        output,
+                        true,
+                        false,
+                        &format!(
+                            "Telegram backfill incomplete for {}: {err}",
+                            target.identity.title
+                        ),
+                    )
+                    .await;
+                    break;
+                }
             }
-            posts.push(post);
         }
         posts.reverse();
         let max_message_id = posts
@@ -961,6 +1092,21 @@ async fn record_channel_cursor(channel_cursors: &ChannelCursorMap, channel: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connected_session_resets_reconnect_backoff() {
+        let grown = Duration::from_secs(32);
+
+        assert_eq!(
+            fast_retry_delay_after_session(grown, true),
+            TELEGRAM_FAST_RECONNECT_BASE_DELAY
+        );
+        assert_eq!(fast_retry_delay_after_session(grown, false), grown);
+        assert_eq!(
+            next_fast_reconnect_delay(TELEGRAM_FAST_RECONNECT_MAX_DELAY),
+            TELEGRAM_FAST_RECONNECT_MAX_DELAY
+        );
+    }
 
     #[test]
     fn fast_updates_are_configured_live_first() {

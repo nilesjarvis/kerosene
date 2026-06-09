@@ -260,23 +260,18 @@ impl TelegramFeedState {
         !self.loading_channels.is_empty()
     }
 
-    pub(crate) fn refreshing(&self) -> bool {
-        self.loading()
-            || !self.background_loading_channels.is_empty()
-            || self.private_channel_candidates_loading
+    pub(crate) fn channel_refresh_in_flight(&self) -> bool {
+        self.loading() || !self.background_loading_channels.is_empty()
     }
 
-    pub(crate) fn visible_posts(&self) -> Vec<TelegramFeedPost> {
-        let mut posts = self.posts.clone();
-        posts.sort_by(|left, right| {
-            right
-                .timestamp_ms
-                .cmp(&left.timestamp_ms)
-                .then_with(|| right.message_id.cmp(&left.message_id))
-                .then_with(|| left.channel.cmp(&right.channel))
-        });
-        posts.truncate(TELEGRAM_FEED_RENDER_LIMIT);
-        posts
+    pub(crate) fn refreshing(&self) -> bool {
+        self.channel_refresh_in_flight() || self.private_channel_candidates_loading
+    }
+
+    // `posts` is kept sorted newest-first and truncated to the render limit by
+    // the feed update path, so views can borrow it directly.
+    pub(crate) fn visible_posts(&self) -> &[TelegramFeedPost] {
+        &self.posts
     }
 
     pub(crate) fn rebuild_ticker_mention_resolver(&mut self, symbols: &[ExchangeSymbol]) {
@@ -466,19 +461,14 @@ pub(crate) async fn fetch_telegram_channel_posts(
         .await
         .map_err(|e| format!("@{channel} request failed: {e}"))?;
     let status = response.status();
-    let body_bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("@{channel} response read failed: {e}"))?;
+    let body_bytes = read_response_body_limited(
+        response,
+        TELEGRAM_FEED_MAX_BODY_BYTES,
+        &format!("@{channel}"),
+    )
+    .await?;
     let fetched_at_ms = now_ms();
     let request_duration_ms = fetched_at_ms.saturating_sub(request_started_ms);
-
-    if body_bytes.len() > TELEGRAM_FEED_MAX_BODY_BYTES {
-        return Err(format!(
-            "@{channel} response was too large: {} bytes",
-            body_bytes.len()
-        ));
-    }
     let body = String::from_utf8_lossy(&body_bytes);
 
     if !status.is_success() {
@@ -524,30 +514,18 @@ pub(crate) async fn fetch_telegram_avatar_bytes(
             "@{channel} avatar request failed with HTTP {status}"
         ));
     }
-    if response
-        .content_length()
-        .is_some_and(|len| len > TELEGRAM_AVATAR_MAX_BODY_BYTES as u64)
-    {
-        return Err(format!(
-            "@{channel} avatar response was too large: more than {TELEGRAM_AVATAR_MAX_BODY_BYTES} bytes"
-        ));
-    }
     let content_type = response
         .headers()
         .get(CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
 
-    let body = response
-        .bytes()
-        .await
-        .map_err(|e| format!("@{channel} avatar response read failed: {e}"))?;
-    if body.len() > TELEGRAM_AVATAR_MAX_BODY_BYTES {
-        return Err(format!(
-            "@{channel} avatar response was too large: {} bytes",
-            body.len()
-        ));
-    }
+    let body = read_response_body_limited(
+        response,
+        TELEGRAM_AVATAR_MAX_BODY_BYTES,
+        &format!("@{channel} avatar"),
+    )
+    .await?;
     if !is_supported_raster_image(&body) {
         let content_type = content_type.unwrap_or_else(|| "unknown content type".to_string());
         return Err(format!(
@@ -555,7 +533,37 @@ pub(crate) async fn fetch_telegram_avatar_bytes(
         ));
     }
 
-    Ok(body.to_vec())
+    Ok(body)
+}
+
+async fn read_response_body_limited(
+    mut response: reqwest::Response,
+    max_body_bytes: usize,
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    if response
+        .content_length()
+        .is_some_and(|len| len > max_body_bytes as u64)
+    {
+        return Err(format!(
+            "{label} response was too large: more than {max_body_bytes} bytes"
+        ));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("{label} response read failed: {e}"))?
+    {
+        if body.len() + chunk.len() > max_body_bytes {
+            return Err(format!(
+                "{label} response was too large: more than {max_body_bytes} bytes"
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 pub(crate) fn parse_telegram_channel_profile(channel: &str, html: &str) -> TelegramChannelProfile {
