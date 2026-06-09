@@ -81,6 +81,10 @@ pub(super) fn fill_right_axis_badge(
     let badge_w = label.len() as f32 * style.char_width + style.padding_width;
     let badge_x = chart_w + 1.0;
     let badge_y = center_y - style.height * 0.5;
+    let background = Color {
+        a: 1.0,
+        ..background
+    };
 
     frame.fill_rectangle(
         Point::new(badge_x, badge_y),

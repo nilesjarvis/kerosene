@@ -1,7 +1,9 @@
 use super::candle_layer::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
 use super::countdown::next_candle_countdown_label;
+use super::drawing::{AxisBadgeStyle, fill_right_axis_badge};
 use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
+use super::price_badges::RIGHT_AXIS_PRIMARY_BADGE_HEIGHT;
 use super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::tooltips::{TooltipLine, TooltipSurface};
 use crate::chart::crosshair_style::{CrosshairStyleRender, RacingHudMetrics, draw_crosshair_style};
@@ -191,16 +193,24 @@ impl CandlestickChart {
             );
         }
 
-        ctx.frame.fill_text(canvas::Text {
-            content: format_price(hover_price),
-            position: Point::new(ctx.chart_w + 6.0, visual_pos.y),
-            color: self.crosshair_accent_text_color(ctx.theme, ctx.state, Color::WHITE),
-            size: iced::Pixels(11.0),
-            align_x: alignment::Horizontal::Left.into(),
-            align_y: alignment::Vertical::Center,
-            font: crate::app_fonts::monospace_font(),
-            ..canvas::Text::default()
-        });
+        fill_right_axis_badge(
+            ctx.frame,
+            ctx.chart_w,
+            visual_pos.y,
+            format_price(hover_price),
+            ctx.theme.extended_palette().background.strong.color,
+            AxisBadgeStyle {
+                char_width: 6.5,
+                padding_width: 8.0,
+                height: RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
+                text_size: 11.0,
+                text_color: self.crosshair_accent_text_color(
+                    ctx.theme,
+                    ctx.state,
+                    ctx.theme.palette().text,
+                ),
+            },
+        );
 
         let mut tooltip_surface =
             TooltipSurface::new(ctx.frame, ctx.theme, visual_pos, ctx.chart_w, ctx.price_h);
