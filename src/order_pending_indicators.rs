@@ -135,6 +135,24 @@ impl TradingTerminal {
         })
     }
 
+    pub(crate) fn has_pending_cancel_indicator(&self, oid: u64) -> bool {
+        self.pending_order_indicators.values().any(|indicator| {
+            indicator.kind == PendingOrderIndicatorKind::Cancelling && indicator.oid == Some(oid)
+        })
+    }
+
+    pub(crate) fn pending_cancel_indicator_oid(&self, pending_id: Option<u64>) -> Option<u64> {
+        let indicator = self.pending_order_indicators.get(&pending_id?)?;
+        (indicator.kind == PendingOrderIndicatorKind::Cancelling)
+            .then_some(indicator.oid)
+            .flatten()
+    }
+
+    pub(crate) fn pending_modification_price(&self, pending_id: Option<u64>) -> Option<String> {
+        let indicator = self.pending_order_indicators.get(&pending_id?)?;
+        (indicator.kind == PendingOrderIndicatorKind::Modifying).then(|| indicator.price.clone())
+    }
+
     pub(crate) fn clear_pending_order_indicator(&mut self, pending_id: Option<u64>) -> bool {
         let Some(pending_id) = pending_id else {
             return false;
@@ -200,14 +218,32 @@ mod tests {
     use crate::chart_state::ChartInstance;
     use crate::timeframe::Timeframe;
 
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
     fn terminal_with_chart() -> TradingTerminal {
         let (mut terminal, _) = TradingTerminal::boot();
-        terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal.charts.clear();
         terminal
             .charts
             .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
         terminal
+    }
+
+    fn open_order(oid: u64, side: &str) -> OpenOrder {
+        OpenOrder {
+            coin: "BTC".to_string(),
+            side: side.to_string(),
+            limit_px: "100".to_string(),
+            sz: "1".to_string(),
+            oid,
+            timestamp: 1,
+            reduce_only: Some(false),
+            is_trigger: None,
+            order_type: None,
+            tif: None,
+            trigger_px: None,
+        }
     }
 
     #[test]
@@ -262,5 +298,181 @@ mod tests {
         let chart = &terminal.charts.get(&1).unwrap().chart;
         assert_eq!(chart.active_orders.len(), 1);
         assert!(!chart.hud_order_animation_active());
+    }
+
+    #[test]
+    fn invalid_size_or_price_creates_no_indicator() {
+        let mut terminal = terminal_with_chart();
+
+        let bad_size = terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "abc".to_string(),
+            "100".to_string(),
+        );
+        let bad_price = terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "-5".to_string(),
+        );
+
+        assert_eq!(bad_size, None);
+        assert_eq!(bad_price, None);
+        assert!(terminal.pending_order_indicators.is_empty());
+    }
+
+    #[test]
+    fn cancellation_indicator_rejects_unknown_side() {
+        let mut terminal = terminal_with_chart();
+
+        let pending_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "X"),
+        );
+
+        assert_eq!(pending_id, None);
+        assert!(terminal.pending_order_indicators.is_empty());
+    }
+
+    #[test]
+    fn has_pending_cancel_indicator_matches_kind_and_oid() {
+        let mut terminal = terminal_with_chart();
+
+        let placement_id = terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        assert!(placement_id.is_some());
+        assert!(!terminal.has_pending_cancel_indicator(42));
+
+        let cancel_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+        );
+        assert!(cancel_id.is_some());
+        assert!(terminal.has_pending_cancel_indicator(42));
+        assert!(!terminal.has_pending_cancel_indicator(43));
+        assert_eq!(terminal.pending_cancel_indicator_oid(cancel_id), Some(42));
+        assert_eq!(terminal.pending_cancel_indicator_oid(placement_id), None);
+    }
+
+    #[test]
+    fn modification_price_lookup_only_matches_modifying_indicators() {
+        let mut terminal = terminal_with_chart();
+
+        let modify_id = terminal.add_pending_order_modification_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+            "111".to_string(),
+        );
+        let cancel_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(43, "B"),
+        );
+
+        assert_eq!(
+            terminal.pending_modification_price(modify_id),
+            Some("111".to_string())
+        );
+        assert_eq!(terminal.pending_modification_price(cancel_id), None);
+        assert_eq!(terminal.pending_modification_price(None), None);
+    }
+
+    #[test]
+    fn indicators_expire_after_ttl_and_resync_charts() {
+        let mut terminal = terminal_with_chart();
+        let pending_id = terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        let pending_id = pending_id.expect("indicator should be created");
+        assert_eq!(
+            terminal.charts.get(&1).unwrap().chart.active_orders.len(),
+            1
+        );
+
+        // A fresh indicator survives an expiry pass untouched.
+        assert!(!terminal.expire_pending_order_indicators());
+        assert_eq!(terminal.pending_order_indicators.len(), 1);
+
+        if let Some(indicator) = terminal.pending_order_indicators.get_mut(&pending_id) {
+            indicator.created_at_ms = indicator
+                .created_at_ms
+                .saturating_sub(PENDING_ORDER_INDICATOR_TTL_MS + 1);
+        }
+
+        assert!(terminal.expire_pending_order_indicators());
+        assert!(terminal.pending_order_indicators.is_empty());
+        assert!(
+            terminal
+                .charts
+                .get(&1)
+                .unwrap()
+                .chart
+                .active_orders
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn indicators_for_other_accounts_are_not_returned_or_drawn() {
+        let mut terminal = terminal_with_chart();
+
+        let pending_id = terminal.add_pending_order_placement_indicator(
+            "0xdef0000000000000000000000000000000000000".to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+
+        assert!(pending_id.is_some());
+        assert!(
+            terminal
+                .pending_order_indicators_for_symbol("BTC")
+                .is_empty()
+        );
+        assert!(
+            terminal
+                .charts
+                .get(&1)
+                .unwrap()
+                .chart
+                .active_orders
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn same_timestamp_indicator_ids_do_not_collide() {
+        let mut terminal = terminal_with_chart();
+
+        let first_id = terminal
+            .add_pending_order_placement_indicator(
+                TEST_ACCOUNT.to_string(),
+                "BTC".to_string(),
+                true,
+                "1".to_string(),
+                "100".to_string(),
+            )
+            .expect("indicator should be created");
+        let created_at_ms = terminal
+            .pending_order_indicators
+            .get(&first_id)
+            .expect("indicator should be stored")
+            .created_at_ms;
+
+        let second_id = terminal.next_pending_order_indicator_id(created_at_ms);
+
+        assert_ne!(first_id, second_id);
     }
 }

@@ -75,20 +75,40 @@ impl TradingTerminal {
 
     pub(crate) fn handle_cancel_result(
         &mut self,
+        account_address: String,
         pending_indicator_id: Option<u64>,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
+        let cancelled_oid = self.pending_cancel_indicator_oid(pending_indicator_id);
         self.clear_pending_order_indicator(pending_indicator_id);
+        if self.connected_address.as_deref() != Some(account_address.as_str()) {
+            return Task::none();
+        }
         let outcome = classify_execution_result(result);
+        // Drop the order from the local snapshot on a confirmed cancel so the
+        // ack does not resurrect an interactive line for an order the exchange
+        // has already removed; the next authoritative update wins regardless.
+        if outcome.kind == ExecutionOutcomeKind::Cancelled
+            && let Some(oid) = cancelled_oid
+            && let Some(data) = self.account_data.as_mut()
+        {
+            let before = data.open_orders.len();
+            data.open_orders.retain(|order| order.oid != oid);
+            if data.open_orders.len() != before {
+                self.sync_all_chart_orders();
+            }
+        }
         self.apply_execution_outcome(outcome)
     }
 
     pub(crate) fn handle_close_position_result(
         &mut self,
+        pending_indicator_id: Option<u64>,
         context: OneShotPlacementContext,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         self.pending_order_action = None;
+        self.clear_pending_order_indicator(pending_indicator_id);
         let outcome = classify_execution_result(result);
         self.apply_one_shot_placement_outcome(context, outcome)
     }

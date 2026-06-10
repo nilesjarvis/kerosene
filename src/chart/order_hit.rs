@@ -80,10 +80,12 @@ impl CandlestickChart {
             let reserved_ranges = self.order_label_reserved_ranges(price_h, &price_to_y);
             order_label_position_slots(
                 stack_order_label_positions_avoiding(
+                    // Keep pending overlays in the anchor set so label
+                    // stacking matches the drawn layout pixel-for-pixel;
+                    // pending orders are still skipped as hit targets below.
                     self.active_orders
                         .iter()
                         .enumerate()
-                        .filter(|(_, order)| order.pending_state.is_none())
                         .filter_map(|(order_index, order)| {
                             let order_y = price_to_y(order.limit_px);
                             (order_y >= -10.0 && order_y <= price_h + 10.0).then_some(

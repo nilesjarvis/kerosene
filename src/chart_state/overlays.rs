@@ -9,6 +9,12 @@ mod trades;
 
 use self::trades::trade_markers_for_symbol;
 
+/// Wire strings for the same price/size can format differently (e.g. "100"
+/// vs "100.0"), so compare parsed values with a small relative tolerance.
+fn order_values_match(a: f64, b: f64) -> bool {
+    (a - b).abs() <= a.abs().max(b.abs()) * 1e-9
+}
+
 impl TradingTerminal {
     /// Update position and order overlays for a specific chart.
     pub(crate) fn sync_chart_position_for(&mut self, chart_id: ChartId) {
@@ -140,16 +146,34 @@ impl TradingTerminal {
                 PendingOrderIndicatorKind::Modifying => OrderOverlayPendingState::Modifying,
                 PendingOrderIndicatorKind::MarketPlacing => continue,
             });
-            if let Some(oid) = pending.oid
-                && let Some(existing) = order_overlays.iter_mut().find(|order| order.oid == oid)
-            {
-                if pending.kind == PendingOrderIndicatorKind::Modifying {
-                    existing.limit_px = limit_px;
-                    existing.sz = sz;
-                    existing.is_buy = pending.is_buy;
+            if let Some(oid) = pending.oid {
+                if let Some(existing) = order_overlays.iter_mut().find(|order| order.oid == oid) {
+                    if pending.kind == PendingOrderIndicatorKind::Modifying {
+                        existing.limit_px = limit_px;
+                        existing.sz = sz;
+                        existing.is_buy = pending.is_buy;
+                    }
+                    existing.pending_state = pending_state;
+                    existing.is_moving = false;
                 }
-                existing.pending_state = pending_state;
-                existing.is_moving = false;
+                // Cancel/modify indicators only decorate the live order line;
+                // once the order leaves the authoritative snapshot, drawing a
+                // standalone line would resurrect an order that no longer
+                // exists.
+                continue;
+            }
+
+            // The exchange commits orders before the place ack returns, so the
+            // websocket can deliver the confirmed order while the Placing
+            // indicator is still alive. Suppress the indicator once a matching
+            // confirmed line exists, otherwise the trader sees a duplicate.
+            let confirmed_order_arrived = order_overlays.iter().any(|order| {
+                order.pending_state.is_none()
+                    && order.is_buy == pending.is_buy
+                    && order_values_match(order.limit_px, limit_px)
+                    && order_values_match(order.sz, sz)
+            });
+            if confirmed_order_arrived {
                 continue;
             }
 
@@ -158,7 +182,7 @@ impl TradingTerminal {
                 limit_px,
                 sz,
                 is_buy: pending.is_buy,
-                oid: pending.oid.unwrap_or(pending_id),
+                oid: pending_id,
                 is_moving: false,
                 pending_state,
             });
@@ -340,6 +364,124 @@ mod tests {
             completeness: AccountDataCompleteness::default(),
             fetched_at_ms: TradingTerminal::now_ms(),
         }
+    }
+
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+    fn open_order(oid: u64, side: &str, limit_px: &str, sz: &str) -> crate::account::OpenOrder {
+        crate::account::OpenOrder {
+            coin: "BTC".to_string(),
+            side: side.to_string(),
+            limit_px: limit_px.to_string(),
+            sz: sz.to_string(),
+            oid,
+            timestamp: 1,
+            reduce_only: Some(false),
+            is_trigger: None,
+            order_type: None,
+            tif: None,
+            trigger_px: None,
+        }
+    }
+
+    fn terminal_with_btc_chart() -> TradingTerminal {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+        terminal
+    }
+
+    fn set_open_orders(terminal: &mut TradingTerminal, orders: Vec<crate::account::OpenOrder>) {
+        let mut data = account_data_with_leverage("BTC", 1);
+        data.open_orders = orders;
+        terminal.account_data = Some(data);
+    }
+
+    fn chart_orders(terminal: &TradingTerminal) -> &[crate::chart::OrderOverlay] {
+        &terminal.charts.get(&1).unwrap().chart.active_orders
+    }
+
+    #[test]
+    fn placing_indicator_suppressed_once_matching_confirmed_order_arrives() {
+        let mut terminal = terminal_with_btc_chart();
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        assert_eq!(chart_orders(&terminal).len(), 1);
+
+        // The websocket can deliver the confirmed order before the place ack;
+        // differing wire formats for the same values must still match.
+        set_open_orders(&mut terminal, vec![open_order(42, "B", "100.0", "1.0")]);
+        terminal.sync_all_chart_orders();
+
+        let orders = chart_orders(&terminal);
+        assert_eq!(orders.len(), 1);
+        assert_eq!(orders[0].oid, 42);
+        assert!(orders[0].pending_state.is_none());
+    }
+
+    #[test]
+    fn placing_indicator_persists_while_no_confirmed_order_matches() {
+        let mut terminal = terminal_with_btc_chart();
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+
+        set_open_orders(&mut terminal, vec![open_order(42, "B", "101", "1")]);
+        terminal.sync_all_chart_orders();
+
+        let orders = chart_orders(&terminal);
+        assert_eq!(orders.len(), 2);
+        assert_eq!(
+            orders
+                .iter()
+                .filter(|order| order.pending_state == Some(OrderOverlayPendingState::Placing))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn cancelling_indicator_decorates_live_order_line() {
+        let mut terminal = terminal_with_btc_chart();
+        let order = open_order(42, "B", "100", "1");
+        set_open_orders(&mut terminal, vec![order.clone()]);
+        terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
+
+        let orders = chart_orders(&terminal);
+        assert_eq!(orders.len(), 1);
+        assert_eq!(orders[0].oid, 42);
+        assert_eq!(
+            orders[0].pending_state,
+            Some(OrderOverlayPendingState::Cancelling)
+        );
+    }
+
+    #[test]
+    fn cancelling_indicator_does_not_resurrect_missing_order() {
+        let mut terminal = terminal_with_btc_chart();
+        let order = open_order(42, "B", "100", "1");
+        set_open_orders(&mut terminal, vec![order.clone()]);
+        terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
+
+        // The websocket removes the cancelled order before the cancel ack
+        // arrives; the indicator must not re-draw a line for it.
+        set_open_orders(&mut terminal, Vec::new());
+        terminal.sync_all_chart_orders();
+
+        assert!(chart_orders(&terminal).is_empty());
+        assert!(!terminal.pending_order_indicators.is_empty());
     }
 
     #[test]

@@ -157,6 +157,7 @@ impl TradingTerminal {
             instance.chart.active_position = None;
             instance.chart.active_orders.clear();
             instance.chart.trade_markers.clear();
+            instance.chart.set_pending_market_order_loading([]);
         }
         self.portfolio.loading = false;
         self.portfolio.data = None;
@@ -171,5 +172,47 @@ impl TradingTerminal {
         }
         self.persist_config();
         stop_chase_task
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app_state::TradingTerminal;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
+
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn disconnect_clears_pending_indicators_and_market_pulse() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+        let pending_id = terminal.add_pending_market_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        assert!(pending_id.is_some());
+        assert!(
+            terminal
+                .charts
+                .get(&1)
+                .expect("chart")
+                .chart
+                .hud_order_animation_active()
+        );
+
+        let _task = terminal.disconnect_wallet();
+
+        assert!(terminal.pending_order_indicators.is_empty());
+        let chart = &terminal.charts.get(&1).expect("chart").chart;
+        assert!(chart.active_orders.is_empty());
+        assert!(!chart.hud_order_animation_active());
     }
 }

@@ -75,9 +75,12 @@ impl TradingTerminal {
             } => return self.handle_order_result(pending_indicator_id, context, *result),
             Message::CancelOrder { coin, oid } => return self.execute_cancel(&coin, oid),
             Message::CancelResult {
+                account_address,
                 pending_indicator_id,
                 result,
-            } => return self.handle_cancel_result(pending_indicator_id, *result),
+            } => {
+                return self.handle_cancel_result(account_address, pending_indicator_id, *result);
+            }
             Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin),
             Message::ClosePosition {
                 coin,
@@ -87,8 +90,12 @@ impl TradingTerminal {
                 self.close_menu_coin = None;
                 return self.execute_close_position(&coin, fraction, use_market);
             }
-            Message::ClosePositionResult { context, result } => {
-                return self.handle_close_position_result(context, *result);
+            Message::ClosePositionResult {
+                pending_indicator_id,
+                context,
+                result,
+            } => {
+                return self.handle_close_position_result(pending_indicator_id, context, *result);
             }
             Message::NukePositions => return self.handle_nuke_positions(),
             Message::NukeResult {
@@ -230,11 +237,17 @@ impl TradingTerminal {
                 return self.handle_move_order(oid, new_price);
             }
             Message::MoveOrderModifyResult {
+                account_address,
                 oid,
                 pending_indicator_id,
                 result,
             } => {
-                return self.handle_move_order_modify_result(oid, pending_indicator_id, *result);
+                return self.handle_move_order_modify_result(
+                    account_address,
+                    oid,
+                    pending_indicator_id,
+                    *result,
+                );
             }
             Message::ChaseRestingOrder {
                 coin,

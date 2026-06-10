@@ -443,6 +443,7 @@ pub(crate) enum Message {
         oid: u64,
     },
     CancelResult {
+        account_address: String,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
     },
@@ -464,6 +465,7 @@ pub(crate) enum Message {
         use_market: bool,
     },
     ClosePositionResult {
+        pending_indicator_id: Option<u64>,
         context: OneShotPlacementContext,
         result: Box<Result<ExchangeResponse, String>>,
     },
@@ -639,6 +641,7 @@ pub(crate) enum Message {
         new_price: f64,
     },
     MoveOrderModifyResult {
+        account_address: String,
         oid: u64,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,

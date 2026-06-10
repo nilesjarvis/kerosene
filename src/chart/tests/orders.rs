@@ -1,6 +1,8 @@
 use super::candle_at;
 use crate::chart::order_labels;
-use crate::chart::{CandlestickChart, ChartState, OrderOverlay, PositionOverlay};
+use crate::chart::{
+    CandlestickChart, ChartState, OrderOverlay, OrderOverlayPendingState, PositionOverlay,
+};
 use iced::Point;
 
 fn chart_with_order_candles() -> CandlestickChart {
@@ -134,6 +136,58 @@ fn order_cancel_hit_testing_uses_expanded_circle_target() {
 
     assert_eq!(
         chart.hit_test_order_cancel(&state, pos, 400.0, 240.0),
+        Some(42)
+    );
+}
+
+#[test]
+fn order_hit_testing_matches_drawn_stack_when_pending_overlay_present() {
+    let mut chart = chart_with_order_candles();
+    chart.active_orders.push(btc_buy_order(41, 1.0));
+    let mut pending = btc_buy_order(999, 1.0);
+    pending.pending_state = Some(OrderOverlayPendingState::Placing);
+    chart.active_orders.push(pending);
+    chart.active_orders.push(btc_buy_order(42, 2.0));
+    let state = ChartState::default();
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, 400.0, 240.0)
+        .expect("visible price params");
+    let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
+
+    // Drawing stacks labels over ALL overlays, including pending ones; the
+    // clickable positions must use the same geometry or a click on a drawn
+    // cancel X lands on a different order.
+    let label_positions = order_labels::order_label_position_slots(
+        order_labels::stack_order_label_positions_avoiding(
+            (0..chart.active_orders.len())
+                .map(|order_index| order_labels::OrderLabelAnchor {
+                    order_index,
+                    order_y,
+                    is_buy: true,
+                })
+                .collect(),
+            price_h,
+            &[],
+        ),
+        chart.active_orders.len(),
+    );
+    let drawn_label = order_labels::order_label_position(&label_positions, 2)
+        .expect("real order label should be laid out");
+
+    let hit = chart
+        .hit_test_order_line(&state, Point::new(6.0, drawn_label.label_y), 400.0, 240.0)
+        .expect("drawn label position should be hittable");
+    assert_eq!(hit.order.oid, 42);
+    assert!(hit.is_label_hit());
+
+    let (_, cancel_end_x) = order_labels::order_cancel_x_range(&chart.active_orders[2]);
+    assert_eq!(
+        chart.hit_test_order_cancel(
+            &state,
+            Point::new(cancel_end_x + 4.0, drawn_label.label_y),
+            400.0,
+            240.0
+        ),
         Some(42)
     );
 }

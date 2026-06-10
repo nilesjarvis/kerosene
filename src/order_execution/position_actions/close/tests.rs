@@ -71,3 +71,77 @@ fn order_status_or_panic(terminal: &TradingTerminal) -> (&str, bool) {
         None => panic!("missing order status"),
     }
 }
+
+mod pending_indicator {
+    use super::account_data_with_position;
+    use crate::api::{ExchangeSymbol, MarketType};
+    use crate::app_state::{TradingTerminal, sensitive_string};
+    use crate::order_pending_indicators::PendingOrderIndicatorKind;
+
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+    fn btc_symbol() -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: "BTC".to_string(),
+            ticker: "BTC".to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 4,
+            max_leverage: 50,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
+
+    fn terminal_with_fresh_position() -> TradingTerminal {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.pending_order_action = None;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_key_input = sensitive_string("agent-key");
+        terminal.account_loading = false;
+        terminal.exchange_symbols = vec![btc_symbol()];
+        terminal.account_data = Some(account_data_with_position("BTC", TradingTerminal::now_ms()));
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        terminal
+    }
+
+    #[test]
+    fn market_close_creates_market_placing_indicator() {
+        let mut terminal = terminal_with_fresh_position();
+
+        let _task = terminal.execute_close_position("BTC", 1.0, true);
+
+        assert_eq!(terminal.pending_order_indicators.len(), 1);
+        let indicator = terminal
+            .pending_order_indicators
+            .values()
+            .next()
+            .expect("indicator should be created");
+        assert_eq!(indicator.kind, PendingOrderIndicatorKind::MarketPlacing);
+        assert_eq!(indicator.symbol, "BTC");
+        // Closing a long position sells.
+        assert!(!indicator.is_buy);
+    }
+
+    #[test]
+    fn limit_close_creates_placing_indicator() {
+        let mut terminal = terminal_with_fresh_position();
+
+        let _task = terminal.execute_close_position("BTC", 1.0, false);
+
+        assert_eq!(terminal.pending_order_indicators.len(), 1);
+        let indicator = terminal
+            .pending_order_indicators
+            .values()
+            .next()
+            .expect("indicator should be created");
+        assert_eq!(indicator.kind, PendingOrderIndicatorKind::Placing);
+    }
+}

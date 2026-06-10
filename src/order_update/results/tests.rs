@@ -452,3 +452,207 @@ fn nuke_results_after_account_switch_clear_stale_execution_without_status() {
     assert!(terminal.pending_nuke_execution.is_none());
     assert!(terminal.order_status.is_none());
 }
+
+fn open_order(oid: u64) -> crate::account::OpenOrder {
+    crate::account::OpenOrder {
+        coin: "BTC".to_string(),
+        side: "B".to_string(),
+        limit_px: "100".to_string(),
+        sz: "1".to_string(),
+        oid,
+        timestamp: 1,
+        reduce_only: Some(false),
+        is_trigger: None,
+        order_type: None,
+        tif: None,
+        trigger_px: None,
+    }
+}
+
+fn account_data_with_open_orders(
+    orders: Vec<crate::account::OpenOrder>,
+) -> crate::account::AccountData {
+    crate::account::AccountData {
+        fetch_scope: Default::default(),
+        request_weight_estimate: 0,
+        account_abstraction: Default::default(),
+        clearinghouse: crate::account::ClearinghouseState {
+            margin_summary: crate::account::MarginSummary {
+                account_value: "0".to_string(),
+                total_ntl_pos: "0".to_string(),
+                total_margin_used: "0".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "0".to_string(),
+            asset_positions: Vec::new(),
+        },
+        clearinghouses_by_dex: std::collections::HashMap::new(),
+        spot: crate::account::SpotClearinghouseState {
+            balances: Vec::new(),
+            portfolio_margin_enabled: false,
+            portfolio_margin_ratio: None,
+            token_to_available_after_maintenance: None,
+        },
+        open_orders: orders,
+        fills: Vec::new(),
+        funding_history: Vec::new(),
+        fee_rates: crate::account::UserFeeRates::default(),
+        completeness: crate::account::AccountDataCompleteness::default(),
+        fetched_at_ms: 1,
+    }
+}
+
+fn terminal_with_pending_cancel() -> (TradingTerminal, Option<u64>) {
+    let mut terminal = terminal_with_connected_account();
+    terminal.charts.clear();
+    terminal
+        .charts
+        .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+    let order = open_order(42);
+    terminal.account_data = Some(account_data_with_open_orders(vec![order.clone()]));
+    let pending_id =
+        terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
+    assert!(pending_id.is_some());
+    (terminal, pending_id)
+}
+
+#[test]
+fn cancel_result_success_clears_indicator_and_removes_order_locally() {
+    let (mut terminal, pending_id) = terminal_with_pending_cancel();
+
+    let _task = terminal.handle_cancel_result(
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(exchange_response(vec![serde_json::json!("success")])),
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert!(data.open_orders.is_empty());
+    assert!(
+        terminal
+            .charts
+            .get(&1)
+            .expect("chart")
+            .chart
+            .active_orders
+            .is_empty()
+    );
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert_eq!(message, "Cancelled");
+    assert!(!is_error);
+}
+
+#[test]
+fn cancel_result_error_keeps_local_order() {
+    let (mut terminal, pending_id) = terminal_with_pending_cancel();
+
+    let _task = terminal.handle_cancel_result(
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(exchange_response(vec![serde_json::json!({
+            "error": "Order was never placed, already canceled, or filled."
+        })])),
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    let (_, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+}
+
+#[test]
+fn cancel_result_after_account_switch_clears_indicator_without_status() {
+    let (mut terminal, pending_id) = terminal_with_pending_cancel();
+    terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
+    terminal.order_status = None;
+
+    let _task = terminal.handle_cancel_result(
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(exchange_response(vec![serde_json::json!("success")])),
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert!(terminal.order_status.is_none());
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+}
+
+#[test]
+fn order_result_clears_pending_indicator() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.charts.clear();
+    terminal
+        .charts
+        .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+    let pending_id = terminal.add_pending_order_placement_indicator(
+        TEST_ACCOUNT.to_string(),
+        "BTC".to_string(),
+        true,
+        "1".to_string(),
+        "100".to_string(),
+    );
+    assert!(pending_id.is_some());
+
+    let _task = terminal.handle_order_result(
+        pending_id,
+        one_shot_context(),
+        Ok(exchange_response(vec![serde_json::json!({
+            "resting": {
+                "oid": 42_u64
+            }
+        })])),
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+}
+
+#[test]
+fn close_position_result_clears_pending_indicator() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.charts.clear();
+    terminal
+        .charts
+        .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+    let pending_id = terminal.add_pending_market_order_placement_indicator(
+        TEST_ACCOUNT.to_string(),
+        "BTC".to_string(),
+        false,
+        "1".to_string(),
+        "100".to_string(),
+    );
+    assert!(pending_id.is_some());
+    assert!(
+        terminal
+            .charts
+            .get(&1)
+            .expect("chart")
+            .chart
+            .hud_order_animation_active()
+    );
+
+    let _task = terminal.handle_close_position_result(
+        pending_id,
+        one_shot_context(),
+        Ok(exchange_response(vec![serde_json::json!({
+            "filled": {
+                "totalSz": "1",
+                "avgPx": "100",
+                "oid": 43_u64
+            }
+        })])),
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert!(
+        !terminal
+            .charts
+            .get(&1)
+            .expect("chart")
+            .chart
+            .hud_order_animation_active()
+    );
+}
