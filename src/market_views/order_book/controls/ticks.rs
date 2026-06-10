@@ -17,7 +17,11 @@ impl TradingTerminal {
         {
             inst.tick_size
         } else {
-            helpers::default_tick_for_price(inst.book.mid_price())
+            // The stored tick fell out of the option set (price regime
+            // moved): snap to the nearest option instead of silently
+            // resetting to the default, so the selector always has an
+            // active button and the user's coarseness choice is preserved.
+            helpers::nearest_tick_option(tick_options, inst.tick_size)
         }
     }
 

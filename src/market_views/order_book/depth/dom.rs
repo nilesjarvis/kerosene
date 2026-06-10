@@ -1,6 +1,6 @@
 use self::rows::{DomRowContext, dom_rows_column};
 use super::super::UserOrderBookLevels;
-use crate::helpers::tick_decimals;
+use crate::helpers::{nice_step_ceil, tick_decimals};
 use crate::market_state::{OrderBookId, OrderBookInstance};
 use crate::message::Message;
 use iced::widget::{container, responsive, row, scrollable, text};
@@ -25,8 +25,9 @@ pub(super) fn view_order_book_dom_ladder(
     let decimals = tick_decimals(tick);
     let row_context = DomRowContext {
         id,
-        max_size: rows.max_size,
-        max_cumulative: rows.max_cumulative,
+        // Quantized so cell heat does not rescale on every book update.
+        max_size: nice_step_ceil(rows.max_size),
+        max_cumulative: nice_step_ceil(rows.max_cumulative),
         decimals,
         tick,
         reverse_side: inst.reverse_side,
@@ -99,23 +100,32 @@ pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static,
         ["Bid Total", "Bid Size", "Price", "Ask Size", "Ask Total"]
     };
 
-    row![
-        header_cell(labels[0]),
-        header_cell(labels[1]),
-        header_cell(labels[2]),
-        header_cell(labels[3]),
-        header_cell(labels[4]),
-    ]
-    .spacing(3)
+    // Mirror the data rows' insets (15px scrollbar gutter outside, 4px
+    // horizontal padding per cell) so the labels line up with the numbers.
+    container(
+        row![
+            header_cell(labels[0]),
+            header_cell(labels[1]),
+            header_cell(labels[2]),
+            header_cell(labels[3]),
+            header_cell(labels[4]),
+        ]
+        .spacing(3),
+    )
+    .padding(super::order_book_row_padding())
     .into()
 }
 
 fn header_cell(label: &'static str) -> Element<'static, Message> {
-    text(label)
-        .size(11)
-        .width(Fill)
-        .align_x(iced::alignment::Horizontal::Right)
-        .into()
+    container(
+        text(label)
+            .size(11)
+            .width(Fill)
+            .align_x(iced::alignment::Horizontal::Right),
+    )
+    .width(Fill)
+    .padding([0, 4])
+    .into()
 }
 
 #[cfg(test)]

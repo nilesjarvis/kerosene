@@ -1,4 +1,4 @@
-use crate::api::{MarketType, OrderBook};
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::market_state::OrderBookSymbolMode;
@@ -62,16 +62,7 @@ impl TradingTerminal {
 
         self.apply_active_symbol_selection(valid_key.clone(), display.clone());
         self.refresh_order_price_for_symbol(&valid_key);
-        for inst in self.order_books.values_mut() {
-            if inst.mode == OrderBookSymbolMode::Active {
-                inst.set_book(OrderBook::empty());
-                inst.asset_ctx = None;
-                inst.spread_history.clear();
-                inst.clear_mid_price_history();
-                inst.book_loading = true;
-                inst.book_error = None;
-            }
-        }
+        self.reset_active_order_books_for_symbol(&valid_key);
 
         let mut candle_task = Task::none();
         if let Some(primary_id) = self.primary_chart_id {

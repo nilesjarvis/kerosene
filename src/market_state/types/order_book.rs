@@ -11,6 +11,9 @@ mod cache;
 mod price_history;
 mod scope;
 
+#[cfg(test)]
+mod tests;
+
 pub use aggregation::AggregatedDepth;
 pub(super) use aggregation::aggregate_with_cumulative;
 use scope::merge_books_preserving_scope;
@@ -61,6 +64,10 @@ pub struct OrderBookInstance {
     pub display_mode: OrderBookDisplayMode,
     pub book_loading: bool,
     pub book_error: Option<String>,
+    /// Set once a load failure has been toasted, so a failing background
+    /// refresh loop produces one toast per streak instead of one per attempt.
+    /// Cleared only by a successful REST load or a symbol/mode change.
+    pub book_failure_toasted: bool,
     pub center_on_mid: bool,
     pub reverse_side: bool,
     pub show_spread_chart: bool,
@@ -69,6 +76,11 @@ pub struct OrderBookInstance {
     pub(super) mid_price_history: VecDeque<(Instant, f64)>,
     book_source_tick_size: Option<f64>,
     book_source_mid: Option<f64>,
+    /// Slow-moving mid the tick-size options are derived from. Updated with
+    /// hysteresis so the selector buttons do not relabel (and the selected
+    /// aggregation does not flap) while the live mid hovers around a
+    /// power-of-ten boundary.
+    tick_options_basis: Option<f64>,
     pending_book_sigfigs: Option<(Option<u8>, Option<u8>)>,
     pub(super) book_revision: u64,
     aggregated: RefCell<AggregatedDepth>,
@@ -89,7 +101,11 @@ impl OrderBookInstance {
             display_mode: OrderBookDisplayMode::DepthList,
             book_loading: false,
             book_error: None,
-            center_on_mid: false,
+            book_failure_toasted: false,
+            // Pinned-spread view by default: it is the layout that stays
+            // readable while the market moves. Scrollable mode remains one
+            // Center-toggle away.
+            center_on_mid: true,
             reverse_side: false,
             show_spread_chart: false,
             spread_history: VecDeque::new(),
@@ -97,6 +113,7 @@ impl OrderBookInstance {
             mid_price_history: VecDeque::new(),
             book_source_tick_size: None,
             book_source_mid: None,
+            tick_options_basis: None,
             pending_book_sigfigs: None,
             book_revision: 0,
             aggregated: RefCell::new(AggregatedDepth::default()),
@@ -115,7 +132,30 @@ impl OrderBookInstance {
         self.book = book;
         self.book_source_tick_size = source_tick_size;
         self.book_source_mid = source_mid;
+        if let Some(mid) = source_mid {
+            self.update_tick_options_basis(mid);
+        }
         self.book_revision = self.book_revision.wrapping_add(1);
+    }
+
+    /// Mid price the tick-size options should be derived from: the sticky
+    /// basis when one is known, otherwise the live book mid.
+    pub fn tick_options_mid(&self) -> f64 {
+        self.tick_options_basis
+            .unwrap_or_else(|| self.book.mid_price())
+    }
+
+    pub fn reset_tick_options_basis(&mut self) {
+        self.tick_options_basis = None;
+    }
+
+    fn update_tick_options_basis(&mut self, mid: f64) {
+        match self.tick_options_basis {
+            // Hold the basis while the mid stays within the band; the
+            // options only need to track decade-scale moves.
+            Some(basis) if mid >= basis * 0.3 && mid <= basis * 3.0 => {}
+            _ => self.tick_options_basis = Some(mid),
+        }
     }
 
     pub fn book_source_tick_size(&self) -> Option<f64> {

@@ -74,6 +74,25 @@ pub fn sigfig_server_tick(sigfigs: (Option<u8>, Option<u8>), mid_price: f64) -> 
     valid_book_tick_size(tick).then_some(tick)
 }
 
+/// The option closest to `tick` on a log scale, for snapping a stored tick
+/// onto the current option set after the price regime moved. Returns `tick`
+/// unchanged if the option list is empty or the tick is invalid.
+pub fn nearest_tick_option(options: &[f64], tick: f64) -> f64 {
+    if !valid_book_tick_size(tick) {
+        return options.first().copied().unwrap_or(tick);
+    }
+    options
+        .iter()
+        .copied()
+        .filter(|opt| valid_book_tick_size(*opt))
+        .min_by(|a, b| {
+            let da = (a.ln() - tick.ln()).abs();
+            let db = (b.ln() - tick.ln()).abs();
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(tick)
+}
+
 pub fn tick_sizes_match(a: f64, b: f64) -> bool {
     valid_book_tick_size(a) && valid_book_tick_size(b) && (a - b).abs() / a.max(b).max(1e-12) < 0.01
 }

@@ -1,3 +1,4 @@
+use super::rows::side_padding_row_count;
 use super::{max_cumulative_depth, max_level_size};
 
 #[test]
@@ -19,4 +20,12 @@ fn max_level_size_uses_both_sides() {
     let bids = vec![(99.0, 5.0, 5.0)];
 
     assert_eq!(max_level_size(&asks, &bids), 5.0);
+}
+
+#[test]
+fn side_padding_fills_each_side_up_to_the_fixed_row_count() {
+    assert_eq!(side_padding_row_count(12, 40), 28);
+    assert_eq!(side_padding_row_count(40, 40), 0);
+    assert_eq!(side_padding_row_count(45, 40), 0);
+    assert_eq!(side_padding_row_count(0, 40), 40);
 }

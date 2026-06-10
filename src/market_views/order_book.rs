@@ -33,19 +33,23 @@ impl TradingTerminal {
             OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
         };
         if !tracking_symbol.is_empty() && self.symbol_key_is_hidden(&tracking_symbol) {
-            let content = column![
-                text("Order Book").size(13).color(theme.palette().text),
-                rule::horizontal(1),
+            // Keep the real title row (and settings panel) so the user can
+            // still rebind the widget to another symbol from here.
+            let mut content =
+                column![self.view_order_book_title(id, inst), rule::horizontal(1)].spacing(8);
+            if inst.settings_open {
+                content = content.push(self.view_order_book_settings(id, inst));
+            }
+            content = content.push(
                 container(
                     text("Muted ticker")
                         .size(12)
-                        .color(theme.extended_palette().background.weak.text)
+                        .color(theme.extended_palette().background.weak.text),
                 )
                 .width(Fill)
                 .height(Fill)
                 .center(Fill),
-            ]
-            .spacing(8);
+            );
             return container(content)
                 .width(Fill)
                 .height(Fill)
@@ -53,8 +57,7 @@ impl TradingTerminal {
                 .into();
         }
 
-        let mid = inst.book.mid_price();
-        let tick_options = helpers::book_tick_options(mid);
+        let tick_options = helpers::book_tick_options(inst.tick_options_mid());
         let tick = Self::resolved_order_book_tick(inst, &tick_options);
         let tick_buttons = Self::view_order_book_tick_buttons(id, &tick_options, tick);
         let header = match inst.display_mode {
@@ -62,12 +65,18 @@ impl TradingTerminal {
             OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_header(inst.reverse_side),
         };
         let waiting_for_selected_precision = !inst.can_render_book_at_tick(tick);
+        // While a finer denomination is being fetched, keep showing the book
+        // at the freshest renderable granularity instead of blanking the
+        // widget; the title-row spinner signals the fetch in flight.
+        let render_tick = if waiting_for_selected_precision {
+            inst.book_source_tick_size().unwrap_or(tick)
+        } else {
+            tick
+        };
         let title_row = self.view_order_book_title(id, inst);
         let outcome_metadata = self.view_order_book_outcome_metadata(&tracking_symbol, inst);
 
-        if waiting_for_selected_precision
-            || (inst.book.bids.is_empty() && inst.book.asks.is_empty())
-        {
+        if inst.book.bids.is_empty() && inst.book.asks.is_empty() {
             let loading_row: Element<'_, Message> = if let Some(error) = &inst.book_error {
                 column![
                     text("Order book unavailable")
@@ -107,6 +116,9 @@ impl TradingTerminal {
             if let Some(outcome_metadata) = outcome_metadata {
                 content = content.push(outcome_metadata);
             }
+            if inst.settings_open {
+                content = content.push(self.view_order_book_settings(id, inst));
+            }
             content = content
                 .push(tick_buttons)
                 .push(header)
@@ -120,26 +132,19 @@ impl TradingTerminal {
                 .into();
         }
 
-        let user_order_levels = self.user_order_book_levels(&tracking_symbol, tick);
+        let user_order_levels = self.user_order_book_levels(&tracking_symbol, render_tick);
         let scroll = match inst.display_mode {
             OrderBookDisplayMode::DepthList => {
-                Self::view_order_book_rows(id, inst, tick, &theme, &user_order_levels)
+                Self::view_order_book_rows(id, inst, render_tick, &theme, &user_order_levels)
             }
             OrderBookDisplayMode::DomLadder => {
-                Self::view_order_book_dom_ladder(id, inst, tick, &theme, &user_order_levels)
+                Self::view_order_book_dom_ladder(id, inst, render_tick, &theme, &user_order_levels)
             }
         };
 
         let mut content_col = column![title_row].spacing(4);
         if let Some(outcome_metadata) = outcome_metadata {
             content_col = content_col.push(outcome_metadata);
-        }
-        if let Some(error) = &inst.book_error {
-            content_col = content_col.push(
-                text(format!("{error}; showing last snapshot"))
-                    .size(11)
-                    .color(color!(0xff5555)),
-            );
         }
 
         if inst.settings_open {

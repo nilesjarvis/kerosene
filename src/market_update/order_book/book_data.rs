@@ -1,7 +1,7 @@
 use crate::api::{OrderBook, fetch_order_book};
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::market_state::OrderBookId;
+use crate::market_state::{OrderBookId, OrderBookSymbolMode};
 use crate::message::Message;
 use iced::Task;
 use planning::{
@@ -32,6 +32,34 @@ impl TradingTerminal {
         };
 
         helpers::compute_sigfigs(helpers::default_tick_for_price(mid), mid)
+    }
+
+    /// Reset every Active-mode order book for a switch to `symbol`: empty the
+    /// book, drop per-symbol state, and re-seed the tick at the new symbol's
+    /// default so the first fetch is planned at the right precision. Clears
+    /// any in-flight request marker too — a stale pending request from the
+    /// previous symbol would otherwise satisfy the fetch dedup guard and
+    /// silently skip the new symbol's fetch. Every active-symbol-switch path
+    /// must go through this.
+    pub(crate) fn reset_active_order_books_for_symbol(&mut self, symbol: &str) {
+        let default_tick = self
+            .resolve_mid_for_symbol(symbol)
+            .map(helpers::default_tick_for_price)
+            .unwrap_or(0.01);
+        for inst in self.order_books.values_mut() {
+            if inst.mode == OrderBookSymbolMode::Active {
+                inst.set_book(OrderBook::empty());
+                inst.asset_ctx = None;
+                inst.spread_history.clear();
+                inst.clear_mid_price_history();
+                inst.reset_tick_options_basis();
+                inst.set_tick_size(default_tick);
+                inst.clear_book_request();
+                inst.book_loading = true;
+                inst.book_error = None;
+                inst.book_failure_toasted = false;
+            }
+        }
     }
 
     pub(in crate::market_update::order_book) fn apply_order_book_loaded(
@@ -73,27 +101,43 @@ impl TradingTerminal {
             inst.book_loading = false;
             match result {
                 Ok(book) => {
+                    let was_empty = inst.book.bids.is_empty() && inst.book.asks.is_empty();
                     let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
                     inst.set_book_with_source(book, source_tick);
                     inst.record_mid_price_sample(std::time::Instant::now());
                     inst.book_error = None;
-                    let mid = inst.book.mid_price();
+                    inst.book_failure_toasted = false;
 
-                    let tick_options = helpers::book_tick_options(mid);
+                    let tick_options = helpers::book_tick_options(inst.tick_options_mid());
                     let is_valid_tick = tick_options
                         .iter()
                         .any(|&opt| (opt - inst.tick_size).abs() / opt.max(1e-12) < 0.01);
 
                     if !is_valid_tick {
-                        inst.set_tick_size(helpers::default_tick_for_price(mid));
+                        // Stale persisted tick from a different price regime:
+                        // snap to the nearest option so the selector keeps an
+                        // active button and the coarseness choice survives.
+                        inst.set_tick_size(helpers::nearest_tick_option(
+                            &tick_options,
+                            inst.tick_size,
+                        ));
                     }
 
-                    return self.center_order_book(id);
+                    // Only snap the scroll position when the book goes from
+                    // empty to populated; background precision and scope
+                    // refreshes land silently into the user's position.
+                    if was_empty {
+                        return self.center_order_book(id);
+                    }
                 }
                 Err(error) => {
                     let message = format!("Order book load failed: {error}");
+                    let should_toast = !inst.book_failure_toasted;
+                    inst.book_failure_toasted = true;
                     inst.book_error = Some(message.clone());
-                    self.push_toast(message, true);
+                    if should_toast {
+                        self.push_toast(message, true);
+                    }
                 }
             }
         }

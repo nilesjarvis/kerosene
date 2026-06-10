@@ -7,8 +7,13 @@ pub use marker::user_order_price_marker;
 
 use iced::widget::button;
 use iced::widget::container as container_style;
-use iced::widget::{container, row};
+use iced::widget::{Space, container, row};
 use iced::{Color, Element, Fill, Theme};
+
+/// Fixed height of every order book row, in both display modes. The centered
+/// layout's row-count math divides the available height by this constant, so
+/// the rendered rows must occupy exactly this many pixels.
+pub const BOOK_ROW_HEIGHT: f32 = 20.0;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BookRowData {
@@ -16,6 +21,7 @@ pub struct BookRowData {
     pub sz: f64,
     pub cum: f64,
     pub has_user_order: bool,
+    pub is_best: bool,
 }
 
 /// Render a single order book row with a depth bar background.
@@ -60,10 +66,11 @@ pub fn book_row(
         c
     };
 
-    // Text brightness also driven by heat (0.3 to 1.0)
-    let sz_pct = heat.max(0.3);
+    // Keep size text readable regardless of heat; the background gradient
+    // already carries the size signal, the text only echoes it subtly.
+    let sz_pct = 0.65 + heat * 0.35;
 
-    let price = price_cell(px, decimals, data.has_user_order, is_bid);
+    let price = price_cell(px, decimals, data.has_user_order, is_bid, data.is_best);
     let size = size_cell(sz, sz_pct);
     let total = total_cell(cum);
     let row_content = if reverse_side {
@@ -71,12 +78,18 @@ pub fn book_row(
     } else {
         row![price, size, total]
     }
-    .spacing(4);
+    .spacing(4)
+    // The price cell is Fill-height (it hosts the best-level background);
+    // center the shrink-height size/total cells so all three columns share
+    // one baseline.
+    .align_y(iced::Alignment::Center);
 
     let transparent = Color::TRANSPARENT;
     let row_element: Element<'static, Message> = container(row_content)
         .width(Fill)
-        .padding([2, 4])
+        .height(BOOK_ROW_HEIGHT)
+        .align_y(iced::alignment::Vertical::Center)
+        .padding([0, 4])
         .style(move |theme: &Theme| {
             use iced::gradient;
             let gradient = if reverse_side {
@@ -103,6 +116,16 @@ pub fn book_row(
         .into();
 
     clickable_book_row(row_element, on_press)
+}
+
+/// Inert filler row used to keep the scrollable depth list at a constant
+/// content height while the number of live levels fluctuates. Not clickable,
+/// no hover affordance.
+pub fn placeholder_book_row() -> Element<'static, Message> {
+    container(Space::new())
+        .width(Fill)
+        .height(BOOK_ROW_HEIGHT)
+        .into()
 }
 
 pub fn clickable_book_row(

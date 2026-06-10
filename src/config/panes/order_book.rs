@@ -24,7 +24,9 @@ pub struct OrderBookConfig {
     pub tick_size: f64,
     #[serde(default)]
     pub display_mode: OrderBookDisplayModeConfig,
-    #[serde(default)]
+    // Centered is the default for configs that predate the field; layouts
+    // saved since then carry the user's explicit choice.
+    #[serde(default = "default_center_on_mid")]
     pub center_on_mid: bool,
     #[serde(default)]
     pub reverse_side: bool,
@@ -36,4 +38,27 @@ pub struct OrderBookConfig {
 
 fn default_spread_chart_height() -> f32 {
     60.0
+}
+
+fn default_center_on_mid() -> bool {
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn center_on_mid_defaults_to_true_for_configs_predating_the_field() {
+        let cfg: OrderBookConfig =
+            serde_json::from_str(r#"{"id": 3}"#).expect("minimal config should deserialize");
+        assert!(cfg.center_on_mid);
+    }
+
+    #[test]
+    fn center_on_mid_keeps_the_persisted_value() {
+        let cfg: OrderBookConfig = serde_json::from_str(r#"{"id": 3, "center_on_mid": false}"#)
+            .expect("explicit config should deserialize");
+        assert!(!cfg.center_on_mid);
+    }
 }

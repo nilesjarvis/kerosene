@@ -6,6 +6,7 @@ use super::*;
 use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
 
 mod availability;
+mod load_failures;
 mod planning;
 mod precision_refresh;
 mod response_precision;

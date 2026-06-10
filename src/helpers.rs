@@ -15,9 +15,10 @@ pub use formatting::{
     trim_decimal_zeros, values_match_approx,
 };
 pub use order_book::{
-    BookRowData, aggregate_levels, book_row, book_tick_options, clickable_book_row,
-    compute_sigfigs, default_tick_for_price, format_tick, sigfig_server_tick, tick_decimals,
-    tick_sizes_match, user_order_price_marker, valid_book_tick_size,
+    BOOK_ROW_HEIGHT, BookRowData, aggregate_levels, book_row, book_tick_options,
+    clickable_book_row, compute_sigfigs, default_tick_for_price, format_tick, nearest_tick_option,
+    nice_step_ceil, placeholder_book_row, sigfig_server_tick, tick_decimals, tick_sizes_match,
+    user_order_price_marker, valid_book_tick_size,
 };
 pub use symbols::{category_color, compare_symbol_keys_for_same_ticker, hip3_dex, symbol_icon};
 pub use ui::{

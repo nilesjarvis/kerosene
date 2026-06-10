@@ -12,57 +12,66 @@ impl TradingTerminal {
         inst: &OrderBookInstance,
         theme: &Theme,
     ) -> Element<'static, Message> {
-        let (true_best_bid, true_best_ask) = inst.best_bid_ask();
-        if let (Some(best_bid), Some(best_ask)) = (true_best_bid, true_best_ask) {
-            let spread = best_ask - best_bid;
-            let mid = (best_ask + best_bid) / 2.0;
-            let spread_pct = if mid > 0.0 { spread / mid * 100.0 } else { 0.0 };
-            let spread_decimals = helpers::tick_decimals(helpers::default_tick_for_price(mid));
+        // Use the same top-of-book the rows render so the spread row never
+        // disagrees with the levels directly above and below it.
+        let (best_bid, best_ask) = inst.visible_best_bid_ask();
+        let (mid_readout, spread_text) =
+            if let (Some(best_bid), Some(best_ask)) = (best_bid, best_ask) {
+                let spread = best_ask - best_bid;
+                let mid = (best_ask + best_bid) / 2.0;
+                let spread_pct = if mid > 0.0 { spread / mid * 100.0 } else { 0.0 };
+                let spread_decimals = helpers::tick_decimals(helpers::default_tick_for_price(mid));
 
-            container(
-                row![
-                    container(price_move_indicator(
-                        inst.short_term_price_move(),
-                        spread_decimals,
-                        theme,
-                    ))
-                    .width(Fill),
-                    container(
-                        text(format!(
-                            "{:.prec$} ({:.3}%)",
-                            spread,
-                            spread_pct,
-                            prec = spread_decimals
-                        ))
+                (
+                    mid_price_readout(mid, inst.short_term_price_move(), spread_decimals, theme),
+                    format!(
+                        "{:.prec$} ({:.3}%)",
+                        spread,
+                        spread_pct,
+                        prec = spread_decimals
+                    ),
+                )
+            } else {
+                // Identical chrome with placeholders, so a transiently
+                // one-sided book never changes the row height or hides the
+                // Center toggle.
+                (
+                    text("--")
+                        .size(11)
+                        .color(theme.extended_palette().background.weak.text)
+                        .into(),
+                    "-- (--%)".to_string(),
+                )
+            };
+
+        container(
+            row![
+                container(mid_readout).width(Fill),
+                container(
+                    text(spread_text)
                         .size(11)
                         .color(theme.extended_palette().background.weak.text),
-                    )
-                    .width(Fill)
-                    .align_x(iced::alignment::Horizontal::Center),
-                    container(center_order_book_button(id, inst.center_on_mid, theme))
-                        .width(Fill)
-                        .align_x(iced::alignment::Horizontal::Right),
-                ]
-                .spacing(6)
-                .align_y(iced::Alignment::Center),
-            )
-            .width(Fill)
-            .padding([3, 0])
-            .style(move |theme: &Theme| container_style::Style {
-                background: Some(theme.extended_palette().background.weak.color.into()),
-                border: iced::Border {
-                    radius: 2.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
-            .into()
-        } else {
-            container(text("").size(11))
+                )
                 .width(Fill)
-                .padding([3, 0])
-                .into()
-        }
+                .align_x(iced::alignment::Horizontal::Center),
+                container(center_order_book_button(id, inst.center_on_mid, theme))
+                    .width(Fill)
+                    .align_x(iced::alignment::Horizontal::Right),
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center),
+        )
+        .width(Fill)
+        .padding([3, 0])
+        .style(move |theme: &Theme| container_style::Style {
+            background: Some(theme.extended_palette().background.weak.color.into()),
+            border: iced::Border {
+                radius: 2.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
     }
 }
 
@@ -108,30 +117,30 @@ fn center_order_book_button(
         .on_press(Message::ToggleOrderBookCenterOnMid(id))
 }
 
-fn price_move_indicator(
+/// Current mid price colored by the short-term direction of travel, with an
+/// up/down arrow — the at-a-glance price readout between asks and bids.
+fn mid_price_readout(
+    mid: f64,
     price_move: Option<f64>,
     decimals: usize,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let weak_text = theme.extended_palette().background.weak.text;
-    let Some(price_move) = price_move else {
-        return text("--").size(11).color(weak_text).into();
-    };
-
     let decimals = decimals.min(8);
-    let (arrow, color) = if price_move > 0.0 {
-        ("\u{2191}", theme.palette().success)
-    } else if price_move < 0.0 {
-        ("\u{2193}", theme.palette().danger)
-    } else {
-        ("\u{2192}", weak_text)
+
+    let (arrow, color) = match price_move {
+        Some(price_move) if price_move > 0.0 => ("\u{2191} ", theme.palette().success),
+        Some(price_move) if price_move < 0.0 => ("\u{2193} ", theme.palette().danger),
+        Some(_) => ("\u{2192} ", weak_text),
+        None => ("", weak_text),
     };
 
     text(format!(
-        "{arrow} {}",
-        helpers::format_decimal_with_commas(price_move.abs(), decimals)
+        "{arrow}{}",
+        helpers::format_decimal_with_commas(mid, decimals)
     ))
     .size(11)
+    .font(crate::app_fonts::monospace_font())
     .color(color)
     .into()
 }

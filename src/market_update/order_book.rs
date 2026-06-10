@@ -49,16 +49,26 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
+                let mut newly_populated = false;
                 if let Some(inst) = self.order_books.get_mut(&id)
                     && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
                 {
+                    let was_empty = inst.book.bids.is_empty() && inst.book.asks.is_empty();
                     let now = std::time::Instant::now();
                     inst.apply_book_update_preserving_scope(book, source_tick);
                     inst.record_mid_price_sample(now);
                     inst.book_loading = false;
                     inst.book_error = None;
+                    newly_populated =
+                        was_empty && !(inst.book.bids.is_empty() && inst.book.asks.is_empty());
                 }
 
+                // A book that first fills in over the websocket (REST blip,
+                // unmute, symbol scrub) should open centered on the spread,
+                // exactly like the REST load path.
+                if newly_populated {
+                    return self.center_order_book(id);
+                }
                 Task::none()
             }
             Message::SetBookTickSize(id, tick) => {
@@ -183,8 +193,13 @@ impl TradingTerminal {
                     inst.asset_ctx = None;
                     inst.spread_history.clear();
                     inst.clear_mid_price_history();
+                    inst.reset_tick_options_basis();
+                    // Drop any in-flight request marker so the fetch dedup
+                    // guard cannot mistake the old symbol's request for ours.
+                    inst.clear_book_request();
                     inst.book_loading = true;
                     inst.book_error = None;
+                    inst.book_failure_toasted = false;
 
                     inst.set_tick_size(mid.map(helpers::default_tick_for_price).unwrap_or(0.01));
 

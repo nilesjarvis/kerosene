@@ -5,7 +5,7 @@ use crate::market_state::{
 };
 use crate::message::Message;
 
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{button, column, container, row, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -18,12 +18,23 @@ impl TradingTerminal {
             ["Price", "Size", "Total"]
         };
 
-        row![
-            header_cell(labels[0]),
-            header_cell(labels[1]),
-            header_cell(labels[2]),
-        ]
-        .spacing(4)
+        // Mirror the data rows' insets (4px row padding, plus the 15px
+        // scrollbar gutter on the right) so the labels sit exactly over the
+        // columns they name.
+        container(
+            row![
+                header_cell(labels[0]),
+                header_cell(labels[1]),
+                header_cell(labels[2]),
+            ]
+            .spacing(4),
+        )
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 19.0,
+            bottom: 0.0,
+            left: 4.0,
+        })
         .into()
     }
 
@@ -31,7 +42,7 @@ impl TradingTerminal {
         &self,
         id: OrderBookId,
         inst: &OrderBookInstance,
-    ) -> Element<'static, Message> {
+    ) -> Element<'_, Message> {
         let tracking_text = match &inst.mode {
             OrderBookSymbolMode::Active => format!("Active: {}", self.active_symbol_display),
             OrderBookSymbolMode::Fixed(symbol) => self
@@ -48,36 +59,55 @@ impl TradingTerminal {
                 .to_string(),
         };
 
-        row![
+        let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();
+        let mut title = row![
             text(format!("Order Book ({tracking_text})"))
                 .size(13)
                 .style(move |theme: &Theme| text::Style {
                     color: Some(theme.palette().text)
                 })
                 .width(Fill),
-            display_mode_button(
+        ]
+        .spacing(2)
+        .align_y(iced::Alignment::Center);
+
+        // Fixed-size status badges live in the title row so background
+        // refreshes and transient errors never reflow the book below.
+        if inst.book_loading && book_has_rows {
+            title = title.push(self.view_spinner(12));
+        }
+        if let Some(error) = &inst.book_error
+            && book_has_rows
+        {
+            title = title.push(stale_book_badge(error.clone()));
+        }
+
+        title
+            .push(Element::from(display_mode_button(
                 id,
                 inst.display_mode,
                 OrderBookDisplayMode::DepthList,
-                "Book"
-            ),
-            display_mode_button(
+                "Book",
+            )))
+            .push(Element::from(display_mode_button(
                 id,
                 inst.display_mode,
                 OrderBookDisplayMode::DomLadder,
-                "DOM"
-            ),
-            button(text("\u{2699}").size(12).style(move |theme: &Theme| {
-                text::Style {
-                    color: Some(theme.extended_palette().background.weak.text),
-                }
-            }))
-            .style(button::text)
-            .on_press(Message::ToggleOrderBookSettings(id))
-            .padding(2)
-        ]
-        .align_y(iced::Alignment::Center)
-        .into()
+                "DOM",
+            )))
+            .push(Element::from(
+                button(
+                    text("\u{2699}")
+                        .size(12)
+                        .style(move |theme: &Theme| text::Style {
+                            color: Some(theme.extended_palette().background.weak.text),
+                        }),
+                )
+                .style(button::text)
+                .on_press(Message::ToggleOrderBookSettings(id))
+                .padding(2),
+            ))
+            .into()
     }
 
     pub(in crate::market_views::order_book) fn view_order_book_outcome_metadata(
@@ -163,6 +193,42 @@ fn header_cell(label: &'static str) -> Element<'static, Message> {
         .width(Fill)
         .align_x(iced::alignment::Horizontal::Right)
         .into()
+}
+
+/// Compact constant-size indicator that the displayed book is a stale
+/// snapshot; the full error message lives in the tooltip.
+fn stale_book_badge(error: String) -> Element<'static, Message> {
+    tooltip(
+        container(
+            text("stale")
+                .size(9)
+                .style(move |theme: &Theme| text::Style {
+                    color: Some(theme.palette().danger),
+                }),
+        )
+        .padding([1, 4])
+        .style(move |theme: &Theme| container::Style {
+            border: iced::Border {
+                radius: 2.0.into(),
+                width: 1.0,
+                color: Color {
+                    a: 0.5,
+                    ..theme.palette().danger
+                },
+            },
+            ..Default::default()
+        }),
+        container(text(format!("{error}; showing last snapshot")).size(10))
+            .padding([4, 6])
+            .max_width(280)
+            .style(move |theme: &Theme| container::Style {
+                background: Some(theme.extended_palette().background.strong.color.into()),
+                border: iced::border::rounded(3),
+                ..Default::default()
+            }),
+        tooltip::Position::Bottom,
+    )
+    .into()
 }
 
 fn display_mode_button(

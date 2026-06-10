@@ -1,8 +1,6 @@
-use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::helpers::positive_finite_value;
-use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use crate::order_execution::QuickOrderForm;
 use crate::pane_state::PaneKind;
@@ -72,18 +70,9 @@ impl TradingTerminal {
                     let selected_symbol = sym.clone();
                     self.apply_active_symbol_selection(sym, display);
                     self.refresh_order_price_for_symbol(&selected_symbol);
-                    for inst in self.order_books.values_mut() {
-                        if inst.mode == OrderBookSymbolMode::Active {
-                            inst.set_book(OrderBook::empty());
-                        }
-                    }
+                    self.reset_active_order_books_for_symbol(&selected_symbol);
                     self.sync_all_chart_overlays();
                     self.persist_config();
-                    for inst in self.order_books.values_mut() {
-                        if inst.mode == OrderBookSymbolMode::Active {
-                            inst.book_loading = true;
-                        }
-                    }
                 }
             } else {
                 self.focus = None;

@@ -22,7 +22,8 @@ fn order_book_config_defaults_to_depth_list_display_mode() {
         serde_json::from_str(r#"{"id":7,"tick_size":1.0}"#).expect("config");
 
     assert_eq!(config.display_mode, OrderBookDisplayModeConfig::DepthList);
-    assert!(!config.center_on_mid);
+    // Centered-on-mid is the default for configs that predate the field.
+    assert!(config.center_on_mid);
     assert!(!config.reverse_side);
 }
 

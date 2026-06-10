@@ -5,6 +5,31 @@ use std::collections::BTreeMap;
 #[cfg(test)]
 mod tests;
 
+/// Round a normalization maximum up to the next 1-2-5 "nice" step.
+///
+/// Depth bars and heat intensities divide by the window maximum; using the
+/// raw per-frame maximum makes every bar rescale on every book update. The
+/// quantized step only changes when the raw maximum crosses a 1-2-5
+/// boundary, so the scale stays put while the market ticks.
+pub fn nice_step_ceil(value: f64) -> f64 {
+    if !value.is_finite() || value <= 1.0 {
+        return 1.0;
+    }
+    let exponent = value.log10().floor();
+    let base = 10f64.powf(exponent);
+    let mantissa = value / base;
+    let stepped = if mantissa <= 1.0 {
+        1.0
+    } else if mantissa <= 2.0 {
+        2.0
+    } else if mantissa <= 5.0 {
+        5.0
+    } else {
+        10.0
+    };
+    stepped * base
+}
+
 /// Aggregate raw book levels into buckets at the given tick size.
 pub fn aggregate_levels(levels: &[BookLevel], tick: f64, is_bid: bool) -> Vec<(f64, f64)> {
     let mut buckets: BTreeMap<i64, f64> = BTreeMap::new();

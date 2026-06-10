@@ -1,5 +1,8 @@
 use super::super::super::UserOrderBookLevels;
-use crate::helpers::{clickable_book_row, format_size, user_order_price_marker};
+use crate::helpers::{
+    BOOK_ROW_HEIGHT, clickable_book_row, format_decimal_with_commas, format_size,
+    user_order_price_marker,
+};
 use crate::market_state::{DomLadderRow, OrderBookId};
 use crate::message::Message;
 
@@ -59,6 +62,7 @@ fn dom_row(
         row![bid_total, bid_size, price, ask_size, ask_total]
     }
     .spacing(3)
+    .height(BOOK_ROW_HEIGHT)
     .into();
 
     clickable_book_row(
@@ -77,8 +81,10 @@ fn dom_value_cell(
     is_cumulative: bool,
 ) -> Element<'static, Message> {
     let label = value.map(format_size).unwrap_or_default();
+    // Same square-root heat curve as the depth list, so medium orders stay
+    // visible instead of being flattened by one wall in the window.
     let intensity = value
-        .map(|value| (value / max_value.max(1.0)).clamp(0.0, 1.0) as f32)
+        .map(|value| (value / max_value.max(1.0)).clamp(0.0, 1.0).powf(0.5) as f32)
         .unwrap_or(0.0);
     let alpha_scale = if is_cumulative { 0.16 } else { 0.34 };
     let text_alpha = if value.is_some() { 0.92 } else { 0.22 };
@@ -97,7 +103,9 @@ fn dom_value_cell(
 
     container(content)
         .width(Fill)
-        .padding([2, 4])
+        .height(Fill)
+        .align_y(iced::alignment::Vertical::Center)
+        .padding([0, 4])
         .style(move |theme: &Theme| {
             let mut color = if is_bid {
                 theme.palette().success
@@ -125,7 +133,7 @@ fn price_cell(
         row![
             Space::new().width(Fill),
             user_order_price_marker(user_order_side),
-            text(format!("{price:.decimals$}"))
+            text(format_decimal_with_commas(price, decimals))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .style(move |theme: &Theme| {
@@ -143,7 +151,9 @@ fn price_cell(
         .align_y(iced::Alignment::Center),
     )
     .width(Fill)
-    .padding([2, 4])
+    .height(Fill)
+    .align_y(iced::alignment::Vertical::Center)
+    .padding([0, 4])
     .style(move |theme: &Theme| {
         let background = if is_best_bid || is_best_ask {
             Some(theme.extended_palette().background.weak.color.into())

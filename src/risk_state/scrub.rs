@@ -111,18 +111,33 @@ impl TradingTerminal {
             self.close_menu_coin = None;
         }
 
+        // Rebound books track the active symbol from here on; re-seed the
+        // per-symbol bookkeeping so the muted symbol's tick, options basis,
+        // and failure state do not leak into the new binding.
+        let active_default_tick = self
+            .resolve_mid_for_symbol(&self.active_symbol)
+            .map(crate::helpers::default_tick_for_price)
+            .unwrap_or(0.01);
         for order_book in self.order_books.values_mut() {
             let symbol = match &order_book.mode {
                 OrderBookSymbolMode::Active => self.active_symbol.clone(),
                 OrderBookSymbolMode::Fixed(symbol) => symbol.clone(),
             };
             if is_hidden(&symbol) {
+                let was_fixed = matches!(order_book.mode, OrderBookSymbolMode::Fixed(_));
                 order_book.mode = OrderBookSymbolMode::Active;
                 order_book.set_book(OrderBook::empty());
                 order_book.asset_ctx = None;
                 order_book.spread_history.clear();
                 order_book.clear_mid_price_history();
+                order_book.clear_book_request();
                 order_book.book_loading = false;
+                order_book.book_error = None;
+                order_book.book_failure_toasted = false;
+                if was_fixed {
+                    order_book.reset_tick_options_basis();
+                    order_book.set_tick_size(active_default_tick);
+                }
             }
         }
 

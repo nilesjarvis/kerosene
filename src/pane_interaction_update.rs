@@ -1,4 +1,3 @@
-use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartSurfaceId;
 use crate::market_state::OrderBookSymbolMode;
@@ -56,12 +55,9 @@ impl TradingTerminal {
                             self.order_status = Some((message, true));
                             return Task::none();
                         }
+                        let symbol_key = sym.clone();
                         self.apply_active_symbol_selection(sym, display);
-                        for inst in self.order_books.values_mut() {
-                            if inst.mode == OrderBookSymbolMode::Active {
-                                inst.set_book(OrderBook::empty());
-                            }
-                        }
+                        self.reset_active_order_books_for_symbol(&symbol_key);
                         self.sync_all_chart_overlays();
                         for inst in self.charts.values_mut() {
                             inst.clear_quick_order();
@@ -69,11 +65,6 @@ impl TradingTerminal {
                         self.chart_quick_order_surface.clear();
                         self.persist_config();
 
-                        for inst in self.order_books.values_mut() {
-                            if inst.mode == OrderBookSymbolMode::Active {
-                                inst.book_loading = true;
-                            }
-                        }
                         let book_task = Task::batch(
                             self.order_books
                                 .values()

@@ -1,11 +1,9 @@
 use super::super::UserOrderBookLevels;
-use crate::helpers::{BookRowData, book_row};
+use crate::helpers::{BOOK_ROW_HEIGHT, BookRowData, book_row, placeholder_book_row};
 use crate::market_state::OrderBookId;
 use crate::message::Message;
 
 use iced::widget::Column;
-
-const CENTERED_ORDER_BOOK_ROW_HEIGHT: f32 = 20.0;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct DepthColumnContext {
@@ -41,7 +39,7 @@ pub(super) fn centered_order_book_side_row_count(side_height: f32, available_row
         return 0;
     }
 
-    ((side_height / CENTERED_ORDER_BOOK_ROW_HEIGHT).floor() as usize).min(available_rows)
+    ((side_height / BOOK_ROW_HEIGHT).floor() as usize).min(available_rows)
 }
 
 pub(super) fn order_book_row_padding() -> iced::Padding {
@@ -62,20 +60,37 @@ pub(super) fn order_book_scroll_direction() -> iced::widget::scrollable::Directi
     )
 }
 
+/// Number of inert filler rows needed to bring a side up to `pad_to` rows.
+/// Keeping both sides at a constant row count keeps the scroll content height
+/// stable while levels appear and disappear, so nothing shifts under the
+/// cursor and the load-time snap to 50% lands exactly on the spread row.
+pub(super) fn side_padding_row_count(rendered_rows: usize, pad_to: usize) -> usize {
+    pad_to.saturating_sub(rendered_rows)
+}
+
 pub(super) fn depth_ask_column(
     context: DepthColumnContext,
     rows: &[(f64, f64, f64)],
     user_order_levels: &UserOrderBookLevels,
+    pad_to: usize,
 ) -> Column<'static, Message> {
+    // Asks render worst-at-top, so filler rows go above the data.
+    let mut col = Column::new().spacing(0);
+    for _ in 0..side_padding_row_count(rows.len(), pad_to) {
+        col = col.push(placeholder_book_row());
+    }
+    let best_index = rows.len().checked_sub(1);
     rows.iter()
         .copied()
-        .fold(Column::new().spacing(0), |col, (px, size, cum)| {
+        .enumerate()
+        .fold(col, |col, (index, (px, size, cum))| {
             col.push(book_row(
                 BookRowData {
                     px,
                     sz: size,
                     cum,
                     has_user_order: user_order_levels.has_ask_at_price(px, context.tick),
+                    is_best: Some(index) == best_index,
                 },
                 context.max_cum,
                 context.max_sz,
@@ -94,16 +109,18 @@ pub(super) fn depth_bid_column(
     context: DepthColumnContext,
     rows: &[(f64, f64, f64)],
     user_order_levels: &UserOrderBookLevels,
+    pad_to: usize,
 ) -> Column<'static, Message> {
-    rows.iter()
-        .copied()
-        .fold(Column::new().spacing(0), |col, (px, size, cum)| {
+    let col = rows.iter().copied().enumerate().fold(
+        Column::new().spacing(0),
+        |col, (index, (px, size, cum))| {
             col.push(book_row(
                 BookRowData {
                     px,
                     sz: size,
                     cum,
                     has_user_order: user_order_levels.has_bid_at_price(px, context.tick),
+                    is_best: index == 0,
                 },
                 context.max_cum,
                 context.max_sz,
@@ -115,5 +132,12 @@ pub(super) fn depth_bid_column(
                     price: format!("{:.decimals$}", px, decimals = context.decimals),
                 },
             ))
-        })
+        },
+    );
+    // Bids render best-at-top, so filler rows go below the data.
+    let mut col = col;
+    for _ in 0..side_padding_row_count(rows.len(), pad_to) {
+        col = col.push(placeholder_book_row());
+    }
+    col
 }

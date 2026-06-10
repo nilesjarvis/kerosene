@@ -1,7 +1,8 @@
-use crate::helpers::format_size;
+use crate::helpers::{format_decimal_with_commas, format_size};
 use crate::message::Message;
 
 use super::marker::user_order_price_marker;
+use iced::widget::container as container_style;
 use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
@@ -10,12 +11,13 @@ pub(super) fn price_cell(
     decimals: usize,
     has_user_order: bool,
     is_bid: bool,
+    is_best: bool,
 ) -> Element<'static, Message> {
     container(
         row![
             Space::new().width(Fill),
             user_order_price_marker(has_user_order.then_some(is_bid)),
-            text(format!("{px:.decimals$}"))
+            text(format_decimal_with_commas(px, decimals))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .style(move |t: &Theme| text::Style {
@@ -30,6 +32,16 @@ pub(super) fn price_cell(
         .align_y(iced::Alignment::Center),
     )
     .width(Fill)
+    .height(Fill)
+    .align_y(iced::alignment::Vertical::Center)
+    .style(move |theme: &Theme| {
+        // Mirror the DOM ladder's inside-market emphasis on the touch rows.
+        let background = is_best.then(|| theme.extended_palette().background.weak.color.into());
+        container_style::Style {
+            background,
+            ..Default::default()
+        }
+    })
     .into()
 }
 
@@ -55,7 +67,13 @@ pub(super) fn total_cell(cum: f64) -> Element<'static, Message> {
             .font(crate::app_fonts::monospace_font())
             .align_x(iced::alignment::Horizontal::Right)
             .style(move |theme: &Theme| text::Style {
-                color: Some(theme.extended_palette().background.weak.text),
+                // The total column sits under the strongest part of the depth
+                // gradient; a fixed-alpha variant of the main text color stays
+                // readable there while keeping totals dimmer than sizes.
+                color: Some(Color {
+                    a: 0.62,
+                    ..theme.palette().text
+                }),
             })
             .width(Fill),
     )

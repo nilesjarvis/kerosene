@@ -32,6 +32,31 @@ impl OrderBookInstance {
         )
     }
 
+    /// Best bid/ask as displayed by the book rows: the raw top of the
+    /// in-memory book, without the impact-price override. The spread row uses
+    /// this so its numbers always agree with the adjacent rows; impact prices
+    /// from the asset context are only a fallback while the book is empty.
+    pub fn visible_best_bid_ask(&self) -> (Option<f64>, Option<f64>) {
+        let bid = self
+            .book
+            .bids
+            .first()
+            .map(|level| level.px)
+            .and_then(positive_finite_value);
+        let ask = self
+            .book
+            .asks
+            .first()
+            .map(|level| level.px)
+            .and_then(positive_finite_value);
+
+        if bid.is_some() || ask.is_some() {
+            (bid, ask)
+        } else {
+            self.best_bid_ask()
+        }
+    }
+
     pub fn current_mid_price(&self) -> Option<f64> {
         let (best_bid, best_ask) = self.best_bid_ask();
         let mid = match (best_bid, best_ask) {

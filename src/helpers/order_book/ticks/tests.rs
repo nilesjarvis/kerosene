@@ -88,3 +88,18 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn nearest_tick_option_snaps_to_closest_on_log_scale() {
+    let options = [1.0, 5.0, 10.0, 50.0, 100.0];
+    assert_eq!(nearest_tick_option(&options, 0.5), 1.0);
+    assert_eq!(nearest_tick_option(&options, 4.0), 5.0);
+    assert_eq!(nearest_tick_option(&options, 10.0), 10.0);
+    assert_eq!(nearest_tick_option(&options, 1_000.0), 100.0);
+}
+
+#[test]
+fn nearest_tick_option_handles_invalid_inputs() {
+    assert_eq!(nearest_tick_option(&[], 0.5), 0.5);
+    assert_eq!(nearest_tick_option(&[1.0, 5.0], f64::NAN), 1.0);
+}
