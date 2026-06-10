@@ -100,7 +100,9 @@ impl TradingTerminal {
             false,
         ));
         let account_address = self.connected_address.clone().unwrap_or_default();
-        let pending_indicator_id = if prepared.order_kind == ExchangeOrderKind::Market {
+        // IOC limit orders are taker orders that never rest, so they project
+        // like market orders instead of drawing a provisional resting line.
+        let pending_indicator_id = if prepared.order_kind != ExchangeOrderKind::Limit {
             self.add_pending_market_order_placement_indicator(
                 account_address.clone(),
                 prepared.symbol_key.clone(),

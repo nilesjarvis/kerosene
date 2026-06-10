@@ -5,7 +5,9 @@ use self::header::position_size_is_nonzero;
 use super::table_helpers::{account_table_scroll, empty_account_table};
 use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
+use crate::helpers::{format_price, format_size};
 use crate::message::Message;
+use crate::order_pending_indicators::ProjectedPositionDelta;
 
 use iced::widget::{Column, column, container, responsive, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
@@ -73,6 +75,10 @@ impl TradingTerminal {
             self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
 
         let account_positions = self.account_positions_with_outcomes();
+        let all_position_coins: Vec<String> = account_positions
+            .iter()
+            .map(|ap| ap.position.coin.clone())
+            .collect();
         let has_nuke_positions = can_close
             && account_positions.iter().any(|ap| {
                 position_size_is_nonzero(&ap.position.szi)
@@ -99,6 +105,7 @@ impl TradingTerminal {
             data.completeness
                 .section_warning(AccountDataSection::Positions)
         });
+        let opening_deltas = self.optimistic_opening_position_deltas(&all_position_coins);
 
         let header = self.view_positions_header(
             can_close,
@@ -109,7 +116,7 @@ impl TradingTerminal {
             columns,
         );
 
-        if positions.is_empty() {
+        if positions.is_empty() && opening_deltas.is_empty() {
             let msg = if let Some(warning) = warning {
                 warning
             } else if hidden_count > 0 {
@@ -127,7 +134,10 @@ impl TradingTerminal {
         if let Some(warning) = warning {
             content = content.push(text(warning).size(11).color(theme.palette().warning));
         }
-        let content = content.push(rule::horizontal(1)).push(rows);
+        let mut content = content.push(rule::horizontal(1)).push(rows);
+        for delta in &opening_deltas {
+            content = content.push(opening_position_row(delta, &theme));
+        }
         column![
             account_table_scroll(content),
             self.view_position_summary_bar(&positions, &theme, number_mode),
@@ -136,6 +146,22 @@ impl TradingTerminal {
         .width(Fill)
         .height(Fill)
         .into()
+    }
+
+    /// In-flight market orders for symbols with no position at all
+    /// (optimistic account updates): rendered as provisional "opening" lines.
+    /// Filtered against every account position — visible or user-hidden — so
+    /// an order on a hidden position never masquerades as a brand-new one.
+    fn optimistic_opening_position_deltas(
+        &self,
+        all_position_coins: &[String],
+    ) -> Vec<ProjectedPositionDelta> {
+        self.optimistic_position_deltas()
+            .into_iter()
+            .filter(|delta| delta.signed_size.abs() > f64::EPSILON)
+            .filter(|delta| !all_position_coins.contains(&delta.symbol))
+            .filter(|delta| !self.symbol_key_is_hidden(&delta.symbol))
+            .collect()
     }
 
     pub(crate) fn position_is_hidden(&self, coin: &str) -> bool {
@@ -195,6 +221,30 @@ impl TradingTerminal {
 
         content
     }
+}
+
+fn opening_position_row<'a>(delta: &ProjectedPositionDelta, theme: &Theme) -> Element<'a, Message> {
+    let side = if delta.signed_size >= 0.0 {
+        "buy"
+    } else {
+        "sell"
+    };
+    let price = delta
+        .estimated_price
+        .map(|px| format!(" @ ~{}", format_price(px)))
+        .unwrap_or_default();
+    container(
+        text(format!(
+            "\u{27f3} {} market {side} {}{} in flight\u{2026}",
+            delta.symbol,
+            format_size(delta.signed_size.abs()),
+            price,
+        ))
+        .size(11)
+        .color(theme.palette().primary),
+    )
+    .padding([4, 8])
+    .into()
 }
 
 fn position_section_header<'a>(

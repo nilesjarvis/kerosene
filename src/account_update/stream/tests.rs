@@ -176,3 +176,62 @@ fn websocket_account_repair_respects_account_refresh_backoff() {
             .is_some_and(|error| error.contains("rate limited"))
     );
 }
+
+#[test]
+fn ws_fill_consumes_market_indicator_before_rest_ack() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.optimistic_account_updates = true;
+    terminal.account_data = Some(account_data_with_timestamp(1));
+    let pending_id = terminal.add_pending_market_order_placement_indicator(
+        address.clone(),
+        "BTC".to_string(),
+        true,
+        "0.1".to_string(),
+        "100".to_string(),
+    );
+    assert!(pending_id.is_some());
+    let fill_time = TradingTerminal::now_ms() + 50;
+
+    // The websocket delivers the fill while the REST place ack is still in
+    // flight; the projection must collapse instead of double-counting.
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::Fills {
+            fills: vec![fixtures::fill(fill_time)],
+            is_snapshot: false,
+        },
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    assert_eq!(terminal.optimistic_position_delta_for_symbol("BTC"), None);
+}
+
+#[test]
+fn ws_fill_snapshot_does_not_consume_market_indicators() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1));
+    let pending_id = terminal.add_pending_market_order_placement_indicator(
+        address.clone(),
+        "BTC".to_string(),
+        true,
+        "0.1".to_string(),
+        "100".to_string(),
+    );
+    assert!(pending_id.is_some());
+    let fill_time = TradingTerminal::now_ms() + 50;
+
+    // Snapshots replay history; only live fill deltas consume projections.
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::Fills {
+            fills: vec![fixtures::fill(fill_time)],
+            is_snapshot: true,
+        },
+    );
+
+    assert_eq!(terminal.pending_order_indicators.len(), 1);
+}

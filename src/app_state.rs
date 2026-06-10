@@ -217,6 +217,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) connected_address: Option<String>,
     pub(crate) account_data: Option<AccountData>,
     pub(crate) account_loading: bool,
+    // A refresh was requested while one was already in flight; run one
+    // follow-up when the in-flight fetch lands so the request isn't dropped.
+    pub(crate) account_refresh_followup_pending: bool,
     pub(crate) account_reconciliation_required: bool,
     pub(crate) account_error: Option<String>,
     pub(crate) account_refresh_backoff_until_ms: Option<u64>,
@@ -278,6 +281,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_alert_input: String,
     pub(crate) market_slippage_pct: f64,
     pub(crate) market_slippage_input: String,
+    pub(crate) optimistic_account_updates: bool,
     pub(crate) tracked_trade_alerts_enabled: bool,
     // Multi-window IDs
     pub(crate) main_window_id: Option<window::Id>,

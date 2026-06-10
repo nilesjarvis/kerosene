@@ -25,6 +25,19 @@ fn exchange_response(statuses: Vec<serde_json::Value>) -> ExchangeResponse {
     .expect("test exchange response should deserialize")
 }
 
+fn cancel_exchange_response(statuses: Vec<serde_json::Value>) -> ExchangeResponse {
+    serde_json::from_value(serde_json::json!({
+        "status": "ok",
+        "response": {
+            "type": "cancel",
+            "data": {
+                "statuses": statuses
+            }
+        }
+    }))
+    .expect("test cancel exchange response should deserialize")
+}
+
 fn malformed_ok_response() -> ExchangeResponse {
     serde_json::from_value(serde_json::json!({
         "status": "ok",
@@ -268,10 +281,20 @@ fn execution_result_classifier_normalizes_successful_outcomes() {
     assert!(filled.refresh_account);
 
     let cancelled =
-        classify_execution_result(Ok(exchange_response(vec![serde_json::json!("success")])));
+        classify_execution_result(Ok(cancel_exchange_response(vec![serde_json::json!(
+            "success"
+        )])));
     assert_eq!(cancelled.kind, ExecutionOutcomeKind::Cancelled);
     assert_eq!(cancelled.status, "Cancelled");
     assert!(cancelled.refresh_account);
+
+    // A modify/order ack with the same bare-"success" status must not be
+    // classified as a cancel; it falls through to Ambiguous, which routes
+    // placements into the cloid status check instead of reporting a cancel.
+    let acknowledged =
+        classify_execution_result(Ok(exchange_response(vec![serde_json::json!("success")])));
+    assert_ne!(acknowledged.kind, ExecutionOutcomeKind::Cancelled);
+    assert_eq!(acknowledged.status, "Success");
 }
 
 #[test]
@@ -524,7 +547,7 @@ fn cancel_result_success_clears_indicator_and_removes_order_locally() {
     let _task = terminal.handle_cancel_result(
         TEST_ACCOUNT.to_string(),
         pending_id,
-        Ok(exchange_response(vec![serde_json::json!("success")])),
+        Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
     );
 
     assert!(terminal.pending_order_indicators.is_empty());
@@ -572,7 +595,7 @@ fn cancel_result_after_account_switch_clears_indicator_without_status() {
     let _task = terminal.handle_cancel_result(
         TEST_ACCOUNT.to_string(),
         pending_id,
-        Ok(exchange_response(vec![serde_json::json!("success")])),
+        Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
     );
 
     assert!(terminal.pending_order_indicators.is_empty());

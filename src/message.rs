@@ -430,6 +430,7 @@ pub(crate) enum Message {
     ConfigSaved(Result<(), String>),
     ToggleSound,
     ToggleDesktopNotifications,
+    ToggleOptimisticAccountUpdates(bool),
     PlaceBuy,
     PlaceSell,
     OrderResult {

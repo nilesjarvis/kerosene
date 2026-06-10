@@ -1,6 +1,6 @@
-use crate::account::OpenOrder;
+use crate::account::{OpenOrder, UserFill};
 use crate::app_state::TradingTerminal;
-use crate::helpers::parse_positive_finite_number;
+use crate::helpers::{parse_positive_finite_number, values_match_approx};
 
 // ---------------------------------------------------------------------------
 // Chart-Only Pending Order Indicators
@@ -36,6 +36,22 @@ struct PendingOrderIndicatorInput {
     size: String,
     price: String,
     kind: PendingOrderIndicatorKind,
+}
+
+/// In-flight decoration for an Orders-tab row, derived from the pending
+/// indicators when optimistic account updates are enabled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OptimisticOrderRowState {
+    Cancelling,
+    Modifying { price: String },
+}
+
+/// Net projected position change for one symbol from in-flight market orders.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ProjectedPositionDelta {
+    pub(crate) symbol: String,
+    pub(crate) signed_size: f64,
+    pub(crate) estimated_price: Option<f64>,
 }
 
 impl TradingTerminal {
@@ -78,8 +94,24 @@ impl TradingTerminal {
     }
 
     fn add_pending_order_indicator(&mut self, input: PendingOrderIndicatorInput) -> Option<u64> {
-        parse_positive_finite_number(&input.size)?;
-        parse_positive_finite_number(&input.price)?;
+        match input.kind {
+            // Placements render provisional rows/lines from these values, so
+            // both must be well-formed.
+            PendingOrderIndicatorKind::Placing | PendingOrderIndicatorKind::MarketPlacing => {
+                parse_positive_finite_number(&input.size)?;
+                parse_positive_finite_number(&input.price)?;
+            }
+            // Only the new target price is rendered and patched into the
+            // local snapshot; the size is copied from the live order, which
+            // can be "0.0" for position-tied trigger orders.
+            PendingOrderIndicatorKind::Modifying => {
+                parse_positive_finite_number(&input.price)?;
+            }
+            // Cancels only decorate an existing order row/line and gate
+            // duplicate cancel requests; TP/SL trigger orders legitimately
+            // carry sz "0.0" and trigger-market orders limit_px "0".
+            PendingOrderIndicatorKind::Cancelling => {}
+        }
 
         let created_at_ms = Self::now_ms();
         let pending_id = self.next_pending_order_indicator_id(created_at_ms);
@@ -135,10 +167,184 @@ impl TradingTerminal {
         })
     }
 
+    // ---- Optimistic table projections (Settings > Risk, default off) ----
+
+    /// Placement indicators rendered as provisional rows in the Orders tab.
+    /// Market orders never rest, so only limit placements are included.
+    pub(crate) fn optimistic_open_order_rows(&self) -> Vec<PendingOrderIndicator> {
+        if !self.optimistic_account_updates {
+            return Vec::new();
+        }
+        let Some(account_address) = self.connected_address.as_deref() else {
+            return Vec::new();
+        };
+        let open_orders = self
+            .account_data
+            .as_ref()
+            .map(|data| data.open_orders.as_slice())
+            .unwrap_or(&[]);
+        self.pending_order_indicators
+            .values()
+            .filter(|indicator| {
+                indicator.kind == PendingOrderIndicatorKind::Placing
+                    && indicator.account_address == account_address
+                    && !placing_indicator_matches_confirmed_order(indicator, open_orders)
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// In-flight decoration for an existing Orders-tab row. A cancel and a
+    /// move can be in flight for the same oid at once; the cancel is the
+    /// terminal action, so it always wins, and among moves the most recent
+    /// target price is the accurate one.
+    pub(crate) fn optimistic_open_order_row_state(
+        &self,
+        oid: u64,
+    ) -> Option<OptimisticOrderRowState> {
+        if !self.optimistic_account_updates {
+            return None;
+        }
+        let account_address = self.connected_address.as_deref()?;
+        let mut modifying = None;
+        for indicator in self.pending_order_indicators.values() {
+            if indicator.account_address != account_address || indicator.oid != Some(oid) {
+                continue;
+            }
+            match indicator.kind {
+                PendingOrderIndicatorKind::Cancelling => {
+                    return Some(OptimisticOrderRowState::Cancelling);
+                }
+                PendingOrderIndicatorKind::Modifying => {
+                    modifying = Some(OptimisticOrderRowState::Modifying {
+                        price: indicator.price.clone(),
+                    });
+                }
+                PendingOrderIndicatorKind::Placing | PendingOrderIndicatorKind::MarketPlacing => {}
+            }
+        }
+        modifying
+    }
+
+    /// Net projected position-size change per symbol from in-flight market
+    /// orders (buys positive, sells negative). Limit placements are excluded
+    /// because they rest instead of filling, and TWAP/chase manage their own
+    /// lifecycles without indicators. Only perp and outcome symbols project:
+    /// spot fills land in balances, never in the positions table.
+    pub(crate) fn optimistic_position_deltas(&self) -> Vec<ProjectedPositionDelta> {
+        if !self.optimistic_account_updates {
+            return Vec::new();
+        }
+        let Some(account_address) = self.connected_address.as_deref() else {
+            return Vec::new();
+        };
+        let mut accumulators: Vec<PositionDeltaAccumulator> = Vec::new();
+        for indicator in self.pending_order_indicators.values() {
+            if indicator.kind != PendingOrderIndicatorKind::MarketPlacing
+                || indicator.account_address != account_address
+            {
+                continue;
+            }
+            if !self.is_perp_coin(&indicator.symbol) && !self.is_outcome_coin(&indicator.symbol) {
+                continue;
+            }
+            let Some(size) = parse_positive_finite_number(&indicator.size) else {
+                continue;
+            };
+            let accumulator = match accumulators
+                .iter_mut()
+                .find(|accumulator| accumulator.symbol == indicator.symbol)
+            {
+                Some(accumulator) => accumulator,
+                None => {
+                    accumulators.push(PositionDeltaAccumulator::new(
+                        indicator.symbol.clone(),
+                        indicator.is_buy,
+                    ));
+                    accumulators
+                        .last_mut()
+                        .expect("accumulator was just pushed")
+                }
+            };
+            accumulator.add(size, indicator.is_buy, &indicator.price);
+        }
+        accumulators
+            .into_iter()
+            .map(PositionDeltaAccumulator::finish)
+            .collect()
+    }
+
+    pub(crate) fn optimistic_position_delta_for_symbol(&self, symbol: &str) -> Option<f64> {
+        self.optimistic_position_deltas()
+            .into_iter()
+            .find(|delta| delta.symbol == symbol)
+            .map(|delta| delta.signed_size)
+            .filter(|signed_size| signed_size.abs() > f64::EPSILON)
+    }
+
     pub(crate) fn has_pending_cancel_indicator(&self, oid: u64) -> bool {
+        let account_address = self.connected_address.as_deref();
         self.pending_order_indicators.values().any(|indicator| {
-            indicator.kind == PendingOrderIndicatorKind::Cancelling && indicator.oid == Some(oid)
+            indicator.kind == PendingOrderIndicatorKind::Cancelling
+                && indicator.oid == Some(oid)
+                && account_address == Some(indicator.account_address.as_str())
         })
+    }
+
+    /// Authoritative fills consume in-flight market-order projections so the
+    /// optimistic position delta does not double-count a fill the websocket
+    /// has already delivered (the REST ack that clears the indicator can lag
+    /// it by seconds). Matching by symbol + side + time is heuristic, but it
+    /// only ever shrinks projections toward the authoritative state, never
+    /// inflates them.
+    pub(crate) fn consume_pending_market_order_fills(&mut self, fills: &[UserFill]) -> bool {
+        let Some(account_address) = self.connected_address.clone() else {
+            return false;
+        };
+        let mut changed = false;
+        for fill in fills {
+            let Some(mut remaining) = parse_positive_finite_number(&fill.sz) else {
+                continue;
+            };
+            let fill_is_buy = fill.side == "B";
+            let matching_ids: Vec<u64> = self
+                .pending_order_indicators
+                .iter()
+                .filter(|(_, indicator)| {
+                    indicator.kind == PendingOrderIndicatorKind::MarketPlacing
+                        && indicator.account_address == account_address
+                        && indicator.symbol == fill.coin
+                        && indicator.is_buy == fill_is_buy
+                        && fill_time_covers_indicator(fill.time, indicator.created_at_ms)
+                })
+                .map(|(pending_id, _)| *pending_id)
+                .collect();
+            for pending_id in matching_ids {
+                if remaining <= 0.0 {
+                    break;
+                }
+                let Some(indicator) = self.pending_order_indicators.get_mut(&pending_id) else {
+                    continue;
+                };
+                let Some(size) = parse_positive_finite_number(&indicator.size) else {
+                    self.pending_order_indicators.remove(&pending_id);
+                    changed = true;
+                    continue;
+                };
+                if size <= remaining * (1.0 + 1e-9) {
+                    remaining -= size;
+                    self.pending_order_indicators.remove(&pending_id);
+                } else {
+                    indicator.size = (size - remaining).to_string();
+                    remaining = 0.0;
+                }
+                changed = true;
+            }
+        }
+        if changed {
+            self.sync_all_chart_orders();
+        }
+        changed
     }
 
     pub(crate) fn pending_cancel_indicator_oid(&self, pending_id: Option<u64>) -> Option<u64> {
@@ -198,6 +404,89 @@ impl TradingTerminal {
         }
         pending_id
     }
+}
+
+/// Aggregates same-symbol market-order indicators into one projected delta.
+/// The estimated price is the size-weighted average of the contributing
+/// orders, omitted entirely when the sides disagree (a single "~price" for a
+/// netted buy/sell pair would be the wrong order's price).
+struct PositionDeltaAccumulator {
+    symbol: String,
+    signed_size: f64,
+    first_is_buy: bool,
+    mixed_sides: bool,
+    price_volume: f64,
+    priced_volume: f64,
+}
+
+impl PositionDeltaAccumulator {
+    fn new(symbol: String, is_buy: bool) -> Self {
+        Self {
+            symbol,
+            signed_size: 0.0,
+            first_is_buy: is_buy,
+            mixed_sides: false,
+            price_volume: 0.0,
+            priced_volume: 0.0,
+        }
+    }
+
+    fn add(&mut self, size: f64, is_buy: bool, price: &str) {
+        self.signed_size += if is_buy { size } else { -size };
+        if is_buy != self.first_is_buy {
+            self.mixed_sides = true;
+        }
+        if let Some(price) = parse_positive_finite_number(price) {
+            self.price_volume += price * size;
+            self.priced_volume += size;
+        }
+    }
+
+    fn finish(self) -> ProjectedPositionDelta {
+        let estimated_price = (!self.mixed_sides && self.priced_volume > 0.0)
+            .then(|| self.price_volume / self.priced_volume);
+        ProjectedPositionDelta {
+            symbol: self.symbol,
+            signed_size: self.signed_size,
+            estimated_price,
+        }
+    }
+}
+
+/// The exchange commits orders before the place ack returns, so the
+/// websocket can deliver the confirmed open order while the Placing
+/// indicator is still alive. Mirrors the chart-overlay dedup so the Orders
+/// tab never shows the same order twice.
+fn placing_indicator_matches_confirmed_order(
+    indicator: &PendingOrderIndicator,
+    open_orders: &[OpenOrder],
+) -> bool {
+    let Some(size) = parse_positive_finite_number(&indicator.size) else {
+        return false;
+    };
+    let Some(price) = parse_positive_finite_number(&indicator.price) else {
+        return false;
+    };
+    open_orders.iter().any(|order| {
+        order.coin == indicator.symbol
+            && open_order_is_buy(&order.side) == Some(indicator.is_buy)
+            && order
+                .limit_px
+                .parse::<f64>()
+                .is_ok_and(|px| values_match_approx(px, price))
+            && order
+                .sz
+                .parse::<f64>()
+                .is_ok_and(|sz| values_match_approx(sz, size))
+    })
+}
+
+/// Exchange fill timestamps and local indicator creation use different
+/// clocks; tolerate a small skew so a fill that genuinely belongs to an
+/// in-flight order is not ignored. Erring open here only delays the
+/// consumption until the REST ack clears the indicator.
+fn fill_time_covers_indicator(fill_time_ms: u64, created_at_ms: u64) -> bool {
+    fill_time_ms.saturating_add(2_000) >= created_at_ms
 }
 
 fn open_order_is_buy(side: &str) -> Option<bool> {
@@ -450,6 +739,423 @@ mod tests {
                 .active_orders
                 .is_empty()
         );
+    }
+
+    fn add_market_indicator(
+        terminal: &mut TradingTerminal,
+        symbol: &str,
+        is_buy: bool,
+        size: &str,
+    ) {
+        let pending_id = terminal.add_pending_market_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            symbol.to_string(),
+            is_buy,
+            size.to_string(),
+            "100".to_string(),
+        );
+        assert!(pending_id.is_some());
+    }
+
+    #[test]
+    fn optimistic_projections_are_empty_when_setting_disabled() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = false;
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        let cancel_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+        );
+        assert!(cancel_id.is_some());
+
+        assert!(terminal.optimistic_position_deltas().is_empty());
+        assert!(terminal.optimistic_open_order_rows().is_empty());
+        assert_eq!(terminal.optimistic_open_order_row_state(42), None);
+    }
+
+    #[test]
+    fn optimistic_position_deltas_aggregate_market_orders_per_symbol() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        add_market_indicator(&mut terminal, "BTC", true, "2");
+        add_market_indicator(&mut terminal, "BTC", false, "0.5");
+        add_market_indicator(&mut terminal, "ETH", false, "3");
+        // Limit placements and other accounts' orders must not project.
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "10".to_string(),
+            "100".to_string(),
+        );
+        terminal.add_pending_market_order_placement_indicator(
+            "0xdef0000000000000000000000000000000000000".to_string(),
+            "BTC".to_string(),
+            true,
+            "10".to_string(),
+            "100".to_string(),
+        );
+
+        let deltas = terminal.optimistic_position_deltas();
+        assert_eq!(deltas.len(), 2);
+        let btc = deltas.iter().find(|d| d.symbol == "BTC").unwrap();
+        assert!((btc.signed_size - 1.5).abs() < 1e-12);
+        let eth = deltas.iter().find(|d| d.symbol == "ETH").unwrap();
+        assert!((eth.signed_size + 3.0).abs() < 1e-12);
+        assert_eq!(
+            terminal.optimistic_position_delta_for_symbol("BTC"),
+            Some(btc.signed_size)
+        );
+        assert_eq!(terminal.optimistic_position_delta_for_symbol("SOL"), None);
+    }
+
+    #[test]
+    fn optimistic_open_order_rows_include_only_own_limit_placements() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+        terminal.add_pending_order_placement_indicator(
+            "0xdef0000000000000000000000000000000000000".to_string(),
+            "ETH".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+
+        let rows = terminal.optimistic_open_order_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].symbol, "BTC");
+        assert_eq!(rows[0].kind, PendingOrderIndicatorKind::Placing);
+    }
+
+    #[test]
+    fn optimistic_row_state_reports_cancelling_and_modifying() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+        );
+        terminal.add_pending_order_modification_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(43, "B"),
+            "111".to_string(),
+        );
+
+        assert_eq!(
+            terminal.optimistic_open_order_row_state(42),
+            Some(OptimisticOrderRowState::Cancelling)
+        );
+        assert_eq!(
+            terminal.optimistic_open_order_row_state(43),
+            Some(OptimisticOrderRowState::Modifying {
+                price: "111".to_string()
+            })
+        );
+        assert_eq!(terminal.optimistic_open_order_row_state(44), None);
+    }
+
+    fn account_data_with_open_orders(orders: Vec<OpenOrder>) -> crate::account::AccountData {
+        crate::account::AccountData {
+            fetch_scope: Default::default(),
+            request_weight_estimate: 0,
+            account_abstraction: Default::default(),
+            clearinghouse: crate::account::ClearinghouseState {
+                margin_summary: crate::account::MarginSummary {
+                    account_value: "0".to_string(),
+                    total_ntl_pos: "0".to_string(),
+                    total_margin_used: "0".to_string(),
+                },
+                cross_margin_summary: None,
+                cross_maintenance_margin_used: None,
+                withdrawable: "0".to_string(),
+                asset_positions: Vec::new(),
+            },
+            clearinghouses_by_dex: std::collections::HashMap::new(),
+            spot: crate::account::SpotClearinghouseState {
+                balances: Vec::new(),
+                portfolio_margin_enabled: false,
+                portfolio_margin_ratio: None,
+                token_to_available_after_maintenance: None,
+            },
+            open_orders: orders,
+            fills: Vec::new(),
+            funding_history: Vec::new(),
+            fee_rates: crate::account::UserFeeRates::default(),
+            completeness: crate::account::AccountDataCompleteness::default(),
+            fetched_at_ms: 1,
+        }
+    }
+
+    fn user_fill(coin: &str, side: &str, sz: &str, time: u64) -> UserFill {
+        UserFill {
+            coin: coin.to_string(),
+            px: "100".to_string(),
+            sz: sz.to_string(),
+            side: side.to_string(),
+            time,
+            hash: None,
+            tid: None,
+            oid: None,
+            dir: "Open Long".to_string(),
+            closed_pnl: "0".to_string(),
+            fee: "0".to_string(),
+        }
+    }
+
+    fn zero_size_trigger_order(oid: u64) -> OpenOrder {
+        OpenOrder {
+            coin: "BTC".to_string(),
+            side: "A".to_string(),
+            limit_px: "0".to_string(),
+            sz: "0.0".to_string(),
+            oid,
+            timestamp: 1,
+            reduce_only: Some(true),
+            is_trigger: Some(true),
+            order_type: Some("Stop Market".to_string()),
+            tif: None,
+            trigger_px: Some("90".to_string()),
+        }
+    }
+
+    #[test]
+    fn cancel_indicator_created_for_zero_size_trigger_order() {
+        let mut terminal = terminal_with_chart();
+
+        let pending_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &zero_size_trigger_order(42),
+        );
+
+        assert!(pending_id.is_some());
+        assert!(terminal.has_pending_cancel_indicator(42));
+        assert_eq!(terminal.pending_cancel_indicator_oid(pending_id), Some(42));
+    }
+
+    #[test]
+    fn modification_indicator_allows_zero_size_but_requires_valid_price() {
+        let mut terminal = terminal_with_chart();
+
+        let valid_price = terminal.add_pending_order_modification_indicator(
+            TEST_ACCOUNT.to_string(),
+            &zero_size_trigger_order(42),
+            "111".to_string(),
+        );
+        let invalid_price = terminal.add_pending_order_modification_indicator(
+            TEST_ACCOUNT.to_string(),
+            &zero_size_trigger_order(43),
+            "abc".to_string(),
+        );
+
+        assert!(valid_price.is_some());
+        assert_eq!(invalid_price, None);
+        assert_eq!(
+            terminal.pending_modification_price(valid_price),
+            Some("111".to_string())
+        );
+    }
+
+    #[test]
+    fn has_pending_cancel_indicator_is_scoped_to_the_connected_account() {
+        let mut terminal = terminal_with_chart();
+        let cancel_id = terminal.add_pending_order_cancellation_indicator(
+            "0xdef0000000000000000000000000000000000000".to_string(),
+            &open_order(42, "B"),
+        );
+        assert!(cancel_id.is_some());
+
+        assert!(!terminal.has_pending_cancel_indicator(42));
+    }
+
+    #[test]
+    fn placing_rows_are_deduplicated_against_confirmed_open_orders() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        // The confirmed snapshot formats values differently ("100.0" vs
+        // "100"); the dedup must match numerically, not textually.
+        let mut confirmed = open_order(42, "B");
+        confirmed.limit_px = "100.0".to_string();
+        confirmed.sz = "1.0".to_string();
+        terminal.account_data = Some(account_data_with_open_orders(vec![confirmed]));
+
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "2".to_string(),
+            "95".to_string(),
+        );
+
+        let rows = terminal.optimistic_open_order_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].price, "95");
+    }
+
+    #[test]
+    fn row_state_prefers_cancelling_over_modifying_regardless_of_order() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        terminal.add_pending_order_modification_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+            "111".to_string(),
+        );
+        terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+        );
+
+        assert_eq!(
+            terminal.optimistic_open_order_row_state(42),
+            Some(OptimisticOrderRowState::Cancelling)
+        );
+    }
+
+    #[test]
+    fn position_deltas_exclude_spot_symbols() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        terminal.exchange_symbols = vec![crate::api::ExchangeSymbol {
+            key: "PURR/USDC".to_string(),
+            ticker: "PURR".to_string(),
+            category: "spot".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 10_000,
+            collateral_token: None,
+            sz_decimals: 0,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: crate::api::MarketType::Spot,
+            outcome: None,
+        }];
+        add_market_indicator(&mut terminal, "PURR/USDC", true, "100");
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+
+        let deltas = terminal.optimistic_position_deltas();
+        assert_eq!(deltas.len(), 1);
+        assert_eq!(deltas[0].symbol, "BTC");
+    }
+
+    #[test]
+    fn estimated_price_is_size_weighted_and_omitted_for_mixed_sides() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        let add = |terminal: &mut TradingTerminal, is_buy: bool, size: &str, price: &str| {
+            let pending_id = terminal.add_pending_market_order_placement_indicator(
+                TEST_ACCOUNT.to_string(),
+                "BTC".to_string(),
+                is_buy,
+                size.to_string(),
+                price.to_string(),
+            );
+            assert!(pending_id.is_some());
+        };
+        add(&mut terminal, true, "1", "100");
+        add(&mut terminal, true, "3", "200");
+
+        let deltas = terminal.optimistic_position_deltas();
+        assert_eq!(deltas.len(), 1);
+        let estimated = deltas[0].estimated_price.expect("weighted price");
+        assert!((estimated - 175.0).abs() < 1e-9);
+
+        // A netted buy/sell pair has no single meaningful action price.
+        add(&mut terminal, false, "0.5", "150");
+        let deltas = terminal.optimistic_position_deltas();
+        assert_eq!(deltas[0].estimated_price, None);
+    }
+
+    #[test]
+    fn ws_fill_consumes_matching_market_indicator() {
+        let mut terminal = terminal_with_chart();
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+        let created_at_ms = terminal
+            .pending_order_indicators
+            .values()
+            .next()
+            .expect("indicator")
+            .created_at_ms;
+
+        let changed = terminal.consume_pending_market_order_fills(&[user_fill(
+            "BTC",
+            "B",
+            "1",
+            created_at_ms + 50,
+        )]);
+
+        assert!(changed);
+        assert!(terminal.pending_order_indicators.is_empty());
+        let chart = &terminal.charts.get(&1).unwrap().chart;
+        assert!(!chart.hud_order_animation_active());
+    }
+
+    #[test]
+    fn ws_partial_fill_shrinks_market_indicator() {
+        let mut terminal = terminal_with_chart();
+        terminal.optimistic_account_updates = true;
+        add_market_indicator(&mut terminal, "BTC", true, "2");
+        let created_at_ms = terminal
+            .pending_order_indicators
+            .values()
+            .next()
+            .expect("indicator")
+            .created_at_ms;
+
+        let changed = terminal.consume_pending_market_order_fills(&[user_fill(
+            "BTC",
+            "B",
+            "0.5",
+            created_at_ms + 50,
+        )]);
+
+        assert!(changed);
+        let remaining = terminal
+            .optimistic_position_delta_for_symbol("BTC")
+            .expect("delta");
+        assert!((remaining - 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ws_fill_ignores_mismatched_side_symbol_and_stale_fills() {
+        let mut terminal = terminal_with_chart();
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+        let created_at_ms = terminal
+            .pending_order_indicators
+            .values()
+            .next()
+            .expect("indicator")
+            .created_at_ms;
+
+        let changed = terminal.consume_pending_market_order_fills(&[
+            user_fill("BTC", "A", "1", created_at_ms + 50),
+            user_fill("ETH", "B", "1", created_at_ms + 50),
+            user_fill("BTC", "B", "1", created_at_ms.saturating_sub(10_000)),
+        ]);
+
+        assert!(!changed);
+        assert_eq!(terminal.pending_order_indicators.len(), 1);
     }
 
     #[test]

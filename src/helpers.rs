@@ -12,7 +12,7 @@ pub use formatting::{
     invalid_data_placeholder, normalize_two_decimal_display_value, not_available_placeholder,
     parse_finite_json_number, parse_finite_number, parse_number, parse_positive_finite_number,
     parse_positive_number, positive_finite_value, response_excerpt, response_snippet, text_excerpt,
-    trim_decimal_zeros,
+    trim_decimal_zeros, values_match_approx,
 };
 pub use order_book::{
     BookRowData, aggregate_levels, book_row, book_tick_options, clickable_book_row,

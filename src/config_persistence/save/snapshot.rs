@@ -113,6 +113,7 @@ impl TradingTerminal {
             liquidation_alerts_enabled: layout_snapshot.liquidation_alerts_enabled,
             liquidation_alert_threshold: layout_snapshot.liquidation_alert_threshold,
             market_slippage_pct: layout_snapshot.market_slippage_pct,
+            optimistic_account_updates: self.optimistic_account_updates,
             tracked_trade_alerts_enabled: layout_snapshot.tracked_trade_alerts_enabled,
             tracked_trade_aggregation_enabled: layout_snapshot.tracked_trade_aggregation_enabled,
             liquidation_feed_aggregation_enabled: layout_snapshot

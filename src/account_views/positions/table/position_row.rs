@@ -81,13 +81,37 @@ impl TradingTerminal {
             position_symbol_button(&pos.coin, self.position_row_symbol_label(&pos.coin), theme);
         let upnl_cell = position_upnl_cell(&pos.coin, pnl_displays.upnl, pnl_color);
 
+        // Optimistic account updates: annotate the size with the projected
+        // value while market orders for this symbol are in flight. A position
+        // whose own size failed to parse has no trustworthy baseline, so it
+        // gets no projection.
+        let projected_label = data.szi.and_then(|szi| {
+            self.optimistic_position_delta_for_symbol(&pos.coin)
+                .map(|delta| {
+                    format!(
+                        "{size_str} \u{2192} {}",
+                        self.projected_position_size_label(&pos.coin, szi, delta, number_mode)
+                    )
+                })
+        });
+        let size_cell: Element<'a, Message> = match projected_label {
+            Some(label) => text(label)
+                .size(12)
+                .font(crate::app_fonts::monospace_font())
+                .color(theme.palette().primary)
+                .width(Fill)
+                .into(),
+            None => text(size_str)
+                .size(12)
+                .font(crate::app_fonts::monospace_font())
+                .width(Fill)
+                .into(),
+        };
+
         let mut row_content = row![
             container(symbol_btn).width(Fill),
             text(side).size(12).color(side_color).width(Fill),
-            text(size_str)
-                .size(12)
-                .font(crate::app_fonts::monospace_font())
-                .width(Fill),
+            size_cell,
             text(entry_str)
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
@@ -165,6 +189,30 @@ impl TradingTerminal {
                 }
             })
             .into()
+    }
+
+    /// Projected size for an in-flight market-order delta, with the direction
+    /// made explicit whenever it differs from the current side: an oversized
+    /// opposite-side order flips the position, and rendering only the
+    /// magnitude would show "1 \u{2192} 1" for a long reversed into a short.
+    fn projected_position_size_label(
+        &self,
+        coin: &str,
+        szi: f64,
+        delta: f64,
+        number_mode: PositionNumberMode,
+    ) -> String {
+        const FLAT_EPSILON: f64 = 1e-12;
+        let projected = szi + delta;
+        let size_label = self.display_position_size(coin, projected.abs(), number_mode);
+        if projected.abs() <= FLAT_EPSILON {
+            return "0".to_string();
+        }
+        if szi.abs() > FLAT_EPSILON && projected.signum() != szi.signum() {
+            let side = if projected > 0.0 { "Long" } else { "Short" };
+            return format!("{size_label} ({side})");
+        }
+        size_label
     }
 
     fn display_position_size(

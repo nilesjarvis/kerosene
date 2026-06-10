@@ -61,6 +61,7 @@ impl TradingTerminal {
             return Task::none();
         }
         self.account_loading = false;
+        let followup_pending = std::mem::take(&mut self.account_refresh_followup_pending);
         match result {
             Ok(mut data) => {
                 self.account_refresh_backoff_until_ms = None;
@@ -80,6 +81,14 @@ impl TradingTerminal {
                 self.sync_all_chart_overlays();
                 let chase_task = self.reconcile_chase_after_account_refresh();
                 self.reconcile_twap_fills_from_account();
+                // A refresh was requested while this fetch was in flight, so
+                // this snapshot predates whatever prompted it; run the queued
+                // follow-up now.
+                let followup_task = if followup_pending {
+                    self.force_refresh_account_data_for_reconciliation(address.clone())
+                } else {
+                    Task::none()
+                };
 
                 let income_pane_open = self
                     .panes
@@ -91,9 +100,9 @@ impl TradingTerminal {
                     let income_task = Task::perform(fetch_income_data(address.clone()), move |r| {
                         Message::IncomeLoaded(address.clone(), Box::new(r))
                     });
-                    return Task::batch([chase_task, income_task]);
+                    return Task::batch([chase_task, income_task, followup_task]);
                 }
-                return chase_task;
+                return Task::batch([chase_task, followup_task]);
             }
             Err(e) => {
                 if Self::account_refresh_rate_limited(&e) {
@@ -111,9 +120,16 @@ impl TradingTerminal {
             self.account_error = Some(Self::account_refresh_backoff_message(remaining_ms));
             return Task::none();
         }
-        if !self.account_loading
-            && let Some(addr) = &self.connected_address
-        {
+        if let Some(addr) = &self.connected_address {
+            if self.account_loading {
+                // The fetch already in flight predates whatever prompted this
+                // refresh (e.g. an order ack), so its snapshot won't reflect
+                // it. Queue one follow-up instead of silently dropping the
+                // request — otherwise a confirmed order can vanish from the
+                // Orders tab until the next periodic refresh.
+                self.account_refresh_followup_pending = true;
+                return Task::none();
+            }
             return self.force_refresh_account_data_for_reconciliation(addr.clone());
         }
         Task::none()
@@ -253,5 +269,42 @@ mod tests {
             .asset_positions;
         assert_eq!(positions.len(), 1);
         assert_eq!(positions[0].position.coin, "HYPE");
+    }
+
+    #[test]
+    fn refresh_requested_mid_fetch_is_queued_and_runs_after_load() {
+        let mut terminal = TradingTerminal::boot().0;
+        let address = "0xabc0000000000000000000000000000000000000".to_string();
+        terminal.connected_address = Some(address.clone());
+        terminal.account_loading = true;
+
+        // The in-flight fetch predates this request (e.g. an order ack), so
+        // it must be queued instead of silently dropped.
+        let _task = terminal.refresh_account_data();
+        assert!(terminal.account_refresh_followup_pending);
+
+        let _task = terminal
+            .apply_account_data_loaded(address.clone(), Ok(account_data_with_position("HYPE")));
+
+        // The queued follow-up fires as soon as the stale snapshot lands.
+        assert!(!terminal.account_refresh_followup_pending);
+        assert!(terminal.account_loading);
+    }
+
+    #[test]
+    fn refresh_without_in_flight_fetch_is_not_queued() {
+        let mut terminal = TradingTerminal::boot().0;
+        let address = "0xabc0000000000000000000000000000000000000".to_string();
+        terminal.connected_address = Some(address.clone());
+        terminal.account_loading = false;
+
+        let _task = terminal.refresh_account_data();
+
+        assert!(!terminal.account_refresh_followup_pending);
+        assert!(terminal.account_loading);
+
+        let _task = terminal
+            .apply_account_data_loaded(address.clone(), Ok(account_data_with_position("HYPE")));
+        assert!(!terminal.account_loading);
     }
 }

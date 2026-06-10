@@ -38,3 +38,25 @@ fn order_quantity_denomination_round_trips_and_legacy_defaults_coin() {
         value_from_json(legacy, "legacy config should deserialize");
     assert!(!decoded_legacy.order_quantity_is_usd);
 }
+
+#[test]
+fn optimistic_account_updates_round_trips_and_legacy_defaults_off() {
+    let config = KeroseneConfig {
+        optimistic_account_updates: true,
+        ..KeroseneConfig::default()
+    };
+
+    let json = json_string(&config, "config should serialize");
+    let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert!(decoded.optimistic_account_updates);
+
+    let mut legacy = default_config_value();
+    remove_field(
+        &mut legacy,
+        "optimistic_account_updates",
+        "config should serialize to object",
+    );
+    let decoded_legacy: KeroseneConfig =
+        value_from_json(legacy, "legacy config should deserialize");
+    assert!(!decoded_legacy.optimistic_account_updates);
+}

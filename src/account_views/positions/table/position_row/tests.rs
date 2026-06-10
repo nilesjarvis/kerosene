@@ -94,3 +94,37 @@ fn compact_position_size_trims_unneeded_zeroes() {
     assert_eq!(format_position_compact_number(12_500.0), "13k");
     assert_eq!(format_position_compact_number(532_023.0), "500k");
 }
+
+#[test]
+fn projected_size_label_keeps_magnitude_for_same_side_changes() {
+    let terminal = crate::app_state::TradingTerminal::boot().0;
+
+    assert_eq!(
+        terminal.projected_position_size_label("BTC", 1.0, 1.0, PositionNumberMode::Compact),
+        "2"
+    );
+    assert_eq!(
+        terminal.projected_position_size_label("BTC", 2.0, -0.5, PositionNumberMode::Compact),
+        "1.5"
+    );
+}
+
+#[test]
+fn projected_size_label_marks_flat_and_flipped_positions() {
+    let terminal = crate::app_state::TradingTerminal::boot().0;
+
+    assert_eq!(
+        terminal.projected_position_size_label("BTC", 1.0, -1.0, PositionNumberMode::Compact),
+        "0"
+    );
+    // An oversized opposite-side order reverses the position; magnitude alone
+    // would render "1" for both sides of the flip.
+    assert_eq!(
+        terminal.projected_position_size_label("BTC", 1.0, -2.0, PositionNumberMode::Compact),
+        "1 (Short)"
+    );
+    assert_eq!(
+        terminal.projected_position_size_label("BTC", -1.0, 3.0, PositionNumberMode::Compact),
+        "2 (Long)"
+    );
+}

@@ -293,6 +293,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::DisplayDenominationChanged(_)
         | Message::MarketSlippageInputChanged(_)
         | Message::SaveMarketSlippage
+        | Message::ToggleOptimisticAccountUpdates(_)
         | Message::StartRecordingHotkey(_)
         | Message::ClearHotkey(_)
         | Message::KeyboardEvent(_, _, _)

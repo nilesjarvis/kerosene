@@ -18,6 +18,7 @@ impl TradingTerminal {
                 self.pending_leverage_update = None;
                 self.order_leverage_dropdown_open = false;
                 self.account_loading = false;
+                self.account_refresh_followup_pending = false;
                 self.account_reconciliation_required = false;
                 self.account_error = Some("Invalid wallet address".to_string());
                 self.portfolio.loading = false;
@@ -83,6 +84,7 @@ impl TradingTerminal {
             instance.chart.clear_hud_armed();
         }
         self.account_loading = true;
+        self.account_refresh_followup_pending = false;
         self.account_reconciliation_required = false;
         self.account_error = None;
         self.account_refresh_backoff_until_ms = None;
@@ -147,6 +149,7 @@ impl TradingTerminal {
         self.pending_leverage_update = None;
         self.order_leverage_dropdown_open = false;
         self.account_loading = false;
+        self.account_refresh_followup_pending = false;
         self.account_reconciliation_required = false;
         self.account_error = None;
         self.account_refresh_backoff_until_ms = None;

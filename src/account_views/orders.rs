@@ -41,12 +41,17 @@ impl TradingTerminal {
                     .collect()
             })
             .unwrap_or_default();
+        let placing_rows: Vec<_> = self
+            .optimistic_open_order_rows()
+            .into_iter()
+            .filter(|indicator| !self.symbol_key_is_hidden(&indicator.symbol))
+            .collect();
         let warning = self.account_data.as_ref().and_then(|data| {
             data.completeness
                 .section_warning(AccountDataSection::OpenOrders)
         });
 
-        if orders.is_empty() {
+        if orders.is_empty() && placing_rows.is_empty() {
             let msg = if let Some(warning) = warning {
                 warning
             } else if self.connected_address.is_some() {
@@ -59,6 +64,9 @@ impl TradingTerminal {
 
         let rows = orders.iter().fold(Column::new().spacing(2), |col, order| {
             col.push(self.view_open_order_row(order, can_cancel, &theme))
+        });
+        let rows = placing_rows.iter().fold(rows, |col, indicator| {
+            col.push(self.view_placing_order_row(indicator, &theme))
         });
 
         let mut content = column![header].spacing(4);

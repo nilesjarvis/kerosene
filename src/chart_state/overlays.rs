@@ -2,18 +2,12 @@ use super::ChartId;
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart::{OrderOverlay, OrderOverlayPendingState, PositionOverlay};
-use crate::helpers::positive_finite_value;
+use crate::helpers::{parse_positive_finite_number, positive_finite_value, values_match_approx};
 use crate::order_pending_indicators::PendingOrderIndicatorKind;
 
 mod trades;
 
 use self::trades::trade_markers_for_symbol;
-
-/// Wire strings for the same price/size can format differently (e.g. "100"
-/// vs "100.0"), so compare parsed values with a small relative tolerance.
-fn order_values_match(a: f64, b: f64) -> bool {
-    (a - b).abs() <= a.abs().max(b.abs()) * 1e-9
-}
 
 impl TradingTerminal {
     /// Update position and order overlays for a specific chart.
@@ -130,15 +124,8 @@ impl TradingTerminal {
                 continue;
             }
 
-            let Some(limit_px) = pending.price.parse::<f64>().ok() else {
-                continue;
-            };
-            let Some(sz) = pending.size.parse::<f64>().ok() else {
-                continue;
-            };
-            if !limit_px.is_finite() || limit_px <= 0.0 || !sz.is_finite() || sz <= 0.0 {
-                continue;
-            }
+            let limit_px = parse_positive_finite_number(&pending.price);
+            let sz = parse_positive_finite_number(&pending.size);
 
             let pending_state = Some(match pending.kind {
                 PendingOrderIndicatorKind::Placing => OrderOverlayPendingState::Placing,
@@ -147,10 +134,17 @@ impl TradingTerminal {
                 PendingOrderIndicatorKind::MarketPlacing => continue,
             });
             if let Some(oid) = pending.oid {
+                // Decorating an existing line needs no price/size of its own;
+                // TP/SL trigger orders carry sz "0.0" yet must still show a
+                // Cancelling state.
                 if let Some(existing) = order_overlays.iter_mut().find(|order| order.oid == oid) {
                     if pending.kind == PendingOrderIndicatorKind::Modifying {
-                        existing.limit_px = limit_px;
-                        existing.sz = sz;
+                        if let Some(limit_px) = limit_px {
+                            existing.limit_px = limit_px;
+                        }
+                        if let Some(sz) = sz {
+                            existing.sz = sz;
+                        }
                         existing.is_buy = pending.is_buy;
                     }
                     existing.pending_state = pending_state;
@@ -163,6 +157,12 @@ impl TradingTerminal {
                 continue;
             }
 
+            // A standalone Placing line is drawn from the indicator's own
+            // values, so both must be well-formed.
+            let (Some(limit_px), Some(sz)) = (limit_px, sz) else {
+                continue;
+            };
+
             // The exchange commits orders before the place ack returns, so the
             // websocket can deliver the confirmed order while the Placing
             // indicator is still alive. Suppress the indicator once a matching
@@ -170,8 +170,8 @@ impl TradingTerminal {
             let confirmed_order_arrived = order_overlays.iter().any(|order| {
                 order.pending_state.is_none()
                     && order.is_buy == pending.is_buy
-                    && order_values_match(order.limit_px, limit_px)
-                    && order_values_match(order.sz, sz)
+                    && values_match_approx(order.limit_px, limit_px)
+                    && values_match_approx(order.sz, sz)
             });
             if confirmed_order_arrived {
                 continue;
@@ -458,6 +458,26 @@ mod tests {
         let order = open_order(42, "B", "100", "1");
         set_open_orders(&mut terminal, vec![order.clone()]);
         terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
+
+        let orders = chart_orders(&terminal);
+        assert_eq!(orders.len(), 1);
+        assert_eq!(orders[0].oid, 42);
+        assert_eq!(
+            orders[0].pending_state,
+            Some(OrderOverlayPendingState::Cancelling)
+        );
+    }
+
+    #[test]
+    fn cancelling_indicator_decorates_zero_size_trigger_order_line() {
+        let mut terminal = terminal_with_btc_chart();
+        // Position-tied TP/SL trigger orders carry sz "0.0"; the decoration
+        // needs no price/size of its own.
+        let order = open_order(42, "A", "100", "0.0");
+        set_open_orders(&mut terminal, vec![order.clone()]);
+        let pending_id =
+            terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
+        assert!(pending_id.is_some());
 
         let orders = chart_orders(&terminal);
         assert_eq!(orders.len(), 1);

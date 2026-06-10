@@ -46,7 +46,13 @@ impl TradingTerminal {
         self.connected_address = None;
         self.account_data = None;
         self.account_loading = false;
+        self.account_refresh_followup_pending = false;
         self.account_error = None;
+        // Mirror connect/disconnect: in-flight order decorations belong to
+        // the cleared account and must not outlive it (the agent key inside a
+        // pending move context in particular).
+        self.pending_order_indicators.clear();
+        self.pending_move_order_contexts.clear();
         self.chase_orders.clear();
         self.selected_chase_id = None;
         self.twap_orders.clear();
@@ -129,6 +135,7 @@ impl TradingTerminal {
         self.liquidation_alert_input = defaults.liquidation_alert_threshold.to_string();
         self.market_slippage_pct = defaults.market_slippage_pct;
         self.market_slippage_input = defaults.market_slippage_pct.to_string();
+        self.optimistic_account_updates = defaults.optimistic_account_updates;
         self.tracked_trade_alerts_enabled = defaults.tracked_trade_alerts_enabled;
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;
@@ -172,5 +179,37 @@ impl TradingTerminal {
         }
         self.secret_store_status = Some((message.clone(), false));
         self.push_toast(message, false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app_state::TradingTerminal;
+    use crate::config::ClearConfigSummary;
+
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn clearing_configs_clears_in_flight_order_decorations() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        let pending_id = terminal.add_pending_market_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+        assert!(pending_id.is_some());
+
+        terminal.apply_config_clear_to_runtime(ClearConfigSummary {
+            files_removed: 0,
+            keychain_entries_cleared: 0,
+            warnings: Vec::new(),
+        });
+
+        assert!(terminal.pending_order_indicators.is_empty());
+        assert!(terminal.pending_move_order_contexts.is_empty());
+        assert!(!terminal.account_refresh_followup_pending);
     }
 }

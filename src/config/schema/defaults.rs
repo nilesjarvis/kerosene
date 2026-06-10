@@ -327,6 +327,7 @@ impl Default for KeroseneConfig {
             liquidation_alerts_enabled: false,
             liquidation_alert_threshold: default_liquidation_alert_threshold(),
             market_slippage_pct: default_market_slippage_pct(),
+            optimistic_account_updates: false,
             tracked_trade_alerts_enabled: false,
             tracked_trade_aggregation_enabled: false,
             liquidation_feed_aggregation_enabled: false,

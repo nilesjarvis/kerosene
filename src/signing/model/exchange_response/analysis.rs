@@ -25,9 +25,10 @@ impl ExchangeResponse {
         if data.statuses.is_empty() {
             return "OK (no statuses)".to_string();
         }
+        let response_type = inner.response_type.as_str();
         data.statuses
             .iter()
-            .map(status_summary)
+            .map(|status| status_summary(status, response_type))
             .collect::<Vec<_>>()
             .join("; ")
     }
@@ -178,7 +179,7 @@ fn raw_exchange_response_summary(value: &Value) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-fn status_summary(st: &Value) -> String {
+fn status_summary(st: &Value, response_type: &str) -> String {
     if let Some(err) = st.get("error").and_then(|v| v.as_str()) {
         return format!("Error: {err}");
     }
@@ -196,7 +197,15 @@ fn status_summary(st: &Value) -> String {
         return format!("Resting (oid {oid})");
     }
     if st.as_str() == Some("success") {
-        return "Cancelled".to_string();
+        // A bare "success" status only means "cancelled" for cancel actions;
+        // modify/order acks of the same shape must not report a cancel (the
+        // result classifier keys ExecutionOutcomeKind::Cancelled on this
+        // string).
+        return if response_type == "cancel" {
+            "Cancelled".to_string()
+        } else {
+            "Success".to_string()
+        };
     }
     format!("{st}")
 }

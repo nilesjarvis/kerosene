@@ -5,10 +5,12 @@ mod orders;
 use fills::apply_fills_update;
 use orders::preserve_open_order_reduce_only;
 
-use crate::account::normalize_dex_open_order_coins;
+use crate::account::{UserFill, normalize_dex_open_order_coins};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::ws::WsUserData;
+
+use std::collections::HashSet;
 
 use iced::Task;
 
@@ -64,6 +66,7 @@ impl TradingTerminal {
         let mut positions_changed = false;
         let mut mids_task = Task::none();
         let mut fill_toast_msgs: Vec<String> = Vec::new();
+        let mut fresh_fills: Vec<UserFill> = Vec::new();
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
         let market_universe = self.market_universe.clone();
@@ -109,6 +112,15 @@ impl TradingTerminal {
                     orders_changed = true;
                 }
                 WsUserData::Fills { fills, is_snapshot } => {
+                    if !is_snapshot {
+                        let seen: HashSet<String> =
+                            data.fills.iter().map(UserFill::dedup_key).collect();
+                        fresh_fills = fills
+                            .iter()
+                            .filter(|fill| !seen.contains(&fill.dedup_key()))
+                            .cloned()
+                            .collect();
+                    }
                     fill_toast_msgs =
                         apply_fills_update(&mut data.fills, fills, is_snapshot, is_hidden);
                     fills_changed = true;
@@ -147,6 +159,9 @@ impl TradingTerminal {
             }
         }
 
+        if !fresh_fills.is_empty() {
+            self.consume_pending_market_order_fills(&fresh_fills);
+        }
         for msg in fill_toast_msgs {
             self.push_toast(msg, false);
         }

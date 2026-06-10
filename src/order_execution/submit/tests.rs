@@ -146,3 +146,54 @@ fn execute_order_rejects_while_order_action_pending() {
     assert_eq!(status, "Wait for the pending order action to finish");
     assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
 }
+
+fn perp_symbol(key: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "crypto".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 0,
+        collateral_token: None,
+        sz_decimals: 4,
+        max_leverage: 50,
+        only_isolated: false,
+        market_type: MarketType::Perp,
+        outcome: None,
+    }
+}
+
+#[test]
+fn ioc_limit_orders_project_like_market_orders() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.wallet_key_input = sensitive_string("agent-key");
+    terminal.active_symbol = "BTC".to_string();
+    terminal.exchange_symbols = vec![perp_symbol("BTC")];
+    terminal.order_kind = OrderKind::LimitIoc;
+    terminal.order_price = "100".to_string();
+    terminal.order_quantity = "1".to_string();
+    terminal.order_quantity_is_usd = false;
+    terminal.order_reduce_only = false;
+    terminal.all_mids.insert("BTC".to_string(), 100.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+    let symbol = first_symbol_or_panic(&terminal).clone();
+    let prepared = prepared_order_or_panic(&terminal, &symbol, true);
+    let _task = terminal.submit_prepared_ticket_order("agent-key".to_string(), prepared);
+
+    // IOC orders are taker orders that never rest: they must project a
+    // position delta (MarketPlacing), not a provisional resting row.
+    let kinds: Vec<_> = terminal
+        .pending_order_indicators
+        .values()
+        .map(|indicator| indicator.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![crate::order_pending_indicators::PendingOrderIndicatorKind::MarketPlacing]
+    );
+}

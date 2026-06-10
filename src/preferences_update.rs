@@ -124,6 +124,12 @@ impl TradingTerminal {
                 self.toast_animations_enabled = enabled;
                 self.persist_config();
             }
+            Message::ToggleOptimisticAccountUpdates(enabled)
+                if self.optimistic_account_updates != enabled =>
+            {
+                self.optimistic_account_updates = enabled;
+                self.persist_config();
+            }
             Message::ChartHudReadoutToggled(element, enabled)
                 if self.chart_hud_readout.enabled(element) != enabled =>
             {

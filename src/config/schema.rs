@@ -297,6 +297,10 @@ pub struct KeroseneConfig {
     /// Percent slippage used to derive IOC market-order limit prices.
     #[serde(default = "default_market_slippage_pct")]
     pub market_slippage_pct: f64,
+    /// Project in-flight order actions into the Orders and Positions tabs
+    /// before the exchange confirms them.
+    #[serde(default)]
+    pub optimistic_account_updates: bool,
     #[serde(default)]
     pub tracked_trade_alerts_enabled: bool,
     #[serde(default)]

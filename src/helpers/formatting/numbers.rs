@@ -117,6 +117,12 @@ pub fn parse_positive_finite_number(input: &str) -> Option<f64> {
     parse_finite_number(input).filter(|value| *value > 0.0)
 }
 
+/// Wire strings for the same price/size can format differently (e.g. "100"
+/// vs "100.0"), so compare parsed values with a small relative tolerance.
+pub fn values_match_approx(a: f64, b: f64) -> bool {
+    (a - b).abs() <= a.abs().max(b.abs()) * 1e-9
+}
+
 pub fn invalid_data_placeholder() -> String {
     "Invalid data".to_string()
 }

@@ -4,7 +4,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
 use iced::Element;
-use iced::widget::{Column, button, column, pick_list, row, rule, text, text_input};
+use iced::widget::{Column, button, checkbox, column, pick_list, row, rule, text, text_input};
 
 impl TradingTerminal {
     pub(crate) fn view_settings_risk_section(&self) -> Element<'_, Message> {
@@ -18,6 +18,8 @@ impl TradingTerminal {
             .push(self.view_display_denomination_picker())
             .push(rule::horizontal(1))
             .push(self.view_market_slippage_input())
+            .push(rule::horizontal(1))
+            .push(self.view_optimistic_updates_toggle())
             .push(rule::horizontal(1))
             .push(self.view_muted_ticker_input())
             .push(rule::horizontal(1))
@@ -102,6 +104,31 @@ impl TradingTerminal {
         }
 
         content.into()
+    }
+
+    fn view_optimistic_updates_toggle(&self) -> Element<'_, Message> {
+        let current_theme = self.theme();
+
+        column![
+            text("Optimistic Account Updates")
+                .size(14)
+                .color(current_theme.palette().text),
+            checkbox(self.optimistic_account_updates)
+                .label("Project in-flight orders into the Orders and Positions tabs")
+                .on_toggle(Message::ToggleOptimisticAccountUpdates)
+                .size(12)
+                .spacing(8)
+                .text_size(12),
+            text(concat!(
+                "Shows placements, cancels, moves, and market-order position changes ",
+                "before the exchange confirms them, marked as pending. ",
+                "Exchange data always wins; TWAP, Chase, and NUKE orders are not projected."
+            ))
+            .size(11)
+            .color(current_theme.extended_palette().background.weak.text),
+        ]
+        .spacing(8)
+        .into()
     }
 
     fn view_market_slippage_input(&self) -> Element<'_, Message> {

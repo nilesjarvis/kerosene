@@ -14,6 +14,7 @@ impl TradingTerminal {
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
         let confirmed_price = self.pending_modification_price(pending_indicator_id);
+        let response_oid = result.as_ref().ok().and_then(|resp| resp.order_oid());
         self.pending_move_order_contexts.remove(&oid);
         self.clear_pending_order_indicator(pending_indicator_id);
         if self.connected_address.as_deref() != Some(account_address.as_str()) {
@@ -35,6 +36,13 @@ impl TradingTerminal {
                 .and_then(|data| data.open_orders.iter_mut().find(|order| order.oid == oid))
         {
             order.limit_px = price;
+            // Hyperliquid modifies have kept the oid stable so far, but adopt
+            // the oid echoed in the response in case a modify ever re-keys the
+            // order (parity with the chase modify handler) — a follow-up
+            // cancel or move must target the live order, not a dead oid.
+            if let Some(response_oid) = response_oid {
+                order.oid = response_oid;
+            }
         }
         self.sync_all_chart_orders();
         match outcome.kind {
@@ -111,12 +119,16 @@ mod tests {
     }
 
     fn resting_response() -> ExchangeResponse {
+        resting_response_with_oid(42)
+    }
+
+    fn resting_response_with_oid(oid: u64) -> ExchangeResponse {
         serde_json::from_value(serde_json::json!({
             "status": "ok",
             "response": {
                 "type": "order",
                 "data": {
-                    "statuses": [{ "resting": { "oid": 42_u64 } }]
+                    "statuses": [{ "resting": { "oid": oid } }]
                 }
             }
         }))
@@ -158,6 +170,25 @@ mod tests {
         let chart = &terminal.charts.get(&1).expect("chart").chart;
         assert_eq!(chart.active_orders.len(), 1);
         assert_eq!(chart.active_orders[0].limit_px, 111.0);
+    }
+
+    #[test]
+    fn move_result_success_adopts_resting_oid_from_response() {
+        let (mut terminal, pending_id) = terminal_with_pending_move();
+
+        // If the exchange ever re-keys an order on modify, follow-up cancels
+        // and moves must target the oid from the response, not a dead one
+        // (parity with the chase modify handler).
+        let _task = terminal.handle_move_order_modify_result(
+            TEST_ACCOUNT.to_string(),
+            42,
+            pending_id,
+            Ok(resting_response_with_oid(77)),
+        );
+
+        let data = terminal.account_data.as_ref().expect("account data");
+        assert_eq!(data.open_orders[0].oid, 77);
+        assert_eq!(data.open_orders[0].limit_px, "111");
     }
 
     #[test]
