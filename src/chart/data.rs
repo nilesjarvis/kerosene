@@ -76,8 +76,11 @@ impl CandlestickChart {
             hud_order_animation: None,
             pending_market_order_loading: Vec::new(),
             hud_armed: false,
+            hud_pulse_phase: 0.0,
             hud_last_activity_ms: None,
             hud_hovering: false,
+            hud_idle_warning_sounded: false,
+            hud_feed: Vec::new(),
             obscure_position_prices: false,
             hide_positions_and_orders: false,
             hover_order_cancel_oid: None,
@@ -144,8 +147,11 @@ impl CandlestickChart {
             hud_order_animation: None,
             pending_market_order_loading: Vec::new(),
             hud_armed: false,
+            hud_pulse_phase: 0.0,
             hud_last_activity_ms: None,
             hud_hovering: false,
+            hud_idle_warning_sounded: false,
+            hud_feed: Vec::new(),
             obscure_position_prices: self.obscure_position_prices,
             hide_positions_and_orders: self.hide_positions_and_orders,
             hover_order_cancel_oid: None,
@@ -190,6 +196,9 @@ impl CandlestickChart {
     pub(crate) fn set_symbol_label(&mut self, symbol_label: String) {
         if self.symbol_label != symbol_label {
             self.symbol_label = symbol_label;
+            // Feed rows carry no symbol; shots fired on the old instrument
+            // must not linger on the new one.
+            self.hud_feed.clear();
             self.candle_cache.clear();
         }
     }

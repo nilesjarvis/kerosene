@@ -271,6 +271,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ImportChartHudOrderSound
         | Message::ChartHudOrderSoundImported(_)
         | Message::TestChartHudOrderSound
+        | Message::ToggleChartHudUiSounds(_)
         | Message::ReadDataProviderChanged(_)
         | Message::AlfredPopupScaleChanged(_)
         | Message::DisplayFontChanged(_)
@@ -439,6 +440,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartPriceFlashTick
         | Message::ChartHudOrderAnimationTick
         | Message::ChartHudArmToggled(_, _)
+        | Message::ChartHudUiSound(_)
         | Message::ChartHudSafetyTick
         | Message::ChartHoverStateChanged(_, _, _, _, _)
         | Message::ChartOrderCancelHoverAnimationTick

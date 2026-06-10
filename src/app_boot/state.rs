@@ -97,6 +97,7 @@ impl TradingTerminal {
             chart_hud_order_sound_volume: config::normalize_chart_hud_order_sound_volume(
                 cfg.chart_hud_order_sound_volume,
             ),
+            chart_hud_ui_sounds: cfg.chart_hud_ui_sounds,
             chart_hud_readout: cfg.chart_hud_readout,
             alfred_popup_scale: cfg.alfred_popup_scale,
             read_data_provider: cfg.read_data_provider,

@@ -108,6 +108,7 @@ impl TradingTerminal {
         self.chart_hud_order_sound = defaults.chart_hud_order_sound;
         self.chart_hud_order_sound_file = defaults.chart_hud_order_sound_file;
         self.chart_hud_order_sound_volume = defaults.chart_hud_order_sound_volume;
+        self.chart_hud_ui_sounds = defaults.chart_hud_ui_sounds;
         self.chart_hud_readout = defaults.chart_hud_readout;
         self.alfred_popup_scale = defaults.alfred_popup_scale;
         self.read_data_provider = defaults.read_data_provider;

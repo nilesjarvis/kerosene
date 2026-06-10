@@ -141,10 +141,16 @@ pub struct CandlestickChart {
     pub(in crate::chart) pending_market_order_loading: Vec<MarketOrderLoadingOverlay>,
     /// True when HUD chart trading clicks are allowed to submit orders.
     pub(crate) hud_armed: bool,
+    /// Looping 0..1 phase driving armed HUD pulse effects between animation ticks.
+    pub(crate) hud_pulse_phase: f32,
     /// Last time the armed HUD chart was used or hovered.
     pub(crate) hud_last_activity_ms: Option<u64>,
     /// Whether the cursor is currently hovering over the HUD chart plot.
     pub(crate) hud_hovering: bool,
+    /// True after the once-per-arm-session idle auto-disarm warning pip played.
+    pub(crate) hud_idle_warning_sounded: bool,
+    /// Recent HUD shots shown in the top-right battle feed (label, side, time).
+    pub(crate) hud_feed: Vec<HudFeedEntry>,
     /// Whether position entry and liquidation labels should be redacted while rendering.
     pub(crate) obscure_position_prices: bool,
     /// Whether active position/liquidation and order overlays should be hidden while rendering.
@@ -208,6 +214,14 @@ pub enum OrderOverlayPendingState {
     Placing,
     Cancelling,
     Modifying,
+}
+
+/// One row of the HUD battle feed: a recently fired chart order.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct HudFeedEntry {
+    pub(crate) label: String,
+    pub(crate) is_buy: bool,
+    pub(crate) added_at_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -28,6 +28,48 @@ pub enum SoundKind {
     Error,
     Interest,
     HudOrder,
+    HudModeLimit,
+    HudModeMarket,
+    HudSideLong,
+    HudSideShort,
+    HudArm,
+    HudDisarm,
+    HudAutoDisarm,
+    HudIdleWarning,
+    HudSizeUp,
+    HudSizeDown,
+}
+
+/// Interface click played when a HUD game-mode control changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HudUiSound {
+    ModeLimit,
+    ModeMarket,
+    SideLong,
+    SideShort,
+    Arm,
+    Disarm,
+    AutoDisarm,
+    IdleWarning,
+    SizeUp,
+    SizeDown,
+}
+
+impl HudUiSound {
+    fn kind(self) -> SoundKind {
+        match self {
+            Self::ModeLimit => SoundKind::HudModeLimit,
+            Self::ModeMarket => SoundKind::HudModeMarket,
+            Self::SideLong => SoundKind::HudSideLong,
+            Self::SideShort => SoundKind::HudSideShort,
+            Self::Arm => SoundKind::HudArm,
+            Self::Disarm => SoundKind::HudDisarm,
+            Self::AutoDisarm => SoundKind::HudAutoDisarm,
+            Self::IdleWarning => SoundKind::HudIdleWarning,
+            Self::SizeUp => SoundKind::HudSizeUp,
+            Self::SizeDown => SoundKind::HudSizeDown,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +137,15 @@ pub fn play_hud_order(sound: ChartHudOrderSound, custom_path: Option<PathBuf>, v
     }
 }
 
+/// Play a synthesized HUD interface click at the HUD sound volume.
+pub fn play_hud_ui(sound: HudUiSound, volume: f32) {
+    play_request(SoundRequest {
+        kind: sound.kind(),
+        source: SoundSource::Synth,
+        volume: normalized_volume(volume),
+    });
+}
+
 pub fn play(kind: SoundKind) {
     play_request(SoundRequest {
         kind,
@@ -120,7 +171,9 @@ fn play_request(request: SoundRequest) {
             report_sound_status("Audio notification queue is full; dropped sound", true);
         }
         Err(TrySendError::Disconnected(_)) => {
-            if !try_external_sound(fallback_event) {
+            if let Some(event) = fallback_event
+                && !try_external_sound(event)
+            {
                 report_sound_status(
                     "Audio worker stopped and system notification sound fallback failed",
                     true,

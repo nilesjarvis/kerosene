@@ -1,6 +1,6 @@
 use super::{
-    HudReadoutLabels, format_crosshair_relative_time, format_volume_compact,
-    hud_game_panels_visible, hud_readout_lines,
+    HUD_JET_TAPE_GAP, format_crosshair_relative_time, format_volume_compact,
+    hud_game_panels_visible, hud_jet_tape_side, hud_left_block_lines, hud_text_width,
 };
 use crate::api::Candle;
 use crate::chart::crosshair_style::RacingHudMetrics;
@@ -150,32 +150,66 @@ fn earnings_marker_hover_overlay_is_active_only_for_visible_hovered_markers() {
 }
 
 #[test]
-fn hud_readout_lines_follow_visibility_config() {
-    let config = ChartHudReadoutConfig {
-        price: false,
-        clock: false,
-        candle_close: false,
-        ..ChartHudReadoutConfig::default()
-    };
-
-    let (left, right) = hud_readout_lines(
-        config,
-        HudReadoutLabels {
-            symbol: "HYPE",
-            timeframe: "1H",
-            hover_price: 42.0,
-            data_pos: Point::new(12.0, 34.0),
-            hover_time: "01/01 00:00:00",
-            clock: "00:00:01",
-            candle_close: "59m",
-        },
+fn hud_left_block_lines_follow_visibility_config() {
+    let lines = hud_left_block_lines(
+        ChartHudReadoutConfig::default(),
+        "HYPE",
+        "1H",
+        Point::new(12.0, 34.0),
     );
-
     assert_eq!(
-        left,
+        lines,
         vec!["HYPE 1H".to_string(), "XY  12.0  34.0".to_string()]
     );
-    assert_eq!(right, vec!["T  01/01 00:00:00".to_string()]);
+
+    let symbol_only = hud_left_block_lines(
+        ChartHudReadoutConfig {
+            coordinates: false,
+            ..ChartHudReadoutConfig::default()
+        },
+        "HYPE",
+        "1H",
+        Point::new(12.0, 34.0),
+    );
+    assert_eq!(symbol_only, vec!["HYPE 1H".to_string()]);
+
+    let none = hud_left_block_lines(
+        ChartHudReadoutConfig {
+            symbol: false,
+            coordinates: false,
+            ..ChartHudReadoutConfig::default()
+        },
+        "HYPE",
+        "1H",
+        Point::new(12.0, 34.0),
+    );
+    assert!(none.is_empty());
+}
+
+#[test]
+fn jet_tape_side_prefers_its_slot_then_flips_then_gives_up() {
+    let label_width = hud_text_width("64,213.5", 11.0);
+
+    // Plenty of room: the preferred side wins.
+    assert_eq!(hud_jet_tape_side(400.0, label_width, 1.0, 800.0), Some(1.0));
+    assert_eq!(
+        hud_jet_tape_side(400.0, label_width, -1.0, 800.0),
+        Some(-1.0)
+    );
+
+    // Near the right edge the price tape flips left.
+    assert_eq!(
+        hud_jet_tape_side(780.0, label_width, 1.0, 800.0),
+        Some(-1.0)
+    );
+    // Near the left edge the time tape flips right.
+    assert_eq!(hud_jet_tape_side(20.0, label_width, -1.0, 800.0), Some(1.0));
+
+    // On a chart too narrow for the full extent on either side, no tape.
+    let wide_label = hud_text_width("06/10 13:45:12", 11.0);
+    let extent = HUD_JET_TAPE_GAP + 6.0 + wide_label;
+    assert!(extent * 2.0 > 200.0, "test premise: neither side fits");
+    assert_eq!(hud_jet_tape_side(100.0, wide_label, -1.0, 200.0), None);
 }
 
 #[test]

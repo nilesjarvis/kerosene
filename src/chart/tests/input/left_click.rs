@@ -169,6 +169,97 @@ fn hud_left_click_submits_hud_order_without_starting_pan() {
 }
 
 #[test]
+fn hud_armed_click_inside_weapon_station_is_swallowed() {
+    let mut chart = chart_with_input_candles();
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_hud_armed_at(true, 0);
+    let mut state = ChartState {
+        hud_order_kind: HudOrderKind::Market,
+        hud_market_side: HudMarketSide::Short,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+
+    // Bottom-right corner of the plot, inside the weapon station bounds.
+    let action = action_or_panic(
+        chart.handle_left_press(
+            &mut state,
+            Point::new(300.0, 170.0),
+            CHART_W,
+            CHART_H,
+            260.0,
+        ),
+        "armed click on the weapon station should be captured",
+    );
+    let (message, _, status) = action.into_inner();
+
+    assert!(
+        message.is_none(),
+        "station deadzone must not fire an order, got {message:?}"
+    );
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(state.drag.is_none(), "deadzone click must not start a pan");
+}
+
+#[test]
+fn hud_station_deadzone_hit_tests_the_physical_cursor_not_the_unprojected_point() {
+    let mut chart = chart_with_input_candles();
+    chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+    chart.set_hud_armed_at(true, 0);
+    let mut state = ChartState {
+        hud_order_kind: HudOrderKind::Market,
+        hud_market_side: HudMarketSide::Short,
+        hud_size_input: "2.5".to_string(),
+        ..ChartState::default()
+    };
+    let layout = InteractionLayout::without_funding(CHART_W, CHART_H);
+
+    // Fisheye pulls the unprojected point off the station; the click is
+    // physically on the drawn station and must be swallowed regardless.
+    let on_station = ProjectedCursor {
+        source: Point::new(240.0, 120.0),
+        visual: Point::new(300.0, 170.0),
+    };
+    let action = action_or_panic(
+        chart.handle_left_press_at(
+            &mut state,
+            on_station,
+            ChartFisheye::disabled(),
+            layout,
+            260.0,
+        ),
+        "armed click physically on the station should be captured",
+    );
+    let (message, _, _) = action.into_inner();
+    assert!(
+        message.is_none(),
+        "click on the drawn station must not fire, got {message:?}"
+    );
+
+    // Mirror case: physically outside the station fires even though the
+    // unprojected point lands inside the station bounds.
+    let off_station = ProjectedCursor {
+        source: Point::new(300.0, 170.0),
+        visual: Point::new(120.0, 80.0),
+    };
+    let action = action_or_panic(
+        chart.handle_left_press_at(
+            &mut state,
+            off_station,
+            ChartFisheye::disabled(),
+            layout,
+            260.0,
+        ),
+        "armed click physically on the plot should fire",
+    );
+    let (message, _, _) = action.into_inner();
+    match message_or_panic(message, "submit HUD order message") {
+        Message::SubmitHudOrder(_) => {}
+        other => panic!("expected SubmitHudOrder, got {other:?}"),
+    }
+}
+
+#[test]
 fn racing_hud_left_click_submits_hud_order_without_starting_pan() {
     let mut chart = chart_with_input_candles();
     chart.set_crosshair_style(ChartCrosshairStyle::RacingHud);

@@ -131,6 +131,7 @@ impl TradingTerminal {
             PendingOrderAction::Sell
         });
         self.start_hud_order_animation(&request, prepared.is_buy, !is_market_order);
+        self.push_hud_feed_entry(&request, &prepared);
         if self.sound_enabled {
             sound::play_hud_order(
                 self.chart_hud_order_sound,
@@ -176,6 +177,28 @@ impl TradingTerminal {
         self.clear_pending_order_indicator(pending_indicator_id);
         let outcome = classify_execution_result(result);
         self.apply_one_shot_placement_outcome(context, outcome)
+    }
+
+    fn push_hud_feed_entry(&mut self, request: &HudOrderRequest, prepared: &PreparedExchangeOrder) {
+        let Some(instance) = self.charts.get_mut(&request.chart_id) else {
+            return;
+        };
+        if instance.chart.surface_id() != request.surface_id {
+            return;
+        }
+
+        let kind_label = match request.order_type {
+            HudOrderType::Limit => "LIMIT",
+            HudOrderType::Market => "MKT",
+        };
+        let side_label = if prepared.is_buy { "LONG" } else { "SHORT" };
+        let label = format!(
+            "{kind_label} {side_label} {} @ {}",
+            prepared.size, prepared.price
+        );
+        instance
+            .chart
+            .push_hud_feed(label, prepared.is_buy, Self::now_ms());
     }
 
     fn start_hud_order_animation(

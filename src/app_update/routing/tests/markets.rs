@@ -17,6 +17,14 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     );
     assert_route(Message::OpenDetachedChart(7), UpdateRoute::Chart);
     assert_route(
+        Message::ChartHudUiSound(crate::sound::HudUiSound::Arm),
+        UpdateRoute::Chart,
+    );
+    assert_route(
+        Message::ToggleChartHudUiSounds(true),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
         Message::OpenChartScreenshot(7, crate::chart_state::ChartSurfaceId::Docked(7)),
         UpdateRoute::ChartScreenshot,
     );

@@ -106,6 +106,45 @@ impl CandlestickChart {
         };
 
         draw_dot_wave(ctx, center, color, progress, DotWaveStyle::hud_submit());
+        draw_hit_marker(ctx, center, color, eased, progress);
+    }
+}
+
+/// Shooter-style hit confirmation: four diagonal strokes expanding outward
+/// from the click point with a hollow center so the price is never covered.
+fn draw_hit_marker<PriceToY, IdxToCx>(
+    ctx: &mut TradingOverlayContext<'_, PriceToY, IdxToCx>,
+    center: Point,
+    color: Color,
+    eased: f32,
+    progress: f32,
+) where
+    PriceToY: Fn(f64) -> f32,
+    IdxToCx: Fn(usize) -> f32,
+{
+    let inner = 6.0 + 10.0 * eased;
+    let outer = inner + 7.0;
+    let alpha = (1.0 - progress) * 0.9;
+    let stroke = canvas::Stroke::default()
+        .with_color(Color { a: alpha, ..color })
+        .with_width(1.6)
+        .with_line_cap(canvas::LineCap::Round);
+    let diagonal = std::f32::consts::FRAC_1_SQRT_2;
+    for x_sign in [-1.0, 1.0] {
+        for y_sign in [-1.0, 1.0] {
+            ctx.fisheye.stroke_projected_line(
+                ctx.frame,
+                Point::new(
+                    center.x + x_sign * inner * diagonal,
+                    center.y + y_sign * inner * diagonal,
+                ),
+                Point::new(
+                    center.x + x_sign * outer * diagonal,
+                    center.y + y_sign * outer * diagonal,
+                ),
+                stroke,
+            );
+        }
     }
 }
 

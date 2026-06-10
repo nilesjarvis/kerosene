@@ -27,15 +27,6 @@ pub(super) enum HudOrderKind {
     Market,
 }
 
-impl HudOrderKind {
-    pub(super) fn label(self) -> &'static str {
-        match self {
-            Self::Limit => "LIMIT",
-            Self::Market => "MARKET",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HudMarketSide {
     Long,

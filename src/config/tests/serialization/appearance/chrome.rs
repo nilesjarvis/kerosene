@@ -25,6 +25,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         chart_crosshair_style: ChartCrosshairStyle::RacingHud,
         chart_crosshair_guides_enabled: false,
         chart_crosshair_scale: 1.55,
+        chart_hud_ui_sounds: false,
         chart_hud_readout: ChartHudReadoutConfig {
             price: false,
             clock: false,
@@ -67,6 +68,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     );
     assert!(!decoded.chart_crosshair_guides_enabled);
     assert_eq!(decoded.chart_crosshair_scale, 1.55);
+    assert!(!decoded.chart_hud_ui_sounds);
     assert!(decoded.chart_hud_readout.symbol);
     assert!(!decoded.chart_hud_readout.price);
     assert!(decoded.chart_hud_readout.coordinates);
@@ -106,6 +108,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("chart_crosshair_style");
     object.remove("chart_crosshair_guides_enabled");
     object.remove("chart_crosshair_scale");
+    object.remove("chart_hud_ui_sounds");
     object.remove("chart_hud_readout");
     object.remove("alfred_popup_scale");
     object.remove("read_data_provider");
@@ -153,6 +156,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         decoded_legacy.chart_crosshair_scale,
         default_chart_crosshair_scale()
     );
+    assert!(decoded_legacy.chart_hud_ui_sounds);
     assert_eq!(
         decoded_legacy.chart_hud_readout,
         ChartHudReadoutConfig::default()

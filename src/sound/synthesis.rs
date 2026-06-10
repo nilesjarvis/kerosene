@@ -1,4 +1,4 @@
-use super::spec::{SAMPLE_RATE, SoundSpec, Tone};
+use super::spec::{SAMPLE_RATE, SoundSpec, Tone, Waveform};
 
 pub(super) fn generate_samples(spec: &SoundSpec) -> Vec<f32> {
     let mut samples = Vec::new();
@@ -20,8 +20,18 @@ fn generate_tone(tone: Tone) -> Vec<f32> {
         let t = i as f32 / SAMPLE_RATE as f32;
         let progress = i as f32 / num_samples as f32;
         let envelope = 1.0 - progress;
-        let sample =
-            tone.amplitude * envelope * (2.0 * std::f32::consts::PI * tone.freq_hz * t).sin();
+        let phase = (2.0 * std::f32::consts::PI * tone.freq_hz * t).sin();
+        let wave = match tone.waveform {
+            Waveform::Sine => phase,
+            Waveform::Square => {
+                if phase >= 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+        };
+        let sample = tone.amplitude * envelope * wave;
         samples.push(sample.clamp(-1.0, 1.0));
     }
 

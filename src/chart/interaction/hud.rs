@@ -1,6 +1,7 @@
 use super::super::state::{HudMarketSide, HudOrderKind};
 use super::super::{CandlestickChart, ChartState};
 use crate::message::Message;
+use crate::sound::HudUiSound;
 use iced::keyboard::{self, key};
 use iced::widget::canvas;
 
@@ -35,20 +36,16 @@ impl CandlestickChart {
                     .and_capture(),
             ),
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("l") => {
-                state.hud_order_kind = HudOrderKind::Limit;
-                Some(redraw_and_capture())
+                Some(set_hud_order_kind(state, HudOrderKind::Limit))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("m") => {
-                state.hud_order_kind = HudOrderKind::Market;
-                Some(redraw_and_capture())
+                Some(set_hud_order_kind(state, HudOrderKind::Market))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("y") => {
-                state.hud_market_side = HudMarketSide::Long;
-                Some(redraw_and_capture())
+                Some(set_hud_market_side(state, HudMarketSide::Long))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("x") => {
-                state.hud_market_side = HudMarketSide::Short;
-                Some(redraw_and_capture())
+                Some(set_hud_market_side(state, HudMarketSide::Short))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("s") => {
                 state.hud_size_editing = true;
@@ -61,12 +58,10 @@ impl CandlestickChart {
                 Some(redraw_and_capture())
             }
             keyboard::Key::Named(key::Named::ArrowUp) => {
-                state.hud_market_side = HudMarketSide::Long;
-                Some(redraw_and_capture())
+                Some(set_hud_market_side(state, HudMarketSide::Long))
             }
             keyboard::Key::Named(key::Named::ArrowDown) => {
-                state.hud_market_side = HudMarketSide::Short;
-                Some(redraw_and_capture())
+                Some(set_hud_market_side(state, HudMarketSide::Short))
             }
             _ => None,
         }
@@ -86,12 +81,19 @@ impl CandlestickChart {
         let direction = dy.signum();
         let ticks = dy.abs().ceil().max(1.0);
         let next = (current + direction * step * ticks).max(0.0);
-        state.hud_size_input = format_hud_size(next);
+        let next_input = format_hud_size(next);
+        let changed = state.hud_size_input != next_input;
+        state.hud_size_input = next_input;
         state.hud_size_editing = false;
         state.hud_size_replace_on_type = false;
         state.hud_size_scroll_bias = direction;
 
-        Some(redraw_and_capture())
+        let sound = if direction > 0.0 {
+            HudUiSound::SizeUp
+        } else {
+            HudUiSound::SizeDown
+        };
+        Some(hud_control_action(changed, sound))
     }
 
     pub(in crate::chart) fn hud_game_mode_enabled(&self) -> bool {
@@ -122,6 +124,36 @@ impl CandlestickChart {
 
 fn redraw_and_capture() -> canvas::Action<Message> {
     canvas::Action::request_redraw().and_capture()
+}
+
+/// Publishing routes through the app update so the interface click can play
+/// next to the sound preferences; the update cycle re-renders the overlay.
+fn hud_control_action(changed: bool, sound: HudUiSound) -> canvas::Action<Message> {
+    if changed {
+        canvas::Action::publish(Message::ChartHudUiSound(sound)).and_capture()
+    } else {
+        redraw_and_capture()
+    }
+}
+
+fn set_hud_order_kind(state: &mut ChartState, kind: HudOrderKind) -> canvas::Action<Message> {
+    let changed = state.hud_order_kind != kind;
+    state.hud_order_kind = kind;
+    let sound = match kind {
+        HudOrderKind::Limit => HudUiSound::ModeLimit,
+        HudOrderKind::Market => HudUiSound::ModeMarket,
+    };
+    hud_control_action(changed, sound)
+}
+
+fn set_hud_market_side(state: &mut ChartState, side: HudMarketSide) -> canvas::Action<Message> {
+    let changed = state.hud_market_side != side;
+    state.hud_market_side = side;
+    let sound = match side {
+        HudMarketSide::Long => HudUiSound::SideLong,
+        HudMarketSide::Short => HudUiSound::SideShort,
+    };
+    hud_control_action(changed, sound)
 }
 
 fn handle_hud_size_key(
@@ -242,7 +274,113 @@ mod tests {
     use super::{format_hud_size, hud_size_scroll_step};
     use crate::chart::{CandlestickChart, ChartState};
     use crate::config::ChartCrosshairStyle;
+    use crate::message::Message;
+    use crate::sound::HudUiSound;
     use iced::{Point, keyboard};
+
+    #[test]
+    fn mode_key_publishes_a_ui_click_only_when_the_mode_changes() {
+        let mut chart = CandlestickChart::new(1);
+        chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+        let mut state = ChartState {
+            cursor_position: Some(Point::ORIGIN),
+            ..ChartState::default()
+        };
+
+        // Default mode is Limit, so M is a change and clicks.
+        let action = chart
+            .handle_hud_key_pressed(
+                &mut state,
+                keyboard::Key::Character("m"),
+                Some("m"),
+                keyboard::Modifiers::NONE,
+            )
+            .expect("M should be handled");
+        let (message, _, _) = action.into_inner();
+        assert!(matches!(
+            message,
+            Some(Message::ChartHudUiSound(HudUiSound::ModeMarket))
+        ));
+
+        // Repeating M is not a change: redraw only, no click.
+        let action = chart
+            .handle_hud_key_pressed(
+                &mut state,
+                keyboard::Key::Character("m"),
+                Some("m"),
+                keyboard::Modifiers::NONE,
+            )
+            .expect("repeat M should still capture");
+        let (message, _, _) = action.into_inner();
+        assert!(message.is_none());
+    }
+
+    #[test]
+    fn side_keys_publish_direction_coded_ui_clicks() {
+        let mut chart = CandlestickChart::new(1);
+        chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+        let mut state = ChartState {
+            cursor_position: Some(Point::ORIGIN),
+            ..ChartState::default()
+        };
+
+        // Default side is Long, so X is a change.
+        let action = chart
+            .handle_hud_key_pressed(
+                &mut state,
+                keyboard::Key::Character("x"),
+                Some("x"),
+                keyboard::Modifiers::NONE,
+            )
+            .expect("X should be handled");
+        let (message, _, _) = action.into_inner();
+        assert!(matches!(
+            message,
+            Some(Message::ChartHudUiSound(HudUiSound::SideShort))
+        ));
+
+        let action = chart
+            .handle_hud_key_pressed(
+                &mut state,
+                keyboard::Key::Character("y"),
+                Some("y"),
+                keyboard::Modifiers::NONE,
+            )
+            .expect("Y should be handled");
+        let (message, _, _) = action.into_inner();
+        assert!(matches!(
+            message,
+            Some(Message::ChartHudUiSound(HudUiSound::SideLong))
+        ));
+    }
+
+    #[test]
+    fn size_scroll_publishes_direction_coded_ticks() {
+        let chart = {
+            let mut chart = CandlestickChart::new(1);
+            chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+            chart
+        };
+        let mut state = ChartState::default();
+
+        let action = chart
+            .handle_hud_size_scroll(&mut state, 1.0)
+            .expect("scroll up should be handled");
+        let (message, _, _) = action.into_inner();
+        assert!(matches!(
+            message,
+            Some(Message::ChartHudUiSound(HudUiSound::SizeUp))
+        ));
+
+        let action = chart
+            .handle_hud_size_scroll(&mut state, -1.0)
+            .expect("scroll down should be handled");
+        let (message, _, _) = action.into_inner();
+        assert!(matches!(
+            message,
+            Some(Message::ChartHudUiSound(HudUiSound::SizeDown))
+        ));
+    }
 
     #[test]
     fn hud_size_format_trims_fractional_padding() {

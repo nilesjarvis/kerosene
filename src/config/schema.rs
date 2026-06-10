@@ -174,6 +174,9 @@ pub struct KeroseneConfig {
     /// Volume multiplier for the HUD chart order sound.
     #[serde(default = "default_chart_hud_order_sound_volume")]
     pub chart_hud_order_sound_volume: f32,
+    /// Whether HUD game-mode control changes (mode/side/arm/size) play interface clicks.
+    #[serde(default = "default_true")]
+    pub chart_hud_ui_sounds: bool,
     /// HUD chart readout rows displayed around the central order type and size.
     #[serde(default)]
     pub chart_hud_readout: ChartHudReadoutConfig,

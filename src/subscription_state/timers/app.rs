@@ -78,7 +78,7 @@ impl TradingTerminal {
         if self
             .charts
             .values()
-            .any(|instance| instance.chart.hud_order_animation_active())
+            .any(|instance| instance.chart.hud_animation_tick_needed())
         {
             subs.push(
                 iced::time::every(std::time::Duration::from_millis(40))

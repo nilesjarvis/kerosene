@@ -49,6 +49,13 @@ impl TradingTerminal {
                     self.chart_hud_order_sound_volume,
                 );
             }
+            Message::ToggleChartHudUiSounds(enabled) => {
+                self.chart_hud_ui_sounds = enabled;
+                self.persist_config();
+                if enabled && self.sound_enabled {
+                    sound::play_hud_ui(sound::HudUiSound::Arm, self.chart_hud_order_sound_volume);
+                }
+            }
             _ => {}
         }
 

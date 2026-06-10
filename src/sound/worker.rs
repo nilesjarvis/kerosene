@@ -45,7 +45,9 @@ pub(super) fn run_audio_worker(rx: mpsc::Receiver<SoundRequest>) {
                 format!("Audio playback failed: {e}; using system notification sound fallback"),
                 true,
             );
-            if !try_external_sound(fallback_event) {
+            if let Some(event) = fallback_event
+                && !try_external_sound(event)
+            {
                 report_sound_status("System notification sound fallback failed", true);
             }
         }
@@ -58,7 +60,9 @@ fn run_external_fallback_worker(rx: mpsc::Receiver<SoundRequest>) {
         if is_rate_limited(request.kind, &mut last_played_by_kind) {
             continue;
         }
-        if !try_external_sound(sound_spec(request.kind).fallback_event) {
+        if let Some(event) = sound_spec(request.kind).fallback_event
+            && !try_external_sound(event)
+        {
             report_sound_status("System notification sound fallback failed", true);
         }
     }

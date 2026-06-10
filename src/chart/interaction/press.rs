@@ -123,6 +123,16 @@ impl CandlestickChart {
             && let Some((price_hi, price_range, price_h)) =
                 self.visible_price_params(state, chart_w, chart_h)
         {
+            // No-fire deadzone over the weapon station: a swallowed click
+            // costs a re-click, a misplaced order costs money. The station is
+            // drawn in screen space, so hit-test the physical cursor.
+            let market_mode = state.hud_order_kind == super::super::state::HudOrderKind::Market;
+            if super::super::crosshair::hud_station_metrics(chart_w, price_h, market_mode)
+                .is_some_and(|metrics| metrics.bounds.contains(visual_pos))
+            {
+                return Some(canvas::Action::request_redraw().and_capture());
+            }
+
             let clamped_y = pos.y.clamp(0.0, price_h);
             let price = self.y_to_price_with(clamped_y, price_hi, price_range, price_h);
             let order_type = match state.hud_order_kind {
@@ -130,15 +140,13 @@ impl CandlestickChart {
                 super::super::state::HudOrderKind::Market => HudOrderType::Market,
             };
             let limit_side = if order_type == HudOrderType::Limit {
-                self.market_reference_price
-                    .or_else(|| self.candles.last().map(|candle| candle.close))
-                    .map(|reference| {
-                        if price <= reference {
-                            HudOrderSide::Long
-                        } else {
-                            HudOrderSide::Short
-                        }
-                    })
+                self.hud_limit_click_is_buy(price).map(|is_buy| {
+                    if is_buy {
+                        HudOrderSide::Long
+                    } else {
+                        HudOrderSide::Short
+                    }
+                })
             } else {
                 None
             };

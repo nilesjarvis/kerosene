@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
+use crate::sound;
 use iced::Task;
 
 mod candles;
@@ -79,13 +80,40 @@ impl TradingTerminal {
                     && instance.chart.surface_id() == surface_id
                 {
                     instance.chart.toggle_hud_armed_at(now_ms);
+                    let sound = if instance.chart.hud_armed() {
+                        sound::HudUiSound::Arm
+                    } else {
+                        sound::HudUiSound::Disarm
+                    };
+                    self.play_hud_ui_sound(sound);
                 }
+            }
+            Message::ChartHudUiSound(sound) => {
+                self.play_hud_ui_sound(sound);
             }
             Message::ChartHudSafetyTick => {
                 let now_ms = Self::now_ms();
+                let mut auto_disarmed = false;
                 for instance in self.charts.values_mut() {
                     if instance.chart.hud_safety_timeout_due(now_ms) {
                         instance.chart.set_hud_armed_at(false, now_ms);
+                        auto_disarmed = true;
+                    }
+                }
+                if auto_disarmed {
+                    self.play_hud_safety_sound(sound::HudUiSound::AutoDisarm);
+                } else {
+                    // Consume the once-per-session warning only when its pip
+                    // actually plays; a suppressed warning stays pending.
+                    let mut warning_due = false;
+                    for instance in self.charts.values_mut() {
+                        if instance.chart.hud_safety_warning_due(now_ms) {
+                            instance.chart.mark_hud_idle_warning_sounded();
+                            warning_due = true;
+                        }
+                    }
+                    if warning_due {
+                        self.play_hud_safety_sound(sound::HudUiSound::IdleWarning);
                     }
                 }
             }
@@ -199,5 +227,19 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    fn play_hud_ui_sound(&self, sound: sound::HudUiSound) {
+        if self.sound_enabled && self.chart_hud_ui_sounds {
+            sound::play_hud_ui(sound, self.chart_hud_order_sound_volume);
+        }
+    }
+
+    /// Arm-safety advisories bypass the control-clicks preference: turning
+    /// off key-click feedback must not silence the auto-disarm warnings.
+    fn play_hud_safety_sound(&self, sound: sound::HudUiSound) {
+        if self.sound_enabled {
+            sound::play_hud_ui(sound, self.chart_hud_order_sound_volume);
+        }
     }
 }

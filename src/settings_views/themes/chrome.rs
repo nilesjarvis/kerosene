@@ -279,7 +279,16 @@ impl TradingTerminal {
                     self.chart_hud_order_sound,
                     self.chart_hud_order_sound_file.as_deref(),
                     self.chart_hud_order_sound_volume,
-                ));
+                ))
+                .push(
+                    checkbox(self.chart_hud_ui_sounds)
+                        .label("HUD control clicks (mode, side, arm, size)")
+                        .on_toggle(Message::ToggleChartHudUiSounds)
+                        .size(12)
+                        .spacing(8)
+                        .text_size(12)
+                        .font(crate::app_fonts::monospace_font()),
+                );
         }
 
         content

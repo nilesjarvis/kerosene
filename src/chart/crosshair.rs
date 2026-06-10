@@ -1,5 +1,4 @@
 use super::candle_layer::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
-use super::countdown::next_candle_countdown_label;
 use super::drawing::{AxisBadgeStyle, fill_right_axis_badge};
 use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
@@ -10,10 +9,14 @@ use crate::chart::crosshair_style::{CrosshairStyleRender, RacingHudMetrics, draw
 use crate::config::{ChartCrosshairStyle, ChartHudReadoutConfig};
 use crate::helpers::{ease_out_cubic, format_price};
 use iced::widget::canvas;
-use iced::{Color, Point, Radians, Size, Theme, alignment};
+use iced::{Color, Point, Size, Theme, alignment};
 
+mod game_hud;
 mod measurement;
 mod range;
+
+pub(in crate::chart) use game_hud::hud_station_metrics;
+use game_hud::{draw_hud_text_sized, fill_chevron_right, fill_triangle, hud_pulse_wave};
 
 #[cfg(test)]
 mod tests;
@@ -42,9 +45,10 @@ const HUD_WARNING_YELLOW: Color = Color {
 };
 const HUD_LINE_HEIGHT: f32 = 13.0;
 const HUD_CHAR_WIDTH: f32 = 6.4;
-const HUD_PANEL_PAD: f32 = 7.0;
 const HUD_MARKET_TARGET_RADIUS: f32 = 11.5;
 const HUD_MARKET_TARGET_LINE_GAP: f32 = HUD_MARKET_TARGET_RADIUS + 6.0;
+const HUD_JET_TAPE_GAP: f32 = 46.0;
+const HUD_JET_TAPE_TEXT_SIZE: f32 = 11.0;
 const EARNINGS_HOVER_RADIUS: f32 = 8.5;
 
 pub(super) struct CrosshairOverlayContext<'a, PriceToY>
@@ -73,6 +77,12 @@ impl CandlestickChart {
     ) where
         PriceToY: Fn(f64) -> f32,
     {
+        // The armed combat frame is safety chrome: it stays on screen with or
+        // without a cursor so a hot chart is never mistaken for a safe one.
+        if self.crosshair_style.is_game_hud() && self.hud_armed {
+            self.draw_hud_armed_frame(ctx.frame, ctx.chart_w, ctx.price_h);
+        }
+
         let Some(data_pos) = ctx.state.cursor_position else {
             return;
         };
@@ -90,7 +100,8 @@ impl CandlestickChart {
             ctx.chart_w,
             drawable_h,
         ) {
-            self.draw_hud_game_panels(ctx);
+            let accent = self.hud_accent_color(ctx.theme, ctx.state);
+            self.draw_hud_game_chrome(ctx, accent);
         }
         let visual_pos = ctx.fisheye.project(data_pos);
         let hover_timestamp_ms = self.x_to_timestamp(data_pos.x, ctx.state, ctx.chart_w);
@@ -122,13 +133,19 @@ impl CandlestickChart {
                 hud_accent.unwrap_or(HUD_GREEN),
             );
         } else {
+            // The reticle breathes on the shared armed pulse so the cursor and
+            // the combat frame read as one instrument.
+            let mut crosshair_scale = self.crosshair_scale;
+            if self.hud_armed && self.crosshair_style.normalized() == ChartCrosshairStyle::Hud {
+                crosshair_scale *= 1.0 + 0.05 * hud_pulse_wave(self.hud_pulse_phase);
+            }
             draw_crosshair_style(
                 ctx.frame,
                 ctx.theme,
                 CrosshairStyleRender {
                     style: self.crosshair_style,
                     guide_lines_enabled: self.crosshair_guides_enabled,
-                    crosshair_scale: self.crosshair_scale,
+                    crosshair_scale,
                     position: data_pos,
                     width: ctx.chart_w,
                     height: drawable_h,
@@ -142,7 +159,7 @@ impl CandlestickChart {
             && hud_cancel_hover_progress <= 0.01
         {
             self.draw_hud_market_price_vector(ctx, visual_pos, accent);
-            draw_hud_center_order_summary(ctx.frame, visual_pos, ctx.state, self.hud_armed, accent);
+            self.draw_hud_order_summary(ctx, visual_pos, accent, hover_price);
         }
 
         self.draw_crosshair_time_label(ctx, data_pos, visual_pos, drawable_h);
@@ -357,96 +374,6 @@ impl CandlestickChart {
         tooltip_surface.draw_card(Point::new(card_x, card_y), card_size, &lines);
     }
 
-    fn draw_hud_game_panels<PriceToY>(&self, ctx: &mut CrosshairOverlayContext<'_, PriceToY>)
-    where
-        PriceToY: Fn(f64) -> f32,
-    {
-        let accent = self.hud_accent_color(ctx.theme, ctx.state);
-        let size_panel = Size::new(172.0, 32.0);
-        let size_origin = Point::new((ctx.chart_w - size_panel.width - 8.0).max(8.0), 8.0);
-        let size_text = hud_size_panel_label(ctx.state);
-        draw_hud_panel(
-            ctx.frame,
-            size_origin,
-            size_panel,
-            ctx.state.hud_size_editing,
-            accent,
-        );
-        draw_hud_panel_text(
-            ctx.frame,
-            &size_text,
-            Point::new(
-                size_origin.x + HUD_PANEL_PAD,
-                size_origin.y + size_panel.height * 0.5,
-            ),
-            ctx.state.hud_size_editing,
-            accent,
-        );
-
-        let menu_size = Size::new(142.0, 138.0);
-        let menu_origin = Point::new(
-            (ctx.chart_w - menu_size.width - 8.0).max(8.0),
-            (ctx.chart_h - menu_size.height - 8.0).max(46.0),
-        );
-        draw_hud_panel(ctx.frame, menu_origin, menu_size, true, accent);
-        draw_hud_panel_text(
-            ctx.frame,
-            "GAME HUD",
-            Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + 13.0),
-            true,
-            accent,
-        );
-        draw_hud_order_row(
-            ctx.frame,
-            menu_origin,
-            30.0,
-            HudOrderKind::Limit,
-            ctx.state.hud_order_kind,
-            accent,
-        );
-        draw_hud_order_row(
-            ctx.frame,
-            menu_origin,
-            47.0,
-            HudOrderKind::Market,
-            ctx.state.hud_order_kind,
-            accent,
-        );
-        draw_hud_arm_row(ctx.frame, menu_origin, 64.0, self.hud_armed, accent);
-        draw_hud_follow_row(
-            ctx.frame,
-            menu_origin,
-            81.0,
-            ctx.state.hud_follow_price,
-            accent,
-        );
-        draw_hud_panel_text(
-            ctx.frame,
-            "MARKET SIDE",
-            Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + 97.0),
-            ctx.state.hud_order_kind == HudOrderKind::Market,
-            accent,
-        );
-        draw_hud_market_side_row(
-            ctx.frame,
-            menu_origin,
-            111.0,
-            HudMarketSide::Long,
-            ctx.state.hud_market_side,
-            ctx.state.hud_order_kind == HudOrderKind::Market,
-            accent,
-        );
-        draw_hud_market_side_row(
-            ctx.frame,
-            menu_origin,
-            125.0,
-            HudMarketSide::Short,
-            ctx.state.hud_market_side,
-            ctx.state.hud_order_kind == HudOrderKind::Market,
-            accent,
-        );
-    }
-
     fn draw_hud_crosshair_readout<PriceToY>(
         &self,
         ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
@@ -466,38 +393,14 @@ impl CandlestickChart {
         } else {
             self.symbol_label.to_uppercase()
         };
-        let candle_close_label = self
-            .candles
-            .last()
-            .and_then(|candle| {
-                next_candle_countdown_label(candle.open_time, self.timeframe, self.clock_now_ms)
-            })
-            .unwrap_or_else(|| "--".to_string());
-        let hover_time_label = hover_timestamp_ms
-            .map(format_hud_hover_time)
-            .unwrap_or_else(|| "--".to_string());
-        let clock_label = format_hud_clock_time(self.clock_now_ms);
         let accent = self.hud_accent_color(ctx.theme, ctx.state);
 
-        let (left_lines, right_lines) = hud_readout_lines(
-            self.hud_readout,
-            HudReadoutLabels {
-                symbol: &symbol,
-                timeframe: self.timeframe.label(),
-                hover_price,
-                data_pos,
-                hover_time: &hover_time_label,
-                clock: &clock_label,
-                candle_close: &candle_close_label,
-            },
-        );
-        if left_lines.is_empty() && right_lines.is_empty() {
-            return;
-        }
-
-        let left_size = hud_text_block_size(&left_lines);
-        let right_size = hud_text_block_size(&right_lines);
+        // Spotting block left of the reticle: instrument identity + ghost
+        // telemetry. Clock and candle countdown live in the mission strip.
+        let left_lines =
+            hud_left_block_lines(self.hud_readout, &symbol, self.timeframe.label(), data_pos);
         if !left_lines.is_empty() {
+            let left_size = hud_text_block_size(&left_lines);
             let left_origin = hud_block_origin(
                 visual_pos,
                 -left_size.width - 42.0,
@@ -515,24 +418,87 @@ impl CandlestickChart {
                 ),
                 accent,
             );
-            draw_hud_text_block(ctx.frame, &left_lines, left_origin, accent);
+            for (index, line) in left_lines.iter().enumerate() {
+                let position = Point::new(
+                    left_origin.x,
+                    left_origin.y + index as f32 * HUD_LINE_HEIGHT + HUD_LINE_HEIGHT * 0.5,
+                );
+                // Coordinates are debug-class telemetry: ghosted, never accented.
+                let color = if line.starts_with("XY ") {
+                    Color { a: 0.40, ..accent }
+                } else {
+                    accent
+                };
+                draw_hud_text(
+                    ctx.frame,
+                    line,
+                    position,
+                    color,
+                    alignment::Horizontal::Left,
+                );
+            }
         }
-        if !right_lines.is_empty() {
-            let right_origin = hud_block_origin(
-                visual_pos,
-                42.0,
-                -right_size.height - 26.0,
-                right_size,
+
+        // Jet-HUD tapes on the cursor line: price right (altitude), time left
+        // (airspeed). Zero vertical eye travel from the aim point.
+        let tape_y_offset = if self.crosshair_style.normalized() == ChartCrosshairStyle::RacingHud {
+            -50.0
+        } else {
+            0.0
+        };
+        let tape_y = (visual_pos.y + tape_y_offset).clamp(10.0, ctx.price_h - 10.0);
+        let price_label = self.hud_readout.price.then(|| format_price(hover_price));
+        let time_label = if self.hud_readout.hover_time {
+            hover_timestamp_ms.map(format_hud_hover_time)
+        } else {
+            None
+        };
+        let price_side = price_label.as_deref().and_then(|label| {
+            hud_jet_tape_side(
+                visual_pos.x,
+                hud_text_width(label, HUD_JET_TAPE_TEXT_SIZE),
+                1.0,
                 ctx.chart_w,
-                ctx.price_h,
-            );
-            draw_hud_connector(
+            )
+        });
+        let time_side = time_label.as_deref().and_then(|label| {
+            hud_jet_tape_side(
+                visual_pos.x,
+                hud_text_width(label, HUD_JET_TAPE_TEXT_SIZE),
+                -1.0,
+                ctx.chart_w,
+            )
+        });
+        // Near a plot edge both tapes can resolve to the same side; stack the
+        // time tape one slot off the cursor line instead of double-drawing.
+        let time_y = if price_side.is_some() && price_side == time_side {
+            if tape_y + 16.0 > ctx.price_h - 10.0 {
+                tape_y - 16.0
+            } else {
+                tape_y + 16.0
+            }
+        } else {
+            tape_y
+        };
+        if let (Some(label), Some(side)) = (price_label.as_deref(), price_side) {
+            draw_hud_jet_tape(
                 ctx.frame,
-                visual_pos,
-                Point::new(right_origin.x, right_origin.y + right_size.height),
-                accent,
+                visual_pos.x,
+                tape_y,
+                label,
+                Color { a: 0.95, ..accent },
+                side,
             );
-            draw_hud_text_block(ctx.frame, &right_lines, right_origin, accent);
+        }
+        if let (Some(label), Some(side)) = (time_label.as_deref(), time_side) {
+            draw_hud_jet_tape(
+                ctx.frame,
+                visual_pos.x,
+                time_y,
+                label,
+                Color { a: 0.75, ..accent },
+                side,
+            );
         }
     }
 
@@ -668,7 +634,8 @@ impl CandlestickChart {
             target_x.clamp(0.0, ctx.chart_w),
             target_y.clamp(0.0, ctx.price_h),
         ));
-        draw_hud_market_price_line(ctx.frame, center, target, accent);
+        let pulse_wave = self.hud_armed.then(|| hud_pulse_wave(self.hud_pulse_phase));
+        draw_hud_market_price_line(ctx.frame, center, target, accent, pulse_wave);
     }
 }
 
@@ -694,55 +661,91 @@ fn hud_text_block_size(lines: &[String]) -> Size {
     Size::new(width, lines.len() as f32 * HUD_LINE_HEIGHT)
 }
 
-struct HudReadoutLabels<'a> {
-    symbol: &'a str,
-    timeframe: &'a str,
-    hover_price: f64,
-    data_pos: Point,
-    hover_time: &'a str,
-    clock: &'a str,
-    candle_close: &'a str,
-}
-
-fn hud_readout_lines(
+/// Lines for the cursor-attached spotting block: instrument identity first,
+/// ghost cursor telemetry last. Price/time ride the cursor line as jet tapes
+/// and clock/candle-close live in the top-center mission strip.
+fn hud_left_block_lines(
     config: ChartHudReadoutConfig,
-    labels: HudReadoutLabels<'_>,
-) -> (Vec<String>, Vec<String>) {
-    let mut left_lines = Vec::new();
-    let mut right_lines = Vec::new();
-
+    symbol: &str,
+    timeframe: &str,
+    data_pos: Point,
+) -> Vec<String> {
+    let mut lines = Vec::new();
     if config.symbol {
-        left_lines.push(format!("{} {}", labels.symbol, labels.timeframe));
-    }
-    if config.price {
-        left_lines.push(format!("PX {}", format_price(labels.hover_price)));
+        lines.push(format!("{symbol} {timeframe}"));
     }
     if config.coordinates {
-        left_lines.push(format!(
-            "XY {:>5.1} {:>5.1}",
-            labels.data_pos.x, labels.data_pos.y
-        ));
+        lines.push(format!("XY {:>5.1} {:>5.1}", data_pos.x, data_pos.y));
     }
-    if config.hover_time {
-        right_lines.push(format!("T  {}", labels.hover_time));
-    }
-    if config.clock {
-        right_lines.push(format!("NOW {}", labels.clock));
-    }
-    if config.candle_close {
-        right_lines.push(format!("CLS {}", labels.candle_close));
-    }
-
-    (left_lines, right_lines)
+    lines
 }
 
-fn hud_size_panel_label(state: &ChartState) -> String {
-    let size = hud_display_size(state);
-    if state.hud_size_editing {
-        format!("S SIZE {size}_ COIN")
+/// Monospace width estimate scaled to the rendered pixel size.
+fn hud_text_width(label: &str, size: f32) -> f32 {
+    label.chars().count() as f32 * size * 0.61
+}
+
+/// Picks the side of the reticle (+1.0 right, -1.0 left) where a jet tape's
+/// full extent fits inside the plot: the preferred side first, its mirror as
+/// the edge-flip fallback, `None` when neither fits.
+fn hud_jet_tape_side(cursor_x: f32, label_width: f32, preferred: f32, chart_w: f32) -> Option<f32> {
+    let fits = |side: f32| {
+        let bracket_x = cursor_x + side * HUD_JET_TAPE_GAP;
+        let outer_x = cursor_x + side * (HUD_JET_TAPE_GAP + 6.0 + label_width);
+        (4.0..=chart_w - 4.0).contains(&bracket_x) && (4.0..=chart_w - 4.0).contains(&outer_x)
+    };
+    if fits(preferred) {
+        Some(preferred)
+    } else if fits(-preferred) {
+        Some(-preferred)
     } else {
-        format!("S SIZE {size} COIN")
+        None
     }
+}
+
+/// Half-bracket readout on the cursor line, jet-HUD style: `side` +1.0 draws
+/// right of the reticle (price/altitude slot), -1.0 left (time/airspeed
+/// slot). The side must come from `hud_jet_tape_side`.
+fn draw_hud_jet_tape(
+    frame: &mut canvas::Frame,
+    cursor_x: f32,
+    y: f32,
+    label: &str,
+    color: Color,
+    side: f32,
+) {
+    let bracket_x = cursor_x + side * HUD_JET_TAPE_GAP;
+
+    let bracket = canvas::Path::new(|path| {
+        path.move_to(Point::new(bracket_x - side * 5.0, y - 7.0));
+        path.line_to(Point::new(bracket_x, y - 7.0));
+        path.line_to(Point::new(bracket_x, y + 7.0));
+        path.line_to(Point::new(bracket_x - side * 5.0, y + 7.0));
+    });
+    frame.stroke(
+        &bracket,
+        canvas::Stroke::default()
+            .with_color(Color {
+                a: color.a * 0.8,
+                ..color
+            })
+            .with_width(1.0)
+            .with_line_cap(canvas::LineCap::Round),
+    );
+
+    let (text_x, align_x) = if side > 0.0 {
+        (bracket_x + 6.0, alignment::Horizontal::Left)
+    } else {
+        (bracket_x - 6.0, alignment::Horizontal::Right)
+    };
+    draw_hud_text_sized(
+        frame,
+        label,
+        Point::new(text_x, y),
+        color,
+        align_x,
+        HUD_JET_TAPE_TEXT_SIZE,
+    );
 }
 
 fn hud_display_size(state: &ChartState) -> &str {
@@ -759,85 +762,170 @@ fn positive_finite_value(value: f64) -> Option<f64> {
     (value.is_finite() && value > 0.0).then_some(value)
 }
 
-fn draw_hud_center_order_summary(
-    frame: &mut canvas::Frame,
-    center: Point,
-    state: &ChartState,
-    armed: bool,
-    accent: Color,
-) {
-    let size = hud_display_size(state);
-    let order_label = match state.hud_order_kind {
-        HudOrderKind::Limit => "LIMIT".to_string(),
-        HudOrderKind::Market => format!("MKT {}", state.hud_market_side.label()),
-    };
-    let amount_label = format!("{size} COIN");
-
-    if armed {
-        draw_hud_armed_warning_triangle(frame, Point::new(center.x, center.y - 52.0));
-    }
-
-    draw_hud_text(
-        frame,
-        &order_label,
-        Point::new(center.x, center.y - 30.0),
-        accent,
-        alignment::Horizontal::Center,
-    );
-    draw_hud_text(
-        frame,
-        &amount_label,
-        Point::new(center.x, center.y - 17.0),
-        accent,
-        alignment::Horizontal::Center,
-    );
+/// One text segment of the single-line firing summary, with an optional
+/// up/down triangle glyph drawn after it.
+struct HudSummarySegment {
+    content: String,
+    color: Color,
+    triangle_up: Option<bool>,
 }
 
-fn draw_hud_armed_warning_triangle(frame: &mut canvas::Frame, center: Point) {
-    let half_width = 9.0;
-    let height = 17.0;
-    let top = Point::new(center.x, center.y - height * 0.5);
-    let left = Point::new(center.x - half_width, center.y + height * 0.5);
-    let right = Point::new(center.x + half_width, center.y + height * 0.5);
+impl CandlestickChart {
+    /// Single-line "what fires on click" readout above the reticle. Limit
+    /// mode shows the live inferred side from the same reference price the
+    /// click handler uses; armed state flanks the line with pulsing amber
+    /// chevrons and a caret instead of the old hazard triangle.
+    fn draw_hud_order_summary<PriceToY>(
+        &self,
+        ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
+        center: Point,
+        accent: Color,
+        hover_price: Option<f64>,
+    ) where
+        PriceToY: Fn(f64) -> f32,
+    {
+        let state = ctx.state;
+        let size = hud_display_size(state);
+        let success = ctx.theme.palette().success;
+        let danger = ctx.theme.palette().danger;
+        let text = ctx.theme.palette().text;
 
-    let shadow = canvas::Path::new(|path| {
-        path.move_to(Point::new(top.x + 1.0, top.y + 1.0));
-        path.line_to(Point::new(right.x + 1.0, right.y + 1.0));
-        path.line_to(Point::new(left.x + 1.0, left.y + 1.0));
-        path.close();
-    });
-    frame.fill(&shadow, HUD_SHADOW);
+        let mut segments: Vec<HudSummarySegment> = Vec::new();
+        if !self.hud_armed {
+            segments.push(HudSummarySegment {
+                content: "SAFE  ".to_string(),
+                color: Color { a: 0.45, ..text },
+                triangle_up: None,
+            });
+        }
+        match state.hud_order_kind {
+            HudOrderKind::Market => {
+                let is_long = state.hud_market_side == HudMarketSide::Long;
+                let side_color = if is_long { success } else { danger };
+                segments.push(HudSummarySegment {
+                    content: "MKT ".to_string(),
+                    color: accent,
+                    triangle_up: None,
+                });
+                segments.push(HudSummarySegment {
+                    content: state.hud_market_side.label().to_string(),
+                    color: Color {
+                        a: 0.95,
+                        ..side_color
+                    },
+                    triangle_up: Some(is_long),
+                });
+                segments.push(HudSummarySegment {
+                    content: format!(" {size} COIN"),
+                    color: accent,
+                    triangle_up: None,
+                });
+            }
+            HudOrderKind::Limit => {
+                match hover_price.and_then(|price| self.hud_limit_click_is_buy(price)) {
+                    Some(is_buy) => {
+                        let (side_label, side_color) = if is_buy {
+                            ("BUY", success)
+                        } else {
+                            ("SELL", danger)
+                        };
+                        segments.push(HudSummarySegment {
+                            content: "LIMIT ".to_string(),
+                            color: accent,
+                            triangle_up: None,
+                        });
+                        segments.push(HudSummarySegment {
+                            content: side_label.to_string(),
+                            color: Color {
+                                a: 0.95,
+                                ..side_color
+                            },
+                            triangle_up: Some(is_buy),
+                        });
+                        segments.push(HudSummarySegment {
+                            content: format!(" {size} COIN"),
+                            color: accent,
+                            triangle_up: None,
+                        });
+                    }
+                    None => segments.push(HudSummarySegment {
+                        content: format!("LIMIT {size} COIN"),
+                        color: accent,
+                        triangle_up: None,
+                    }),
+                }
+            }
+        }
 
-    let triangle = canvas::Path::new(|path| {
-        path.move_to(top);
-        path.line_to(right);
-        path.line_to(left);
-        path.close();
-    });
-    frame.fill(&triangle, HUD_WARNING_YELLOW);
-    frame.stroke(
-        &triangle,
-        canvas::Stroke::default()
-            .with_color(Color {
-                a: 0.92,
-                ..HUD_WARNING_YELLOW
+        const TRIANGLE_W: f32 = 10.0;
+        let total_width: f32 = segments
+            .iter()
+            .map(|segment| {
+                segment.content.chars().count() as f32 * HUD_CHAR_WIDTH
+                    + if segment.triangle_up.is_some() {
+                        TRIANGLE_W
+                    } else {
+                        0.0
+                    }
             })
-            .with_width(1.0),
-    );
+            .sum();
+        let y = center.y - 36.0;
+        let mut x = center.x - total_width * 0.5;
+        for segment in &segments {
+            draw_hud_text(
+                ctx.frame,
+                &segment.content,
+                Point::new(x, y),
+                segment.color,
+                alignment::Horizontal::Left,
+            );
+            x += segment.content.chars().count() as f32 * HUD_CHAR_WIDTH;
+            if let Some(up) = segment.triangle_up {
+                fill_triangle(
+                    ctx.frame,
+                    Point::new(x + 4.0, y),
+                    3.5,
+                    6.0,
+                    up,
+                    segment.color,
+                );
+                x += TRIANGLE_W;
+            }
+        }
 
-    let stem = canvas::Path::line(
-        Point::new(center.x, center.y - 1.8),
-        Point::new(center.x, center.y + 4.0),
-    );
-    frame.stroke(
-        &stem,
-        canvas::Stroke::default()
-            .with_color(Color::BLACK)
-            .with_width(1.4)
-            .with_line_cap(canvas::LineCap::Round),
-    );
-    let dot = canvas::Path::circle(Point::new(center.x, center.y + 7.0), 1.0);
-    frame.fill(&dot, Color::BLACK);
+        if self.hud_armed {
+            let wave = hud_pulse_wave(self.hud_pulse_phase);
+            let amber = Color {
+                a: 0.45 + 0.45 * wave,
+                ..HUD_WARNING_YELLOW
+            };
+            fill_chevron_right(
+                ctx.frame,
+                Point::new(center.x - total_width * 0.5 - 12.0, y),
+                3.5,
+                amber,
+            );
+            game_hud::fill_chevron_left(
+                ctx.frame,
+                Point::new(center.x + total_width * 0.5 + 12.0, y),
+                3.5,
+                amber,
+            );
+            let caret = canvas::Path::new(|path| {
+                path.move_to(Point::new(center.x - 4.0, y - 11.0));
+                path.line_to(Point::new(center.x, y - 16.0));
+                path.line_to(Point::new(center.x + 4.0, y - 11.0));
+            });
+            ctx.frame.stroke(
+                &caret,
+                canvas::Stroke::default()
+                    .with_color(amber)
+                    .with_width(1.5)
+                    .with_line_cap(canvas::LineCap::Round)
+                    .with_line_join(canvas::LineJoin::Round),
+            );
+        }
+    }
 }
 
 fn draw_hud_cancel_collapsed_reticle(
@@ -887,11 +975,14 @@ fn draw_hud_cancel_collapsed_reticle(
     );
 }
 
+/// Dashed bearing line from the reticle to the live market price, ending in
+/// a lock-on diamond — the "range to target" instrument for market orders.
 fn draw_hud_market_price_line(
     frame: &mut canvas::Frame,
     center: Point,
     target: Point,
     accent: Color,
+    pulse_wave: Option<f32>,
 ) {
     let dx = target.x - center.x;
     let dy = target.y - center.y;
@@ -906,235 +997,86 @@ fn draw_hud_market_price_line(
         target.y - unit_y * HUD_MARKET_TARGET_LINE_GAP,
     );
 
-    let shadow = canvas::Path::line(
-        Point::new(center.x + 1.0, center.y + 1.0),
-        Point::new(line_end.x + 1.0, line_end.y + 1.0),
-    );
-    frame.stroke(
-        &shadow,
-        canvas::Stroke::default()
-            .with_color(HUD_SHADOW)
-            .with_width(1.5)
-            .with_line_cap(canvas::LineCap::Round),
-    );
-
     let line = canvas::Path::line(center, line_end);
     frame.stroke(
         &line,
-        canvas::Stroke::default()
-            .with_color(Color { a: 0.72, ..accent })
-            .with_width(1.0)
-            .with_line_cap(canvas::LineCap::Round),
+        canvas::Stroke {
+            line_dash: canvas::LineDash {
+                segments: &[4.0, 3.0],
+                offset: 0,
+            },
+            ..canvas::Stroke::default()
+                .with_color(Color { a: 0.72, ..accent })
+                .with_width(1.0)
+                .with_line_cap(canvas::LineCap::Round)
+        },
     );
 
-    draw_hud_market_target_ring(frame, target, accent);
+    draw_hud_lock_diamond(frame, target, accent, pulse_wave);
 }
 
-fn draw_hud_market_target_ring(frame: &mut canvas::Frame, center: Point, accent: Color) {
-    let shadow_stroke = canvas::Stroke::default()
-        .with_color(HUD_SHADOW)
-        .with_width(2.4)
-        .with_line_cap(canvas::LineCap::Round);
-    let stroke = canvas::Stroke::default()
-        .with_color(Color { a: 0.9, ..accent })
-        .with_width(1.25)
-        .with_line_cap(canvas::LineCap::Round);
-
-    for (start, end) in [
-        (-0.74, 0.74),
-        (std::f32::consts::PI - 0.74, std::f32::consts::PI + 0.74),
-    ] {
-        stroke_hud_market_target_arc(
-            frame,
-            Point::new(center.x + 1.0, center.y + 1.0),
-            HUD_MARKET_TARGET_RADIUS,
-            start,
-            end,
-            shadow_stroke,
-        );
-        stroke_hud_market_target_arc(frame, center, HUD_MARKET_TARGET_RADIUS, start, end, stroke);
-    }
-}
-
-fn stroke_hud_market_target_arc(
+fn draw_hud_lock_diamond(
     frame: &mut canvas::Frame,
     center: Point,
-    radius: f32,
-    start_angle: f32,
-    end_angle: f32,
-    stroke: canvas::Stroke<'static>,
+    accent: Color,
+    pulse_wave: Option<f32>,
 ) {
-    let arc = canvas::Path::new(|path| {
-        path.arc(canvas::path::Arc {
-            center,
-            radius,
-            start_angle: Radians(start_angle),
-            end_angle: Radians(end_angle),
-        });
-    });
-    frame.stroke(&arc, stroke);
+    let radius = HUD_MARKET_TARGET_RADIUS * 0.62;
+    let diamond_points = |offset: f32| {
+        canvas::Path::new(|path| {
+            path.move_to(Point::new(center.x + offset, center.y - radius + offset));
+            path.line_to(Point::new(center.x + radius + offset, center.y + offset));
+            path.line_to(Point::new(center.x + offset, center.y + radius + offset));
+            path.line_to(Point::new(center.x - radius + offset, center.y + offset));
+            path.close();
+        })
+    };
+    frame.stroke(
+        &diamond_points(1.0),
+        canvas::Stroke::default()
+            .with_color(HUD_SHADOW)
+            .with_width(2.2)
+            .with_line_join(canvas::LineJoin::Round),
+    );
+    frame.stroke(
+        &diamond_points(0.0),
+        canvas::Stroke::default()
+            .with_color(Color { a: 0.9, ..accent })
+            .with_width(1.25)
+            .with_line_join(canvas::LineJoin::Round),
+    );
+
+    // Four diagonal lock ticks; they breathe with the armed pulse.
+    let tick_alpha = pulse_wave.map_or(0.55, |wave| 0.40 + 0.45 * wave);
+    let tick_stroke = canvas::Stroke::default()
+        .with_color(Color {
+            a: tick_alpha,
+            ..accent
+        })
+        .with_width(1.1)
+        .with_line_cap(canvas::LineCap::Round);
+    let inner = radius + 2.0;
+    let outer = radius + 6.0;
+    let diagonal = std::f32::consts::FRAC_1_SQRT_2;
+    for x_sign in [-1.0, 1.0] {
+        for y_sign in [-1.0, 1.0] {
+            let tick = canvas::Path::line(
+                Point::new(
+                    center.x + x_sign * inner * diagonal,
+                    center.y + y_sign * inner * diagonal,
+                ),
+                Point::new(
+                    center.x + x_sign * outer * diagonal,
+                    center.y + y_sign * outer * diagonal,
+                ),
+            );
+            frame.stroke(&tick, tick_stroke);
+        }
+    }
 }
 
 fn hud_lerp(start: f32, end: f32, t: f32) -> f32 {
     start + (end - start) * t.clamp(0.0, 1.0)
-}
-
-fn draw_hud_panel(
-    frame: &mut canvas::Frame,
-    origin: Point,
-    size: Size,
-    active: bool,
-    accent: Color,
-) {
-    frame.fill_rectangle(
-        origin,
-        size,
-        Color {
-            a: if active { 0.46 } else { 0.34 },
-            ..Color::BLACK
-        },
-    );
-    let border = canvas::Path::rectangle(origin, size);
-    frame.stroke(
-        &border,
-        canvas::Stroke::default()
-            .with_color(Color {
-                a: if active { 0.64 } else { 0.34 },
-                ..accent
-            })
-            .with_width(if active { 1.0 } else { 0.7 }),
-    );
-}
-
-fn draw_hud_panel_text(
-    frame: &mut canvas::Frame,
-    content: &str,
-    position: Point,
-    active: bool,
-    accent: Color,
-) {
-    let color = Color {
-        a: if active { 0.94 } else { 0.62 },
-        ..accent
-    };
-    draw_hud_text(frame, content, position, color, alignment::Horizontal::Left);
-}
-
-fn draw_hud_order_row(
-    frame: &mut canvas::Frame,
-    menu_origin: Point,
-    y_offset: f32,
-    kind: HudOrderKind,
-    active_kind: HudOrderKind,
-    accent: Color,
-) {
-    let active = kind == active_kind;
-    let row_origin = Point::new(menu_origin.x + 5.0, menu_origin.y + y_offset - 7.0);
-    let row_size = Size::new(122.0, 14.0);
-    if active {
-        frame.fill_rectangle(row_origin, row_size, Color { a: 0.17, ..accent });
-    }
-
-    let hotkey = match kind {
-        HudOrderKind::Limit => "L",
-        HudOrderKind::Market => "M",
-    };
-    let marker = if active { ">" } else { " " };
-    let label = format!("{marker} {hotkey} {}", kind.label());
-    draw_hud_panel_text(
-        frame,
-        &label,
-        Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + y_offset),
-        active,
-        accent,
-    );
-}
-
-fn draw_hud_arm_row(
-    frame: &mut canvas::Frame,
-    menu_origin: Point,
-    y_offset: f32,
-    armed: bool,
-    accent: Color,
-) {
-    let row_origin = Point::new(menu_origin.x + 5.0, menu_origin.y + y_offset - 7.0);
-    let row_size = Size::new(122.0, 14.0);
-    if armed {
-        frame.fill_rectangle(row_origin, row_size, Color { a: 0.17, ..accent });
-    }
-
-    let marker = if armed { ">" } else { " " };
-    let label = if armed {
-        format!("{marker} A ARMED")
-    } else {
-        format!("{marker} A SAFE")
-    };
-    draw_hud_panel_text(
-        frame,
-        &label,
-        Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + y_offset),
-        armed,
-        accent,
-    );
-}
-
-fn draw_hud_follow_row(
-    frame: &mut canvas::Frame,
-    menu_origin: Point,
-    y_offset: f32,
-    following: bool,
-    accent: Color,
-) {
-    let row_origin = Point::new(menu_origin.x + 5.0, menu_origin.y + y_offset - 7.0);
-    let row_size = Size::new(122.0, 14.0);
-    if following {
-        frame.fill_rectangle(row_origin, row_size, Color { a: 0.17, ..accent });
-    }
-
-    let marker = if following { ">" } else { " " };
-    let label = if following {
-        format!("{marker} C FOLLOW")
-    } else {
-        format!("{marker} C MANUAL")
-    };
-    draw_hud_panel_text(
-        frame,
-        &label,
-        Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + y_offset),
-        following,
-        accent,
-    );
-}
-
-fn draw_hud_market_side_row(
-    frame: &mut canvas::Frame,
-    menu_origin: Point,
-    y_offset: f32,
-    side: HudMarketSide,
-    active_side: HudMarketSide,
-    market_active: bool,
-    accent: Color,
-) {
-    let active = market_active && side == active_side;
-    let row_origin = Point::new(menu_origin.x + 5.0, menu_origin.y + y_offset - 7.0);
-    let row_size = Size::new(132.0, 14.0);
-    if active {
-        frame.fill_rectangle(row_origin, row_size, Color { a: 0.17, ..accent });
-    }
-
-    let hotkey = match side {
-        HudMarketSide::Long => "Y",
-        HudMarketSide::Short => "X",
-    };
-    let marker = if active { ">" } else { " " };
-    let label = format!("{marker} {hotkey} {}", side.label());
-    draw_hud_panel_text(
-        frame,
-        &label,
-        Point::new(menu_origin.x + HUD_PANEL_PAD, menu_origin.y + y_offset),
-        market_active,
-        accent,
-    );
 }
 
 fn draw_hud_size_scroller(
@@ -1229,26 +1171,7 @@ fn draw_hud_text(
     color: Color,
     align_x: alignment::Horizontal,
 ) {
-    frame.fill_text(canvas::Text {
-        content: content.to_string(),
-        position: Point::new(position.x + 1.0, position.y + 1.0),
-        color: HUD_SHADOW,
-        size: iced::Pixels(10.5),
-        align_x: align_x.into(),
-        align_y: alignment::Vertical::Center,
-        font: crate::app_fonts::monospace_font(),
-        ..canvas::Text::default()
-    });
-    frame.fill_text(canvas::Text {
-        content: content.to_string(),
-        position,
-        color,
-        size: iced::Pixels(10.5),
-        align_x: align_x.into(),
-        align_y: alignment::Vertical::Center,
-        font: crate::app_fonts::monospace_font(),
-        ..canvas::Text::default()
-    });
+    draw_hud_text_sized(frame, content, position, color, align_x, 10.5);
 }
 
 fn draw_hud_connector(frame: &mut canvas::Frame, from: Point, to: Point, accent: Color) {
@@ -1259,16 +1182,6 @@ fn draw_hud_connector(frame: &mut canvas::Frame, from: Point, to: Point, accent:
             .with_color(Color { a: 0.32, ..accent })
             .with_width(0.65),
     );
-}
-
-fn draw_hud_text_block(frame: &mut canvas::Frame, lines: &[String], origin: Point, accent: Color) {
-    for (index, line) in lines.iter().enumerate() {
-        let position = Point::new(
-            origin.x,
-            origin.y + index as f32 * HUD_LINE_HEIGHT + HUD_LINE_HEIGHT * 0.5,
-        );
-        draw_hud_text(frame, line, position, accent, alignment::Horizontal::Left);
-    }
 }
 
 fn format_hud_hover_time(unix_ms: u64) -> String {
