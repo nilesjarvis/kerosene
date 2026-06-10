@@ -36,16 +36,16 @@ impl CandlestickChart {
                     .and_capture(),
             ),
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("l") => {
-                Some(set_hud_order_kind(state, HudOrderKind::Limit))
+                Some(self.set_hud_order_kind(state, HudOrderKind::Limit))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("m") => {
-                Some(set_hud_order_kind(state, HudOrderKind::Market))
+                Some(self.set_hud_order_kind(state, HudOrderKind::Market))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("y") => {
-                Some(set_hud_market_side(state, HudMarketSide::Long))
+                Some(self.set_hud_market_side(state, HudMarketSide::Long))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("x") => {
-                Some(set_hud_market_side(state, HudMarketSide::Short))
+                Some(self.set_hud_market_side(state, HudMarketSide::Short))
             }
             keyboard::Key::Character(value) if value.eq_ignore_ascii_case("s") => {
                 state.hud_size_editing = true;
@@ -58,10 +58,10 @@ impl CandlestickChart {
                 Some(redraw_and_capture())
             }
             keyboard::Key::Named(key::Named::ArrowUp) => {
-                Some(set_hud_market_side(state, HudMarketSide::Long))
+                Some(self.set_hud_market_side(state, HudMarketSide::Long))
             }
             keyboard::Key::Named(key::Named::ArrowDown) => {
-                Some(set_hud_market_side(state, HudMarketSide::Short))
+                Some(self.set_hud_market_side(state, HudMarketSide::Short))
             }
             _ => None,
         }
@@ -93,7 +93,7 @@ impl CandlestickChart {
         } else {
             HudUiSound::SizeDown
         };
-        Some(hud_control_action(changed, sound))
+        Some(self.hud_control_action(changed, sound))
     }
 
     pub(in crate::chart) fn hud_game_mode_enabled(&self) -> bool {
@@ -126,34 +126,46 @@ fn redraw_and_capture() -> canvas::Action<Message> {
     canvas::Action::request_redraw().and_capture()
 }
 
-/// Publishing routes through the app update so the interface click can play
-/// next to the sound preferences; the update cycle re-renders the overlay.
-fn hud_control_action(changed: bool, sound: HudUiSound) -> canvas::Action<Message> {
-    if changed {
-        canvas::Action::publish(Message::ChartHudUiSound(sound)).and_capture()
-    } else {
-        redraw_and_capture()
+impl CandlestickChart {
+    /// Publishing routes through the app update, which plays the interface
+    /// click (on change) and pops the weapon-selector list on this chart.
+    fn hud_control_action(&self, changed: bool, sound: HudUiSound) -> canvas::Action<Message> {
+        canvas::Action::publish(Message::ChartHudControlChanged(
+            self.id,
+            self.surface_id,
+            sound,
+            changed,
+        ))
+        .and_capture()
     }
-}
 
-fn set_hud_order_kind(state: &mut ChartState, kind: HudOrderKind) -> canvas::Action<Message> {
-    let changed = state.hud_order_kind != kind;
-    state.hud_order_kind = kind;
-    let sound = match kind {
-        HudOrderKind::Limit => HudUiSound::ModeLimit,
-        HudOrderKind::Market => HudUiSound::ModeMarket,
-    };
-    hud_control_action(changed, sound)
-}
+    fn set_hud_order_kind(
+        &self,
+        state: &mut ChartState,
+        kind: HudOrderKind,
+    ) -> canvas::Action<Message> {
+        let changed = state.hud_order_kind != kind;
+        state.hud_order_kind = kind;
+        let sound = match kind {
+            HudOrderKind::Limit => HudUiSound::ModeLimit,
+            HudOrderKind::Market => HudUiSound::ModeMarket,
+        };
+        self.hud_control_action(changed, sound)
+    }
 
-fn set_hud_market_side(state: &mut ChartState, side: HudMarketSide) -> canvas::Action<Message> {
-    let changed = state.hud_market_side != side;
-    state.hud_market_side = side;
-    let sound = match side {
-        HudMarketSide::Long => HudUiSound::SideLong,
-        HudMarketSide::Short => HudUiSound::SideShort,
-    };
-    hud_control_action(changed, sound)
+    fn set_hud_market_side(
+        &self,
+        state: &mut ChartState,
+        side: HudMarketSide,
+    ) -> canvas::Action<Message> {
+        let changed = state.hud_market_side != side;
+        state.hud_market_side = side;
+        let sound = match side {
+            HudMarketSide::Long => HudUiSound::SideLong,
+            HudMarketSide::Short => HudUiSound::SideShort,
+        };
+        self.hud_control_action(changed, sound)
+    }
 }
 
 fn handle_hud_size_key(
@@ -278,8 +290,33 @@ mod tests {
     use crate::sound::HudUiSound;
     use iced::{Point, keyboard};
 
+    fn pressed_control(
+        chart: &CandlestickChart,
+        state: &mut ChartState,
+        key: &str,
+    ) -> Option<(HudUiSound, bool)> {
+        let action = chart
+            .handle_hud_key_pressed(
+                state,
+                keyboard::Key::Character(key),
+                Some(key),
+                keyboard::Modifiers::NONE,
+            )
+            .expect("selector key should be handled");
+        let (message, _, _) = action.into_inner();
+        match message {
+            Some(Message::ChartHudControlChanged(id, surface_id, control, changed)) => {
+                assert_eq!(id, chart.id);
+                assert_eq!(surface_id, chart.surface_id);
+                Some((control, changed))
+            }
+            Some(other) => panic!("expected ChartHudControlChanged, got {other:?}"),
+            None => None,
+        }
+    }
+
     #[test]
-    fn mode_key_publishes_a_ui_click_only_when_the_mode_changes() {
+    fn mode_key_always_pops_the_selector_but_clicks_only_on_change() {
         let mut chart = CandlestickChart::new(1);
         chart.set_crosshair_style(ChartCrosshairStyle::Hud);
         let mut state = ChartState {
@@ -288,35 +325,21 @@ mod tests {
         };
 
         // Default mode is Limit, so M is a change and clicks.
-        let action = chart
-            .handle_hud_key_pressed(
-                &mut state,
-                keyboard::Key::Character("m"),
-                Some("m"),
-                keyboard::Modifiers::NONE,
-            )
-            .expect("M should be handled");
-        let (message, _, _) = action.into_inner();
-        assert!(matches!(
-            message,
-            Some(Message::ChartHudUiSound(HudUiSound::ModeMarket))
-        ));
+        assert_eq!(
+            pressed_control(&chart, &mut state, "m"),
+            Some((HudUiSound::ModeMarket, true))
+        );
 
-        // Repeating M is not a change: redraw only, no click.
-        let action = chart
-            .handle_hud_key_pressed(
-                &mut state,
-                keyboard::Key::Character("m"),
-                Some("m"),
-                keyboard::Modifiers::NONE,
-            )
-            .expect("repeat M should still capture");
-        let (message, _, _) = action.into_inner();
-        assert!(message.is_none());
+        // Repeating M still publishes (the weapon list re-opens, Battlefield
+        // style) but is flagged unchanged so no click replays.
+        assert_eq!(
+            pressed_control(&chart, &mut state, "m"),
+            Some((HudUiSound::ModeMarket, false))
+        );
     }
 
     #[test]
-    fn side_keys_publish_direction_coded_ui_clicks() {
+    fn side_keys_publish_direction_coded_controls() {
         let mut chart = CandlestickChart::new(1);
         chart.set_crosshair_style(ChartCrosshairStyle::Hud);
         let mut state = ChartState {
@@ -325,33 +348,14 @@ mod tests {
         };
 
         // Default side is Long, so X is a change.
-        let action = chart
-            .handle_hud_key_pressed(
-                &mut state,
-                keyboard::Key::Character("x"),
-                Some("x"),
-                keyboard::Modifiers::NONE,
-            )
-            .expect("X should be handled");
-        let (message, _, _) = action.into_inner();
-        assert!(matches!(
-            message,
-            Some(Message::ChartHudUiSound(HudUiSound::SideShort))
-        ));
-
-        let action = chart
-            .handle_hud_key_pressed(
-                &mut state,
-                keyboard::Key::Character("y"),
-                Some("y"),
-                keyboard::Modifiers::NONE,
-            )
-            .expect("Y should be handled");
-        let (message, _, _) = action.into_inner();
-        assert!(matches!(
-            message,
-            Some(Message::ChartHudUiSound(HudUiSound::SideLong))
-        ));
+        assert_eq!(
+            pressed_control(&chart, &mut state, "x"),
+            Some((HudUiSound::SideShort, true))
+        );
+        assert_eq!(
+            pressed_control(&chart, &mut state, "y"),
+            Some((HudUiSound::SideLong, true))
+        );
     }
 
     #[test]
@@ -369,7 +373,12 @@ mod tests {
         let (message, _, _) = action.into_inner();
         assert!(matches!(
             message,
-            Some(Message::ChartHudUiSound(HudUiSound::SizeUp))
+            Some(Message::ChartHudControlChanged(
+                _,
+                _,
+                HudUiSound::SizeUp,
+                true
+            ))
         ));
 
         let action = chart
@@ -378,7 +387,12 @@ mod tests {
         let (message, _, _) = action.into_inner();
         assert!(matches!(
             message,
-            Some(Message::ChartHudUiSound(HudUiSound::SizeDown))
+            Some(Message::ChartHudControlChanged(
+                _,
+                _,
+                HudUiSound::SizeDown,
+                true
+            ))
         ));
     }
 

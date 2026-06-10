@@ -1,4 +1,7 @@
-use super::model::{CandlestickChart, HudFeedEntry, HudOrderAnimation, MarketOrderLoadingOverlay};
+use super::model::{
+    CandlestickChart, HudFeedEntry, HudOrderAnimation, HudSelectorKind, HudWeaponSelector,
+    MarketOrderLoadingOverlay,
+};
 use iced::{Point, Size};
 
 // ---------------------------------------------------------------------------
@@ -9,6 +12,9 @@ const HUD_ORDER_ANIMATION_STEP: f32 = 0.18;
 const MARKET_ORDER_LOADING_STEP: f32 = 0.045;
 /// Armed pulse loops roughly every 1.2s at the 40ms animation tick.
 const HUD_ARMED_PULSE_STEP: f32 = 0.033;
+/// Weapon selector lives ~1.6s at the 40ms animation tick.
+const HUD_SELECTOR_AGE_STEP: f32 = 0.025;
+const HUD_SELECTOR_POP_STEP: f32 = 0.12;
 /// HUD battle feed rows fade out over this lifetime.
 pub(crate) const HUD_FEED_TTL_MS: u64 = 5_000;
 pub(crate) const HUD_FEED_MAX_ROWS: usize = 3;
@@ -55,15 +61,38 @@ impl CandlestickChart {
         } else {
             self.hud_pulse_phase = 0.0;
         }
+
+        if let Some(selector) = self.hud_weapon_selector.as_mut() {
+            selector.age += HUD_SELECTOR_AGE_STEP;
+            selector.pop = (selector.pop + HUD_SELECTOR_POP_STEP).min(1.0);
+            if selector.age >= 1.0 {
+                self.hud_weapon_selector = None;
+            }
+        }
+    }
+
+    /// Pops the weapon-selector list open (or keeps it open) after a
+    /// mode/side keypress; a real change restarts the slot highlight pop.
+    pub(crate) fn open_hud_weapon_selector(&mut self, kind: HudSelectorKind, changed: bool) {
+        let pop = match self.hud_weapon_selector {
+            Some(selector) if selector.kind == kind && !changed => selector.pop,
+            _ => 0.0,
+        };
+        self.hud_weapon_selector = Some(HudWeaponSelector {
+            kind,
+            age: 0.0,
+            pop,
+        });
     }
 
     pub(crate) fn hud_order_animation_active(&self) -> bool {
         self.hud_order_animation.is_some() || !self.pending_market_order_loading.is_empty()
     }
 
-    /// Animation ticks also run while armed so the HUD pulse stays smooth.
+    /// Animation ticks also run while armed (for the pulse) and while the
+    /// weapon selector is open (for its pop and fade).
     pub(crate) fn hud_animation_tick_needed(&self) -> bool {
-        self.hud_order_animation_active() || self.hud_armed
+        self.hud_order_animation_active() || self.hud_armed || self.hud_weapon_selector.is_some()
     }
 
     pub(crate) fn push_hud_feed(&mut self, label: String, is_buy: bool, now_ms: u64) {
@@ -139,6 +168,44 @@ mod tests {
         chart.push_hud_feed("LIMIT SELL 1 @ 10".to_string(), false, 60_000);
         assert_eq!(chart.hud_feed.len(), 1);
         assert_eq!(chart.hud_feed[0].label, "LIMIT SELL 1 @ 10");
+    }
+
+    #[test]
+    fn weapon_selector_pops_open_ticks_and_expires() {
+        use crate::chart::model::HudSelectorKind;
+
+        let mut chart = CandlestickChart::new(1);
+        chart.set_crosshair_style(ChartCrosshairStyle::Hud);
+        assert!(!chart.hud_animation_tick_needed());
+
+        chart.open_hud_weapon_selector(HudSelectorKind::Mode, true);
+        assert!(chart.hud_animation_tick_needed());
+        let selector = chart.hud_weapon_selector.expect("selector open");
+        assert_eq!(selector.kind, HudSelectorKind::Mode);
+        assert_eq!(selector.pop, 0.0);
+
+        chart.advance_hud_order_animation();
+        let selector = chart.hud_weapon_selector.expect("selector still open");
+        assert!(selector.age > 0.0);
+        assert!(selector.pop > 0.0);
+
+        // A repeat press of the equipped slot keeps the list open without
+        // restarting the highlight pop; a real change restarts it.
+        let pop_before = selector.pop;
+        chart.open_hud_weapon_selector(HudSelectorKind::Mode, false);
+        let selector = chart.hud_weapon_selector.expect("selector refreshed");
+        assert_eq!(selector.age, 0.0);
+        assert_eq!(selector.pop, pop_before);
+        chart.open_hud_weapon_selector(HudSelectorKind::Side, true);
+        let selector = chart.hud_weapon_selector.expect("selector switched");
+        assert_eq!(selector.kind, HudSelectorKind::Side);
+        assert_eq!(selector.pop, 0.0);
+
+        for _ in 0..41 {
+            chart.advance_hud_order_animation();
+        }
+        assert_eq!(chart.hud_weapon_selector, None);
+        assert!(!chart.hud_animation_tick_needed());
     }
 
     #[test]

@@ -440,7 +440,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartPriceFlashTick
         | Message::ChartHudOrderAnimationTick
         | Message::ChartHudArmToggled(_, _)
-        | Message::ChartHudUiSound(_)
+        | Message::ChartHudControlChanged(_, _, _, _)
         | Message::ChartHudSafetyTick
         | Message::ChartHoverStateChanged(_, _, _, _, _)
         | Message::ChartOrderCancelHoverAnimationTick

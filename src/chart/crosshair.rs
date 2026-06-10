@@ -15,8 +15,8 @@ mod game_hud;
 mod measurement;
 mod range;
 
-pub(in crate::chart) use game_hud::hud_station_metrics;
 use game_hud::{draw_hud_text_sized, fill_chevron_right, fill_triangle, hud_pulse_wave};
+pub(in crate::chart) use game_hud::{hud_selector_bounds, hud_station_metrics};
 
 #[cfg(test)]
 mod tests;

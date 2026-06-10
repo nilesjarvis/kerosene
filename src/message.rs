@@ -577,7 +577,9 @@ pub(crate) enum Message {
     ChartPriceFlashTick,
     ChartHudOrderAnimationTick,
     ChartHudArmToggled(ChartId, ChartSurfaceId),
-    ChartHudUiSound(crate::sound::HudUiSound),
+    /// HUD selector control pressed: control, plus whether the value changed
+    /// (sounds play on change; the weapon-selector popup opens either way).
+    ChartHudControlChanged(ChartId, ChartSurfaceId, crate::sound::HudUiSound, bool),
     ChartHudSafetyTick,
     ChartHoverStateChanged(ChartId, ChartSurfaceId, Option<u64>, bool, Option<u64>),
     ChartOrderCancelHoverAnimationTick,

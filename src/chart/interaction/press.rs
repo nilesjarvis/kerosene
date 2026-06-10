@@ -123,13 +123,16 @@ impl CandlestickChart {
             && let Some((price_hi, price_range, price_h)) =
                 self.visible_price_params(state, chart_w, chart_h)
         {
-            // No-fire deadzone over the weapon station: a swallowed click
-            // costs a re-click, a misplaced order costs money. The station is
-            // drawn in screen space, so hit-test the physical cursor.
-            let market_mode = state.hud_order_kind == super::super::state::HudOrderKind::Market;
-            if super::super::crosshair::hud_station_metrics(chart_w, price_h, market_mode)
-                .is_some_and(|metrics| metrics.bounds.contains(visual_pos))
-            {
+            // No-fire deadzone over the weapon station and the open selector
+            // popup: a swallowed click costs a re-click, a misplaced order
+            // costs money. Both are drawn in screen space, so hit-test the
+            // physical cursor.
+            let station_hit = super::super::crosshair::hud_station_metrics(chart_w, price_h)
+                .is_some_and(|metrics| metrics.bounds.contains(visual_pos));
+            let selector_hit = self.hud_weapon_selector.is_some()
+                && super::super::crosshair::hud_selector_bounds(chart_w, price_h)
+                    .is_some_and(|bounds| bounds.contains(visual_pos));
+            if station_hit || selector_hit {
                 return Some(canvas::Action::request_redraw().and_capture());
             }
 

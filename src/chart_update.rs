@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::chart::HudSelectorKind;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use crate::sound;
@@ -88,8 +89,16 @@ impl TradingTerminal {
                     self.play_hud_ui_sound(sound);
                 }
             }
-            Message::ChartHudUiSound(sound) => {
-                self.play_hud_ui_sound(sound);
+            Message::ChartHudControlChanged(id, surface_id, control, changed) => {
+                if changed {
+                    self.play_hud_ui_sound(control);
+                }
+                if let Some(instance) = self.charts.get_mut(&id)
+                    && instance.chart.surface_id() == surface_id
+                    && let Some(kind) = HudSelectorKind::for_control(control)
+                {
+                    instance.chart.open_hud_weapon_selector(kind, changed);
+                }
             }
             Message::ChartHudSafetyTick => {
                 let now_ms = Self::now_ms();

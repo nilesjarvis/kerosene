@@ -151,6 +151,8 @@ pub struct CandlestickChart {
     pub(crate) hud_idle_warning_sounded: bool,
     /// Recent HUD shots shown in the top-right battle feed (label, side, time).
     pub(crate) hud_feed: Vec<HudFeedEntry>,
+    /// Transient weapon-selector popup shown after a mode/side keypress.
+    pub(crate) hud_weapon_selector: Option<HudWeaponSelector>,
     /// Whether position entry and liquidation labels should be redacted while rendering.
     pub(crate) obscure_position_prices: bool,
     /// Whether active position/liquidation and order overlays should be hidden while rendering.
@@ -222,6 +224,38 @@ pub(crate) struct HudFeedEntry {
     pub(crate) label: String,
     pub(crate) is_buy: bool,
     pub(crate) added_at_ms: u64,
+}
+
+/// Which loadout list the transient HUD weapon selector is showing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HudSelectorKind {
+    /// Order type swap: LIMIT / MARKET (the L/M "weapon switch").
+    Mode,
+    /// Market side: LONG / SHORT (the Y/X "fire selector").
+    Side,
+}
+
+impl HudSelectorKind {
+    pub(crate) fn for_control(control: crate::sound::HudUiSound) -> Option<Self> {
+        use crate::sound::HudUiSound;
+        match control {
+            HudUiSound::ModeLimit | HudUiSound::ModeMarket => Some(Self::Mode),
+            HudUiSound::SideLong | HudUiSound::SideShort => Some(Self::Side),
+            _ => None,
+        }
+    }
+}
+
+/// Transient weapon-selector popup above the HUD station, Battlefield style:
+/// pops open on a selector keypress, highlights the equipped slot, then
+/// fades back to the persistent equipped-weapon readout.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct HudWeaponSelector {
+    pub(crate) kind: HudSelectorKind,
+    /// Normalized lifetime 0..1: pop-in, hold, fade-out; expires at 1.
+    pub(crate) age: f32,
+    /// 0..1 highlight pop of the just-selected slot.
+    pub(crate) pop: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

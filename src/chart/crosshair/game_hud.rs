@@ -1,7 +1,7 @@
 use super::super::countdown::{next_candle_countdown_label, remaining_ms_until_next_candle};
 use super::super::hud_order_animation::{HUD_FEED_MAX_ROWS, HUD_FEED_TTL_MS};
 use super::super::hud_safety::HUD_ARM_IDLE_TIMEOUT_MS;
-use super::super::model::CandlestickChart;
+use super::super::model::{CandlestickChart, HudSelectorKind};
 use super::super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::{
     CrosshairOverlayContext, HUD_CHAR_WIDTH, HUD_SHADOW, HUD_WARNING_YELLOW, draw_hud_text,
@@ -44,6 +44,12 @@ const PROMPT_CURSOR_CLEARANCE: f32 = 60.0;
 
 const TAPE_WIDTH: f32 = 96.0;
 const TAPE_TICKS: usize = 17;
+
+const SELECTOR_SLOT_H: f32 = 22.0;
+const SELECTOR_SLOT_GAP: f32 = 4.0;
+const SELECTOR_PAD: f32 = 5.0;
+/// Vertical gap between the popup and the weapon station beneath it.
+const SELECTOR_GAP: f32 = 6.0;
 
 pub(in crate::chart) fn hud_pulse_wave(phase: f32) -> f32 {
     ((phase.clamp(0.0, 1.0) * std::f32::consts::TAU).sin() + 1.0) * 0.5
@@ -148,6 +154,7 @@ impl CandlestickChart {
         self.draw_hud_mission_strip(ctx, accent);
         self.draw_hud_battle_feed(ctx);
         self.draw_hud_weapon_station(ctx, accent);
+        self.draw_hud_weapon_selector(ctx, accent);
         draw_hud_nav_chip(ctx, accent);
         self.draw_hud_context_prompt(ctx, accent);
     }
@@ -388,7 +395,6 @@ pub(in crate::chart) struct HudStationMetrics {
 pub(in crate::chart) fn hud_station_metrics(
     chart_w: f32,
     price_h: f32,
-    market_mode: bool,
 ) -> Option<HudStationMetrics> {
     if chart_w < STATION_MIN_W || price_h < STATION_MIN_H {
         return None;
@@ -398,14 +404,8 @@ pub(in crate::chart) fn hud_station_metrics(
     let (width, height) = if compact {
         (STATION_COMPACT_WIDTH, 2.0 * STATION_ROW_H + 10.0)
     } else {
-        let side_rows = if market_mode { 2.0 } else { 1.0 };
-        let height = STATION_PAD * 2.0
-            + 18.0      // size row
-            + 11.0      // rule + gaps
-            + 2.0 * STATION_ROW_H   // mode rows
-            + side_rows * STATION_ROW_H
-            + 11.0      // rule + gaps
-            + 14.0; // safety row
+        // pad + size row + rule + equipped row + hint row + rule + safety + pad
+        let height = STATION_PAD * 2.0 + 18.0 + 11.0 + STATION_ROW_H + 11.0 + 11.0 + 14.0;
         (STATION_WIDTH, height)
     };
 
@@ -422,6 +422,21 @@ pub(in crate::chart) fn hud_station_metrics(
     })
 }
 
+/// Bounds of the transient weapon-selector popup above the station; `None`
+/// when there is no room for it (or no station to anchor to).
+pub(in crate::chart) fn hud_selector_bounds(chart_w: f32, price_h: f32) -> Option<Rectangle> {
+    let station = hud_station_metrics(chart_w, price_h)?;
+    let width = station.bounds.width;
+    let height = 2.0 * SELECTOR_SLOT_H + SELECTOR_SLOT_GAP + 2.0 * SELECTOR_PAD;
+    let y = station.bounds.y - SELECTOR_GAP - height;
+    (y >= 4.0).then_some(Rectangle {
+        x: station.bounds.x,
+        y,
+        width,
+        height,
+    })
+}
+
 impl CandlestickChart {
     fn draw_hud_weapon_station<PriceToY>(
         &self,
@@ -430,8 +445,7 @@ impl CandlestickChart {
     ) where
         PriceToY: Fn(f64) -> f32,
     {
-        let market_mode = ctx.state.hud_order_kind == HudOrderKind::Market;
-        let Some(metrics) = hud_station_metrics(ctx.chart_w, ctx.price_h, market_mode) else {
+        let Some(metrics) = hud_station_metrics(ctx.chart_w, ctx.price_h) else {
             return;
         };
         let bounds = metrics.bounds;
@@ -449,7 +463,7 @@ impl CandlestickChart {
         if metrics.compact {
             self.draw_hud_station_compact(ctx, bounds, accent);
         } else {
-            self.draw_hud_station_full(ctx, bounds, accent, market_mode);
+            self.draw_hud_station_full(ctx, bounds, accent);
         }
     }
 
@@ -458,7 +472,6 @@ impl CandlestickChart {
         ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
         bounds: Rectangle,
         accent: Color,
-        market_mode: bool,
     ) where
         PriceToY: Fn(f64) -> f32,
     {
@@ -510,77 +523,106 @@ impl CandlestickChart {
         draw_station_rule(ctx.frame, left, right, y, accent);
         y += 11.0;
 
-        // Fire-mode selector.
-        let limit_active = !market_mode;
-        draw_station_row(
-            ctx.frame,
-            left,
-            y,
-            "[L] LIMIT",
-            limit_active,
-            if limit_active {
-                Color { a: 0.95, ..accent }
-            } else {
-                Color { a: 0.40, ..text }
-            },
-        );
+        // Equipped weapon line: only what is loaded fires here. The full
+        // loadout list lives in the transient selector popup (L/M/Y/X).
+        self.draw_hud_equipped_weapon(ctx, Point::new(left, y), accent);
         y += STATION_ROW_H;
-        draw_station_row(
+        draw_hud_text_sized(
             ctx.frame,
-            left,
-            y,
-            "[M] MARKET",
-            market_mode,
-            if market_mode {
-                Color { a: 0.95, ..accent }
-            } else {
-                Color { a: 0.40, ..text }
-            },
+            "[L][M] SWAP \u{b7} [Y][X] SIDE",
+            Point::new(left + 9.0, y),
+            Color { a: 0.38, ..text },
+            alignment::Horizontal::Left,
+            8.5,
         );
-        y += STATION_ROW_H;
+        y += 11.0;
 
-        // Side selector / inference hint.
+        draw_station_rule(ctx.frame, left, right, y, accent);
+        y += 11.0;
+        self.draw_hud_station_safety_row(ctx.frame, left, right, y, text);
+    }
+
+    /// The persistent bottom-right readout of the loaded order type: name,
+    /// fire pips (1 = limit/single, 3 = market/auto), and the side word.
+    fn draw_hud_equipped_weapon<PriceToY>(
+        &self,
+        ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
+        origin: Point,
+        accent: Color,
+    ) where
+        PriceToY: Fn(f64) -> f32,
+    {
+        let text = ctx.theme.palette().text;
+        let market_mode = ctx.state.hud_order_kind == HudOrderKind::Market;
+        let bright = Color { a: 0.95, ..accent };
+
+        fill_chevron_right(ctx.frame, Point::new(origin.x + 2.0, origin.y), 3.0, bright);
+        let name = if market_mode { "MARKET" } else { "LIMIT" };
+        draw_hud_text_sized(
+            ctx.frame,
+            name,
+            Point::new(origin.x + 9.0, origin.y),
+            bright,
+            alignment::Horizontal::Left,
+            11.0,
+        );
+        let after_name = origin.x + 9.0 + name.chars().count() as f32 * 11.0 * 0.61 + 7.0;
+        draw_fire_pips(
+            ctx.frame,
+            Point::new(after_name, origin.y),
+            if market_mode { 3 } else { 1 },
+            bright,
+        );
+        let after_pips = after_name + 3.0 * 4.5 + 7.0;
+
         if market_mode {
-            let success = ctx.theme.palette().success;
-            let danger = ctx.theme.palette().danger;
-            let long_active = ctx.state.hud_market_side == HudMarketSide::Long;
-            draw_station_side_row(
+            let is_long = ctx.state.hud_market_side == HudMarketSide::Long;
+            let side_color = if is_long {
+                ctx.theme.palette().success
+            } else {
+                ctx.theme.palette().danger
+            };
+            let side = ctx.state.hud_market_side.label();
+            draw_hud_text_sized(
                 ctx.frame,
-                left,
-                y,
-                "[Y] LONG",
-                true,
-                long_active,
-                success,
-                text,
+                side,
+                Point::new(after_pips, origin.y),
+                Color {
+                    a: 0.95,
+                    ..side_color
+                },
+                alignment::Horizontal::Left,
+                11.0,
             );
-            y += STATION_ROW_H;
-            draw_station_side_row(
+            fill_triangle(
                 ctx.frame,
-                left,
-                y,
-                "[X] SHORT",
-                false,
-                !long_active,
-                danger,
-                text,
+                Point::new(
+                    after_pips + side.chars().count() as f32 * 11.0 * 0.61 + 7.0,
+                    origin.y,
+                ),
+                3.0,
+                5.0,
+                is_long,
+                Color {
+                    a: 0.95,
+                    ..side_color
+                },
             );
-            y += STATION_ROW_H;
         } else {
             // Teaches the click-above/below-market side inference.
             draw_hud_text_sized(
                 ctx.frame,
-                "SIDE AUTO",
-                Point::new(left + 9.0, y),
+                "AUTO",
+                Point::new(after_pips, origin.y),
                 Color { a: 0.45, ..text },
                 alignment::Horizontal::Left,
-                10.5,
+                9.5,
             );
-            let glyph_x = left + 9.0 + 9.0 * HUD_CHAR_WIDTH + 8.0;
+            let glyph_x = after_pips + 4.0 * 9.5 * 0.61 + 8.0;
             fill_triangle(
                 ctx.frame,
-                Point::new(glyph_x, y - 2.0),
-                3.0,
+                Point::new(glyph_x, origin.y - 2.0),
+                2.6,
                 4.0,
                 true,
                 Color {
@@ -590,8 +632,8 @@ impl CandlestickChart {
             );
             fill_triangle(
                 ctx.frame,
-                Point::new(glyph_x + 9.0, y - 2.0),
-                3.0,
+                Point::new(glyph_x + 8.0, origin.y - 2.0),
+                2.6,
                 4.0,
                 false,
                 Color {
@@ -599,12 +641,7 @@ impl CandlestickChart {
                     ..ctx.theme.palette().danger
                 },
             );
-            y += STATION_ROW_H;
         }
-
-        draw_station_rule(ctx.frame, left, right, y, accent);
-        y += 11.0;
-        self.draw_hud_station_safety_row(ctx.frame, left, right, y, text);
     }
 
     fn draw_hud_station_compact<PriceToY>(
@@ -765,71 +802,204 @@ fn draw_station_rule(frame: &mut canvas::Frame, left: f32, right: f32, y: f32, a
     );
 }
 
-fn draw_station_row(
-    frame: &mut canvas::Frame,
-    left: f32,
-    y: f32,
-    label: &str,
-    active: bool,
-    color: Color,
-) {
-    if active {
-        fill_chevron_right(frame, Point::new(left + 2.0, y), 3.0, color);
+/// Classic fire-selector pips: one rectangle for single-shot (limit), three
+/// for full-auto (market).
+fn draw_fire_pips(frame: &mut canvas::Frame, origin: Point, count: usize, color: Color) {
+    for index in 0..count {
+        frame.fill_rectangle(
+            Point::new(origin.x + index as f32 * 4.5, origin.y - 3.0),
+            Size::new(2.4, 6.0),
+            color,
+        );
     }
-    draw_hud_text(
-        frame,
-        label,
-        Point::new(left + 9.0, y),
-        color,
-        alignment::Horizontal::Left,
-    );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn draw_station_side_row(
+// ---------------------------------------------------------------------------
+// Weapon Selector Popup
+// ---------------------------------------------------------------------------
+
+/// Alpha envelope over the selector's normalized lifetime: quick pop-in,
+/// hold, then fade back out — the Battlefield weapon-switch rhythm.
+fn hud_selector_alpha(age: f32) -> f32 {
+    if age < 0.08 {
+        (age / 0.08).clamp(0.0, 1.0)
+    } else if age > 0.72 {
+        ((1.0 - age) / 0.28).clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
+struct HudSelectorSlot<'a> {
+    key: &'a str,
+    name: &'a str,
+    /// Fire pips when `Some(count)`; side triangle when `None`.
+    pips: Option<usize>,
+    triangle_up: Option<bool>,
+    color: Color,
+    selected: bool,
+}
+
+impl CandlestickChart {
+    /// Transient loadout list above the station: pops open on a selector
+    /// keypress with the equipped slot bracketed, then fades out.
+    fn draw_hud_weapon_selector<PriceToY>(
+        &self,
+        ctx: &mut CrosshairOverlayContext<'_, PriceToY>,
+        accent: Color,
+    ) where
+        PriceToY: Fn(f64) -> f32,
+    {
+        let Some(selector) = self.hud_weapon_selector else {
+            return;
+        };
+        let Some(bounds) = hud_selector_bounds(ctx.chart_w, ctx.price_h) else {
+            return;
+        };
+        let alpha = hud_selector_alpha(selector.age);
+        if alpha <= 0.01 {
+            return;
+        }
+
+        let text = ctx.theme.palette().text;
+        let success = ctx.theme.palette().success;
+        let danger = ctx.theme.palette().danger;
+        let market_mode = ctx.state.hud_order_kind == HudOrderKind::Market;
+        let long_side = ctx.state.hud_market_side == HudMarketSide::Long;
+
+        let slots: [HudSelectorSlot<'_>; 2] = match selector.kind {
+            HudSelectorKind::Mode => [
+                HudSelectorSlot {
+                    key: "[L]",
+                    name: "LIMIT",
+                    pips: Some(1),
+                    triangle_up: None,
+                    color: if market_mode { text } else { accent },
+                    selected: !market_mode,
+                },
+                HudSelectorSlot {
+                    key: "[M]",
+                    name: "MARKET",
+                    pips: Some(3),
+                    triangle_up: None,
+                    color: if market_mode { accent } else { text },
+                    selected: market_mode,
+                },
+            ],
+            HudSelectorKind::Side => [
+                HudSelectorSlot {
+                    key: "[Y]",
+                    name: "LONG",
+                    pips: None,
+                    triangle_up: Some(true),
+                    color: success,
+                    selected: long_side,
+                },
+                HudSelectorSlot {
+                    key: "[X]",
+                    name: "SHORT",
+                    pips: None,
+                    triangle_up: Some(false),
+                    color: danger,
+                    selected: !long_side,
+                },
+            ],
+        };
+
+        ctx.frame.fill_rectangle(
+            Point::new(bounds.x, bounds.y),
+            Size::new(bounds.width, bounds.height),
+            Color {
+                a: 0.38 * alpha,
+                ..Color::BLACK
+            },
+        );
+        for (index, slot) in slots.iter().enumerate() {
+            let slot_bounds = Rectangle {
+                x: bounds.x + SELECTOR_PAD,
+                y: bounds.y + SELECTOR_PAD + index as f32 * (SELECTOR_SLOT_H + SELECTOR_SLOT_GAP),
+                width: bounds.width - 2.0 * SELECTOR_PAD,
+                height: SELECTOR_SLOT_H,
+            };
+            draw_hud_selector_slot(ctx.frame, slot_bounds, slot, alpha, selector.pop, text);
+        }
+    }
+}
+
+fn draw_hud_selector_slot(
     frame: &mut canvas::Frame,
-    left: f32,
-    y: f32,
-    label: &str,
-    is_long: bool,
-    active: bool,
-    side_color: Color,
+    bounds: Rectangle,
+    slot: &HudSelectorSlot<'_>,
+    alpha: f32,
+    pop: f32,
     text: Color,
 ) {
-    let color = if active {
-        Color {
-            a: 0.95,
-            ..side_color
-        }
+    let center_y = bounds.y + bounds.height * 0.5;
+    let (color, name_size) = if slot.selected {
+        // The just-equipped slot lands with a brightness pop that settles.
+        let boost = (1.0 - pop) * 0.6;
+        (
+            Color {
+                a: ((0.95 + boost) * alpha).min(1.0),
+                ..slot.color
+            },
+            11.5,
+        )
     } else {
-        Color { a: 0.40, ..text }
+        (
+            Color {
+                a: 0.42 * alpha,
+                ..text
+            },
+            10.5,
+        )
     };
-    if active {
-        fill_chevron_right(frame, Point::new(left + 2.0, y), 3.0, color);
+
+    if slot.selected {
+        frame.fill_rectangle(
+            Point::new(bounds.x, bounds.y),
+            Size::new(bounds.width, bounds.height),
+            Color {
+                a: 0.16 * alpha,
+                ..slot.color
+            },
+        );
+        draw_station_corner_ticks(frame, bounds, color);
+        fill_chevron_right(frame, Point::new(bounds.x + 7.0, center_y), 3.5, color);
     }
-    draw_hud_text(
+
+    draw_hud_text_sized(
         frame,
-        label,
-        Point::new(left + 9.0, y),
+        slot.key,
+        Point::new(bounds.x + 15.0, center_y),
+        Color {
+            a: (if slot.selected { 0.65 } else { 0.40 }) * alpha,
+            ..text
+        },
+        alignment::Horizontal::Left,
+        9.0,
+    );
+    let glyph_x = bounds.x + 44.0;
+    if let Some(count) = slot.pips {
+        draw_fire_pips(frame, Point::new(glyph_x, center_y), count, color);
+    }
+    if let Some(up) = slot.triangle_up {
+        fill_triangle(
+            frame,
+            Point::new(glyph_x + 5.0, center_y),
+            3.5,
+            6.0,
+            up,
+            color,
+        );
+    }
+    draw_hud_text_sized(
+        frame,
+        slot.name,
+        Point::new(glyph_x + 20.0, center_y),
         color,
         alignment::Horizontal::Left,
-    );
-    let glyph_x = left + 9.0 + label.chars().count() as f32 * HUD_CHAR_WIDTH + 8.0;
-    let triangle_color = if active {
-        color
-    } else {
-        Color {
-            a: 0.40,
-            ..side_color
-        }
-    };
-    fill_triangle(
-        frame,
-        Point::new(glyph_x, y - 2.0),
-        3.0,
-        5.0,
-        is_long,
-        triangle_color,
+        name_size,
     );
 }
 
@@ -1055,7 +1225,7 @@ mod tests {
 
     #[test]
     fn station_metrics_anchor_bottom_right_inside_plot() {
-        let metrics = hud_station_metrics(800.0, 500.0, true).expect("station should fit");
+        let metrics = hud_station_metrics(800.0, 500.0).expect("station should fit");
         assert!(!metrics.compact);
         let bounds = metrics.bounds;
         assert_eq!(bounds.x + bounds.width, 800.0 - STATION_MARGIN);
@@ -1063,23 +1233,33 @@ mod tests {
     }
 
     #[test]
-    fn station_metrics_market_mode_is_taller_for_the_extra_side_row() {
-        let market = hud_station_metrics(800.0, 500.0, true).expect("market station");
-        let limit = hud_station_metrics(800.0, 500.0, false).expect("limit station");
-        assert_eq!(
-            market.bounds.height - limit.bounds.height,
-            STATION_ROW_H,
-            "market mode adds exactly one side row"
+    fn station_metrics_collapse_then_disappear_on_small_charts() {
+        assert!(
+            hud_station_metrics(360.0, 240.0).is_some_and(|metrics| metrics.compact),
+            "mid-size charts get the compact station"
         );
+        assert_eq!(hud_station_metrics(180.0, 100.0), None);
     }
 
     #[test]
-    fn station_metrics_collapse_then_disappear_on_small_charts() {
-        assert!(
-            hud_station_metrics(360.0, 240.0, true).is_some_and(|metrics| metrics.compact),
-            "mid-size charts get the compact station"
-        );
-        assert_eq!(hud_station_metrics(180.0, 100.0, true), None);
+    fn selector_popup_sits_above_the_station_with_room_to_spare() {
+        let station = hud_station_metrics(800.0, 500.0).expect("station should fit");
+        let selector = hud_selector_bounds(800.0, 500.0).expect("selector should fit");
+
+        assert_eq!(selector.x, station.bounds.x);
+        assert_eq!(selector.width, station.bounds.width);
+        assert!(selector.y + selector.height <= station.bounds.y);
+        // No station to anchor to: no popup either.
+        assert_eq!(hud_selector_bounds(800.0, STATION_MIN_H - 2.0), None);
+    }
+
+    #[test]
+    fn selector_alpha_pops_in_holds_then_fades_out() {
+        assert_eq!(hud_selector_alpha(0.0), 0.0);
+        assert_eq!(hud_selector_alpha(0.08), 1.0);
+        assert_eq!(hud_selector_alpha(0.5), 1.0);
+        assert!(hud_selector_alpha(0.9) < 0.5);
+        assert_eq!(hud_selector_alpha(1.0), 0.0);
     }
 
     #[test]
