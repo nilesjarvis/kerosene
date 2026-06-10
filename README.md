@@ -34,7 +34,11 @@ More screenshots, including alternate themes and focused feature views, are avai
 
 ## Documentation
 
-Feature-specific guides live in [`docs/`](docs/):
+The top-level technical documentation starts at [`docs/README.md`](docs/README.md).
+It links architecture, component, operations, and feature guides in reading
+order.
+
+Feature-specific guides also live in [`docs/`](docs/):
 
 - [Alfred](docs/alfred.md) — command palette behavior, natural-language market/limit/Chase order drafts, close-position commands, NUKE, and safety rails.
 - [Chase Orders](docs/advanced-orders/chase-orders.md) — high-level behavior, user expectations, limits, and technical lifecycle details for Kerosene's client-side Chase order automation.
