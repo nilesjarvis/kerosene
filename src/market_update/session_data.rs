@@ -1,13 +1,20 @@
-use crate::api::{self, Candle, MarketType};
+use crate::api::{self, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use crate::session_data_state::{
-    SessionDataId, SessionDataInstance, SessionDataLookback, SessionDataRequest,
+    SessionDataCandles, SessionDataId, SessionDataInstance, SessionDataLookback, SessionDataRequest,
 };
 use iced::Task;
 
 const DAY_MS: u64 = 86_400_000;
+// 30m candles align exactly with every market session boundary (all opens fall
+// on :00 or :30 UTC year-round), unlike coarser intervals.
+const INTRADAY_INTERVAL: &str = "30m";
+const INTRADAY_CANDLE_MS: u64 = 30 * 60_000;
+// Hyperliquid candleSnapshot responses cap out around 5000 candles; chunk
+// requests to stay safely below that so long lookbacks keep full coverage.
+const INTRADAY_MAX_CANDLES_PER_REQUEST: u64 = 4_000;
 
 impl TradingTerminal {
     pub(super) fn update_session_data_market(&mut self, message: Message) -> Task<Message> {
@@ -196,7 +203,7 @@ impl TradingTerminal {
         let start_time = now_ms.saturating_sub(request.lookback.days().saturating_mul(DAY_MS));
         let symbol = request.symbol.clone();
         Task::perform(
-            async move { api::fetch_candles(symbol, "1d".to_string(), start_time, now_ms).await },
+            async move { fetch_session_data_candles(symbol, start_time, now_ms).await },
             move |result| Message::SessionDataCandlesLoaded(request.clone(), result),
         )
     }
@@ -204,7 +211,7 @@ impl TradingTerminal {
     fn apply_session_data_candles_loaded(
         &mut self,
         request: SessionDataRequest,
-        result: Result<Vec<Candle>, String>,
+        result: Result<SessionDataCandles, String>,
     ) -> Task<Message> {
         let Some(instance) = self.session_data.get_mut(&request.id) else {
             return Task::none();
@@ -337,6 +344,41 @@ impl TradingTerminal {
     }
 }
 
+async fn fetch_session_data_candles(
+    symbol: String,
+    start_time: u64,
+    end_time: u64,
+) -> Result<SessionDataCandles, String> {
+    let daily = api::fetch_candles(symbol.clone(), "1d".to_string(), start_time, end_time).await?;
+    let mut intraday = Vec::new();
+    for (chunk_start, chunk_end) in intraday_chunk_ranges(start_time, end_time) {
+        let chunk = api::fetch_candles(
+            symbol.clone(),
+            INTRADAY_INTERVAL.to_string(),
+            chunk_start,
+            chunk_end,
+        )
+        .await?;
+        intraday.extend(chunk);
+    }
+    Ok(SessionDataCandles { daily, intraday })
+}
+
+fn intraday_chunk_ranges(start_ms: u64, end_ms: u64) -> Vec<(u64, u64)> {
+    if end_ms <= start_ms {
+        return Vec::new();
+    }
+    let chunk_ms = INTRADAY_CANDLE_MS.saturating_mul(INTRADAY_MAX_CANDLES_PER_REQUEST);
+    let mut ranges = Vec::new();
+    let mut chunk_start = start_ms;
+    while chunk_start < end_ms {
+        let chunk_end = chunk_start.saturating_add(chunk_ms).min(end_ms);
+        ranges.push((chunk_start, chunk_end));
+        chunk_start = chunk_end;
+    }
+    ranges
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,6 +425,34 @@ mod tests {
         assert!(instance.loading);
         assert!(instance.pending_request.is_some());
         assert!(instance.error.is_none());
+    }
+
+    #[test]
+    fn intraday_chunk_ranges_tile_long_lookbacks_without_gaps() {
+        let start = 1_704_067_200_000;
+        let end = start + 365 * DAY_MS;
+        let chunk_ms = INTRADAY_CANDLE_MS * INTRADAY_MAX_CANDLES_PER_REQUEST;
+
+        let ranges = intraday_chunk_ranges(start, end);
+
+        assert_eq!(ranges.first().map(|range| range.0), Some(start));
+        assert_eq!(ranges.last().map(|range| range.1), Some(end));
+        for pair in ranges.windows(2) {
+            assert_eq!(pair[0].1, pair[1].0);
+        }
+        for (chunk_start, chunk_end) in &ranges {
+            assert!(chunk_end - chunk_start <= chunk_ms);
+        }
+        assert_eq!(ranges.len(), 5);
+    }
+
+    #[test]
+    fn intraday_chunk_ranges_use_single_request_for_short_lookbacks() {
+        let start = 1_704_067_200_000;
+        let end = start + 28 * DAY_MS;
+
+        assert_eq!(intraday_chunk_ranges(start, end), vec![(start, end)]);
+        assert!(intraday_chunk_ranges(end, start).is_empty());
     }
 
     #[test]

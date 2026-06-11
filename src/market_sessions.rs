@@ -66,6 +66,9 @@ pub(crate) const MARKET_CLOCK_SESSIONS: [MarketSession; 3] = [
 ];
 
 impl MarketSession {
+    /// All session bands, in chronological order within a UTC day.
+    pub(crate) const ALL: [Self; 4] = [Self::Asia, Self::London, Self::NewYork, Self::Overnight];
+
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::NewYork => "New York",

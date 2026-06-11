@@ -33,7 +33,9 @@ use crate::positioning_state::{
     PositioningInfoSortField,
 };
 use crate::screener_state::{ScreenerExchangeFilter, ScreenerSortColumn};
-use crate::session_data_state::{SessionDataId, SessionDataLookback, SessionDataRequest};
+use crate::session_data_state::{
+    SessionDataCandles, SessionDataId, SessionDataLookback, SessionDataRequest,
+};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
@@ -241,7 +243,7 @@ pub(crate) enum Message {
     SessionDataSymbolSelected(SessionDataId, String),
     SessionDataLookbackChanged(SessionDataId, SessionDataLookback),
     RefreshSessionData(SessionDataId),
-    SessionDataCandlesLoaded(SessionDataRequest, Result<Vec<Candle>, String>),
+    SessionDataCandlesLoaded(SessionDataRequest, Result<SessionDataCandles, String>),
     AddTradingJournal,
     RefreshCalendar,
     CalendarLoaded(Result<Vec<api::CalendarEvent>, String>),
