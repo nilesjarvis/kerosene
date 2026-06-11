@@ -127,3 +127,43 @@ fn hud_follow_keeps_manual_zoom_range_centered_on_latest_close() {
     assert_close(price_range, auto_range * 2.0);
     assert_close(price_hi - price_range * 0.5, 200.0);
 }
+
+#[test]
+fn heatmap_budget_drops_while_panning() {
+    use crate::chart::model::{
+        HEATMAP_MAX_RECTS, HEATMAP_MAX_RECTS_WHILE_PANNING, HEATMAP_MAX_RECTS_WITH_FISHEYE,
+        heatmap_rect_budget,
+    };
+
+    assert_eq!(heatmap_rect_budget(false, false), HEATMAP_MAX_RECTS);
+    assert_eq!(
+        heatmap_rect_budget(true, false),
+        HEATMAP_MAX_RECTS_WITH_FISHEYE
+    );
+    assert_eq!(
+        heatmap_rect_budget(false, true),
+        HEATMAP_MAX_RECTS_WHILE_PANNING
+    );
+    assert_eq!(
+        heatmap_rect_budget(true, true),
+        HEATMAP_MAX_RECTS_WHILE_PANNING.min(HEATMAP_MAX_RECTS_WITH_FISHEYE)
+    );
+}
+
+#[test]
+fn view_panning_tracks_viewport_drags_only() {
+    use crate::chart::state::DragKind;
+
+    let mut state = ChartState::default();
+    assert!(!state.is_view_panning());
+
+    for kind in [DragKind::PanX, DragKind::PanY, DragKind::PanFundingY] {
+        state.drag = Some(kind);
+        assert!(state.is_view_panning(), "{kind:?} should count as panning");
+    }
+
+    state.drag = Some(DragKind::MoveOrder { oid: 7 });
+    assert!(!state.is_view_panning());
+    state.drag = Some(DragKind::ResizeFundingPanel);
+    assert!(!state.is_view_panning());
+}

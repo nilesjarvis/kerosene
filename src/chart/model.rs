@@ -44,6 +44,22 @@ pub const PAN_SPEED: f32 = 1.0; // pixels of scroll -> candles of pan
 
 pub(super) const HEATMAP_MAX_RECTS: usize = 20_000;
 pub(super) const HEATMAP_MAX_RECTS_WITH_FISHEYE: usize = 5_000;
+pub(super) const HEATMAP_MAX_RECTS_WHILE_PANNING: usize = 4_000;
+
+/// Heatmap tessellation budget for the current draw. Pan drags clear the
+/// candle cache on every cursor event, so each drag frame re-tessellates the
+/// full layer; capping the heatmap lower while a pan is active keeps those
+/// frames cheap, and the gesture-end redraw restores full fidelity.
+pub(super) fn heatmap_rect_budget(fisheye_distorts: bool, view_panning: bool) -> usize {
+    let mut budget = HEATMAP_MAX_RECTS;
+    if fisheye_distorts {
+        budget = budget.min(HEATMAP_MAX_RECTS_WITH_FISHEYE);
+    }
+    if view_panning {
+        budget = budget.min(HEATMAP_MAX_RECTS_WHILE_PANNING);
+    }
+    budget
+}
 
 pub struct CandlestickChart {
     pub id: u64,

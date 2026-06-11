@@ -132,6 +132,16 @@ impl Default for ChartState {
 }
 
 impl ChartState {
+    /// True while the user is dragging the viewport (X pan, price-axis pan,
+    /// or funding-panel pan). Used to pick cheaper tessellation budgets for
+    /// drag frames.
+    pub(super) fn is_view_panning(&self) -> bool {
+        matches!(
+            self.drag,
+            Some(DragKind::PanX | DragKind::PanY | DragKind::PanFundingY)
+        )
+    }
+
     pub(super) fn reset_view(&mut self, reset_epoch: u64) {
         self.scroll_offset = 0.0;
         self.candle_width = DEFAULT_CANDLE_WIDTH;

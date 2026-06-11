@@ -157,6 +157,14 @@ impl CandlestickChart {
             let session_height = state.drag_session_panel_height.take();
             state.drag = None;
             state.drag_start = None;
+            if matches!(
+                kind,
+                DragKind::PanX | DragKind::PanY | DragKind::PanFundingY
+            ) {
+                // Drag frames tessellate the heatmap at the reduced panning
+                // budget; redraw once at full fidelity now the gesture ended.
+                self.candle_cache.clear();
+            }
             if matches!(kind, DragKind::ResizeFundingPanel) {
                 let height = funding_height
                     .unwrap_or(self.funding_panel_height)

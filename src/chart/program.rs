@@ -2,10 +2,7 @@ use super::annotation_overlays::AnnotationOverlayContext;
 use super::candle_layer::CandleLayerContext;
 use super::crosshair::CrosshairOverlayContext;
 use super::fisheye::ChartFisheye;
-use super::model::{
-    CANDLE_GAP_RATIO, CandlestickChart, HEATMAP_MAX_RECTS, HEATMAP_MAX_RECTS_WITH_FISHEYE,
-    VOLUME_REGION_RATIO,
-};
+use super::model::{CANDLE_GAP_RATIO, CandlestickChart, VOLUME_REGION_RATIO, heatmap_rect_budget};
 use super::overlays::TradingOverlayContext;
 use super::state::ChartState;
 use crate::message::Message;
@@ -59,13 +56,9 @@ impl CandlestickChart {
         let candle_w = state.candle_width;
         let gap = candle_w * CANDLE_GAP_RATIO;
         let step = candle_w + gap;
-        let heatmap_rect_budget = if fisheye.distorts_geometry() {
-            HEATMAP_MAX_RECTS_WITH_FISHEYE
-        } else {
-            HEATMAP_MAX_RECTS
-        };
-        let heatmap_stride = if self.heatmap_rects.len() > heatmap_rect_budget {
-            self.heatmap_rects.len().div_ceil(heatmap_rect_budget)
+        let rect_budget = heatmap_rect_budget(fisheye.distorts_geometry(), state.is_view_panning());
+        let heatmap_stride = if self.heatmap_rects.len() > rect_budget {
+            self.heatmap_rects.len().div_ceil(rect_budget)
         } else {
             1
         };

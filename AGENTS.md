@@ -294,7 +294,6 @@ where they already appear:
   packaging paths.
 - Place bundled fonts, sounds, images, and icons under `assets/` and update any
   embedding or packaging code that must include them.
-
 ## Practical Workflow for Agents
 
 1. Read the relevant state, update, view, and test modules before editing.
