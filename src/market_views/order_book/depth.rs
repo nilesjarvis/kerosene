@@ -159,6 +159,54 @@ impl TradingTerminal {
     pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static, Message> {
         dom::view_order_book_dom_header(reverse_side)
     }
+
+    pub(super) fn view_order_book_depth_chart(
+        id: OrderBookId,
+        inst: &OrderBookInstance,
+        tick: f64,
+        user_order_levels: &UserOrderBookLevels,
+    ) -> Element<'static, Message> {
+        let depth = inst.aggregated_depth(tick);
+        // The aggregation cache hands out a RefCell guard, so the canvas gets
+        // owned copies of the (small) level vectors.
+        let bids = depth.bids.clone();
+        let asks = depth.asks.clone();
+
+        // Mid from the visible top of book so the marker agrees with what the
+        // other display modes show for the same data.
+        let (best_bid, best_ask) = inst.visible_best_bid_ask();
+        let mid = match (best_bid, best_ask) {
+            (Some(bid), Some(ask)) => Some((bid + ask) / 2.0),
+            (bid, ask) => bid.or(ask),
+        };
+
+        // The user-order levels store tick-bucket keys; rebuild the bucket
+        // prices the chart's grid uses.
+        let user_bid_prices: Vec<f64> = user_order_levels
+            .bids
+            .iter()
+            .map(|&key| key as f64 * tick)
+            .collect();
+        let user_ask_prices: Vec<f64> = user_order_levels
+            .asks
+            .iter()
+            .map(|&key| key as f64 * tick)
+            .collect();
+
+        iced::widget::canvas(crate::depth_chart::DepthChart {
+            id,
+            bids,
+            asks,
+            mid,
+            tick,
+            decimals: tick_decimals(tick),
+            user_bid_prices,
+            user_ask_prices,
+        })
+        .width(Fill)
+        .height(Fill)
+        .into()
+    }
 }
 
 #[cfg(test)]

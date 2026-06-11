@@ -95,6 +95,12 @@ impl TradingTerminal {
                 OrderBookDisplayMode::DomLadder,
                 "DOM",
             )))
+            .push(Element::from(display_mode_button(
+                id,
+                inst.display_mode,
+                OrderBookDisplayMode::DepthChart,
+                "Depth",
+            )))
             .push(Element::from(
                 button(
                     text("\u{2699}")

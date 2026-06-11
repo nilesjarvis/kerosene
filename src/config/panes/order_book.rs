@@ -12,6 +12,7 @@ pub enum OrderBookDisplayModeConfig {
     #[default]
     DepthList,
     DomLadder,
+    DepthChart,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

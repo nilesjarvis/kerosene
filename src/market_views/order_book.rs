@@ -61,8 +61,14 @@ impl TradingTerminal {
         let tick = Self::resolved_order_book_tick(inst, &tick_options);
         let tick_buttons = Self::view_order_book_tick_buttons(id, &tick_options, tick);
         let header = match inst.display_mode {
-            OrderBookDisplayMode::DepthList => Self::view_order_book_header(inst.reverse_side),
-            OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_header(inst.reverse_side),
+            OrderBookDisplayMode::DepthList => {
+                Some(Self::view_order_book_header(inst.reverse_side))
+            }
+            OrderBookDisplayMode::DomLadder => {
+                Some(Self::view_order_book_dom_header(inst.reverse_side))
+            }
+            // The depth chart draws its own axis labels on the canvas.
+            OrderBookDisplayMode::DepthChart => None,
         };
         let waiting_for_selected_precision = !inst.can_render_book_at_tick(tick);
         // While a finer denomination is being fetched, keep showing the book
@@ -119,11 +125,11 @@ impl TradingTerminal {
             if inst.settings_open {
                 content = content.push(self.view_order_book_settings(id, inst));
             }
-            content = content
-                .push(tick_buttons)
-                .push(header)
-                .push(rule::horizontal(1))
-                .push(loading_row);
+            content = content.push(tick_buttons);
+            if let Some(header) = header {
+                content = content.push(header);
+            }
+            content = content.push(rule::horizontal(1)).push(loading_row);
 
             return container(content)
                 .width(Fill)
@@ -140,6 +146,9 @@ impl TradingTerminal {
             OrderBookDisplayMode::DomLadder => {
                 Self::view_order_book_dom_ladder(id, inst, render_tick, &theme, &user_order_levels)
             }
+            OrderBookDisplayMode::DepthChart => {
+                Self::view_order_book_depth_chart(id, inst, render_tick, &user_order_levels)
+            }
         };
 
         let mut content_col = column![title_row].spacing(4);
@@ -151,11 +160,11 @@ impl TradingTerminal {
             content_col = content_col.push(self.view_order_book_settings(id, inst));
         }
 
-        content_col = content_col
-            .push(tick_buttons)
-            .push(header)
-            .push(rule::horizontal(1))
-            .push(scroll);
+        content_col = content_col.push(tick_buttons);
+        if let Some(header) = header {
+            content_col = content_col.push(header);
+        }
+        content_col = content_col.push(rule::horizontal(1)).push(scroll);
 
         if inst.show_spread_chart {
             content_col = content_col

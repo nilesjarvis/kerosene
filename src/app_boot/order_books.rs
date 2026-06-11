@@ -28,6 +28,7 @@ impl TradingTerminal {
             inst.display_mode = match ob_cfg.display_mode {
                 config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
                 config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
+                config::OrderBookDisplayModeConfig::DepthChart => OrderBookDisplayMode::DepthChart,
             };
             inst.center_on_mid = ob_cfg.center_on_mid;
             inst.reverse_side = ob_cfg.reverse_side;

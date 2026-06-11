@@ -47,6 +47,17 @@ fn order_book_config_round_trips_dom_ladder_display_mode() {
 }
 
 #[test]
+fn order_book_config_round_trips_depth_chart_display_mode() {
+    let config: OrderBookConfig =
+        serde_json::from_str(r#"{"id":7,"tick_size":1.0,"display_mode":"DepthChart"}"#)
+            .expect("config");
+
+    assert_eq!(config.display_mode, OrderBookDisplayModeConfig::DepthChart);
+    let rendered = serde_json::to_string(&config).expect("json");
+    assert!(rendered.contains(r#""display_mode":"DepthChart""#));
+}
+
+#[test]
 fn positioning_info_config_defaults_to_descending_sort() {
     let config: PositioningInfoConfig =
         serde_json::from_str(r#"{"id":7,"symbol":"HYPE"}"#).expect("config");

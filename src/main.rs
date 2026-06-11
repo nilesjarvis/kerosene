@@ -34,6 +34,7 @@ mod chrome_update;
 mod config;
 mod config_persistence;
 mod denomination;
+mod depth_chart;
 mod feed_state;
 mod feed_update;
 mod feed_views;

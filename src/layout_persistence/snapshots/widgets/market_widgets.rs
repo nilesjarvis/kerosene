@@ -26,6 +26,9 @@ impl TradingTerminal {
                     OrderBookDisplayMode::DomLadder => {
                         config::OrderBookDisplayModeConfig::DomLadder
                     }
+                    OrderBookDisplayMode::DepthChart => {
+                        config::OrderBookDisplayModeConfig::DepthChart
+                    }
                 },
                 center_on_mid: book.center_on_mid,
                 reverse_side: book.reverse_side,

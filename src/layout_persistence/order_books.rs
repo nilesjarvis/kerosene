@@ -34,6 +34,7 @@ impl TradingTerminal {
             instance.display_mode = match order_book_config.display_mode {
                 config::OrderBookDisplayModeConfig::DepthList => OrderBookDisplayMode::DepthList,
                 config::OrderBookDisplayModeConfig::DomLadder => OrderBookDisplayMode::DomLadder,
+                config::OrderBookDisplayModeConfig::DepthChart => OrderBookDisplayMode::DepthChart,
             };
             instance.center_on_mid = order_book_config.center_on_mid;
             instance.reverse_side = order_book_config.reverse_side;
