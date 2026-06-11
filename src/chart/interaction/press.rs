@@ -62,6 +62,18 @@ impl CandlestickChart {
             return Some(canvas::Action::capture());
         }
 
+        if visual_pos.x < chart_w
+            && self
+                .session_panel_resize_target_y(bounds_height, visual_pos.y)
+                .is_some()
+        {
+            state.drag = Some(DragKind::ResizeSessionPanel);
+            state.drag_start = Some(pos);
+            state.drag_start_session_panel_height = self.session_panel_height;
+            state.drag_session_panel_height = Some(self.session_panel_height);
+            return Some(canvas::Action::capture());
+        }
+
         if visual_pos.x < chart_w && visual_pos.y < chart_h {
             if self.quick_order_open {
                 return Some(

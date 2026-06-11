@@ -208,6 +208,14 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ChartSessionPanelHeightChanged(id, height, persist) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.chart.set_session_panel_height(height as f32);
+                }
+                if persist {
+                    self.persist_config();
+                }
+            }
             Message::ToggleFundingRateDisplayMode(id) => {
                 if let Some(instance) = self.charts.get_mut(&id) {
                     instance.chart.toggle_funding_rate_display_mode();

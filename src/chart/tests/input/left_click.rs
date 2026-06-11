@@ -1,5 +1,5 @@
 use super::{
-    CHART_H, CHART_W, CandlestickChart, Message, Point, action_or_panic, btc_buy_order,
+    CHART_H, CHART_W, CandlestickChart, Message, Point, SURFACE_H, action_or_panic, btc_buy_order,
     chart_with_input_candles, message_or_panic, pending_btc_buy_order,
 };
 use crate::chart::ChartState;
@@ -44,6 +44,38 @@ fn normal_left_click_marks_chart_focused_without_capturing_event() {
     assert!(matches!(message, Some(Message::ChartFocused(7))));
     assert_eq!(status, iced::event::Status::Ignored);
     assert!(matches!(state.drag, Some(DragKind::PanX)));
+}
+
+#[test]
+fn session_divider_left_click_starts_resize_drag() {
+    let mut chart = CandlestickChart::new(7);
+    chart.macro_indicators.show_session_indicator = true;
+    chart.set_session_panel_height(72.0);
+    let mut state = ChartState::default();
+    let (chart_h, funding_panel_h, session_panel_h) = chart.chart_area_heights(SURFACE_H);
+    let divider_y = chart_h + funding_panel_h;
+
+    let action = action_or_panic(
+        chart.handle_left_press_at(
+            &mut state,
+            ProjectedCursor::identity(Point::new(120.0, divider_y + 1.0)),
+            ChartFisheye::disabled(),
+            InteractionLayout {
+                chart_w: CHART_W,
+                chart_h,
+                funding_panel_h,
+                session_panel_h,
+            },
+            SURFACE_H,
+        ),
+        "session divider left click should start resize drag",
+    );
+    let (message, _, status) = action.into_inner();
+
+    assert!(message.is_none());
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(matches!(state.drag, Some(DragKind::ResizeSessionPanel)));
+    assert_eq!(state.drag_start_session_panel_height, 72.0);
 }
 
 #[test]

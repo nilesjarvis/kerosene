@@ -1,7 +1,6 @@
 use crate::chart::{
-    CandlestickChart, DEFAULT_SESSION_PANEL_HEIGHT, MAX_FUNDING_PANEL_HEIGHT,
-    MAX_SESSION_PANEL_HEIGHT, MIN_FUNDING_PANEL_HEIGHT, MIN_MAIN_CHART_HEIGHT,
-    MIN_SESSION_PANEL_HEIGHT, TIME_AXIS_HEIGHT,
+    CandlestickChart, MAX_FUNDING_PANEL_HEIGHT, MAX_SESSION_PANEL_HEIGHT, MIN_FUNDING_PANEL_HEIGHT,
+    MIN_MAIN_CHART_HEIGHT, MIN_SESSION_PANEL_HEIGHT, TIME_AXIS_HEIGHT,
 };
 use crate::message::Message;
 
@@ -37,7 +36,7 @@ pub(super) fn chart_skeleton_overlay(
     let session_panel_height = chart
         .macro_indicators
         .show_session_indicator
-        .then_some(DEFAULT_SESSION_PANEL_HEIGHT);
+        .then_some(chart.session_panel_height);
 
     container(
         iced::widget::canvas(ChartSkeleton {

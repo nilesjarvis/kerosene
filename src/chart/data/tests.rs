@@ -1,5 +1,5 @@
 use super::SPREAD_HISTORY_LIMIT;
-use crate::chart::{CandlestickChart, DEFAULT_SESSION_PANEL_HEIGHT, TIME_AXIS_HEIGHT};
+use crate::chart::{CandlestickChart, TIME_AXIS_HEIGHT};
 use crate::timeframe::Timeframe;
 
 #[test]
@@ -62,11 +62,12 @@ fn chart_area_heights_stack_funding_and_session_panels() {
     let mut chart = CandlestickChart::new(1);
     chart.macro_indicators.show_funding_rate = true;
     chart.macro_indicators.show_session_indicator = true;
+    chart.set_session_panel_height(72.0);
 
     let (chart_h, funding_h, session_h) = chart.chart_area_heights(320.0);
 
     assert_eq!(funding_h, chart.funding_panel_height);
-    assert_eq!(session_h, DEFAULT_SESSION_PANEL_HEIGHT);
+    assert_eq!(session_h, 72.0);
     assert_eq!(chart_h, 320.0 - TIME_AXIS_HEIGHT - funding_h - session_h);
 }
 

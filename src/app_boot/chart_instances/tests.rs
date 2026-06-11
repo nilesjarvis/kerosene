@@ -13,6 +13,7 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         show_earnings_markers: true,
         header_collapsed: true,
         funding_panel_height: 56,
+        session_panel_height: 72,
         macro_indicators: MacroIndicatorsConfig::default(),
         open_interest_as_notional: false,
         asset_volume_as_notional: false,
@@ -41,6 +42,14 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
             .show_earnings_markers
     );
     assert!(charts.get(&3).expect("chart instance").header_collapsed);
+    assert_eq!(
+        charts
+            .get(&3)
+            .expect("chart instance")
+            .chart
+            .session_panel_height_config(),
+        72
+    );
     assert!(
         !charts
             .get(&3)

@@ -45,6 +45,7 @@ impl TradingTerminal {
             show_earnings_markers: inst.show_earnings_markers,
             header_collapsed: inst.header_collapsed,
             funding_panel_height: inst.chart.funding_panel_height_config(),
+            session_panel_height: inst.chart.session_panel_height_config(),
             macro_indicators: inst.macro_indicators.clone(),
             open_interest_as_notional: inst.open_interest_as_notional,
             asset_volume_as_notional: inst.asset_volume_as_notional,

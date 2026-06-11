@@ -2,7 +2,9 @@ mod candles;
 mod earnings;
 mod funding;
 
-use super::{CandlestickChart, ChartStatus, DEFAULT_FUNDING_PANEL_HEIGHT};
+use super::{
+    CandlestickChart, ChartStatus, DEFAULT_FUNDING_PANEL_HEIGHT, DEFAULT_SESSION_PANEL_HEIGHT,
+};
 use crate::app_time::now_ms;
 use crate::chart_state::ChartSurfaceId;
 use crate::denomination::DisplayDenominationContext;
@@ -58,6 +60,7 @@ impl CandlestickChart {
             funding_rates: Vec::new(),
             funding_status: None,
             funding_panel_height: DEFAULT_FUNDING_PANEL_HEIGHT,
+            session_panel_height: DEFAULT_SESSION_PANEL_HEIGHT,
             market_reference_price: None,
             current_spread: None,
             spread_history: VecDeque::new(),
@@ -131,6 +134,7 @@ impl CandlestickChart {
             funding_rates: self.funding_rates.clone(),
             funding_status: self.funding_status.clone(),
             funding_panel_height: self.funding_panel_height,
+            session_panel_height: self.session_panel_height,
             market_reference_price: self.market_reference_price,
             current_spread: self.current_spread,
             spread_history: self.spread_history.clone(),

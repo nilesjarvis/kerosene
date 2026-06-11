@@ -449,6 +449,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartWsAssetCtxUpdate(_, _, _)
         | Message::ChartViewportChanged(_, _, _)
         | Message::ChartFundingPanelHeightChanged(_, _, _)
+        | Message::ChartSessionPanelHeightChanged(_, _, _)
         | Message::ToggleFundingRateDisplayMode(_)
         | Message::FundingRefreshTick
         | Message::ToggleOpenInterestNotional(_)

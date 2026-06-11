@@ -34,6 +34,10 @@ impl CandlestickChart {
             && self
                 .funding_panel_resize_target_y(bounds.height, pos.y)
                 .is_some();
+        let on_session_resize = pos.x < chart_w
+            && self
+                .session_panel_resize_target_y(bounds.height, pos.y)
+                .is_some();
         let on_price_axis = pos.x >= chart_w && pos.y < chart_h;
         let on_funding_axis =
             pos.x >= chart_w && pos.y >= chart_h && pos.y < chart_h + funding_panel_h;
@@ -43,6 +47,7 @@ impl CandlestickChart {
             Some(DragKind::PanY) => mouse::Interaction::ResizingVertically,
             Some(DragKind::PanFundingY) => mouse::Interaction::ResizingVertically,
             Some(DragKind::ResizeFundingPanel) => mouse::Interaction::ResizingVertically,
+            Some(DragKind::ResizeSessionPanel) => mouse::Interaction::ResizingVertically,
             Some(DragKind::MoveOrder { .. }) => mouse::Interaction::Grabbing,
             None => {
                 if self.active_tool.is_some() && pos.x < chart_w && pos.y < chart_h {
@@ -50,7 +55,8 @@ impl CandlestickChart {
                     mouse::Interaction::Hidden
                 } else if state.hover_order_oid.is_some() && pos.x < chart_w && pos.y < chart_h {
                     mouse::Interaction::Grab
-                } else if on_funding_resize || on_price_axis || on_funding_axis {
+                } else if on_funding_resize || on_session_resize || on_price_axis || on_funding_axis
+                {
                     mouse::Interaction::ResizingVertically
                 } else if pos.x < chart_w && pos.y < drawable_h {
                     // Custom reticles are drawn on the canvas; hide the OS cursor over the plot.

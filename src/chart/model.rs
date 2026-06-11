@@ -109,6 +109,8 @@ pub struct CandlestickChart {
     pub funding_status: Option<(String, bool)>,
     /// Desired funding sub-panel height in pixels.
     pub funding_panel_height: f32,
+    /// Desired session indicator sub-panel height in pixels.
+    pub session_panel_height: f32,
     /// Fresh executable mid/reference price used by HUD market-mode targeting.
     pub(crate) market_reference_price: Option<f64>,
     /// Fresh bid/ask spread from the chart asset context.

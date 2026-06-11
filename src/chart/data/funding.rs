@@ -62,7 +62,7 @@ impl CandlestickChart {
             return 0.0;
         }
 
-        DEFAULT_SESSION_PANEL_HEIGHT
+        self.session_panel_height
             .max(MIN_SESSION_PANEL_HEIGHT.min(max_panel_h))
             .min(max_panel_h)
     }
@@ -84,11 +84,31 @@ impl CandlestickChart {
         Self::clamp_funding_panel_height(self.funding_panel_height).round() as u16
     }
 
+    pub(crate) fn set_session_panel_height(&mut self, height: f32) {
+        let height = Self::clamp_session_panel_height(height);
+        if (self.session_panel_height - height).abs() >= 0.5 {
+            self.session_panel_height = height;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn session_panel_height_config(&self) -> u16 {
+        Self::clamp_session_panel_height(self.session_panel_height).round() as u16
+    }
+
     pub(crate) fn clamp_funding_panel_height(height: f32) -> f32 {
         if height.is_finite() {
             height.clamp(MIN_FUNDING_PANEL_HEIGHT, MAX_FUNDING_PANEL_HEIGHT)
         } else {
             DEFAULT_FUNDING_PANEL_HEIGHT
+        }
+    }
+
+    pub(crate) fn clamp_session_panel_height(height: f32) -> f32 {
+        if height.is_finite() {
+            height.clamp(MIN_SESSION_PANEL_HEIGHT, MAX_SESSION_PANEL_HEIGHT)
+        } else {
+            DEFAULT_SESSION_PANEL_HEIGHT
         }
     }
 
@@ -103,6 +123,20 @@ impl CandlestickChart {
         }
 
         ((pos_y - chart_h).abs() <= FUNDING_PANEL_RESIZE_HIT_PX).then_some(chart_h)
+    }
+
+    pub(in crate::chart) fn session_panel_resize_target_y(
+        &self,
+        bounds_height: f32,
+        pos_y: f32,
+    ) -> Option<f32> {
+        let (chart_h, funding_h, session_h) = self.chart_area_heights(bounds_height);
+        if session_h <= 0.0 {
+            return None;
+        }
+
+        let target_y = chart_h + funding_h;
+        ((pos_y - target_y).abs() <= FUNDING_PANEL_RESIZE_HIT_PX).then_some(target_y)
     }
 
     pub(in crate::chart) fn funding_mode_button_contains(

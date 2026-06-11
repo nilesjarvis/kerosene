@@ -587,6 +587,7 @@ pub(crate) enum Message {
     ChartWsAssetCtxUpdate(ChartId, String, AssetContext),
     ChartViewportChanged(ChartId, ChartSurfaceId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
+    ChartSessionPanelHeightChanged(ChartId, u16, bool),
     ToggleFundingRateDisplayMode(ChartId),
     FundingRefreshTick,
     ToggleOpenInterestNotional(ChartId),

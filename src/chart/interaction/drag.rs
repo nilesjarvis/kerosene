@@ -91,6 +91,22 @@ impl CandlestickChart {
                         .and_capture(),
                     );
                 }
+                DragKind::ResizeSessionPanel => {
+                    let dy = pos.y - start.y;
+                    let height = CandlestickChart::clamp_session_panel_height(
+                        state.drag_start_session_panel_height - dy,
+                    );
+                    state.drag_session_panel_height = Some(height);
+                    self.candle_cache.clear();
+                    return Some(
+                        canvas::Action::publish(Message::ChartSessionPanelHeightChanged(
+                            self.id,
+                            height.round() as u16,
+                            false,
+                        ))
+                        .and_capture(),
+                    );
+                }
             }
             return Some(canvas::Action::request_redraw());
         }
@@ -138,6 +154,7 @@ impl CandlestickChart {
         }
         if let Some(kind) = state.drag {
             let funding_height = state.drag_funding_panel_height.take();
+            let session_height = state.drag_session_panel_height.take();
             state.drag = None;
             state.drag_start = None;
             if matches!(kind, DragKind::ResizeFundingPanel) {
@@ -150,6 +167,21 @@ impl CandlestickChart {
                     ) as u16;
                 return Some(
                     canvas::Action::publish(Message::ChartFundingPanelHeightChanged(
+                        self.id, height, true,
+                    ))
+                    .and_capture(),
+                );
+            }
+            if matches!(kind, DragKind::ResizeSessionPanel) {
+                let height = session_height
+                    .unwrap_or(self.session_panel_height)
+                    .round()
+                    .clamp(
+                        super::super::MIN_SESSION_PANEL_HEIGHT,
+                        super::super::MAX_SESSION_PANEL_HEIGHT,
+                    ) as u16;
+                return Some(
+                    canvas::Action::publish(Message::ChartSessionPanelHeightChanged(
                         self.id, height, true,
                     ))
                     .and_capture(),

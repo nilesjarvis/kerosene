@@ -98,6 +98,9 @@ pub struct ChartConfig {
     /// Desired funding-rate sub-panel height in pixels.
     #[serde(default = "default_funding_panel_height")]
     pub funding_panel_height: u16,
+    /// Desired session-indicator sub-panel height in pixels.
+    #[serde(default = "default_session_panel_height")]
+    pub session_panel_height: u16,
     /// Active macro timeframe moving averages
     #[serde(default)]
     pub macro_indicators: MacroIndicatorsConfig,
@@ -125,6 +128,7 @@ impl ChartConfig {
             show_earnings_markers: false,
             header_collapsed: false,
             funding_panel_height: default_funding_panel_height(),
+            session_panel_height: default_session_panel_height(),
             macro_indicators: MacroIndicatorsConfig::default(),
             open_interest_as_notional: false,
             asset_volume_as_notional: true,
@@ -154,6 +158,10 @@ pub struct DetachedChartWindowConfig {
 }
 
 fn default_funding_panel_height() -> u16 {
+    56
+}
+
+fn default_session_panel_height() -> u16 {
     56
 }
 

@@ -54,6 +54,9 @@ impl TradingTerminal {
             instance
                 .chart
                 .set_funding_panel_height(chart_cfg.funding_panel_height as f32);
+            instance
+                .chart
+                .set_session_panel_height(chart_cfg.session_panel_height as f32);
             instance.macro_indicators = chart_cfg.macro_indicators.clone();
             instance.chart.macro_indicators = chart_cfg.macro_indicators.clone();
             instance.open_interest_as_notional = chart_cfg.open_interest_as_notional;
