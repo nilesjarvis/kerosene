@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/kerosene.svg" alt="Kerosene logo" width="120">
+</p>
+
 # Kerosene
 
 Kerosene is a GPU-accelerated desktop trading terminal for [Hyperliquid](https://hyperliquid.xyz), built in Rust with [iced](https://iced.rs).
