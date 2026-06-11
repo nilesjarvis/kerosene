@@ -19,8 +19,34 @@ const SESSION_PLOT_BOTTOM_PADDING: f32 = 8.0;
 const SESSION_LABEL_TOP_PADDING: f32 = 4.0;
 const SESSION_LABEL_MIN_WIDTH: f32 = 24.0;
 const SESSION_LINE_MIN_RANGE_PCT: f64 = 0.12;
+const SESSION_CHART_FILL_ALPHA: f32 = 0.042;
+const SESSION_CHART_OVERNIGHT_FILL_ALPHA: f32 = 0.034;
+const SESSION_BOUNDARY_LINE_ALPHA: f32 = 0.16;
 
 impl CandlestickChart {
+    pub(super) fn draw_session_chart_context<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+        frame: &mut canvas::Frame,
+    ) where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        if ctx.session_panel_h <= 0.0 {
+            return;
+        }
+
+        let Some(ranges) = self.visible_session_ranges_for_view(ctx) else {
+            return;
+        };
+        if ranges.is_empty() {
+            return;
+        }
+
+        self.draw_session_chart_backgrounds(ctx, frame, &ranges);
+        self.draw_session_boundary_lines(ctx, frame, &ranges, 0.0, ctx.chart_h);
+    }
+
     pub(super) fn draw_session_panel<IdxToCx, PriceToY>(
         &self,
         ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
@@ -43,15 +69,9 @@ impl CandlestickChart {
                 ..ctx.theme.palette().text
             },
         );
-        let Some(left_ts) = self.x_to_timestamp(0.0, ctx.state, ctx.chart_w) else {
+        let Some(ranges) = self.visible_session_ranges_for_view(ctx) else {
             return;
         };
-        let Some(right_ts) = self.x_to_timestamp(ctx.chart_w, ctx.state, ctx.chart_w) else {
-            return;
-        };
-        let visible_start = left_ts.min(right_ts);
-        let visible_end = left_ts.max(right_ts);
-        let ranges = visible_session_ranges(visible_start, visible_end);
 
         frame.with_clip(
             Rectangle {
@@ -62,6 +82,7 @@ impl CandlestickChart {
             },
             |frame| {
                 self.draw_session_backgrounds(ctx, frame, panel_y, &ranges);
+                self.draw_session_boundary_lines(ctx, frame, &ranges, panel_y, ctx.session_panel_h);
                 self.draw_session_return_curve(ctx, frame, panel_y, &ranges);
             },
         );
@@ -79,6 +100,44 @@ impl CandlestickChart {
         );
     }
 
+    fn visible_session_ranges_for_view<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+    ) -> Option<Vec<SessionIndicatorRange>>
+    where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        let left_ts = self.x_to_timestamp(0.0, ctx.state, ctx.chart_w)?;
+        let right_ts = self.x_to_timestamp(ctx.chart_w, ctx.state, ctx.chart_w)?;
+        let visible_start = left_ts.min(right_ts);
+        let visible_end = left_ts.max(right_ts);
+        Some(visible_session_ranges(visible_start, visible_end))
+    }
+
+    fn draw_session_chart_backgrounds<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+        frame: &mut canvas::Frame,
+        ranges: &[SessionIndicatorRange],
+    ) where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        for range in ranges {
+            let Some((left, right)) = self.session_screen_span(ctx, *range) else {
+                continue;
+            };
+
+            ctx.fisheye.fill_projected_rect_without_edge_blur(
+                frame,
+                Point::new(left, 0.0),
+                Size::new(right - left, ctx.chart_h),
+                session_chart_fill_color(range.kind, ctx.theme),
+            );
+        }
+    }
+
     fn draw_session_backgrounds<IdxToCx, PriceToY>(
         &self,
         ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
@@ -90,17 +149,9 @@ impl CandlestickChart {
         PriceToY: Fn(f64) -> f32,
     {
         for range in ranges {
-            let Some(start_x) = self.timestamp_to_x(range.start_ms, ctx.state, ctx.chart_w) else {
+            let Some((left, right)) = self.session_screen_span(ctx, *range) else {
                 continue;
             };
-            let Some(end_x) = self.timestamp_to_x(range.end_ms, ctx.state, ctx.chart_w) else {
-                continue;
-            };
-            let left = start_x.min(end_x).clamp(0.0, ctx.chart_w);
-            let right = start_x.max(end_x).clamp(0.0, ctx.chart_w);
-            if right <= left {
-                continue;
-            }
             let width = right - left;
             ctx.fisheye.fill_projected_rect_without_edge_blur(
                 frame,
@@ -121,6 +172,56 @@ impl CandlestickChart {
                 });
             }
         }
+    }
+
+    fn draw_session_boundary_lines<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+        frame: &mut canvas::Frame,
+        ranges: &[SessionIndicatorRange],
+        top_y: f32,
+        height: f32,
+    ) where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        if height <= 0.0 {
+            return;
+        }
+
+        for range in ranges {
+            let Some(x) = self.timestamp_to_x(range.start_ms, ctx.state, ctx.chart_w) else {
+                continue;
+            };
+            if x <= 0.0 || x >= ctx.chart_w {
+                continue;
+            }
+
+            ctx.fisheye.stroke_projected_line_without_edge_blur(
+                frame,
+                Point::new(x, top_y),
+                Point::new(x, top_y + height),
+                canvas::Stroke::default()
+                    .with_color(session_boundary_color(range.kind, ctx.theme))
+                    .with_width(1.0),
+            );
+        }
+    }
+
+    fn session_screen_span<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+        range: SessionIndicatorRange,
+    ) -> Option<(f32, f32)>
+    where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        let start_x = self.timestamp_to_x(range.start_ms, ctx.state, ctx.chart_w)?;
+        let end_x = self.timestamp_to_x(range.end_ms, ctx.state, ctx.chart_w)?;
+        let left = start_x.min(end_x).clamp(0.0, ctx.chart_w);
+        let right = start_x.max(end_x).clamp(0.0, ctx.chart_w);
+        (right > left).then_some((left, right))
     }
 
     fn draw_session_return_curve<IdxToCx, PriceToY>(
@@ -285,6 +386,15 @@ fn session_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
     color
 }
 
+fn session_chart_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
+    let mut color = session_fill_color(kind, theme);
+    color.a = match kind {
+        SessionIndicatorKind::Overnight => SESSION_CHART_OVERNIGHT_FILL_ALPHA,
+        _ => SESSION_CHART_FILL_ALPHA,
+    };
+    color
+}
+
 fn session_label_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
     let mut color = match kind {
         SessionIndicatorKind::NewYork => theme.extended_palette().primary.strong.color,
@@ -293,6 +403,12 @@ fn session_label_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
         SessionIndicatorKind::London => theme.extended_palette().success.strong.color,
     };
     color.a = 0.82;
+    color
+}
+
+fn session_boundary_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
+    let mut color = session_label_color(kind, theme);
+    color.a = SESSION_BOUNDARY_LINE_ALPHA;
     color
 }
 

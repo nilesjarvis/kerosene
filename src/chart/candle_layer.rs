@@ -72,6 +72,7 @@ impl CandlestickChart {
                     height: ctx.chart_h,
                 };
                 frame.with_clip(chart_region, |frame| {
+                    self.draw_session_chart_context(ctx, frame);
                     if self.dotted_background {
                         draw_dotted_background(
                             frame,
