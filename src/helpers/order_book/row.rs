@@ -21,7 +21,6 @@ pub struct BookRowData {
     pub sz: f64,
     pub cum: f64,
     pub has_user_order: bool,
-    pub is_best: bool,
 }
 
 /// Render a single order book row with a depth bar background.
@@ -70,7 +69,7 @@ pub fn book_row(
     // already carries the size signal, the text only echoes it subtly.
     let sz_pct = 0.65 + heat * 0.35;
 
-    let price = price_cell(px, decimals, data.has_user_order, is_bid, data.is_best);
+    let price = price_cell(px, decimals, data.has_user_order, is_bid);
     let size = size_cell(sz, sz_pct);
     let total = total_cell(cum);
     let row_content = if reverse_side {
@@ -78,11 +77,7 @@ pub fn book_row(
     } else {
         row![price, size, total]
     }
-    .spacing(4)
-    // The price cell is Fill-height (it hosts the best-level background);
-    // center the shrink-height size/total cells so all three columns share
-    // one baseline.
-    .align_y(iced::Alignment::Center);
+    .spacing(4);
 
     let transparent = Color::TRANSPARENT;
     let row_element: Element<'static, Message> = container(row_content)

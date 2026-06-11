@@ -79,30 +79,25 @@ pub(super) fn depth_ask_column(
     for _ in 0..side_padding_row_count(rows.len(), pad_to) {
         col = col.push(placeholder_book_row());
     }
-    let best_index = rows.len().checked_sub(1);
-    rows.iter()
-        .copied()
-        .enumerate()
-        .fold(col, |col, (index, (px, size, cum))| {
-            col.push(book_row(
-                BookRowData {
-                    px,
-                    sz: size,
-                    cum,
-                    has_user_order: user_order_levels.has_ask_at_price(px, context.tick),
-                    is_best: Some(index) == best_index,
-                },
-                context.max_cum,
-                context.max_sz,
-                context.decimals,
-                false,
-                context.reverse_side,
-                Message::OrderBookPriceSelected {
-                    id: context.id,
-                    price: format!("{:.decimals$}", px, decimals = context.decimals),
-                },
-            ))
-        })
+    rows.iter().copied().fold(col, |col, (px, size, cum)| {
+        col.push(book_row(
+            BookRowData {
+                px,
+                sz: size,
+                cum,
+                has_user_order: user_order_levels.has_ask_at_price(px, context.tick),
+            },
+            context.max_cum,
+            context.max_sz,
+            context.decimals,
+            false,
+            context.reverse_side,
+            Message::OrderBookPriceSelected {
+                id: context.id,
+                price: format!("{:.decimals$}", px, decimals = context.decimals),
+            },
+        ))
+    })
 }
 
 pub(super) fn depth_bid_column(
@@ -111,16 +106,16 @@ pub(super) fn depth_bid_column(
     user_order_levels: &UserOrderBookLevels,
     pad_to: usize,
 ) -> Column<'static, Message> {
-    let col = rows.iter().copied().enumerate().fold(
-        Column::new().spacing(0),
-        |col, (index, (px, size, cum))| {
+    let col = rows
+        .iter()
+        .copied()
+        .fold(Column::new().spacing(0), |col, (px, size, cum)| {
             col.push(book_row(
                 BookRowData {
                     px,
                     sz: size,
                     cum,
                     has_user_order: user_order_levels.has_bid_at_price(px, context.tick),
-                    is_best: index == 0,
                 },
                 context.max_cum,
                 context.max_sz,
@@ -132,8 +127,7 @@ pub(super) fn depth_bid_column(
                     price: format!("{:.decimals$}", px, decimals = context.decimals),
                 },
             ))
-        },
-    );
+        });
     // Bids render best-at-top, so filler rows go below the data.
     let mut col = col;
     for _ in 0..side_padding_row_count(rows.len(), pad_to) {
