@@ -12,6 +12,7 @@ pub(super) struct DepthColumnContext {
     pub(super) max_cum: f64,
     pub(super) max_sz: f64,
     pub(super) decimals: usize,
+    pub(super) whole_contracts: bool,
     pub(super) reverse_side: bool,
 }
 
@@ -86,6 +87,7 @@ pub(super) fn depth_ask_column(
                 sz: size,
                 cum,
                 has_user_order: user_order_levels.has_ask_at_price(px, context.tick),
+                whole_contracts: context.whole_contracts,
             },
             context.max_cum,
             context.max_sz,
@@ -116,6 +118,7 @@ pub(super) fn depth_bid_column(
                     sz: size,
                     cum,
                     has_user_order: user_order_levels.has_bid_at_price(px, context.tick),
+                    whole_contracts: context.whole_contracts,
                 },
                 context.max_cum,
                 context.max_sz,

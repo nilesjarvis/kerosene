@@ -11,7 +11,9 @@ impl TradingTerminal {
         };
 
         if self.symbol_key_is_hidden(&key) {
-            self.symbol_search_status = Some((format!("{key} is hidden in Settings > Risk"), true));
+            let display = self.display_name_for_symbol(&key);
+            self.symbol_search_status =
+                Some((format!("{display} is hidden in Settings > Risk"), true));
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.editor_open = false;
                 instance.editor_search_query.clear();
@@ -26,7 +28,8 @@ impl TradingTerminal {
             .find(|symbol| symbol.key == key)
             .is_some_and(|symbol| !symbol.is_user_selectable_market())
         {
-            self.symbol_search_status = Some((format!("{key} is not a tradable market"), true));
+            let display = self.display_name_for_symbol(&key);
+            self.symbol_search_status = Some((format!("{display} is not a tradable market"), true));
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.editor_open = false;
                 instance.editor_search_query.clear();
@@ -93,6 +96,7 @@ impl TradingTerminal {
             .map(|inst| inst.interval)
             .unwrap_or(Timeframe::H1);
         let cached_candles = self.get_cached_candles(&key, target_interval);
+        let whole_unit_volume = self.is_outcome_coin(&key);
 
         if let Some(instance) = self.charts.get_mut(&id) {
             let sym = self.exchange_symbols.iter().find(|s| s.key == key);
@@ -101,6 +105,7 @@ impl TradingTerminal {
                 .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
             instance.symbol = key.clone();
             instance.symbol_display = display.clone();
+            instance.chart.whole_unit_volume = whole_unit_volume;
             instance.chart.set_symbol_label(display);
             instance.chart.request_view_reset();
             instance.chart.clear_hud_armed();
@@ -152,8 +157,71 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
     use crate::chart_state::ChartInstance;
     use crate::config::ChartCrosshairStyle;
+
+    fn fallback_outcome_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "outcome".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: None,
+            sz_decimals: 0,
+            max_leverage: 1,
+            only_isolated: true,
+            market_type: MarketType::Outcome,
+            outcome: Some(OutcomeSymbolInfo {
+                outcome_id: 95,
+                question_id: None,
+                question_name: Some("Will BTC close green?".to_string()),
+                question_description: None,
+                question_class: None,
+                question_underlying: None,
+                question_expiry: None,
+                question_price_thresholds: Vec::new(),
+                question_period: None,
+                question_named_outcomes: Vec::new(),
+                question_settled_named_outcomes: Vec::new(),
+                question_fallback_outcome: None,
+                bucket_index: None,
+                is_question_fallback: true,
+                side_index: 0,
+                side_name: "Yes".to_string(),
+                outcome_name: "Recurring".to_string(),
+                description: "Will BTC close green?".to_string(),
+                class: None,
+                underlying: None,
+                expiry: None,
+                target_price: None,
+                period: None,
+                quote_symbol: "USDH".to_string(),
+                quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+                encoding: 950,
+            }),
+        }
+    }
+
+    #[test]
+    fn rejected_symbol_status_uses_outcome_display_name() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.primary_chart_id = None;
+        terminal
+            .exchange_symbols
+            .push(fallback_outcome_symbol("#950"));
+
+        let _task =
+            terminal.select_chart_symbol(Message::ChartSymbolSelected(1, "#950".to_string()));
+
+        let (status, is_error) = terminal.symbol_search_status.clone().expect("status set");
+        assert!(is_error);
+        assert!(status.contains("Will BTC close green?"), "{status}");
+        assert!(!status.contains("#950"), "{status}");
+    }
 
     #[test]
     fn selecting_chart_symbol_disarms_hud_trading() {

@@ -9,6 +9,27 @@ fn wallet_entry_notional_marks_invalid_values() {
 }
 
 #[test]
+fn wallet_spot_amount_formats_outcome_balances_as_whole_contracts() {
+    let denomination = crate::denomination::DisplayDenominationContext::default();
+    assert_eq!(
+        wallet_spot_amount(&denomination, "+950", Some(5.0), false),
+        "5"
+    );
+    assert_eq!(
+        wallet_spot_amount(&denomination, "+950", Some(12.999999), false),
+        "12"
+    );
+    assert_eq!(
+        wallet_spot_amount(&denomination, "+950", None, false),
+        "Invalid data"
+    );
+    assert_eq!(
+        wallet_spot_amount(&denomination, "HYPE", Some(2.5), false),
+        "2.500000"
+    );
+}
+
+#[test]
 fn wallet_supplied_amount_distinguishes_missing_and_invalid_values() {
     let denomination = crate::denomination::DisplayDenominationContext::default();
     assert_eq!(wallet_supplied_amount(&denomination, None, false), "-");

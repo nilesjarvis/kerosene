@@ -45,18 +45,7 @@ impl TradingTerminal {
     ) -> Element<'_, Message> {
         let tracking_text = match &inst.mode {
             OrderBookSymbolMode::Active => format!("Active: {}", self.active_symbol_display),
-            OrderBookSymbolMode::Fixed(symbol) => self
-                .exchange_symbols
-                .iter()
-                .find(|exchange_symbol| &exchange_symbol.key == symbol)
-                .map(|exchange_symbol| {
-                    exchange_symbol
-                        .display_name
-                        .as_deref()
-                        .unwrap_or(exchange_symbol.key.as_str())
-                })
-                .unwrap_or(symbol.as_str())
-                .to_string(),
+            OrderBookSymbolMode::Fixed(symbol) => self.display_name_for_symbol(symbol),
         };
 
         let book_has_rows = !inst.book.bids.is_empty() || !inst.book.asks.is_empty();

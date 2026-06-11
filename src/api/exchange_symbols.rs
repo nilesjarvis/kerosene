@@ -12,9 +12,19 @@ use outcomes::{OutcomeMetaResponse, append_outcome_symbols};
 use perps::append_perp_symbols;
 use spot::append_spot_symbols;
 
+/// Result of a symbols fetch. Spot and outcome metadata failures are partial:
+/// perp symbols still load, but the failed source's symbols are absent and the
+/// caller must keep any previously loaded symbols of that market type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExchangeSymbolsPayload {
+    pub symbols: Vec<ExchangeSymbol>,
+    pub spot_meta_failed: bool,
+    pub outcome_meta_failed: bool,
+}
+
 /// Fetch all tradeable symbols (perps + spot + outcomes) by combining
 /// allPerpMetas, perpConciseAnnotations, perpDexs, spotMeta, and outcomeMeta.
-pub async fn fetch_exchange_symbols() -> Result<Vec<ExchangeSymbol>, String> {
+pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> {
     let client = CLIENT.clone();
 
     let (metas_raw, annotations_raw, dexs_raw) = futures::try_join!(
@@ -31,17 +41,29 @@ pub async fn fetch_exchange_symbols() -> Result<Vec<ExchangeSymbol>, String> {
         post_info_typed::<OutcomeMetaResponse>(client, "outcomeMeta"),
     );
 
-    if let Ok(spot_meta) = spot_meta_result {
-        append_spot_symbols(&mut symbols, &spot_meta);
-    }
+    let spot_meta_failed = match spot_meta_result {
+        Ok(spot_meta) => {
+            append_spot_symbols(&mut symbols, &spot_meta);
+            false
+        }
+        Err(_) => true,
+    };
 
-    if let Ok(outcome_meta) = outcome_meta_result {
-        append_outcome_symbols(&mut symbols, outcome_meta);
-    }
+    let outcome_meta_failed = match outcome_meta_result {
+        Ok(outcome_meta) => {
+            append_outcome_symbols(&mut symbols, outcome_meta);
+            false
+        }
+        Err(_) => true,
+    };
 
     symbols.sort_by(|a, b| a.ticker.cmp(&b.ticker));
 
-    Ok(symbols)
+    Ok(ExchangeSymbolsPayload {
+        symbols,
+        spot_meta_failed,
+        outcome_meta_failed,
+    })
 }
 
 fn info_request_payload(request_type: &'static str) -> serde_json::Value {

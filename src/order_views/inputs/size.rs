@@ -44,7 +44,8 @@ impl TradingTerminal {
 
         let (notional_val, notional_text) = order_notional_text(
             self.order_quantity_is_usd,
-            &self.active_symbol,
+            &self.active_symbol_display,
+            active_is_outcome,
             parsed_qty,
             parsed_price,
         );

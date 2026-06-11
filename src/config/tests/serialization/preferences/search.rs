@@ -46,3 +46,34 @@ fn liquidation_distribution_symbol_round_trips_and_legacy_defaults_empty() {
         value_from_json(legacy, "legacy config should deserialize");
     assert!(decoded_legacy.liquidation_distribution_symbol.is_empty());
 }
+
+#[test]
+fn outcome_display_labels_round_trip_and_legacy_defaults_empty() {
+    let config = KeroseneConfig {
+        outcome_display_labels: std::collections::HashMap::from([(
+            "#950".to_string(),
+            "YES: Will BTC close green?".to_string(),
+        )]),
+        ..KeroseneConfig::default()
+    };
+
+    let json = json_string(&config, "config should serialize");
+    let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert_eq!(
+        decoded
+            .outcome_display_labels
+            .get("#950")
+            .map(String::as_str),
+        Some("YES: Will BTC close green?")
+    );
+
+    let mut legacy = default_config_value();
+    remove_field(
+        &mut legacy,
+        "outcome_display_labels",
+        "config should serialize to object",
+    );
+    let decoded_legacy: KeroseneConfig =
+        value_from_json(legacy, "legacy config should deserialize");
+    assert!(decoded_legacy.outcome_display_labels.is_empty());
+}

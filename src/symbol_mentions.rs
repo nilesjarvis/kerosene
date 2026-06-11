@@ -9,6 +9,7 @@ const STRONG_TICKER_WORDS: &[&str] = &[
     "SHE", "THE", "TO", "TRUMP", "UP", "US", "USD", "USDC", "USDT", "WE", "YES",
 ];
 const AMBIGUOUS_BARE_TICKER_WORDS: &[&str] = &["APT", "FLOW", "LINK", "MOVE", "NEAR", "OIL"];
+const GENERIC_OUTCOME_ALIAS_WORDS: &[&str] = &["OUTCOME", "PREDICTION"];
 const DEFAULT_OIL_SYMBOL_KEYS: &[&str] = &["xyz:CL"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -545,6 +546,7 @@ fn metadata_alias_is_safe(phrase: &str) -> bool {
     let upper = phrase.to_ascii_uppercase();
     !STRONG_TICKER_WORDS.contains(&upper.as_str())
         && !AMBIGUOUS_BARE_TICKER_WORDS.contains(&upper.as_str())
+        && !GENERIC_OUTCOME_ALIAS_WORDS.contains(&upper.as_str())
 }
 
 fn original_match_is_strong(original: &str) -> bool {

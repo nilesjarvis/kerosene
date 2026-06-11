@@ -46,15 +46,14 @@ impl TradingTerminal {
 
                 let chart_sym = self.charts.get(&chart_id).and_then(|inst| {
                     let sym = inst.symbol.clone();
-                    let display = inst.symbol_display.clone();
                     if !sym.is_empty() && sym != self.active_symbol {
-                        Some((sym, display))
+                        Some(sym)
                     } else {
                         None
                     }
                 });
 
-                if let Some((sym, display)) = chart_sym {
+                if let Some(sym) = chart_sym {
                     if let Some(symbol) = self.resolve_exchange_symbol_by_key_or_ticker(&sym) {
                         if let Err(message) =
                             self.validate_exchange_symbol_orderable(symbol, "Chart")
@@ -68,6 +67,10 @@ impl TradingTerminal {
                         return Task::none();
                     }
                     let selected_symbol = sym.clone();
+                    // Resolve fresh instead of copying the chart's cached
+                    // label, so a stale placeholder never becomes the global
+                    // active-symbol display.
+                    let display = self.display_name_for_symbol(&sym);
                     self.apply_active_symbol_selection(sym, display);
                     self.refresh_order_price_for_symbol(&selected_symbol);
                     self.reset_active_order_books_for_symbol(&selected_symbol);

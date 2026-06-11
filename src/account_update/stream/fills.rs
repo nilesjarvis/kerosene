@@ -37,7 +37,7 @@ pub(super) fn apply_fills_update<F>(
     fills: Vec<UserFill>,
     is_snapshot: bool,
     is_hidden: F,
-) -> Vec<String>
+) -> Vec<UserFill>
 where
     F: Fn(&str) -> bool,
 {
@@ -50,17 +50,19 @@ where
             .into_iter()
             .filter(|fill| seen.insert(fill.dedup_key()))
             .collect();
-        let toast_msgs: Vec<String> = fills
+        let toast_fills: Vec<UserFill> = fills
             .iter()
             .filter(|fill| !is_hidden(&fill.coin))
-            .map(|fill| {
-                let side = if fill.side == "B" { "BUY" } else { "SELL" };
-                format!("Filled {side} {} {} @ ${}", fill.sz, fill.coin, fill.px)
-            })
+            .cloned()
             .collect();
         prepend_recent_fills(existing, fills, 200);
-        toast_msgs
+        toast_fills
     }
+}
+
+pub(super) fn fill_toast_message(fill: &UserFill, coin_label: &str, size_label: &str) -> String {
+    let side = if fill.side == "B" { "BUY" } else { "SELL" };
+    format!("Filled {side} {size_label} {coin_label} @ ${}", fill.px)
 }
 
 // ---------------------------------------------------------------------------

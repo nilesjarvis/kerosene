@@ -1,6 +1,6 @@
 use super::super::NormalizedRenderContext;
 use super::series_render_color;
-use crate::helpers::text_color_for_bg;
+use crate::helpers::{ellipsized_text, text_color_for_bg};
 use crate::spaghetti::{ComparisonColorMode, Series};
 
 use iced::alignment;
@@ -93,9 +93,13 @@ fn draw_series_label(
 ) {
     let shifted = (label.label_y - label.y).abs() >= 1.0;
     let label_x = ctx.chart_w + 2.0;
+    let max_label_width = (ctx.bounds.width - label_x - 2.0).max(0.0);
+    let display = axis_display_label(
+        &label.display,
+        max_label_width - SERIES_LABEL_PADDING_X * 2.0,
+    );
     let performance = performance_label(label.pct);
-    let label_width = series_label_width(&label.display, &performance)
-        .min((ctx.bounds.width - label_x - 2.0).max(0.0));
+    let label_width = series_label_width(&display, &performance).min(max_label_width);
     let label_top = label.label_y - SERIES_LABEL_HEIGHT * 0.5;
     let mut label_background = label.color;
     label_background.a = 0.92;
@@ -130,7 +134,7 @@ fn draw_series_label(
     }
 
     frame.fill_text(canvas::Text {
-        content: label.display.clone(),
+        content: display,
         position: Point::new(
             ctx.chart_w + SERIES_LABEL_X_OFFSET,
             label.label_y + SERIES_LABEL_DISPLAY_Y_OFFSET,
@@ -162,11 +166,21 @@ fn draw_series_label(
 }
 
 fn series_label_width(display: &str, performance: &str) -> f32 {
-    let display_w = display.len() as f32 * SERIES_LABEL_DISPLAY_CHAR_W;
+    let display_w = display.chars().count() as f32 * SERIES_LABEL_DISPLAY_CHAR_W;
     let performance_w = performance.len() as f32 * SERIES_LABEL_VALUE_CHAR_W;
     display_w.max(performance_w) + SERIES_LABEL_PADDING_X * 2.0
+}
+
+/// Long display names (canonical outcome labels run 50-80 chars) are
+/// ellipsized to the narrow price-axis strip; the legend keeps the full text.
+fn axis_display_label(display: &str, max_width: f32) -> String {
+    let max_chars = (max_width / SERIES_LABEL_DISPLAY_CHAR_W).floor().max(0.0) as usize;
+    ellipsized_text(display, max_chars)
 }
 
 pub(in crate::spaghetti::normalized) fn performance_label(pct: f64) -> String {
     format!("{pct:+.2}%")
 }
+
+#[cfg(test)]
+mod tests;

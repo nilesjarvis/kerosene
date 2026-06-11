@@ -5,6 +5,17 @@ use super::marker::user_order_price_marker;
 use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
+/// Level sizes and totals share one formatter across the depth list and the
+/// DOM ladder. Outcome books trade whole contracts, so they drop the
+/// fractional digits; `whole_contracts: false` keeps the existing formatting.
+pub fn format_book_size(size: f64, whole_contracts: bool) -> String {
+    if whole_contracts {
+        format!("{size:.0}")
+    } else {
+        format_size(size)
+    }
+}
+
 pub(super) fn price_cell(
     px: f64,
     decimals: usize,
@@ -33,8 +44,8 @@ pub(super) fn price_cell(
     .into()
 }
 
-pub(super) fn size_cell(sz: f64, alpha: f32) -> Element<'static, Message> {
-    text(format_size(sz))
+pub(super) fn size_cell(sz: f64, alpha: f32, whole_contracts: bool) -> Element<'static, Message> {
+    text(format_book_size(sz, whole_contracts))
         .size(12)
         .font(crate::app_fonts::monospace_font())
         .align_x(iced::alignment::Horizontal::Right)
@@ -48,9 +59,9 @@ pub(super) fn size_cell(sz: f64, alpha: f32) -> Element<'static, Message> {
         .into()
 }
 
-pub(super) fn total_cell(cum: f64) -> Element<'static, Message> {
+pub(super) fn total_cell(cum: f64, whole_contracts: bool) -> Element<'static, Message> {
     container(
-        text(format_size(cum))
+        text(format_book_size(cum, whole_contracts))
             .size(12)
             .font(crate::app_fonts::monospace_font())
             .align_x(iced::alignment::Horizontal::Right)
@@ -68,3 +79,6 @@ pub(super) fn total_cell(cum: f64) -> Element<'static, Message> {
     .width(Fill)
     .into()
 }
+
+#[cfg(test)]
+mod tests;

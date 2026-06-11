@@ -139,13 +139,24 @@ impl TradingTerminal {
         }
 
         let user_order_levels = self.user_order_book_levels(&tracking_symbol, render_tick);
+        let whole_contracts = self.is_outcome_coin(&tracking_symbol);
         let scroll = match inst.display_mode {
-            OrderBookDisplayMode::DepthList => {
-                Self::view_order_book_rows(id, inst, render_tick, &theme, &user_order_levels)
-            }
-            OrderBookDisplayMode::DomLadder => {
-                Self::view_order_book_dom_ladder(id, inst, render_tick, &theme, &user_order_levels)
-            }
+            OrderBookDisplayMode::DepthList => Self::view_order_book_rows(
+                id,
+                inst,
+                render_tick,
+                &theme,
+                &user_order_levels,
+                whole_contracts,
+            ),
+            OrderBookDisplayMode::DomLadder => Self::view_order_book_dom_ladder(
+                id,
+                inst,
+                render_tick,
+                &theme,
+                &user_order_levels,
+                whole_contracts,
+            ),
             OrderBookDisplayMode::DepthChart => {
                 Self::view_order_book_depth_chart(id, inst, render_tick, &user_order_levels)
             }

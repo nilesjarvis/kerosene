@@ -18,7 +18,7 @@ const X_SOURCE_COLLAPSE_THRESHOLD: usize = 5;
 
 #[derive(Debug, Clone)]
 struct XTickerImpactCard {
-    ticker: String,
+    label: String,
     impact_pct: Option<f64>,
 }
 
@@ -300,19 +300,25 @@ impl TradingTerminal {
     fn x_ticker_impact_cards(&self, post: &XFeedPost) -> Vec<XTickerImpactCard> {
         post.ticker_mentions
             .iter()
-            .filter(|mention| {
-                self.resolve_exchange_symbol_by_key_or_ticker(&mention.symbol)
-                    .is_some_and(|symbol| {
+            .filter_map(|mention| {
+                let symbol = self
+                    .resolve_exchange_symbol_by_key_or_ticker(&mention.symbol)
+                    .filter(|symbol| {
                         symbol.market_type != MarketType::Spot
                             && self.exchange_symbol_is_orderable(symbol)
-                    })
-            })
-            .map(|mention| XTickerImpactCard {
-                ticker: mention.ticker.clone(),
-                impact_pct: x_price_impact_pct(
-                    mention.reference_price,
-                    self.resolve_mid_for_symbol(&mention.symbol),
-                ),
+                    })?;
+                let label = if symbol.outcome.is_some() {
+                    Self::exchange_symbol_display_name(symbol)
+                } else {
+                    mention.ticker.clone()
+                };
+                Some(XTickerImpactCard {
+                    label,
+                    impact_pct: x_price_impact_pct(
+                        mention.reference_price,
+                        self.resolve_mid_for_symbol(&mention.symbol),
+                    ),
+                })
             })
             .collect()
     }
@@ -513,7 +519,7 @@ fn x_ticker_impact_card(
     let impact_color = x_impact_color(impact.impact_pct, muted_text, success_text, danger_text);
     container(
         row![
-            text(impact.ticker).size(11).color(impact_color),
+            text(impact.label).size(11).color(impact_color),
             text(impact_label).size(10).color(impact_color),
         ]
         .spacing(4)
@@ -672,3 +678,6 @@ fn x_post_container(theme: &Theme, heat: f32) -> container_style::Style {
         ..Default::default()
     }
 }
+
+#[cfg(test)]
+mod tests;

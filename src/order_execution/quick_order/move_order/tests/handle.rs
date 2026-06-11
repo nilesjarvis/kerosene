@@ -2,6 +2,7 @@ use super::fixtures::{
     account_data_with_order, open_order, order_status_or_panic, outcome_symbol,
     terminal_with_move_order,
 };
+use crate::app_state::TradingTerminal;
 
 #[test]
 fn handle_move_order_blocks_far_away_drag_price() {
@@ -72,6 +73,24 @@ fn handle_move_order_rejects_non_tradable_fallback_outcome() {
     assert!(is_error);
     assert!(message.contains("not a tradable market"));
     assert!(!terminal.pending_move_order_contexts.contains_key(&42));
+}
+
+#[test]
+fn handle_move_order_status_uses_outcome_display_label() {
+    let mut terminal = terminal_with_move_order("#670", "#670", 0.42);
+    let symbol = outcome_symbol("#670", false);
+    let label = TradingTerminal::exchange_symbol_display_name(&symbol);
+    terminal.exchange_symbols = vec![symbol];
+    let mut order = open_order("#670", 42, "0.42");
+    order.sz = "2".to_string();
+    terminal.account_data = Some(account_data_with_order(order));
+
+    let _task = terminal.handle_move_order(42, 0.43);
+
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(!is_error);
+    assert!(message.contains(&label));
+    assert!(!message.contains("#670"));
 }
 
 #[test]

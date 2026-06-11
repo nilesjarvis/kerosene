@@ -3,7 +3,7 @@ use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
 use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
 use crate::annotations::{Annotation, AnnotationId, DrawingTool};
-use crate::api::{self, Candle, ExchangeSymbol, OrderBook};
+use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
 use crate::chart_screenshot::ChartScreenshotState;
@@ -652,7 +652,8 @@ pub(crate) enum Message {
         result: Box<Result<ExchangeResponse, String>>,
     },
     // Global messages
-    SymbolsLoaded(Result<Vec<ExchangeSymbol>, String>),
+    SymbolsLoaded(Result<api::ExchangeSymbolsPayload, String>),
+    ExchangeSymbolsRefreshTick,
     SymbolSearchChanged(String),
     SymbolSearchSortChanged(SymbolSearchSortMode),
     SymbolSearchMarketFilterChanged(SymbolSearchMarketFilter),

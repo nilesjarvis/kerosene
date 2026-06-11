@@ -54,16 +54,19 @@ impl TradingTerminal {
 }
 
 pub(super) fn liquidation_symbol_button(
+    display_coin: String,
     coin: String,
     theme: &Theme,
 ) -> button::Button<'static, Message> {
     let mut coin_content = row![];
-    if let Some(icon) = helpers::symbol_icon(&coin, 14, theme.palette().text) {
+    if let Some(icon) = helpers::symbol_icon(&display_coin, 14, theme.palette().text)
+        .or_else(|| helpers::symbol_icon(&coin, 14, theme.palette().text))
+    {
         coin_content = coin_content.push(icon).push(Space::new().width(4.0));
     }
     coin_content = coin_content
         .push(
-            text(coin.clone())
+            text(display_coin)
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .wrapping(Wrapping::None),

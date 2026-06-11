@@ -40,12 +40,12 @@ impl TradingTerminal {
                 .map(|oid| format!(" order #{oid}"))
                 .unwrap_or_default();
             let chase_info = text(format!(
-                "Chasing {side_str} {}{} {:.4}/{:.4} rem {:.4} @ {} ({} active)",
-                chase.coin.as_str(),
+                "Chasing {side_str} {}{} {}/{} rem {} @ {} ({} active)",
+                self.display_name_for_symbol(&chase.coin),
                 order_id,
-                chase.filled_size,
-                chase.target_size,
-                chase.remaining_size,
+                self.display_size_for_symbol(&chase.coin, chase.filled_size),
+                self.display_size_for_symbol(&chase.coin, chase.target_size),
+                self.display_size_for_symbol(&chase.coin, chase.remaining_size),
                 price,
                 self.active_advanced_order_count()
             ))

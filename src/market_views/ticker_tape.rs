@@ -139,9 +139,14 @@ impl TradingTerminal {
             return None;
         }
 
-        let ticker = symbol_meta
-            .map(|symbol| symbol.ticker.clone())
-            .unwrap_or_else(|| symbol.split(':').next_back().unwrap_or(symbol).to_string());
+        let ticker = match symbol_meta {
+            Some(sym) => sym
+                .outcome
+                .as_ref()
+                .map(|info| info.side_condition_short_label())
+                .unwrap_or_else(|| Self::exchange_symbol_display_name(sym)),
+            None => self.display_name_for_symbol(symbol),
+        };
         let price = self.resolve_mid_for_symbol(symbol);
         let ctx = self
             .ticker_tape_ctxs

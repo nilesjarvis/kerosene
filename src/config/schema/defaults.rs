@@ -316,6 +316,7 @@ impl Default for KeroseneConfig {
             ticker_tape_enabled: false,
             favourite_symbols: Vec::new(),
             muted_tickers: Vec::new(),
+            outcome_display_labels: HashMap::new(),
             hydromancer_api_key: String::new().into(),
             hyperdash_api_key: String::new().into(),
             sound_enabled: false,

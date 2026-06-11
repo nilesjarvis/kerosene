@@ -113,8 +113,9 @@ impl TradingTerminal {
             }
         };
 
+        let display_coin = self.display_name_for_symbol(&coin);
         self.order_status = Some((
-            format!("Moving {} order to ${}...", coin, prepared.price),
+            format!("Moving {} order to ${}...", display_coin, prepared.price),
             false,
         ));
         let Ok(context) = PendingMoveOrderContext::new(account_address.clone(), key) else {

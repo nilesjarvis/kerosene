@@ -264,6 +264,10 @@ pub struct KeroseneConfig {
     /// tickers, so muting BTC also hides UBTC and HIP-3 BTC variants.
     #[serde(default)]
     pub muted_tickers: Vec<String>,
+    /// Cached display labels for outcome trade coins ("#NNN" -> label) so fills,
+    /// journal entries, and balances on expired HIP-4 markets keep their names.
+    #[serde(default)]
+    pub outcome_display_labels: HashMap<String, String>,
     /// Hydromancer API key for liquidation and tracked-trade streams.
     #[serde(default)]
     #[serde(skip_serializing)]

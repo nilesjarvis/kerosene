@@ -20,6 +20,7 @@ pub(super) fn view_order_book_dom_ladder(
     tick: f64,
     spread_widget: Element<'static, Message>,
     user_order_levels: &UserOrderBookLevels,
+    whole_contracts: bool,
 ) -> Element<'static, Message> {
     let rows = inst.dom_ladder_rows(tick, DOM_SIDE_ROWS);
     let decimals = tick_decimals(tick);
@@ -30,6 +31,7 @@ pub(super) fn view_order_book_dom_ladder(
         max_cumulative: nice_step_ceil(rows.max_cumulative),
         decimals,
         tick,
+        whole_contracts,
         reverse_side: inst.reverse_side,
     };
 

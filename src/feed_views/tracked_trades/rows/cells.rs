@@ -45,7 +45,7 @@ impl TradingTerminal {
 
     pub(super) fn view_tracked_trade_coin_cell(&self, coin: String) -> Element<'_, Message> {
         let theme = self.theme();
-        let display_coin = self.display_coin_for_spot_balance(&coin);
+        let display_coin = self.display_coin_for_journal(&coin);
         let mut coin_content = row![];
         if let Some(icon) = helpers::symbol_icon(&display_coin, 14, theme.palette().text)
             .or_else(|| helpers::symbol_icon(&coin, 14, theme.palette().text))

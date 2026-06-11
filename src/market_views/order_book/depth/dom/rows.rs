@@ -1,6 +1,6 @@
 use super::super::super::UserOrderBookLevels;
 use crate::helpers::{
-    BOOK_ROW_HEIGHT, clickable_book_row, format_decimal_with_commas, format_size,
+    BOOK_ROW_HEIGHT, clickable_book_row, format_book_size, format_decimal_with_commas,
     user_order_price_marker,
 };
 use crate::market_state::{DomLadderRow, OrderBookId};
@@ -21,6 +21,7 @@ pub(super) struct DomRowContext {
     pub(super) max_cumulative: f64,
     pub(super) decimals: usize,
     pub(super) tick: f64,
+    pub(super) whole_contracts: bool,
     pub(super) reverse_side: bool,
 }
 
@@ -50,11 +51,36 @@ fn dom_row(
         None
     };
 
-    let bid_total = dom_value_cell(row_data.bid_cumulative, context.max_cumulative, true, true);
-    let bid_size = dom_value_cell(row_data.bid_size, context.max_size, true, false);
+    let whole_contracts = context.whole_contracts;
+    let bid_total = dom_value_cell(
+        row_data.bid_cumulative,
+        context.max_cumulative,
+        true,
+        true,
+        whole_contracts,
+    );
+    let bid_size = dom_value_cell(
+        row_data.bid_size,
+        context.max_size,
+        true,
+        false,
+        whole_contracts,
+    );
     let price = price_cell(row_data, context.decimals, user_order_side);
-    let ask_size = dom_value_cell(row_data.ask_size, context.max_size, false, false);
-    let ask_total = dom_value_cell(row_data.ask_cumulative, context.max_cumulative, false, true);
+    let ask_size = dom_value_cell(
+        row_data.ask_size,
+        context.max_size,
+        false,
+        false,
+        whole_contracts,
+    );
+    let ask_total = dom_value_cell(
+        row_data.ask_cumulative,
+        context.max_cumulative,
+        false,
+        true,
+        whole_contracts,
+    );
 
     let content: Element<'static, Message> = if context.reverse_side {
         row![ask_total, ask_size, price, bid_size, bid_total]
@@ -79,8 +105,11 @@ fn dom_value_cell(
     max_value: f64,
     is_bid: bool,
     is_cumulative: bool,
+    whole_contracts: bool,
 ) -> Element<'static, Message> {
-    let label = value.map(format_size).unwrap_or_default();
+    let label = value
+        .map(|value| format_book_size(value, whole_contracts))
+        .unwrap_or_default();
     // Same square-root heat curve as the depth list, so medium orders stay
     // visible instead of being flattened by one wall in the window.
     let intensity = value

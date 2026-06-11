@@ -56,21 +56,32 @@ impl CandlestickChart {
 }
 
 pub(super) fn order_side_label(order: &OrderOverlay) -> String {
+    let size = order_size_label(order);
     if matches!(
         order.pending_state,
         Some(super::OrderOverlayPendingState::Cancelling)
     ) {
-        return format!("CXL {:.4}", order.sz);
+        return format!("CXL {size}");
     }
     if matches!(
         order.pending_state,
         Some(super::OrderOverlayPendingState::Modifying)
     ) {
-        return format!("MOD {:.4}", order.sz);
+        return format!("MOD {size}");
     }
 
     let side_str = if order.is_buy { "BUY" } else { "SELL" };
-    format!("{side_str} {:.4}", order.sz)
+    format!("{side_str} {size}")
+}
+
+/// Outcome contracts ("#NNN" coins) trade in whole units; everything else
+/// keeps the fractional size readout.
+fn order_size_label(order: &OrderOverlay) -> String {
+    if order.coin.starts_with('#') {
+        format!("{:.0}", order.sz)
+    } else {
+        format!("{:.4}", order.sz)
+    }
 }
 
 pub(super) fn order_side_label_width(order: &OrderOverlay) -> f32 {

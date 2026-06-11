@@ -16,6 +16,7 @@ impl TradingTerminal {
         match message {
             message @ (Message::ToggleFavourite(_)
             | Message::SymbolsLoaded(_)
+            | Message::ExchangeSymbolsRefreshTick
             | Message::SymbolSearchChanged(_)
             | Message::SymbolSearchSortChanged(_)
             | Message::SymbolSearchMarketFilterChanged(_)

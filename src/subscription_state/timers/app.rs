@@ -123,6 +123,14 @@ impl TradingTerminal {
             iced::time::every(std::time::Duration::from_secs(60 * 15)).map(|_| Message::Tick),
         );
 
+        // Outcome (HIP-4) markets are listed and expire intraday, so the
+        // boot-time symbols snapshot goes stale fast; refresh it periodically
+        // (this also retries a failed or partial boot load).
+        subs.push(
+            iced::time::every(std::time::Duration::from_secs(120))
+                .map(|_| Message::ExchangeSymbolsRefreshTick),
+        );
+
         if self.pane_is_open(|kind| matches!(kind, PaneKind::HypeEtfs)) {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(60 * 5))

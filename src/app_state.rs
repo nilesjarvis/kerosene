@@ -150,6 +150,10 @@ pub(crate) struct TradingTerminal {
     // Symbol search (replaces old watchlist)
     pub(crate) exchange_symbols: Vec<ExchangeSymbol>,
     pub(crate) symbols_loading: bool,
+    pub(crate) exchange_symbols_refresh_inflight: bool,
+    /// Persisted display labels for outcome trade coins ("#NNN" -> label) so
+    /// expired or not-yet-loaded HIP-4 markets keep their human-readable names.
+    pub(crate) outcome_display_labels: HashMap<String, String>,
     pub(crate) symbol_search_query: String,
     pub(crate) symbol_search_sort_mode: SymbolSearchSortMode,
     pub(crate) market_universe: config::MarketUniverseConfig,

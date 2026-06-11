@@ -68,7 +68,7 @@ impl TradingTerminal {
         let Some(reference) = self.resolve_mid_for_symbol(symbol) else {
             return Err(format!(
                 "No mid price for {} (tried {})",
-                symbol,
+                self.display_name_for_symbol(symbol),
                 self.mid_candidates_for_symbol(symbol).join(", ")
             ));
         };
@@ -84,7 +84,7 @@ impl TradingTerminal {
                 Press Mid or update the price before submitting. Tried mids: {}",
                 format_price(price),
                 distance * 100.0,
-                symbol,
+                self.display_name_for_symbol(symbol),
                 format_price(reference),
                 candidates
             );

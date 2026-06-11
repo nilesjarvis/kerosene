@@ -62,6 +62,29 @@ fn position_numbers_compact_after_optional_columns_are_hidden() {
 }
 
 #[test]
+fn opening_position_label_uses_resolved_symbol_and_size_labels() {
+    let delta = ProjectedPositionDelta {
+        symbol: "#950".to_string(),
+        signed_size: 5.0,
+        estimated_price: Some(0.42),
+    };
+    assert_eq!(
+        opening_position_label(&delta, "YES: Will BTC close green?", "5"),
+        "\u{27f3} YES: Will BTC close green? market buy 5 @ ~0.4200 in flight\u{2026}"
+    );
+
+    let sell_delta = ProjectedPositionDelta {
+        symbol: "BTC".to_string(),
+        signed_size: -1.5,
+        estimated_price: None,
+    };
+    assert_eq!(
+        opening_position_label(&sell_delta, "BTC", "1.5"),
+        "\u{27f3} BTC market sell 1.5 in flight\u{2026}"
+    );
+}
+
+#[test]
 fn opening_lines_are_suppressed_for_symbols_with_any_position_even_hidden() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());

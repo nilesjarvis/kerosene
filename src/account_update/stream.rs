@@ -2,7 +2,7 @@ mod chase;
 mod fills;
 mod orders;
 
-use fills::apply_fills_update;
+use fills::{apply_fills_update, fill_toast_message};
 use orders::preserve_open_order_reduce_only;
 
 use crate::account::{UserFill, normalize_dex_open_order_coins};
@@ -65,7 +65,7 @@ impl TradingTerminal {
         let mut fills_changed = false;
         let mut positions_changed = false;
         let mut mids_task = Task::none();
-        let mut fill_toast_msgs: Vec<String> = Vec::new();
+        let mut fill_toast_fills: Vec<UserFill> = Vec::new();
         let mut fresh_fills: Vec<UserFill> = Vec::new();
         let exchange_symbols = self.exchange_symbols.clone();
         let muted_tickers = self.muted_tickers.clone();
@@ -121,7 +121,7 @@ impl TradingTerminal {
                             .cloned()
                             .collect();
                     }
-                    fill_toast_msgs =
+                    fill_toast_fills =
                         apply_fills_update(&mut data.fills, fills, is_snapshot, is_hidden);
                     fills_changed = true;
                 }
@@ -162,8 +162,10 @@ impl TradingTerminal {
         if !fresh_fills.is_empty() {
             self.consume_pending_market_order_fills(&fresh_fills);
         }
-        for msg in fill_toast_msgs {
-            self.push_toast(msg, false);
+        for fill in &fill_toast_fills {
+            let coin_label = self.display_coin_for_journal(&fill.coin);
+            let size_label = self.fill_toast_size_label(fill);
+            self.push_toast(fill_toast_message(fill, &coin_label, &size_label), false);
         }
         if positions_changed {
             self.sync_all_chart_overlays();
@@ -192,5 +194,16 @@ impl TradingTerminal {
             self.apply_wallet_details_ws_update(source_address, wallet_details_update)
         };
         Task::batch([fill_reconcile_task, chase_task, mids_task, wallet_task])
+    }
+
+    /// Outcome fills toast in whole contracts; everything else keeps the wire
+    /// size string.
+    fn fill_toast_size_label(&self, fill: &UserFill) -> String {
+        match fill.sz.parse::<f64>() {
+            Ok(size) if self.is_outcome_coin(&fill.coin) => {
+                self.display_size_for_symbol(&fill.coin, size)
+            }
+            _ => fill.sz.clone(),
+        }
     }
 }

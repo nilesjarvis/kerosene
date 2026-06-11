@@ -25,9 +25,7 @@ impl TradingTerminal {
             .iter()
             .filter(|s| s.is_user_selectable_market())
             .filter(|s| !self.exchange_symbol_is_hidden(s))
-            .filter(|s| {
-                s.ticker.to_lowercase().contains(&query) || s.key.to_lowercase().contains(&query)
-            })
+            .filter(|s| live_watchlist_autocomplete_matches(s, &query))
             .collect();
         matches.sort_by(|a, b| a.ticker.cmp(&b.ticker));
         matches.truncate(5);
@@ -74,3 +72,21 @@ impl TradingTerminal {
         autocomplete
     }
 }
+
+/// Mirrors the symbol-search query matcher so outcome markets are findable by
+/// their question text, not just the synthetic ticker or raw key.
+fn live_watchlist_autocomplete_matches(symbol: &ExchangeSymbol, query: &str) -> bool {
+    symbol.ticker.to_lowercase().contains(query)
+        || symbol.key.to_lowercase().contains(query)
+        || symbol
+            .display_name
+            .as_ref()
+            .is_some_and(|display_name| display_name.to_lowercase().contains(query))
+        || symbol
+            .keywords
+            .iter()
+            .any(|keyword| keyword.to_lowercase().contains(query))
+}
+
+#[cfg(test)]
+mod tests;

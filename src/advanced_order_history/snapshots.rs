@@ -146,6 +146,7 @@ impl AdvancedOrderHistoryEntry {
 
     pub(crate) fn from_chase_with_fill_metrics(
         chase: &ChaseOrder,
+        display_coin: String,
         completed_at_ms: u64,
         summary: String,
         fill_metrics: Option<ChaseHistoryFillMetrics>,
@@ -201,7 +202,7 @@ impl AdvancedOrderHistoryEntry {
             source_id: chase.id,
             account_address: chase.account_address.clone(),
             coin: chase.coin.clone(),
-            display_coin: chase.coin.clone(),
+            display_coin,
             is_buy: chase.is_buy,
             target_size,
             filled_size,

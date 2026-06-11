@@ -64,14 +64,17 @@ impl TradingTerminal {
 
                         let formatted_notional = self.format_display_usd_value(notional, 0);
                         let formatted_price = self.format_display_price(liquidation.price);
+                        let coin_label = if liquidation.coin.starts_with('@')
+                            || liquidation.coin.starts_with('#')
+                        {
+                            self.display_name_for_symbol(&liquidation.coin)
+                        } else {
+                            liquidation.coin.to_uppercase()
+                        };
 
                         let msg = format!(
                             "{} LIQUIDATED: {} {}\n{} at {}",
-                            icon,
-                            position_type,
-                            liquidation.coin.to_uppercase(),
-                            formatted_notional,
-                            formatted_price
+                            icon, position_type, coin_label, formatted_notional, formatted_price
                         );
 
                         self.push_toast(msg, liquidation.is_buy);

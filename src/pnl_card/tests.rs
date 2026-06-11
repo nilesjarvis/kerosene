@@ -6,6 +6,7 @@ use iced::{Color, Theme};
 mod calculations;
 mod contrast;
 mod export;
+mod metrics;
 mod privacy;
 mod render_text;
 mod state;

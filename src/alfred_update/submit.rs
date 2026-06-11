@@ -82,7 +82,8 @@ impl TradingTerminal {
             self.switch_active_symbol_internal(symbol_key.clone())
         };
         if self.active_symbol != symbol_key {
-            self.push_toast(format!("Cannot trade {symbol_key}"), true);
+            let display = self.display_name_for_symbol(&symbol_key);
+            self.push_toast(format!("Cannot trade {display}"), true);
             return switch_task;
         }
         if draft.quantity_is_usd && self.is_outcome_coin(&symbol_key) {
@@ -108,11 +109,12 @@ impl TradingTerminal {
         }
 
         if draft.order_kind == OrderKind::Chase {
+            let display = self.display_name_for_symbol(&symbol_key);
             self.order_status = Some((
-                format!("Chase draft ready for {symbol_key}: choose CHASE BUY or CHASE SELL"),
+                format!("Chase draft ready for {display}: choose CHASE BUY or CHASE SELL"),
                 false,
             ));
-            self.push_toast(format!("Chase draft ready for {symbol_key}"), false);
+            self.push_toast(format!("Chase draft ready for {display}"), false);
             return switch_task;
         }
 

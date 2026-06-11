@@ -129,10 +129,11 @@ impl TradingTerminal {
             outcome.kind,
             ExecutionOutcomeKind::Ambiguous | ExecutionOutcomeKind::TransportUnknown
         ) {
+            let display = self.display_name_for_symbol(&context.symbol_key);
             self.set_order_status(
                 format!(
                     "NUKE placement status unknown for {}: {}; checking {}",
-                    context.symbol_key, outcome.status, context.cloid
+                    display, outcome.status, context.cloid
                 ),
                 true,
             );
@@ -210,11 +211,12 @@ impl TradingTerminal {
             outcome.kind,
             ExecutionOutcomeKind::Ambiguous | ExecutionOutcomeKind::TransportUnknown
         ) {
+            let display = self.display_name_for_symbol(&context.symbol_key);
             self.set_order_status(
                 format!(
                     "{} placement status unknown for {}: {}; checking {}",
                     context.placement_label(),
-                    context.symbol_key,
+                    display,
                     outcome.status,
                     context.cloid
                 ),
@@ -247,13 +249,14 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        let display = self.display_name_for_symbol(&context.symbol_key);
         match result {
             Ok(status) if status.is_open() => {
                 self.set_order_status(
                     format!(
                         "{} placement confirmed by orderStatus for {}: {}",
                         context.placement_label(),
-                        context.symbol_key,
+                        display,
                         status.raw_summary
                     ),
                     false,
@@ -264,7 +267,7 @@ impl TradingTerminal {
                     format!(
                         "{} placement filled according to orderStatus for {}: {}",
                         context.placement_label(),
-                        context.symbol_key,
+                        display,
                         status.raw_summary
                     ),
                     false,
@@ -275,7 +278,7 @@ impl TradingTerminal {
                     format!(
                         "{} placement rejected according to orderStatus for {}: {}",
                         context.placement_label(),
-                        context.symbol_key,
+                        display,
                         status.raw_summary
                     ),
                     true,
@@ -286,7 +289,7 @@ impl TradingTerminal {
                     format!(
                         "{} placement resolved without fill for {}: {}",
                         context.placement_label(),
-                        context.symbol_key,
+                        display,
                         status.raw_summary
                     ),
                     false,
@@ -297,7 +300,7 @@ impl TradingTerminal {
                     format!(
                         "{} placement status still uncertain for {} ({}): {}",
                         context.placement_label(),
-                        context.symbol_key,
+                        display,
                         context.cloid,
                         status.raw_summary
                     ),
@@ -309,7 +312,7 @@ impl TradingTerminal {
                     format!(
                         "{} placement status for {} ({}) was {}",
                         context.placement_label(),
-                        context.symbol_key,
+                        display,
                         context.cloid,
                         status.raw_summary
                     ),
@@ -321,7 +324,7 @@ impl TradingTerminal {
                     format!(
                         "{} placement status still uncertain for {} ({}): {}",
                         context.placement_label(),
-                        context.symbol_key,
+                        display,
                         context.cloid,
                         error
                     ),

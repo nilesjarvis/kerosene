@@ -31,6 +31,7 @@ impl TradingTerminal {
         tick: f64,
         theme: &Theme,
         user_order_levels: &UserOrderBookLevels,
+        whole_contracts: bool,
     ) -> Element<'static, Message> {
         let decimals = tick_decimals(tick);
 
@@ -65,6 +66,7 @@ impl TradingTerminal {
             max_cum,
             max_sz,
             decimals,
+            whole_contracts,
             reverse_side: inst.reverse_side,
         };
         if inst.center_on_mid {
@@ -151,9 +153,17 @@ impl TradingTerminal {
         tick: f64,
         theme: &Theme,
         user_order_levels: &UserOrderBookLevels,
+        whole_contracts: bool,
     ) -> Element<'static, Message> {
         let spread_widget = Self::view_order_book_spread_widget(id, inst, theme);
-        dom::view_order_book_dom_ladder(id, inst, tick, spread_widget, user_order_levels)
+        dom::view_order_book_dom_ladder(
+            id,
+            inst,
+            tick,
+            spread_widget,
+            user_order_levels,
+            whole_contracts,
+        )
     }
 
     pub(super) fn view_order_book_dom_header(reverse_side: bool) -> Element<'static, Message> {

@@ -2,6 +2,7 @@ mod cells;
 mod marker;
 
 use crate::message::Message;
+pub use cells::format_book_size;
 use cells::{price_cell, size_cell, total_cell};
 pub use marker::user_order_price_marker;
 
@@ -21,6 +22,8 @@ pub struct BookRowData {
     pub sz: f64,
     pub cum: f64,
     pub has_user_order: bool,
+    /// Outcome books quote whole contracts, so sizes render without decimals.
+    pub whole_contracts: bool,
 }
 
 /// Render a single order book row with a depth bar background.
@@ -70,8 +73,8 @@ pub fn book_row(
     let sz_pct = 0.65 + heat * 0.35;
 
     let price = price_cell(px, decimals, data.has_user_order, is_bid);
-    let size = size_cell(sz, sz_pct);
-    let total = total_cell(cum);
+    let size = size_cell(sz, sz_pct, data.whole_contracts);
+    let total = total_cell(cum, data.whole_contracts);
     let row_content = if reverse_side {
         row![total, size, price]
     } else {

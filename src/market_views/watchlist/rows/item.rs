@@ -16,7 +16,7 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let display = sym.display_name.as_deref().unwrap_or(&sym.ticker);
         let is_selected = sym.key == active_sym;
-        let exchange_label = sym.key.split(':').next().unwrap_or("");
+        let exchange_label = Self::symbol_search_exchange_label(sym);
         let category_label = sym.category.to_uppercase();
 
         let star_key = sym.key.clone();

@@ -1,6 +1,6 @@
 use super::*;
 use crate::annotations::DrawingTool;
-use crate::api::OrderStatusResult;
+use crate::api::{ExchangeSymbol, MarketType, OrderStatusResult, OutcomeSymbolInfo};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartInstance, ChartSurfaceId, DetachedChartWindowState};
 use crate::message::Message;
@@ -57,6 +57,59 @@ fn one_shot_context() -> OneShotPlacementContext {
         cloid: "0x00000000000000000000000000000000".to_string(),
         surface: OrderSurface::Ticket,
         symbol_key: "BTC".to_string(),
+    }
+}
+
+fn outcome_exchange_symbol(key: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: "OUT66-YES".to_string(),
+        category: "outcome".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 100_000_000,
+        collateral_token: None,
+        sz_decimals: 0,
+        max_leverage: 1,
+        only_isolated: true,
+        market_type: MarketType::Outcome,
+        outcome: Some(OutcomeSymbolInfo {
+            outcome_id: 66,
+            question_id: Some(12),
+            question_name: Some("Recurring".to_string()),
+            question_description: None,
+            question_class: Some("priceBucket".to_string()),
+            question_underlying: Some("BTC".to_string()),
+            question_expiry: Some("20260520-0600".to_string()),
+            question_price_thresholds: vec!["75348".to_string(), "78423".to_string()],
+            question_period: Some("1d".to_string()),
+            question_named_outcomes: vec![67, 68, 69],
+            question_settled_named_outcomes: Vec::new(),
+            question_fallback_outcome: Some(66),
+            bucket_index: Some(0),
+            is_question_fallback: false,
+            side_index: 0,
+            side_name: "Yes".to_string(),
+            outcome_name: "Recurring Named Outcome".to_string(),
+            description: "index:0".to_string(),
+            class: None,
+            underlying: None,
+            expiry: None,
+            target_price: None,
+            period: None,
+            quote_symbol: "USDH".to_string(),
+            quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+            encoding: 660,
+        }),
+    }
+}
+
+fn one_shot_outcome_context(symbol_key: &str) -> OneShotPlacementContext {
+    OneShotPlacementContext {
+        account_address: TEST_ACCOUNT.to_string(),
+        cloid: "0x00000000000000000000000000000000".to_string(),
+        surface: OrderSurface::Ticket,
+        symbol_key: symbol_key.to_string(),
     }
 }
 
@@ -356,6 +409,35 @@ fn one_shot_order_status_result_normalizes_terminal_statuses() {
     let (message, is_error) = terminal.order_status.expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Ticket placement rejected according to orderStatus for BTC"));
+}
+
+#[test]
+fn one_shot_statuses_use_outcome_display_label_not_raw_key() {
+    let mut terminal = terminal_with_connected_account();
+    let sym = outcome_exchange_symbol("#660");
+    let label = TradingTerminal::exchange_symbol_display_name(&sym);
+    terminal.exchange_symbols = vec![sym];
+
+    let _task = terminal.apply_one_shot_placement_outcome(
+        one_shot_outcome_context("#660"),
+        ExecutionOutcome {
+            kind: ExecutionOutcomeKind::TransportUnknown,
+            status: "exchange request failed".to_string(),
+            is_error: true,
+            refresh_account: true,
+        },
+    );
+    let (message, _) = terminal.order_status.clone().expect("status should be set");
+    assert!(message.contains(&format!("placement status unknown for {label}")));
+    assert!(!message.contains("#660"));
+
+    let _task = terminal.handle_one_shot_placement_status_result(
+        one_shot_outcome_context("#660"),
+        Ok(order_status("open")),
+    );
+    let (message, _) = terminal.order_status.clone().expect("status should be set");
+    assert!(message.contains(&format!("confirmed by orderStatus for {label}")));
+    assert!(!message.contains("#660"));
 }
 
 #[test]

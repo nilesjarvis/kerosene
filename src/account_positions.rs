@@ -17,8 +17,12 @@ impl TradingTerminal {
         };
 
         positions.extend(data.clearinghouse.asset_positions.iter().cloned());
+        // Synthesize a position for every outcome balance coin, even when the
+        // market is expired, still loading, or a fallback-settlement contract:
+        // a held balance is a real position and must not vanish from the
+        // Positions tab just because the symbol lookup misses.
         positions.extend(data.spot.balances.iter().filter_map(|balance| {
-            let trade_coin = self.outcome_trade_coin_for_balance_coin(&balance.coin)?;
+            let trade_coin = Self::outcome_balance_coin_to_trade_coin(&balance.coin)?;
             let mark_px = self.resolve_mid_for_symbol(&trade_coin);
             outcome_asset_position_from_balance(balance, trade_coin, mark_px)
         }));

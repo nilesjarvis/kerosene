@@ -591,23 +591,29 @@ impl TradingTerminal {
     ) -> Vec<TelegramTickerImpactCard> {
         post.ticker_mentions
             .iter()
-            .filter(|mention| {
-                self.resolve_exchange_symbol_by_key_or_ticker(&mention.symbol)
-                    .is_some_and(|symbol| {
+            .filter_map(|mention| {
+                let symbol = self
+                    .resolve_exchange_symbol_by_key_or_ticker(&mention.symbol)
+                    .filter(|symbol| {
                         symbol.market_type != MarketType::Spot
                             && self.exchange_symbol_is_orderable(symbol)
-                    })
-            })
-            .map(|mention| TelegramTickerImpactCard {
-                symbol: mention.symbol.clone(),
-                ticker: mention.ticker.clone(),
-                matched_text: mention.matched_text.clone(),
-                source: mention.source,
-                confidence: mention.confidence,
-                impact_pct: telegram_price_impact_pct(
-                    mention.reference_price,
-                    self.resolve_mid_for_symbol(&mention.symbol),
-                ),
+                    })?;
+                let ticker = if symbol.outcome.is_some() {
+                    Self::exchange_symbol_display_name(symbol)
+                } else {
+                    mention.ticker.clone()
+                };
+                Some(TelegramTickerImpactCard {
+                    symbol: mention.symbol.clone(),
+                    ticker,
+                    matched_text: mention.matched_text.clone(),
+                    source: mention.source,
+                    confidence: mention.confidence,
+                    impact_pct: telegram_price_impact_pct(
+                        mention.reference_price,
+                        self.resolve_mid_for_symbol(&mention.symbol),
+                    ),
+                })
             })
             .collect()
     }
@@ -1289,3 +1295,6 @@ fn blend_color(base: Color, accent: Color, amount: f32) -> Color {
         a: base.a + (accent.a - base.a) * amount,
     }
 }
+
+#[cfg(test)]
+mod tests;

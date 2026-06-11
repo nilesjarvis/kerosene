@@ -102,6 +102,7 @@ impl TradingTerminal {
             ticker_tape_enabled: layout_snapshot.ticker_tape_enabled,
             favourite_symbols: layout_snapshot.favourite_symbols,
             muted_tickers: self.sorted_muted_tickers(),
+            outcome_display_labels: self.outcome_display_labels.clone(),
             hydromancer_api_key: String::new().into(),
             hyperdash_api_key: String::new().into(),
             sound_enabled: layout_snapshot.sound_enabled,

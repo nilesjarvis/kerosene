@@ -95,6 +95,11 @@ pub(super) fn twap_order_row(
         twap.max_price,
     );
     let status = twap_status_text(twap.status, twap.pause_reason);
+    let coin_label = if twap.display_coin.trim().is_empty() {
+        twap.coin.clone()
+    } else {
+        twap.display_coin.clone()
+    };
     let stop_cell = if twap.status.is_terminal() {
         details_button(twap.id)
     } else {
@@ -108,7 +113,7 @@ pub(super) fn twap_order_row(
             spinning_gear(spinner_phase, 13, theme.palette().primary),
             badge("TWAP"),
             text(side).size(10).color(side_color),
-            text(twap.coin.clone()).size(12).width(Fill),
+            text(coin_label).size(12).width(Fill),
             text(progress).size(11),
             text(meta).size(10).color(weak_text),
             text(status).size(10).color(status_color),

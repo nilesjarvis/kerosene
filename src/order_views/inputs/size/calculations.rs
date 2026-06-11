@@ -10,7 +10,8 @@ pub(in crate::order_views::inputs::size) fn parse_positive_finite(value: &str) -
 
 pub(in crate::order_views::inputs::size) fn order_notional_text(
     quantity_is_usd: bool,
-    active_symbol: &str,
+    symbol_display: &str,
+    symbol_is_outcome: bool,
     parsed_qty: Option<f64>,
     parsed_price: Option<f64>,
 ) -> (Option<f64>, String) {
@@ -25,11 +26,11 @@ pub(in crate::order_views::inputs::size) fn order_notional_text(
                 positive_finite_value(coin_val)
             })
             .map(|coin_val| {
-                let mut search_coin = active_symbol;
-                if let Some((_, suffix)) = search_coin.split_once(':') {
-                    search_coin = suffix;
+                if symbol_is_outcome {
+                    format!("\u{2248} {coin_val:.0} {symbol_display}")
+                } else {
+                    format!("\u{2248} {coin_val:.4} {symbol_display}")
                 }
-                format!("\u{2248} {coin_val:.4} {search_coin}")
             })
             .unwrap_or_default();
         (Some(parsed_qty), coin_text)

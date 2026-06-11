@@ -158,6 +158,8 @@ impl TradingTerminal {
             active_symbol_display: boot_symbols.active_symbol_display,
             exchange_symbols: Vec::new(),
             symbols_loading: true,
+            exchange_symbols_refresh_inflight: false,
+            outcome_display_labels: cfg.outcome_display_labels.clone(),
             symbol_search_query: String::new(),
             symbol_search_sort_mode: SymbolSearchSortMode::from_config_str(
                 &cfg.symbol_search_sort_mode,

@@ -3,11 +3,23 @@ use crate::app_state::TradingTerminal;
 
 impl TradingTerminal {
     pub(crate) fn display_name_for_symbol(&self, coin: &str) -> String {
-        self.exchange_symbols
-            .iter()
-            .find(|s| s.key == coin)
-            .map(Self::exchange_symbol_display_name)
-            .unwrap_or_else(|| coin.split(':').nth(1).unwrap_or(coin).to_string())
+        if let Some(symbol) = self.exchange_symbols.iter().find(|s| s.key == coin) {
+            return Self::exchange_symbol_display_name(symbol);
+        }
+        if let Some(label) = self.cached_outcome_display_label(coin) {
+            return label;
+        }
+        coin.split(':').nth(1).unwrap_or(coin).to_string()
+    }
+
+    /// Cached labels keep expired or not-yet-loaded outcome markets readable;
+    /// balance coins ("+NNN") resolve through their trade-coin ("#NNN") entry.
+    fn cached_outcome_display_label(&self, coin: &str) -> Option<String> {
+        if let Some(label) = self.outcome_display_labels.get(coin) {
+            return Some(label.clone());
+        }
+        let trade_coin = Self::outcome_balance_coin_to_trade_coin(coin)?;
+        self.outcome_display_labels.get(&trade_coin).cloned()
     }
 
     pub(crate) fn exchange_symbol_display_name(sym: &ExchangeSymbol) -> String {

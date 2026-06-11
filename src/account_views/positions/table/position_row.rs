@@ -235,13 +235,15 @@ impl TradingTerminal {
     }
 
     fn position_row_symbol_label(&self, coin: &str) -> String {
-        if self.is_outcome_coin(coin)
-            && let Some(symbol) = self
+        if self.is_outcome_coin(coin) {
+            if let Some(symbol) = self
                 .exchange_symbols
                 .iter()
                 .find(|symbol| symbol.key == coin)
-        {
-            return symbol.ticker.clone();
+            {
+                return Self::exchange_symbol_display_name(symbol);
+            }
+            return self.display_name_for_symbol(coin);
         }
 
         coin.to_string()

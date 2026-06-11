@@ -14,7 +14,9 @@ pub use calendar::{CalendarEvent, fetch_economic_calendar};
 pub use candles::{
     Candle, fetch_candles, fetch_chart_backfill_candles, is_valid_candle, normalize_candles,
 };
-pub use exchange_symbols::{ExchangeSymbol, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols};
+pub use exchange_symbols::{
+    ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols,
+};
 pub(crate) use hype_etfs::fetch_hype_etfs;
 pub(crate) use hype_unstaking_queue::fetch_hype_unstaking_queue;
 pub use order_book::{BookLevel, OrderBook, fetch_order_book, parse_ws_book};

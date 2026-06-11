@@ -1,5 +1,5 @@
 use super::{
-    HUD_JET_TAPE_GAP, format_crosshair_relative_time, format_volume_compact,
+    HUD_JET_TAPE_GAP, format_crosshair_relative_time, format_volume_compact, format_volume_readout,
     hud_game_panels_visible, hud_jet_tape_side, hud_left_block_lines, hud_text_width,
 };
 use crate::api::Candle;
@@ -85,6 +85,19 @@ fn format_volume_compact_groups_with_k_m_and_b_suffixes() {
     assert_eq!(format_volume_compact(12_345.0), "12.3K");
     assert_eq!(format_volume_compact(5_000_000.0), "5.00M");
     assert_eq!(format_volume_compact(2_500_000_000.0), "2.50B");
+}
+
+#[test]
+fn format_volume_readout_uses_whole_counts_for_whole_unit_markets() {
+    assert_eq!(format_volume_readout(42.0, true), "42");
+    assert_eq!(format_volume_readout(0.0, true), "0");
+    assert_eq!(format_volume_readout(12_345.0, true), "12.3K");
+}
+
+#[test]
+fn format_volume_readout_keeps_fractional_form_for_other_markets() {
+    assert_eq!(format_volume_readout(5.5, false), "5.50");
+    assert_eq!(format_volume_readout(0.0125, false), "0.0125");
 }
 
 #[test]

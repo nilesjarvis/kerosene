@@ -52,8 +52,8 @@ impl TradingTerminal {
                 continue;
             }
             let display = sym_meta
-                .and_then(|symbol| symbol.display_name.as_deref())
-                .unwrap_or(sym_key);
+                .map(Self::exchange_symbol_display_name)
+                .unwrap_or_else(|| self.display_name_for_symbol(sym_key));
             let mid_px = self.resolve_mid_for_symbol(sym_key);
             let ctx = self.live_watchlist_ctxs.get(sym_key).or_else(|| {
                 sym_meta.and_then(|symbol| self.live_watchlist_ctxs.get(&symbol.ticker))
@@ -69,7 +69,7 @@ impl TradingTerminal {
 
             rows.push(LiveWatchlistRowData {
                 sym_key: sym_key.clone(),
-                display: display.to_string(),
+                display,
                 mid_px,
                 pct_5m: percent_change(mid_px, px_5m),
                 pct_30m: percent_change(mid_px, px_30m),

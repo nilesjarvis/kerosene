@@ -79,7 +79,7 @@ impl TradingTerminal {
         } else if let Some(state) = self.pnl_card_windows.get(&window_id) {
             match &state.target {
                 crate::pnl_card::PnlCardTarget::Position(coin) => {
-                    format!("Kerosene PnL Card - {coin}")
+                    format!("Kerosene PnL Card - {}", self.display_name_for_symbol(coin))
                 }
                 crate::pnl_card::PnlCardTarget::Summary => {
                     "Kerosene PnL Card - Summary".to_string()
@@ -107,5 +107,38 @@ impl TradingTerminal {
 
     pub(crate) fn window_scale_factor(state: &Self, _window_id: window::Id) -> f32 {
         state.ui_scale
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pnl_card::{
+        PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget, PnlCardWindowState,
+    };
+
+    #[test]
+    fn pnl_card_window_title_resolves_outcome_coin_label() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal
+            .outcome_display_labels
+            .insert("#950".to_string(), "YES: Will BTC close green?".to_string());
+        let window_id = window::Id::unique();
+        terminal.pnl_card_windows.insert(
+            window_id,
+            PnlCardWindowState {
+                target: PnlCardTarget::Position("#950".to_string()),
+                account_address: String::new(),
+                display_mode: PnlCardDisplayMode::Both,
+                percent_mode: PnlCardPercentMode::Leveraged,
+                obscure_prices: false,
+                show_position_size: false,
+            },
+        );
+
+        assert_eq!(
+            terminal.window_title(window_id),
+            "Kerosene PnL Card - YES: Will BTC close green?"
+        );
     }
 }

@@ -209,6 +209,52 @@ fn ws_fill_consumes_market_indicator_before_rest_ack() {
 }
 
 #[test]
+fn fill_toast_size_label_formats_outcome_fills_as_whole_contracts() {
+    let (terminal, _) = TradingTerminal::boot();
+    let mut outcome_fill = fixtures::fill(1);
+    outcome_fill.coin = "#950".to_string();
+    outcome_fill.sz = "5.0".to_string();
+    assert_eq!(terminal.fill_toast_size_label(&outcome_fill), "5");
+
+    outcome_fill.sz = "bad".to_string();
+    assert_eq!(terminal.fill_toast_size_label(&outcome_fill), "bad");
+
+    let perp_fill = fixtures::fill(2);
+    assert_eq!(terminal.fill_toast_size_label(&perp_fill), "0.1");
+}
+
+#[test]
+fn ws_outcome_fill_toast_uses_display_label_and_whole_contract_size() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1));
+    terminal
+        .outcome_display_labels
+        .insert("#950".to_string(), "YES: Will BTC close green?".to_string());
+    let mut outcome_fill = fixtures::fill(1);
+    outcome_fill.coin = "#950".to_string();
+    outcome_fill.sz = "5.0".to_string();
+    outcome_fill.px = "0.42".to_string();
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::Fills {
+            fills: vec![outcome_fill],
+            is_snapshot: false,
+        },
+    );
+
+    assert!(
+        terminal
+            .toasts
+            .iter()
+            .any(|toast| toast.message == "Filled BUY 5 YES: Will BTC close green? @ $0.42"),
+        "fill toast must resolve the outcome label and whole-contract size"
+    );
+}
+
+#[test]
 fn ws_fill_snapshot_does_not_consume_market_indicators() {
     let (mut terminal, _) = TradingTerminal::boot();
     let address = "0xabc0000000000000000000000000000000000000".to_string();

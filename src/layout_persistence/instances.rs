@@ -41,6 +41,12 @@ impl TradingTerminal {
             let id = chart_cfg.id;
             let tf = Timeframe::from_config_str(&chart_cfg.timeframe);
             let mut instance = ChartInstance::new(id, chart_cfg.symbol.clone(), tf);
+            // Layouts restore at runtime too, when no SymbolsLoaded message
+            // will arrive to repair the raw-key placeholder from
+            // ChartInstance::new; resolve the display name here.
+            let display = self.display_name_for_symbol(&chart_cfg.symbol);
+            instance.symbol_display = display.clone();
+            instance.chart.set_symbol_label(display);
             instance.chart.inverted = chart_cfg.inverted;
             instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
             instance.show_earnings_markers = chart_cfg.show_earnings_markers;
@@ -125,7 +131,7 @@ impl TradingTerminal {
                 inst.next_color_idx += 1;
                 let colors = spaghetti::series_colors(&Theme::Dark);
                 let color = colors[color_idx % colors.len()];
-                let display = sym_key.split(':').nth(1).unwrap_or(sym_key).to_string();
+                let display = self.display_name_for_symbol(sym_key);
                 inst.canvas.series.push(spaghetti::Series {
                     symbol: sym_key.clone(),
                     display,

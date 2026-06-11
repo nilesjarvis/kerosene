@@ -23,6 +23,7 @@ fn chase_history_uses_fill_vwap_not_last_working_price() {
 
     let entry = AdvancedOrderHistoryEntry::from_chase_with_fill_metrics(
         &chase,
+        "BTC".to_string(),
         10_000,
         "Chase filled".to_string(),
         Some(metrics),
@@ -47,6 +48,7 @@ fn chase_history_does_not_guess_average_without_authoritative_fills() {
 
     let entry = AdvancedOrderHistoryEntry::from_chase_with_fill_metrics(
         &chase,
+        "BTC".to_string(),
         10_000,
         "Done".to_string(),
         None,
@@ -55,6 +57,23 @@ fn chase_history_does_not_guess_average_without_authoritative_fills() {
     assert_eq!(entry.average_price, None);
     assert_eq!(entry.last_working_price, Some(123.0));
     assert_eq!(entry.gross_notional, 0.0);
+}
+
+#[test]
+fn chase_history_persists_resolved_display_coin_not_raw_key() {
+    let mut chase = chase_order();
+    chase.coin = "#660".to_string();
+
+    let entry = AdvancedOrderHistoryEntry::from_chase_with_fill_metrics(
+        &chase,
+        "YES: BTC above 75348".to_string(),
+        10_000,
+        "Done".to_string(),
+        None,
+    );
+
+    assert_eq!(entry.coin, "#660");
+    assert_eq!(entry.display_coin, "YES: BTC above 75348");
 }
 
 fn chase_order() -> ChaseOrder {

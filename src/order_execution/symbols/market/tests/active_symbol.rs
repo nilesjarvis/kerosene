@@ -23,6 +23,28 @@ fn switch_active_symbol_clears_order_sizing_inputs() {
 }
 
 #[test]
+fn switch_to_non_tradable_outcome_reports_display_label_not_raw_key() {
+    let mut terminal = TradingTerminal::boot().0;
+    let fallback = outcome_symbol("#660", true);
+    let label = TradingTerminal::exchange_symbol_display_name(&fallback);
+    terminal.exchange_symbols = vec![fallback, symbol("HYPE", MarketType::Perp)];
+
+    let _task = terminal.switch_active_symbol_internal("#660".to_string());
+
+    let (message, is_error) = match &terminal.order_status {
+        Some((message, is_error)) => (message.clone(), *is_error),
+        None => panic!("status should be set"),
+    };
+    assert!(is_error);
+    assert_eq!(message, format!("{label} is not a tradable market"));
+    assert!(!message.contains("#660"));
+    match &terminal.symbol_search_status {
+        Some((search_message, _)) => assert_eq!(search_message, &message),
+        None => panic!("search status should be set"),
+    }
+}
+
+#[test]
 fn restored_active_symbol_key_replaces_non_tradable_fallback_outcome() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols = vec![

@@ -62,7 +62,7 @@ impl TradingTerminal {
             coin_content = coin_content.push(icon).push(Space::new().width(4.0));
         }
         coin_content = coin_content
-            .push(text(&fill.coin).size(12))
+            .push(text(self.display_coin_for_journal(&fill.coin)).size(12))
             .align_y(iced::Alignment::Center);
 
         row![

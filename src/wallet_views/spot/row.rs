@@ -54,18 +54,29 @@ pub(super) fn wallet_spot_row(
                 theme.palette().success
             })
             .width(90),
-        text(format_wallet_display_amount(denomination, total, is_usdc))
-            .size(11)
-            .font(crate::app_fonts::monospace_font())
-            .color(optional_value_color(total, weak_color, invalid_color))
-            .width(110),
-        text(format_wallet_display_amount(denomination, hold, is_usdc))
-            .size(11)
-            .font(crate::app_fonts::monospace_font())
-            .color(optional_value_color(hold, weak_color, invalid_color))
-            .width(110),
-        text(format_wallet_display_amount(
+        text(wallet_spot_amount(
             denomination,
+            &balance.coin,
+            total,
+            is_usdc
+        ))
+        .size(11)
+        .font(crate::app_fonts::monospace_font())
+        .color(optional_value_color(total, weak_color, invalid_color))
+        .width(110),
+        text(wallet_spot_amount(
+            denomination,
+            &balance.coin,
+            hold,
+            is_usdc
+        ))
+        .size(11)
+        .font(crate::app_fonts::monospace_font())
+        .color(optional_value_color(hold, weak_color, invalid_color))
+        .width(110),
+        text(wallet_spot_amount(
+            denomination,
+            &balance.coin,
             available,
             is_usdc
         ))
@@ -91,6 +102,20 @@ pub(super) fn wallet_spot_row(
     .spacing(8)
     .align_y(iced::Alignment::Center)
     .into()
+}
+
+/// Outcome balance coins ("+NNN") are whole-contract counts; everything else
+/// keeps the standard wallet amount formatting.
+fn wallet_spot_amount(
+    denomination: &DisplayDenominationContext,
+    coin: &str,
+    value: Option<f64>,
+    is_usdc: bool,
+) -> String {
+    match value {
+        Some(value) if coin.starts_with('+') => format!("{:.0}", value.floor()),
+        _ => format_wallet_display_amount(denomination, value, is_usdc),
+    }
 }
 
 fn wallet_entry_notional(

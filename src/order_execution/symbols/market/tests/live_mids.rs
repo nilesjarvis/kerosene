@@ -58,6 +58,43 @@ fn live_mid_resolution_uses_later_candidate_when_first_is_stale() {
 }
 
 #[test]
+fn price_band_missing_mid_error_leads_with_outcome_display_label() {
+    let mut terminal = TradingTerminal::boot().0;
+    let sym = outcome_symbol("#660", false);
+    let label = TradingTerminal::exchange_symbol_display_name(&sym);
+    terminal.exchange_symbols = vec![sym];
+    terminal.all_mids.clear();
+    terminal.all_mids_updated_at_ms.clear();
+
+    let error = match terminal.validate_order_price_band("#660", 0.5) {
+        Ok(()) => panic!("band check should fail without a mid"),
+        Err(error) => error,
+    };
+
+    assert!(error.starts_with(&format!("No mid price for {label}")));
+    assert!(error.contains("(tried #660"));
+}
+
+#[test]
+fn price_band_distance_error_leads_with_outcome_display_label() {
+    let mut terminal = TradingTerminal::boot().0;
+    let sym = outcome_symbol("#660", false);
+    let label = TradingTerminal::exchange_symbol_display_name(&sym);
+    terminal.exchange_symbols = vec![sym];
+    terminal.all_mids.insert("#660".to_string(), 0.01);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("#660".to_string(), TradingTerminal::now_ms());
+
+    let error = match terminal.validate_order_price_band("#660", 0.99) {
+        Ok(()) => panic!("band check should fail far from reference"),
+        Err(error) => error,
+    };
+
+    assert!(error.contains(&format!("away from {label} reference")));
+}
+
+#[test]
 fn refresh_order_price_for_symbol_seeds_limit_ioc_price_from_mid() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.order_kind = OrderKind::LimitIoc;

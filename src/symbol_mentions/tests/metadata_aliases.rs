@@ -96,6 +96,27 @@ fn metadata_aliases_skip_unsafe_short_phrases() {
 }
 
 #[test]
+fn generic_outcome_keywords_do_not_alias_every_outcome_market() {
+    let mut outcome = symbol("#950", "OUT95-YES", MarketType::Outcome);
+    outcome.keywords = vec![
+        "outcome".to_string(),
+        "prediction".to_string(),
+        "will btc close green?".to_string(),
+    ];
+    let symbols = vec![outcome];
+
+    let generic = resolve_symbol_mentions("a bold prediction about the outcome", &symbols);
+    assert!(generic.is_empty(), "{generic:?}");
+
+    let question = resolve_symbol_mentions("will btc close green? odds shifted", &symbols);
+    assert_eq!(
+        pairs(&question),
+        vec![("#950".to_string(), "OUT95-YES".to_string())]
+    );
+    assert_eq!(question[0].source, SymbolAliasSource::Keyword);
+}
+
+#[test]
 fn key_suffix_aliases_include_stripped_leading_u() {
     let symbols = vec![symbol("xyz:UNATGAS", "UNATGAS", MarketType::Perp)];
 

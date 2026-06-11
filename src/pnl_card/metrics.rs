@@ -27,15 +27,14 @@ pub(super) struct PnlCardMetrics {
 
 impl TradingTerminal {
     pub(super) fn position_pnl_card_metrics(&self, coin: &str) -> Option<PnlCardMetrics> {
-        let data = self.account_data.as_ref()?;
-        let ap = position_for_coin(data, coin)?;
+        let ap = self.pnl_card_position_for_coin(coin)?;
         let pos = &ap.position;
         let numbers = PositionCardNumbers::from_position(self, pos)?;
         let side = if numbers.szi >= 0.0 { "Long" } else { "Short" };
         let leverage = pos.leverage.value.max(1);
 
         Some(PnlCardMetrics {
-            ticker: pos.coin.clone(),
+            ticker: self.display_name_for_symbol(&pos.coin),
             leverage_display: format!("{leverage}x"),
             entry_display: self.format_display_price(numbers.entry_px),
             exit_display: self.format_display_price(numbers.mark_px),
@@ -117,14 +116,10 @@ impl TradingTerminal {
                     && (self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
             })
     }
-}
 
-pub(super) fn position_for_coin<'a>(
-    data: &'a account::AccountData,
-    coin: &str,
-) -> Option<&'a account::AssetPosition> {
-    data.clearinghouse
-        .asset_positions
-        .iter()
-        .find(|ap| ap.position.coin == coin)
+    pub(super) fn pnl_card_position_for_coin(&self, coin: &str) -> Option<account::AssetPosition> {
+        self.account_positions_with_outcomes()
+            .into_iter()
+            .find(|ap| ap.position.coin == coin)
+    }
 }

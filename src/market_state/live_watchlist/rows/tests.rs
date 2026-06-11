@@ -1,4 +1,62 @@
+use crate::api::{MarketType, OutcomeSymbolInfo};
+
 use super::*;
+
+fn outcome_symbol(key: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: "OUT95-YES".to_string(),
+        category: "outcome".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 0,
+        collateral_token: None,
+        sz_decimals: 0,
+        max_leverage: 1,
+        only_isolated: true,
+        market_type: MarketType::Outcome,
+        outcome: Some(OutcomeSymbolInfo {
+            outcome_id: 95,
+            question_id: None,
+            question_name: Some("Will BTC close green?".to_string()),
+            question_description: None,
+            question_class: None,
+            question_underlying: None,
+            question_expiry: None,
+            question_price_thresholds: Vec::new(),
+            question_period: None,
+            question_named_outcomes: Vec::new(),
+            question_settled_named_outcomes: Vec::new(),
+            question_fallback_outcome: None,
+            bucket_index: None,
+            is_question_fallback: false,
+            side_index: 0,
+            side_name: "Yes".to_string(),
+            outcome_name: "Recurring".to_string(),
+            description: "Will BTC close green?".to_string(),
+            class: None,
+            underlying: None,
+            expiry: None,
+            target_price: None,
+            period: None,
+            quote_symbol: "USDH".to_string(),
+            quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+            encoding: 950,
+        }),
+    }
+}
+
+fn watchlist(symbols: &[&str]) -> LiveWatchlistInstance {
+    LiveWatchlistInstance {
+        id: 1,
+        symbols: symbols.iter().map(|symbol| (*symbol).to_string()).collect(),
+        search_query: String::new(),
+        sort_column: config::LiveWatchlistSortColumn::Symbol,
+        sort_direction: config::SortDirection::Ascending,
+        visible_columns: Vec::new(),
+        row_cache: Vec::new(),
+    }
+}
 
 fn row(symbol: &str, display: &str, mid_px: Option<f64>) -> LiveWatchlistRowData {
     LiveWatchlistRowData {
@@ -11,6 +69,30 @@ fn row(symbol: &str, display: &str, mid_px: Option<f64>) -> LiveWatchlistRowData
         pct_24h: None,
         funding: None,
     }
+}
+
+#[test]
+fn watchlist_rows_resolve_outcome_display_through_canonical_label() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(outcome_symbol("#950"));
+
+    let rows = terminal.live_watchlist_rows_for(&watchlist(&["#950"]));
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].display, "YES: Will BTC close green?");
+}
+
+#[test]
+fn watchlist_rows_fall_back_to_cached_outcome_label_for_unloaded_keys() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal
+        .outcome_display_labels
+        .insert("#950".to_string(), "YES: Will BTC close green?".to_string());
+
+    let rows = terminal.live_watchlist_rows_for(&watchlist(&["#950"]));
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].display, "YES: Will BTC close green?");
 }
 
 #[test]

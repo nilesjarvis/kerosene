@@ -53,15 +53,23 @@ impl TradingTerminal {
         } else {
             "fill"
         };
+        let coin = if row.coin.starts_with('@') || row.coin.starts_with('#') {
+            self.display_coin_for_journal(&row.coin)
+        } else {
+            row.coin.to_uppercase()
+        };
         format!(
             "{} {} {} {} {} {} at {}",
             wallet,
             intent,
             side,
-            row.coin.to_uppercase(),
+            coin,
             unit,
             self.format_display_usd_value(row.notional, 0),
             self.format_display_price(row.avg_price)
         )
     }
 }
+
+#[cfg(test)]
+mod tests;

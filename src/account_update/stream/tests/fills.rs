@@ -1,4 +1,6 @@
-use super::super::{apply_fills_update, chase_fill_summary, prepend_recent_fills};
+use super::super::{
+    apply_fills_update, chase_fill_summary, fill_toast_message, prepend_recent_fills,
+};
 use super::fixtures::{fill, fill_with_oid};
 
 #[test]
@@ -55,14 +57,20 @@ fn live_fill_update_prepends_history_and_returns_visible_toasts() {
     let mut hidden_fill = fill(2);
     hidden_fill.coin = "ETH".to_string();
 
-    let toasts = apply_fills_update(&mut existing, vec![sell_fill, hidden_fill], false, |coin| {
-        coin == "ETH"
-    });
+    let toast_fills =
+        apply_fills_update(&mut existing, vec![sell_fill, hidden_fill], false, |coin| {
+            coin == "ETH"
+        });
 
     let times: Vec<u64> = existing.iter().map(|fill| fill.time).collect();
     assert_eq!(times, vec![1, 2, 3]);
     assert_eq!(existing[1].coin, "ETH");
-    assert_eq!(toasts, vec!["Filled SELL 0.1 BTC @ $100".to_string()]);
+    assert_eq!(toast_fills.len(), 1);
+    assert_eq!(toast_fills[0].coin, "BTC");
+    assert_eq!(
+        fill_toast_message(&toast_fills[0], &toast_fills[0].coin, &toast_fills[0].sz),
+        "Filled SELL 0.1 BTC @ $100"
+    );
 }
 
 #[test]
@@ -76,11 +84,17 @@ fn live_fill_update_deduplicates_existing_history_by_stable_identity() {
     new_fill.tid = Some(78);
     let mut existing = vec![existing_fill];
 
-    let toasts = apply_fills_update(&mut existing, vec![duplicate, new_fill], false, |_| false);
+    let toast_fills =
+        apply_fills_update(&mut existing, vec![duplicate, new_fill], false, |_| false);
 
     let tids: Vec<Option<u64>> = existing.iter().map(|fill| fill.tid).collect();
     assert_eq!(tids, vec![Some(78), Some(77)]);
-    assert_eq!(toasts, vec!["Filled BUY 0.1 BTC @ $100".to_string()]);
+    assert_eq!(toast_fills.len(), 1);
+    assert_eq!(toast_fills[0].tid, Some(78));
+    assert_eq!(
+        fill_toast_message(&toast_fills[0], &toast_fills[0].coin, &toast_fills[0].sz),
+        "Filled BUY 0.1 BTC @ $100"
+    );
 }
 
 #[test]
@@ -114,6 +128,19 @@ fn fill_snapshot_keeps_distinct_fills_from_same_transaction_hash() {
     assert_eq!(
         existing.iter().map(|fill| fill.time).collect::<Vec<_>>(),
         vec![1, 2]
+    );
+}
+
+#[test]
+fn fill_toast_message_embeds_resolved_outcome_labels() {
+    let mut outcome_fill = fill(1);
+    outcome_fill.coin = "#950".to_string();
+    outcome_fill.sz = "5.0".to_string();
+    outcome_fill.px = "0.42".to_string();
+
+    assert_eq!(
+        fill_toast_message(&outcome_fill, "YES: Will BTC close green?", "5"),
+        "Filled BUY 5 YES: Will BTC close green? @ $0.42"
     );
 }
 

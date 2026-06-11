@@ -38,27 +38,20 @@ impl TradingTerminal {
             .or_else(|| self.exchange_symbols.iter().find(|s| s.ticker == key));
 
         let valid_key = sym.map(|s| s.key.clone()).unwrap_or(key.clone());
+        let display = sym
+            .map(Self::exchange_symbol_display_name)
+            .unwrap_or_else(|| self.display_name_for_symbol(&valid_key));
         if sym.is_some_and(|symbol| !symbol.is_user_selectable_market()) {
-            self.order_status = Some((format!("{valid_key} is not a tradable market"), true));
-            self.symbol_search_status =
-                Some((format!("{valid_key} is not a tradable market"), true));
+            self.order_status = Some((format!("{display} is not a tradable market"), true));
+            self.symbol_search_status = Some((format!("{display} is not a tradable market"), true));
             return Task::none();
         }
         if self.symbol_key_is_hidden(&valid_key) {
-            self.order_status = Some((format!("{valid_key} is hidden in Settings > Risk"), true));
+            self.order_status = Some((format!("{display} is hidden in Settings > Risk"), true));
             self.symbol_search_status =
-                Some((format!("{valid_key} is hidden in Settings > Risk"), true));
+                Some((format!("{display} is hidden in Settings > Risk"), true));
             return Task::none();
         }
-        let display = sym
-            .map(Self::exchange_symbol_display_name)
-            .unwrap_or_else(|| {
-                valid_key
-                    .split(':')
-                    .nth(1)
-                    .unwrap_or(&valid_key)
-                    .to_string()
-            });
 
         self.apply_active_symbol_selection(valid_key.clone(), display.clone());
         self.refresh_order_price_for_symbol(&valid_key);

@@ -1,7 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
-use super::super::metrics::position_for_coin;
 use super::super::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget, PnlCardWindowState};
 
 use iced::{Size, Task, window};
@@ -87,10 +86,7 @@ impl TradingTerminal {
 
     fn pnl_card_target_available(&self, target: &PnlCardTarget) -> bool {
         match target {
-            PnlCardTarget::Position(coin) => self
-                .account_data
-                .as_ref()
-                .is_some_and(|data| position_for_coin(data, coin).is_some()),
+            PnlCardTarget::Position(coin) => self.pnl_card_position_for_coin(coin).is_some(),
             PnlCardTarget::Summary => self.visible_pnl_card_positions().next().is_some(),
         }
     }

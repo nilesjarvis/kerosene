@@ -5,7 +5,7 @@ use self::header::position_size_is_nonzero;
 use super::table_helpers::{account_table_scroll, empty_account_table};
 use crate::account::{self, AccountDataSection};
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_price, format_size};
+use crate::helpers::format_price;
 use crate::message::Message;
 use crate::order_pending_indicators::ProjectedPositionDelta;
 
@@ -136,7 +136,14 @@ impl TradingTerminal {
         }
         let mut content = content.push(rule::horizontal(1)).push(rows);
         for delta in &opening_deltas {
-            content = content.push(opening_position_row(delta, &theme));
+            let symbol_label = self.display_name_for_symbol(&delta.symbol);
+            let size_label = self.display_size_for_symbol(&delta.symbol, delta.signed_size.abs());
+            content = content.push(opening_position_row(
+                delta,
+                symbol_label,
+                size_label,
+                &theme,
+            ));
         }
         column![
             account_table_scroll(content),
@@ -223,7 +230,26 @@ impl TradingTerminal {
     }
 }
 
-fn opening_position_row<'a>(delta: &ProjectedPositionDelta, theme: &Theme) -> Element<'a, Message> {
+fn opening_position_row<'a>(
+    delta: &ProjectedPositionDelta,
+    symbol_label: String,
+    size_label: String,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    container(
+        text(opening_position_label(delta, &symbol_label, &size_label))
+            .size(11)
+            .color(theme.palette().primary),
+    )
+    .padding([4, 8])
+    .into()
+}
+
+fn opening_position_label(
+    delta: &ProjectedPositionDelta,
+    symbol_label: &str,
+    size_label: &str,
+) -> String {
     let side = if delta.signed_size >= 0.0 {
         "buy"
     } else {
@@ -233,18 +259,7 @@ fn opening_position_row<'a>(delta: &ProjectedPositionDelta, theme: &Theme) -> El
         .estimated_price
         .map(|px| format!(" @ ~{}", format_price(px)))
         .unwrap_or_default();
-    container(
-        text(format!(
-            "\u{27f3} {} market {side} {}{} in flight\u{2026}",
-            delta.symbol,
-            format_size(delta.signed_size.abs()),
-            price,
-        ))
-        .size(11)
-        .color(theme.palette().primary),
-    )
-    .padding([4, 8])
-    .into()
+    format!("\u{27f3} {symbol_label} market {side} {size_label}{price} in flight\u{2026}")
 }
 
 fn position_section_header<'a>(

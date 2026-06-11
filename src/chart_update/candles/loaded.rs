@@ -17,6 +17,7 @@ impl TradingTerminal {
             return Task::none();
         }
         let id = request.chart_id;
+        let whole_unit_volume = self.is_outcome_coin(&request.symbol);
         let mut new_cache_data = None;
         let mut remove_cache_data = None;
         let mut retry_request = None;
@@ -29,6 +30,7 @@ impl TradingTerminal {
             if !request_matches {
                 return Task::none();
             }
+            instance.chart.whole_unit_volume = whole_unit_volume;
 
             match result {
                 Ok(candles) => {
@@ -37,7 +39,7 @@ impl TradingTerminal {
                         if instance.chart.candles.is_empty() {
                             instance.chart.set_error(format!(
                                 "No candle data returned for {} {}",
-                                request.symbol, request.timeframe
+                                instance.symbol_display, request.timeframe
                             ));
                             remove_cache_data = Some((request.symbol.clone(), request.timeframe));
                         } else {
@@ -119,4 +121,42 @@ impl TradingTerminal {
 fn candle_fetch_error_is_retryable(request: &CandleFetchRequest, error: &str) -> bool {
     request.source != ChartBackfillSource::Hydromancer
         || !error.contains("Hydromancer API key required")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn empty_candle_error_uses_chart_display_name_for_outcome_markets() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(1, "#950".to_string(), Timeframe::H1);
+        instance.symbol_display = "YES: Will BTC close green?".to_string();
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "#950".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hyperliquid,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal.apply_chart_candles_loaded(request, Ok(Vec::new()));
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        assert!(instance.chart.whole_unit_volume);
+        match &instance.chart.status {
+            ChartStatus::Error(message) => {
+                assert!(message.contains("YES: Will BTC close green?"), "{message}");
+                assert!(!message.contains("#950"), "{message}");
+            }
+            other => panic!("expected error status, got {other:?}"),
+        }
+    }
 }

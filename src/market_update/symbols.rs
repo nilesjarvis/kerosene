@@ -3,11 +3,13 @@ mod controls;
 mod outcome_volumes;
 mod resolution;
 
+use crate::api::{ExchangeSymbolsPayload, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::config::MarketUniverseConfig;
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
+use crate::spaghetti_state::SpaghettiChartId;
 
 use self::contexts::apply_contexts_loaded;
 use self::controls::{apply_hip3_dex_filter, apply_market_filter, toggle_favourite_symbol};
@@ -20,6 +22,7 @@ impl TradingTerminal {
         match message {
             Message::ToggleFavourite(key) => self.toggle_market_favourite(key),
             Message::SymbolsLoaded(result) => self.apply_symbols_loaded(result),
+            Message::ExchangeSymbolsRefreshTick => self.request_exchange_symbols_refresh(),
             Message::SymbolSearchChanged(query) => {
                 self.symbol_search_query = query;
                 self.refresh_symbol_search_results();
@@ -75,7 +78,9 @@ impl TradingTerminal {
 
     fn toggle_market_favourite(&mut self, key: String) -> Task<Message> {
         if self.symbol_key_is_hidden(&key) {
-            self.symbol_search_status = Some((format!("{key} is hidden by Settings > Risk"), true));
+            let display = self.display_name_for_symbol(&key);
+            self.symbol_search_status =
+                Some((format!("{display} is hidden by Settings > Risk"), true));
             return Task::none();
         }
         toggle_favourite_symbol(&mut self.favourite_symbols, key);
@@ -84,13 +89,133 @@ impl TradingTerminal {
         self.request_ticker_tape_context_refresh(true)
     }
 
+    fn request_exchange_symbols_refresh(&mut self) -> Task<Message> {
+        if self.symbols_loading || self.exchange_symbols_refresh_inflight {
+            return Task::none();
+        }
+        self.exchange_symbols_refresh_inflight = true;
+        Task::perform(crate::api::fetch_exchange_symbols(), Message::SymbolsLoaded)
+    }
+
+    /// A failed spotMeta/outcomeMeta request leaves that market type absent
+    /// from the payload; keep the previously loaded symbols of that type so
+    /// labels never regress to raw keys, and let the next refresh tick retry.
+    fn merge_symbols_payload(
+        &self,
+        payload: ExchangeSymbolsPayload,
+    ) -> Vec<crate::api::ExchangeSymbol> {
+        let ExchangeSymbolsPayload {
+            mut symbols,
+            spot_meta_failed,
+            outcome_meta_failed,
+        } = payload;
+
+        if spot_meta_failed {
+            symbols.extend(
+                self.exchange_symbols
+                    .iter()
+                    .filter(|symbol| symbol.market_type == MarketType::Spot)
+                    .cloned(),
+            );
+        }
+        if outcome_meta_failed {
+            symbols.extend(
+                self.exchange_symbols
+                    .iter()
+                    .filter(|symbol| symbol.market_type == MarketType::Outcome)
+                    .cloned(),
+            );
+        }
+        if spot_meta_failed || outcome_meta_failed {
+            symbols.sort_by(|a, b| a.ticker.cmp(&b.ticker));
+        }
+        symbols
+    }
+
+    /// Remember the display label of every loaded outcome market so fills,
+    /// journal entries, and balances keep their names after the market
+    /// expires and disappears from outcomeMeta.
+    fn record_outcome_display_labels(&mut self) {
+        let labels: Vec<(String, String)> = self
+            .exchange_symbols
+            .iter()
+            .filter(|symbol| symbol.market_type == MarketType::Outcome)
+            .map(|symbol| {
+                (
+                    symbol.key.clone(),
+                    Self::exchange_symbol_display_name(symbol),
+                )
+            })
+            .collect();
+
+        let mut changed = false;
+        for (key, label) in labels {
+            if self.outcome_display_labels.get(&key) != Some(&label) {
+                self.outcome_display_labels.insert(key, label);
+                changed = true;
+            }
+        }
+        if changed {
+            self.persist_config();
+        }
+    }
+
+    /// Re-resolve cached spaghetti series labels after a symbols load so
+    /// series restored before symbols arrived (or naming newly listed
+    /// markets) pick up their proper display names.
+    fn refresh_spaghetti_series_displays(&mut self) {
+        let updates: Vec<(SpaghettiChartId, usize, String)> = self
+            .spaghetti_charts
+            .iter()
+            .flat_map(|(id, inst)| {
+                inst.canvas
+                    .series
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, series)| {
+                        let display = self.display_name_for_symbol(&series.symbol);
+                        (display != series.display).then_some((*id, idx, display))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        for (id, idx, display) in updates {
+            if let Some(inst) = self.spaghetti_charts.get_mut(&id)
+                && let Some(series) = inst.canvas.series.get_mut(idx)
+            {
+                series.display = display;
+                inst.canvas.cache.clear();
+            }
+        }
+    }
+
     fn apply_symbols_loaded(
         &mut self,
-        result: Result<Vec<crate::api::ExchangeSymbol>, String>,
+        result: Result<ExchangeSymbolsPayload, String>,
     ) -> Task<Message> {
+        self.exchange_symbols_refresh_inflight = false;
         match result {
-            Ok(symbols) => {
+            Ok(payload) => {
+                let outcome_meta_failed = payload.outcome_meta_failed;
+                let symbols = self.merge_symbols_payload(payload);
+                let symbols_changed = self.exchange_symbols != symbols;
+                if outcome_meta_failed
+                    && !symbols
+                        .iter()
+                        .any(|symbol| symbol.market_type == MarketType::Outcome)
+                {
+                    self.symbol_search_status = Some((
+                        "Outcome market metadata failed to load; retrying shortly".to_string(),
+                        true,
+                    ));
+                }
+                if !symbols_changed && !self.exchange_symbols.is_empty() {
+                    self.symbols_loading = false;
+                    return Task::none();
+                }
                 self.exchange_symbols = symbols;
+                self.record_outcome_display_labels();
                 self.telegram_feed
                     .rebuild_ticker_mention_resolver(&self.exchange_symbols);
                 self.refresh_telegram_ticker_mentions();
@@ -189,6 +314,7 @@ impl TradingTerminal {
                     }
                 }
 
+                self.refresh_spaghetti_series_displays();
                 tasks.push(self.reconcile_session_data_symbols());
                 tasks.push(self.refresh_enabled_earnings_charts());
                 tasks.push(self.scrub_hidden_symbol_state());
@@ -208,9 +334,12 @@ impl TradingTerminal {
             }
             Err(error) => {
                 self.symbols_loading = false;
-                let message = format!("Symbol load failed: {error}");
-                self.symbol_search_status = Some((message.clone(), true));
-                self.push_toast(message, true);
+                // Background refreshes fail quietly; the next tick retries.
+                if self.exchange_symbols.is_empty() {
+                    let message = format!("Symbol load failed: {error}");
+                    self.symbol_search_status = Some((message.clone(), true));
+                    self.push_toast(message, true);
+                }
             }
         }
 
@@ -277,6 +406,14 @@ mod tests {
         }
     }
 
+    fn payload(symbols: Vec<ExchangeSymbol>) -> ExchangeSymbolsPayload {
+        ExchangeSymbolsPayload {
+            symbols,
+            spot_meta_failed: false,
+            outcome_meta_failed: false,
+        }
+    }
+
     #[test]
     fn symbols_loaded_refreshes_existing_outcome_chart_display_without_key_change() {
         let mut terminal = TradingTerminal::boot().0;
@@ -286,7 +423,7 @@ mod tests {
             .charts
             .insert(7, ChartInstance::new(7, "#950".to_string(), Timeframe::H1));
 
-        let _task = terminal.apply_symbols_loaded(Ok(vec![outcome_symbol("#950")]));
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![outcome_symbol("#950")])));
 
         let expected_display = "YES: Will BTC close green?";
         assert_eq!(terminal.active_symbol, "#950");
@@ -294,5 +431,82 @@ mod tests {
         let chart = terminal.charts.get(&7).expect("chart");
         assert_eq!(chart.symbol, "#950");
         assert_eq!(chart.symbol_display, expected_display);
+    }
+
+    #[test]
+    fn symbols_loaded_keeps_outcome_symbols_when_outcome_meta_fails() {
+        let mut terminal = TradingTerminal::boot().0;
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![outcome_symbol("#950")])));
+        assert_eq!(terminal.exchange_symbols.len(), 1);
+
+        let _task = terminal.apply_symbols_loaded(Ok(ExchangeSymbolsPayload {
+            symbols: Vec::new(),
+            spot_meta_failed: false,
+            outcome_meta_failed: true,
+        }));
+
+        assert_eq!(
+            terminal.exchange_symbols.len(),
+            1,
+            "previously loaded outcome symbols must survive a failed outcomeMeta refresh"
+        );
+        assert_eq!(terminal.exchange_symbols[0].key, "#950");
+    }
+
+    #[test]
+    fn symbols_loaded_records_outcome_display_labels() {
+        let mut terminal = TradingTerminal::boot().0;
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![outcome_symbol("#950")])));
+
+        assert_eq!(
+            terminal
+                .outcome_display_labels
+                .get("#950")
+                .map(String::as_str),
+            Some("YES: Will BTC close green?")
+        );
+
+        // The cached label keeps resolving the coin after the market expires
+        // and disappears from outcomeMeta.
+        let _task = terminal.apply_symbols_loaded(Ok(payload(Vec::new())));
+        assert_eq!(
+            terminal.display_name_for_symbol("#950"),
+            "YES: Will BTC close green?"
+        );
+    }
+
+    #[test]
+    fn symbols_loaded_refreshes_spaghetti_series_displays() {
+        let mut terminal = TradingTerminal::boot().0;
+        let mut inst = crate::spaghetti_state::SpaghettiChartInstance::new_empty(3);
+        inst.canvas.series.push(crate::spaghetti::Series {
+            symbol: "#950".to_string(),
+            display: "#950".to_string(),
+            candles: Vec::new(),
+            color: iced::Color::WHITE,
+            loaded: false,
+        });
+        terminal.spaghetti_charts.insert(3, inst);
+
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![outcome_symbol("#950")])));
+
+        let inst = terminal.spaghetti_charts.get(&3).expect("spaghetti chart");
+        assert_eq!(inst.canvas.series[0].display, "YES: Will BTC close green?");
+    }
+
+    #[test]
+    fn symbols_load_error_after_successful_load_keeps_symbols_and_stays_quiet() {
+        let mut terminal = TradingTerminal::boot().0;
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![outcome_symbol("#950")])));
+        terminal.symbol_search_status = None;
+
+        let _task = terminal.apply_symbols_loaded(Err("network down".to_string()));
+
+        assert_eq!(terminal.exchange_symbols.len(), 1);
+        assert!(
+            terminal.symbol_search_status.is_none(),
+            "background refresh failures must not surface error status"
+        );
+        assert!(!terminal.symbols_loading);
     }
 }

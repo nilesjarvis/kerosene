@@ -58,9 +58,17 @@ impl TradingTerminal {
             return Self::exchange_symbol_display_name(symbol);
         }
 
-        self.outcome_trade_coin_for_balance_coin(coin)
-            .map(|trade_coin| format!("{} ({coin})", self.display_name_for_symbol(&trade_coin)))
-            .unwrap_or_else(|| coin.to_string())
+        // Any outcome balance coin gets a label when one is resolvable from
+        // loaded symbols or the persisted label cache, including expired
+        // markets and fallback-settlement contracts.
+        if let Some(trade_coin) = Self::outcome_balance_coin_to_trade_coin(coin) {
+            let label = self.display_name_for_symbol(&trade_coin);
+            if label != trade_coin {
+                return format!("{label} ({coin})");
+            }
+        }
+
+        coin.to_string()
     }
 
     pub(crate) fn validate_outcome_order_price(price: f64) -> Result<(), String> {

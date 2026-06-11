@@ -643,7 +643,7 @@ impl TradingTerminal {
                 let Some(mid) = self.resolve_mid_for_symbol(symbol_key) else {
                     return Err(format!(
                         "No mid price for {} (tried {})",
-                        symbol_key,
+                        self.display_name_for_symbol(symbol_key),
                         self.mid_candidates_for_symbol(symbol_key).join(", ")
                     ));
                 };
@@ -678,7 +678,7 @@ impl TradingTerminal {
                 let Some(mid) = self.resolve_mid_for_symbol(symbol_key) else {
                     return Err(format!(
                         "No mid price for {} (tried {})",
-                        symbol_key,
+                        self.display_name_for_symbol(symbol_key),
                         self.mid_candidates_for_symbol(symbol_key).join(", ")
                     ));
                 };
@@ -1051,6 +1051,33 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(error, "Invalid market price");
+    }
+
+    #[test]
+    fn prepare_market_order_missing_mid_error_leads_with_outcome_display_label() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let sym = outcome_symbol("#650");
+        let label = TradingTerminal::exchange_symbol_display_name(&sym);
+        terminal.exchange_symbols = vec![sym];
+        terminal.all_mids.clear();
+        terminal.all_mids_updated_at_ms.clear();
+        let mut intent = ticket_limit_intent("#650");
+        intent.order_kind = ExchangeOrderKind::Market;
+        intent.price_source = PriceSource::MarketWithSlippage {
+            invalid_message: Some("Invalid market price"),
+            usd_size_reference: MarketUsdSizeReference::Mid,
+        };
+        intent.quantity_source = QuantitySource::UserInput {
+            value: "3".to_string(),
+            denomination: QuantityDenomination::Coin,
+            invalid_message: "Invalid quantity",
+            precision_invalid_message: "Invalid quantity for asset precision",
+        };
+
+        let error = terminal.prepare_place_order(intent).unwrap_err();
+
+        assert!(error.starts_with(&format!("No mid price for {label}")));
+        assert!(error.contains("(tried #650"));
     }
 
     #[test]

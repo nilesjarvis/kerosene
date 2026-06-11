@@ -27,6 +27,7 @@ impl TradingTerminal {
         let (color, opacity) = liquidation_row_color(&theme, liq.is_buy, liq.notional);
         let side_str = if liq.is_buy { "BUY" } else { "SELL" };
         let method_label = self.liquidation_method_label(&liq);
+        let display_coin = self.display_name_for_symbol(&liq.coin);
         let coin = liq.coin.clone();
         let liquidated_user = liq.liquidated_user.clone();
         let corner_radius = self.pane_corner_radius;
@@ -38,7 +39,7 @@ impl TradingTerminal {
                 .color(theme.extended_palette().background.weak.text)
                 .wrapping(Wrapping::None)
                 .width(TIME_WIDTH),
-            liquidation_symbol_button(coin, &theme),
+            liquidation_symbol_button(display_coin, coin, &theme),
         ]
         .spacing(ROW_SPACING)
         .align_y(iced::Alignment::Center);
