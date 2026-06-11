@@ -374,30 +374,36 @@ fn session_base_candle(candles: &[Candle], range: SessionIndicatorRange) -> Opti
 
 fn session_base_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
     let palette = theme.extended_palette();
-    let (base, accent, accent_mix) = match kind {
-        SessionIndicatorKind::NewYork => (
-            palette.primary.base.color,
-            palette.primary.strong.color,
-            0.18,
+    match kind {
+        SessionIndicatorKind::NewYork => mix_color(
+            mix_color(
+                palette.primary.base.color,
+                palette.primary.strong.color,
+                0.72,
+            ),
+            palette.background.base.text,
+            0.12,
         ),
-        SessionIndicatorKind::Asia => (
+        SessionIndicatorKind::Asia => mix_color(
             palette.warning.base.color,
             palette.warning.strong.color,
-            0.14,
+            0.32,
         ),
-        SessionIndicatorKind::London => (
-            palette.success.base.color,
-            palette.success.strong.color,
-            0.34,
+        SessionIndicatorKind::London => mix_color(
+            mix_color(
+                palette.success.base.color,
+                palette.success.strong.color,
+                0.90,
+            ),
+            palette.background.base.color,
+            0.16,
         ),
-        SessionIndicatorKind::Overnight => (
+        SessionIndicatorKind::Overnight => mix_color(
             palette.secondary.base.color,
             palette.secondary.weak.color,
-            0.24,
+            0.42,
         ),
-    };
-
-    mix_color(base, accent, accent_mix)
+    }
 }
 
 fn session_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
@@ -505,9 +511,20 @@ mod tests {
 
             for (left_idx, left) in colors.iter().enumerate() {
                 for right in colors.iter().skip(left_idx + 1) {
-                    assert_ne!(left, right, "theme {theme:?} has duplicate session colors");
+                    let distance = color_distance(*left, *right);
+                    assert!(
+                        distance >= 0.08,
+                        "theme {theme:?} session colors are too close: {distance:.3}"
+                    );
                 }
             }
         }
+    }
+
+    fn color_distance(left: iced::Color, right: iced::Color) -> f32 {
+        let dr = left.r - right.r;
+        let dg = left.g - right.g;
+        let db = left.b - right.b;
+        (dr * dr + dg * dg + db * db).sqrt()
     }
 }
