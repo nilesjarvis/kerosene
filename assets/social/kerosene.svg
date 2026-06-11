@@ -1,18 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 64 64" role="img" aria-label="Kerosene">
-  <defs>
-    <radialGradient id="glow" cx="50%" cy="50%" r="55%">
-      <stop offset="0%" stop-color="#ff8a1f" stop-opacity="0.5" />
-      <stop offset="100%" stop-color="#ff8a1f" stop-opacity="0" />
-    </radialGradient>
-    <linearGradient id="mark" x1="14" y1="12" x2="50" y2="54" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ffcf8f" />
-      <stop offset="45%" stop-color="#ff8a1f" />
-      <stop offset="100%" stop-color="#a74600" />
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="16" fill="#090a0c" />
-  <circle cx="32" cy="32" r="27" fill="url(#glow)" />
-  <circle cx="32" cy="32" r="20" fill="url(#mark)" stroke="#ffba70" stroke-opacity="0.55" stroke-width="1.5" />
-  <circle cx="25" cy="23" r="5" fill="#ffd6a7" />
-  <path d="M18 36c4 9 16 13 25 6" fill="none" stroke="#5b2b00" stroke-opacity="0.36" stroke-width="4" stroke-linecap="round" />
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 120 120" role="img" aria-label="Kerosene">
+  <rect width="120" height="120" rx="28" fill="#ff8a1f"></rect>
+  <g stroke="#090a0c" stroke-width="15">
+    <line x1="44" y1="32" x2="44" y2="88"></line>
+    <line x1="41" y1="60" x2="86" y2="88"></line>
+    <line x1="41" y1="60" x2="86" y2="32"></line>
+  </g>
 </svg>
