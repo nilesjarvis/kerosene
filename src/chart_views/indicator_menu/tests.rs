@@ -7,6 +7,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
         tf_sma_50: true,
         sma_200d: true,
         show_funding_rate: true,
+        show_session_indicator: true,
         show_labels: false,
         show_volume_profile: true,
         ..MacroIndicatorsConfig::default()
@@ -32,6 +33,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "sma_12m",
             "ema_12m",
             "show_funding_rate",
+            "show_session_indicator",
             "show_labels",
             "show_volume_profile",
         ]
@@ -48,6 +50,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "tf_sma_50",
             "sma_200d",
             "show_funding_rate",
+            "show_session_indicator",
             "show_volume_profile",
         ]
     );

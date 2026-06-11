@@ -95,12 +95,17 @@ pub(super) fn monthly_options(indicators: &MacroIndicatorsConfig) -> [IndicatorO
     ]
 }
 
-pub(super) fn footer_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 2] {
+pub(super) fn footer_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 3] {
     [
         IndicatorOption {
             label: "Funding",
             key: "show_funding_rate",
             checked: indicators.show_funding_rate,
+        },
+        IndicatorOption {
+            label: "Sessions",
+            key: "show_session_indicator",
+            checked: indicators.show_session_indicator,
         },
         IndicatorOption {
             label: "Labels",

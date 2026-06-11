@@ -1,5 +1,6 @@
 use super::SPREAD_HISTORY_LIMIT;
-use crate::chart::CandlestickChart;
+use crate::chart::{CandlestickChart, DEFAULT_SESSION_PANEL_HEIGHT, TIME_AXIS_HEIGHT};
+use crate::timeframe::Timeframe;
 
 #[test]
 fn spread_history_is_capped_at_sample_limit() {
@@ -54,4 +55,28 @@ fn clear_spread_history_drops_current_spread_and_samples() {
     assert_eq!(chart.current_spread, None);
     assert!(chart.spread_history.is_empty());
     assert_eq!(chart.spread_history_bounds(), None);
+}
+
+#[test]
+fn chart_area_heights_stack_funding_and_session_panels() {
+    let mut chart = CandlestickChart::new(1);
+    chart.macro_indicators.show_funding_rate = true;
+    chart.macro_indicators.show_session_indicator = true;
+
+    let (chart_h, funding_h, session_h) = chart.chart_area_heights(320.0);
+
+    assert_eq!(funding_h, chart.funding_panel_height);
+    assert_eq!(session_h, DEFAULT_SESSION_PANEL_HEIGHT);
+    assert_eq!(chart_h, 320.0 - TIME_AXIS_HEIGHT - funding_h - session_h);
+}
+
+#[test]
+fn chart_area_heights_hide_session_panel_on_daily_timeframes() {
+    let mut chart = CandlestickChart::new(1);
+    chart.macro_indicators.show_session_indicator = true;
+    chart.set_timeframe(Timeframe::D1);
+
+    let (_, _, session_h) = chart.chart_area_heights(320.0);
+
+    assert_eq!(session_h, 0.0);
 }

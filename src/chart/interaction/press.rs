@@ -191,6 +191,14 @@ impl CandlestickChart {
             state.drag = Some(DragKind::PanFundingY);
             state.drag_start = Some(pos);
             state.drag_start_y_offset = state.funding_y_offset;
+        } else if layout.session_panel_h > 0.0
+            && visual_pos.x < chart_w
+            && visual_pos.y >= chart_h + layout.funding_panel_h
+            && visual_pos.y < chart_h + layout.funding_panel_h + layout.session_panel_h
+        {
+            state.drag = Some(DragKind::PanX);
+            state.drag_start = Some(pos);
+            state.drag_start_scroll = state.scroll_offset;
         } else if visual_pos.x < chart_w && visual_pos.y < chart_h {
             state.drag = Some(DragKind::PanX);
             state.drag_start = Some(pos);

@@ -32,7 +32,7 @@ impl CandlestickChart {
         }
 
         let chart_w = bounds.width - self.price_axis_width();
-        let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
+        let (chart_h, funding_panel_h, session_panel_h) = self.chart_area_heights(bounds.height);
         if chart_w <= 0.0
             || chart_h <= 0.0
             || !chart_w.is_finite()
@@ -48,7 +48,7 @@ impl CandlestickChart {
             self.fisheye_enabled,
             self.fisheye_strength,
             chart_w,
-            chart_h + funding_panel_h,
+            chart_h + funding_panel_h + session_panel_h,
         )
         .with_chromatic(
             self.chromatic_aberration_enabled,
@@ -108,6 +108,7 @@ impl CandlestickChart {
             chart_w,
             chart_h,
             funding_panel_h,
+            session_panel_h,
             price_h,
             volume_h,
             candle_w,
@@ -186,6 +187,7 @@ impl CandlestickChart {
             chart_w,
             chart_h,
             funding_panel_h,
+            session_panel_h,
             price_h,
             price_hi,
             price_range,
@@ -199,7 +201,7 @@ impl CandlestickChart {
             &mut overlay_frame,
             theme,
             chart_w,
-            chart_h + funding_panel_h,
+            chart_h + funding_panel_h + session_panel_h,
             bounds,
             state.cursor_position,
         );

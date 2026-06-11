@@ -61,6 +61,10 @@ impl TradingTerminal {
                                 Self::clear_funding_display(inst);
                             }
                         }
+                        "show_session_indicator" => {
+                            inst.macro_indicators.show_session_indicator =
+                                !inst.macro_indicators.show_session_indicator
+                        }
                         "show_labels" => {
                             inst.macro_indicators.show_labels = !inst.macro_indicators.show_labels
                         }
@@ -112,5 +116,36 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn session_indicator_toggle_updates_canvas_state_and_snapshot() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "BTC".to_string(), Timeframe::H1));
+
+        let _task = terminal.update_chart_macro_indicators(Message::ToggleMacroIndicator(
+            7,
+            "show_session_indicator".to_string(),
+        ));
+
+        let instance = terminal.charts.get(&7).expect("chart instance");
+        assert!(instance.macro_indicators.show_session_indicator);
+        assert!(instance.chart.macro_indicators.show_session_indicator);
+        assert!(
+            terminal
+                .chart_configs_snapshot()
+                .iter()
+                .any(|config| config.id == 7 && config.macro_indicators.show_session_indicator)
+        );
     }
 }

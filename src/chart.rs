@@ -23,6 +23,7 @@ mod price_badges;
 mod price_range;
 mod program;
 mod segmented_curve;
+mod session_indicator;
 mod state;
 mod tooltips;
 mod viewport;
@@ -33,10 +34,11 @@ pub(crate) use self::model::HudSelectorKind;
 pub use self::model::PRICE_AXIS_WIDTH;
 pub use self::model::{
     CANDLE_GAP_RATIO, CandlestickChart, ChartStatus, ChartViewport, DEFAULT_CANDLE_WIDTH,
-    DEFAULT_FUNDING_PANEL_HEIGHT, EarningsMarker, FUNDING_PANEL_RESIZE_HIT_PX, MAX_CANDLE_WIDTH,
-    MAX_FUNDING_PANEL_HEIGHT, MIN_CANDLE_WIDTH, MIN_FUNDING_PANEL_HEIGHT, MIN_MAIN_CHART_HEIGHT,
-    OrderOverlay, OrderOverlayPendingState, PAN_SPEED, PRICE_PADDING_PCT, PositionOverlay,
-    TIME_AXIS_HEIGHT, TradeMarker, VOLUME_REGION_RATIO, ZOOM_SPEED,
+    DEFAULT_FUNDING_PANEL_HEIGHT, DEFAULT_SESSION_PANEL_HEIGHT, EarningsMarker,
+    FUNDING_PANEL_RESIZE_HIT_PX, MAX_CANDLE_WIDTH, MAX_FUNDING_PANEL_HEIGHT,
+    MAX_SESSION_PANEL_HEIGHT, MIN_CANDLE_WIDTH, MIN_FUNDING_PANEL_HEIGHT, MIN_MAIN_CHART_HEIGHT,
+    MIN_SESSION_PANEL_HEIGHT, OrderOverlay, OrderOverlayPendingState, PAN_SPEED, PRICE_PADDING_PCT,
+    PositionOverlay, TIME_AXIS_HEIGHT, TradeMarker, VOLUME_REGION_RATIO, ZOOM_SPEED,
 };
 pub use self::state::ChartState;
 

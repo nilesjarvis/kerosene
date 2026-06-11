@@ -21,6 +21,7 @@ enum IndicatorColorRole {
     WeeklySlow,
     Monthly,
     Funding,
+    Sessions,
     VolumeProfile,
 }
 
@@ -34,6 +35,7 @@ impl IndicatorColorRole {
             Self::WeeklyFast => extended.success.base.color,
             Self::WeeklySlow | Self::Funding => extended.secondary.strong.color,
             Self::Monthly => extended.danger.base.color,
+            Self::Sessions => extended.warning.base.color,
             Self::VolumeProfile => theme.palette().primary,
         }
     }
@@ -164,6 +166,14 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         "Funding",
         "show_funding_rate",
         IndicatorColorRole::Funding,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.show_session_indicator,
+        "Sessions",
+        "show_session_indicator",
+        IndicatorColorRole::Sessions,
         theme,
     );
     push_indicator(

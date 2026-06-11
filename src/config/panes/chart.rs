@@ -36,6 +36,8 @@ pub struct MacroIndicatorsConfig {
     #[serde(default)]
     pub show_funding_rate: bool,
     #[serde(default)]
+    pub show_session_indicator: bool,
+    #[serde(default)]
     pub show_volume_profile: bool,
     #[serde(default = "default_true")]
     pub show_labels: bool,
@@ -59,6 +61,7 @@ impl Default for MacroIndicatorsConfig {
             sma_12m: false,
             ema_12m: false,
             show_funding_rate: false,
+            show_session_indicator: false,
             show_volume_profile: false,
             show_labels: true,
         }

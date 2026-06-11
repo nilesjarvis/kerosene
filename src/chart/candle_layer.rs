@@ -3,6 +3,7 @@ mod candles;
 mod earnings;
 mod funding;
 mod liquidity;
+mod sessions;
 
 pub(in crate::chart) use earnings::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
 pub(in crate::chart) use funding::format_funding_rate_percent;
@@ -31,6 +32,7 @@ where
     pub(super) chart_w: f32,
     pub(super) chart_h: f32,
     pub(super) funding_panel_h: f32,
+    pub(super) session_panel_h: f32,
     pub(super) price_h: f32,
     pub(super) volume_h: f32,
     pub(super) candle_w: f32,
@@ -106,6 +108,7 @@ impl CandlestickChart {
                 });
                 self.draw_price_axis_labels(ctx, frame);
                 self.draw_funding_panel(ctx, frame);
+                self.draw_session_panel(ctx, frame);
                 self.draw_time_axis_labels(ctx, frame);
                 self.draw_axis_border(ctx, frame);
             })

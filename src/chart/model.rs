@@ -19,6 +19,9 @@ pub const TIME_AXIS_HEIGHT: f32 = 24.0;
 pub const DEFAULT_FUNDING_PANEL_HEIGHT: f32 = 56.0;
 pub const MIN_FUNDING_PANEL_HEIGHT: f32 = 44.0;
 pub const MAX_FUNDING_PANEL_HEIGHT: f32 = 220.0;
+pub const DEFAULT_SESSION_PANEL_HEIGHT: f32 = 56.0;
+pub const MIN_SESSION_PANEL_HEIGHT: f32 = 36.0;
+pub const MAX_SESSION_PANEL_HEIGHT: f32 = 120.0;
 pub const MIN_MAIN_CHART_HEIGHT: f32 = 96.0;
 pub const FUNDING_PANEL_RESIZE_HIT_PX: f32 = 5.0;
 pub(in crate::chart) const FUNDING_MODE_BUTTON_X: f32 = 6.0;
@@ -46,6 +49,8 @@ pub struct CandlestickChart {
     pub id: u64,
     pub(in crate::chart) surface_id: ChartSurfaceId,
     pub(in crate::chart) symbol_label: String,
+    /// Whether candle volume is denominated in whole contracts (outcome markets).
+    pub(crate) whole_unit_volume: bool,
     pub(in crate::chart) timeframe: Timeframe,
     pub(in crate::chart) clock_now_ms: u64,
     pub candles: Vec<Candle>,

@@ -52,7 +52,7 @@ impl CandlestickChart {
         bounds: Rectangle,
     ) -> Option<canvas::Action<Message>> {
         let chart_w = bounds.width - self.price_axis_width();
-        let (chart_h, _) = self.chart_area_heights(bounds.height);
+        let (chart_h, _, _) = self.chart_area_heights(bounds.height);
         self.current_viewport(state, chart_w, chart_h)
             .map(|viewport| {
                 canvas::Action::publish(Message::ChartViewportChanged(

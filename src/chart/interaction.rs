@@ -39,6 +39,7 @@ pub(in crate::chart) struct InteractionLayout {
     pub(in crate::chart) chart_w: f32,
     pub(in crate::chart) chart_h: f32,
     pub(in crate::chart) funding_panel_h: f32,
+    pub(in crate::chart) session_panel_h: f32,
 }
 
 impl InteractionLayout {
@@ -48,6 +49,7 @@ impl InteractionLayout {
             chart_w,
             chart_h,
             funding_panel_h: 0.0,
+            session_panel_h: 0.0,
         }
     }
 }
@@ -62,11 +64,12 @@ impl CandlestickChart {
     ) -> Option<canvas::Action<Message>> {
         let raw_pos = cursor.position_in(bounds);
         let chart_w = bounds.width - self.price_axis_width();
-        let (chart_h, funding_panel_h) = self.chart_area_heights(bounds.height);
+        let (chart_h, funding_panel_h, session_panel_h) = self.chart_area_heights(bounds.height);
         let layout = InteractionLayout {
             chart_w,
             chart_h,
             funding_panel_h,
+            session_panel_h,
         };
 
         if chart_w <= 0.0
@@ -87,7 +90,7 @@ impl CandlestickChart {
             self.fisheye_enabled,
             self.fisheye_strength,
             chart_w,
-            chart_h + funding_panel_h,
+            chart_h + funding_panel_h + session_panel_h,
         );
         let projected_cursor = raw_pos.map(|visual| ProjectedCursor {
             source: fisheye.unproject(visual),

@@ -3,10 +3,12 @@ use super::super::model::{
     FUNDING_MODE_BUTTON_Y_OFFSET,
 };
 use super::super::{
-    DEFAULT_FUNDING_PANEL_HEIGHT, FUNDING_PANEL_RESIZE_HIT_PX, MAX_FUNDING_PANEL_HEIGHT,
-    MIN_FUNDING_PANEL_HEIGHT, MIN_MAIN_CHART_HEIGHT, TIME_AXIS_HEIGHT,
+    DEFAULT_FUNDING_PANEL_HEIGHT, DEFAULT_SESSION_PANEL_HEIGHT, FUNDING_PANEL_RESIZE_HIT_PX,
+    MAX_FUNDING_PANEL_HEIGHT, MAX_SESSION_PANEL_HEIGHT, MIN_FUNDING_PANEL_HEIGHT,
+    MIN_MAIN_CHART_HEIGHT, MIN_SESSION_PANEL_HEIGHT, TIME_AXIS_HEIGHT,
 };
 use crate::hydromancer_api::FundingRatePoint;
+use crate::timeframe::Timeframe;
 
 use std::collections::BTreeMap;
 
@@ -15,14 +17,19 @@ use std::collections::BTreeMap;
 // ---------------------------------------------------------------------------
 
 impl CandlestickChart {
-    pub(in crate::chart) fn chart_area_heights(&self, bounds_height: f32) -> (f32, f32) {
+    pub(in crate::chart) fn chart_area_heights(&self, bounds_height: f32) -> (f32, f32, f32) {
         if !bounds_height.is_finite() {
-            return (0.0, 0.0);
+            return (0.0, 0.0, 0.0);
         }
 
         let available_h = (bounds_height - TIME_AXIS_HEIGHT).max(0.0);
-        let funding_h = self.funding_panel_height(available_h);
-        ((available_h - funding_h).max(0.0), funding_h)
+        let session_h = self.session_panel_height(available_h);
+        let funding_h = self.funding_panel_height((available_h - session_h).max(0.0));
+        (
+            (available_h - funding_h - session_h).max(0.0),
+            funding_h,
+            session_h,
+        )
     }
 
     fn funding_panel_height(&self, available_h: f32) -> f32 {
@@ -42,6 +49,27 @@ impl CandlestickChart {
         self.funding_panel_height
             .max(MIN_FUNDING_PANEL_HEIGHT.min(max_panel_h))
             .min(max_panel_h)
+    }
+
+    fn session_panel_height(&self, available_h: f32) -> f32 {
+        if !self.session_indicator_visible() || available_h <= 0.0 || !available_h.is_finite() {
+            return 0.0;
+        }
+
+        let max_panel_h =
+            (available_h - MIN_MAIN_CHART_HEIGHT).clamp(0.0, MAX_SESSION_PANEL_HEIGHT);
+        if max_panel_h <= 0.0 {
+            return 0.0;
+        }
+
+        DEFAULT_SESSION_PANEL_HEIGHT
+            .max(MIN_SESSION_PANEL_HEIGHT.min(max_panel_h))
+            .min(max_panel_h)
+    }
+
+    fn session_indicator_visible(&self) -> bool {
+        self.macro_indicators.show_session_indicator
+            && self.timeframe.duration_ms() < Timeframe::D1.duration_ms()
     }
 
     pub(crate) fn set_funding_panel_height(&mut self, height: f32) {
@@ -69,7 +97,7 @@ impl CandlestickChart {
         bounds_height: f32,
         pos_y: f32,
     ) -> Option<f32> {
-        let (chart_h, funding_h) = self.chart_area_heights(bounds_height);
+        let (chart_h, funding_h, _) = self.chart_area_heights(bounds_height);
         if funding_h <= 0.0 {
             return None;
         }
@@ -83,7 +111,7 @@ impl CandlestickChart {
         pos: iced::Point,
         chart_w: f32,
     ) -> bool {
-        let (chart_h, funding_h) = self.chart_area_heights(bounds_height);
+        let (chart_h, funding_h, _) = self.chart_area_heights(bounds_height);
         if funding_h <= 0.0 || pos.x >= chart_w {
             return false;
         }

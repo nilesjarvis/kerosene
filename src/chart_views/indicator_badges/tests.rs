@@ -12,6 +12,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
     instance.macro_indicators.tf_sma_50 = true;
     instance.macro_indicators.sma_200d = true;
     instance.macro_indicators.show_funding_rate = true;
+    instance.macro_indicators.show_session_indicator = true;
     instance.macro_indicators.show_volume_profile = true;
 
     let active = active_chart_indicators(&instance, &Theme::Dark);
@@ -26,6 +27,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
             ("TF 50 SMA", "tf_sma_50"),
             ("200d SMA", "sma_200d"),
             ("Funding", "show_funding_rate"),
+            ("Sessions", "show_session_indicator"),
             ("Vol Profile", "show_volume_profile"),
         ]
     );

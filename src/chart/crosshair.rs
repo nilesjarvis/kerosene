@@ -61,6 +61,7 @@ where
     pub(super) chart_w: f32,
     pub(super) chart_h: f32,
     pub(super) funding_panel_h: f32,
+    pub(super) session_panel_h: f32,
     pub(super) price_h: f32,
     pub(super) price_hi: f64,
     pub(super) price_range: f64,
@@ -86,7 +87,7 @@ impl CandlestickChart {
         let Some(data_pos) = ctx.state.cursor_position else {
             return;
         };
-        let drawable_h = ctx.chart_h + ctx.funding_panel_h;
+        let drawable_h = ctx.chart_h + ctx.funding_panel_h + ctx.session_panel_h;
         if data_pos.x >= ctx.chart_w || data_pos.y >= drawable_h {
             return;
         }
@@ -164,7 +165,10 @@ impl CandlestickChart {
 
         self.draw_crosshair_time_label(ctx, data_pos, visual_pos, drawable_h);
 
-        if ctx.funding_panel_h > 0.0 && data_pos.y >= ctx.chart_h {
+        if ctx.funding_panel_h > 0.0
+            && data_pos.y >= ctx.chart_h
+            && data_pos.y < ctx.chart_h + ctx.funding_panel_h
+        {
             let mut tooltip_surface =
                 TooltipSurface::new(ctx.frame, ctx.theme, visual_pos, ctx.chart_w, ctx.price_h);
             tooltip_surface.draw_funding_hover(
@@ -180,10 +184,17 @@ impl CandlestickChart {
             return;
         }
 
+        if data_pos.y >= ctx.chart_h {
+            return;
+        }
+
         if let Some(idx) = self.x_to_candle_index(data_pos.x, ctx.state, ctx.chart_w) {
             let volume = self.candles[idx].volume;
             ctx.frame.fill_text(canvas::Text {
-                content: format!("Vol: {}", format_volume_compact(volume)),
+                content: format!(
+                    "Vol: {}",
+                    format_volume_readout(volume, self.whole_unit_volume)
+                ),
                 position: Point::new(6.0, ctx.price_h + 2.0),
                 color: ctx.theme.palette().text,
                 size: iced::Pixels(11.0),
@@ -1250,6 +1261,15 @@ pub(super) fn format_crosshair_relative_time(timestamp_ms: u64, now_ms: u64) -> 
     } else {
         format!("{value} {unit}{suffix} ago")
     }
+}
+
+/// Whole-unit markets (outcome contracts) read as whole counts below the
+/// compaction threshold; everything else uses the fractional compact form.
+pub(super) fn format_volume_readout(volume: f64, whole_units: bool) -> String {
+    if whole_units && volume.is_finite() && (0.0..1_000.0).contains(&volume) {
+        return format!("{volume:.0}");
+    }
+    format_volume_compact(volume)
 }
 
 pub(super) fn format_volume_compact(volume: f64) -> String {
