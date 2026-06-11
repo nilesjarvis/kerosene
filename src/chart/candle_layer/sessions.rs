@@ -372,13 +372,36 @@ fn session_base_candle(candles: &[Candle], range: SessionIndicatorRange) -> Opti
         })
 }
 
-fn session_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
-    let mut color = match kind {
-        SessionIndicatorKind::NewYork => theme.extended_palette().primary.base.color,
-        SessionIndicatorKind::Overnight => theme.extended_palette().secondary.base.color,
-        SessionIndicatorKind::Asia => theme.extended_palette().warning.base.color,
-        SessionIndicatorKind::London => theme.extended_palette().success.base.color,
+fn session_base_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
+    let palette = theme.extended_palette();
+    let (base, accent, accent_mix) = match kind {
+        SessionIndicatorKind::NewYork => (
+            palette.primary.base.color,
+            palette.primary.strong.color,
+            0.18,
+        ),
+        SessionIndicatorKind::Asia => (
+            palette.warning.base.color,
+            palette.warning.strong.color,
+            0.14,
+        ),
+        SessionIndicatorKind::London => (
+            palette.success.base.color,
+            palette.success.strong.color,
+            0.34,
+        ),
+        SessionIndicatorKind::Overnight => (
+            palette.secondary.base.color,
+            palette.secondary.weak.color,
+            0.24,
+        ),
     };
+
+    mix_color(base, accent, accent_mix)
+}
+
+fn session_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
+    let mut color = session_base_color(kind, theme);
     color.a = match kind {
         SessionIndicatorKind::Overnight => 0.115,
         _ => 0.135,
@@ -387,7 +410,7 @@ fn session_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
 }
 
 fn session_chart_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
-    let mut color = session_fill_color(kind, theme);
+    let mut color = session_base_color(kind, theme);
     color.a = match kind {
         SessionIndicatorKind::Overnight => SESSION_CHART_OVERNIGHT_FILL_ALPHA,
         _ => SESSION_CHART_FILL_ALPHA,
@@ -396,12 +419,7 @@ fn session_chart_fill_color(kind: SessionIndicatorKind, theme: &Theme) -> Color 
 }
 
 fn session_label_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
-    let mut color = match kind {
-        SessionIndicatorKind::NewYork => theme.extended_palette().primary.strong.color,
-        SessionIndicatorKind::Overnight => theme.extended_palette().secondary.strong.color,
-        SessionIndicatorKind::Asia => theme.extended_palette().warning.strong.color,
-        SessionIndicatorKind::London => theme.extended_palette().success.strong.color,
-    };
+    let mut color = session_base_color(kind, theme);
     color.a = 0.82;
     color
 }
@@ -410,6 +428,16 @@ fn session_boundary_color(kind: SessionIndicatorKind, theme: &Theme) -> Color {
     let mut color = session_label_color(kind, theme);
     color.a = SESSION_BOUNDARY_LINE_ALPHA;
     color
+}
+
+fn mix_color(a: Color, b: Color, factor: f32) -> Color {
+    let factor = factor.clamp(0.0, 1.0);
+    Color::from_rgba(
+        a.r + (b.r - a.r) * factor,
+        a.g + (b.g - a.g) * factor,
+        a.b + (b.b - a.b) * factor,
+        a.a + (b.a - a.a) * factor,
+    )
 }
 
 fn session_curve_color(theme: &Theme) -> Color {
@@ -421,9 +449,10 @@ fn session_curve_color(theme: &Theme) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::session_base_candle;
+    use super::{session_base_candle, session_base_color};
     use crate::api::Candle;
     use crate::chart::session_indicator::{SessionIndicatorKind, SessionIndicatorRange};
+    use iced::Theme;
 
     fn candle(open_time: u64, open: f64, close: f64) -> Candle {
         Candle::test_ohlcv(
@@ -462,5 +491,23 @@ mod tests {
             session_base_candle(&[candle(1_000, 100.0, 101.0)], range),
             None
         );
+    }
+
+    #[test]
+    fn session_colors_are_distinct() {
+        for theme in Theme::ALL {
+            let colors = [
+                session_base_color(SessionIndicatorKind::NewYork, theme),
+                session_base_color(SessionIndicatorKind::Asia, theme),
+                session_base_color(SessionIndicatorKind::London, theme),
+                session_base_color(SessionIndicatorKind::Overnight, theme),
+            ];
+
+            for (left_idx, left) in colors.iter().enumerate() {
+                for right in colors.iter().skip(left_idx + 1) {
+                    assert_ne!(left, right, "theme {theme:?} has duplicate session colors");
+                }
+            }
+        }
     }
 }
