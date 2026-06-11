@@ -54,6 +54,7 @@ mod layout_update;
 mod liquidations_distribution_state;
 mod loading_views;
 mod main_view;
+mod market_sessions;
 mod market_state;
 mod market_update;
 mod market_views;

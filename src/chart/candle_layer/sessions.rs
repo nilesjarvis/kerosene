@@ -161,7 +161,7 @@ impl CandlestickChart {
             );
             if width >= SESSION_LABEL_MIN_WIDTH {
                 frame.fill_text(canvas::Text {
-                    content: range.kind.label().to_string(),
+                    content: range.kind.short_label().to_string(),
                     position: Point::new(left + 4.0, panel_y + SESSION_LABEL_TOP_PADDING),
                     color: session_label_color(range.kind, ctx.theme),
                     size: iced::Pixels(9.5),

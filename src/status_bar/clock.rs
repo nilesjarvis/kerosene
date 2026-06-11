@@ -1,15 +1,17 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
+use crate::market_sessions::{MARKET_CLOCK_SESSIONS, MarketSession};
 use crate::message::Message;
 use chrono::{DateTime, Local, Timelike, Utc};
-use chrono_tz::Tz;
 use iced::widget::container as container_style;
 use iced::widget::{Row, Space, container, row, text};
 use iced::{Color, Element, Theme};
 
 mod session;
 
+#[cfg(test)]
 use session::{market_clock_text, market_is_active};
+use session::{session_clock_text, session_is_active};
 
 // ---------------------------------------------------------------------------
 // Status Clock Row
@@ -32,31 +34,9 @@ impl TradingTerminal {
             .spacing(8)
             .align_y(iced::Alignment::Center);
 
-        let row = push_clock_gap(row, separated).push(market_clock(
-            "Europe",
-            now_utc,
-            chrono_tz::Europe::London,
-            (8, 0),
-            (16, 30),
-            &theme,
-        ));
-        let row = push_clock_gap(row, separated).push(market_clock(
-            "Asia",
-            now_utc,
-            chrono_tz::Asia::Tokyo,
-            (9, 0),
-            (15, 0),
-            &theme,
-        ));
-
-        push_clock_gap(row, separated).push(market_clock(
-            "New York",
-            now_utc,
-            chrono_tz::America::New_York,
-            (9, 30),
-            (16, 0),
-            &theme,
-        ))
+        MARKET_CLOCK_SESSIONS.into_iter().fold(row, |row, session| {
+            push_clock_gap(row, separated).push(market_clock(session, now_utc, &theme))
+        })
     }
 }
 
@@ -69,20 +49,17 @@ fn push_clock_gap(row: Row<'static, Message>, separated: bool) -> Row<'static, M
 }
 
 fn market_clock(
-    label: &str,
+    session: MarketSession,
     now_utc: DateTime<Utc>,
-    tz: Tz,
-    open: (u32, u32),
-    close: (u32, u32),
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let is_active = market_is_active(now_utc, tz, open, close);
+    let is_active = session_is_active(now_utc, session);
     let dot_color = if is_active {
         theme.palette().success
     } else {
         theme.palette().danger
     };
-    let clock_text = market_clock_text(label, now_utc, tz, open, close);
+    let clock_text = session_clock_text(now_utc, session).unwrap_or_else(|| session.label().into());
 
     row![
         market_activity_dot(dot_color),

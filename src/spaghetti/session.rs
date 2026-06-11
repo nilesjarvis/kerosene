@@ -1,5 +1,4 @@
-use chrono::{Datelike, Duration, TimeZone, Utc};
-use chrono_tz::Tz;
+use crate::market_sessions::{MarketSession, SessionAnchor};
 
 // ---------------------------------------------------------------------------
 // Session-based starting points
@@ -10,7 +9,7 @@ use chrono_tz::Tz;
 pub enum Session {
     /// Most recent U.S. market open (9:30 AM ET).
     US,
-    /// Most recent European market open (8:00 AM CET).
+    /// Most recent London market open (8:00 AM local time).
     Europe,
     /// Most recent Asian market open (9:00 AM JST = 0:00 UTC).
     Asia,
@@ -62,105 +61,22 @@ impl Session {
         }
     }
 
-    fn timezone(self) -> Tz {
+    fn anchor(self) -> SessionAnchor {
         match self {
-            Session::US => chrono_tz::America::New_York,
-            Session::Europe => chrono_tz::Europe::London,
-            Session::Asia => chrono_tz::Asia::Tokyo,
-            Session::UtcDay | Session::UtcWeek | Session::UtcMonth | Session::UtcYear => {
-                chrono_tz::UTC
-            }
+            Session::US => SessionAnchor::Market(MarketSession::NewYork),
+            Session::Europe => SessionAnchor::Market(MarketSession::London),
+            Session::Asia => SessionAnchor::Market(MarketSession::Asia),
+            Session::UtcDay => SessionAnchor::UtcDay,
+            Session::UtcWeek => SessionAnchor::UtcWeek,
+            Session::UtcMonth => SessionAnchor::UtcMonth,
+            Session::UtcYear => SessionAnchor::UtcYear,
         }
-    }
-
-    fn open_hm(self) -> (u32, u32) {
-        match self {
-            Session::US => (9, 30),
-            Session::Europe => (8, 0),
-            Session::Asia => (9, 0),
-            Session::UtcDay | Session::UtcWeek | Session::UtcMonth | Session::UtcYear => (0, 0),
-        }
-    }
-
-    fn utc_anchor_ms(self, reference_utc: chrono::DateTime<Utc>) -> Option<u64> {
-        match self {
-            Session::UtcDay => u64::try_from(
-                Utc.with_ymd_and_hms(
-                    reference_utc.year(),
-                    reference_utc.month(),
-                    reference_utc.day(),
-                    0,
-                    0,
-                    0,
-                )
-                .single()?
-                .timestamp_millis(),
-            )
-            .ok(),
-            Session::UtcWeek => {
-                let days_since_monday = i64::from(reference_utc.weekday().num_days_from_monday());
-                let monday = reference_utc.date_naive() - Duration::days(days_since_monday);
-                u64::try_from(
-                    Utc.with_ymd_and_hms(monday.year(), monday.month(), monday.day(), 0, 0, 0)
-                        .single()?
-                        .timestamp_millis(),
-                )
-                .ok()
-            }
-            Session::UtcMonth => u64::try_from(
-                Utc.with_ymd_and_hms(reference_utc.year(), reference_utc.month(), 1, 0, 0, 0)
-                    .single()?
-                    .timestamp_millis(),
-            )
-            .ok(),
-            Session::UtcYear => u64::try_from(
-                Utc.with_ymd_and_hms(reference_utc.year(), 1, 1, 0, 0, 0)
-                    .single()?
-                    .timestamp_millis(),
-            )
-            .ok(),
-            Session::US | Session::Europe | Session::Asia => None,
-        }
-    }
-
-    fn open_utc_ms_for_local_date(self, date: chrono::NaiveDate) -> Option<u64> {
-        let (hour, minute) = self.open_hm();
-        let naive = date.and_hms_opt(hour, minute, 0)?;
-        let tz = self.timezone();
-        let local = tz
-            .from_local_datetime(&naive)
-            .earliest()
-            .or_else(|| tz.from_local_datetime(&naive).latest())?;
-        u64::try_from(local.with_timezone(&Utc).timestamp_millis()).ok()
     }
 
     /// Compute the most recent session open timestamp (in ms) before
     /// `reference_ms`, using timezone-aware equity session opens.
     pub fn last_open_ms(self, reference_ms: u64) -> u64 {
-        let Ok(reference_i64) = i64::try_from(reference_ms) else {
-            return reference_ms;
-        };
-        let Some(reference_utc) = Utc.timestamp_millis_opt(reference_i64).single() else {
-            return reference_ms;
-        };
-
-        if let Some(anchor) = self.utc_anchor_ms(reference_utc) {
-            return anchor;
-        }
-
-        let reference_local = reference_utc.with_timezone(&self.timezone());
-        let today_date = reference_local.date_naive();
-        let today_open = self
-            .open_utc_ms_for_local_date(today_date)
-            .unwrap_or(reference_ms);
-
-        if reference_ms >= today_open {
-            return today_open;
-        }
-
-        let previous_date = today_date - Duration::days(1);
-        self.open_utc_ms_for_local_date(previous_date)
-            .unwrap_or_else(|| today_open.saturating_sub(86_400_000))
+        self.anchor().last_open_ms(reference_ms)
     }
 }
 
