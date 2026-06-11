@@ -66,7 +66,7 @@ fn encrypted_password_row<'a>(
     row![
         text_input("Password", &terminal.encrypted_secret_password)
             .style(helpers::text_input_style)
-            .on_input(Message::EncryptedSecretPasswordChanged)
+            .on_input(|value| Message::EncryptedSecretPasswordChanged(value.into()))
             .on_submit(if encrypted_locked {
                 Message::UnlockEncryptedSecrets
             } else {
@@ -85,7 +85,7 @@ fn encrypted_password_row<'a>(
 fn encrypted_confirm_input(terminal: &TradingTerminal) -> iced::widget::TextInput<'_, Message> {
     text_input("Confirm password", &terminal.encrypted_secret_confirm)
         .style(helpers::text_input_style)
-        .on_input(Message::EncryptedSecretConfirmChanged)
+        .on_input(|value| Message::EncryptedSecretConfirmChanged(value.into()))
         .on_submit(Message::ApplySecretStorageSelection)
         .secure(true)
         .size(12)

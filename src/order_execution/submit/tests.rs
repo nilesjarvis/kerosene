@@ -183,7 +183,7 @@ fn ioc_limit_orders_project_like_market_orders() {
 
     let symbol = first_symbol_or_panic(&terminal).clone();
     let prepared = prepared_order_or_panic(&terminal, &symbol, true);
-    let _task = terminal.submit_prepared_ticket_order("agent-key".to_string(), prepared);
+    let _task = terminal.submit_prepared_ticket_order("agent-key".to_string().into(), prepared);
 
     // IOC orders are taker orders that never rest: they must project a
     // position delta (MarketPlacing), not a provisional resting row.

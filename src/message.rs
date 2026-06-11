@@ -48,7 +48,36 @@ use crate::x_feed::{XFeedPage, XFeedStreamEvent};
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
+use zeroize::Zeroizing;
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct SecretInput(Zeroizing<String>);
+
+impl SecretInput {
+    pub(crate) fn into_zeroizing(self) -> Zeroizing<String> {
+        self.0
+    }
+}
+
+impl From<String> for SecretInput {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for SecretInput {
+    fn from(value: &str) -> Self {
+        Self(value.to_string().into())
+    }
+}
+
+impl fmt::Debug for SecretInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("SecretInput(<redacted>)")
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
@@ -191,8 +220,8 @@ pub(crate) enum Message {
     DismissUnlockCredentialsPopup,
     OpenCredentialStorageSettings,
     SecretStorageSelectionChanged(config::CredentialStorageMode),
-    EncryptedSecretPasswordChanged(String),
-    EncryptedSecretConfirmChanged(String),
+    EncryptedSecretPasswordChanged(SecretInput),
+    EncryptedSecretConfirmChanged(SecretInput),
     UnlockEncryptedSecrets,
     ApplySecretStorageSelection,
     ClearConfigs,
@@ -380,10 +409,10 @@ pub(crate) enum Message {
     TelegramAvatarLoaded(String, String, u64, Box<Result<Vec<u8>, String>>),
     ToggleTelegramFastFeed,
     TelegramFastApiIdChanged(String),
-    TelegramFastApiHashChanged(String),
+    TelegramFastApiHashChanged(SecretInput),
     TelegramFastPhoneChanged(String),
-    TelegramFastCodeChanged(String),
-    TelegramFastPasswordChanged(String),
+    TelegramFastCodeChanged(SecretInput),
+    TelegramFastPasswordChanged(SecretInput),
     TelegramFastRequestCode,
     TelegramFastSubmitCode,
     TelegramFastSubmitPassword,
@@ -403,7 +432,7 @@ pub(crate) enum Message {
     XFeedRefreshTick,
     XFeedLoaded(Box<Result<XFeedPage, String>>),
     XFeedStreamEvent(XFeedStreamEvent),
-    XFeedBearerTokenChanged(String),
+    XFeedBearerTokenChanged(SecretInput),
     SaveXFeedBearerToken,
     XFeedSourceInputChanged(String),
     XFeedAddSource,
@@ -690,9 +719,9 @@ pub(crate) enum Message {
     OrderBookSearchChanged(OrderBookId, String),
     OrderBookSetMode(OrderBookId, OrderBookSymbolMode),
     SetOrderBookDisplayMode(OrderBookId, OrderBookDisplayMode),
-    WalletKeyInputChanged(String),
+    WalletKeyInputChanged(SecretInput),
     WalletAddressInputChanged(String),
-    HydromancerKeyInputChanged(String),
+    HydromancerKeyInputChanged(SecretInput),
     SaveHydromancerKey,
     ReconnectLiquidations,
     ReconnectTrackedTrades,
@@ -708,7 +737,7 @@ pub(crate) enum Message {
     AllMidsBootstrapLoaded(String, Result<HashMap<String, f64>, String>),
     WsUserDataUpdate(Option<String>, Box<WsUserData>),
     // HyperDash liquidation heatmap
-    HyperdashKeyInputChanged(String),
+    HyperdashKeyInputChanged(SecretInput),
     SaveHyperdashKey,
     ToggleLiquidationOverlay(ChartId),
     ChartLiquidationLoaded(String, Box<Result<LiquidationLevel, String>>),
@@ -727,4 +756,38 @@ pub(crate) enum Message {
     ToggleHeatmapOverlay(ChartId),
     ChartHeatmapLoaded(String, Box<Result<LiquidationHeatmap, String>>),
     RefreshHeatmap,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Message, SecretInput};
+
+    #[test]
+    fn secret_input_debug_redacts_value() {
+        let rendered = format!("{:?}", SecretInput::from("super-secret"));
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("super-secret"));
+    }
+
+    #[test]
+    fn secret_bearing_message_debug_redacts_value() {
+        let messages = [
+            Message::EncryptedSecretPasswordChanged("sentinel-secret".into()),
+            Message::EncryptedSecretConfirmChanged("sentinel-secret".into()),
+            Message::TelegramFastApiHashChanged("sentinel-secret".into()),
+            Message::TelegramFastCodeChanged("sentinel-secret".into()),
+            Message::TelegramFastPasswordChanged("sentinel-secret".into()),
+            Message::XFeedBearerTokenChanged("sentinel-secret".into()),
+            Message::WalletKeyInputChanged("sentinel-secret".into()),
+            Message::HydromancerKeyInputChanged("sentinel-secret".into()),
+            Message::HyperdashKeyInputChanged("sentinel-secret".into()),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"));
+            assert!(!rendered.contains("sentinel-secret"));
+        }
+    }
 }

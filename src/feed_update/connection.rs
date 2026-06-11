@@ -9,7 +9,7 @@ impl TradingTerminal {
         match message {
             Message::HydromancerKeyInputChanged(value) => {
                 self.hydromancer_key_input.zeroize();
-                self.hydromancer_key_input = value.into();
+                self.hydromancer_key_input = value.into_zeroizing();
             }
             Message::SaveHydromancerKey => {
                 // Capture the previous trimmed key BEFORE zeroizing the
@@ -35,8 +35,9 @@ impl TradingTerminal {
                     "Connecting...".to_string()
                 };
                 self.tracked_trades_status = self.liquidations_status.clone();
-                self.persist_hydromancer_secret();
-                self.persist_config();
+                if self.persist_hydromancer_secret() {
+                    self.persist_config();
+                }
                 self.journal.clear_snapshot_cache();
                 self.journal.expanded_snapshot_trade_ids.clear();
                 if !self.hydromancer_api_key.trim().is_empty() {

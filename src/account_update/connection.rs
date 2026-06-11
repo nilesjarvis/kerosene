@@ -64,17 +64,18 @@ impl TradingTerminal {
         for id in stop_twap_ids {
             let _ = self.stop_twap_with_reason(id, "TWAP stopped: wallet address changed", false);
         }
-        if self.active_account_is_ghost() {
+        let credentials_persisted = if self.active_account_is_ghost() {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
                 profile.agent_key.zeroize();
             }
+            true
         } else {
             if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
                 profile.wallet_address = addr.clone();
             }
-            self.persist_active_profile_secrets();
-        }
+            self.persist_active_profile_secrets()
+        };
         self.connected_address = Some(addr.clone());
         self.account_data = None;
         self.pending_order_indicators.clear();
@@ -97,7 +98,9 @@ impl TradingTerminal {
         self.sync_all_chart_overlays();
         self.hyperdash_api_key.zeroize();
         self.hyperdash_api_key = self.hyperdash_key_input.clone();
-        self.persist_config();
+        if credentials_persisted {
+            self.persist_config();
+        }
 
         let account_addr = addr.clone();
         let account_scope = self.account_data_fetch_scope();

@@ -7,7 +7,7 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Annotations,
     );
     assert_route(
-        Message::HydromancerKeyInputChanged(String::new()),
+        Message::HydromancerKeyInputChanged(String::new().into()),
         UpdateRoute::Feed,
     );
     assert_route(Message::RefreshHeatmap, UpdateRoute::Hyperdash);

@@ -18,12 +18,26 @@ impl TradingTerminal {
             &self.hyperdash_api_key,
             &self.x_feed.bearer_token,
         ) {
-            Ok(()) => {
-                self.secret_store_status = Some((success_message.into(), false));
+            Ok(cleanup_warning) => {
+                if let Some(cleanup_warning) = cleanup_warning {
+                    self.secret_store_status = Some((
+                        format!(
+                            "{success_message}; legacy OS keychain cleanup skipped: {cleanup_warning}"
+                        ),
+                        true,
+                    ));
+                } else {
+                    self.secret_store_status = Some((success_message.into(), false));
+                }
                 true
             }
             Err(error) => {
-                self.secret_store_status = Some((format!("{failure_prefix}: {error}"), true));
+                self.secret_store_status = Some((
+                    format!(
+                        "{failure_prefix}: {error}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage."
+                    ),
+                    true,
+                ));
                 false
             }
         }

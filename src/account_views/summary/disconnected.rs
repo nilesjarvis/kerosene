@@ -21,7 +21,7 @@ impl TradingTerminal {
                 &self.wallet_key_input,
             )
             .style(helpers::text_input_style)
-            .on_input(Message::WalletKeyInputChanged)
+            .on_input(|value| Message::WalletKeyInputChanged(value.into()))
             .size(11)
             .padding([4, 6])
             .secure(true)

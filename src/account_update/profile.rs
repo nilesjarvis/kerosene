@@ -53,7 +53,10 @@ impl TradingTerminal {
         Task::none()
     }
 
-    pub(super) fn update_wallet_key_input(&mut self, value: String) -> Task<Message> {
+    pub(super) fn update_wallet_key_input(
+        &mut self,
+        value: crate::message::SecretInput,
+    ) -> Task<Message> {
         if self.active_account_is_ghost() {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
@@ -61,7 +64,7 @@ impl TradingTerminal {
             }
         } else {
             self.wallet_key_input.zeroize();
-            self.wallet_key_input = value.into();
+            self.wallet_key_input = value.into_zeroizing();
             if self.active_account_index < self.accounts.len() {
                 self.accounts[self.active_account_index].agent_key.zeroize();
                 self.accounts[self.active_account_index].agent_key = self.wallet_key_input.clone();
@@ -173,8 +176,9 @@ impl TradingTerminal {
             self.secret_store_status = Some(("Ghost wallets are in memory only".into(), false));
             return Task::none();
         }
-        self.persist_active_profile_secrets();
-        self.persist_config();
+        if self.persist_active_profile_secrets() {
+            self.persist_config();
+        }
         Task::none()
     }
 }

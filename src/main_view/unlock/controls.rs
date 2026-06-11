@@ -25,7 +25,7 @@ impl TradingTerminal {
         row![
             text_input("Encryption password", &self.encrypted_secret_password)
                 .style(helpers::text_input_style)
-                .on_input(Message::EncryptedSecretPasswordChanged)
+                .on_input(|value| Message::EncryptedSecretPasswordChanged(value.into()))
                 .on_submit(Message::UnlockEncryptedSecrets)
                 .secure(true)
                 .size(12)

@@ -15,7 +15,7 @@ use crate::telegram_feed::{
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 impl TradingTerminal {
     pub(crate) fn update_telegram_feed(&mut self, message: Message) -> Task<Message> {
@@ -36,7 +36,7 @@ impl TradingTerminal {
             }
             Message::TelegramFastApiHashChanged(input) => {
                 self.telegram_feed.fast_api_hash_input.zeroize();
-                self.telegram_feed.fast_api_hash_input = input.into();
+                self.telegram_feed.fast_api_hash_input = input.into_zeroizing();
                 Task::none()
             }
             Message::TelegramFastPhoneChanged(input) => {
@@ -45,12 +45,12 @@ impl TradingTerminal {
             }
             Message::TelegramFastCodeChanged(input) => {
                 self.telegram_feed.fast_code_input.zeroize();
-                self.telegram_feed.fast_code_input = input.into();
+                self.telegram_feed.fast_code_input = input.into_zeroizing();
                 Task::none()
             }
             Message::TelegramFastPasswordChanged(input) => {
                 self.telegram_feed.fast_password_input.zeroize();
-                self.telegram_feed.fast_password_input = input.into();
+                self.telegram_feed.fast_password_input = input.into_zeroizing();
                 Task::none()
             }
             Message::TelegramFastRequestCode => self.request_telegram_fast_code(),
@@ -392,9 +392,9 @@ impl TradingTerminal {
         let Some(api_id) = self.telegram_fast_api_id() else {
             return Task::none();
         };
-        let api_hash = self.telegram_feed.fast_api_hash_input.trim().to_string();
+        let api_hash = Zeroizing::new(self.telegram_feed.fast_api_hash_input.trim().to_string());
         let api_hash = if api_hash.is_empty() {
-            bundled_telegram_api_hash().unwrap_or_default().to_string()
+            Zeroizing::new(bundled_telegram_api_hash().unwrap_or_default().to_string())
         } else {
             api_hash
         };
@@ -413,7 +413,8 @@ impl TradingTerminal {
         let Some(api_id) = self.telegram_fast_api_id() else {
             return Task::none();
         };
-        let code = self.telegram_feed.fast_code_input.trim().to_string();
+        let code = Zeroizing::new(self.telegram_feed.fast_code_input.trim().to_string());
+        self.telegram_feed.fast_code_input.zeroize();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status = Some(("Signing in to Telegram".to_string(), false));
 
@@ -426,7 +427,8 @@ impl TradingTerminal {
         let Some(api_id) = self.telegram_fast_api_id() else {
             return Task::none();
         };
-        let password = self.telegram_feed.fast_password_input.trim().to_string();
+        let password = Zeroizing::new(self.telegram_feed.fast_password_input.trim().to_string());
+        self.telegram_feed.fast_password_input.zeroize();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status =
             Some(("Checking Telegram 2FA password".to_string(), false));

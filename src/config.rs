@@ -80,7 +80,7 @@ pub use schema::{
 pub use screenshot::ChartScreenshotSettingsConfig;
 pub(crate) use secrets::load_profile_secrets as load_legacy_profile_secrets;
 pub use secrets::{
-    EncryptedSecretsConfig, SecretPayload, clear_global_secrets, clear_profile_secrets,
+    EncryptedSecretsConfig, SecretPayload, clear_all_keychain_secrets, clear_profile_secrets,
     decrypt_secrets, encrypt_secrets, store_keychain_secrets, take_secret_warnings,
 };
 pub(crate) use themes::default_custom_themes;

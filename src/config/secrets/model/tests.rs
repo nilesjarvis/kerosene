@@ -49,3 +49,17 @@ fn global_secret_payload_defaults_missing_x_token() {
     assert_eq!(payload.hyperdash_api_key.as_str(), "hyper");
     assert_eq!(payload.x_bearer_token.as_str(), "");
 }
+
+#[test]
+fn secret_payload_debug_redacts_secret_values() {
+    let profiles = vec![profile("acct-a", "agent-secret")];
+    let payload =
+        SecretPayload::from_credentials(&profiles, "hydro-secret", "hyper-secret", "x-secret");
+
+    let rendered = format!("{payload:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    for secret in ["agent-secret", "hydro-secret", "hyper-secret", "x-secret"] {
+        assert!(!rendered.contains(secret), "debug output leaked {secret}");
+    }
+}

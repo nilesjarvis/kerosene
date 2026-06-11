@@ -34,3 +34,18 @@ fn active_chase_place_result_does_not_request_stop_cancel() {
 
     assert_eq!(stopped_chase_cancel_request(&chase, &response), None);
 }
+
+#[test]
+fn stopped_chase_cancel_request_debug_redacts_agent_key() {
+    let request = StoppedChaseCancelRequest {
+        chase_id: 1,
+        agent_key: "agent-secret".to_string().into(),
+        asset: 7,
+        oid: 9001,
+    };
+
+    let rendered = format!("{request:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains("agent-secret"));
+}

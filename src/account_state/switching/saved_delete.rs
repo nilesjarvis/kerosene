@@ -79,6 +79,16 @@ impl TradingTerminal {
         let account_label = profile_snapshot.name.clone();
         let was_active = self.active_account_index == index;
 
+        if self.secret_storage_mode == config::CredentialStorageMode::OsKeychain
+            && let Err(error) = config::clear_profile_secrets(&profile_snapshot)
+        {
+            self.push_toast(
+                format!("Could not delete '{account_label}': keychain cleanup failed: {error}"),
+                true,
+            );
+            return Task::none();
+        }
+
         if was_active {
             self.journal.switch_active_account(None);
             self.show_hidden_positions = false;
@@ -94,15 +104,7 @@ impl TradingTerminal {
         self.active_account_index =
             Self::adjust_active_index_after_removal(self.active_account_index, index);
 
-        let (status_message, status_is_error) =
-            match config::clear_profile_secrets(&profile_snapshot) {
-                Ok(()) => (format!("Deleted account: {account_label}"), false),
-                Err(e) => (
-                    format!("Deleted '{account_label}', but keychain cleanup reported: {e}"),
-                    true,
-                ),
-            };
-        self.push_toast(status_message, status_is_error);
+        self.push_toast(format!("Deleted account: {account_label}"), false);
 
         if self.secret_storage_mode == config::CredentialStorageMode::EncryptedConfig
             && !self.persist_encrypted_credentials_blob("Deleted account from encrypted config")

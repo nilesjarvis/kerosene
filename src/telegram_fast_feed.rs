@@ -22,6 +22,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::RwLock;
+use zeroize::Zeroizing;
 
 const TELEGRAM_FAST_UPDATE_QUEUE_LIMIT: usize = 2_000;
 const TELEGRAM_PRIVATE_CANDIDATE_AVATAR_MAX_BYTES: usize = 128 * 1024;
@@ -148,10 +149,10 @@ pub(crate) fn bundled_telegram_api_hash() -> Option<&'static str> {
 
 pub(crate) async fn request_telegram_fast_login_code(
     api_id: i32,
-    api_hash: String,
+    api_hash: Zeroizing<String>,
     phone: String,
 ) -> Result<TelegramFastAuthOutcome, String> {
-    let api_hash = api_hash.trim().to_string();
+    let api_hash = Zeroizing::new(api_hash.trim().to_string());
     let phone = phone.trim().to_string();
     if api_hash.is_empty() {
         return Err("Enter a Telegram API hash".to_string());
@@ -187,9 +188,9 @@ pub(crate) async fn request_telegram_fast_login_code(
 
 pub(crate) async fn submit_telegram_fast_login_code(
     api_id: i32,
-    code: String,
+    code: Zeroizing<String>,
 ) -> Result<TelegramFastAuthOutcome, String> {
-    let code = code.trim().to_string();
+    let code = Zeroizing::new(code.trim().to_string());
     if code.is_empty() {
         return Err("Enter the Telegram login code".to_string());
     }
@@ -233,7 +234,7 @@ pub(crate) async fn submit_telegram_fast_login_code(
 
 pub(crate) async fn submit_telegram_fast_password(
     api_id: i32,
-    password: String,
+    password: Zeroizing<String>,
 ) -> Result<TelegramFastAuthOutcome, String> {
     if password.trim().is_empty() {
         return Err("Enter the Telegram 2FA password".to_string());

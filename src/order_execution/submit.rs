@@ -9,6 +9,7 @@ use crate::order_execution::{
 use crate::signing::{ExchangeOrderKind, OrderKind};
 
 use iced::Task;
+use zeroize::Zeroizing;
 
 #[cfg(test)]
 mod inputs;
@@ -40,7 +41,7 @@ impl TradingTerminal {
         }
 
         let _theme = self.theme();
-        let key = self.wallet_key_input.trim().to_string();
+        let key = Zeroizing::new(self.wallet_key_input.trim().to_string());
         if key.is_empty() || self.connected_address.is_none() {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return Task::none();
@@ -98,7 +99,7 @@ impl TradingTerminal {
 
     fn submit_prepared_ticket_order(
         &mut self,
-        key: String,
+        key: Zeroizing<String>,
         prepared: PreparedExchangeOrder,
     ) -> Task<Message> {
         self.order_status = Some(("Placing order...".into(), false));
@@ -129,7 +130,7 @@ impl TradingTerminal {
         };
 
         let (request, context) = prepared.place_request_with_context(&account_address);
-        place_order_task(key.into(), request, move |result| Message::OrderResult {
+        place_order_task(key, request, move |result| Message::OrderResult {
             pending_indicator_id,
             context,
             result: Box::new(result),

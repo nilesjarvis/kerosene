@@ -272,7 +272,7 @@ impl TradingTerminal {
             .width(Fill);
         let api_hash = text_input("API hash", &self.telegram_feed.fast_api_hash_input)
             .style(helpers::text_input_style)
-            .on_input(Message::TelegramFastApiHashChanged)
+            .on_input(|value| Message::TelegramFastApiHashChanged(value.into()))
             .secure(true)
             .size(11)
             .padding([4, 7])
@@ -319,7 +319,7 @@ impl TradingTerminal {
         ) {
             let code = text_input("Code", &self.telegram_feed.fast_code_input)
                 .style(helpers::text_input_style)
-                .on_input(Message::TelegramFastCodeChanged)
+                .on_input(|value| Message::TelegramFastCodeChanged(value.into()))
                 .on_submit(Message::TelegramFastSubmitCode)
                 .secure(true)
                 .size(11)
@@ -349,7 +349,7 @@ impl TradingTerminal {
                 &self.telegram_feed.fast_password_input,
             )
             .style(helpers::text_input_style)
-            .on_input(Message::TelegramFastPasswordChanged)
+            .on_input(|value| Message::TelegramFastPasswordChanged(value.into()))
             .on_submit(Message::TelegramFastSubmitPassword)
             .secure(true)
             .size(11)

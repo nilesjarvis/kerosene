@@ -8,22 +8,11 @@ use zeroize::Zeroize;
 
 impl TradingTerminal {
     pub(crate) fn clear_keychain_credentials_best_effort(&mut self) {
-        let mut errors = Vec::new();
-        for profile in self.persisted_accounts_snapshot() {
-            if let Err(error) = config::clear_profile_secrets(&profile) {
-                errors.push(format!("{}: {error}", profile.name));
-            }
-        }
-        if let Err(error) = config::clear_global_secrets() {
-            errors.push(format!("global: {error}"));
-        }
-        if !errors.is_empty() {
+        let accounts = self.persisted_accounts_snapshot();
+        if let Err(error) = config::clear_all_keychain_secrets(&accounts) {
             self.secret_store_status = Some((
-                format!(
-                    "Encrypted credentials saved; OS keychain cleanup skipped: {}",
-                    errors.join("; ")
-                ),
-                false,
+                format!("Encrypted credentials saved; OS keychain cleanup skipped: {error}"),
+                true,
             ));
         }
     }
@@ -49,21 +38,33 @@ impl TradingTerminal {
                     &self.hyperdash_api_key,
                     &self.x_feed.bearer_token,
                 ) {
-                    Ok(()) => {
+                    Ok(cleanup_warning) => {
                         self.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
                         self.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
                         self.encrypted_secrets = None;
                         self.encrypted_secret_password.zeroize();
                         self.encrypted_secret_confirm.zeroize();
                         self.encrypted_secrets_unlocked = false;
-                        self.secret_store_status =
-                            Some(("Credentials saved to OS keychain".to_string(), false));
+                        self.secret_store_status = if let Some(cleanup_warning) = cleanup_warning {
+                            Some((
+                                format!(
+                                    "Credentials saved to OS keychain; legacy cleanup skipped: {cleanup_warning}"
+                                ),
+                                true,
+                            ))
+                        } else {
+                            Some(("Credentials saved to OS keychain".to_string(), false))
+                        };
                         self.persist_config();
                     }
                     Err(error) => {
                         self.secret_storage_selection = self.secret_storage_mode;
-                        self.secret_store_status =
-                            Some((format!("OS keychain credential save failed: {error}"), true));
+                        self.secret_store_status = Some((
+                            format!(
+                                "OS keychain credential save failed: {error}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage."
+                            ),
+                            true,
+                        ));
                     }
                 }
             }

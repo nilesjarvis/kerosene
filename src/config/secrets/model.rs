@@ -1,6 +1,7 @@
 use super::super::AccountProfile;
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use zeroize::Zeroizing;
 
 pub(super) const SECRET_PAYLOAD_SCHEMA: &str = "kerosene.secrets.v1";
@@ -32,13 +33,22 @@ pub struct EncryptedSecretsConfig {
     pub ciphertext: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProfileSecretPayload {
     pub secret_id: String,
     pub agent_key: Zeroizing<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+impl fmt::Debug for ProfileSecretPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProfileSecretPayload")
+            .field("secret_id", &self.secret_id)
+            .field("agent_key", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct GlobalSecretPayload {
     pub hydromancer_api_key: Zeroizing<String>,
     pub hyperdash_api_key: Zeroizing<String>,
@@ -46,11 +56,31 @@ pub struct GlobalSecretPayload {
     pub x_bearer_token: Zeroizing<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+impl fmt::Debug for GlobalSecretPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GlobalSecretPayload")
+            .field("hydromancer_api_key", &"<redacted>")
+            .field("hyperdash_api_key", &"<redacted>")
+            .field("x_bearer_token", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SecretPayload {
     pub schema: String,
     pub profiles: Vec<ProfileSecretPayload>,
     pub global: GlobalSecretPayload,
+}
+
+impl fmt::Debug for SecretPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretPayload")
+            .field("schema", &self.schema)
+            .field("profiles", &self.profiles)
+            .field("global", &self.global)
+            .finish()
+    }
 }
 
 impl SecretPayload {

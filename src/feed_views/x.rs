@@ -72,7 +72,7 @@ impl TradingTerminal {
     fn view_x_feed_token_controls(&self, available_width: f32) -> Element<'_, Message> {
         let token = text_input("X bearer token", &self.x_feed.bearer_token_input)
             .style(helpers::text_input_style)
-            .on_input(Message::XFeedBearerTokenChanged)
+            .on_input(|value| Message::XFeedBearerTokenChanged(value.into()))
             .on_submit(Message::SaveXFeedBearerToken)
             .secure(true)
             .size(12)

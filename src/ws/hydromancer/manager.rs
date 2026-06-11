@@ -4,6 +4,7 @@ mod task;
 mod tests;
 
 use serde_json::Value;
+use sha3::{Digest, Sha3_256};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -53,6 +54,12 @@ struct HydromancerManager {
 static HYDROMANCER_MANAGERS: OnceLock<std::sync::Mutex<HashMap<String, HydromancerManager>>> =
     OnceLock::new();
 
+fn hydromancer_manager_key(api_key: &str) -> String {
+    let mut hasher = Sha3_256::new();
+    hasher.update(api_key.trim().as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 pub(super) struct HydromancerSubscriptionGuard {
     cmd_tx: mpsc::UnboundedSender<HydromancerCommand>,
     topics: Vec<String>,
@@ -85,18 +92,21 @@ fn spawn_hydromancer_manager(api_key: String) -> HydromancerManager {
 }
 
 pub(super) fn get_hydromancer_manager(
-    api_key: String,
+    mut api_key: String,
 ) -> (
     mpsc::UnboundedSender<HydromancerCommand>,
     broadcast::Receiver<HydromancerRoutedMessage>,
 ) {
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
+    let manager_key = hydromancer_manager_key(&api_key);
 
-    let manager = match managers.entry(api_key.clone()) {
+    let manager = match managers.entry(manager_key) {
         std::collections::hash_map::Entry::Occupied(mut entry) => {
             if entry.get().cmd_tx.is_closed() {
                 entry.insert(spawn_hydromancer_manager(api_key));
+            } else {
+                api_key.zeroize();
             }
             entry.into_mut()
         }
@@ -115,16 +125,15 @@ pub fn reconnect_hydromancer(api_key: &str) {
     let Ok(managers) = managers.lock() else {
         return;
     };
-    if let Some(manager) = managers.get(api_key.trim()) {
+    let manager_key = hydromancer_manager_key(api_key);
+    if let Some(manager) = managers.get(&manager_key) {
         let _ = manager.cmd_tx.send(HydromancerCommand::Reconnect);
     }
 }
 
 /// Tear down the Hydromancer manager for `api_key` if one exists. Sends
 /// `Shutdown` to the task (so its owned `api_key` String drops) and
-/// removes the registry entry. Best-effort zeroizes the registry's
-/// owned key bytes on the way out so the rotated secret doesn't linger
-/// in the heap.
+/// removes the registry entry.
 ///
 /// Intended for API-key rotation / clearing flows — every consumer that
 /// re-subscribes after rotation will pick up the new key through
@@ -140,14 +149,10 @@ pub fn evict_hydromancer_manager(api_key: &str) {
     let Ok(mut managers) = managers.lock() else {
         return;
     };
-    if let Some((mut key, manager)) = managers.remove_entry(trimmed) {
+    let manager_key = hydromancer_manager_key(trimmed);
+    if let Some((_key, manager)) = managers.remove_entry(&manager_key) {
         // Best-effort shutdown signal. If the channel is already closed
         // the task is gone anyway.
         let _ = manager.cmd_tx.send(HydromancerCommand::Shutdown);
-        // Scrub the in-map key string before drop. The newly-orphaned
-        // task still owns its own copy in `api_key`; that copy drops
-        // (and the allocator reclaims its heap) when the task returns
-        // after observing the Shutdown command.
-        key.zeroize();
     }
 }

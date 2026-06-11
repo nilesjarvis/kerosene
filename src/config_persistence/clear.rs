@@ -175,11 +175,12 @@ impl TradingTerminal {
             "Configs cleared: {} config {} removed; persistence paused until restart.",
             summary.files_removed, file_label
         );
-        if !summary.warnings.is_empty() {
+        let has_cleanup_warnings = !summary.warnings.is_empty();
+        if has_cleanup_warnings {
             message.push_str(" Some OS keychain cleanup was skipped.");
         }
-        self.secret_store_status = Some((message.clone(), false));
-        self.push_toast(message, false);
+        self.secret_store_status = Some((message.clone(), has_cleanup_warnings));
+        self.push_toast(message, has_cleanup_warnings);
     }
 }
 

@@ -21,6 +21,36 @@ pub(super) fn hydromancer_connect_url(
     url
 }
 
+pub(super) fn redact_hydromancer_error(error: impl ToString, api_key: &str) -> String {
+    let mut message = error.to_string();
+    let api_key = api_key.trim();
+    if !api_key.is_empty() {
+        message = message.replace(api_key, "<redacted>");
+    }
+    redact_token_query_values(&message)
+}
+
+fn redact_token_query_values(message: &str) -> String {
+    let mut redacted = String::with_capacity(message.len());
+    let mut remaining = message;
+
+    while let Some(index) = remaining.find("token=") {
+        let (prefix, token_and_rest) = remaining.split_at(index);
+        redacted.push_str(prefix);
+        redacted.push_str("token=<redacted>");
+
+        let value_start = "token=".len();
+        let value = &token_and_rest[value_start..];
+        let value_end = value
+            .find(['&', ' ', '\t', '\n', '\r', '"', '\''])
+            .unwrap_or(value.len());
+        remaining = &value[value_end..];
+    }
+
+    redacted.push_str(remaining);
+    redacted
+}
+
 pub(super) fn hydromancer_unsubscribe_payload(payload: &Value) -> Value {
     let Some(subscription) = payload.get("subscription") else {
         return serde_json::json!({ "type": "unsubscribe" });
@@ -78,4 +108,28 @@ pub(super) fn broadcast_hydromancer_heartbeat(
     msg_tx: &broadcast::Sender<HydromancerRoutedMessage>,
 ) -> Result<usize, broadcast::error::SendError<HydromancerRoutedMessage>> {
     broadcast_hydromancer_control(msg_tx, "heartbeat", serde_json::json!({}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_hydromancer_error;
+
+    #[test]
+    fn hydromancer_error_redaction_removes_token_query_and_raw_key() {
+        let rendered = redact_hydromancer_error(
+            "failed wss://api.hydromancer.xyz/ws?token=hydro-secret&sessionId=abc hydro-secret",
+            "hydro-secret",
+        );
+
+        assert!(rendered.contains("token=<redacted>"));
+        assert!(rendered.contains("sessionId=abc"));
+        assert!(!rendered.contains("hydro-secret"));
+    }
+
+    #[test]
+    fn hydromancer_error_redaction_keeps_normal_errors_useful() {
+        let rendered = redact_hydromancer_error("HTTP 401 Unauthorized", "hydro-secret");
+
+        assert_eq!(rendered, "HTTP 401 Unauthorized");
+    }
 }

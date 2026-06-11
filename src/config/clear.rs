@@ -1,5 +1,4 @@
-use super::{AccountProfile, backup_config_path, config_path};
-use super::{clear_global_secrets, clear_profile_secrets};
+use super::{AccountProfile, backup_config_path, clear_all_keychain_secrets, config_path};
 use std::path::Path;
 
 // ---------------------------------------------------------------------------
@@ -100,29 +99,28 @@ pub fn clear_config_files() -> Result<usize, String> {
 }
 
 pub fn clear_all_configs(profiles: &[AccountProfile]) -> Result<ClearConfigSummary, String> {
-    let files_removed = clear_config_files()?;
-
     let mut keychain_entries_cleared = 0;
-    let mut warnings = Vec::new();
-    for profile in profiles {
-        if profile.secret_id.trim().is_empty() {
-            continue;
+    match clear_all_keychain_secrets(profiles) {
+        Ok(()) => {
+            keychain_entries_cleared += profiles
+                .iter()
+                .filter(|profile| !profile.secret_id.trim().is_empty())
+                .count()
+                * 2;
+            keychain_entries_cleared += 4;
         }
-
-        match clear_profile_secrets(profile) {
-            Ok(()) => keychain_entries_cleared += 2,
-            Err(e) => warnings.push(format!("{} keychain cleanup skipped: {e}", profile.name)),
+        Err(e) => {
+            return Err(format!(
+                "keychain cleanup failed before config files were removed: {e}"
+            ));
         }
     }
 
-    match clear_global_secrets() {
-        Ok(()) => keychain_entries_cleared += 2,
-        Err(e) => warnings.push(format!("global keychain cleanup skipped: {e}")),
-    }
+    let files_removed = clear_config_files()?;
 
     Ok(ClearConfigSummary {
         files_removed,
         keychain_entries_cleared,
-        warnings,
+        warnings: Vec::new(),
     })
 }

@@ -1,5 +1,6 @@
 use crate::config::secrets::{
-    load_keychain_secret_payload, load_profile_secrets, push_secret_warning, store_secret_payload,
+    clear_legacy_keychain_entries_for_payload, load_keychain_secret_payload, load_profile_secrets,
+    push_secret_warning, store_secret_payload,
 };
 use crate::config::{
     AccountProfile, CredentialStorageMode, KeroseneConfig, SecretPayload, new_secret_id,
@@ -22,24 +23,52 @@ pub(super) fn load_configured_secrets(config: &mut KeroseneConfig) {
 }
 
 fn load_os_keychain_secrets(config: &mut KeroseneConfig) {
-    match load_keychain_secret_payload() {
+    load_os_keychain_secrets_with(
+        config,
+        load_keychain_secret_payload,
+        store_secret_payload,
+        clear_legacy_keychain_entries_for_payload,
+        load_profile_secrets,
+        push_secret_warning,
+    );
+}
+
+fn load_os_keychain_secrets_with(
+    config: &mut KeroseneConfig,
+    mut load_payload: impl FnMut() -> Result<Option<SecretPayload>, String>,
+    mut store_payload: impl FnMut(&SecretPayload) -> Result<(), String>,
+    mut clear_legacy_entries: impl FnMut(&SecretPayload) -> Result<(), String>,
+    mut load_profile: impl FnMut(&mut AccountProfile) -> Result<(), String>,
+    mut push_warning: impl FnMut(String),
+) {
+    match load_payload() {
         Ok(Some(mut payload)) => {
+            let mut bundle_update_succeeded = true;
             if merge_missing_plaintext_secrets_into_payload(config, &mut payload)
-                && let Err(error) = store_secret_payload(&payload)
+                && let Err(error) = store_payload(&payload)
             {
-                push_secret_warning(format!("Credential bundle migration failed: {error}"));
+                bundle_update_succeeded = false;
+                push_warning(format!("Credential bundle migration failed: {error}"));
             }
             apply_secret_payload(config, &payload);
+            if bundle_update_succeeded && let Err(error) = clear_legacy_entries(&payload) {
+                push_warning(format!(
+                    "Legacy OS keychain cleanup failed after bundle load: {error}"
+                ));
+            }
             return;
         }
         Ok(None) => {}
         Err(error) => {
-            push_secret_warning(format!("Credential bundle read failed: {error}"));
+            normalize_legacy_plaintext_secrets(config);
+            push_warning(format!(
+                "Credential bundle read failed: {error}; OS keychain credentials were left unchanged. Re-enter credentials or switch to encrypted config in Settings > Storage if the problem persists"
+            ));
             return;
         }
     }
 
-    load_legacy_os_keychain_secrets(config);
+    load_legacy_os_keychain_secrets_with_warnings(config, &mut load_profile, &mut push_warning);
 
     let payload = SecretPayload::from_credentials(
         &config.accounts,
@@ -47,22 +76,23 @@ fn load_os_keychain_secrets(config: &mut KeroseneConfig) {
         &config.hyperdash_api_key,
         &config.x_bearer_token,
     );
-    if !payload.is_empty()
-        && let Err(error) = store_secret_payload(&payload)
-    {
-        push_secret_warning(format!("Credential bundle migration failed: {error}"));
+    if !payload.is_empty() {
+        match store_payload(&payload) {
+            Ok(()) => {
+                if let Err(error) = clear_legacy_entries(&payload) {
+                    push_warning(format!(
+                        "Credential bundle migrated, but legacy OS keychain cleanup failed: {error}"
+                    ));
+                } else {
+                    push_warning(
+                        "Legacy OS keychain credentials were migrated to the current storage bundle"
+                            .to_string(),
+                    );
+                }
+            }
+            Err(error) => push_warning(format!("Credential bundle migration failed: {error}")),
+        }
     }
-}
-
-fn load_legacy_os_keychain_secrets(config: &mut KeroseneConfig) {
-    load_legacy_os_keychain_secrets_with(config, load_profile_secrets);
-}
-
-fn load_legacy_os_keychain_secrets_with(
-    config: &mut KeroseneConfig,
-    mut load_profile: impl FnMut(&mut AccountProfile) -> Result<(), String>,
-) {
-    load_legacy_os_keychain_secrets_with_warnings(config, &mut load_profile, push_secret_warning);
 }
 
 fn load_legacy_os_keychain_secrets_with_warnings(
@@ -70,25 +100,7 @@ fn load_legacy_os_keychain_secrets_with_warnings(
     mut load_profile: impl FnMut(&mut AccountProfile) -> Result<(), String>,
     mut push_warning: impl FnMut(String),
 ) {
-    for profile in &mut config.accounts {
-        if profile.secret_id.is_empty() {
-            profile.secret_id = new_secret_id();
-        }
-    }
-
-    let mut legacy_hydromancer_key = std::mem::take(&mut config.hydromancer_api_key);
-    for profile in &mut config.accounts {
-        if !profile.hydromancer_api_key.trim().is_empty() {
-            if legacy_hydromancer_key.trim().is_empty() {
-                legacy_hydromancer_key = profile.hydromancer_api_key.clone();
-            }
-            profile.hydromancer_api_key.zeroize();
-        }
-    }
-    config.hydromancer_api_key = legacy_hydromancer_key.to_string().into();
-
-    let legacy_hyperdash_key = std::mem::take(&mut config.hyperdash_api_key);
-    config.hyperdash_api_key = legacy_hyperdash_key.to_string().into();
+    normalize_legacy_plaintext_secrets(config);
 
     let Some(active_index) = active_legacy_profile_index(config) else {
         return;
@@ -112,6 +124,28 @@ fn load_legacy_os_keychain_secrets_with_warnings(
             .to_string(),
         );
     }
+}
+
+fn normalize_legacy_plaintext_secrets(config: &mut KeroseneConfig) {
+    for profile in &mut config.accounts {
+        if profile.secret_id.is_empty() {
+            profile.secret_id = new_secret_id();
+        }
+    }
+
+    let mut legacy_hydromancer_key = std::mem::take(&mut config.hydromancer_api_key);
+    for profile in &mut config.accounts {
+        if !profile.hydromancer_api_key.trim().is_empty() {
+            if legacy_hydromancer_key.trim().is_empty() {
+                legacy_hydromancer_key = profile.hydromancer_api_key.clone();
+            }
+            profile.hydromancer_api_key.zeroize();
+        }
+    }
+    config.hydromancer_api_key = legacy_hydromancer_key.to_string().into();
+
+    let legacy_hyperdash_key = std::mem::take(&mut config.hyperdash_api_key);
+    config.hyperdash_api_key = legacy_hyperdash_key.to_string().into();
 }
 
 fn active_legacy_profile_index(config: &KeroseneConfig) -> Option<usize> {
@@ -140,6 +174,7 @@ fn lock_encrypted_config_secrets(config: &mut KeroseneConfig) {
     }
     config.hydromancer_api_key.zeroize();
     config.hyperdash_api_key.zeroize();
+    config.x_bearer_token.zeroize();
 
     if config.encrypted_secrets.is_some() {
         push_secret_warning(

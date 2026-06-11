@@ -10,13 +10,14 @@ impl TradingTerminal {
         match message {
             Message::HyperdashKeyInputChanged(value) => {
                 self.hyperdash_key_input.zeroize();
-                self.hyperdash_key_input = value.into();
+                self.hyperdash_key_input = value.into_zeroizing();
             }
             Message::SaveHyperdashKey => {
                 self.hyperdash_api_key.zeroize();
                 self.hyperdash_api_key = self.hyperdash_key_input.trim().to_string().into();
-                self.persist_hyperdash_secret();
-                self.persist_config();
+                if self.persist_hyperdash_secret() {
+                    self.persist_config();
+                }
                 let heatmap_ids: Vec<ChartId> = self
                     .charts
                     .iter()

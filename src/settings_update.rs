@@ -58,11 +58,11 @@ impl TradingTerminal {
             }
             Message::EncryptedSecretPasswordChanged(value) => {
                 self.encrypted_secret_password.zeroize();
-                self.encrypted_secret_password = value.into();
+                self.encrypted_secret_password = value.into_zeroizing();
             }
             Message::EncryptedSecretConfirmChanged(value) => {
                 self.encrypted_secret_confirm.zeroize();
-                self.encrypted_secret_confirm = value.into();
+                self.encrypted_secret_confirm = value.into_zeroizing();
             }
             Message::UnlockEncryptedSecrets => {
                 self.unlock_encrypted_credentials();

@@ -84,3 +84,60 @@ fn config_save_does_not_replace_valid_backup_with_corrupt_primary() {
 
     cleanup_path(&path);
 }
+
+#[test]
+fn config_save_sanitizes_legacy_plaintext_secrets_before_backup() {
+    let path = test_path("backup-secret-scrub");
+    create_parent_dir(&path);
+    let mut legacy = serde_json::to_value(KeroseneConfig::default())
+        .expect("default config should serialize to json");
+    let object = legacy
+        .as_object_mut()
+        .expect("default config should serialize as object");
+    object.insert(
+        "accounts".to_string(),
+        serde_json::json!([{
+            "secret_id": "acct-a",
+            "name": "Main",
+            "wallet_address": "",
+            "agent_key": "agent-secret",
+            "hydromancer_api_key": "profile-hydro-secret"
+        }]),
+    );
+    object.insert(
+        "agent_key".to_string(),
+        serde_json::json!("legacy-agent-secret"),
+    );
+    object.insert(
+        "hydromancer_api_key".to_string(),
+        serde_json::json!("hydro-secret"),
+    );
+    object.insert(
+        "hyperdash_api_key".to_string(),
+        serde_json::json!("hyper-secret"),
+    );
+    object.insert("x_bearer_token".to_string(), serde_json::json!("x-secret"));
+    write_file(
+        &path,
+        serde_json::to_string_pretty(&legacy).expect("legacy config should encode"),
+    );
+
+    save_config_fixture(&path, &KeroseneConfig::default());
+
+    let primary = std::fs::read_to_string(&path).expect("primary config should be readable");
+    let backup = std::fs::read_to_string(backup_config_path(&path))
+        .expect("backup config should be readable");
+    for secret in [
+        "agent-secret",
+        "profile-hydro-secret",
+        "legacy-agent-secret",
+        "hydro-secret",
+        "hyper-secret",
+        "x-secret",
+    ] {
+        assert!(!primary.contains(secret), "primary leaked {secret}");
+        assert!(!backup.contains(secret), "backup leaked {secret}");
+    }
+
+    cleanup_path(&path);
+}

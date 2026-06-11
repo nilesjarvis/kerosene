@@ -9,6 +9,7 @@ use iced::widget::image::Handle as ImageHandle;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+use std::fmt;
 use std::time::Duration;
 use zeroize::Zeroizing;
 
@@ -176,7 +177,7 @@ impl TelegramFeedPost {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct TelegramFeedState {
     pub(crate) channels: Vec<String>,
     pub(crate) private_channels: Vec<TelegramFeedPrivateChannelConfig>,
@@ -209,6 +210,55 @@ pub(crate) struct TelegramFeedState {
     pub(crate) next_avatar_request_id: u64,
     pub(crate) last_error: Option<String>,
     pub(crate) last_refresh_ms: Option<u64>,
+}
+
+impl fmt::Debug for TelegramFeedState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TelegramFeedState")
+            .field("channels", &self.channels)
+            .field("private_channels", &self.private_channels)
+            .field(
+                "private_channel_candidates",
+                &self.private_channel_candidates,
+            )
+            .field(
+                "private_channel_candidates_loading",
+                &self.private_channel_candidates_loading,
+            )
+            .field(
+                "private_channel_candidates_expanded",
+                &self.private_channel_candidates_expanded,
+            )
+            .field("notifications_enabled", &self.notifications_enabled)
+            .field("fast_mode_enabled", &self.fast_mode_enabled)
+            .field("fast_api_id", &self.fast_api_id)
+            .field("fast_api_id_input", &self.fast_api_id_input)
+            .field("fast_api_hash_input", &"<redacted>")
+            .field("fast_phone_input", &"<redacted>")
+            .field("fast_code_input", &"<redacted>")
+            .field("fast_password_input", &"<redacted>")
+            .field("fast_auth_stage", &self.fast_auth_stage)
+            .field("fast_auth_in_flight", &self.fast_auth_in_flight)
+            .field("fast_connected", &self.fast_connected)
+            .field("fast_status", &self.fast_status)
+            .field("fast_password_hint", &self.fast_password_hint)
+            .field("fast_reconnect_nonce", &self.fast_reconnect_nonce)
+            .field("fast_last_event_ms", &self.fast_last_event_ms)
+            .field("channels_expanded", &self.channels_expanded)
+            .field("channel_input", &self.channel_input)
+            .field("channel_profiles", &self.channel_profiles)
+            .field("posts", &self.posts)
+            .field("seen_post_ids", &self.seen_post_ids)
+            .field("loading_channels", &self.loading_channels)
+            .field(
+                "background_loading_channels",
+                &self.background_loading_channels,
+            )
+            .field("next_avatar_request_id", &self.next_avatar_request_id)
+            .field("last_error", &self.last_error)
+            .field("last_refresh_ms", &self.last_refresh_ms)
+            .finish()
+    }
 }
 
 impl TelegramFeedState {
@@ -909,6 +959,27 @@ mod tests {
 <a class="tgme_widget_message_date" href="https://t.me/marketfeed/12"><time datetime="2026-05-31T18:01:00+00:00" class="time">18:01</time></a>
 </div></div>
 "#;
+
+    #[test]
+    fn telegram_feed_state_debug_redacts_fast_credentials() {
+        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345));
+        state.fast_api_hash_input = "hash-secret".to_string().into();
+        state.fast_phone_input = "+15555550123".to_string();
+        state.fast_code_input = "code-secret".to_string().into();
+        state.fast_password_input = "password-secret".to_string().into();
+
+        let rendered = format!("{state:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        for secret in [
+            "hash-secret",
+            "+15555550123",
+            "code-secret",
+            "password-secret",
+        ] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
+    }
 
     #[test]
     fn normalizes_public_channel_inputs() {

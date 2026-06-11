@@ -1,17 +1,29 @@
 use crate::signing::{ChaseOrder, ExchangeResponse};
 
+use std::fmt;
 use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // Stopped Chase Cancel Planning
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(super) struct StoppedChaseCancelRequest {
     pub(super) chase_id: u64,
     pub(super) agent_key: Zeroizing<String>,
     pub(super) asset: u32,
     pub(super) oid: u64,
+}
+
+impl fmt::Debug for StoppedChaseCancelRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StoppedChaseCancelRequest")
+            .field("chase_id", &self.chase_id)
+            .field("agent_key", &"<redacted>")
+            .field("asset", &self.asset)
+            .field("oid", &self.oid)
+            .finish()
+    }
 }
 
 pub(super) fn stopped_chase_cancel_request(

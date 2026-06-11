@@ -5,6 +5,7 @@ use self::lifecycle::{
 };
 use self::messages::{
     broadcast_hydromancer_control, broadcast_hydromancer_reconnecting, hydromancer_connect_url,
+    redact_hydromancer_error,
 };
 use self::session::HydromancerSessionState;
 use self::socket::{handle_hydromancer_command, handle_hydromancer_ws_message};
@@ -108,7 +109,11 @@ pub(super) async fn hydromancer_manager_task(
         let ws_stream = match connect_result {
             Ok((ws, _)) => ws,
             Err(e) => {
-                let _ = broadcast_hydromancer_reconnecting(&msg_tx, e.to_string(), retry_delay);
+                let _ = broadcast_hydromancer_reconnecting(
+                    &msg_tx,
+                    redact_hydromancer_error(e, &api_key),
+                    retry_delay,
+                );
                 if hydromancer_sleep_or_shutdown(
                     &mut cmd_rx,
                     &mut active_subs,
@@ -169,7 +174,7 @@ pub(super) async fn hydromancer_manager_task(
                 Either::Right((Ok(Some(Err(e))), _)) => {
                     let _ = broadcast_hydromancer_reconnecting(
                         &msg_tx,
-                        e.to_string(),
+                        redact_hydromancer_error(e, &api_key),
                         HYDROMANCER_RECONNECT_DELAY_SECS,
                     );
                     disconnected = true;

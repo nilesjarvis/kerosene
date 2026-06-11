@@ -124,11 +124,11 @@ pub(in crate::config) fn save_config_to_path(
     let temp_path = temp_config_path(path);
     write_with_restricted_permissions(&temp_path, json.as_bytes())?;
 
-    if matches!(read_config_from_path(path), Ok(Some(_))) {
+    if let Ok(Some(previous_config)) = read_config_from_path(path) {
         let backup_path = backup_config_path(path);
-        let backup_contents = std::fs::read(path)
-            .map_err(|e| format!("read config {} for backup failed: {e}", path.display()))?;
-        replace_with_restricted_permissions(&backup_path, &backup_contents)?;
+        let backup_json = serde_json::to_string_pretty(&previous_config)
+            .map_err(|e| format!("sanitize backup config failed: {e}"))?;
+        replace_with_restricted_permissions(&backup_path, backup_json.as_bytes())?;
     }
 
     match std::fs::rename(&temp_path, path) {

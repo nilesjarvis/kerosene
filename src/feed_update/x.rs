@@ -18,7 +18,7 @@ impl TradingTerminal {
             Message::XFeedStreamEvent(event) => self.handle_x_feed_stream_event(event),
             Message::XFeedBearerTokenChanged(input) => {
                 self.x_feed.bearer_token_input.zeroize();
-                self.x_feed.bearer_token_input = input.into();
+                self.x_feed.bearer_token_input = input.into_zeroizing();
                 Task::none()
             }
             Message::SaveXFeedBearerToken => self.save_x_feed_bearer_token(),
@@ -92,7 +92,7 @@ impl TradingTerminal {
     }
 
     fn request_x_feed_refresh_task(&self) -> Task<Message> {
-        let token = self.x_feed.bearer_token.trim().to_string();
+        let token = zeroize::Zeroizing::new(self.x_feed.bearer_token.trim().to_string());
         let handles = self.x_feed.handles.clone();
         Task::perform(fetch_x_recent_posts(token, handles), |result| {
             Message::XFeedLoaded(Box::new(result))
@@ -112,8 +112,9 @@ impl TradingTerminal {
         } else {
             Some(("X bearer token saved".to_string(), false))
         };
-        self.persist_x_secret();
-        self.persist_config();
+        if self.persist_x_secret() {
+            self.persist_config();
+        }
         if !self.x_feed.bearer_token.trim().is_empty() && self.x_feed.posts.is_empty() {
             return self.request_x_feed_refresh();
         }

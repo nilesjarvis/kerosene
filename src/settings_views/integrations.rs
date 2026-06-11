@@ -62,7 +62,7 @@ impl TradingTerminal {
                 row![
                     text_input("Hydromancer API key", &self.hydromancer_key_input)
                         .style(helpers::text_input_style)
-                        .on_input(Message::HydromancerKeyInputChanged)
+                        .on_input(|value| Message::HydromancerKeyInputChanged(value.into()))
                         .on_submit(Message::SaveHydromancerKey)
                         .secure(true)
                         .size(12)
@@ -113,7 +113,7 @@ impl TradingTerminal {
                 row![
                     text_input("HyperDash API key", &self.hyperdash_key_input)
                         .style(helpers::text_input_style)
-                        .on_input(Message::HyperdashKeyInputChanged)
+                        .on_input(|value| Message::HyperdashKeyInputChanged(value.into()))
                         .on_submit(Message::SaveHyperdashKey)
                         .secure(true)
                         .size(12)

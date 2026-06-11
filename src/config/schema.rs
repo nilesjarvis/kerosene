@@ -70,7 +70,7 @@ pub use toast::ToastPosition;
 // ---------------------------------------------------------------------------
 
 /// Persisted application config. Saved as JSON to the platform config directory.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct KeroseneConfig {
     #[serde(default)]
     pub saved_layouts: Vec<SavedLayout>,

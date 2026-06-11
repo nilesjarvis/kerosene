@@ -65,7 +65,7 @@ pub(crate) enum XFeedStreamEvent {
     Loaded(Box<Result<XFeedPage, String>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct XFeedState {
     pub(crate) handles: Vec<String>,
     pub(crate) notifications_enabled: bool,
@@ -245,10 +245,10 @@ pub(crate) fn build_x_feed_query(handles: &[String]) -> Result<String, String> {
 }
 
 pub(crate) async fn fetch_x_recent_posts(
-    bearer_token: String,
+    bearer_token: Zeroizing<String>,
     handles: Vec<String>,
 ) -> Result<XFeedPage, String> {
-    let bearer_token = normalize_x_bearer_token_input(&bearer_token);
+    let bearer_token = Zeroizing::new(normalize_x_bearer_token_input(&bearer_token));
     if bearer_token.is_empty() {
         return Err("Enter an X API bearer token".to_string());
     }
@@ -259,7 +259,7 @@ pub(crate) async fn fetch_x_recent_posts(
     let max_results = X_FEED_FETCH_LIMIT.to_string();
     let response = CLIENT
         .get(&url)
-        .bearer_auth(&bearer_token)
+        .bearer_auth(&*bearer_token)
         .header(USER_AGENT, X_USER_AGENT)
         .timeout(X_FEED_REQUEST_TIMEOUT)
         .query(&[

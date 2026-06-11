@@ -27,3 +27,12 @@ fn hydromancer_window_is_larger_than_the_app_level_stale_label() {
     const APP_STALE_LABEL_SECS: u64 = 75;
     const _: () = assert!(HYDROMANCER_READ_TIMEOUT_SECS > APP_STALE_LABEL_SECS);
 }
+
+#[test]
+fn hydromancer_manager_key_does_not_store_raw_api_key() {
+    let key = hydromancer_manager_key("  hydro-secret-token  ");
+
+    assert_eq!(key, hydromancer_manager_key("hydro-secret-token"));
+    assert_ne!(key, "hydro-secret-token");
+    assert!(!key.contains("hydro-secret-token"));
+}
