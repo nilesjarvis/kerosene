@@ -5,6 +5,21 @@ use chrono_tz::Tz;
 // ---------------------------------------------------------------------------
 // Market Session Domain
 // ---------------------------------------------------------------------------
+//
+// These sessions overlay the regular cash-trading hours of the major regional
+// equity exchanges onto the 24/7 crypto market as time-of-day cues:
+//   - New York -> NYSE   09:30-16:00 America/New_York
+//   - London   -> LSE    08:00-16:30 Europe/London
+//   - Asia      -> TSE    09:00-15:30 Asia/Tokyo
+//   - Overnight -> the post-NY gap until the next Asia open.
+//
+// Conventions:
+//   - The clock state (`market_window_is_active`/`next_market_open`) and the
+//     session anchor (`last_open_ms`) skip weekends, reflecting real market
+//     state. The chart bands (`visible_session_ranges`) instead tile every day,
+//     including weekends, as a continuous time-of-day rhythm.
+//   - Exchange holidays, half-days, and intraday breaks (e.g. the TSE
+//     11:30-12:30 lunch) are intentionally not modeled.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MarketSession {
@@ -89,7 +104,9 @@ impl MarketSession {
     pub(crate) fn close_hm(self) -> Option<(u32, u32)> {
         match self {
             Self::NewYork => Some((16, 0)),
-            Self::Asia => Some((15, 0)),
+            // Tokyo extended its regular close from 15:00 to 15:30 JST effective
+            // 2024-11-05 (arrowhead 4.0). The 11:30-12:30 lunch break is not modeled.
+            Self::Asia => Some((15, 30)),
             Self::London => Some((16, 30)),
             Self::Overnight => None,
         }
@@ -100,6 +117,13 @@ impl MarketSession {
         local_time_ms(self.timezone(), date, hour, minute)
     }
 
+    /// Most recent real session open at or before `reference_ms`, as UTC ms.
+    ///
+    /// Equity markets are shut on weekends, so a Saturday/Sunday reference — or a
+    /// weekday before its open — anchors to the prior trading day's open (the
+    /// preceding Friday across a weekend) rather than to a session that never
+    /// happened. This mirrors the weekend handling in [`market_window_is_active`]
+    /// and [`next_market_open`]. Exchange holidays and half-days are not modeled.
     pub(crate) fn last_open_ms(self, reference_ms: u64) -> u64 {
         let Ok(reference_i64) = i64::try_from(reference_ms) else {
             return reference_ms;
@@ -108,19 +132,20 @@ impl MarketSession {
             return reference_ms;
         };
 
-        let reference_local = reference_utc.with_timezone(&self.timezone());
-        let today_date = reference_local.date_naive();
-        let today_open = self
-            .open_utc_ms_for_local_date(today_date)
-            .unwrap_or(reference_ms);
-
-        if reference_ms >= today_open {
-            return today_open;
-        }
-
-        let previous_date = today_date - Duration::days(1);
-        self.open_utc_ms_for_local_date(previous_date)
-            .unwrap_or_else(|| today_open.saturating_sub(86_400_000))
+        let today_date = reference_utc.with_timezone(&self.timezone()).date_naive();
+        // Walk back from the reference's local date to the most recent weekday whose
+        // session open falls at or before the reference instant. Eight days of slack
+        // comfortably covers a weekend; opens are recomputed per date so DST stays exact.
+        (0..8)
+            .filter_map(|days_back| {
+                let date = today_date - Duration::days(days_back);
+                if matches!(date.weekday(), Weekday::Sat | Weekday::Sun) {
+                    return None;
+                }
+                self.open_utc_ms_for_local_date(date)
+            })
+            .find(|&open_ms| open_ms <= reference_ms)
+            .unwrap_or(reference_ms)
     }
 
     pub(crate) fn market_is_active(self, now_utc: DateTime<Utc>) -> bool {
@@ -468,6 +493,33 @@ mod tests {
     }
 
     #[test]
+    fn session_anchors_skip_weekends_to_prior_trading_day() {
+        // 2026-06-12 is a Friday, 06-13/06-14 the weekend, 06-15 the next Monday.
+        // NY opens at 13:30 UTC (09:30 EDT) on the Friday.
+        let friday_open = ts(2026, 6, 12, 13, 30);
+
+        // Weekend references anchor to Friday's open, not a phantom weekend open.
+        assert_eq!(
+            SessionAnchor::Market(MarketSession::NewYork).last_open_ms(ts(2026, 6, 13, 18, 0)),
+            friday_open
+        );
+        assert_eq!(
+            SessionAnchor::Market(MarketSession::NewYork).last_open_ms(ts(2026, 6, 14, 18, 0)),
+            friday_open
+        );
+        // Monday before the open still anchors back to Friday.
+        assert_eq!(
+            SessionAnchor::Market(MarketSession::NewYork).last_open_ms(ts(2026, 6, 15, 13, 0)),
+            friday_open
+        );
+        // Monday after the open anchors to Monday's open.
+        assert_eq!(
+            SessionAnchor::Market(MarketSession::NewYork).last_open_ms(ts(2026, 6, 15, 14, 0)),
+            ts(2026, 6, 15, 13, 30)
+        );
+    }
+
+    #[test]
     fn utc_anchors_use_calendar_boundaries() {
         assert_eq!(
             SessionAnchor::UtcDay.last_open_ms(ts(2026, 3, 28, 15, 42)),
@@ -518,6 +570,32 @@ mod tests {
             (9, 0),
             (15, 0),
         ));
+    }
+
+    #[test]
+    fn asia_session_uses_extended_1530_close() {
+        // TSE extended its regular close from 15:00 to 15:30 JST (effective 2024-11-05).
+        // 2026-05-18 is a Monday; 06:10 UTC == 15:10 JST is still within the session.
+        let in_extension = Utc
+            .with_ymd_and_hms(2026, 5, 18, 6, 10, 0)
+            .single()
+            .expect("valid UTC timestamp");
+        assert!(MarketSession::Asia.market_is_active(in_extension));
+        assert_eq!(
+            MarketSession::Asia
+                .market_clock_text(in_extension)
+                .expect("clock text"),
+            "Asia 15:10:00 JST (closes in 0h 20m)"
+        );
+
+        // 06:45 UTC == 15:45 JST is past the new close.
+        assert!(
+            !MarketSession::Asia.market_is_active(
+                Utc.with_ymd_and_hms(2026, 5, 18, 6, 45, 0)
+                    .single()
+                    .expect("valid UTC timestamp")
+            )
+        );
     }
 
     #[test]
