@@ -1,8 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Kerosene">
-  <rect width="120" height="120" rx="28" fill="#ff8a1f"></rect>
-  <g stroke="#090a0c" stroke-width="15">
-    <line x1="44" y1="32" x2="44" y2="88"></line>
-    <line x1="41" y1="60" x2="86" y2="88"></line>
-    <line x1="41" y1="60" x2="86" y2="32"></line>
+  <g transform="translate(10 10) scale(0.8333333333)">
+    <rect width="120" height="120" rx="28" fill="#ff8a1f"></rect>
+    <g stroke="#090a0c" stroke-width="15">
+      <line x1="44" y1="32" x2="44" y2="88"></line>
+      <line x1="41" y1="60" x2="86" y2="88"></line>
+      <line x1="41" y1="60" x2="86" y2="32"></line>
+    </g>
   </g>
 </svg>
