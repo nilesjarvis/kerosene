@@ -15,7 +15,7 @@ impl TradingTerminal {
         match self.settings_theme_page {
             ThemeSettingsPage::Overview => self.view_settings_theme_overview(),
             ThemeSettingsPage::WidgetChrome => self.view_settings_theme_subpage(
-                "Widget Chrome",
+                "Appearance",
                 self.view_settings_widget_chrome_section(),
             ),
             ThemeSettingsPage::Crosshair => self.view_settings_theme_subpage(
@@ -108,7 +108,7 @@ impl TradingTerminal {
 
         let mut page_links = column![
             theme_overview_button(
-                "Widget Chrome",
+                "Appearance",
                 chrome_summary,
                 ThemeSettingsPage::WidgetChrome,
             ),
