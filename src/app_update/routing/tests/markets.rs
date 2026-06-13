@@ -2,6 +2,12 @@ use super::*;
 
 #[test]
 fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
+    let source_context = crate::read_data_provider::MarketDataSourceContext {
+        provider: crate::config::ReadDataProvider::Hyperliquid,
+        read_data_provider_generation: 0,
+        hydromancer_key_generation: None,
+    };
+
     assert_route(
         Message::ClearDrawingTool(7, crate::chart_state::ChartSurfaceId::Docked(7)),
         UpdateRoute::Annotations,
@@ -16,6 +22,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Preferences,
     );
     assert_route(Message::OpenDetachedChart(7), UpdateRoute::Chart);
+    assert_route(
+        Message::ChartWsAssetCtxLagged(7, "BTC".to_string(), source_context, 9),
+        UpdateRoute::Chart,
+    );
     assert_route(
         Message::ChartHudControlChanged(
             7,
@@ -43,6 +53,29 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     );
     assert_route(
         Message::OutcomeMarketGroupToggled("question:19".to_string()),
+        UpdateRoute::Market,
+    );
+    assert_route(
+        Message::OrderBookWsBookLagged {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: (Some(5), None),
+            source_context,
+            skipped: 9,
+        },
+        UpdateRoute::Market,
+    );
+    assert_route(
+        Message::OrderBookWsAssetCtxLagged {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context,
+            skipped: 9,
+        },
+        UpdateRoute::Market,
+    );
+    assert_route(
+        Message::PositioningInfoWsAssetCtxLagged("BTC".to_string(), source_context, 9),
         UpdateRoute::Market,
     );
     assert_route(Message::AddSessionDataPane, UpdateRoute::Market);

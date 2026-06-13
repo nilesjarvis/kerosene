@@ -54,12 +54,14 @@ impl TradingTerminal {
             next_spaghetti_id,
         } = Self::boot_layout_widget_configs(&cfg, &symbol);
         let chart_backfill_source = cfg.read_data_provider.chart_backfill_source();
+        let hydromancer_api_key =
+            zeroize::Zeroizing::new(cfg.hydromancer_api_key.trim().to_string());
 
         let (charts, chart_tasks) = Self::boot_chart_instances(
             &chart_configs,
             &muted_tickers,
             chart_backfill_source,
-            cfg.hydromancer_api_key.trim().to_string(),
+            &hydromancer_api_key,
         );
         boot_tasks.extend(chart_tasks);
 
@@ -67,7 +69,7 @@ impl TradingTerminal {
             &spaghetti_configs,
             &muted_tickers,
             chart_backfill_source,
-            cfg.hydromancer_api_key.trim().to_string(),
+            &hydromancer_api_key,
         );
         boot_tasks.extend(spaghetti_tasks);
 
@@ -117,7 +119,7 @@ impl TradingTerminal {
             address_book,
         });
 
-        if !wallet_tracker_added_labels.is_empty() {
+        if !wallet_tracker_added_labels.is_empty() || cfg.secret_cleanup_state_dirty {
             state.persist_config();
         }
 
@@ -170,5 +172,22 @@ impl TradingTerminal {
         state.sync_chart_hud_readout();
 
         (state, Task::batch(boot_tasks))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boot_schedules_config_save_after_secret_cleanup_state_changes() {
+        let cfg = config::KeroseneConfig {
+            secret_cleanup_state_dirty: true,
+            ..config::KeroseneConfig::default()
+        };
+
+        let (terminal, _task) = TradingTerminal::boot_from_config(cfg);
+
+        assert!(terminal.config_save_due_at.is_some());
     }
 }

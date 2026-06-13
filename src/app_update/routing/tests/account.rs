@@ -38,6 +38,14 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
         UpdateRoute::Account,
     );
     assert_route(Message::RefreshAccountData, UpdateRoute::Account);
+    assert_route(
+        Message::AccountRefreshBackoffElapsed(123),
+        UpdateRoute::Account,
+    );
+    assert_route(
+        Message::RetryTwapReconciliationAccountData("0xabc".to_string()),
+        UpdateRoute::Account,
+    );
     assert_route(Message::DismissOrderStatus, UpdateRoute::Order);
     assert_route(
         Message::OrderBookPriceSelected {

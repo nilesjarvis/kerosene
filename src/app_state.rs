@@ -18,9 +18,11 @@ use crate::market_state::{
 };
 use crate::notification_state::Toast;
 use crate::order_execution::{
-    PendingLeverageUpdateContext, PendingMoveOrderContext, PendingNukeExecution, PendingOrderAction,
+    MoveOrderKey, PendingLeverageUpdateContext, PendingMoveOrderContext, PendingNukeExecution,
+    PendingOrderAction,
 };
 use crate::order_pending_indicators::PendingOrderIndicator;
+use crate::order_update::{NukeConfirmation, OrderQuantityProvenance, PendingOneShotStatusRequest};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
@@ -40,22 +42,179 @@ use crate::{config, journal, ws};
 use iced::widget::pane_grid;
 use iced::window;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use zeroize::Zeroizing;
+use std::{fmt, ops::Deref, time::Instant};
+use zeroize::{Zeroize, Zeroizing};
 
 // ---------------------------------------------------------------------------
 // Application state
 // ---------------------------------------------------------------------------
 
-pub(crate) type SensitiveString = Zeroizing<String>;
+#[derive(Clone, Default, PartialEq, Eq)]
+#[repr(transparent)]
+pub(crate) struct SensitiveString(Zeroizing<String>);
+
+impl SensitiveString {
+    pub(crate) fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub(crate) fn into_zeroizing(self) -> Zeroizing<String> {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn clear(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl fmt::Debug for SensitiveString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("SensitiveString(<redacted>)")
+    }
+}
+
+impl Deref for SensitiveString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl AsRef<str> for SensitiveString {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Zeroize for SensitiveString {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl From<String> for SensitiveString {
+    fn from(value: String) -> Self {
+        Self(Zeroizing::new(value))
+    }
+}
+
+impl From<&str> for SensitiveString {
+    fn from(value: &str) -> Self {
+        value.to_string().into()
+    }
+}
+
+impl From<Zeroizing<String>> for SensitiveString {
+    fn from(value: Zeroizing<String>) -> Self {
+        Self(value)
+    }
+}
 
 pub(crate) fn sensitive_string(value: impl Into<String>) -> SensitiveString {
-    Zeroizing::new(value.into())
+    value.into().into()
+}
+
+impl TradingTerminal {
+    #[cfg(test)]
+    pub(crate) fn set_committed_agent_key_for_test(&mut self, value: impl Into<String>) {
+        let value = value.into();
+        self.wallet_key_input = sensitive_string(value.clone());
+        if let Some(profile) = self.accounts.get_mut(self.active_account_index) {
+            profile.agent_key = sensitive_string(value).into_zeroizing();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_account_data_for_address_for_test(
+        &mut self,
+        account_address: impl Into<String>,
+        data: AccountData,
+    ) {
+        self.bump_account_data_revision();
+        self.account_data_address = Some(account_address.into());
+        self.account_data = Some(data);
+    }
+
+    pub(crate) fn bump_account_data_revision(&mut self) {
+        self.account_data_revision = self.account_data_revision.wrapping_add(1);
+    }
+
+    pub(crate) fn hydromancer_api_key_for_task(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.hydromancer_api_key.trim().to_string())
+    }
+
+    pub(crate) fn invalidate_portfolio_income_refreshes(&mut self) {
+        self.portfolio.invalidate_refresh();
+        self.income.invalidate_refresh();
+    }
+
+    pub(crate) fn clear_portfolio_income_account_state(&mut self) {
+        self.invalidate_portfolio_income_refreshes();
+        self.portfolio.data = None;
+        self.portfolio.last_error = None;
+        self.income.data = None;
+        self.income.last_error = None;
+        self.last_income_alert_time = None;
+    }
+
+    pub(crate) fn bump_hydromancer_key_generation(&mut self) {
+        self.hydromancer_key_generation = self.hydromancer_key_generation.wrapping_add(1);
+        self.invalidate_portfolio_income_refreshes();
+        if self.read_data_provider == config::ReadDataProvider::Hydromancer {
+            self.invalidate_wallet_read_data_requests();
+        }
+    }
+
+    pub(crate) fn bump_read_data_provider_generation(&mut self) {
+        self.read_data_provider_generation = self.read_data_provider_generation.wrapping_add(1);
+    }
+
+    pub(crate) fn hydromancer_key_generation_is_current(&self, generation: u64) -> bool {
+        self.hydromancer_key_generation == generation
+    }
+
+    pub(crate) fn hyperdash_api_key_for_task(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.hyperdash_api_key.trim().to_string())
+    }
+
+    pub(crate) fn bump_hyperdash_key_generation(&mut self) {
+        self.hyperdash_key_generation = self.hyperdash_key_generation.wrapping_add(1);
+        self.invalidate_positioning_info_requests();
+        self.invalidate_liquidation_distribution_request();
+        self.invalidate_hyperdash_chart_requests_for_key_change();
+    }
+
+    pub(crate) fn hyperdash_key_generation_is_current(&self, generation: u64) -> bool {
+        self.hyperdash_key_generation == generation
+    }
+
+    pub(crate) fn invalidate_positioning_info_requests(&mut self) {
+        self.positioning_info_pending.clear();
+        for instance in self.positioning_infos.values_mut() {
+            if instance.pending_key.is_some() {
+                instance.loading = false;
+                instance.pending_key = None;
+            }
+            if instance.change_pending_key.is_some() {
+                instance.change_loading = false;
+                instance.change_pending_key = None;
+            }
+        }
+    }
+
+    fn invalidate_liquidation_distribution_request(&mut self) {
+        self.liquidation_distribution.loading = false;
+        self.liquidation_distribution.pending_request = None;
+    }
 }
 
 pub(crate) struct TradingTerminal {
     pub(crate) saved_layouts: Vec<config::SavedLayout>,
     pub(crate) active_layout_name: Option<String>,
     pub(crate) layout_input: String,
+    pub(crate) preserved_loaded_pane_layout: Option<config::PaneLayoutConfig>,
     pub(crate) panes: pane_grid::State<PaneKind>,
     pub(crate) dragging_pane: Option<pane_grid::Pane>,
     pub(crate) active_theme: String,
@@ -79,6 +238,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) chart_hud_readout: config::ChartHudReadoutConfig,
     pub(crate) alfred_popup_scale: f32,
     pub(crate) read_data_provider: config::ReadDataProvider,
+    pub(crate) read_data_provider_generation: u64,
     pub(crate) chart_backfill_source: config::ChartBackfillSource,
     pub(crate) display_font: config::DisplayFontConfig,
     pub(crate) monospace_font: config::DisplayFontConfig,
@@ -100,6 +260,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) order_quantity: String,
     pub(crate) order_quantity_is_usd: bool,
     pub(crate) order_percentage: f32,
+    pub(crate) order_quantity_provenance: Option<OrderQuantityProvenance>,
     pub(crate) order_kind: OrderKind,
     pub(crate) order_reduce_only: bool,
     pub(crate) order_leverage_input: String,
@@ -108,10 +269,12 @@ pub(crate) struct TradingTerminal {
     pub(crate) pending_leverage_update: Option<PendingLeverageUpdateContext>,
     // Order status feedback (message, is_error)
     pub(crate) order_status: Option<(String, bool)>,
+    pub(crate) next_one_shot_status_request_id: u64,
+    pub(crate) pending_one_shot_status_request: Option<PendingOneShotStatusRequest>,
     pub(crate) pending_order_action: Option<PendingOrderAction>,
-    pub(crate) pending_move_order_contexts: HashMap<u64, PendingMoveOrderContext>,
+    pub(crate) pending_move_order_contexts: HashMap<MoveOrderKey, PendingMoveOrderContext>,
     pub(crate) pending_order_indicators: BTreeMap<u64, PendingOrderIndicator>,
-    pub(crate) active_move_order_drag: Option<u64>,
+    pub(crate) active_move_order_drag: Option<MoveOrderKey>,
     // Order presets
     pub(crate) order_presets: crate::config::OrderPresetsConfig,
     pub(crate) presets_menu_expanded: bool,
@@ -140,6 +303,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) calendar_error: Option<String>,
     pub(crate) calendar_last_fetch: Option<std::time::Instant>,
     pub(crate) calendar_loading: bool,
+    pub(crate) calendar_request_id: u64,
     pub(crate) calendar_retry_attempts: u8,
     pub(crate) calendar_next_retry: Option<std::time::Instant>,
     pub(crate) calendar_impact_filter: CalendarImpactFilter,
@@ -163,10 +327,14 @@ pub(crate) struct TradingTerminal {
     pub(crate) symbol_search_favourite_count: usize,
     pub(crate) symbol_search_ctxs: HashMap<String, crate::api::WatchlistContext>,
     pub(crate) symbol_search_contexts_loading: bool,
+    pub(crate) symbol_search_contexts_request_id: u64,
+    pub(crate) symbol_search_contexts_request_symbols: Vec<String>,
+    pub(crate) symbol_search_contexts_refresh_pending: bool,
     pub(crate) symbol_search_contexts_last_fetch_ms: Option<u64>,
     pub(crate) symbol_search_status: Option<(String, bool)>,
     pub(crate) outcome_volumes_24h: HashMap<String, api::OutcomeVolume24h>,
     pub(crate) outcome_volumes_loading: bool,
+    pub(crate) outcome_volumes_request_id: u64,
     pub(crate) outcome_volumes_error: Option<String>,
     pub(crate) outcome_search_query: String,
     pub(crate) outcome_collapsed_market_groups: HashSet<String>,
@@ -178,12 +346,15 @@ pub(crate) struct TradingTerminal {
     pub(crate) next_order_book_id: OrderBookId,
     // Wallet / account connection
     pub(crate) accounts: Vec<config::AccountProfile>,
+    pub(crate) pending_keychain_profile_deletions: Vec<String>,
+    pub(crate) pending_keychain_cleanup_all: bool,
     pub(crate) active_account_index: usize,
     pub(crate) ghost_account_secret_ids: HashSet<String>,
     pub(crate) last_persisted_active_account_secret_id: Option<String>,
     pub(crate) wallet_key_input: SensitiveString,
     pub(crate) wallet_address_input: String,
     pub(crate) hydromancer_api_key: SensitiveString,
+    pub(crate) hydromancer_key_generation: u64,
     pub(crate) hydromancer_key_input: SensitiveString,
     pub(crate) secret_store_status: Option<(String, bool)>,
     pub(crate) secret_storage_mode: config::CredentialStorageMode,
@@ -193,6 +364,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) encrypted_secret_confirm: SensitiveString,
     pub(crate) encrypted_secrets_unlocked: bool,
     pub(crate) show_unlock_credentials_popup: bool,
+    pub(crate) secret_migration_save_blocked: bool,
+    pub(crate) config_clear_requested: bool,
     pub(crate) config_cleared_this_session: bool,
     pub(crate) config_save_due_at: Option<std::time::Instant>,
     pub(crate) config_save_in_flight: bool,
@@ -221,13 +394,18 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_chart_buckets: BTreeMap<u64, (f64, f64)>,
     pub(crate) connected_address: Option<String>,
     pub(crate) account_data: Option<AccountData>,
+    pub(crate) account_data_address: Option<String>,
+    pub(crate) account_data_revision: u64,
     pub(crate) account_loading: bool,
+    pub(crate) account_data_request_generation: u64,
+    pub(crate) account_twap_reconciliation_generations: HashMap<String, u64>,
     // A refresh was requested while one was already in flight; run one
     // follow-up when the in-flight fetch lands so the request isn't dropped.
     pub(crate) account_refresh_followup_pending: bool,
     pub(crate) account_reconciliation_required: bool,
     pub(crate) account_error: Option<String>,
     pub(crate) account_refresh_backoff_until_ms: Option<u64>,
+    pub(crate) account_refresh_retry_due_ms: Option<u64>,
     // Real-time mid prices for all coins (updated via allMids WS stream)
     pub(crate) all_mids: HashMap<String, f64>,
     pub(crate) all_mids_updated_at_ms: HashMap<String, u64>,
@@ -235,7 +413,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) live_watchlist_flashes: HashMap<String, (u64, i8)>,
     // Close-position menu: which coin's menu is currently expanded (if any)
     pub(crate) close_menu_coin: Option<String>,
-    pub(crate) nuke_confirmation: Option<std::time::Instant>,
+    pub(crate) nuke_confirmation: Option<NukeConfirmation>,
     pub(crate) pending_nuke_execution: Option<PendingNukeExecution>,
     pub(crate) next_nuke_execution_id: u64,
     pub(crate) positions_sort_column: PositionsSortColumn,
@@ -261,6 +439,9 @@ pub(crate) struct TradingTerminal {
     pub(crate) ticker_tape_scroll_px: f32,
     pub(crate) ticker_tape_ctxs: HashMap<String, crate::api::WatchlistContext>,
     pub(crate) ticker_tape_contexts_loading: bool,
+    pub(crate) ticker_tape_contexts_request_id: u64,
+    pub(crate) ticker_tape_contexts_request_symbols: Vec<String>,
+    pub(crate) ticker_tape_contexts_refresh_pending: bool,
     pub(crate) ticker_tape_contexts_last_fetch_ms: Option<u64>,
     // Favourite symbol keys (displayed at top of symbol search)
     pub(crate) favourite_symbols: Vec<String>,
@@ -270,6 +451,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) muted_ticker_status: Option<(String, bool)>,
     // HyperDash API key for liquidation heatmap data
     pub(crate) hyperdash_api_key: SensitiveString,
+    pub(crate) hyperdash_key_generation: u64,
     pub(crate) hyperdash_key_input: SensitiveString,
     // Toast notification queue
     pub(crate) toasts: Vec<Toast>,
@@ -330,12 +512,22 @@ pub(crate) struct TradingTerminal {
     pub(crate) live_watchlist_history: HashMap<String, (f64, f64, f64)>,
     pub(crate) live_watchlist_contexts_loading: bool,
     pub(crate) live_watchlist_history_loading: bool,
+    pub(crate) live_watchlist_contexts_request_id: u64,
+    pub(crate) live_watchlist_contexts_request_symbols: Vec<String>,
+    pub(crate) live_watchlist_contexts_refresh_pending: bool,
+    pub(crate) live_watchlist_history_request_id: u64,
+    pub(crate) live_watchlist_history_request_symbols: Vec<String>,
+    pub(crate) live_watchlist_history_refresh_pending: bool,
     pub(crate) live_watchlist_contexts_last_fetch_ms: Option<u64>,
     pub(crate) live_watchlist_history_loaded_at: HashMap<String, u64>,
     pub(crate) live_watchlist_status: Option<(String, bool)>,
     pub(crate) journal: journal::JournalState,
     // Shared loading spinner phase
     pub(crate) spinner_phase: f32,
+    // Last status bar tick timestamp, used by render code that displays wall-clock state.
+    pub(crate) status_bar_now_ms: u64,
+    // Last status bar tick instant, used by render code that displays monotonic timers.
+    pub(crate) status_bar_now: Instant,
     // Global cache for candlestick data
     pub(crate) candle_data_cache: HashMap<(String, Timeframe), Vec<api::Candle>>,
     pub(crate) candle_data_cache_order: VecDeque<(String, Timeframe)>,
@@ -346,10 +538,42 @@ pub(crate) struct TradingTerminal {
     // Shared cache/dedupe for SEC earnings-event requests
     pub(crate) sec_earnings_cache: HashMap<String, Vec<api::SecEarningsEvent>>,
     pub(crate) sec_earnings_cache_order: VecDeque<String>,
+    pub(crate) sec_earnings_request_id: u64,
+    pub(crate) sec_earnings_pending_request_ids: HashMap<String, u64>,
     pub(crate) sec_earnings_pending_charts: HashMap<String, Vec<ChartId>>,
     // Shared in-flight dedupe for HyperDash liquidation level requests
     pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
     pub(crate) liquidation_distribution: LiquidationDistributionState,
     pub(crate) telegram_feed: TelegramFeedState,
     pub(crate) x_feed: XFeedState,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SensitiveString, sensitive_string};
+    use zeroize::Zeroize;
+
+    #[test]
+    fn sensitive_string_debug_redacts_value_and_keeps_explicit_access() {
+        let mut secret = sensitive_string("super-secret");
+
+        let rendered = format!("{secret:?}");
+
+        assert_eq!(secret.as_str(), "super-secret");
+        assert_eq!(secret.trim(), "super-secret");
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("super-secret"));
+
+        secret.zeroize();
+        assert!(secret.is_empty());
+    }
+
+    #[test]
+    fn sensitive_string_can_move_into_task_owned_zeroizing_string() {
+        let secret = SensitiveString::from("task-secret");
+
+        let zeroizing = secret.into_zeroizing();
+
+        assert_eq!(zeroizing.as_str(), "task-secret");
+    }
 }

@@ -115,7 +115,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleOrderLeverageDropdown
         | Message::OrderLeverageInputChanged(_)
         | Message::SetOrderLeverageCross(_)
-        | Message::SubmitOrderLeverage
+        | Message::SubmitOrderLeverage(_)
         | Message::OrderLeverageResult { .. }
         | Message::TogglePresetsMenu
         | Message::TogglePresetCurrency
@@ -125,11 +125,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::EditPresetSave(_, _)
         | Message::ExecutePreset(_, _, _)
         | Message::DismissOrderStatus
-        | Message::PlaceBuy
-        | Message::PlaceSell
+        | Message::PlaceOrder { .. }
         | Message::OrderResult { .. }
         | Message::CancelOrder { .. }
         | Message::CancelResult { .. }
+        | Message::CancelOrderStatusLoaded { .. }
         | Message::ToggleCloseMenu(_)
         | Message::ClosePosition { .. }
         | Message::ClosePositionResult { .. }
@@ -137,7 +137,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::NukeResult { .. }
         | Message::NukePlacementStatusLoaded { .. }
         | Message::OneShotPlacementStatusLoaded { .. }
-        | Message::StartChase(_)
+        | Message::StartChase { .. }
         | Message::StopChase
         | Message::StopChaseById(_)
         | Message::StopAllAdvancedOrders
@@ -146,17 +146,20 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TwapMinPriceChanged(_)
         | Message::TwapMaxPriceChanged(_)
         | Message::TwapRandomizeToggled(_)
-        | Message::StartTwap(_)
+        | Message::StartTwap { .. }
         | Message::StopTwap(_)
         | Message::TwapTick
         | Message::TwapBookUpdate { .. }
+        | Message::TwapBookLagged { .. }
         | Message::TwapSliceResult { .. }
         | Message::TwapUnexpectedCancelResult { .. }
+        | Message::TwapUnexpectedCancelRetryDue { .. }
         | Message::TwapOrderStatusLoaded { .. }
         | Message::OpenTwapDetails(_)
         | Message::OpenAdvancedOrderHistory(_)
         | Message::ChaseInitialBookLoaded { .. }
         | Message::ChaseBookUpdate { .. }
+        | Message::ChaseBookLagged { .. }
         | Message::ChaseRepriceTick
         | Message::ChasePlaceResult { .. }
         | Message::ChaseModifyResult { .. }
@@ -169,7 +172,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::QuickOrderToggleDenomination(_)
         | Message::QuickOrderToggleType(_)
         | Message::CloseQuickOrder(_)
-        | Message::SubmitQuickOrder(_, _)
+        | Message::SubmitQuickOrder { .. }
         | Message::QuickOrderResult { .. }
         | Message::SubmitHudOrder(_)
         | Message::HudOrderResult { .. }
@@ -177,11 +180,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::MoveOrderDragStarted { .. }
         | Message::MoveOrder { .. }
         | Message::MoveOrderModifyResult { .. }
+        | Message::MoveOrderStatusLoaded { .. }
         | Message::ChaseRestingOrder { .. } => UpdateRoute::Order,
 
         Message::ToggleFavourite(_)
         | Message::TickerTapeRefreshTick
-        | Message::TickerTapeContextsLoaded(_, _)
+        | Message::TickerTapeContextsLoaded(_, _, _, _)
         | Message::SymbolsLoaded(_)
         | Message::ExchangeSymbolsRefreshTick
         | Message::LiveWatchlistSortChanged(_, _)
@@ -200,27 +204,28 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ClearPositioningInfoFilters(_)
         | Message::RefreshPositioningInfoPane(_)
         | Message::RefreshPositioningInfo
-        | Message::PositioningInfoWsAssetCtxUpdate(_, _)
-        | Message::PositioningInfoLoaded(_, _)
-        | Message::PositioningInfoChangeLoaded(_, _)
+        | Message::PositioningInfoWsAssetCtxUpdate(_, _, _)
+        | Message::PositioningInfoWsAssetCtxLagged(_, _, _)
+        | Message::PositioningInfoLoaded(_, _, _)
+        | Message::PositioningInfoChangeLoaded(_, _, _)
         | Message::LiveWatchlistSearchChanged(_, _)
         | Message::LiveWatchlistAddSymbol(_, _)
         | Message::LiveWatchlistRemoveSymbol(_, _)
         | Message::LiveWatchlistRefreshTick
-        | Message::LiveWatchlistContextsLoaded(_, _)
-        | Message::LiveWatchlistHistoryLoaded(_, _, _)
+        | Message::LiveWatchlistContextsLoaded(_, _, _, _)
+        | Message::LiveWatchlistHistoryLoaded(_, _, _, _)
         | Message::SymbolSearchChanged(_)
         | Message::SymbolSearchSortChanged(_)
         | Message::SymbolSearchMarketFilterChanged(_)
         | Message::SymbolSearchHip3DexFilterChanged(_)
-        | Message::SymbolSearchContextsLoaded(_, _)
+        | Message::SymbolSearchContextsLoaded(_, _, _, _)
         | Message::OutcomeSearchChanged(_)
         | Message::OutcomeMarketGroupToggled(_)
-        | Message::OutcomeVolumesLoaded(_)
+        | Message::OutcomeVolumesLoaded(_, _, _)
         | Message::RefreshHypeEtfs
         | Message::HypeEtfsRefreshTick
         | Message::HypeEtfsViewChanged(_)
-        | Message::HypeEtfsLoaded(_)
+        | Message::HypeEtfsLoaded(_, _)
         | Message::RefreshHypeUnstakingQueue
         | Message::HypeUnstakingQueueRefreshTick
         | Message::HypeUnstakingWindowChanged(_)
@@ -228,7 +233,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::HypeUnstakingSortChanged(_)
         | Message::ToggleHypeUnstakingMineOnly
         | Message::ClearHypeUnstakingFilters
-        | Message::HypeUnstakingQueueLoaded(_)
+        | Message::HypeUnstakingQueueLoaded(_, _)
         | Message::AddSessionDataPane
         | Message::SessionDataSearchChanged(_, _)
         | Message::ToggleSessionDataSymbolPicker(_)
@@ -238,8 +243,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SessionDataCandlesLoaded(_, _)
         | Message::SymbolSelected(_)
         | Message::BookLoaded { .. }
-        | Message::OrderBookWsAssetCtxUpdate(_, _)
+        | Message::OrderBookWsAssetCtxUpdate { .. }
+        | Message::OrderBookWsAssetCtxLagged { .. }
         | Message::WsBookUpdate { .. }
+        | Message::OrderBookWsBookLagged { .. }
         | Message::SetBookTickSize(_, _)
         | Message::ToggleOrderBookSettings(_)
         | Message::ToggleOrderBookCenterOnMid(_)
@@ -310,11 +317,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
 
         Message::OpenScreenerWindow
         | Message::RefreshScreener
+        | Message::ForceRefreshScreener
         | Message::RefreshScreenerHistory
         | Message::ScreenerExchangeFilterChanged(_)
         | Message::ScreenerSortChanged(_)
-        | Message::ScreenerContextsLoaded(_, _)
-        | Message::ScreenerHistoryLoaded(_, _, _) => UpdateRoute::Screener,
+        | Message::ScreenerContextsLoaded(_, _, _, _)
+        | Message::ScreenerHistoryLoaded(_, _, _, _) => UpdateRoute::Screener,
 
         Message::OpenSettingsWindow
         | Message::SettingsTabSelected(_)
@@ -330,7 +338,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ClearConfigs
         | Message::ConfigsCleared(_) => UpdateRoute::Settings,
 
-        Message::RefreshCalendar | Message::CalendarLoaded(_) | Message::Tick => {
+        Message::RefreshCalendar | Message::CalendarLoaded(_, _) | Message::Tick => {
             UpdateRoute::Calendar
         }
 
@@ -378,7 +386,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SpaghettiReload(_)
         | Message::SpaghettiSwitchTimeframe(_, _)
         | Message::SpaghettiCandlesLoaded(_, _)
-        | Message::SpaghettiWsCandleUpdate(_, _, _)
+        | Message::SpaghettiWsCandleUpdate(_, _)
+        | Message::SpaghettiWsCandleLagged(_, _)
         | Message::SpaghettiOpenEditor(_)
         | Message::SpaghettiCloseEditor(_)
         | Message::SpaghettiEditorSearchChanged(_, _)
@@ -395,7 +404,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::OpenWalletTrackerWindow
         | Message::OpenWalletDetailsWindow(_)
         | Message::RefreshWalletDetails(_)
-        | Message::WalletDetailsLoaded(_, _, _)
+        | Message::WalletDetailsLoaded(_, _, _, _)
         | Message::WalletDetailsWsUpdate(_, _)
         | Message::WalletTrackerInputChanged(_)
         | Message::WalletTrackerLabelInputChanged(_)
@@ -409,14 +418,14 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::WalletTrackerRefreshOne(_)
         | Message::WalletTrackerRefreshOrdersDue
         | Message::WalletTrackerRefreshOrders(_)
-        | Message::WalletTrackerLoaded(_, _)
-        | Message::WalletTrackerBatchLoaded(_)
-        | Message::WalletTrackerOrdersLoaded(_, _) => UpdateRoute::WalletTracker,
+        | Message::WalletTrackerLoaded(_, _, _)
+        | Message::WalletTrackerBatchLoaded(_, _)
+        | Message::WalletTrackerOrdersLoaded(_, _, _) => UpdateRoute::WalletTracker,
 
         Message::RefreshPortfolio
-        | Message::PortfolioLoaded(_, _)
+        | Message::PortfolioLoaded(_, _, _)
         | Message::RefreshIncome
-        | Message::IncomeLoaded(_, _)
+        | Message::IncomeLoaded(_, _, _)
         | Message::SetPortfolioPnlValueMode(_)
         | Message::SetPortfolioScope(_)
         | Message::SetPortfolioWindow(_) => UpdateRoute::PortfolioIncome,
@@ -433,11 +442,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleMacroMenu(_)
         | Message::ToggleMacroIndicator(_, _)
         | Message::ToggleChartEarningsMarkers(_)
-        | Message::ChartEarningsEventsLoaded(_, _)
-        | Message::MacroCandlesLoaded(_, _, _, _)
+        | Message::ChartEarningsEventsLoaded(_, _, _)
+        | Message::MacroCandlesLoaded(_, _, _, _, _)
         | Message::ChartCandlesLoaded(_, _)
         | Message::ChartFundingHistoryLoaded(_, _)
-        | Message::ChartWsCandleUpdate(_, _, _, _)
+        | Message::ChartWsCandleUpdate(_, _, _, _, _)
+        | Message::ChartWsCandleLagged(_, _, _, _, _)
         | Message::ChartPriceFlashTick
         | Message::ChartHudOrderAnimationTick
         | Message::ChartHudArmToggled(_, _)
@@ -446,7 +456,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartHoverStateChanged(_, _, _, _, _)
         | Message::ChartOrderCancelHoverAnimationTick
         | Message::ChartEarningsMarkerHoverAnimationTick
-        | Message::ChartWsAssetCtxUpdate(_, _, _)
+        | Message::ChartWsAssetCtxUpdate(_, _, _, _)
+        | Message::ChartWsAssetCtxLagged(_, _, _, _)
         | Message::ChartViewportChanged(_, _, _)
         | Message::ChartFundingPanelHeightChanged(_, _, _)
         | Message::ChartSessionPanelHeightChanged(_, _, _)
@@ -491,8 +502,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SaveCredentials
         | Message::ConnectWallet
         | Message::DisconnectWallet
-        | Message::AccountDataLoaded(_, _)
+        | Message::AccountDataLoaded(_, _, _)
+        | Message::RetryTwapReconciliationAccountData(_)
         | Message::RefreshAccountData
+        | Message::AccountRefreshBackoffElapsed(_)
         | Message::AllMidsBootstrapLoaded(_, _)
         | Message::WsUserDataUpdate(_, _) => UpdateRoute::Account,
 
@@ -500,14 +513,14 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SaveHydromancerKey
         | Message::ReconnectLiquidations
         | Message::ReconnectTrackedTrades
-        | Message::WsHydromancerLiquidation(_)
-        | Message::WsHydromancerTrackedTrades(_)
+        | Message::WsHydromancerLiquidation { .. }
+        | Message::WsHydromancerTrackedTrades { .. }
         | Message::ClearLiquidations
         | Message::LiquidationFeedScrolled(_)
         | Message::ClearTrackedTrades
         | Message::RefreshTelegramFeed
         | Message::TelegramFeedRefreshTick
-        | Message::TelegramFeedLoaded(_, _)
+        | Message::TelegramFeedLoaded(_, _, _)
         | Message::TelegramAvatarLoaded(_, _, _, _)
         | Message::ToggleTelegramFastFeed
         | Message::TelegramFastApiIdChanged(_)
@@ -519,12 +532,12 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TelegramFastSubmitCode
         | Message::TelegramFastSubmitPassword
         | Message::TelegramFastSignOut
-        | Message::TelegramFastAuthResult(_)
-        | Message::TelegramFastFeedEvent(_)
+        | Message::TelegramFastAuthResult(_, _)
+        | Message::TelegramFastFeedEvent(_, _)
         | Message::TelegramFeedChannelInputChanged(_)
         | Message::TelegramFeedAddChannel
         | Message::TelegramPrivateChannelsRefresh
-        | Message::TelegramPrivateChannelsLoaded(_)
+        | Message::TelegramPrivateChannelsLoaded(_, _)
         | Message::TelegramFeedAddPrivateChannel(_)
         | Message::ToggleTelegramPrivateChannelCandidatesExpanded
         | Message::TelegramFeedRemoveChannel(_)
@@ -532,8 +545,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleTelegramFeedNotifications
         | Message::RefreshXFeed
         | Message::XFeedRefreshTick
-        | Message::XFeedLoaded(_)
-        | Message::XFeedStreamEvent(_)
+        | Message::XFeedLoaded(_, _, _)
+        | Message::XFeedStreamEvent(_, _)
+        | Message::XFeedRuleCleanupFinished { .. }
         | Message::XFeedBearerTokenChanged(_)
         | Message::SaveXFeedBearerToken
         | Message::XFeedSourceInputChanged(_)
@@ -546,9 +560,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::HyperdashKeyInputChanged(_)
         | Message::SaveHyperdashKey
         | Message::ToggleLiquidationOverlay(_)
-        | Message::ChartLiquidationLoaded(_, _)
+        | Message::ChartLiquidationLoaded(_, _, _)
         | Message::RefreshLiquidations
-        | Message::LiquidationsDistributionLoaded(_, _)
+        | Message::LiquidationsDistributionLoaded(_, _, _)
         | Message::RefreshLiquidationsDistribution
         | Message::LiquidationsDistributionSearchChanged(_)
         | Message::ToggleLiquidationsDistributionSymbolPicker
@@ -556,7 +570,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::LiquidationsDistributionZoomed { .. }
         | Message::ResetLiquidationsDistributionZoom
         | Message::ToggleHeatmapOverlay(_)
-        | Message::ChartHeatmapLoaded(_, _)
+        | Message::ChartHeatmapLoaded(_, _, _)
         | Message::RefreshHeatmap => UpdateRoute::Hyperdash,
     }
 }
