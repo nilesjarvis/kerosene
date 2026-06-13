@@ -28,6 +28,7 @@ impl TradingTerminal {
         };
 
         if is_enabled {
+            self.clear_chart_liquidation_pending_request_state(chart_id);
             if let Some(instance) = self.charts.get_mut(&chart_id) {
                 instance.show_liquidations = false;
                 Self::clear_liquidation_display(instance);

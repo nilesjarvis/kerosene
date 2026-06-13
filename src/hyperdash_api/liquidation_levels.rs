@@ -1,6 +1,7 @@
 use crate::api::CLIENT;
 use reqwest::header::USER_AGENT;
 use serde::Deserialize;
+use zeroize::Zeroizing;
 
 mod buckets;
 
@@ -44,8 +45,9 @@ pub async fn fetch_liquidation_levels_at(
     min: f64,
     max: f64,
     timestamp: u64,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<LiquidationLevel, String> {
+    let api_key = Zeroizing::new(api_key.trim().to_string());
     let query = r#"query GetHistoricalLiquidationLevel($coin: String!, $min: Float!, $max: Float!, $timestamp: Float!) {
   analytics {
     historicalLiquidationLevel(coin: $coin, min: $min, max: $max, timestamp: $timestamp) {
@@ -70,7 +72,7 @@ pub async fn fetch_liquidation_levels_at(
         .clone()
         .post(HYPERDASH_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .header("Authorization", format!("Bearer {api_key}"))
+        .bearer_auth(api_key.as_str())
         .json(&body)
         .send()
         .await

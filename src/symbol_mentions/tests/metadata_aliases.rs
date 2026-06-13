@@ -1,5 +1,5 @@
 use super::*;
-use crate::api::{ExchangeSymbol, MarketType};
+use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 
 fn symbol(key: &str, ticker: &str, market_type: MarketType) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -103,6 +103,34 @@ fn generic_outcome_keywords_do_not_alias_every_outcome_market() {
         "prediction".to_string(),
         "will btc close green?".to_string(),
     ];
+    outcome.outcome = Some(OutcomeSymbolInfo {
+        outcome_id: 95,
+        question_id: None,
+        question_name: Some("Will BTC close green?".to_string()),
+        question_description: None,
+        question_class: None,
+        question_underlying: None,
+        question_expiry: None,
+        question_price_thresholds: Vec::new(),
+        question_period: None,
+        question_named_outcomes: Vec::new(),
+        question_settled_named_outcomes: Vec::new(),
+        question_fallback_outcome: None,
+        bucket_index: None,
+        is_question_fallback: false,
+        side_index: 0,
+        side_name: "Yes".to_string(),
+        outcome_name: "Recurring".to_string(),
+        description: "Will BTC close green?".to_string(),
+        class: None,
+        underlying: None,
+        expiry: None,
+        target_price: None,
+        period: None,
+        quote_symbol: "USDH".to_string(),
+        quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+        encoding: 950,
+    });
     let symbols = vec![outcome];
 
     let generic = resolve_symbol_mentions("a bold prediction about the outcome", &symbols);

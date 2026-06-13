@@ -24,7 +24,7 @@ struct XTickerImpactCard {
 
 impl TradingTerminal {
     pub(crate) fn view_x_feed(&self) -> Element<'_, Message> {
-        let now_ms = Self::now_ms();
+        let now_ms = self.status_bar_now_ms;
 
         container(responsive(move |size| {
             self.view_x_feed_sized(now_ms, size.width)

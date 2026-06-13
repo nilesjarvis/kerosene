@@ -1,7 +1,9 @@
 use crate::api::{CLIENT, ExchangeSymbol};
+use crate::app_state::{SensitiveString, sensitive_string};
 use crate::app_time::{cooldown_heat, now_ms};
 use crate::helpers::{
-    fallback_initials, format_seen_latency_label, positive_percent_change, text_excerpt,
+    fallback_initials, format_seen_latency_label, positive_percent_change,
+    redact_sensitive_response_text, text_excerpt,
 };
 use crate::symbol_mentions::{SymbolAliasSource, SymbolMention, SymbolMentionResolver};
 use chrono::{DateTime, Utc};
@@ -11,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::time::Duration;
-use zeroize::Zeroizing;
 
 const TELEGRAM_WEB_BASE: &str = "https://t.me/s/";
 const TELEGRAM_USER_AGENT: &str =
@@ -22,6 +23,7 @@ const TELEGRAM_AVATAR_MAX_BODY_BYTES: usize = 512 * 1024;
 pub(crate) const TELEGRAM_AVATAR_RETRY_BACKOFF_MS: u64 = 300_000;
 pub(crate) const TELEGRAM_FEED_FETCH_LIMIT: usize = 10;
 pub(crate) const TELEGRAM_FEED_RENDER_LIMIT: usize = 100;
+pub(crate) const TELEGRAM_FEED_MAX_PUBLIC_CHANNELS: usize = 12;
 pub(crate) const TELEGRAM_FEED_REFRESH_INTERVAL_SECS: u64 = 15;
 pub(crate) const TELEGRAM_NEW_MESSAGE_COOLDOWN_MS: u64 = 120_000;
 pub(crate) const TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS: u64 = 30;
@@ -91,15 +93,35 @@ pub(crate) enum TelegramFastAuthStage {
     SignedIn,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) enum TelegramFastAuthOutcome {
     CodeSent,
     PasswordRequired { hint: Option<String> },
     SignedIn { display_name: String },
-    SignedOut,
+    SignedOut { warning: Option<String> },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl fmt::Debug for TelegramFastAuthOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CodeSent => f.write_str("CodeSent"),
+            Self::PasswordRequired { hint } => f
+                .debug_struct("PasswordRequired")
+                .field("hint", &hint.as_ref().map(|_| "<redacted>"))
+                .finish(),
+            Self::SignedIn { display_name } => f
+                .debug_struct("SignedIn")
+                .field("display_name", display_name)
+                .finish(),
+            Self::SignedOut { warning } => f
+                .debug_struct("SignedOut")
+                .field("warning", &warning.as_ref().map(|_| "<redacted>"))
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub(crate) enum TelegramFastFeedEvent {
     Status {
         connected: bool,
@@ -107,6 +129,37 @@ pub(crate) enum TelegramFastFeedEvent {
         message: String,
     },
     Loaded(String, Box<Result<TelegramFeedPage, String>>),
+}
+
+impl fmt::Debug for TelegramFastFeedEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Status {
+                connected,
+                auth_required,
+                message,
+            } => f
+                .debug_struct("Status")
+                .field("connected", connected)
+                .field("auth_required", auth_required)
+                .field("message", &redact_sensitive_response_text(message))
+                .finish(),
+            Self::Loaded(channel, result) => {
+                let result_summary = match result.as_ref() {
+                    Ok(page) => format!(
+                        "Ok(TelegramFeedPage {{ channel: {}, posts: {} }})",
+                        page.profile.channel,
+                        page.posts.len()
+                    ),
+                    Err(error) => format!("Err({})", redact_sensitive_response_text(error)),
+                };
+                f.debug_tuple("Loaded")
+                    .field(channel)
+                    .field(&result_summary)
+                    .finish()
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -183,16 +236,18 @@ pub(crate) struct TelegramFeedState {
     pub(crate) private_channels: Vec<TelegramFeedPrivateChannelConfig>,
     pub(crate) private_channel_candidates: Vec<TelegramPrivateChannelCandidate>,
     pub(crate) private_channel_candidates_loading: bool,
+    pub(crate) private_channel_candidates_request_id: u64,
     pub(crate) private_channel_candidates_expanded: bool,
     pub(crate) notifications_enabled: bool,
     pub(crate) fast_mode_enabled: bool,
     pub(crate) fast_api_id: Option<i32>,
     pub(crate) fast_api_id_input: String,
-    pub(crate) fast_api_hash_input: Zeroizing<String>,
+    pub(crate) fast_api_hash_input: SensitiveString,
     pub(crate) fast_phone_input: String,
-    pub(crate) fast_code_input: Zeroizing<String>,
-    pub(crate) fast_password_input: Zeroizing<String>,
+    pub(crate) fast_code_input: SensitiveString,
+    pub(crate) fast_password_input: SensitiveString,
     pub(crate) fast_auth_stage: TelegramFastAuthStage,
+    pub(crate) fast_auth_request_id: u64,
     pub(crate) fast_auth_in_flight: bool,
     pub(crate) fast_connected: bool,
     pub(crate) fast_status: Option<(String, bool)>,
@@ -205,6 +260,8 @@ pub(crate) struct TelegramFeedState {
     pub(crate) posts: Vec<TelegramFeedPost>,
     ticker_mention_resolver: SymbolMentionResolver,
     seen_post_ids: HashMap<String, VecDeque<u64>>,
+    channel_refresh_request_ids: HashMap<String, u64>,
+    next_channel_refresh_request_id: u64,
     pub(crate) loading_channels: Vec<String>,
     pub(crate) background_loading_channels: Vec<String>,
     pub(crate) next_avatar_request_id: u64,
@@ -214,6 +271,10 @@ pub(crate) struct TelegramFeedState {
 
 impl fmt::Debug for TelegramFeedState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fast_status = self
+            .fast_status
+            .as_ref()
+            .map(|(_message, is_error)| ("<redacted>", *is_error));
         f.debug_struct("TelegramFeedState")
             .field("channels", &self.channels)
             .field("private_channels", &self.private_channels)
@@ -224,6 +285,10 @@ impl fmt::Debug for TelegramFeedState {
             .field(
                 "private_channel_candidates_loading",
                 &self.private_channel_candidates_loading,
+            )
+            .field(
+                "private_channel_candidates_request_id",
+                &self.private_channel_candidates_request_id,
             )
             .field(
                 "private_channel_candidates_expanded",
@@ -238,10 +303,14 @@ impl fmt::Debug for TelegramFeedState {
             .field("fast_code_input", &"<redacted>")
             .field("fast_password_input", &"<redacted>")
             .field("fast_auth_stage", &self.fast_auth_stage)
+            .field("fast_auth_request_id", &self.fast_auth_request_id)
             .field("fast_auth_in_flight", &self.fast_auth_in_flight)
             .field("fast_connected", &self.fast_connected)
-            .field("fast_status", &self.fast_status)
-            .field("fast_password_hint", &self.fast_password_hint)
+            .field("fast_status", &fast_status)
+            .field(
+                "fast_password_hint",
+                &self.fast_password_hint.as_ref().map(|_| "<redacted>"),
+            )
             .field("fast_reconnect_nonce", &self.fast_reconnect_nonce)
             .field("fast_last_event_ms", &self.fast_last_event_ms)
             .field("channels_expanded", &self.channels_expanded)
@@ -249,6 +318,14 @@ impl fmt::Debug for TelegramFeedState {
             .field("channel_profiles", &self.channel_profiles)
             .field("posts", &self.posts)
             .field("seen_post_ids", &self.seen_post_ids)
+            .field(
+                "channel_refresh_request_ids",
+                &self.channel_refresh_request_ids,
+            )
+            .field(
+                "next_channel_refresh_request_id",
+                &self.next_channel_refresh_request_id,
+            )
             .field("loading_channels", &self.loading_channels)
             .field(
                 "background_loading_channels",
@@ -269,11 +346,13 @@ impl TelegramFeedState {
         fast_mode_enabled: bool,
         fast_api_id: Option<i32>,
     ) -> Self {
+        let (channels, public_channels_capped) = normalized_channel_list_with_status(channels);
         Self {
-            channels: normalized_channel_list(channels),
+            channels,
             private_channels: normalized_private_channel_list(private_channels),
             private_channel_candidates: Vec::new(),
             private_channel_candidates_loading: false,
+            private_channel_candidates_request_id: 0,
             private_channel_candidates_expanded: false,
             notifications_enabled,
             fast_mode_enabled,
@@ -281,11 +360,12 @@ impl TelegramFeedState {
             fast_api_id_input: fast_api_id
                 .map(|api_id| api_id.to_string())
                 .unwrap_or_default(),
-            fast_api_hash_input: Zeroizing::new(String::new()),
+            fast_api_hash_input: sensitive_string(String::new()),
             fast_phone_input: String::new(),
-            fast_code_input: Zeroizing::new(String::new()),
-            fast_password_input: Zeroizing::new(String::new()),
+            fast_code_input: sensitive_string(String::new()),
+            fast_password_input: sensitive_string(String::new()),
             fast_auth_stage: TelegramFastAuthStage::Idle,
+            fast_auth_request_id: 0,
             fast_auth_in_flight: false,
             fast_connected: false,
             fast_status: None,
@@ -298,10 +378,16 @@ impl TelegramFeedState {
             posts: Vec::new(),
             ticker_mention_resolver: SymbolMentionResolver::empty(),
             seen_post_ids: HashMap::new(),
+            channel_refresh_request_ids: HashMap::new(),
+            next_channel_refresh_request_id: 0,
             loading_channels: Vec::new(),
             background_loading_channels: Vec::new(),
             next_avatar_request_id: 0,
-            last_error: None,
+            last_error: public_channels_capped.then(|| {
+                format!(
+                    "Telegram Feed supports up to {TELEGRAM_FEED_MAX_PUBLIC_CHANNELS} public channels; extra saved channels were ignored"
+                )
+            }),
             last_refresh_ms: None,
         }
     }
@@ -316,6 +402,54 @@ impl TelegramFeedState {
 
     pub(crate) fn refreshing(&self) -> bool {
         self.channel_refresh_in_flight() || self.private_channel_candidates_loading
+    }
+
+    pub(crate) fn begin_channel_refresh(&mut self, channel: &str) -> u64 {
+        self.next_channel_refresh_request_id =
+            self.next_channel_refresh_request_id.saturating_add(1);
+        let request_id = self.next_channel_refresh_request_id;
+        self.channel_refresh_request_ids
+            .insert(channel.to_string(), request_id);
+        request_id
+    }
+
+    pub(crate) fn finish_channel_refresh(&mut self, channel: &str, request_id: u64) -> bool {
+        if self
+            .channel_refresh_request_ids
+            .get(channel)
+            .is_some_and(|current_id| *current_id == request_id)
+        {
+            self.channel_refresh_request_ids.remove(channel);
+            return true;
+        }
+
+        false
+    }
+
+    pub(crate) fn clear_channel_refresh(&mut self, channel: &str) {
+        self.channel_refresh_request_ids.remove(channel);
+    }
+
+    pub(crate) fn next_private_channel_candidates_request_id(&mut self) -> u64 {
+        self.private_channel_candidates_request_id =
+            self.private_channel_candidates_request_id.saturating_add(1);
+        self.private_channel_candidates_request_id
+    }
+
+    pub(crate) fn invalidate_private_channel_candidates_request(&mut self) {
+        self.private_channel_candidates_request_id =
+            self.private_channel_candidates_request_id.saturating_add(1);
+        self.private_channel_candidates_loading = false;
+    }
+
+    pub(crate) fn next_fast_auth_request_id(&mut self) -> u64 {
+        self.fast_auth_request_id = self.fast_auth_request_id.saturating_add(1);
+        self.fast_auth_request_id
+    }
+
+    pub(crate) fn invalidate_fast_auth_request(&mut self) {
+        self.fast_auth_request_id = self.fast_auth_request_id.saturating_add(1);
+        self.fast_auth_in_flight = false;
     }
 
     // `posts` is kept sorted newest-first and truncated to the render limit by
@@ -404,15 +538,22 @@ pub(crate) fn default_telegram_feed_channels() -> Vec<String> {
 }
 
 pub(crate) fn normalized_channel_list(channels: &[String]) -> Vec<String> {
+    normalized_channel_list_with_status(channels).0
+}
+
+fn normalized_channel_list_with_status(channels: &[String]) -> (Vec<String>, bool) {
     let mut normalized = Vec::new();
     for channel in channels {
         if let Ok(channel) = normalize_public_channel_input(channel)
             && !normalized.contains(&channel)
         {
+            if normalized.len() >= TELEGRAM_FEED_MAX_PUBLIC_CHANNELS {
+                return (normalized, true);
+            }
             normalized.push(channel);
         }
     }
-    normalized
+    (normalized, false)
 }
 
 pub(crate) fn normalized_private_channel_list(
@@ -967,6 +1108,11 @@ mod tests {
         state.fast_phone_input = "+15555550123".to_string();
         state.fast_code_input = "code-secret".to_string().into();
         state.fast_password_input = "password-secret".to_string().into();
+        state.fast_password_hint = Some("hint-secret".to_string());
+        state.fast_status = Some((
+            "api_hash=hash-secret phone_code=code-secret hint-secret".to_string(),
+            true,
+        ));
 
         let rendered = format!("{state:?}");
 
@@ -976,9 +1122,101 @@ mod tests {
             "+15555550123",
             "code-secret",
             "password-secret",
+            "hint-secret",
         ] {
             assert!(!rendered.contains(secret), "debug leaked {secret}");
         }
+    }
+
+    #[test]
+    fn telegram_fast_input_fields_debug_redact_when_formatted_directly() {
+        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345));
+        state.fast_api_hash_input = "hash-secret".to_string().into();
+        state.fast_code_input = "code-secret".to_string().into();
+        state.fast_password_input = "password-secret".to_string().into();
+
+        let rendered = format!(
+            "{:?} {:?} {:?}",
+            state.fast_api_hash_input, state.fast_code_input, state.fast_password_input
+        );
+
+        assert!(rendered.contains("<redacted>"));
+        for secret in ["hash-secret", "code-secret", "password-secret"] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn telegram_fast_auth_outcome_debug_redacts_password_hint() {
+        let outcome = TelegramFastAuthOutcome::PasswordRequired {
+            hint: Some("hint-secret".to_string()),
+        };
+
+        let rendered = format!("{outcome:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("hint-secret"));
+    }
+
+    #[test]
+    fn telegram_fast_feed_event_debug_redacts_status_and_errors() {
+        let status = TelegramFastFeedEvent::Status {
+            connected: false,
+            auth_required: true,
+            message: "api_hash=hash-secret phone_code=code-secret".to_string(),
+        };
+        let loaded_error = TelegramFastFeedEvent::Loaded(
+            "private:42".to_string(),
+            Box::new(Err(
+                "phone_code_hash=hash-secret password=password-secret".to_string()
+            )),
+        );
+
+        let rendered = format!("{status:?} {loaded_error:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        for secret in ["hash-secret", "code-secret", "password-secret"] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn telegram_fast_feed_event_debug_summarizes_loaded_pages() {
+        let page = TelegramFeedPage {
+            profile: TelegramChannelProfile {
+                channel: "private:42".to_string(),
+                title: "Private Feed".to_string(),
+                initials: "PF".to_string(),
+                avatar_url: None,
+                avatar_handle: None,
+                avatar_loading_url: None,
+                avatar_request_id: 0,
+                avatar_failed_at_ms: None,
+            },
+            posts: vec![TelegramFeedPost {
+                channel: "private:42".to_string(),
+                message_id: 1,
+                text: "post body should not appear in debug".to_string(),
+                timestamp_ms: 1,
+                source: TelegramFeedPostSource::FastLive,
+                received_at_ms: 2,
+                applied_at_ms: 2,
+                fetched_at_ms: 2,
+                request_started_ms: 1,
+                request_duration_ms: 1,
+                first_seen_ms: 2,
+                url: "https://t.me/s/private/1".to_string(),
+                ticker_mentions: Vec::new(),
+            }],
+        };
+
+        let rendered = format!(
+            "{:?}",
+            TelegramFastFeedEvent::Loaded("private:42".to_string(), Box::new(Ok(page)))
+        );
+
+        assert!(rendered.contains("posts: 1"));
+        assert!(!rendered.contains("post body should not appear in debug"));
     }
 
     #[test]
@@ -996,18 +1234,39 @@ mod tests {
     }
 
     #[test]
-    fn normalized_channel_list_dedupes_without_capping_channels() {
-        let channels = (0..16)
+    fn normalized_channel_list_dedupes_and_caps_public_channels() {
+        let channels = (0..TELEGRAM_FEED_MAX_PUBLIC_CHANNELS + 4)
             .map(|index| format!("channel_{index}"))
             .chain(std::iter::once("channel_1".to_string()))
             .collect::<Vec<_>>();
 
         let normalized = normalized_channel_list(&channels);
 
-        assert_eq!(normalized.len(), 16);
+        assert_eq!(normalized.len(), TELEGRAM_FEED_MAX_PUBLIC_CHANNELS);
         assert_eq!(normalized[0], "channel_0");
         assert_eq!(normalized[1], "channel_1");
-        assert_eq!(normalized[15], "channel_15");
+        assert_eq!(
+            normalized[TELEGRAM_FEED_MAX_PUBLIC_CHANNELS - 1],
+            format!("channel_{}", TELEGRAM_FEED_MAX_PUBLIC_CHANNELS - 1)
+        );
+        assert!(!normalized.contains(&format!("channel_{TELEGRAM_FEED_MAX_PUBLIC_CHANNELS}")));
+    }
+
+    #[test]
+    fn saved_public_channel_cap_sets_runtime_warning() {
+        let channels = (0..TELEGRAM_FEED_MAX_PUBLIC_CHANNELS + 1)
+            .map(|index| format!("channel_{index}"))
+            .collect::<Vec<_>>();
+
+        let state = TelegramFeedState::new(&channels, &[], false, false, None);
+
+        assert_eq!(state.channels.len(), TELEGRAM_FEED_MAX_PUBLIC_CHANNELS);
+        assert_eq!(
+            state.last_error,
+            Some(format!(
+                "Telegram Feed supports up to {TELEGRAM_FEED_MAX_PUBLIC_CHANNELS} public channels; extra saved channels were ignored"
+            ))
+        );
     }
 
     #[test]

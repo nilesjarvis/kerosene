@@ -27,7 +27,8 @@ pub(super) fn hyperdash_graphql_error(scope: &str, messages: Vec<String>) -> Str
             "HyperDash {scope} authentication failed. Check the API key in Settings > Integrations."
         );
     }
-    format!("HyperDash {scope} error: {joined}")
+    let snippet = response_snippet(&joined);
+    format!("HyperDash {scope} error: {snippet}")
 }
 
 pub(super) fn hyperdash_missing_data_error(scope: &str) -> String {

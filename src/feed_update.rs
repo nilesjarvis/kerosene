@@ -15,17 +15,18 @@ impl TradingTerminal {
             | Message::SaveHydromancerKey
             | Message::ReconnectLiquidations
             | Message::ReconnectTrackedTrades) => return self.update_feed_connection(message),
-            message @ (Message::WsHydromancerLiquidation(_)
+            message @ (Message::WsHydromancerLiquidation { .. }
             | Message::ClearLiquidations
             | Message::LiquidationFeedScrolled(_)) => {
                 return self.update_liquidation_feed(message);
             }
-            message @ (Message::WsHydromancerTrackedTrades(_) | Message::ClearTrackedTrades) => {
+            message
+            @ (Message::WsHydromancerTrackedTrades { .. } | Message::ClearTrackedTrades) => {
                 return self.update_tracked_trade_feed(message);
             }
             message @ (Message::RefreshTelegramFeed
             | Message::TelegramFeedRefreshTick
-            | Message::TelegramFeedLoaded(_, _)
+            | Message::TelegramFeedLoaded(_, _, _)
             | Message::TelegramAvatarLoaded(_, _, _, _)
             | Message::ToggleTelegramFastFeed
             | Message::TelegramFastApiIdChanged(_)
@@ -37,12 +38,12 @@ impl TradingTerminal {
             | Message::TelegramFastSubmitCode
             | Message::TelegramFastSubmitPassword
             | Message::TelegramFastSignOut
-            | Message::TelegramFastAuthResult(_)
-            | Message::TelegramFastFeedEvent(_)
+            | Message::TelegramFastAuthResult(_, _)
+            | Message::TelegramFastFeedEvent(_, _)
             | Message::TelegramFeedChannelInputChanged(_)
             | Message::TelegramFeedAddChannel
             | Message::TelegramPrivateChannelsRefresh
-            | Message::TelegramPrivateChannelsLoaded(_)
+            | Message::TelegramPrivateChannelsLoaded(_, _)
             | Message::TelegramFeedAddPrivateChannel(_)
             | Message::ToggleTelegramPrivateChannelCandidatesExpanded
             | Message::TelegramFeedRemoveChannel(_)
@@ -52,8 +53,9 @@ impl TradingTerminal {
             }
             message @ (Message::RefreshXFeed
             | Message::XFeedRefreshTick
-            | Message::XFeedLoaded(_)
-            | Message::XFeedStreamEvent(_)
+            | Message::XFeedLoaded(_, _, _)
+            | Message::XFeedStreamEvent(_, _)
+            | Message::XFeedRuleCleanupFinished { .. }
             | Message::XFeedBearerTokenChanged(_)
             | Message::SaveXFeedBearerToken
             | Message::XFeedSourceInputChanged(_)

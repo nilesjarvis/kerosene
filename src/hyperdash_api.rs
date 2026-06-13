@@ -4,7 +4,7 @@ mod liquidation_levels;
 mod models;
 mod positioning;
 
-use crate::helpers::response_snippet;
+use crate::helpers::sensitive_response_snippet as response_snippet;
 
 pub use heatmap::{fetch_liquidation_heatmap, normalize_heatmap_time_range};
 pub use liquidation_levels::{bucket_liquidations, fetch_liquidation_levels_at};

@@ -65,3 +65,25 @@ fn ticker_positions_reports_graphql_errors_for_missing_partial_field() {
 
     assert!(error.contains("coin not found"));
 }
+
+#[test]
+fn ticker_positions_redacts_sensitive_graphql_errors() {
+    let error = ticker_positions_error_or_panic(
+        r#"{
+          "errors": [{
+            "message": "provider echoed api_key=\"hyper-secret\" Bearer bearer-secret trace=0x0123456789abcdef0123456789abcdef01234567"
+          }],
+          "data": null
+        }"#,
+    );
+
+    assert!(error.contains("<redacted>"));
+    assert!(error.contains("<redacted-hex>"));
+    for secret in [
+        "hyper-secret",
+        "bearer-secret",
+        "0123456789abcdef0123456789abcdef01234567",
+    ] {
+        assert!(!error.contains(secret), "positioning error leaked {secret}");
+    }
+}

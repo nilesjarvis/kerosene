@@ -10,12 +10,24 @@ use iced::Task;
 // Liquidation Result Application
 // ---------------------------------------------------------------------------
 
+fn chart_pending_liquidation_request_matches(
+    instance: &crate::chart_state::ChartInstance,
+    request_key: &str,
+) -> bool {
+    instance.liquidation_pending_key.as_deref() == Some(request_key)
+}
+
 impl TradingTerminal {
     pub(in crate::hyperdash_update) fn apply_chart_liquidation_loaded(
         &mut self,
         request_key: String,
+        generation: u64,
         result: Result<LiquidationLevel, String>,
     ) -> Task<Message> {
+        if !self.hyperdash_key_generation_is_current(generation) {
+            return Task::none();
+        }
+
         let waiting_charts = self
             .liquidation_pending_charts
             .remove(&request_key)
@@ -34,13 +46,18 @@ impl TradingTerminal {
                     LIQUIDATION_BUCKET_COUNT,
                 );
                 for id in waiting_charts {
-                    if !self.chart_can_accept_liquidation_result(id, &data.coin) {
-                        if let Some(instance) = self.charts.get_mut(&id) {
-                            reset_liquidation_fetch_state(instance);
-                        }
+                    let pending_matches = self.charts.get(&id).is_some_and(|instance| {
+                        chart_pending_liquidation_request_matches(instance, &request_key)
+                    });
+                    if !pending_matches {
                         continue;
                     }
+                    let can_accept = self.chart_can_accept_liquidation_result(id, &data.coin);
                     if let Some(instance) = self.charts.get_mut(&id) {
+                        if !can_accept {
+                            reset_liquidation_fetch_state(instance);
+                            continue;
+                        }
                         instance.chart.liquidation_buckets = buckets.clone();
                         instance.liquidation_data = Some(data.clone());
                         reset_liquidation_fetch_state(instance);
@@ -53,6 +70,12 @@ impl TradingTerminal {
                 let request_coin = liquidation_request_coin(&request_key);
                 let mut failed_visible_chart = false;
                 for id in waiting_charts {
+                    let pending_matches = self.charts.get(&id).is_some_and(|instance| {
+                        chart_pending_liquidation_request_matches(instance, &request_key)
+                    });
+                    if !pending_matches {
+                        continue;
+                    }
                     let can_accept_failure =
                         self.chart_can_accept_liquidation_result(id, request_coin);
                     if let Some(instance) = self.charts.get_mut(&id) {

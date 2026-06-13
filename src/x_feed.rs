@@ -1,10 +1,15 @@
 use crate::api::CLIENT;
+use crate::app_state::{SensitiveString, sensitive_string};
 use crate::app_time::{cooldown_heat, now_ms};
-use crate::helpers::{fallback_initials, format_seen_latency_label, positive_percent_change};
+use crate::helpers::{
+    fallback_initials, format_seen_latency_label, positive_percent_change,
+    redact_sensitive_response_text, sensitive_response_excerpt,
+};
 use chrono::{DateTime, Utc};
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
+use std::fmt;
 use std::time::Duration;
 use zeroize::Zeroizing;
 
@@ -59,10 +64,33 @@ pub(crate) struct XFeedPage {
     pub(crate) posts: Vec<XFeedPost>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) enum XFeedStreamEvent {
     Status { connected: bool, message: String },
     Loaded(Box<Result<XFeedPage, String>>),
+}
+
+impl fmt::Debug for XFeedStreamEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Status { connected, message } => f
+                .debug_struct("Status")
+                .field("connected", connected)
+                .field("message", &redact_sensitive_response_text(message))
+                .finish(),
+            Self::Loaded(result) => {
+                let result_summary = match result.as_ref() {
+                    Ok(page) => format!(
+                        "Ok(XFeedPage {{ profiles: {}, posts: {} }})",
+                        page.profiles.len(),
+                        page.posts.len()
+                    ),
+                    Err(error) => format!("Err({})", redact_sensitive_response_text(error)),
+                };
+                f.debug_tuple("Loaded").field(&result_summary).finish()
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -73,13 +101,14 @@ pub(crate) struct XFeedState {
     pub(crate) stream_connected: bool,
     pub(crate) stream_status: Option<(String, bool)>,
     pub(crate) stream_reconnect_nonce: u64,
-    pub(crate) bearer_token: Zeroizing<String>,
-    pub(crate) bearer_token_input: Zeroizing<String>,
+    pub(crate) bearer_token: SensitiveString,
+    pub(crate) bearer_token_input: SensitiveString,
     pub(crate) sources_expanded: bool,
     pub(crate) source_input: String,
     pub(crate) profiles: HashMap<String, XFeedAuthorProfile>,
     pub(crate) posts: Vec<XFeedPost>,
     seen_post_ids: VecDeque<String>,
+    pub(crate) refresh_request_id: u64,
     pub(crate) loading: bool,
     pub(crate) background_loading: bool,
     pub(crate) last_error: Option<String>,
@@ -93,7 +122,7 @@ impl XFeedState {
         streaming_enabled: bool,
         bearer_token: impl Into<String>,
     ) -> Self {
-        let bearer_token = Zeroizing::new(bearer_token.into());
+        let bearer_token = sensitive_string(bearer_token.into());
         Self {
             handles: normalized_x_handle_list(handles),
             notifications_enabled,
@@ -108,6 +137,7 @@ impl XFeedState {
             profiles: HashMap::new(),
             posts: Vec::new(),
             seen_post_ids: VecDeque::new(),
+            refresh_request_id: 0,
             loading: false,
             background_loading: false,
             last_error: None,
@@ -117,6 +147,17 @@ impl XFeedState {
 
     pub(crate) fn refreshing(&self) -> bool {
         self.loading || self.background_loading
+    }
+
+    pub(crate) fn next_refresh_request_id(&mut self) -> u64 {
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.refresh_request_id
+    }
+
+    pub(crate) fn invalidate_refresh_requests(&mut self) {
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.loading = false;
+        self.background_loading = false;
     }
 
     pub(crate) fn visible_posts(&self) -> Vec<XFeedPost> {
@@ -149,6 +190,16 @@ impl XFeedState {
 
     pub(crate) fn clear_seen_posts(&mut self) {
         self.seen_post_ids.clear();
+    }
+
+    pub(crate) fn prune_profiles_to_visible_posts(&mut self) {
+        let author_ids = self
+            .posts
+            .iter()
+            .map(|post| post.author_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        self.profiles
+            .retain(|author_id, _| author_ids.contains(author_id.as_str()));
     }
 }
 
@@ -295,11 +346,10 @@ pub(crate) async fn fetch_x_recent_posts(
         ));
     }
     if !status.is_success() {
-        let preview = String::from_utf8_lossy(&body)
-            .chars()
-            .take(160)
-            .collect::<String>();
-        return if let Some(message) = x_api_auth_guidance(&preview) {
+        let body = String::from_utf8_lossy(&body);
+        let raw_preview = body.chars().take(160).collect::<String>();
+        let preview = sensitive_response_excerpt(&body, 160);
+        return if let Some(message) = x_api_auth_guidance(&raw_preview) {
             Err(message)
         } else if preview.is_empty() {
             Err(format!("X recent search failed with HTTP {status}"))
@@ -334,11 +384,7 @@ pub(crate) fn parse_x_stream_page(body: &[u8], fetched_at_ms: u64) -> Result<XFe
     {
         return Err(format!(
             "X stream error: {}",
-            errors
-                .into_iter()
-                .filter_map(|err| err.title.or(err.detail))
-                .collect::<Vec<_>>()
-                .join("; ")
+            x_stream_error_message(errors)
         ));
     }
 
@@ -349,6 +395,21 @@ pub(crate) fn parse_x_stream_page(body: &[u8], fetched_at_ms: u64) -> Result<XFe
         fetched_at_ms,
         0,
     ))
+}
+
+fn x_stream_error_message(errors: Vec<XErrorPayload>) -> String {
+    let message = errors
+        .into_iter()
+        .filter_map(|err| err.title.or(err.detail))
+        .map(|message| sensitive_response_excerpt(&message, 160))
+        .filter(|message| !message.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    if message.is_empty() {
+        "redacted stream error".to_string()
+    } else {
+        message
+    }
 }
 
 pub(crate) fn x_age_countdown_label(sent_at_ms: u64, now_ms: u64) -> String {
@@ -582,6 +643,62 @@ mod tests {
     }
 
     #[test]
+    fn x_feed_state_debug_redacts_bearer_tokens_when_formatted_directly() {
+        let state = XFeedState::new(&[], false, false, "x-secret-token");
+
+        let saved = format!("{:?}", state.bearer_token);
+        let input = format!("{:?}", state.bearer_token_input);
+
+        assert!(saved.contains("<redacted>"));
+        assert!(input.contains("<redacted>"));
+        assert!(!saved.contains("x-secret-token"));
+        assert!(!input.contains("x-secret-token"));
+    }
+
+    #[test]
+    fn x_feed_stream_event_debug_redacts_status_and_errors() {
+        let status = XFeedStreamEvent::Status {
+            connected: false,
+            message: "Authorization: Bearer x-secret-token".to_string(),
+        };
+        let loaded_error = XFeedStreamEvent::Loaded(Box::new(Err(
+            "api_secret=x-api-secret access_token=x-access-token".to_string(),
+        )));
+
+        let rendered = format!("{status:?} {loaded_error:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        for secret in ["x-secret-token", "x-api-secret", "x-access-token"] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn x_feed_stream_event_debug_summarizes_loaded_pages() {
+        let page = XFeedPage {
+            profiles: HashMap::new(),
+            posts: vec![XFeedPost {
+                id: "1".to_string(),
+                author_id: "author".to_string(),
+                username: "source".to_string(),
+                text: "post body should not appear in debug".to_string(),
+                timestamp_ms: 1,
+                fetched_at_ms: 2,
+                request_started_ms: 1,
+                request_duration_ms: 1,
+                first_seen_ms: 2,
+                url: "https://x.com/source/status/1".to_string(),
+                ticker_mentions: Vec::new(),
+            }],
+        };
+
+        let rendered = format!("{:?}", XFeedStreamEvent::Loaded(Box::new(Ok(page))));
+
+        assert!(rendered.contains("posts: 1"));
+        assert!(!rendered.contains("post body should not appear in debug"));
+    }
+
+    #[test]
     fn x_api_auth_guidance_detects_project_enrollment_errors() {
         let body = r#"{"reason":"client-not-enrolled","detail":"When authenticating requests to the Twitter API v2 endpoints, you must use keys and tokens from a Twitter developer App that is attached to a Project."}"#;
 
@@ -620,5 +737,23 @@ mod tests {
         assert_eq!(page.posts[0].username, "marketfeed");
         assert_eq!(page.posts[0].url, "https://x.com/marketfeed/status/181");
         assert_eq!(page.profiles["7"].name, "Market Feed");
+    }
+
+    #[test]
+    fn x_stream_error_redacts_sensitive_details() {
+        let json = br#"{
+            "errors": [{
+                "detail": "Authorization: Bearer x-secret-token api_key=\"abc123\" trace=0123456789abcdef0123456789abcdef01234567"
+            }]
+        }"#;
+
+        let error = parse_x_stream_page(json, 1).expect_err("stream error");
+
+        assert!(error.contains("X stream error"));
+        assert!(error.contains("<redacted>"));
+        assert!(error.contains("<redacted-hex>"));
+        assert!(!error.contains("x-secret-token"));
+        assert!(!error.contains("abc123"));
+        assert!(!error.contains("0123456789abcdef0123456789abcdef01234567"));
     }
 }

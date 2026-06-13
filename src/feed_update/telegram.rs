@@ -1,17 +1,20 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::ellipsized_text;
-use crate::message::Message;
+use crate::message::{Message, TelegramFastAuthMessageResult};
 use crate::telegram_fast_feed::{
-    bundled_telegram_api_hash, bundled_telegram_api_id, list_telegram_private_channel_candidates,
+    TELEGRAM_FAST_SESSION_CLEAR_FAILED, bundled_telegram_api_hash, bundled_telegram_api_id,
+    clear_telegram_fast_pending_auth, clear_telegram_fast_pending_auth_except_request,
+    clear_telegram_fast_pending_auth_for_request, list_telegram_private_channel_candidates,
     request_telegram_fast_login_code, sign_out_telegram_fast, submit_telegram_fast_login_code,
     submit_telegram_fast_password,
 };
 use crate::telegram_feed::{
-    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TelegramFastAuthOutcome, TelegramFastAuthStage,
-    TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost, TelegramFeedPostSource,
-    TelegramTickerMention, fetch_telegram_avatar_bytes, fetch_telegram_channel_posts,
-    normalize_public_channel_input, telegram_private_channel_peer_id_from_key,
+    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_PUBLIC_CHANNELS, TelegramFastAuthOutcome,
+    TelegramFastAuthStage, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
+    TelegramFeedPostSource, TelegramTickerMention, fetch_telegram_avatar_bytes,
+    fetch_telegram_channel_posts, normalize_public_channel_input, normalized_channel_list,
+    telegram_private_channel_peer_id_from_key,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
@@ -22,8 +25,8 @@ impl TradingTerminal {
         match message {
             Message::RefreshTelegramFeed => self.request_telegram_feed_refresh(),
             Message::TelegramFeedRefreshTick => self.request_telegram_feed_background_refresh(),
-            Message::TelegramFeedLoaded(channel, result) => {
-                self.handle_telegram_feed_loaded(channel, *result)
+            Message::TelegramFeedLoaded(channel, request_id, result) => {
+                self.handle_telegram_public_feed_loaded(channel, request_id, *result)
             }
             Message::TelegramAvatarLoaded(channel, avatar_url, request_id, result) => {
                 self.handle_telegram_avatar_loaded(channel, avatar_url, request_id, *result);
@@ -31,44 +34,49 @@ impl TradingTerminal {
             }
             Message::ToggleTelegramFastFeed => self.toggle_telegram_fast_feed(),
             Message::TelegramFastApiIdChanged(input) => {
+                self.clear_abandoned_telegram_fast_auth_challenge();
                 self.telegram_feed.fast_api_id_input = input;
                 Task::none()
             }
             Message::TelegramFastApiHashChanged(input) => {
+                self.clear_abandoned_telegram_fast_auth_challenge();
                 self.telegram_feed.fast_api_hash_input.zeroize();
-                self.telegram_feed.fast_api_hash_input = input.into_zeroizing();
+                self.telegram_feed.fast_api_hash_input = input.into_zeroizing().into();
                 Task::none()
             }
             Message::TelegramFastPhoneChanged(input) => {
+                self.clear_abandoned_telegram_fast_auth_challenge();
                 self.telegram_feed.fast_phone_input = input;
                 Task::none()
             }
             Message::TelegramFastCodeChanged(input) => {
                 self.telegram_feed.fast_code_input.zeroize();
-                self.telegram_feed.fast_code_input = input.into_zeroizing();
+                self.telegram_feed.fast_code_input = input.into_zeroizing().into();
                 Task::none()
             }
             Message::TelegramFastPasswordChanged(input) => {
                 self.telegram_feed.fast_password_input.zeroize();
-                self.telegram_feed.fast_password_input = input.into_zeroizing();
+                self.telegram_feed.fast_password_input = input.into_zeroizing().into();
                 Task::none()
             }
             Message::TelegramFastRequestCode => self.request_telegram_fast_code(),
             Message::TelegramFastSubmitCode => self.submit_telegram_fast_code(),
             Message::TelegramFastSubmitPassword => self.submit_telegram_fast_2fa_password(),
             Message::TelegramFastSignOut => self.sign_out_telegram_fast_feed(),
-            Message::TelegramFastAuthResult(result) => {
-                self.handle_telegram_fast_auth_result(*result)
+            Message::TelegramFastAuthResult(request_id, result) => {
+                self.handle_telegram_fast_auth_result(request_id, result.into_result())
             }
-            Message::TelegramFastFeedEvent(event) => self.handle_telegram_fast_feed_event(event),
+            Message::TelegramFastFeedEvent(reconnect_nonce, event) => {
+                self.handle_telegram_fast_feed_event(reconnect_nonce, event)
+            }
             Message::TelegramFeedChannelInputChanged(input) => {
                 self.telegram_feed.channel_input = input;
                 Task::none()
             }
             Message::TelegramFeedAddChannel => self.add_telegram_feed_channel(),
             Message::TelegramPrivateChannelsRefresh => self.request_telegram_private_channels(),
-            Message::TelegramPrivateChannelsLoaded(result) => {
-                self.handle_telegram_private_channels_loaded(*result);
+            Message::TelegramPrivateChannelsLoaded(request_id, result) => {
+                self.handle_telegram_private_channels_loaded(request_id, *result);
                 Task::none()
             }
             Message::TelegramFeedAddPrivateChannel(peer_id) => {
@@ -129,7 +137,15 @@ impl TradingTerminal {
     }
 
     fn request_telegram_feed_refresh_with_visibility(&mut self, visible: bool) -> Task<Message> {
-        let channels = self.telegram_feed.channels.clone();
+        let channels = normalized_channel_list(&self.telegram_feed.channels);
+        let channel_limit_warning = if channels != self.telegram_feed.channels {
+            self.telegram_feed.channels = channels.clone();
+            Some(format!(
+                "Telegram Feed supports up to {TELEGRAM_FEED_MAX_PUBLIC_CHANNELS} public channels; extra channels were ignored"
+            ))
+        } else {
+            None
+        };
         if channels.is_empty() {
             if visible {
                 self.telegram_feed.last_error =
@@ -144,15 +160,18 @@ impl TradingTerminal {
 
         if visible {
             self.telegram_feed.loading_channels = channels.clone();
-            self.telegram_feed.last_error = None;
+            self.telegram_feed.last_error = channel_limit_warning;
         } else {
+            if let Some(warning) = channel_limit_warning {
+                self.telegram_feed.last_error = Some(warning);
+            }
             self.telegram_feed.background_loading_channels = channels.clone();
         }
-        Task::batch(
-            channels
-                .into_iter()
-                .map(|channel| self.request_telegram_channel_refresh_task(channel)),
-        )
+        let tasks = channels
+            .into_iter()
+            .map(|channel| self.request_telegram_channel_refresh_task(channel))
+            .collect::<Vec<_>>();
+        Task::batch(tasks)
     }
 
     fn add_telegram_feed_channel(&mut self) -> Task<Message> {
@@ -176,9 +195,18 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        if self.telegram_feed.channels.len() >= TELEGRAM_FEED_MAX_PUBLIC_CHANNELS {
+            self.telegram_feed.last_error = Some(format!(
+                "Telegram Feed supports up to {TELEGRAM_FEED_MAX_PUBLIC_CHANNELS} public channels"
+            ));
+            return Task::none();
+        }
+
+        crate::telegram_fast_feed::clear_fast_channel_cursor(&channel);
         self.telegram_feed.channels.push(channel.clone());
         self.telegram_feed.channel_input.clear();
         self.telegram_feed.last_error = None;
+        self.restart_telegram_fast_feed_after_channel_change();
         self.persist_config();
         self.telegram_feed.loading_channels.push(channel.clone());
         self.request_telegram_channel_refresh_task(channel)
@@ -204,17 +232,25 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        let request_id = self
+            .telegram_feed
+            .next_private_channel_candidates_request_id();
         self.telegram_feed.private_channel_candidates_loading = true;
         self.telegram_feed.fast_status = Some(("Scanning Telegram channels".to_string(), false));
-        Task::perform(list_telegram_private_channel_candidates(api_id), |result| {
-            Message::TelegramPrivateChannelsLoaded(Box::new(result))
-        })
+        Task::perform(
+            list_telegram_private_channel_candidates(api_id),
+            move |result| Message::TelegramPrivateChannelsLoaded(request_id, Box::new(result)),
+        )
     }
 
     fn handle_telegram_private_channels_loaded(
         &mut self,
+        request_id: u64,
         result: Result<Vec<crate::telegram_feed::TelegramPrivateChannelCandidate>, String>,
     ) {
+        if request_id != self.telegram_feed.private_channel_candidates_request_id {
+            return;
+        }
         self.telegram_feed.private_channel_candidates_loading = false;
         match result {
             Ok(candidates) => {
@@ -225,7 +261,8 @@ impl TradingTerminal {
                     Some((format!("Found {count} private Telegram channels"), false));
             }
             Err(err) => {
-                self.telegram_feed.fast_status = Some((err, true));
+                self.telegram_feed.fast_status =
+                    Some((telegram_private_channel_error_status(&err), true));
             }
         }
     }
@@ -247,9 +284,9 @@ impl TradingTerminal {
             return;
         };
 
-        self.telegram_feed
-            .private_channels
-            .push(candidate.to_config());
+        let candidate_config = candidate.to_config();
+        crate::telegram_fast_feed::clear_fast_channel_cursor(&candidate_config.key());
+        self.telegram_feed.private_channels.push(candidate_config);
         let profile = candidate.to_profile();
         self.telegram_feed
             .channel_profiles
@@ -267,8 +304,7 @@ impl TradingTerminal {
             })
             .or_insert(profile);
         self.telegram_feed.last_error = None;
-        self.telegram_feed.fast_reconnect_nonce =
-            self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+        self.restart_telegram_fast_feed_after_channel_change();
         self.persist_config();
     }
 
@@ -283,8 +319,7 @@ impl TradingTerminal {
             self.telegram_feed.clear_seen_posts_for_channel(channel);
             crate::telegram_fast_feed::clear_fast_channel_cursor(channel);
             self.telegram_feed.channel_profiles.remove(channel);
-            self.telegram_feed.fast_reconnect_nonce =
-                self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+            self.restart_telegram_fast_feed_after_channel_change();
             self.telegram_feed.last_error = None;
             self.persist_config();
             return;
@@ -306,16 +341,34 @@ impl TradingTerminal {
             .posts
             .retain(|post| post.channel != channel);
         self.telegram_feed.clear_seen_posts_for_channel(&channel);
+        self.telegram_feed.clear_channel_refresh(&channel);
         crate::telegram_fast_feed::clear_fast_channel_cursor(&channel);
         self.telegram_feed.channel_profiles.remove(&channel);
+        self.restart_telegram_fast_feed_after_channel_change();
         self.telegram_feed.last_error = None;
         self.persist_config();
     }
 
-    fn request_telegram_channel_refresh_task(&self, channel: String) -> Task<Message> {
+    fn restart_telegram_fast_feed_after_channel_change(&mut self) {
+        self.telegram_feed.fast_connected = false;
+        self.telegram_feed.clear_fast_connection_event();
+        self.telegram_feed.fast_reconnect_nonce =
+            self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
+        if self.telegram_feed.fast_mode_enabled {
+            self.telegram_feed.fast_status = Some((
+                "Fast Telegram mode reconnecting after channel list changed".to_string(),
+                false,
+            ));
+        }
+    }
+
+    fn request_telegram_channel_refresh_task(&mut self, channel: String) -> Task<Message> {
+        let request_id = self.telegram_feed.begin_channel_refresh(&channel);
         Task::perform(
             fetch_telegram_channel_posts(channel.clone()),
-            move |result| Message::TelegramFeedLoaded(channel.clone(), Box::new(result)),
+            move |result| {
+                Message::TelegramFeedLoaded(channel.clone(), request_id, Box::new(result))
+            },
         )
     }
 
@@ -336,6 +389,7 @@ impl TradingTerminal {
                 false,
             ));
         } else {
+            self.clear_abandoned_telegram_fast_auth_challenge();
             self.telegram_feed.fast_status = Some(("Fast mode disabled".to_string(), false));
             self.telegram_feed.fast_auth_in_flight = false;
             self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
@@ -378,6 +432,9 @@ impl TradingTerminal {
     }
 
     fn request_telegram_fast_code(&mut self) -> Task<Message> {
+        if self.telegram_feed.fast_auth_in_flight {
+            return Task::none();
+        }
         if self.telegram_feed.fast_connected
             || matches!(
                 self.telegram_feed.fast_auth_stage,
@@ -399,13 +456,19 @@ impl TradingTerminal {
             api_hash
         };
         let phone = self.telegram_feed.fast_phone_input.trim().to_string();
+        let request_id = self.telegram_feed.next_fast_auth_request_id();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status =
             Some(("Requesting Telegram login code".to_string(), false));
 
         Task::perform(
-            request_telegram_fast_login_code(api_id, api_hash, phone),
-            |result| Message::TelegramFastAuthResult(Box::new(result)),
+            request_telegram_fast_login_code(api_id, request_id, api_hash, phone),
+            move |result| {
+                Message::TelegramFastAuthResult(
+                    request_id,
+                    TelegramFastAuthMessageResult::new(result),
+                )
+            },
         )
     }
 
@@ -415,12 +478,20 @@ impl TradingTerminal {
         };
         let code = Zeroizing::new(self.telegram_feed.fast_code_input.trim().to_string());
         self.telegram_feed.fast_code_input.zeroize();
+        let challenge_request_id = self.telegram_feed.fast_auth_request_id;
+        let request_id = self.telegram_feed.next_fast_auth_request_id();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status = Some(("Signing in to Telegram".to_string(), false));
 
-        Task::perform(submit_telegram_fast_login_code(api_id, code), |result| {
-            Message::TelegramFastAuthResult(Box::new(result))
-        })
+        Task::perform(
+            submit_telegram_fast_login_code(api_id, challenge_request_id, request_id, code),
+            move |result| {
+                Message::TelegramFastAuthResult(
+                    request_id,
+                    TelegramFastAuthMessageResult::new(result),
+                )
+            },
+        )
     }
 
     fn submit_telegram_fast_2fa_password(&mut self) -> Task<Message> {
@@ -429,47 +500,64 @@ impl TradingTerminal {
         };
         let password = Zeroizing::new(self.telegram_feed.fast_password_input.trim().to_string());
         self.telegram_feed.fast_password_input.zeroize();
+        let challenge_request_id = self.telegram_feed.fast_auth_request_id;
+        let request_id = self.telegram_feed.next_fast_auth_request_id();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status =
             Some(("Checking Telegram 2FA password".to_string(), false));
 
-        Task::perform(submit_telegram_fast_password(api_id, password), |result| {
-            Message::TelegramFastAuthResult(Box::new(result))
-        })
+        Task::perform(
+            submit_telegram_fast_password(api_id, challenge_request_id, request_id, password),
+            move |result| {
+                Message::TelegramFastAuthResult(
+                    request_id,
+                    TelegramFastAuthMessageResult::new(result),
+                )
+            },
+        )
     }
 
     fn sign_out_telegram_fast_feed(&mut self) -> Task<Message> {
+        clear_telegram_fast_pending_auth();
         let Some(api_id) = self.telegram_fast_api_id() else {
             return Task::none();
         };
+        self.telegram_feed
+            .invalidate_private_channel_candidates_request();
+        let request_id = self.telegram_feed.next_fast_auth_request_id();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status = Some(("Signing out of Telegram".to_string(), false));
 
-        Task::perform(sign_out_telegram_fast(api_id), |result| {
-            Message::TelegramFastAuthResult(Box::new(result))
+        Task::perform(sign_out_telegram_fast(api_id), move |result| {
+            Message::TelegramFastAuthResult(request_id, TelegramFastAuthMessageResult::new(result))
         })
     }
 
     fn handle_telegram_fast_auth_result(
         &mut self,
+        request_id: u64,
         result: Result<TelegramFastAuthOutcome, String>,
     ) -> Task<Message> {
+        if request_id != self.telegram_feed.fast_auth_request_id {
+            clear_telegram_fast_pending_auth_for_request(request_id);
+            return Task::none();
+        }
         self.telegram_feed.fast_auth_in_flight = false;
         match result {
             Ok(TelegramFastAuthOutcome::CodeSent) => {
+                clear_telegram_fast_pending_auth_except_request(request_id);
                 self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
                 self.telegram_feed.fast_status = Some(("Telegram code sent".to_string(), false));
             }
             Ok(TelegramFastAuthOutcome::PasswordRequired { hint }) => {
+                clear_telegram_fast_pending_auth_except_request(request_id);
                 self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::PasswordRequired;
                 self.telegram_feed.fast_password_hint = hint.clone();
-                self.telegram_feed.fast_status = Some((
-                    hint.map(|hint| format!("Telegram 2FA password required; hint: {hint}"))
-                        .unwrap_or_else(|| "Telegram 2FA password required".to_string()),
-                    false,
-                ));
+                self.telegram_feed.fast_status =
+                    Some(("Telegram 2FA password required".to_string(), false));
             }
             Ok(TelegramFastAuthOutcome::SignedIn { display_name }) => {
+                clear_telegram_fast_pending_auth();
                 self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
                 self.telegram_feed.fast_connected = true;
                 self.telegram_feed
@@ -484,7 +572,8 @@ impl TradingTerminal {
                 self.telegram_feed.fast_status =
                     Some((format!("Fast mode signed in as {display_name}"), false));
             }
-            Ok(TelegramFastAuthOutcome::SignedOut) => {
+            Ok(TelegramFastAuthOutcome::SignedOut { warning }) => {
+                clear_telegram_fast_pending_auth();
                 self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
                 self.telegram_feed.fast_connected = false;
                 self.telegram_feed.clear_fast_connection_event();
@@ -493,17 +582,46 @@ impl TradingTerminal {
                 self.telegram_feed.fast_phone_input.clear();
                 self.telegram_feed.fast_reconnect_nonce =
                     self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
-                self.telegram_feed.fast_status =
-                    Some(("Telegram fast session signed out".to_string(), false));
+                self.telegram_feed.fast_status = Some(warning.map_or_else(
+                    || ("Telegram fast session signed out".to_string(), false),
+                    |warning| (warning, true),
+                ));
             }
             Err(err) => {
-                self.telegram_feed.fast_status = Some((err, true));
+                self.telegram_feed.fast_status =
+                    Some((telegram_fast_auth_error_status(&err), true));
             }
         }
         Task::none()
     }
 
-    fn handle_telegram_fast_feed_event(&mut self, event: TelegramFastFeedEvent) -> Task<Message> {
+    fn clear_abandoned_telegram_fast_auth_challenge(&mut self) {
+        clear_telegram_fast_pending_auth();
+        self.telegram_feed.invalidate_fast_auth_request();
+        self.telegram_feed
+            .invalidate_private_channel_candidates_request();
+        if matches!(
+            self.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::CodeRequested | TelegramFastAuthStage::PasswordRequired
+        ) {
+            self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
+            self.telegram_feed.fast_password_hint = None;
+            self.telegram_feed.fast_code_input.zeroize();
+            self.telegram_feed.fast_password_input.zeroize();
+        }
+    }
+
+    fn handle_telegram_fast_feed_event(
+        &mut self,
+        reconnect_nonce: u64,
+        event: TelegramFastFeedEvent,
+    ) -> Task<Message> {
+        if !self.telegram_feed.fast_mode_enabled
+            || reconnect_nonce != self.telegram_feed.fast_reconnect_nonce
+        {
+            return Task::none();
+        }
+
         match event {
             TelegramFastFeedEvent::Status {
                 connected,
@@ -518,8 +636,13 @@ impl TradingTerminal {
                 } else if auth_required {
                     self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
                     self.telegram_feed.clear_fast_connection_event();
+                    self.telegram_feed
+                        .invalidate_private_channel_candidates_request();
                 }
-                self.telegram_feed.fast_status = Some((message, auth_required));
+                self.telegram_feed.fast_status = Some((
+                    telegram_fast_stream_status(connected, auth_required, &message),
+                    auth_required,
+                ));
                 Task::none()
             }
             TelegramFastFeedEvent::Loaded(channel, result) => {
@@ -528,6 +651,22 @@ impl TradingTerminal {
                 self.handle_telegram_feed_loaded(channel, *result)
             }
         }
+    }
+
+    fn handle_telegram_public_feed_loaded(
+        &mut self,
+        channel: String,
+        request_id: u64,
+        result: Result<TelegramFeedPage, String>,
+    ) -> Task<Message> {
+        if !self
+            .telegram_feed
+            .finish_channel_refresh(&channel, request_id)
+        {
+            return Task::none();
+        }
+
+        self.handle_telegram_feed_loaded(channel, result)
     }
 
     fn handle_telegram_feed_loaded(
@@ -843,11 +982,77 @@ fn telegram_post_alert_message(post: &TelegramFeedPost) -> String {
     }
 }
 
+fn telegram_fast_auth_error_status(error: &str) -> String {
+    if error.starts_with(TELEGRAM_FAST_SESSION_CLEAR_FAILED) {
+        return TELEGRAM_FAST_SESSION_CLEAR_FAILED.to_string();
+    }
+
+    const SAFE_MESSAGES: &[&str] = &[
+        "Enter a Telegram API hash",
+        "Enter a Telegram phone number",
+        "Enter the Telegram login code",
+        "Request a Telegram login code first",
+        "Enter the Telegram 2FA password",
+        "Submit the Telegram login code first",
+        "No Telegram 2FA challenge is pending",
+        "Telegram 2FA password was invalid",
+    ];
+
+    if SAFE_MESSAGES.contains(&error) {
+        error.to_string()
+    } else {
+        "Telegram fast-mode request failed".to_string()
+    }
+}
+
+fn telegram_private_channel_error_status(error: &str) -> String {
+    const SAFE_MESSAGES: &[&str] = &[
+        "Sign in to Telegram fast mode first",
+        "Telegram private channel scan timed out",
+    ];
+
+    if SAFE_MESSAGES.contains(&error) {
+        error.to_string()
+    } else {
+        "Could not scan Telegram private channels".to_string()
+    }
+}
+
+fn telegram_fast_stream_status(connected: bool, auth_required: bool, message: &str) -> String {
+    if auth_required {
+        return "Fast mode needs Telegram sign-in".to_string();
+    }
+    if !connected {
+        return "Telegram fast feed disconnected; reconnecting".to_string();
+    }
+
+    if is_safe_telegram_fast_stream_status(message) {
+        message.to_string()
+    } else {
+        "Fast Telegram mode listening".to_string()
+    }
+}
+
+fn is_safe_telegram_fast_stream_status(message: &str) -> bool {
+    matches!(
+        message,
+        "Fast Telegram mode resolving channels"
+            | "Fast Telegram mode listening"
+            | "Fast Telegram mode connected; preparing channel backfill"
+            | "Telegram backfill incomplete; continuing"
+    ) || message.starts_with("Fast Telegram mode listening; could not resolve ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::api::{ExchangeSymbol, MarketType};
     use crate::config::KeroseneConfig;
+    use crate::telegram_fast_feed::{
+        fast_channel_cursor_message_id_for_test, fast_channel_cursor_test_lock,
+        set_fast_channel_cursor_for_test, set_telegram_fast_pending_auth_placeholders_for_test,
+        telegram_fast_pending_auth_request_ids_for_test, telegram_fast_pending_auth_test_lock,
+    };
 
     fn exchange_symbol(key: &str, ticker: &str) -> ExchangeSymbol {
         ExchangeSymbol {
@@ -907,6 +1112,42 @@ mod tests {
         }
     }
 
+    fn load_public_feed(
+        terminal: &mut TradingTerminal,
+        channel: &str,
+        result: Result<TelegramFeedPage, String>,
+    ) {
+        let request_id = terminal.telegram_feed.begin_channel_refresh(channel);
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
+            channel.to_string(),
+            request_id,
+            Box::new(result),
+        ));
+    }
+
+    fn deliver_public_feed(
+        terminal: &mut TradingTerminal,
+        channel: &str,
+        request_id: u64,
+        result: Result<TelegramFeedPage, String>,
+    ) {
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
+            channel.to_string(),
+            request_id,
+            Box::new(result),
+        ));
+    }
+
+    fn deliver_enabled_fast_feed_event(
+        terminal: &mut TradingTerminal,
+        event: TelegramFastFeedEvent,
+    ) {
+        terminal.telegram_feed.fast_mode_enabled = true;
+        let reconnect_nonce = terminal.telegram_feed.fast_reconnect_nonce;
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFastFeedEvent(reconnect_nonce, event));
+    }
+
     fn sample_page_with_avatar(
         channel: &str,
         avatar_url: &str,
@@ -924,17 +1165,28 @@ mod tests {
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
         terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
         terminal.telegram_feed.background_loading_channels = vec!["marketfeed".to_string()];
+        let stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
 
-        terminal.telegram_feed.channels.clear();
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page(
+        let _task = terminal
+            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        deliver_public_feed(
+            &mut terminal,
+            "marketfeed",
+            stale_request_id,
+            Ok(sample_page(
                 "marketfeed",
                 vec![sample_post("marketfeed", 1)],
-            ))),
-        ));
+            )),
+        );
 
         assert!(terminal.telegram_feed.posts.is_empty());
+        assert!(
+            !terminal
+                .telegram_feed
+                .channel_profiles
+                .contains_key("marketfeed")
+        );
+        assert_eq!(terminal.telegram_feed.last_error, None);
         assert!(terminal.telegram_feed.loading_channels.is_empty());
         assert!(
             terminal
@@ -942,6 +1194,106 @@ mod tests {
                 .background_loading_channels
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn stale_public_channel_success_after_remove_and_readd_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
+        let stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
+
+        let _task = terminal
+            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
+        let _current_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
+
+        deliver_public_feed(
+            &mut terminal,
+            "marketfeed",
+            stale_request_id,
+            Ok(sample_page(
+                "marketfeed",
+                vec![sample_post("marketfeed", 1)],
+            )),
+        );
+
+        assert!(terminal.telegram_feed.posts.is_empty());
+        assert!(
+            !terminal
+                .telegram_feed
+                .channel_profiles
+                .contains_key("marketfeed")
+        );
+        assert_eq!(
+            terminal.telegram_feed.loading_channels,
+            vec!["marketfeed".to_string()]
+        );
+    }
+
+    #[test]
+    fn stale_public_channel_error_after_remove_and_readd_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
+        let stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
+
+        let _task = terminal
+            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
+        let _current_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
+        terminal.telegram_feed.last_error = Some("current status".to_string());
+
+        deliver_public_feed(
+            &mut terminal,
+            "marketfeed",
+            stale_request_id,
+            Err("stale failure".to_string()),
+        );
+
+        assert_eq!(
+            terminal.telegram_feed.last_error,
+            Some("current status".to_string())
+        );
+        assert_eq!(
+            terminal.telegram_feed.loading_channels,
+            vec!["marketfeed".to_string()]
+        );
+    }
+
+    #[test]
+    fn current_public_channel_success_after_remove_and_readd_is_applied() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
+        let _stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
+
+        let _task = terminal
+            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
+        let current_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
+
+        deliver_public_feed(
+            &mut terminal,
+            "marketfeed",
+            current_request_id,
+            Ok(sample_page(
+                "marketfeed",
+                vec![sample_post("marketfeed", 1)],
+            )),
+        );
+
+        assert_eq!(terminal.telegram_feed.posts.len(), 1);
+        assert!(
+            terminal
+                .telegram_feed
+                .channel_profiles
+                .contains_key("marketfeed")
+        );
+        assert!(terminal.telegram_feed.loading_channels.is_empty());
     }
 
     #[test]
@@ -996,22 +1348,24 @@ mod tests {
 
         let mut live_post = sample_post("marketfeed", 11);
         live_post.source = crate::telegram_feed::TelegramFeedPostSource::FastLive;
-        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+        deliver_enabled_fast_feed_event(
+            &mut terminal,
             TelegramFastFeedEvent::Loaded(
                 "marketfeed".to_string(),
                 Box::new(Ok(sample_page("marketfeed", vec![live_post]))),
             ),
-        ));
+        );
         assert!(terminal.toasts.is_empty());
 
         let mut backfill_post = sample_post("marketfeed", 10);
         backfill_post.source = crate::telegram_feed::TelegramFeedPostSource::FastBackfill;
-        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+        deliver_enabled_fast_feed_event(
+            &mut terminal,
             TelegramFastFeedEvent::Loaded(
                 "marketfeed".to_string(),
                 Box::new(Ok(sample_page("marketfeed", vec![backfill_post]))),
             ),
-        ));
+        );
 
         let backfilled = terminal
             .telegram_feed
@@ -1063,20 +1417,99 @@ mod tests {
     fn loaded_private_channel_candidates_open_and_can_collapse_selector() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         assert!(!terminal.telegram_feed.private_channel_candidates_expanded);
+        let request_id = terminal
+            .telegram_feed
+            .next_private_channel_candidates_request_id();
+        terminal.telegram_feed.private_channel_candidates_loading = true;
 
-        let _task =
-            terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(Box::new(Ok(
-                vec![crate::telegram_feed::TelegramPrivateChannelCandidate {
+        let _task = terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(
+            request_id,
+            Box::new(Ok(vec![
+                crate::telegram_feed::TelegramPrivateChannelCandidate {
                     peer_id: 42,
                     title: "Private Macro".to_string(),
                     avatar_handle: None,
-                }],
-            ))));
+                },
+            ])),
+        ));
 
         assert!(terminal.telegram_feed.private_channel_candidates_expanded);
+        assert!(!terminal.telegram_feed.private_channel_candidates_loading);
         let _task =
             terminal.update_telegram_feed(Message::ToggleTelegramPrivateChannelCandidatesExpanded);
         assert!(!terminal.telegram_feed.private_channel_candidates_expanded);
+    }
+
+    #[test]
+    fn stale_private_channel_candidates_are_ignored_after_fast_mode_disable() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
+        let stale_request_id = terminal
+            .telegram_feed
+            .next_private_channel_candidates_request_id();
+        terminal.telegram_feed.private_channel_candidates_loading = true;
+
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFastFeed);
+        let _task = terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(
+            stale_request_id,
+            Box::new(Ok(vec![
+                crate::telegram_feed::TelegramPrivateChannelCandidate {
+                    peer_id: 42,
+                    title: "Private Macro".to_string(),
+                    avatar_handle: None,
+                },
+            ])),
+        ));
+
+        assert!(terminal.telegram_feed.private_channel_candidates.is_empty());
+        assert!(!terminal.telegram_feed.private_channel_candidates_loading);
+        assert_eq!(
+            terminal.telegram_feed.fast_status,
+            Some(("Fast mode disabled".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn stale_private_channel_candidates_are_ignored_after_newer_scan() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let stale_request_id = terminal
+            .telegram_feed
+            .next_private_channel_candidates_request_id();
+        let _current_request_id = terminal
+            .telegram_feed
+            .next_private_channel_candidates_request_id();
+        terminal.telegram_feed.private_channel_candidates =
+            vec![crate::telegram_feed::TelegramPrivateChannelCandidate {
+                peer_id: 7,
+                title: "Current Private".to_string(),
+                avatar_handle: None,
+            }];
+        terminal.telegram_feed.private_channel_candidates_loading = true;
+        terminal.telegram_feed.fast_status =
+            Some(("Scanning Telegram channels".to_string(), false));
+
+        let _task = terminal.update_telegram_feed(Message::TelegramPrivateChannelsLoaded(
+            stale_request_id,
+            Box::new(Ok(vec![
+                crate::telegram_feed::TelegramPrivateChannelCandidate {
+                    peer_id: 42,
+                    title: "Stale Private".to_string(),
+                    avatar_handle: None,
+                },
+            ])),
+        ));
+
+        assert_eq!(terminal.telegram_feed.private_channel_candidates.len(), 1);
+        assert_eq!(
+            terminal.telegram_feed.private_channel_candidates[0].title,
+            "Current Private"
+        );
+        assert!(terminal.telegram_feed.private_channel_candidates_loading);
+        assert_eq!(
+            terminal.telegram_feed.fast_status,
+            Some(("Scanning Telegram channels".to_string(), false))
+        );
     }
 
     #[test]
@@ -1123,6 +1556,308 @@ mod tests {
     }
 
     #[test]
+    fn fast_feed_disable_abandons_pending_auth_challenge() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::PasswordRequired;
+        terminal.telegram_feed.fast_code_input = "12345".to_string().into();
+        terminal.telegram_feed.fast_password_input = "password".to_string().into();
+        terminal.telegram_feed.fast_password_hint = Some("hint".to_string());
+
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFastFeed);
+
+        assert!(!terminal.telegram_feed.fast_mode_enabled);
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::Idle
+        );
+        assert!(terminal.telegram_feed.fast_code_input.is_empty());
+        assert!(terminal.telegram_feed.fast_password_input.is_empty());
+        assert!(terminal.telegram_feed.fast_password_hint.is_none());
+    }
+
+    #[test]
+    fn stale_fast_auth_result_after_fast_mode_disable_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+        terminal.telegram_feed.fast_auth_in_flight = true;
+        let stale_request_id = terminal.telegram_feed.next_fast_auth_request_id();
+
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFastFeed);
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            stale_request_id,
+            TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedIn {
+                display_name: "Alice".to_string(),
+            })),
+        ));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::Idle
+        );
+        assert!(!terminal.telegram_feed.fast_connected);
+        assert!(!terminal.telegram_feed.fast_auth_in_flight);
+        assert_eq!(
+            terminal.telegram_feed.fast_status,
+            Some(("Fast mode disabled".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn fast_feed_identity_edit_abandons_pending_auth_challenge() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+        terminal.telegram_feed.fast_auth_in_flight = true;
+        terminal.telegram_feed.fast_code_input = "12345".to_string().into();
+        terminal.telegram_feed.fast_password_hint = Some("hint".to_string());
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastPhoneChanged(
+            "+15555550123".to_string(),
+        ));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::Idle
+        );
+        assert!(terminal.telegram_feed.fast_code_input.is_empty());
+        assert!(terminal.telegram_feed.fast_password_hint.is_none());
+        assert!(!terminal.telegram_feed.fast_auth_in_flight);
+    }
+
+    #[test]
+    fn stale_fast_auth_result_after_identity_edit_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+        terminal.telegram_feed.fast_auth_in_flight = true;
+        let stale_request_id = terminal.telegram_feed.next_fast_auth_request_id();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastPhoneChanged(
+            "+15555550123".to_string(),
+        ));
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            stale_request_id,
+            TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedIn {
+                display_name: "Alice".to_string(),
+            })),
+        ));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::Idle
+        );
+        assert!(!terminal.telegram_feed.fast_connected);
+        assert!(!terminal.telegram_feed.fast_auth_in_flight);
+    }
+
+    #[test]
+    fn stale_fast_code_sent_after_identity_edit_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+        terminal.telegram_feed.fast_auth_in_flight = true;
+        let stale_request_id = terminal.telegram_feed.next_fast_auth_request_id();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastPhoneChanged(
+            "+15555550123".to_string(),
+        ));
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            stale_request_id,
+            TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::CodeSent)),
+        ));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::Idle
+        );
+        assert!(!terminal.telegram_feed.fast_auth_in_flight);
+        assert!(!terminal.telegram_feed.fast_connected);
+    }
+
+    #[test]
+    fn fast_auth_error_status_is_sanitized() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let request_id = terminal.telegram_feed.next_fast_auth_request_id();
+        terminal.telegram_feed.fast_auth_in_flight = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            request_id,
+            TelegramFastAuthMessageResult::new(Err(
+                "telegram failed api_hash=hash-secret phone_code=code-secret".to_string(),
+            )),
+        ));
+
+        let status = terminal.telegram_feed.fast_status.as_ref().expect("status");
+        assert_eq!(
+            status,
+            &("Telegram fast-mode request failed".to_string(), true)
+        );
+        assert!(!status.0.contains("hash-secret"));
+        assert!(!status.0.contains("code-secret"));
+    }
+
+    #[test]
+    fn accepted_fast_code_sent_drops_abandoned_auth_challenges() {
+        let _guard = telegram_fast_pending_auth_test_lock()
+            .lock()
+            .expect("pending auth test lock");
+        clear_telegram_fast_pending_auth();
+        set_telegram_fast_pending_auth_placeholders_for_test(&[
+            ("/tmp/kerosene-telegram-a.session", 1),
+            ("/tmp/kerosene-telegram-a.session", 2),
+            ("/tmp/kerosene-telegram-b.session", 3),
+        ]);
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_auth_request_id = 2;
+        terminal.telegram_feed.fast_auth_in_flight = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            2,
+            TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::CodeSent)),
+        ));
+
+        assert_eq!(telegram_fast_pending_auth_request_ids_for_test(), vec![2]);
+        clear_telegram_fast_pending_auth();
+    }
+
+    #[test]
+    fn fast_code_request_is_ignored_while_auth_request_is_in_flight() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_api_id = Some(12345);
+        terminal.telegram_feed.fast_api_id_input = "12345".to_string();
+        terminal.telegram_feed.fast_api_hash_input = "hash".to_string().into();
+        terminal.telegram_feed.fast_phone_input = "+15555550123".to_string();
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+        let request_id = terminal.telegram_feed.next_fast_auth_request_id();
+        terminal.telegram_feed.fast_auth_in_flight = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastRequestCode);
+
+        assert_eq!(terminal.telegram_feed.fast_auth_request_id, request_id);
+        assert!(terminal.telegram_feed.fast_auth_in_flight);
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::CodeRequested
+        );
+    }
+
+    #[test]
+    fn fast_auth_local_session_clear_failure_does_not_mark_signed_out() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
+        terminal.telegram_feed.fast_connected = true;
+        let nonce = terminal.telegram_feed.fast_reconnect_nonce;
+        let request_id = terminal.telegram_feed.next_fast_auth_request_id();
+        terminal.telegram_feed.fast_auth_in_flight = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            request_id,
+            TelegramFastAuthMessageResult::new(Err(format!(
+                "{TELEGRAM_FAST_SESSION_CLEAR_FAILED}: remove /tmp/kerosene-telegram-fast.session failed"
+            ))),
+        ));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::SignedIn
+        );
+        assert!(terminal.telegram_feed.fast_connected);
+        assert_eq!(terminal.telegram_feed.fast_reconnect_nonce, nonce);
+        let status = terminal.telegram_feed.fast_status.as_ref().expect("status");
+        assert_eq!(
+            status,
+            &(TELEGRAM_FAST_SESSION_CLEAR_FAILED.to_string(), true)
+        );
+        assert!(!status.0.contains("/tmp/kerosene"));
+        assert!(!terminal.telegram_feed.fast_auth_in_flight);
+    }
+
+    #[test]
+    fn fast_auth_signed_out_warning_clears_local_runtime_state() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
+        terminal.telegram_feed.fast_connected = true;
+        terminal
+            .telegram_feed
+            .record_fast_connection_event(TradingTerminal::now_ms());
+        terminal.telegram_feed.fast_code_input = "12345".to_string().into();
+        terminal.telegram_feed.fast_password_input = "password".to_string().into();
+        terminal.telegram_feed.fast_phone_input = "+15555550123".to_string();
+        let nonce = terminal.telegram_feed.fast_reconnect_nonce;
+        let request_id = terminal.telegram_feed.next_fast_auth_request_id();
+        terminal.telegram_feed.fast_auth_in_flight = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            request_id,
+            TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedOut {
+                warning: Some("Remote sign-out could not be confirmed".to_string()),
+            })),
+        ));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_auth_stage,
+            TelegramFastAuthStage::Idle
+        );
+        assert!(!terminal.telegram_feed.fast_connected);
+        assert!(terminal.telegram_feed.fast_last_event_ms.is_none());
+        assert!(terminal.telegram_feed.fast_code_input.is_empty());
+        assert!(terminal.telegram_feed.fast_password_input.is_empty());
+        assert!(terminal.telegram_feed.fast_phone_input.is_empty());
+        assert_eq!(
+            terminal.telegram_feed.fast_reconnect_nonce,
+            nonce.saturating_add(1)
+        );
+        assert_eq!(
+            terminal.telegram_feed.fast_status,
+            Some(("Remote sign-out could not be confirmed".to_string(), true))
+        );
+    }
+
+    #[test]
+    fn fast_password_required_status_does_not_include_hint() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let request_id = terminal.telegram_feed.next_fast_auth_request_id();
+        terminal.telegram_feed.fast_auth_in_flight = true;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            request_id,
+            TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::PasswordRequired {
+                hint: Some("hint-secret".to_string()),
+            })),
+        ));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_password_hint.as_deref(),
+            Some("hint-secret")
+        );
+        let status = terminal.telegram_feed.fast_status.as_ref().expect("status");
+        assert_eq!(
+            status,
+            &("Telegram 2FA password required".to_string(), false)
+        );
+        assert!(!status.0.contains("hint-secret"));
+    }
+
+    #[test]
+    fn fast_stream_status_message_is_sanitized() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        deliver_enabled_fast_feed_event(
+            &mut terminal,
+            TelegramFastFeedEvent::Status {
+                connected: true,
+                auth_required: false,
+                message: "connected api_hash=hash-secret phone_code=code-secret".to_string(),
+            },
+        );
+
+        let status = terminal.telegram_feed.fast_status.as_ref().expect("status");
+        assert_eq!(status, &("Fast Telegram mode listening".to_string(), false));
+        assert!(!status.0.contains("hash-secret"));
+        assert!(!status.0.contains("code-secret"));
+    }
+
+    #[test]
     fn fast_feed_signed_in_result_clears_login_inputs_and_reconnects() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.fast_api_hash_input = "hash".to_string().into();
@@ -1130,12 +1865,15 @@ mod tests {
         terminal.telegram_feed.fast_code_input = "12345".to_string().into();
         terminal.telegram_feed.fast_password_input = "password".to_string().into();
         let nonce = terminal.telegram_feed.fast_reconnect_nonce;
+        let request_id = terminal.telegram_feed.next_fast_auth_request_id();
+        terminal.telegram_feed.fast_auth_in_flight = true;
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(Box::new(Ok(
-            TelegramFastAuthOutcome::SignedIn {
+        let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
+            request_id,
+            TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedIn {
                 display_name: "Alice".to_string(),
-            },
-        ))));
+            })),
+        ));
 
         assert_eq!(
             terminal.telegram_feed.fast_auth_stage,
@@ -1163,7 +1901,33 @@ mod tests {
                 .saturating_sub(crate::telegram_feed::TELEGRAM_FAST_STALE_AFTER_MS + 1),
         );
 
+        deliver_enabled_fast_feed_event(
+            &mut terminal,
+            TelegramFastFeedEvent::Status {
+                connected: true,
+                auth_required: false,
+                message: "Fast Telegram mode listening".to_string(),
+            },
+        );
+
+        assert!(terminal.telegram_feed.fast_connected);
+        assert!(
+            !terminal
+                .telegram_feed
+                .fast_connection_stale(TradingTerminal::now_ms())
+        );
+    }
+
+    #[test]
+    fn stale_fast_feed_status_after_reconnect_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_connected = false;
+        let stale_nonce = terminal.telegram_feed.fast_reconnect_nonce;
+        terminal.telegram_feed.fast_reconnect_nonce = stale_nonce.saturating_add(1);
+
         let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            stale_nonce,
             TelegramFastFeedEvent::Status {
                 connected: true,
                 auth_required: false,
@@ -1171,11 +1935,116 @@ mod tests {
             },
         ));
 
-        assert!(terminal.telegram_feed.fast_connected);
+        assert!(!terminal.telegram_feed.fast_connected);
+        assert_eq!(terminal.telegram_feed.fast_status, None);
+    }
+
+    #[test]
+    fn adding_public_channel_invalidates_stale_fast_status() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_connected = true;
+        terminal
+            .telegram_feed
+            .record_fast_connection_event(TradingTerminal::now_ms());
+        terminal.telegram_feed.fast_status =
+            Some(("Fast Telegram mode listening".to_string(), false));
+        terminal.telegram_feed.channel_input = "freshfeed".to_string();
+        let stale_nonce = terminal.telegram_feed.fast_reconnect_nonce;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedAddChannel);
+
+        assert_eq!(
+            terminal.telegram_feed.fast_reconnect_nonce,
+            stale_nonce.saturating_add(1)
+        );
+        assert!(!terminal.telegram_feed.fast_connected);
+        assert!(terminal.telegram_feed.fast_last_event_ms.is_none());
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            stale_nonce,
+            TelegramFastFeedEvent::Status {
+                connected: true,
+                auth_required: false,
+                message: "Fast Telegram mode listening".to_string(),
+            },
+        ));
+
+        assert!(!terminal.telegram_feed.fast_connected);
         assert!(
-            !terminal
+            terminal
                 .telegram_feed
-                .fast_connection_stale(TradingTerminal::now_ms())
+                .fast_status
+                .as_ref()
+                .is_some_and(|(status, is_error)| {
+                    status.contains("channel list changed") && !*is_error
+                })
+        );
+    }
+
+    #[test]
+    fn removing_public_channel_allows_background_refresh_after_fast_status_invalidated() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string(), "otherfeed".to_string()];
+        terminal.telegram_feed.fast_mode_enabled = true;
+        terminal.telegram_feed.fast_connected = true;
+        terminal
+            .telegram_feed
+            .record_fast_connection_event(TradingTerminal::now_ms());
+        let stale_nonce = terminal.telegram_feed.fast_reconnect_nonce;
+
+        let _task = terminal
+            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+
+        assert_eq!(
+            terminal.telegram_feed.fast_reconnect_nonce,
+            stale_nonce.saturating_add(1)
+        );
+        assert!(!terminal.telegram_feed.fast_connected);
+        assert!(terminal.telegram_feed.fast_last_event_ms.is_none());
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedRefreshTick);
+
+        assert_eq!(
+            terminal.telegram_feed.background_loading_channels,
+            vec!["otherfeed".to_string()]
+        );
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            stale_nonce,
+            TelegramFastFeedEvent::Status {
+                connected: true,
+                auth_required: false,
+                message: "Fast Telegram mode listening".to_string(),
+            },
+        ));
+
+        assert!(!terminal.telegram_feed.fast_connected);
+    }
+
+    #[test]
+    fn fast_feed_loaded_event_after_disable_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.telegram_feed.fast_mode_enabled = true;
+        let stale_nonce = terminal.telegram_feed.fast_reconnect_nonce;
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFastFeed);
+        let mut post = sample_post("marketfeed", 22);
+        post.source = crate::telegram_feed::TelegramFeedPostSource::FastLive;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+            stale_nonce,
+            TelegramFastFeedEvent::Loaded(
+                "marketfeed".to_string(),
+                Box::new(Ok(sample_page("marketfeed", vec![post]))),
+            ),
+        ));
+
+        assert!(!terminal.telegram_feed.fast_mode_enabled);
+        assert!(terminal.telegram_feed.posts.is_empty());
+        assert_eq!(
+            terminal.telegram_feed.fast_status,
+            Some(("Fast mode disabled".to_string(), false))
         );
     }
 
@@ -1187,13 +2056,14 @@ mod tests {
         terminal.telegram_feed.fast_auth_stage = TelegramFastAuthStage::SignedIn;
         let nonce = terminal.telegram_feed.fast_reconnect_nonce;
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+        deliver_enabled_fast_feed_event(
+            &mut terminal,
             TelegramFastFeedEvent::Status {
                 connected: false,
                 auth_required: false,
                 message: "Telegram fast feed disconnected; reconnecting".to_string(),
             },
-        ));
+        );
 
         assert!(!terminal.telegram_feed.fast_connected);
         assert_eq!(terminal.telegram_feed.fast_reconnect_nonce, nonce);
@@ -1234,19 +2104,21 @@ mod tests {
         let mut initial_post = sample_post("marketfeed", 1);
         initial_post.fetched_at_ms = 1_100;
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page("marketfeed", vec![initial_post]))),
-        ));
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", vec![initial_post])),
+        );
 
         let mut refreshed_post = sample_post("marketfeed", 1);
         refreshed_post.text = "edited".to_string();
         refreshed_post.fetched_at_ms = 9_999;
         refreshed_post.request_duration_ms = 999;
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page("marketfeed", vec![refreshed_post]))),
-        ));
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", vec![refreshed_post])),
+        );
 
         assert_eq!(terminal.telegram_feed.posts.len(), 1);
         let post = &terminal.telegram_feed.posts[0];
@@ -1270,10 +2142,11 @@ mod tests {
         let mut post = sample_post("marketfeed", 1);
         post.text = "BTC is moving".to_string();
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page("marketfeed", vec![post]))),
-        ));
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", vec![post])),
+        );
 
         let mentions = &terminal.telegram_feed.posts[0].ticker_mentions;
         assert_eq!(mentions.len(), 1);
@@ -1302,10 +2175,11 @@ mod tests {
         let mut initial = sample_post("marketfeed", 1);
         initial.text = "BTC is moving".to_string();
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page("marketfeed", vec![initial]))),
-        ));
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", vec![initial])),
+        );
         terminal.all_mids.insert("BTC".to_string(), 105.0);
         terminal
             .all_mids_updated_at_ms
@@ -1313,10 +2187,11 @@ mod tests {
         let mut refreshed = sample_post("marketfeed", 1);
         refreshed.text = "edited BTC".to_string();
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page("marketfeed", vec![refreshed]))),
-        ));
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", vec![refreshed])),
+        );
 
         let mentions = &terminal.telegram_feed.posts[0].ticker_mentions;
         assert_eq!(mentions.len(), 1);
@@ -1365,10 +2240,16 @@ mod tests {
         assert_eq!(profile.title, "Market Feed");
     }
 
-    #[test]
-    fn removing_channel_clears_cached_profile() {
+    #[tokio::test]
+    async fn removing_channel_clears_cached_profile_and_fast_cursor() {
+        let _cursor_guard = fast_channel_cursor_test_lock().lock().await;
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        set_fast_channel_cursor_for_test("marketfeed", 99).await;
+        assert_eq!(
+            fast_channel_cursor_message_id_for_test("marketfeed").await,
+            99
+        );
         terminal.telegram_feed.channel_profiles.insert(
             "marketfeed".to_string(),
             sample_profile("marketfeed", Some("https://example.com/avatar.jpg")),
@@ -1388,6 +2269,10 @@ mod tests {
                 .telegram_feed
                 .channel_profiles
                 .contains_key("marketfeed")
+        );
+        assert_eq!(
+            fast_channel_cursor_message_id_for_test("marketfeed").await,
+            0
         );
     }
 
@@ -1425,6 +2310,27 @@ mod tests {
         assert!(profile.avatar_handle.is_some());
     }
 
+    #[tokio::test]
+    async fn adding_private_channel_clears_existing_fast_cursor() {
+        let _cursor_guard = fast_channel_cursor_test_lock().lock().await;
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = crate::telegram_feed::telegram_private_channel_key(42);
+        set_fast_channel_cursor_for_test(&key, 99).await;
+        assert_eq!(fast_channel_cursor_message_id_for_test(&key).await, 99);
+        terminal.telegram_feed.private_channel_candidates.push(
+            crate::telegram_feed::TelegramPrivateChannelCandidate {
+                peer_id: 42,
+                title: "Private Macro".to_string(),
+                avatar_handle: None,
+            },
+        );
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedAddPrivateChannel(42));
+
+        assert_eq!(terminal.telegram_feed.private_channels.len(), 1);
+        assert_eq!(fast_channel_cursor_message_id_for_test(&key).await, 0);
+    }
+
     #[test]
     fn selected_private_channel_fast_event_is_inserted() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
@@ -1439,9 +2345,10 @@ mod tests {
         post.received_at_ms = 1_100;
         post.first_seen_ms = 1_100;
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+        deliver_enabled_fast_feed_event(
+            &mut terminal,
             TelegramFastFeedEvent::Loaded(key.clone(), Box::new(Ok(sample_page(&key, vec![post])))),
-        ));
+        );
 
         assert_eq!(terminal.telegram_feed.posts.len(), 1);
         assert_eq!(terminal.telegram_feed.posts[0].channel, key);
@@ -1488,17 +2395,21 @@ mod tests {
         let key = crate::telegram_feed::telegram_private_channel_key(42);
         let page = sample_page(&key, vec![sample_post(&key, 7)]);
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFastFeedEvent(
+        deliver_enabled_fast_feed_event(
+            &mut terminal,
             TelegramFastFeedEvent::Loaded(key, Box::new(Ok(page))),
-        ));
+        );
 
         assert!(terminal.telegram_feed.posts.is_empty());
     }
 
-    #[test]
-    fn removing_private_channel_clears_posts_profile_and_reconnects() {
+    #[tokio::test]
+    async fn removing_private_channel_clears_posts_profile_cursor_and_reconnects() {
+        let _cursor_guard = fast_channel_cursor_test_lock().lock().await;
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         let key = crate::telegram_feed::telegram_private_channel_key(42);
+        set_fast_channel_cursor_for_test(&key, 99).await;
+        assert_eq!(fast_channel_cursor_message_id_for_test(&key).await, 99);
         terminal.telegram_feed.private_channels =
             vec![crate::telegram_feed::TelegramFeedPrivateChannelConfig {
                 peer_id: 42,
@@ -1520,6 +2431,7 @@ mod tests {
             terminal.telegram_feed.fast_reconnect_nonce,
             nonce.saturating_add(1)
         );
+        assert_eq!(fast_channel_cursor_message_id_for_test(&key).await, 0);
     }
 
     #[test]
@@ -1580,14 +2492,15 @@ mod tests {
             .and_then(|profile| profile.avatar_failed_at_ms)
             .expect("failure timestamp should be stored");
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page_with_avatar(
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page_with_avatar(
                 "marketfeed",
                 avatar_url,
                 vec![sample_post("marketfeed", 1)],
-            ))),
-        ));
+            )),
+        );
 
         let profile = terminal
             .telegram_feed
@@ -1600,9 +2513,11 @@ mod tests {
     }
 
     #[test]
-    fn adding_channel_after_many_existing_channels_is_allowed() {
+    fn adding_channel_below_public_limit_is_allowed() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
-        terminal.telegram_feed.channels = (0..16).map(|index| format!("channel_{index}")).collect();
+        terminal.telegram_feed.channels = (0..TELEGRAM_FEED_MAX_PUBLIC_CHANNELS - 1)
+            .map(|index| format!("channel_{index}"))
+            .collect();
         terminal.telegram_feed.channel_input = "another_channel".to_string();
 
         let _task = terminal.update_telegram_feed(Message::TelegramFeedAddChannel);
@@ -1613,8 +2528,106 @@ mod tests {
                 .channels
                 .contains(&"another_channel".to_string())
         );
-        assert_eq!(terminal.telegram_feed.channels.len(), 17);
+        assert_eq!(
+            terminal.telegram_feed.channels.len(),
+            TELEGRAM_FEED_MAX_PUBLIC_CHANNELS
+        );
+        assert!(
+            terminal
+                .telegram_feed
+                .loading_channels
+                .contains(&"another_channel".to_string())
+        );
         assert_eq!(terminal.telegram_feed.last_error, None);
+    }
+
+    #[test]
+    fn adding_channel_at_public_limit_is_rejected() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = (0..TELEGRAM_FEED_MAX_PUBLIC_CHANNELS)
+            .map(|index| format!("channel_{index}"))
+            .collect();
+        terminal.telegram_feed.channel_input = "another_channel".to_string();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedAddChannel);
+
+        assert!(
+            !terminal
+                .telegram_feed
+                .channels
+                .contains(&"another_channel".to_string())
+        );
+        assert_eq!(
+            terminal.telegram_feed.channels.len(),
+            TELEGRAM_FEED_MAX_PUBLIC_CHANNELS
+        );
+        assert!(
+            !terminal
+                .telegram_feed
+                .loading_channels
+                .contains(&"another_channel".to_string())
+        );
+        assert_eq!(
+            terminal.telegram_feed.last_error,
+            Some(format!(
+                "Telegram Feed supports up to {TELEGRAM_FEED_MAX_PUBLIC_CHANNELS} public channels"
+            ))
+        );
+    }
+
+    #[test]
+    fn refresh_caps_overfilled_public_channel_state() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = (0..TELEGRAM_FEED_MAX_PUBLIC_CHANNELS + 4)
+            .map(|index| format!("channel_{index}"))
+            .collect();
+
+        let _task = terminal.request_telegram_feed_refresh();
+
+        assert_eq!(
+            terminal.telegram_feed.channels.len(),
+            TELEGRAM_FEED_MAX_PUBLIC_CHANNELS
+        );
+        assert_eq!(
+            terminal.telegram_feed.loading_channels.len(),
+            TELEGRAM_FEED_MAX_PUBLIC_CHANNELS
+        );
+        assert!(
+            !terminal
+                .telegram_feed
+                .channels
+                .contains(&format!("channel_{TELEGRAM_FEED_MAX_PUBLIC_CHANNELS}"))
+        );
+        assert_eq!(
+            terminal.telegram_feed.last_error,
+            Some(format!(
+                "Telegram Feed supports up to {TELEGRAM_FEED_MAX_PUBLIC_CHANNELS} public channels; extra channels were ignored"
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn adding_public_channel_clears_existing_fast_cursor() {
+        let _cursor_guard = fast_channel_cursor_test_lock().lock().await;
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        set_fast_channel_cursor_for_test("another_channel", 99).await;
+        assert_eq!(
+            fast_channel_cursor_message_id_for_test("another_channel").await,
+            99
+        );
+        terminal.telegram_feed.channels.clear();
+        terminal.telegram_feed.channel_input = "another_channel".to_string();
+
+        let _task = terminal.update_telegram_feed(Message::TelegramFeedAddChannel);
+
+        assert_eq!(
+            terminal.telegram_feed.channels,
+            vec!["another_channel".to_string()]
+        );
+        assert_eq!(
+            fast_channel_cursor_message_id_for_test("another_channel").await,
+            0
+        );
     }
 
     #[test]
@@ -1623,23 +2636,25 @@ mod tests {
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
         terminal.telegram_feed.notifications_enabled = true;
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page(
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page(
                 "marketfeed",
                 vec![sample_post("marketfeed", 1)],
-            ))),
-        ));
+            )),
+        );
         assert_eq!(terminal.telegram_feed.posts[0].first_seen_ms, 0);
         assert!(terminal.toasts.is_empty());
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page(
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page(
                 "marketfeed",
                 vec![sample_post("marketfeed", 2), sample_post("marketfeed", 1)],
-            ))),
-        ));
+            )),
+        );
 
         let new_post = terminal
             .telegram_feed
@@ -1661,10 +2676,11 @@ mod tests {
             .map(|message_id| sample_post("marketfeed", message_id))
             .collect();
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page("marketfeed", initial_posts))),
-        ));
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", initial_posts)),
+        );
 
         assert!(terminal.toasts.is_empty());
         assert!(
@@ -1675,13 +2691,14 @@ mod tests {
                 .any(|post| post.message_id == 1)
         );
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedLoaded(
-            "marketfeed".to_string(),
-            Box::new(Ok(sample_page(
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page(
                 "marketfeed",
                 vec![sample_post("marketfeed", 1)],
-            ))),
-        ));
+            )),
+        );
 
         assert!(terminal.toasts.is_empty());
     }
