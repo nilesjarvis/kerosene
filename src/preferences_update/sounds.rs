@@ -23,6 +23,14 @@ impl TradingTerminal {
                 self.persist_config();
             }
             Message::ImportChartHudOrderSound => {
+                if self.config_clear_requested || self.config_cleared_this_session {
+                    self.push_toast(
+                        "HUD order sound import is unavailable until Kerosene restarts."
+                            .to_string(),
+                        true,
+                    );
+                    return Task::none();
+                }
                 return Task::perform(
                     import_hud_order_sound(),
                     Message::ChartHudOrderSoundImported,
@@ -30,6 +38,14 @@ impl TradingTerminal {
             }
             Message::ChartHudOrderSoundImported(result) => match result {
                 Ok(Some(file_name)) => {
+                    if self.config_clear_requested || self.config_cleared_this_session {
+                        self.push_toast(
+                            "HUD order sound import was discarded because config persistence is paused until restart."
+                                .to_string(),
+                            true,
+                        );
+                        return Task::none();
+                    }
                     self.chart_hud_order_sound_file = Some(file_name);
                     self.chart_hud_order_sound = config::ChartHudOrderSound::CustomWav;
                     self.persist_config();
@@ -79,6 +95,11 @@ async fn import_hud_order_sound() -> Result<Option<String>, String> {
     };
 
     let source_path = file.path().to_path_buf();
+    super::ensure_import_file_within_limit(
+        &source_path,
+        "HUD order sound",
+        super::MAX_IMPORTED_HUD_SOUND_BYTES,
+    )?;
     let bytes = std::fs::read(&source_path)
         .map_err(|e| format!("read {} failed: {e}", source_path.display()))?;
     validate_wav(&bytes)?;
@@ -129,4 +150,54 @@ fn unique_sound_file_name(path: &Path) -> String {
         .as_millis();
 
     format!("{stem}-{millis}.wav")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ChartHudOrderSound;
+    use std::fs::File;
+
+    #[test]
+    fn completed_hud_sound_import_is_discarded_after_config_clear() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_cleared_this_session = true;
+
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(Ok(
+            Some("after-clear.wav".to_string()),
+        )));
+
+        assert_eq!(terminal.chart_hud_order_sound_file, None);
+        assert_eq!(
+            terminal.chart_hud_order_sound,
+            ChartHudOrderSound::default()
+        );
+        assert!(terminal.config_save_due_at.is_none());
+    }
+
+    #[test]
+    fn oversized_hud_sound_import_file_is_rejected_before_read() {
+        let path = unique_temp_path("oversized-hud-order.wav");
+        let file = File::create(&path).expect("create sparse sound fixture");
+        file.set_len(super::super::MAX_IMPORTED_HUD_SOUND_BYTES + 1)
+            .expect("size sparse sound fixture");
+
+        let err = super::super::ensure_import_file_within_limit(
+            &path,
+            "HUD order sound",
+            super::super::MAX_IMPORTED_HUD_SOUND_BYTES,
+        )
+        .expect_err("oversized HUD sound should be rejected");
+
+        let _ = std::fs::remove_file(&path);
+        assert!(err.contains("too large"));
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("kerosene-{nanos}-{name}"))
+    }
 }

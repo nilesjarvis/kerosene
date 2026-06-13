@@ -31,13 +31,35 @@ impl TradingTerminal {
                 );
             }
             Message::ImportDisplayFont => {
+                if self.config_clear_requested || self.config_cleared_this_session {
+                    self.push_toast(
+                        "Font import is unavailable until Kerosene restarts.".to_string(),
+                        true,
+                    );
+                    return Task::none();
+                }
                 return Task::perform(import_font(), Message::DisplayFontImported);
             }
             Message::ImportMonospaceFont => {
+                if self.config_clear_requested || self.config_cleared_this_session {
+                    self.push_toast(
+                        "Font import is unavailable until Kerosene restarts.".to_string(),
+                        true,
+                    );
+                    return Task::none();
+                }
                 return Task::perform(import_font(), Message::MonospaceFontImported);
             }
             Message::DisplayFontImported(result) => match result {
                 Ok(font) => {
+                    if self.config_clear_requested || self.config_cleared_this_session {
+                        self.push_toast(
+                            "Font import was discarded because config persistence is paused until restart."
+                                .to_string(),
+                            true,
+                        );
+                        return Task::none();
+                    }
                     let family = font.family.clone();
                     upsert_custom_font(&mut self.custom_fonts, font);
                     self.custom_fonts =
@@ -59,6 +81,14 @@ impl TradingTerminal {
             },
             Message::MonospaceFontImported(result) => match result {
                 Ok(font) => {
+                    if self.config_clear_requested || self.config_cleared_this_session {
+                        self.push_toast(
+                            "Font import was discarded because config persistence is paused until restart."
+                                .to_string(),
+                            true,
+                        );
+                        return Task::none();
+                    }
                     let family = font.family.clone();
                     upsert_custom_font(&mut self.custom_fonts, font);
                     self.custom_fonts =
@@ -110,6 +140,7 @@ async fn import_font() -> Result<config::CustomFontConfig, String> {
     };
 
     let source_path = file.path().to_path_buf();
+    super::ensure_import_file_within_limit(&source_path, "font", super::MAX_IMPORTED_FONT_BYTES)?;
     let bytes = std::fs::read(&source_path)
         .map_err(|e| format!("read {} failed: {e}", source_path.display()))?;
     let family = font_family_from_bytes(&bytes)?;
@@ -176,4 +207,70 @@ fn unique_font_file_name(family: &str, extension: &str) -> String {
         .as_millis();
 
     format!("{base}-{millis}.{extension}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{CustomFontConfig, DisplayFontConfig};
+    use std::fs::File;
+
+    #[test]
+    fn completed_font_import_is_discarded_after_config_clear() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_cleared_this_session = true;
+
+        let _task =
+            terminal.update_font_preferences(Message::DisplayFontImported(Ok(CustomFontConfig {
+                family: "After Clear".to_string(),
+                file_name: "after-clear.ttf".to_string(),
+            })));
+
+        assert!(terminal.custom_fonts.is_empty());
+        assert_eq!(terminal.display_font, DisplayFontConfig::System);
+        assert!(terminal.config_save_due_at.is_none());
+    }
+
+    #[test]
+    fn completed_font_import_is_discarded_while_config_clear_is_pending() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+
+        let _task = terminal.update_font_preferences(Message::MonospaceFontImported(Ok(
+            CustomFontConfig {
+                family: "During Clear".to_string(),
+                file_name: "during-clear.ttf".to_string(),
+            },
+        )));
+
+        assert!(terminal.custom_fonts.is_empty());
+        assert_eq!(terminal.monospace_font, DisplayFontConfig::System);
+        assert!(terminal.config_save_due_at.is_none());
+    }
+
+    #[test]
+    fn oversized_font_import_file_is_rejected_before_read() {
+        let path = unique_temp_path("oversized-font.ttf");
+        let file = File::create(&path).expect("create sparse font fixture");
+        file.set_len(super::super::MAX_IMPORTED_FONT_BYTES + 1)
+            .expect("size sparse font fixture");
+
+        let err = super::super::ensure_import_file_within_limit(
+            &path,
+            "font",
+            super::super::MAX_IMPORTED_FONT_BYTES,
+        )
+        .expect_err("oversized font should be rejected");
+
+        let _ = std::fs::remove_file(&path);
+        assert!(err.contains("too large"));
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("kerosene-{nanos}-{name}"))
+    }
 }

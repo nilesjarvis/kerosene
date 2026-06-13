@@ -197,9 +197,6 @@ fn sound_statuses() -> &'static Mutex<Vec<SoundStatus>> {
 
 pub(super) fn report_sound_status(message: impl Into<String>, is_error: bool) {
     let message = message.into();
-    if is_error {
-        eprintln!("{message}");
-    }
     if let Ok(mut statuses) = sound_statuses().lock() {
         if statuses.iter().any(|status| status.message == message) {
             return;

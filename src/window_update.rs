@@ -34,8 +34,7 @@ impl TradingTerminal {
                 }
                 if Some(id) == self.screener.window_id {
                     self.screener.window_id = None;
-                    self.screener.contexts_loading = false;
-                    self.screener.history_loading = false;
+                    self.screener.invalidate_refreshes();
                 }
                 if Some(id) == self.chart_screenshot_window_id {
                     self.chart_screenshot_window_id = None;

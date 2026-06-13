@@ -58,33 +58,22 @@ impl TradingTerminal {
             }
             Message::EncryptedSecretPasswordChanged(value) => {
                 self.encrypted_secret_password.zeroize();
-                self.encrypted_secret_password = value.into_zeroizing();
+                self.encrypted_secret_password = value.into_zeroizing().into();
             }
             Message::EncryptedSecretConfirmChanged(value) => {
                 self.encrypted_secret_confirm.zeroize();
-                self.encrypted_secret_confirm = value.into_zeroizing();
+                self.encrypted_secret_confirm = value.into_zeroizing().into();
             }
             Message::UnlockEncryptedSecrets => {
-                self.unlock_encrypted_credentials();
+                return self.unlock_encrypted_credentials();
             }
             Message::ApplySecretStorageSelection => {
                 self.apply_secret_storage_selection();
             }
             Message::ClearConfigs => {
-                let profiles = self.persisted_accounts_snapshot();
-                return Task::perform(
-                    async move { config::clear_all_configs(&profiles) },
-                    Message::ConfigsCleared,
-                );
+                return self.request_config_clear();
             }
-            Message::ConfigsCleared(result) => match result {
-                Ok(summary) => self.apply_config_clear_to_runtime(summary),
-                Err(e) => {
-                    let message = format!("Config clear failed: {e}");
-                    self.secret_store_status = Some((message.clone(), true));
-                    self.push_toast(message, true);
-                }
-            },
+            Message::ConfigsCleared(result) => return self.handle_config_clear_result(result),
             _ => {}
         }
 
