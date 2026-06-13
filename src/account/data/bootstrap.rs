@@ -10,6 +10,7 @@ use responses::{
     fee_rates_from_response, funding_history_from_response, hip3_clearinghouse_from_response,
     hip3_open_orders_from_response, record_best_effort_section_warnings, spot_from_required_value,
 };
+use serde_json::Value;
 
 use std::collections::HashMap;
 
@@ -26,6 +27,26 @@ pub(crate) use hydromancer::{
 };
 
 const FUNDING_HISTORY_LOOKBACK_MS: u64 = 7 * 24 * 60 * 60 * 1000;
+
+fn frontend_open_orders_payload(address: &str, dex: Option<&str>) -> Value {
+    let mut payload = serde_json::json!({
+        "type": "frontendOpenOrders",
+        "user": address,
+    });
+    if let Some(dex) = dex.filter(|dex| !dex.is_empty())
+        && let Some(object) = payload.as_object_mut()
+    {
+        object.insert("dex".to_string(), serde_json::json!(dex));
+    }
+    payload
+}
+
+fn user_fills_payload(address: &str) -> Value {
+    serde_json::json!({
+        "type": "userFills",
+        "user": address,
+    })
+}
 
 // ---------------------------------------------------------------------------
 // Account Data Fetches
@@ -62,7 +83,7 @@ pub async fn fetch_account_data_scoped(
             Some(
                 client
                     .post(API_URL)
-                    .json(&serde_json::json!({"type": "frontendOpenOrders", "user": address}))
+                    .json(&frontend_open_orders_payload(&address, None))
                     .send()
                     .await,
             )
@@ -72,7 +93,7 @@ pub async fn fetch_account_data_scoped(
     };
     let fills_fut = client
         .post(API_URL)
-        .json(&serde_json::json!({"type": "userFills", "user": address}))
+        .json(&user_fills_payload(&address))
         .send();
     let funding_fut = client
         .post(API_URL)
@@ -107,11 +128,7 @@ pub async fn fetch_account_data_scoped(
         hip3_ord_futs.push(
             client
                 .post(API_URL)
-                .json(&serde_json::json!({
-                    "type": "frontendOpenOrders",
-                    "user": address,
-                    "dex": dex
-                }))
+                .json(&frontend_open_orders_payload(&address, Some(dex)))
                 .send(),
         );
     }
@@ -200,7 +217,7 @@ pub async fn fetch_account_data_scoped_with_provider(
     address: String,
     scope: AccountDataFetchScope,
     provider: crate::config::ReadDataProvider,
-    hydromancer_api_key: String,
+    hydromancer_api_key: zeroize::Zeroizing<String>,
 ) -> Result<AccountData, String> {
     hydromancer::fetch_account_data_scoped_with_provider(
         address,

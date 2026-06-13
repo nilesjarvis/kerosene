@@ -17,9 +17,10 @@ impl TradingTerminal {
         let theme = self.theme();
         let header = trade_row::view_trade_history_header(&theme);
 
-        let fills: Vec<_> = self
-            .account_data
-            .as_ref()
+        let snapshot = self
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data);
+        let fills: Vec<_> = snapshot
             .map(|d| {
                 d.fills
                     .iter()
@@ -27,10 +28,8 @@ impl TradingTerminal {
                     .collect()
             })
             .unwrap_or_default();
-        let warning = self
-            .account_data
-            .as_ref()
-            .and_then(|data| data.completeness.section_warning(AccountDataSection::Fills));
+        let warning =
+            snapshot.and_then(|data| data.completeness.section_warning(AccountDataSection::Fills));
 
         if fills.is_empty() {
             let msg = if let Some(warning) = warning {

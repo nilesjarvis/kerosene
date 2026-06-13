@@ -1,5 +1,9 @@
-use super::{ease_out_cubic, max_ripple_radius, ripple_alpha, ripple_radius};
+use super::{
+    RIPPLE_DURATION, RippleState, ease_out_cubic, max_ripple_radius, ripple_alpha, ripple_progress,
+    ripple_radius,
+};
 use iced::{Point, Size};
+use std::time::{Duration, Instant};
 
 // ---------------------------------------------------------------------------
 // Copy Ripple Geometry Tests
@@ -48,6 +52,39 @@ fn ripple_alpha_peaks_at_the_start_and_fades_to_zero() {
     assert!(mid > end);
     assert_eq!(end, 0.0);
     assert!(start > 0.0);
+}
+
+#[test]
+fn ripple_progress_uses_elapsed_redraw_time() {
+    assert_eq!(ripple_progress(Duration::ZERO), 0.0);
+    assert_eq!(ripple_progress(RIPPLE_DURATION / 2), 0.5);
+    assert_eq!(ripple_progress(RIPPLE_DURATION * 2), 1.0);
+}
+
+#[test]
+fn ripple_state_initializes_from_redraw_clock() {
+    let mut state = RippleState::default();
+    let origin = Point::new(8.0, 12.0);
+    state.start(origin);
+
+    let ripple = state.ripple.expect("ripple starts after press");
+    assert_eq!(ripple.origin, origin);
+    assert_eq!(ripple.started_at, None);
+    assert_eq!(ripple.progress, 0.0);
+
+    let now = Instant::now();
+    assert!(state.advance(now));
+    let ripple = state.ripple.expect("ripple is active on first redraw");
+    assert_eq!(ripple.started_at, Some(now));
+    assert_eq!(ripple.progress, 0.0);
+
+    assert!(state.advance(now + RIPPLE_DURATION / 2));
+    let ripple = state.ripple.expect("ripple is active before duration ends");
+    assert_eq!(ripple.started_at, Some(now));
+    assert_eq!(ripple.progress, 0.5);
+
+    assert!(!state.advance(now + RIPPLE_DURATION));
+    assert!(state.ripple.is_none());
 }
 
 #[test]

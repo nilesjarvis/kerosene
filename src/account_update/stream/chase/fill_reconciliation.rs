@@ -14,7 +14,7 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(crate) fn reconcile_chase_fills_from_account(&mut self) -> Task<Message> {
-        let Some(data) = self.account_data.as_ref() else {
+        let Some((snapshot_account_address, data)) = self.connected_order_account_snapshot() else {
             return Task::none();
         };
         if !data.completeness.fills_complete {
@@ -24,6 +24,7 @@ impl TradingTerminal {
         let open_orders = data.open_orders.clone();
         let open_orders_complete = data.completeness.open_orders_complete;
         self.reconcile_chase_fills_from_snapshot(
+            &snapshot_account_address,
             &fills,
             open_orders_complete.then_some(open_orders.as_slice()),
             false,
@@ -32,6 +33,7 @@ impl TradingTerminal {
 
     pub(super) fn reconcile_chase_fills_from_snapshot(
         &mut self,
+        snapshot_account_address: &str,
         fills: &[UserFill],
         open_orders: Option<&[OpenOrder]>,
         open_orders_authoritative: bool,
@@ -44,6 +46,9 @@ impl TradingTerminal {
             let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                 continue;
             };
+            if chase.account_address != snapshot_account_address {
+                continue;
+            }
             let Some(totals) = chase_fill_totals_for_chase(fills, chase) else {
                 continue;
             };

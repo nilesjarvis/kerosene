@@ -10,14 +10,18 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(crate) fn start_wallet_tracker_core_refresh(&mut self, address: String) -> Task<Message> {
+        let read_context = self.read_data_request_context();
         self.wallet_tracker
             .rows
             .entry(address.clone())
             .or_default()
             .loading = true;
+        if let Some(row) = self.wallet_tracker.rows.get_mut(&address) {
+            row.loading_context = Some(read_context);
+        }
         let scope = self.account_data_fetch_scope();
         let provider = self.read_data_provider;
-        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_key = self.hydromancer_api_key_for_task();
         Task::perform(
             fetch_wallet_tracker_snapshot_scoped_with_provider(
                 address.clone(),
@@ -25,7 +29,7 @@ impl TradingTerminal {
                 provider,
                 hydromancer_key,
             ),
-            move |r| Message::WalletTrackerLoaded(address.clone(), Box::new(r)),
+            move |r| Message::WalletTrackerLoaded(address.clone(), read_context, Box::new(r)),
         )
     }
 
@@ -36,16 +40,15 @@ impl TradingTerminal {
         if addresses.is_empty() {
             return Task::none();
         }
+        let read_context = self.read_data_request_context();
         for address in &addresses {
-            self.wallet_tracker
-                .rows
-                .entry(address.clone())
-                .or_default()
-                .loading = true;
+            let row = self.wallet_tracker.rows.entry(address.clone()).or_default();
+            row.loading = true;
+            row.loading_context = Some(read_context);
         }
         let scope = self.account_data_fetch_scope();
         let provider = self.read_data_provider;
-        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_key = self.hydromancer_api_key_for_task();
         Task::perform(
             fetch_wallet_tracker_snapshots_scoped_with_provider(
                 addresses,
@@ -53,19 +56,18 @@ impl TradingTerminal {
                 provider,
                 hydromancer_key,
             ),
-            Message::WalletTrackerBatchLoaded,
+            move |r| Message::WalletTrackerBatchLoaded(read_context, r),
         )
     }
 
     pub(crate) fn start_wallet_tracker_order_refresh(&mut self, address: String) -> Task<Message> {
-        self.wallet_tracker
-            .rows
-            .entry(address.clone())
-            .or_default()
-            .order_loading = true;
+        let read_context = self.read_data_request_context();
+        let row = self.wallet_tracker.rows.entry(address.clone()).or_default();
+        row.order_loading = true;
+        row.order_loading_context = Some(read_context);
         let scope = self.account_data_fetch_scope();
         let provider = self.read_data_provider;
-        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_key = self.hydromancer_api_key_for_task();
         Task::perform(
             fetch_wallet_tracker_open_order_count_scoped_with_provider(
                 address.clone(),
@@ -73,7 +75,7 @@ impl TradingTerminal {
                 provider,
                 hydromancer_key,
             ),
-            move |r| Message::WalletTrackerOrdersLoaded(address.clone(), Box::new(r)),
+            move |r| Message::WalletTrackerOrdersLoaded(address.clone(), read_context, Box::new(r)),
         )
     }
 

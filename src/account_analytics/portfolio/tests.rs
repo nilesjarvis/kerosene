@@ -1,6 +1,13 @@
 use super::{fetch_portfolio_history_from_url, parse_history_points, parse_portfolio_bucket};
+use crate::account_analytics::PortfolioHistory;
 
 async fn one_shot_info_server(status_line: &str, body: &str) -> String {
+    one_shot_info_result(status_line, body)
+        .await
+        .expect_err("non-success response should fail")
+}
+
+async fn one_shot_info_result(status_line: &str, body: &str) -> Result<PortfolioHistory, String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
@@ -33,7 +40,7 @@ async fn one_shot_info_server(status_line: &str, body: &str) -> String {
     )
     .await;
     server.await.expect("server task");
-    result.expect_err("non-success response should fail")
+    result
 }
 
 #[tokio::test]
@@ -43,6 +50,16 @@ async fn portfolio_fetch_reports_http_status_before_json_parse() {
     assert!(err.contains("portfolio request failed with HTTP 429 Too Many Requests"));
     assert!(err.contains("rate limited"));
     assert!(!err.contains("parse failed"));
+}
+
+#[tokio::test]
+async fn portfolio_non_array_unicode_preview_does_not_panic() {
+    let body = serde_json::to_string(&"€".repeat(100)).expect("fixture should serialize");
+    let err = one_shot_info_result("200 OK", &body)
+        .await
+        .expect_err("non-array portfolio response should fail");
+
+    assert!(err.contains("portfolio response was not an array"));
 }
 
 #[test]

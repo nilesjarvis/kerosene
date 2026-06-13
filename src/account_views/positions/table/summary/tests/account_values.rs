@@ -7,6 +7,10 @@ fn account_balance_helpers_use_live_position_and_spot_values() {
         Some(20.0)
     );
     assert_eq!(
+        position_summary_position_upnl_value("-2", "100", "-99", Some(90.0)),
+        Some(20.0)
+    );
+    assert_eq!(
         position_summary_position_upnl_value("bad", "100", "1", Some(110.0)),
         Some(1.0)
     );

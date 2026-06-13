@@ -2,7 +2,11 @@ use super::super::fills::chase_fill_summary_for_chase;
 use super::super::orders::{apply_open_order_to_chase, first_open_chase_oid};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::signing::{ChaseLifecycle, ChaseQueuedAction, ChaseStopPhase, ChaseVerificationReason};
+use crate::order_execution::open_order_matches_chase_identity;
+use crate::signing::{
+    ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseStopPhase, ChaseVerificationReason,
+    MAX_CHASE_CANCEL_RETRIES,
+};
 
 use iced::Task;
 
@@ -10,19 +14,38 @@ use iced::Task;
 // Chase Account Refresh Reconciliation
 // ---------------------------------------------------------------------------
 
+fn chase_cancel_retry_cap_status(chase: &ChaseOrder) -> Option<(String, bool)> {
+    if chase.cancel_retries < MAX_CHASE_CANCEL_RETRIES {
+        return None;
+    }
+
+    Some(chase.stop_reason.clone().unwrap_or_else(|| {
+        (
+            format!(
+                concat!(
+                    "Chase requires manual check: cancel status could not be confirmed after ",
+                    "{} attempts; check open orders"
+                ),
+                MAX_CHASE_CANCEL_RETRIES
+            ),
+            true,
+        )
+    }))
+}
+
 impl TradingTerminal {
     pub(crate) fn reconcile_chase_after_account_refresh(&mut self) -> Task<Message> {
-        let Some(data) = self.account_data.as_ref() else {
+        let Some((connected_address, data)) = self.connected_order_account_snapshot() else {
             return Task::none();
         };
         let open_orders = data.open_orders.clone();
         let fills = data.fills.clone();
         let open_orders_complete = data.completeness.open_orders_complete;
         let fills_complete = data.completeness.fills_complete;
-        let connected_address = self.connected_address.clone();
         let mut tasks = Vec::new();
         if fills_complete {
             tasks.push(self.reconcile_chase_fills_from_snapshot(
+                &connected_address,
                 &fills,
                 open_orders_complete.then_some(open_orders.as_slice()),
                 true,
@@ -39,7 +62,7 @@ impl TradingTerminal {
             let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
                 continue;
             };
-            if connected_address.as_deref() != Some(chase_snapshot.account_address.as_str())
+            if connected_address.as_str() != chase_snapshot.account_address.as_str()
                 || chase_snapshot.has_pending_op()
             {
                 continue;
@@ -57,6 +80,11 @@ impl TradingTerminal {
                     continue;
                 }
                 if let Some(oid) = first_open_chase_oid(chase_snapshot, &open_orders) {
+                    if let Some((summary, is_error)) = chase_cancel_retry_cap_status(chase_snapshot)
+                    {
+                        self.order_status = Some((summary, is_error));
+                        continue;
+                    }
                     let (summary, is_error) = chase_snapshot
                         .stop_reason
                         .clone()
@@ -133,7 +161,9 @@ impl TradingTerminal {
                 continue;
             };
 
-            let order = open_orders.iter().find(|order| order.oid == oid);
+            let order = open_orders.iter().find(|order| {
+                order.oid == oid && open_order_matches_chase_identity(chase_snapshot, order)
+            });
             match order {
                 Some(order) => {
                     let mut stop_after_refresh = None;
@@ -160,18 +190,12 @@ impl TradingTerminal {
                                 }
                             }
                             Err(()) => {
-                                self.order_status = Some((
-                                    "Chase stopped: invalid remaining size from account refresh"
-                                        .into(),
-                                    true,
-                                ));
-                                cancel_ids.push((
-                                    chase_id,
-                                    order.oid,
-                                    "Chase stopped: invalid remaining size from account refresh"
-                                        .to_string(),
-                                    true,
-                                ));
+                                let summary = concat!(
+                                    "Chase stopped: account refresh could not verify the ",
+                                    "chased order"
+                                );
+                                self.order_status = Some((summary.into(), true));
+                                cancel_ids.push((chase_id, order.oid, summary.to_string(), true));
                             }
                         }
                     }

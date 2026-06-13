@@ -17,7 +17,7 @@ use iced::Task;
 #[cfg(test)]
 use fills::{chase_fill_summary, prepend_recent_fills};
 #[cfg(test)]
-use orders::apply_open_order_to_chase;
+use orders::{apply_open_order_to_chase, first_open_chase_oid};
 
 #[cfg(test)]
 mod tests;
@@ -55,12 +55,18 @@ impl TradingTerminal {
             );
             self.push_toast(toast, true);
             if let Some(addr) = self.connected_address.clone() {
+                if self.account_loading {
+                    self.account_refresh_followup_pending = true;
+                    self.account_reconciliation_required = true;
+                    return Task::none();
+                }
                 return self.force_refresh_account_data_for_reconciliation(addr);
             }
             return Task::none();
         }
         let wallet_details_update = ws_data.clone();
 
+        let mut account_data_changed = false;
         let mut orders_changed = false;
         let mut fills_changed = false;
         let mut positions_changed = false;
@@ -78,7 +84,23 @@ impl TradingTerminal {
                 symbol,
             )
         };
-        if let Some(data) = &mut self.account_data {
+        let account_snapshot_matches_source = source_address
+            .as_deref()
+            .and_then(|address| self.account_data_for_order_account(address))
+            .is_some();
+        if self.account_data.is_some()
+            && !account_snapshot_matches_source
+            && !matches!(ws_data, WsUserData::AllMids(_))
+        {
+            self.bump_account_data_revision();
+            self.account_data = None;
+            self.account_data_address = None;
+        }
+        if account_snapshot_matches_source {
+            let source_account = source_address.as_deref().unwrap_or_default();
+            let Some(data) = self.account_data_for_order_account_mut(source_account) else {
+                return Task::none();
+            };
             match ws_data {
                 WsUserData::AllDexPositions {
                     main_state,
@@ -86,7 +108,7 @@ impl TradingTerminal {
                     all_positions,
                     position_details: _,
                 } => {
-                    data.fetched_at_ms = Self::now_ms();
+                    data.mark_positions_fetched_at(Self::now_ms());
                     data.clearinghouse.margin_summary = main_state.margin_summary;
                     data.clearinghouse.withdrawable = main_state.withdrawable;
                     data.clearinghouse.cross_margin_summary = main_state.cross_margin_summary;
@@ -94,6 +116,7 @@ impl TradingTerminal {
                         main_state.cross_maintenance_margin_used;
                     data.clearinghouse.asset_positions = all_positions;
                     data.clearinghouses_by_dex = states_by_dex;
+                    account_data_changed = true;
                     positions_changed = true;
                 }
                 WsUserData::OpenOrders { dex, orders } => {
@@ -109,6 +132,8 @@ impl TradingTerminal {
                         data.open_orders.retain(|o| !o.coin.starts_with(&prefix));
                     }
                     data.open_orders.extend(orders);
+                    data.mark_open_orders_fetched_at(Self::now_ms());
+                    account_data_changed = true;
                     orders_changed = true;
                 }
                 WsUserData::Fills { fills, is_snapshot } => {
@@ -123,10 +148,12 @@ impl TradingTerminal {
                     }
                     fill_toast_fills =
                         apply_fills_update(&mut data.fills, fills, is_snapshot, is_hidden);
+                    account_data_changed = true;
                     fills_changed = true;
                 }
                 WsUserData::SpotBalances(balances) => {
                     data.spot.balances = balances;
+                    account_data_changed = true;
                 }
                 WsUserData::AllMids(mids) => {
                     mids_task = self.handle_mids_update(mids);
@@ -159,6 +186,9 @@ impl TradingTerminal {
             }
         }
 
+        if account_data_changed {
+            self.bump_account_data_revision();
+        }
         if !fresh_fills.is_empty() {
             self.consume_pending_market_order_fills(&fresh_fills);
         }

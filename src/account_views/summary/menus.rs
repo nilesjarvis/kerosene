@@ -1,6 +1,5 @@
 mod anchored;
 
-use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
@@ -19,9 +18,8 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let theme = self.theme();
         let can_add_income = self
-            .account_data
-            .as_ref()
-            .is_some_and(AccountData::is_portfolio_margin);
+            .connected_order_account_snapshot()
+            .is_some_and(|(_, data)| data.is_portfolio_margin());
 
         let menu = if self.account_picker_open {
             Some(AnchoredMenuLayer {

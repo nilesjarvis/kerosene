@@ -1,5 +1,8 @@
 use super::responses::{fee_rates_from_best_effort_value, record_best_effort_section_warnings};
-use super::{FUNDING_HISTORY_LOOKBACK_MS, funding_history_start_ms_from};
+use super::{
+    FUNDING_HISTORY_LOOKBACK_MS, frontend_open_orders_payload, funding_history_start_ms_from,
+    user_fills_payload,
+};
 use crate::account::{
     AccountDataCompleteness, AccountDataSection, OpenOrder, UserFeeRates,
     normalize_dex_open_order_coins,
@@ -65,6 +68,40 @@ fn funding_history_start_uses_seven_day_lookback() {
 #[test]
 fn funding_history_start_saturates_before_lookback_window() {
     assert_eq!(funding_history_start_ms_from(42), 0);
+}
+
+#[test]
+fn selected_hip3_refresh_scopes_open_orders_but_keeps_user_fills_account_wide() {
+    let address = "0xabc0000000000000000000000000000000000000";
+
+    assert_eq!(
+        frontend_open_orders_payload(address, Some("flx")),
+        serde_json::json!({
+            "type": "frontendOpenOrders",
+            "user": address,
+            "dex": "flx"
+        })
+    );
+    assert_eq!(
+        frontend_open_orders_payload(address, None),
+        serde_json::json!({
+            "type": "frontendOpenOrders",
+            "user": address
+        })
+    );
+
+    let fills_payload = user_fills_payload(address);
+    assert_eq!(
+        fills_payload,
+        serde_json::json!({
+            "type": "userFills",
+            "user": address
+        })
+    );
+    assert!(
+        fills_payload.get("dex").is_none(),
+        "userFills is account-wide; do not add unsupported selected-dex scoping"
+    );
 }
 
 #[test]

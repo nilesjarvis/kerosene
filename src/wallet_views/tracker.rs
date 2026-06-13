@@ -14,6 +14,7 @@ mod rows;
 impl TradingTerminal {
     pub(crate) fn view_wallet_tracker(&self) -> Element<'_, Message> {
         let theme = self.theme();
+        let now_ms = self.status_bar_now_ms;
 
         container(
             column![
@@ -21,7 +22,7 @@ impl TradingTerminal {
                 self.view_wallet_tracker_add_row(),
                 rule::horizontal(1),
                 Self::view_wallet_tracker_table_header(&theme),
-                scrollable(self.view_wallet_tracker_list(&theme)).height(Fill)
+                scrollable(self.view_wallet_tracker_list(now_ms, &theme)).height(Fill)
             ]
             .spacing(10),
         )

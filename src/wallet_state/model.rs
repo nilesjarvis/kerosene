@@ -1,6 +1,7 @@
 use super::address_book::{AddressBookEntry, normalize_wallet_address_value};
 use crate::account::{WalletDetailsData, WalletTrackerSnapshot};
 use crate::config::{TrackedWalletConfig, WalletTrackerConfig};
+use crate::read_data_provider::ReadDataRequestContext;
 
 use iced::window;
 use std::collections::HashMap;
@@ -22,6 +23,8 @@ pub(crate) const WALLET_DETAILS_DEFAULT_HEIGHT: f32 = 640.0;
 pub(crate) struct WalletTrackerRow {
     pub(crate) loading: bool,
     pub(crate) order_loading: bool,
+    pub(crate) loading_context: Option<ReadDataRequestContext>,
+    pub(crate) order_loading_context: Option<ReadDataRequestContext>,
     pub(crate) snapshot: Option<WalletTrackerSnapshot>,
     pub(crate) last_updated_ms: Option<u64>,
     pub(crate) orders_last_updated_ms: Option<u64>,
@@ -37,6 +40,7 @@ pub(crate) struct WalletDetailsWindowState {
     pub(crate) address: String,
     pub(crate) data: Option<WalletDetailsData>,
     pub(crate) loading: bool,
+    pub(crate) loading_context: Option<ReadDataRequestContext>,
     pub(crate) error: Option<String>,
     pub(crate) last_refresh_ms: Option<u64>,
     pub(crate) width: f32,
@@ -51,6 +55,7 @@ impl WalletDetailsWindowState {
             address,
             data: None,
             loading: true,
+            loading_context: None,
             error: None,
             last_refresh_ms: None,
             width: WALLET_DETAILS_DEFAULT_WIDTH,

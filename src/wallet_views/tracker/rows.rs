@@ -11,7 +11,11 @@ mod row;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(super) fn view_wallet_tracker_list<'a>(&'a self, theme: &Theme) -> Element<'a, Message> {
+    pub(super) fn view_wallet_tracker_list<'a>(
+        &'a self,
+        now_ms: u64,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
         let mut list = Column::new().spacing(4);
         if self.wallet_tracker.tracked_addresses.is_empty() {
             return list
@@ -24,7 +28,7 @@ impl TradingTerminal {
         }
 
         for address in &self.wallet_tracker.tracked_addresses {
-            list = list.push(self.view_wallet_tracker_row(address, theme));
+            list = list.push(self.view_wallet_tracker_row(address, now_ms, theme));
         }
 
         list.into()

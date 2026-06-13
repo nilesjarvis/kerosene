@@ -1,11 +1,12 @@
 use super::{
-    ChaseLifecycle, ChaseVerificationReason, WsUserData, account_data_with_timestamp,
+    ChaseLifecycle, ChaseVerificationReason, WsUserData, account_data_with_timestamp, chase_order,
     chase_order_by_id, connected_terminal, open_order, reprice_verification_chase,
+    set_account_data_for_connected_account,
 };
 
 fn terminal_waiting_for_chase_refresh() -> super::TradingTerminal {
     let mut terminal = connected_terminal();
-    terminal.account_data = Some(account_data_with_timestamp(1_000));
+    set_account_data_for_connected_account(&mut terminal, account_data_with_timestamp(1_000));
     terminal.order_status = Some((
         "Chasing (oid 42); refreshing account data...".to_string(),
         false,
@@ -76,4 +77,84 @@ fn stale_websocket_open_order_keeps_chase_refresh_pending() {
             false
         ))
     );
+}
+
+#[test]
+fn websocket_open_order_disappearance_ignores_chase_from_other_account() {
+    let mut terminal = connected_terminal();
+    set_account_data_for_connected_account(&mut terminal, account_data_with_timestamp(1_000));
+    let mut chase = chase_order();
+    chase.account_address = "0xdef0000000000000000000000000000000000000".to_string();
+    chase.lifecycle = ChaseLifecycle::Resting;
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(super::CONNECTED_ADDRESS.to_string()),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: Vec::new(),
+        },
+    );
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Resting);
+    assert_eq!(terminal.order_status, None);
+}
+
+#[test]
+fn websocket_open_order_disappearance_verifies_matching_account_chase() {
+    let mut terminal = connected_terminal();
+    set_account_data_for_connected_account(&mut terminal, account_data_with_timestamp(1_000));
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Resting;
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(super::CONNECTED_ADDRESS.to_string()),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: Vec::new(),
+        },
+    );
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::MissingOrder
+        }
+    );
+    assert!(
+        terminal
+            .order_status
+            .as_ref()
+            .is_some_and(|(message, is_error)| !*is_error
+                && message.contains("open-orders stream no longer shows the order"))
+    );
+}
+
+#[test]
+fn websocket_open_order_disappearance_ignores_stale_account_snapshot() {
+    let mut terminal = connected_terminal();
+    terminal.account_data_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+    terminal.account_loading = false;
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Resting;
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(super::CONNECTED_ADDRESS.to_string()),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: Vec::new(),
+        },
+    );
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Resting);
+    assert_eq!(terminal.order_status, None);
+    assert!(terminal.account_data.is_none());
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
 }

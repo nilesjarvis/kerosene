@@ -3,7 +3,6 @@ mod projection;
 mod rows;
 mod status;
 
-use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::container;
@@ -16,9 +15,8 @@ use iced::{Element, Fill};
 impl TradingTerminal {
     pub(crate) fn view_income(&self) -> Element<'_, Message> {
         let is_pm = self
-            .account_data
-            .as_ref()
-            .is_some_and(AccountData::is_portfolio_margin);
+            .connected_order_account_snapshot()
+            .is_some_and(|(_, data)| data.is_portfolio_margin());
 
         if !is_pm {
             return container(self.view_income_unavailable())

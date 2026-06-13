@@ -7,6 +7,7 @@ use super::projection::projected_income_bars;
 use super::rows::{view_income_hourly_rows, view_income_token_rows};
 use crate::account_analytics::IncomeSnapshot;
 use crate::app_state::TradingTerminal;
+use crate::app_time::utc_datetime_from_unix_ms;
 use crate::message::Message;
 use crate::portfolio_state::IncomeProjectionChart;
 use iced::widget::{canvas, column, container, scrollable, text};
@@ -16,7 +17,8 @@ impl TradingTerminal {
     pub(super) fn view_income_data<'a>(&'a self, data: &'a IncomeSnapshot) -> Element<'a, Message> {
         let theme = self.theme();
         let denomination = self.display_denomination_context();
-        let projection_bars = projected_income_bars(data);
+        let projection_bars =
+            projected_income_bars(data, utc_datetime_from_unix_ms(self.status_bar_now_ms));
 
         let chart = canvas(IncomeProjectionChart {
             bars: projection_bars,

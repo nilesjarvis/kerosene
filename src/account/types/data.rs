@@ -43,12 +43,41 @@ impl AccountData {
     pub const POSITION_ACTION_MAX_AGE_MS: u64 = 15_000;
 
     pub fn position_action_snapshot_age_ms(&self, now_ms: u64) -> Option<u64> {
-        now_ms.checked_sub(self.fetched_at_ms)
+        now_ms.checked_sub(
+            self.completeness
+                .positions_fetched_at_ms
+                .unwrap_or(self.fetched_at_ms),
+        )
     }
 
     pub fn is_fresh_for_position_action(&self, now_ms: u64) -> bool {
         self.position_action_snapshot_age_ms(now_ms)
             .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
+    }
+
+    pub fn open_order_action_snapshot_age_ms(&self, now_ms: u64) -> Option<u64> {
+        now_ms.checked_sub(
+            self.completeness
+                .open_orders_fetched_at_ms
+                .unwrap_or(self.fetched_at_ms),
+        )
+    }
+
+    pub fn is_fresh_for_open_order_action(&self, now_ms: u64) -> bool {
+        self.open_order_action_snapshot_age_ms(now_ms)
+            .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
+    }
+
+    pub fn mark_positions_fetched_at(&mut self, fetched_at_ms: u64) {
+        self.completeness
+            .open_orders_fetched_at_ms
+            .get_or_insert(self.fetched_at_ms);
+        self.completeness.positions_fetched_at_ms = Some(fetched_at_ms);
+        self.fetched_at_ms = fetched_at_ms;
+    }
+
+    pub fn mark_open_orders_fetched_at(&mut self, fetched_at_ms: u64) {
+        self.completeness.open_orders_fetched_at_ms = Some(fetched_at_ms);
     }
 
     /// Whether this account has portfolio margin enabled.

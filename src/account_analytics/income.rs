@@ -1,6 +1,6 @@
 use self::parsing::{parse_reserve_states, parse_spot_token_names};
 use self::snapshot::build_income_snapshot;
-use super::http::{optional_response_value, response_json};
+use super::http::{account_analytics_preview, optional_response_value, response_json};
 use super::model::{BorrowLendInterestEntry, BorrowLendUserState, IncomeSnapshot};
 use crate::api::{API_URL, CLIENT};
 
@@ -57,11 +57,7 @@ async fn fetch_income_data_from_url(
     let reserve_by_token = parse_reserve_states(&reserve_raw);
     if reserve_by_token.is_empty() {
         let preview = reserve_raw.to_string();
-        let snippet = if preview.len() > 180 {
-            format!("{}...", &preview[..180])
-        } else {
-            preview
-        };
+        let snippet = account_analytics_preview(&preview);
         return Err(format!(
             "allBorrowLendReserveStates response had no parseable reserve entries: {snippet}"
         ));

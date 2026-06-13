@@ -6,6 +6,7 @@ use super::super::{
 use crate::api::API_URL;
 
 use serde_json::Value;
+use zeroize::Zeroizing;
 
 mod hip3;
 mod open_orders;
@@ -92,13 +93,13 @@ pub async fn fetch_wallet_tracker_snapshot_scoped_with_provider(
     address: String,
     scope: AccountDataFetchScope,
     provider: crate::config::ReadDataProvider,
-    hydromancer_api_key: String,
+    hydromancer_api_key: Zeroizing<String>,
 ) -> Result<WalletTrackerSnapshot, String> {
     if provider != crate::config::ReadDataProvider::Hydromancer {
         return fetch_wallet_tracker_snapshot_scoped(address, scope).await;
     }
 
-    let api_key = hydromancer_api_key.trim().to_string();
+    let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
     if api_key.is_empty() {
         return fetch_wallet_tracker_snapshot_scoped(address, scope).await;
     }
@@ -129,7 +130,7 @@ pub async fn fetch_wallet_tracker_snapshots_scoped_with_provider(
     addresses: Vec<String>,
     scope: AccountDataFetchScope,
     provider: crate::config::ReadDataProvider,
-    hydromancer_api_key: String,
+    hydromancer_api_key: Zeroizing<String>,
 ) -> Vec<(String, Result<WalletTrackerSnapshot, String>)> {
     if provider != crate::config::ReadDataProvider::Hydromancer
         || hydromancer_api_key.trim().is_empty()
@@ -159,13 +160,13 @@ pub async fn fetch_wallet_tracker_open_order_count_scoped_with_provider(
     address: String,
     scope: AccountDataFetchScope,
     provider: crate::config::ReadDataProvider,
-    hydromancer_api_key: String,
+    hydromancer_api_key: Zeroizing<String>,
 ) -> Result<usize, String> {
     if provider != crate::config::ReadDataProvider::Hydromancer {
         return fetch_wallet_tracker_open_order_count_scoped(address, scope).await;
     }
 
-    let api_key = hydromancer_api_key.trim().to_string();
+    let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
     if api_key.is_empty() {
         return fetch_wallet_tracker_open_order_count_scoped(address, scope).await;
     }

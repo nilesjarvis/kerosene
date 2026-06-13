@@ -73,13 +73,16 @@ impl TradingTerminal {
         let szi = parse_position_row_number(&pos.szi);
         let entry_px = parse_position_row_number(&pos.entry_px);
         let mark_px = self.resolve_mid_for_symbol(&pos.coin);
-        let position_value =
-            position_value_from(mark_px, szi, parse_position_row_number(&pos.position_value));
-        let upnl = unrealized_pnl_from(
+        let position_value = account::position_notional_from_mark_or_wire(
+            szi,
+            parse_position_row_number(&pos.position_value),
             mark_px,
+        );
+        let upnl = account::position_upnl_from_mark_or_wire(
             szi,
             entry_px,
             parse_position_row_number(&pos.unrealized_pnl),
+            mark_px,
         );
         let funding_since_open = Self::position_funding_pnl(pos.cum_funding.as_ref());
         let total_pnl = upnl.map(|upnl| funding_since_open.map_or(upnl, |funding| upnl + funding));
@@ -103,29 +106,6 @@ impl TradingTerminal {
 
 fn parse_position_row_number(raw: &str) -> Option<f64> {
     parse_finite_number(raw)
-}
-
-fn position_value_from(
-    mark_px: Option<f64>,
-    szi: Option<f64>,
-    wire_value: Option<f64>,
-) -> Option<f64> {
-    match (mark_px, szi) {
-        (Some(mark_px), Some(szi)) => Some(szi.abs() * mark_px),
-        _ => wire_value.map(f64::abs),
-    }
-}
-
-fn unrealized_pnl_from(
-    mark_px: Option<f64>,
-    szi: Option<f64>,
-    entry_px: Option<f64>,
-    wire_upnl: Option<f64>,
-) -> Option<f64> {
-    match (mark_px, szi, entry_px) {
-        (Some(mark_px), Some(szi), Some(entry_px)) => Some(szi * (mark_px - entry_px)),
-        _ => wire_upnl,
-    }
 }
 
 fn numeric_cmp(left: f64, right: f64) -> std::cmp::Ordering {

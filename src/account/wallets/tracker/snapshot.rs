@@ -1,4 +1,5 @@
 use super::super::super::{AssetPosition, WalletTrackerSnapshot};
+use crate::account::{position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire};
 use crate::helpers::{add_optional_f64, parse_finite_number};
 
 pub(super) fn build_wallet_tracker_snapshot(
@@ -26,7 +27,11 @@ pub(super) fn build_wallet_tracker_snapshot(
         if let Some(count) = open_trade_count.as_mut() {
             *count += 1;
         }
-        let position_value = parse_tracker_number(&position.position_value).map(f64::abs);
+        let position_value = position_notional_from_mark_or_wire(
+            Some(szi),
+            parse_tracker_number(&position.position_value),
+            None,
+        );
         if szi > 0.0 {
             add_optional_f64(&mut long_exposure, position_value);
         } else {
@@ -34,7 +39,12 @@ pub(super) fn build_wallet_tracker_snapshot(
         }
         add_optional_f64(
             &mut unrealized_pnl,
-            parse_tracker_number(&position.unrealized_pnl),
+            position_upnl_from_mark_or_wire(
+                Some(szi),
+                None,
+                parse_tracker_number(&position.unrealized_pnl),
+                None,
+            ),
         );
     }
 

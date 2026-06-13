@@ -33,9 +33,10 @@ impl TradingTerminal {
         ]
         .spacing(4);
 
-        let entries: Vec<_> = self
-            .account_data
-            .as_ref()
+        let snapshot = self
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data);
+        let entries: Vec<_> = snapshot
             .map(|d| {
                 d.funding_history
                     .iter()
@@ -43,7 +44,7 @@ impl TradingTerminal {
                     .collect()
             })
             .unwrap_or_default();
-        let warning = self.account_data.as_ref().and_then(|data| {
+        let warning = snapshot.and_then(|data| {
             data.completeness
                 .section_warning(AccountDataSection::Funding)
         });

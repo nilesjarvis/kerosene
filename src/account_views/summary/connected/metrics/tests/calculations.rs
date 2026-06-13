@@ -14,6 +14,10 @@ fn summary_number_parser_rejects_invalid_or_nonfinite_values() {
 fn summary_position_upnl_uses_live_mid_only_with_valid_inputs() {
     assert_eq!(position_upnl_value("2", "90", "1", Some(100.0)), Some(20.0));
     assert_eq!(
+        position_upnl_value("-2", "100", "-99", Some(90.0)),
+        Some(20.0)
+    );
+    assert_eq!(
         position_upnl_value("bad", "90", "1", Some(100.0)),
         Some(1.0)
     );

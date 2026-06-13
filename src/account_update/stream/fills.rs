@@ -87,12 +87,30 @@ pub(super) fn chase_fill_totals_for_chase(
     chase: &ChaseOrder,
 ) -> Option<ChaseFillTotals> {
     let oids = chase.known_oids_with_current();
-    chase_fill_totals_with_cutoff(fills, &oids, |oid| chase.fill_cutoff_ms_for_oid(oid))
+    chase_fill_totals_with_filter(
+        fills,
+        &oids,
+        Some((chase.coin.as_str(), chase.is_buy)),
+        |oid| chase.fill_cutoff_ms_for_oid(oid),
+    )
 }
 
+#[cfg(test)]
 fn chase_fill_totals_with_cutoff<F>(
     fills: &[UserFill],
     oids: &[u64],
+    fill_cutoff_ms_for_oid: F,
+) -> Option<ChaseFillTotals>
+where
+    F: Fn(u64) -> Option<u64>,
+{
+    chase_fill_totals_with_filter(fills, oids, None, fill_cutoff_ms_for_oid)
+}
+
+fn chase_fill_totals_with_filter<F>(
+    fills: &[UserFill],
+    oids: &[u64],
+    expected_order: Option<(&str, bool)>,
     fill_cutoff_ms_for_oid: F,
 ) -> Option<ChaseFillTotals>
 where
@@ -113,6 +131,11 @@ where
             continue;
         };
         if !oids.contains(&oid) {
+            continue;
+        }
+        if let Some((expected_coin, expected_is_buy)) = expected_order
+            && (fill.coin != expected_coin || fill_side_is_buy(&fill.side) != Some(expected_is_buy))
+        {
             continue;
         }
         if fill_cutoff_ms_for_oid(oid).is_some_and(|cutoff_ms| fill.time < cutoff_ms) {
@@ -216,6 +239,14 @@ pub(super) fn chase_completed_summary(
         )
     } else {
         summary
+    }
+}
+
+fn fill_side_is_buy(side: &str) -> Option<bool> {
+    match side {
+        "B" => Some(true),
+        "A" => Some(false),
+        _ => None,
     }
 }
 

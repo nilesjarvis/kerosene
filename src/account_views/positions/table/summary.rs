@@ -32,9 +32,8 @@ impl TradingTerminal {
         let long_color = theme.palette().success;
         let short_color = theme.palette().danger;
         let account_balance = self
-            .account_data
-            .as_ref()
-            .and_then(|data| self.position_summary_account_value(data));
+            .connected_order_account_snapshot()
+            .and_then(|(_, data)| self.position_summary_account_value(data));
         let total_pnl_pct = position_total_pnl_percent(totals.total_pnl, account_balance);
         let denomination = self.display_denomination_context();
 

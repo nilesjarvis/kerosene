@@ -18,6 +18,8 @@ pub struct AccountDataCompleteness {
     pub fills_complete: bool,
     pub funding_complete: bool,
     pub fees_complete: bool,
+    pub positions_fetched_at_ms: Option<u64>,
+    pub open_orders_fetched_at_ms: Option<u64>,
     warnings: Vec<(AccountDataSection, String)>,
 }
 
@@ -29,6 +31,8 @@ impl Default for AccountDataCompleteness {
             fills_complete: true,
             funding_complete: true,
             fees_complete: true,
+            positions_fetched_at_ms: None,
+            open_orders_fetched_at_ms: None,
             warnings: Vec::new(),
         }
     }

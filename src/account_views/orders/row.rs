@@ -54,17 +54,13 @@ impl TradingTerminal {
         let chase_cell: Element<'_, Message> = if is_cancelling {
             text("").size(12).into()
         } else if can_cancel && !is_outcome_order {
-            if let Some((is_buy, sz, limit_px)) = chase_inputs {
+            if let Some((_is_buy, _sz, _limit_px)) = chase_inputs {
                 compact_action_button(
                     "Chase",
                     theme.palette().primary,
                     Message::ChaseRestingOrder {
                         coin: order.coin.clone(),
                         oid: order.oid,
-                        is_buy,
-                        sz,
-                        limit_px,
-                        reduce_only: order.reduce_only,
                     },
                 )
             } else {

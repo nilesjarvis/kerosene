@@ -1,10 +1,30 @@
 use super::*;
 
+fn user_fill_value_with_coin_and_side(coin: &str, side: &str) -> serde_json::Value {
+    let mut fill = user_fill_value_with_oid(Some(42));
+    let Some(fill_obj) = fill.as_object_mut() else {
+        panic!("test fill should serialize as object");
+    };
+    fill_obj.insert("coin".to_string(), serde_json::json!(coin));
+    fill_obj.insert("side".to_string(), serde_json::json!(side));
+    fill
+}
+
 #[test]
 fn user_fill_preserves_optional_order_id_metadata() {
     let fill = user_fill_or_panic(user_fill_value_with_oid(Some(42)));
 
     assert_eq!(fill.oid, Some(42));
+}
+
+#[test]
+fn user_fill_deserialization_preserves_canonical_market_symbols_and_wire_sides() {
+    for (coin, side) in [("BTC", "B"), ("flx:BTC", "B"), ("@107", "A"), ("#950", "A")] {
+        let fill = user_fill_or_panic(user_fill_value_with_coin_and_side(coin, side));
+
+        assert_eq!(fill.coin, coin);
+        assert_eq!(fill.side, side);
+    }
 }
 
 #[test]

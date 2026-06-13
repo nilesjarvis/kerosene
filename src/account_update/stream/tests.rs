@@ -63,10 +63,29 @@ fn lagged_connected_user_stream_marks_account_loading_immediately() {
 }
 
 #[test]
+fn lagged_connected_user_stream_queues_followup_when_refresh_in_flight() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.account_loading = true;
+    terminal.account_refresh_followup_pending = false;
+    terminal.account_reconciliation_required = false;
+
+    let _task = terminal.apply_ws_user_data_update(
+        terminal.connected_address.clone(),
+        WsUserData::Lagged { skipped: 3 },
+    );
+
+    assert!(terminal.account_loading);
+    assert!(terminal.account_refresh_followup_pending);
+    assert!(terminal.account_reconciliation_required);
+}
+
+#[test]
 fn non_position_ws_updates_do_not_refresh_position_snapshot_timestamp() {
     let (mut terminal, _) = TradingTerminal::boot();
     let address = "0xabc0000000000000000000000000000000000000".to_string();
     terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some(address.clone());
     terminal.account_data = Some(account_data_with_timestamp(1_000));
 
     let _task = terminal.apply_ws_user_data_update(
@@ -92,6 +111,7 @@ fn position_ws_update_keeps_hidden_exposure_in_account_snapshot() {
     let address = "0xabc0000000000000000000000000000000000000".to_string();
     terminal.connected_address = Some(address.clone());
     terminal.muted_tickers.insert("ETH".to_string());
+    terminal.account_data_address = Some(address.clone());
     terminal.account_data = Some(account_data_with_timestamp(1_000));
 
     let _task = terminal.apply_ws_user_data_update(
@@ -168,7 +188,7 @@ fn websocket_account_repair_respects_account_refresh_backoff() {
     );
 
     assert!(!terminal.account_loading);
-    assert!(!terminal.account_reconciliation_required);
+    assert!(terminal.account_reconciliation_required);
     assert!(
         terminal
             .account_error
@@ -178,11 +198,35 @@ fn websocket_account_repair_respects_account_refresh_backoff() {
 }
 
 #[test]
+fn websocket_delta_clears_mismatched_account_snapshot_and_repairs() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+    terminal.account_loading = false;
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: vec![open_order(42, Some(false))],
+        },
+    );
+
+    assert!(terminal.account_data.is_none());
+    assert_eq!(terminal.account_data_address, None);
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+}
+
+#[test]
 fn ws_fill_consumes_market_indicator_before_rest_ack() {
     let (mut terminal, _) = TradingTerminal::boot();
     let address = "0xabc0000000000000000000000000000000000000".to_string();
     terminal.connected_address = Some(address.clone());
     terminal.optimistic_account_updates = true;
+    terminal.account_data_address = Some(address.clone());
     terminal.account_data = Some(account_data_with_timestamp(1));
     let pending_id = terminal.add_pending_market_order_placement_indicator(
         address.clone(),
@@ -209,6 +253,49 @@ fn ws_fill_consumes_market_indicator_before_rest_ack() {
 }
 
 #[test]
+fn ws_fill_update_preserves_canonical_market_symbols_and_wire_sides_in_account_data() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1));
+    let mut native = fixtures::fill(1);
+    native.coin = "BTC".to_string();
+    native.side = "B".to_string();
+    let mut hip3 = fixtures::fill(2);
+    hip3.coin = "flx:BTC".to_string();
+    hip3.side = "B".to_string();
+    let mut spot = fixtures::fill(3);
+    spot.coin = "@107".to_string();
+    spot.side = "A".to_string();
+    let mut outcome = fixtures::fill(4);
+    outcome.coin = "#950".to_string();
+    outcome.side = "A".to_string();
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::Fills {
+            fills: vec![native, hip3, spot, outcome],
+            is_snapshot: true,
+        },
+    );
+
+    let data = terminal
+        .account_data
+        .as_ref()
+        .expect("account data should remain loaded");
+    let parsed: Vec<(&str, &str)> = data
+        .fills
+        .iter()
+        .map(|fill| (fill.coin.as_str(), fill.side.as_str()))
+        .collect();
+    assert_eq!(
+        parsed,
+        vec![("BTC", "B"), ("flx:BTC", "B"), ("@107", "A"), ("#950", "A")]
+    );
+}
+
+#[test]
 fn fill_toast_size_label_formats_outcome_fills_as_whole_contracts() {
     let (terminal, _) = TradingTerminal::boot();
     let mut outcome_fill = fixtures::fill(1);
@@ -228,6 +315,7 @@ fn ws_outcome_fill_toast_uses_display_label_and_whole_contract_size() {
     let (mut terminal, _) = TradingTerminal::boot();
     let address = "0xabc0000000000000000000000000000000000000".to_string();
     terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some(address.clone());
     terminal.account_data = Some(account_data_with_timestamp(1));
     terminal
         .outcome_display_labels
@@ -259,6 +347,7 @@ fn ws_fill_snapshot_does_not_consume_market_indicators() {
     let (mut terminal, _) = TradingTerminal::boot();
     let address = "0xabc0000000000000000000000000000000000000".to_string();
     terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some(address.clone());
     terminal.account_data = Some(account_data_with_timestamp(1));
     let pending_id = terminal.add_pending_market_order_placement_indicator(
         address.clone(),

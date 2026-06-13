@@ -1,4 +1,5 @@
 use crate::account::AccountData;
+use crate::account::{position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire};
 use crate::helpers::parse_finite_number;
 
 // ---------------------------------------------------------------------------
@@ -15,14 +16,12 @@ pub(in crate::account_views::summary::connected) fn position_upnl_value(
     wire_upnl_raw: &str,
     live_mid: Option<f64>,
 ) -> Option<f64> {
-    match (
-        live_mid,
+    position_upnl_from_mark_or_wire(
         parse_summary_number(szi_raw),
         parse_summary_number(entry_raw),
-    ) {
-        (Some(mid), Some(szi), Some(entry)) => Some(szi * (mid - entry)),
-        _ => parse_summary_number(wire_upnl_raw),
-    }
+        parse_summary_number(wire_upnl_raw),
+        live_mid,
+    )
 }
 
 pub(in crate::account_views::summary::connected) fn position_notional_value(
@@ -30,10 +29,11 @@ pub(in crate::account_views::summary::connected) fn position_notional_value(
     wire_value_raw: &str,
     live_mid: Option<f64>,
 ) -> Option<f64> {
-    match (live_mid, parse_summary_number(szi_raw)) {
-        (Some(mid), Some(szi)) => Some(szi.abs() * mid),
-        _ => parse_summary_number(wire_value_raw).map(f64::abs),
-    }
+    position_notional_from_mark_or_wire(
+        parse_summary_number(szi_raw),
+        parse_summary_number(wire_value_raw),
+        live_mid,
+    )
 }
 
 pub(in crate::account_views::summary::connected) fn effective_leverage(

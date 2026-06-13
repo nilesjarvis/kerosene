@@ -19,7 +19,7 @@ impl TradingTerminal {
 
     fn view_connected_account_status_layout(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
-        let ready_status = self.account_data.as_ref().map(|data| {
+        let ready_status = self.connected_order_account_snapshot().map(|(_, data)| {
             let scope = data
                 .fetch_scope
                 .selected_hip3_dex()
@@ -34,11 +34,13 @@ impl TradingTerminal {
         } else {
             "No account data".to_string()
         };
-        let account_warning = self.account_data.as_ref().and_then(|data| {
-            (!data.completeness.is_complete())
-                .then(|| data.completeness.warning_summary())
-                .flatten()
-        });
+        let account_warning = self
+            .connected_order_account_snapshot()
+            .and_then(|(_, data)| {
+                (!data.completeness.is_complete())
+                    .then(|| data.completeness.warning_summary())
+                    .flatten()
+            });
         let account_status_text = self
             .account_error
             .as_deref()

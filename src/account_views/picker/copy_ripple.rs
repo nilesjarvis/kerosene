@@ -28,7 +28,9 @@ const RIPPLE_PEAK_ALPHA: f32 = 0.32;
 struct Ripple {
     /// Click position relative to the widget's top-left corner.
     origin: Point,
-    started_at: Instant,
+    /// Set from iced's redraw clock on the first animation frame.
+    started_at: Option<Instant>,
+    progress: f32,
 }
 
 #[derive(Debug, Default)]
@@ -40,21 +42,26 @@ impl RippleState {
     /// Advances the active ripple against the redraw clock, clearing it once it
     /// has fully faded. Returns `true` while the ripple is still animating.
     fn advance(&mut self, now: Instant) -> bool {
-        match self.ripple {
-            Some(ripple) if now.saturating_duration_since(ripple.started_at) < RIPPLE_DURATION => {
-                true
-            }
-            _ => {
-                self.ripple = None;
-                false
-            }
+        let Some(ripple) = self.ripple.as_mut() else {
+            return false;
+        };
+
+        let started_at = *ripple.started_at.get_or_insert(now);
+        let elapsed = now.saturating_duration_since(started_at);
+        if elapsed >= RIPPLE_DURATION {
+            self.ripple = None;
+            false
+        } else {
+            ripple.progress = ripple_progress(elapsed);
+            true
         }
     }
 
     fn start(&mut self, origin: Point) {
         self.ripple = Some(Ripple {
             origin,
-            started_at: Instant::now(),
+            started_at: None,
+            progress: 0.0,
         });
     }
 }
@@ -173,11 +180,13 @@ impl Widget<Message, Theme, iced::Renderer> for CopyRipple<'_> {
             return;
         };
 
-        let bounds = layout.bounds();
-        let elapsed = ripple.started_at.elapsed();
-        let progress = (elapsed.as_secs_f32() / RIPPLE_DURATION.as_secs_f32()).clamp(0.0, 1.0);
-
-        draw_ripple(renderer, bounds, ripple.origin, progress, self.tint);
+        draw_ripple(
+            renderer,
+            layout.bounds(),
+            ripple.origin,
+            ripple.progress,
+            self.tint,
+        );
     }
 
     fn mouse_interaction(
@@ -276,6 +285,10 @@ fn draw_ripple(
 fn ripple_radius(size: Size, origin: Point, progress: f32) -> f32 {
     let max_radius = max_ripple_radius(size, origin);
     max_radius * ease_out_cubic(progress)
+}
+
+fn ripple_progress(elapsed: Duration) -> f32 {
+    (elapsed.as_secs_f32() / RIPPLE_DURATION.as_secs_f32()).clamp(0.0, 1.0)
 }
 
 /// Distance from the click origin to the farthest corner of the segment.

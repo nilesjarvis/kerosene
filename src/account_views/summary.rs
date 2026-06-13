@@ -51,7 +51,7 @@ impl TradingTerminal {
             return ACCOUNT_SUMMARY_DEFAULT_HEIGHT;
         };
         let content_width = (width - ACCOUNT_SUMMARY_HORIZONTAL_PADDING).max(0.0);
-        let needs_wrapped_height = if self.account_data.is_some() {
+        let needs_wrapped_height = if self.connected_order_account_snapshot().is_some() {
             content_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT
         } else {
             content_width < CONNECTED_STATUS_ACTION_BREAKPOINT

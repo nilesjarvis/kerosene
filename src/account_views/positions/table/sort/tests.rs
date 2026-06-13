@@ -1,4 +1,5 @@
 use super::*;
+use crate::account::{position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire};
 
 #[test]
 fn position_row_number_parser_rejects_invalid_or_nonfinite_values() {
@@ -13,29 +14,35 @@ fn position_row_number_parser_rejects_invalid_or_nonfinite_values() {
 #[test]
 fn position_row_value_prefers_live_mid_only_when_inputs_are_valid() {
     assert_eq!(
-        position_value_from(Some(100.0), Some(-2.0), Some(999.0)),
+        position_notional_from_mark_or_wire(Some(-2.0), Some(999.0), Some(100.0)),
         Some(200.0)
     );
     assert_eq!(
-        position_value_from(Some(100.0), None, Some(999.0)),
+        position_notional_from_mark_or_wire(None, Some(999.0), Some(100.0)),
         Some(999.0)
     );
     assert_eq!(
-        position_value_from(None, Some(-2.0), Some(-250.0)),
+        position_notional_from_mark_or_wire(Some(-2.0), Some(-250.0), None),
         Some(250.0)
     );
-    assert_eq!(position_value_from(None, Some(-2.0), None), None);
+    assert_eq!(
+        position_notional_from_mark_or_wire(Some(-2.0), None, None),
+        None
+    );
 }
 
 #[test]
 fn position_row_upnl_prefers_live_mid_only_when_inputs_are_valid() {
     assert_eq!(
-        unrealized_pnl_from(Some(100.0), Some(2.0), Some(90.0), Some(1.0)),
+        position_upnl_from_mark_or_wire(Some(2.0), Some(90.0), Some(1.0), Some(100.0)),
         Some(20.0)
     );
     assert_eq!(
-        unrealized_pnl_from(Some(100.0), None, Some(90.0), Some(1.0)),
+        position_upnl_from_mark_or_wire(None, Some(90.0), Some(1.0), Some(100.0)),
         Some(1.0)
     );
-    assert_eq!(unrealized_pnl_from(None, Some(2.0), Some(90.0), None), None);
+    assert_eq!(
+        position_upnl_from_mark_or_wire(Some(2.0), Some(90.0), None, None),
+        None
+    );
 }

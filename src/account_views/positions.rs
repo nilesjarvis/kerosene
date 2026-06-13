@@ -71,8 +71,7 @@ impl TradingTerminal {
         let theme = self.theme();
         let columns = PositionColumnVisibility::for_width(available_width);
         let number_mode = PositionNumberMode::for_width(available_width);
-        let can_close =
-            self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
+        let can_close = self.connected_address.is_some() && self.has_active_committed_agent_key();
 
         let account_positions = self.account_positions_with_outcomes();
         let all_position_coins: Vec<String> = account_positions
@@ -101,10 +100,12 @@ impl TradingTerminal {
             .into_iter()
             .filter(|ap| self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
             .collect();
-        let warning = self.account_data.as_ref().and_then(|data| {
-            data.completeness
-                .section_warning(AccountDataSection::Positions)
-        });
+        let warning = self
+            .connected_order_account_snapshot()
+            .and_then(|(_, data)| {
+                data.completeness
+                    .section_warning(AccountDataSection::Positions)
+            });
         let opening_deltas = self.optimistic_opening_position_deltas(&all_position_coins);
 
         let header = self.view_positions_header(

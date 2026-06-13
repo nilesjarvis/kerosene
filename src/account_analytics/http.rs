@@ -2,7 +2,7 @@ use crate::helpers::text_excerpt;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-const HTTP_ERROR_PREVIEW_CHARS: usize = 180;
+const ACCOUNT_ANALYTICS_PREVIEW_CHARS: usize = 180;
 
 // ---------------------------------------------------------------------------
 // Account Analytics HTTP Helpers
@@ -37,7 +37,7 @@ where
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        let preview = text_excerpt(&body, HTTP_ERROR_PREVIEW_CHARS);
+        let preview = account_analytics_preview(&body);
         return if preview.is_empty() {
             Err(format!("{label} request failed with HTTP {status}"))
         } else {
@@ -51,6 +51,10 @@ where
         .json::<T>()
         .await
         .map_err(|e| format!("{label} parse failed: {e}"))
+}
+
+pub(super) fn account_analytics_preview(text: &str) -> String {
+    text_excerpt(text, ACCOUNT_ANALYTICS_PREVIEW_CHARS)
 }
 
 pub(super) async fn optional_response_value(
