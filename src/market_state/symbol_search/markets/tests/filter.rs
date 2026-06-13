@@ -5,7 +5,7 @@ fn market_filter_matches_native_spot_outcome_and_hip3_variants() {
     let native = symbol("BTC", MarketType::Perp);
     let hip3 = symbol("xyz:NVDA", MarketType::Perp);
     let spot = symbol("@1", MarketType::Spot);
-    let outcome = symbol("#0", MarketType::Outcome);
+    let outcome = outcome_symbol("#0", false);
 
     assert!(symbol_search_matches_market_filter(
         &native,

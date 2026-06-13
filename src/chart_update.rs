@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::HudSelectorKind;
+use crate::chart_state::ChartInstance;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use crate::sound;
@@ -12,15 +13,31 @@ mod editor;
 mod macro_indicators;
 
 impl TradingTerminal {
+    pub(crate) fn clear_chart_market_display_state(instance: &mut ChartInstance) {
+        instance.heatmap_last_fetch = None;
+        instance.heatmap_viewport = None;
+        instance.heatmap_status = None;
+        instance.heatmap_fetching = false;
+        instance.last_price_flash = None;
+        Self::clear_heatmap_display(instance);
+        Self::clear_liquidation_display(instance);
+        Self::clear_funding_display(instance);
+    }
+
+    pub(crate) fn clear_chart_symbol_display_state(instance: &mut ChartInstance) {
+        Self::clear_chart_market_display_state(instance);
+        Self::clear_earnings_display(instance);
+    }
+
     pub(crate) fn update_chart(&mut self, message: Message) -> Task<Message> {
         match message {
             message @ (Message::ToggleMacroMenu(_)
             | Message::ToggleMacroIndicator(_, _)
-            | Message::MacroCandlesLoaded(_, _, _, _)) => {
+            | Message::MacroCandlesLoaded(_, _, _, _, _)) => {
                 return self.update_chart_macro_indicators(message);
             }
             message @ (Message::ToggleChartEarningsMarkers(_)
-            | Message::ChartEarningsEventsLoaded(_, _)) => {
+            | Message::ChartEarningsEventsLoaded(_, _, _)) => {
                 return self.update_chart_earnings(message);
             }
             message @ (Message::ChartSymbolSelected(_, _)
@@ -52,16 +69,28 @@ impl TradingTerminal {
             | Message::ChartSwitchTimeframe(_, _)
             | Message::ChartCandlesLoaded(_, _)
             | Message::ChartFundingHistoryLoaded(_, _)
-            | Message::ChartWsCandleUpdate(_, _, _, _)) => {
+            | Message::ChartWsCandleUpdate(_, _, _, _, _)
+            | Message::ChartWsCandleLagged(_, _, _, _, _)) => {
                 return self.update_chart_candles(message);
             }
             Message::ChartResetView(id, surface_id) => {
                 self.chart_surface_viewports.remove(&surface_id);
+                let should_reset = self
+                    .charts
+                    .get(&id)
+                    .is_some_and(|instance| instance.chart.surface_id() == surface_id);
+                if should_reset {
+                    self.clear_chart_heatmap_pending_request_state(id);
+                }
                 if let Some(instance) = self.charts.get_mut(&id)
-                    && instance.chart.surface_id() == surface_id
+                    && should_reset
                 {
                     instance.chart.request_view_reset();
                     instance.heatmap_viewport = None;
+                    instance.heatmap_last_fetch = None;
+                    instance.heatmap_fetching = false;
+                    instance.heatmap_status = None;
+                    Self::clear_heatmap_display(instance);
                 }
             }
             Message::ChartPriceFlashTick => {
@@ -154,7 +183,10 @@ impl TradingTerminal {
                     instance.chart.advance_earnings_marker_hover_animation();
                 }
             }
-            Message::ChartWsAssetCtxUpdate(_id, symbol, ctx) => {
+            Message::ChartWsAssetCtxUpdate(_id, symbol, source_context, ctx) => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
                 if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();
                 }
@@ -180,6 +212,19 @@ impl TradingTerminal {
                             .into_iter()
                             .map(|chart_id| self.maybe_fetch_liquidations(chart_id)),
                     );
+                }
+            }
+            Message::ChartWsAssetCtxLagged(_id, symbol, source_context, _skipped) => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
+                if self.symbol_key_is_hidden(&symbol) {
+                    return Task::none();
+                }
+                for instance in self.charts.values_mut() {
+                    if instance.symbol == symbol {
+                        instance.set_asset_context(None);
+                    }
                 }
             }
             Message::ChartViewportChanged(id, surface_id, viewport) => {
@@ -258,5 +303,218 @@ impl TradingTerminal {
         if self.sound_enabled {
             sound::play_hud_ui(sound, self.chart_hud_order_sound_volume);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account::AssetContext;
+    use crate::chart_state::{ChartInstance, ChartSurfaceId};
+    use crate::config::ReadDataProvider;
+    use crate::hyperdash_api::{HeatmapFetchParams, LiquidationHeatmap};
+    use crate::timeframe::Timeframe;
+
+    fn asset_ctx(mid_px: &str) -> AssetContext {
+        AssetContext {
+            funding: None,
+            open_interest: None,
+            oracle_px: None,
+            mark_px: None,
+            mid_px: Some(mid_px.to_string()),
+            prev_day_px: None,
+            day_ntl_vlm: None,
+            day_base_vlm: None,
+            impact_pxs: None,
+        }
+    }
+
+    fn asset_ctx_with_impact(bid: &str, ask: &str) -> AssetContext {
+        AssetContext {
+            funding: None,
+            open_interest: None,
+            oracle_px: None,
+            mark_px: None,
+            mid_px: None,
+            prev_day_px: None,
+            day_ntl_vlm: None,
+            day_base_vlm: None,
+            impact_pxs: Some(vec![bid.to_string(), ask.to_string()]),
+        }
+    }
+
+    fn terminal_with_chart() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "BTC".to_string(), Timeframe::H1));
+        terminal
+    }
+
+    #[test]
+    fn chart_reset_view_clears_pending_heatmap_request_state() {
+        let mut terminal = terminal_with_chart();
+        let chart_id = 7;
+        let surface_id = ChartSurfaceId::Docked(chart_id);
+        let request = HeatmapFetchParams {
+            coin: "BTC".to_string(),
+            min_price: 1.0,
+            max_price: 2.0,
+            start_time: 10,
+            end_time: 20,
+        };
+        let cache_key = request.cache_key();
+        if let Some(instance) = terminal.charts.get_mut(&chart_id) {
+            instance.show_heatmap = true;
+            instance.heatmap_fetching = true;
+            instance.heatmap_last_fetch = Some(request);
+            instance.heatmap_status = Some(("HEAT refreshing hourly data".to_string(), false));
+            instance.heatmap_data = Some(LiquidationHeatmap {
+                rects: Vec::new(),
+                max_abs_usd: 123.0,
+            });
+            instance.chart.heatmap_max_usd = 123.0;
+        }
+        terminal
+            .heatmap_pending_charts
+            .insert(cache_key.clone(), vec![chart_id]);
+
+        let _task = terminal.update_chart(Message::ChartResetView(chart_id, surface_id));
+
+        assert!(!terminal.heatmap_pending_charts.contains_key(&cache_key));
+        let instance = terminal.charts.get(&chart_id).expect("chart");
+        assert!(instance.heatmap_last_fetch.is_none());
+        assert!(!instance.heatmap_fetching);
+        assert!(instance.heatmap_status.is_none());
+        assert!(instance.heatmap_data.is_none());
+        assert_eq!(instance.chart.heatmap_max_usd, 0.0);
+    }
+
+    fn source_context(
+        terminal: &TradingTerminal,
+        hydromancer_key_generation: Option<u64>,
+    ) -> crate::read_data_provider::MarketDataSourceContext {
+        crate::read_data_provider::MarketDataSourceContext {
+            hydromancer_key_generation,
+            ..terminal.market_data_source_context()
+        }
+    }
+
+    #[test]
+    fn stale_hydromancer_generation_does_not_update_chart_asset_context() {
+        let mut terminal = terminal_with_chart();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_chart(Message::ChartWsAssetCtxUpdate(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, Some(1)),
+            asset_ctx("100"),
+        ));
+
+        assert!(terminal.charts[&7].asset_ctx.is_none());
+    }
+
+    #[test]
+    fn current_hydromancer_generation_updates_chart_asset_context() {
+        let mut terminal = terminal_with_chart();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_chart(Message::ChartWsAssetCtxUpdate(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, Some(2)),
+            asset_ctx("100"),
+        ));
+
+        assert_eq!(
+            terminal.charts[&7]
+                .asset_ctx
+                .as_ref()
+                .and_then(|ctx| ctx.mid_px.as_deref()),
+            Some("100")
+        );
+    }
+
+    #[test]
+    fn current_asset_context_lag_clears_chart_context_and_spread_history() {
+        let mut terminal = terminal_with_chart();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_chart(Message::ChartWsAssetCtxUpdate(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, Some(2)),
+            asset_ctx_with_impact("99", "101"),
+        ));
+        assert!(terminal.charts[&7].asset_ctx.is_some());
+        assert!(!terminal.charts[&7].chart.spread_history.is_empty());
+
+        let _task = terminal.update(Message::ChartWsAssetCtxLagged(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, Some(2)),
+            5,
+        ));
+
+        assert!(terminal.charts[&7].asset_ctx.is_none());
+        assert!(terminal.charts[&7].chart.spread_history.is_empty());
+    }
+
+    #[test]
+    fn stale_asset_context_lag_does_not_clear_chart_context() {
+        let mut terminal = terminal_with_chart();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_chart(Message::ChartWsAssetCtxUpdate(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, Some(2)),
+            asset_ctx_with_impact("99", "101"),
+        ));
+        let _task = terminal.update(Message::ChartWsAssetCtxLagged(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, Some(1)),
+            5,
+        ));
+
+        assert!(terminal.charts[&7].asset_ctx.is_some());
+        assert!(!terminal.charts[&7].chart.spread_history.is_empty());
+    }
+
+    #[test]
+    fn chart_asset_context_ignores_inactive_provider_source() {
+        let mut terminal = terminal_with_chart();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_chart(Message::ChartWsAssetCtxUpdate(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, Some(2)),
+            asset_ctx("100"),
+        ));
+
+        assert!(terminal.charts[&7].asset_ctx.is_none());
+
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        let _task = terminal.update_chart(Message::ChartWsAssetCtxUpdate(
+            7,
+            "BTC".to_string(),
+            source_context(&terminal, None),
+            asset_ctx("101"),
+        ));
+
+        assert!(terminal.charts[&7].asset_ctx.is_none());
     }
 }

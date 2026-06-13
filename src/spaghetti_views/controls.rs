@@ -26,7 +26,7 @@ impl TradingTerminal {
 
             let mut options = vec![AnchorGranularityOption::Auto];
             let session_span = inst.canvas.active_session.map(|session| {
-                let now_ms = Self::now_ms();
+                let now_ms = self.status_bar_now_ms;
                 now_ms.saturating_sub(session.last_open_ms(now_ms))
             });
             for &tf in TIMEFRAME_OPTIONS {

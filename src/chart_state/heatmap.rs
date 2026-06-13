@@ -78,7 +78,8 @@ impl TradingTerminal {
             inst.heatmap_status = Some(("HEAT refreshing hourly data".to_string(), false));
         }
 
-        let api_key = self.hyperdash_api_key.trim().to_string();
+        let api_key = self.hyperdash_api_key.trim().to_string().into();
+        let generation = self.hyperdash_key_generation;
         let key = cache_key;
         Task::perform(
             fetch_liquidation_heatmap(
@@ -89,7 +90,7 @@ impl TradingTerminal {
                 request.end_time,
                 api_key,
             ),
-            move |r| Message::ChartHeatmapLoaded(key, Box::new(r)),
+            move |r| Message::ChartHeatmapLoaded(key, generation, Box::new(r)),
         )
     }
 }

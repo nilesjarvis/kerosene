@@ -18,10 +18,10 @@ pub(super) fn apply_contexts_loaded(
     result: Result<HashMap<String, WatchlistContext>, String>,
 ) {
     *loading = false;
-    *last_fetch_ms = Some(requested_at);
 
     match result {
         Ok(loaded_contexts) => {
+            *last_fetch_ms = Some(requested_at);
             *contexts = loaded_contexts;
         }
         Err(error) => {
@@ -40,12 +40,13 @@ pub(super) fn apply_history_loaded(
     result: Result<HashMap<String, (f64, f64, f64)>, String>,
 ) {
     *loading = false;
-    for symbol in requested_symbols {
-        loaded_at.insert(symbol, requested_at);
-    }
 
     match result {
         Ok(loaded_history) => {
+            for symbol in requested_symbols {
+                history.remove(&symbol);
+                loaded_at.insert(symbol, requested_at);
+            }
             history.extend(loaded_history);
         }
         Err(error) => {

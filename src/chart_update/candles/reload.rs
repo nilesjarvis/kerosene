@@ -26,6 +26,8 @@ impl TradingTerminal {
         let key = (symbol.clone(), tf);
         self.candle_data_cache.remove(&key);
         self.candle_data_cache_order.retain(|k| k != &key);
+        self.clear_chart_heatmap_pending_request_state(id);
+        self.clear_chart_liquidation_pending_request_state(id);
 
         if let Some(instance) = self.charts.get_mut(&id) {
             if instance.chart.candles.is_empty() {
@@ -34,14 +36,7 @@ impl TradingTerminal {
                 instance.chart.status = ChartStatus::Loaded;
             }
             instance.candle_fetch_error = None;
-            instance.heatmap_last_fetch = None;
-            instance.heatmap_viewport = None;
-            instance.heatmap_status = None;
-            instance.heatmap_fetching = false;
-            instance.last_price_flash = None;
-            Self::clear_heatmap_display(instance);
-            Self::clear_liquidation_display(instance);
-            Self::clear_funding_display(instance);
+            Self::clear_chart_market_display_state(instance);
             instance.chart.candle_cache.clear();
         }
 

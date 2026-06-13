@@ -18,21 +18,58 @@ impl TradingTerminal {
         match message {
             Message::AddOrderBookPane => self.add_order_book_pane(),
             Message::BookLoaded {
+                request_id,
                 id,
                 coin,
                 tick_size,
                 sigfigs,
                 result,
-            } => self.apply_order_book_loaded(id, coin, tick_size, sigfigs, result),
-            Message::OrderBookWsAssetCtxUpdate(id, ctx) => {
+            } => self.apply_order_book_loaded(request_id, id, coin, tick_size, sigfigs, result),
+            Message::OrderBookWsAssetCtxUpdate {
+                id,
+                coin,
+                source_context,
+                ctx,
+            } => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
+                if self.symbol_key_is_hidden(&coin) {
+                    return Task::none();
+                }
                 if self.order_book_instance_is_muted(id) {
                     return Task::none();
                 }
-                if let Some(inst) = self.order_books.get_mut(&id) {
+                if let Some(inst) = self.order_books.get_mut(&id)
+                    && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
+                {
                     let now = std::time::Instant::now();
                     inst.asset_ctx = Some(ctx.clone());
+                    inst.asset_ctx_updated_at = Some(now);
                     record_asset_context_spread(&mut inst.spread_history, &ctx, now);
                     inst.record_mid_price_sample(now);
+                }
+                Task::none()
+            }
+            Message::OrderBookWsAssetCtxLagged {
+                id,
+                coin,
+                source_context,
+                skipped: _skipped,
+            } => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
+                if self.symbol_key_is_hidden(&coin) {
+                    return Task::none();
+                }
+                if self.order_book_instance_is_muted(id) {
+                    return Task::none();
+                }
+                if let Some(inst) = self.order_books.get_mut(&id)
+                    && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
+                {
+                    inst.clear_asset_context();
                 }
                 Task::none()
             }
@@ -40,8 +77,12 @@ impl TradingTerminal {
                 id,
                 coin,
                 sigfigs,
+                source_context,
                 book,
             } => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
                 if self.symbol_key_is_hidden(&coin) {
                     return Task::none();
                 }
@@ -68,6 +109,32 @@ impl TradingTerminal {
                 // exactly like the REST load path.
                 if newly_populated {
                     return self.center_order_book(id);
+                }
+                Task::none()
+            }
+            Message::OrderBookWsBookLagged {
+                id,
+                coin,
+                sigfigs,
+                source_context,
+                skipped,
+            } => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
+                if self.symbol_key_is_hidden(&coin) {
+                    return Task::none();
+                }
+                if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
+                    return Task::none();
+                }
+                if let Some(inst) = self.order_books.get_mut(&id)
+                    && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
+                {
+                    inst.book_loading = true;
+                    inst.book_error = Some(format!(
+                        "Order book stream lagged; reconnecting after skipping {skipped} L2 updates"
+                    ));
                 }
                 Task::none()
             }
@@ -102,6 +169,7 @@ impl TradingTerminal {
                         || !inst.can_render_book_at_tick(tick)
                         || inst.book_error.is_some();
                     inst.set_tick_size(tick);
+                    inst.clear_book_request();
                     inst.book_loading = should_fetch;
                     if should_fetch {
                         inst.book_error = None;
@@ -190,9 +258,7 @@ impl TradingTerminal {
                     inst.mode = mode.clone();
                     inst.settings_open = false;
                     inst.set_book(OrderBook::empty());
-                    inst.asset_ctx = None;
-                    inst.spread_history.clear();
-                    inst.clear_mid_price_history();
+                    inst.clear_asset_context();
                     inst.reset_tick_options_basis();
                     // Drop any in-flight request marker so the fetch dedup
                     // guard cannot mistake the old symbol's request for ours.
@@ -221,5 +287,383 @@ impl TradingTerminal {
             }
             _ => Task::none(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account::AssetContext;
+    use crate::api::BookLevel;
+    use crate::config::ReadDataProvider;
+    use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
+
+    fn book() -> OrderBook {
+        OrderBook {
+            bids: vec![BookLevel { px: 99.0, sz: 1.0 }],
+            asks: vec![BookLevel { px: 101.0, sz: 1.0 }],
+        }
+    }
+
+    fn asset_ctx(mid_px: &str) -> AssetContext {
+        AssetContext {
+            funding: None,
+            open_interest: None,
+            oracle_px: None,
+            mark_px: None,
+            mid_px: Some(mid_px.to_string()),
+            prev_day_px: None,
+            day_ntl_vlm: None,
+            day_base_vlm: None,
+            impact_pxs: None,
+        }
+    }
+
+    fn asset_ctx_with_impact(bid: &str, ask: &str) -> AssetContext {
+        AssetContext {
+            funding: None,
+            open_interest: None,
+            oracle_px: None,
+            mark_px: None,
+            mid_px: None,
+            prev_day_px: None,
+            day_ntl_vlm: None,
+            day_base_vlm: None,
+            impact_pxs: Some(vec![bid.to_string(), ask.to_string()]),
+        }
+    }
+
+    fn terminal_with_order_book() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.order_books.clear();
+        terminal.active_symbol = "BTC".to_string();
+        terminal.order_books.insert(
+            7,
+            OrderBookInstance::new(7, OrderBookSymbolMode::Active, 1.0),
+        );
+        terminal
+    }
+
+    fn source_context(
+        terminal: &TradingTerminal,
+        hydromancer_key_generation: Option<u64>,
+    ) -> crate::read_data_provider::MarketDataSourceContext {
+        crate::read_data_provider::MarketDataSourceContext {
+            hydromancer_key_generation,
+            ..terminal.market_data_source_context()
+        }
+    }
+
+    #[test]
+    fn stale_hydromancer_generation_does_not_update_order_book_snapshot() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            source_context: source_context(&terminal, Some(1)),
+            book: book(),
+        });
+
+        assert!(terminal.order_books[&7].book.bids.is_empty());
+        assert!(terminal.order_books[&7].book.asks.is_empty());
+    }
+
+    #[test]
+    fn stale_hyperliquid_generation_does_not_update_order_book_snapshot() {
+        let mut terminal = terminal_with_order_book();
+        let stale_context = source_context(&terminal, None);
+        terminal.bump_read_data_provider_generation();
+
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            source_context: stale_context,
+            book: book(),
+        });
+
+        assert!(terminal.order_books[&7].book.bids.is_empty());
+        assert!(terminal.order_books[&7].book.asks.is_empty());
+    }
+
+    #[test]
+    fn current_hydromancer_generation_updates_order_book_snapshot() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            source_context: source_context(&terminal, Some(2)),
+            book: book(),
+        });
+
+        assert_eq!(terminal.order_books[&7].book.bids.len(), 1);
+        assert_eq!(terminal.order_books[&7].book.asks.len(), 1);
+    }
+
+    #[test]
+    fn current_hydromancer_lag_marks_order_book_stale_without_dropping_snapshot() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs,
+            source_context: source_context(&terminal, Some(2)),
+            book: book(),
+        });
+        let current_sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+        let _task = terminal.update_order_book_market(Message::OrderBookWsBookLagged {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: current_sigfigs,
+            source_context: source_context(&terminal, Some(2)),
+            skipped: 17,
+        });
+
+        let inst = &terminal.order_books[&7];
+        assert_eq!(inst.book.bids.len(), 1);
+        assert_eq!(inst.book.asks.len(), 1);
+        assert!(inst.book_loading);
+        assert_eq!(
+            inst.book_error.as_deref(),
+            Some("Order book stream lagged; reconnecting after skipping 17 L2 updates")
+        );
+    }
+
+    #[test]
+    fn root_update_dispatches_order_book_lag_to_market_handler() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+
+        let _task = terminal.update(Message::OrderBookWsBookLagged {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs,
+            source_context: source_context(&terminal, Some(2)),
+            skipped: 17,
+        });
+
+        let inst = &terminal.order_books[&7];
+        assert!(inst.book_loading);
+        assert_eq!(
+            inst.book_error.as_deref(),
+            Some("Order book stream lagged; reconnecting after skipping 17 L2 updates")
+        );
+    }
+
+    #[test]
+    fn stale_hydromancer_lag_does_not_mark_order_book_stale() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+
+        let _task = terminal.update_order_book_market(Message::OrderBookWsBookLagged {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs,
+            source_context: source_context(&terminal, Some(1)),
+            skipped: 17,
+        });
+
+        let inst = &terminal.order_books[&7];
+        assert!(!inst.book_loading);
+        assert!(inst.book_error.is_none());
+    }
+
+    #[test]
+    fn stale_hydromancer_generation_does_not_update_order_book_asset_context() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::OrderBookWsAssetCtxUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, Some(1)),
+            ctx: asset_ctx("100"),
+        });
+
+        assert!(terminal.order_books[&7].asset_ctx.is_none());
+    }
+
+    #[test]
+    fn current_hydromancer_generation_updates_order_book_asset_context() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::OrderBookWsAssetCtxUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, Some(2)),
+            ctx: asset_ctx("100"),
+        });
+
+        assert_eq!(
+            terminal.order_books[&7]
+                .asset_ctx
+                .as_ref()
+                .and_then(|ctx| ctx.mid_px.as_deref()),
+            Some("100")
+        );
+    }
+
+    #[test]
+    fn order_book_asset_context_update_for_untracked_coin_is_ignored() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::OrderBookWsAssetCtxUpdate {
+            id: 7,
+            coin: "ETH".to_string(),
+            source_context: source_context(&terminal, Some(2)),
+            ctx: asset_ctx("100"),
+        });
+
+        assert!(terminal.order_books[&7].asset_ctx.is_none());
+    }
+
+    #[test]
+    fn current_asset_context_lag_clears_order_book_impact_context_only() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            source_context: source_context(&terminal, Some(2)),
+            book: book(),
+        });
+        let _task = terminal.update_order_book_market(Message::OrderBookWsAssetCtxUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, Some(2)),
+            ctx: asset_ctx_with_impact("90", "110"),
+        });
+        assert_eq!(
+            terminal.order_books[&7].best_bid_ask(),
+            (Some(90.0), Some(110.0))
+        );
+        assert!(!terminal.order_books[&7].spread_history.is_empty());
+
+        let _task = terminal.update(Message::OrderBookWsAssetCtxLagged {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, Some(2)),
+            skipped: 5,
+        });
+
+        let inst = &terminal.order_books[&7];
+        assert!(inst.asset_ctx.is_none());
+        assert!(inst.spread_history.is_empty());
+        assert_eq!(inst.best_bid_ask(), (Some(99.0), Some(101.0)));
+        assert_eq!(inst.book.bids.len(), 1);
+        assert_eq!(inst.book.asks.len(), 1);
+    }
+
+    #[test]
+    fn stale_asset_context_lag_does_not_clear_order_book_context() {
+        let mut terminal = terminal_with_order_book();
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::OrderBookWsAssetCtxUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, Some(2)),
+            ctx: asset_ctx_with_impact("90", "110"),
+        });
+        let _task = terminal.update(Message::OrderBookWsAssetCtxLagged {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, Some(1)),
+            skipped: 5,
+        });
+
+        assert!(terminal.order_books[&7].asset_ctx.is_some());
+        assert!(!terminal.order_books[&7].spread_history.is_empty());
+    }
+
+    #[test]
+    fn order_book_snapshot_ignores_inactive_provider_source() {
+        let mut terminal = terminal_with_order_book();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            source_context: source_context(&terminal, Some(2)),
+            book: book(),
+        });
+
+        assert!(terminal.order_books[&7].book.bids.is_empty());
+        assert!(terminal.order_books[&7].book.asks.is_empty());
+
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            source_context: source_context(&terminal, None),
+            book: book(),
+        });
+
+        assert!(terminal.order_books[&7].book.bids.is_empty());
+        assert!(terminal.order_books[&7].book.asks.is_empty());
+    }
+
+    #[test]
+    fn order_book_asset_context_ignores_inactive_provider_source() {
+        let mut terminal = terminal_with_order_book();
+        terminal.hydromancer_key_generation = 2;
+
+        let _task = terminal.update_order_book_market(Message::OrderBookWsAssetCtxUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, Some(2)),
+            ctx: asset_ctx("100"),
+        });
+
+        assert!(terminal.order_books[&7].asset_ctx.is_none());
+
+        terminal.read_data_provider = ReadDataProvider::Hydromancer;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        let _task = terminal.update_order_book_market(Message::OrderBookWsAssetCtxUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            source_context: source_context(&terminal, None),
+            ctx: asset_ctx("101"),
+        });
+
+        assert!(terminal.order_books[&7].asset_ctx.is_none());
     }
 }

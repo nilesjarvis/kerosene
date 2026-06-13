@@ -2,6 +2,7 @@ use super::{ChartId, ChartInstance};
 use crate::account::AssetContext;
 use crate::chart::CandlestickChart;
 use crate::config;
+use crate::market_state::MARKET_ASSET_CONTEXT_MAX_AGE_MS;
 use crate::timeframe::Timeframe;
 
 // ---------------------------------------------------------------------------
@@ -12,6 +13,7 @@ impl ChartInstance {
     pub(crate) fn new(id: ChartId, symbol: String, interval: Timeframe) -> Self {
         let display = symbol.split(':').nth(1).unwrap_or(&symbol).to_string();
         let mut chart = CandlestickChart::new(id);
+        chart.set_symbol_key(symbol.clone());
         chart.set_timeframe(interval);
         chart.set_symbol_label(display.clone());
         Self {
@@ -21,6 +23,7 @@ impl ChartInstance {
             interval,
             chart,
             asset_ctx: None,
+            asset_ctx_updated_at_ms: None,
             editor_open: false,
             header_collapsed: false,
             editor_search_query: String::new(),
@@ -54,12 +57,22 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: None,
+            macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
             open_interest_as_notional: false,
             asset_volume_as_notional: true,
             outcome_volume_as_notional: false,
         }
+    }
+
+    pub(crate) fn set_symbol_identity(&mut self, symbol: String, display: String) -> bool {
+        let changed = self.symbol != symbol || self.symbol_display != display;
+        self.symbol = symbol.clone();
+        self.symbol_display = display.clone();
+        self.chart.set_symbol_key(symbol);
+        self.chart.set_symbol_label(display);
+        changed
     }
 
     pub(crate) fn clone_for_detached_window(&self, id: ChartId) -> Self {
@@ -70,6 +83,7 @@ impl ChartInstance {
             interval: self.interval,
             chart: self.chart.clone_for_chart_id(id),
             asset_ctx: self.asset_ctx.clone(),
+            asset_ctx_updated_at_ms: self.asset_ctx_updated_at_ms,
             editor_open: false,
             header_collapsed: self.header_collapsed,
             editor_search_query: String::new(),
@@ -103,6 +117,7 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: self.funding_last_attempt_ms,
+            macro_candles_request_id: 0,
             macro_indicators: self.macro_indicators.clone(),
             macro_menu_open: false,
             open_interest_as_notional: self.open_interest_as_notional,
@@ -122,7 +137,31 @@ impl ChartInstance {
                 .set_current_spread_at(ctx.impact_spread(), now_ms),
             None => self.chart.clear_spread_history(),
         }
+        self.asset_ctx_updated_at_ms = asset_ctx.as_ref().map(|_| now_ms);
         self.asset_ctx = asset_ctx;
+    }
+
+    pub(crate) fn expire_asset_context_if_stale(&mut self, now_ms: u64) -> bool {
+        let Some(updated_at_ms) = self.asset_ctx_updated_at_ms else {
+            return false;
+        };
+        if self.asset_ctx.is_none() {
+            self.asset_ctx_updated_at_ms = None;
+            return false;
+        }
+        if now_ms
+            .checked_sub(updated_at_ms)
+            .is_some_and(|age_ms| age_ms > MARKET_ASSET_CONTEXT_MAX_AGE_MS)
+        {
+            self.set_asset_context(None);
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn next_macro_candles_request_id(&mut self) -> u64 {
+        self.macro_candles_request_id = self.macro_candles_request_id.saturating_add(1);
+        self.macro_candles_request_id
     }
 
     /// Create a new chart with the editor open and no symbol selected.
@@ -134,6 +173,7 @@ impl ChartInstance {
             interval: Timeframe::H1,
             chart: CandlestickChart::new(id),
             asset_ctx: None,
+            asset_ctx_updated_at_ms: None,
             editor_open: true,
             header_collapsed: false,
             editor_search_query: String::new(),
@@ -167,6 +207,7 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: None,
+            macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
             open_interest_as_notional: false,

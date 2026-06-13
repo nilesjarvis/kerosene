@@ -14,7 +14,8 @@ use self::planning::{FundingRequestPlan, plan_funding_request};
 
 impl TradingTerminal {
     pub(crate) fn maybe_fetch_chart_funding(&mut self, chart_id: ChartId) -> Task<Message> {
-        let api_key = self.hydromancer_api_key.trim().to_string();
+        let api_key = self.hydromancer_api_key_for_task();
+        let hydromancer_key_generation = self.hydromancer_key_generation;
         let now_ms = Self::now_ms();
         let planned = {
             let Some(instance) = self.charts.get(&chart_id) else {
@@ -44,6 +45,7 @@ impl TradingTerminal {
                 self.symbol_key_is_hidden(&instance.symbol),
                 self.hyperdash_coin_for_symbol(&instance.symbol),
                 now_ms,
+                hydromancer_key_generation,
                 false,
             );
             match status {
@@ -129,6 +131,10 @@ impl TradingTerminal {
         request: FundingFetchRequest,
         result: Result<Vec<FundingRatePoint>, String>,
     ) -> Task<Message> {
+        if !self.hydromancer_key_generation_is_current(request.hydromancer_key_generation) {
+            return Task::none();
+        }
+
         if self
             .charts
             .get(&request.chart_id)

@@ -57,10 +57,7 @@ impl TradingTerminal {
                 detached_interval,
                 detached_last_time,
             ));
-            tasks.extend(Self::fetch_macro_candles_tasks(
-                detached_chart_id,
-                &detached_symbol,
-            ));
+            tasks.extend(self.queue_macro_candles_tasks(detached_chart_id, &detached_symbol));
         }
 
         Task::batch(tasks)

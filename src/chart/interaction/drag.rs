@@ -138,12 +138,14 @@ impl CandlestickChart {
         bounds: Rectangle,
     ) -> Option<canvas::Action<Message>> {
         if let Some(DragKind::MoveOrder { oid }) = state.drag {
+            let coin = state.drag_order_coin.take();
             let new_price = state.drag_order_new_price.take();
             state.drag = None;
             state.drag_start = None;
-            if let Some(price) = new_price {
+            if let (Some(coin), Some(price)) = (coin, new_price) {
                 return Some(
                     canvas::Action::publish(Message::MoveOrder {
+                        coin,
                         oid,
                         new_price: price,
                     })

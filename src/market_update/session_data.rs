@@ -184,6 +184,15 @@ impl TradingTerminal {
             return Task::none();
         }
 
+        if instance.loading
+            && instance
+                .pending_request
+                .as_ref()
+                .is_some_and(|pending| pending.matches_refresh_target(id, &symbol, lookback))
+        {
+            return Task::none();
+        }
+
         let request = SessionDataRequest {
             id,
             symbol,
@@ -417,14 +426,117 @@ mod tests {
                 SessionDataLookback::FourWeeks,
             ),
         );
+        let old_pending = SessionDataRequest {
+            id: 7,
+            symbol: "NOT_A_MARKET".to_string(),
+            lookback: SessionDataLookback::FourWeeks,
+            requested_at_ms: 123,
+        };
+        {
+            let instance = terminal.session_data.get_mut(&7).expect("session data");
+            instance.loading = true;
+            instance.pending_request = Some(old_pending);
+        }
 
         let _task = terminal.reconcile_session_data_symbols();
 
         let instance = terminal.session_data.get(&7).expect("session data");
         assert_eq!(instance.symbol, "HYPE");
         assert!(instance.loading);
-        assert!(instance.pending_request.is_some());
+        let request = instance.pending_request.as_ref().expect("pending request");
+        assert_eq!(request.symbol, "HYPE");
+        assert_ne!(request.requested_at_ms, 123);
         assert!(instance.error.is_none());
+    }
+
+    #[test]
+    fn forced_refresh_coalesces_identical_pending_request() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.session_data.insert(
+            7,
+            SessionDataInstance::new(7, "HYPE".to_string(), SessionDataLookback::FourWeeks),
+        );
+        let pending = SessionDataRequest {
+            id: 7,
+            symbol: "HYPE".to_string(),
+            lookback: SessionDataLookback::FourWeeks,
+            requested_at_ms: 123,
+        };
+        {
+            let instance = terminal.session_data.get_mut(&7).expect("session data");
+            instance.loading = true;
+            instance.pending_request = Some(pending.clone());
+        }
+
+        let _task = terminal.request_session_data_refresh(7, true);
+
+        let instance = terminal.session_data.get(&7).expect("session data");
+        assert!(instance.loading);
+        assert_eq!(instance.pending_request.as_ref(), Some(&pending));
+    }
+
+    #[test]
+    fn forced_refresh_replaces_pending_request_when_target_changes() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.session_data.insert(
+            7,
+            SessionDataInstance::new(7, "BTC".to_string(), SessionDataLookback::FourWeeks),
+        );
+        let pending = SessionDataRequest {
+            id: 7,
+            symbol: "HYPE".to_string(),
+            lookback: SessionDataLookback::FourWeeks,
+            requested_at_ms: 123,
+        };
+        {
+            let instance = terminal.session_data.get_mut(&7).expect("session data");
+            instance.loading = true;
+            instance.pending_request = Some(pending);
+        }
+
+        let _task = terminal.request_session_data_refresh(7, true);
+
+        let request = terminal
+            .session_data
+            .get(&7)
+            .and_then(|instance| instance.pending_request.as_ref())
+            .expect("replacement request");
+        assert_eq!(request.id, 7);
+        assert_eq!(request.symbol, "BTC");
+        assert_eq!(request.lookback, SessionDataLookback::FourWeeks);
+        assert_ne!(request.requested_at_ms, 123);
+    }
+
+    #[test]
+    fn forced_refresh_replaces_pending_request_when_lookback_changes() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.session_data.insert(
+            7,
+            SessionDataInstance::new(7, "HYPE".to_string(), SessionDataLookback::EightWeeks),
+        );
+        let pending = SessionDataRequest {
+            id: 7,
+            symbol: "HYPE".to_string(),
+            lookback: SessionDataLookback::FourWeeks,
+            requested_at_ms: 123,
+        };
+        {
+            let instance = terminal.session_data.get_mut(&7).expect("session data");
+            instance.loading = true;
+            instance.pending_request = Some(pending);
+        }
+
+        let _task = terminal.request_session_data_refresh(7, true);
+
+        let request = terminal
+            .session_data
+            .get(&7)
+            .and_then(|instance| instance.pending_request.as_ref())
+            .expect("replacement request");
+        assert_eq!(request.id, 7);
+        assert_eq!(request.symbol, "HYPE");
+        assert_eq!(request.lookback, SessionDataLookback::EightWeeks);
+        assert_ne!(request.requested_at_ms, 123);
     }
 
     #[test]

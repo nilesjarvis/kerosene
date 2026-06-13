@@ -16,7 +16,11 @@ pub(super) fn symbol_search_volume(
 ) -> Option<f64> {
     contexts
         .get(&symbol.key)
-        .or_else(|| contexts.get(&symbol.ticker))
+        .or_else(|| {
+            (symbol.key == symbol.ticker)
+                .then(|| contexts.get(&symbol.ticker))
+                .flatten()
+        })
         .and_then(|ctx| ctx.day_vlm)
         .and_then(finite_value)
 }

@@ -14,6 +14,7 @@ fn clear_detached_surface_state_removes_only_detached_quick_order_owner() {
         quantity: "1".to_string(),
         quantity_is_usd: false,
         percentage: 0.0,
+        quantity_provenance: None,
         is_limit: true,
         click_x: 10.0,
         click_y: 20.0,
@@ -34,4 +35,16 @@ fn clear_detached_surface_state_removes_only_detached_quick_order_owner() {
             .chart
             .quick_order_open
     );
+}
+
+#[test]
+fn clear_chart_pending_request_state_prunes_closed_chart_from_shared_registries() {
+    let chart_id = 7;
+    let other_chart_id = 99;
+    let mut terminal = terminal_with_chart(chart_id);
+    seed_chart_pending_requests(&mut terminal, chart_id, other_chart_id);
+
+    terminal.clear_chart_pending_request_state(chart_id);
+
+    assert_chart_pending_requests_pruned(&terminal, other_chart_id);
 }

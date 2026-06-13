@@ -1,9 +1,9 @@
 use super::{
     JournalTradeOutcome, account_value_points_for_range, apply_journal_portfolio_window,
     finite_sorted_points, format_signed_usd_full, journal_cumulative_pnl_points,
-    journal_recent_trade_outcome_tiles, journal_window_total_pnl,
+    journal_filter_label, journal_recent_trade_outcome_tiles, journal_window_total_pnl,
 };
-use crate::journal::AggregatedTrade;
+use crate::journal::{AggregatedTrade, JournalFilter};
 use crate::portfolio_state::PortfolioWindow;
 
 fn trade(start_time: u64, end_time: Option<u64>, pnl: f64) -> AggregatedTrade {
@@ -109,6 +109,14 @@ fn journal_portfolio_all_time_keeps_all_points() {
         apply_journal_portfolio_window(points.clone(), PortfolioWindow::AllTime, 3_000),
         points
     );
+}
+
+#[test]
+fn journal_filter_labels_include_outcome_filter() {
+    assert_eq!(journal_filter_label(JournalFilter::All), "All");
+    assert_eq!(journal_filter_label(JournalFilter::Perp), "Perp");
+    assert_eq!(journal_filter_label(JournalFilter::Spot), "Spot");
+    assert_eq!(journal_filter_label(JournalFilter::Outcome), "Outcome");
 }
 
 #[test]

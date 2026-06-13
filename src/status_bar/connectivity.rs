@@ -14,6 +14,7 @@ use iced::widget::{Row, Space, column, responsive, row, text};
 use iced::{Alignment, Color, Element, Fill, Length};
 
 const STATUS_BAR_STACK_BREAKPOINT: f32 = 1_180.0;
+const API_LATENCY_STALE_AFTER_MS: u64 = 90_000;
 
 // ---------------------------------------------------------------------------
 // Status Connectivity Row
@@ -66,7 +67,7 @@ impl TradingTerminal {
     fn status_stats_row(&self, separated: bool) -> Row<'static, Message> {
         let theme = self.theme();
         let ws_stats = ws::telemetry_snapshot();
-        let now_ms = Self::now_ms();
+        let now_ms = self.status_bar_now_ms;
         let ws_live = ws_stats.exchange_open_connections > 0
             && ws_stats.exchange_last_rx_ms > 0
             && now_ms.saturating_sub(ws_stats.exchange_last_rx_ms) <= 5_000;
@@ -135,13 +136,11 @@ impl TradingTerminal {
         );
 
         push_status_gap(row, separated).push(
-            text(format!(
-                "API: {}",
-                if ws_stats.api_latency_ms > 0 {
-                    format!("{}ms", ws_stats.api_latency_ms)
-                } else {
-                    "--ms".to_string()
-                }
+            text(format_api_latency_label(
+                ws_stats.exchange_open_connections,
+                ws_stats.api_latency_ms,
+                ws_stats.api_last_success_ms,
+                now_ms,
             ))
             .size(10)
             .color(theme.palette().primary),
@@ -173,5 +172,53 @@ fn push_status_gap(row: Row<'static, Message>, separated: bool) -> Row<'static, 
         row.push(helpers::vertical_spacer())
     } else {
         row
+    }
+}
+
+fn format_api_latency_label(
+    exchange_open_connections: u64,
+    api_latency_ms: u64,
+    api_last_success_ms: u64,
+    now_ms: u64,
+) -> String {
+    if exchange_open_connections == 0 || api_latency_ms == 0 || api_last_success_ms == 0 {
+        return "API: --ms".to_string();
+    }
+
+    if now_ms.saturating_sub(api_last_success_ms) > API_LATENCY_STALE_AFTER_MS {
+        "API STALE".to_string()
+    } else {
+        format!("API: {api_latency_ms}ms")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{API_LATENCY_STALE_AFTER_MS, format_api_latency_label};
+
+    #[test]
+    fn api_latency_label_shows_fresh_probe_latency() {
+        assert_eq!(
+            format_api_latency_label(1, 42, 1_000, 1_000 + API_LATENCY_STALE_AFTER_MS),
+            "API: 42ms"
+        );
+    }
+
+    #[test]
+    fn api_latency_label_hides_idle_exchange_latency() {
+        assert_eq!(format_api_latency_label(0, 42, 1_000, 1_100), "API: --ms");
+    }
+
+    #[test]
+    fn api_latency_label_hides_missing_probe_latency() {
+        assert_eq!(format_api_latency_label(1, 0, 0, 1_100), "API: --ms");
+    }
+
+    #[test]
+    fn api_latency_label_marks_old_probe_stale() {
+        assert_eq!(
+            format_api_latency_label(1, 42, 1_000, 1_001 + API_LATENCY_STALE_AFTER_MS),
+            "API STALE"
+        );
     }
 }

@@ -103,6 +103,7 @@ pub(crate) struct HypeUnstakingQueueState {
     pub(crate) loading: bool,
     pub(crate) error: Option<String>,
     pub(crate) last_fetch: Option<Instant>,
+    pub(crate) refresh_request_id: u64,
     pub(crate) window_filter: HypeUnstakingWindowFilter,
     pub(crate) amount_filter: HypeUnstakingAmountFilter,
     pub(crate) mine_only: bool,
@@ -139,6 +140,10 @@ impl HypeUnstakingQueueData {
     pub(crate) fn new(mut events: Vec<HypeUnstakingEvent>) -> Self {
         events.sort_by_key(|event| event.unlock_time_ms);
         Self { events }
+    }
+
+    pub(crate) fn retain_upcoming_events(&mut self, now_ms: u64) {
+        self.events.retain(|event| event.unlock_time_ms > now_ms);
     }
 
     pub(crate) fn filtered_events<'a>(
@@ -339,6 +344,20 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].user, "0xfuture");
+    }
+
+    #[test]
+    fn retain_upcoming_events_drops_unlocked_rows() {
+        let mut data = HypeUnstakingQueueData::new(vec![
+            event(900, "0xpast", 100),
+            event(1_000, "0xnow", 100),
+            event(2_000, "0xfuture", 100),
+        ]);
+
+        data.retain_upcoming_events(1_000);
+
+        assert_eq!(data.events.len(), 1);
+        assert_eq!(data.events[0].user, "0xfuture");
     }
 
     #[test]

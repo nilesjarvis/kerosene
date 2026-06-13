@@ -157,7 +157,11 @@ impl TradingTerminal {
     }
 
     fn journal_portfolio_window_points(&self, points: Vec<(u64, f64)>) -> Vec<(u64, f64)> {
-        apply_journal_portfolio_window(points, self.journal.portfolio_window, Self::now_ms())
+        apply_journal_portfolio_window(
+            points,
+            self.journal.portfolio_window,
+            self.status_bar_now_ms,
+        )
     }
 
     fn journal_account_value_chart_points(&self, pnl_points: &[(u64, f64)]) -> Vec<(u64, f64)> {
@@ -170,7 +174,7 @@ impl TradingTerminal {
         };
         let bucket_key = match self.journal.filter {
             JournalFilter::Perp => "perpAllTime",
-            JournalFilter::All | JournalFilter::Spot => "allTime",
+            JournalFilter::All | JournalFilter::Spot | JournalFilter::Outcome => "allTime",
         };
 
         self.portfolio_bucket_by_key(bucket_key)
@@ -187,6 +191,7 @@ fn journal_filter_label(filter: JournalFilter) -> &'static str {
         JournalFilter::All => "All",
         JournalFilter::Perp => "Perp",
         JournalFilter::Spot => "Spot",
+        JournalFilter::Outcome => "Outcome",
     }
 }
 

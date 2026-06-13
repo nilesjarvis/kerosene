@@ -21,24 +21,24 @@ impl TradingTerminal {
             | Message::SymbolSearchSortChanged(_)
             | Message::SymbolSearchMarketFilterChanged(_)
             | Message::SymbolSearchHip3DexFilterChanged(_)
-            | Message::SymbolSearchContextsLoaded(_, _)
+            | Message::SymbolSearchContextsLoaded(_, _, _, _)
             | Message::OutcomeSearchChanged(_)
             | Message::OutcomeMarketGroupToggled(_)
-            | Message::OutcomeVolumesLoaded(_)
+            | Message::OutcomeVolumesLoaded(_, _, _)
             | Message::SymbolSelected(_)) => {
                 return self.update_symbol_search_market(message);
             }
             message @ (Message::RefreshHypeEtfs
             | Message::HypeEtfsRefreshTick
             | Message::HypeEtfsViewChanged(_)
-            | Message::HypeEtfsLoaded(_)) => {
+            | Message::HypeEtfsLoaded(_, _)) => {
                 return self.update_hype_etfs_market(message);
             }
             message if is_hype_unstaking_queue_market_message(&message) => {
                 return self.update_hype_unstaking_queue_market(message);
             }
-            message
-            @ (Message::TickerTapeRefreshTick | Message::TickerTapeContextsLoaded(_, _)) => {
+            message @ (Message::TickerTapeRefreshTick
+            | Message::TickerTapeContextsLoaded(_, _, _, _)) => {
                 return self.update_ticker_tape_market(message);
             }
             message if is_live_watchlist_market_message(&message) => {
@@ -70,7 +70,7 @@ fn is_hype_unstaking_queue_market_message(message: &Message) -> bool {
             | Message::HypeUnstakingSortChanged(_)
             | Message::ToggleHypeUnstakingMineOnly
             | Message::ClearHypeUnstakingFilters
-            | Message::HypeUnstakingQueueLoaded(_)
+            | Message::HypeUnstakingQueueLoaded(_, _)
     )
 }
 
@@ -85,8 +85,8 @@ fn is_live_watchlist_market_message(message: &Message) -> bool {
             | Message::LiveWatchlistAddSymbol(_, _)
             | Message::LiveWatchlistRemoveSymbol(_, _)
             | Message::LiveWatchlistRefreshTick
-            | Message::LiveWatchlistContextsLoaded(_, _)
-            | Message::LiveWatchlistHistoryLoaded(_, _, _)
+            | Message::LiveWatchlistContextsLoaded(_, _, _, _)
+            | Message::LiveWatchlistHistoryLoaded(_, _, _, _)
     )
 }
 
@@ -104,9 +104,10 @@ fn is_positioning_info_market_message(message: &Message) -> bool {
             | Message::ClearPositioningInfoFilters(_)
             | Message::RefreshPositioningInfoPane(_)
             | Message::RefreshPositioningInfo
-            | Message::PositioningInfoWsAssetCtxUpdate(_, _)
-            | Message::PositioningInfoLoaded(_, _)
-            | Message::PositioningInfoChangeLoaded(_, _)
+            | Message::PositioningInfoWsAssetCtxUpdate(_, _, _)
+            | Message::PositioningInfoWsAssetCtxLagged(_, _, _)
+            | Message::PositioningInfoLoaded(_, _, _)
+            | Message::PositioningInfoChangeLoaded(_, _, _)
     )
 }
 
@@ -115,8 +116,10 @@ fn is_order_book_market_message(message: &Message) -> bool {
         message,
         Message::AddOrderBookPane
             | Message::BookLoaded { .. }
-            | Message::OrderBookWsAssetCtxUpdate(_, _)
+            | Message::OrderBookWsAssetCtxUpdate { .. }
+            | Message::OrderBookWsAssetCtxLagged { .. }
             | Message::WsBookUpdate { .. }
+            | Message::OrderBookWsBookLagged { .. }
             | Message::SetBookTickSize(_, _)
             | Message::ToggleOrderBookSettings(_)
             | Message::ToggleOrderBookCenterOnMid(_)

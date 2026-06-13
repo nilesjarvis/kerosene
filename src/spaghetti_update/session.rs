@@ -13,7 +13,9 @@ impl TradingTerminal {
         session: Option<spaghetti::Session>,
     ) -> Task<Message> {
         let chart_backfill_source = self.chart_backfill_source;
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let read_data_provider_generation = self.read_data_provider_generation;
+        let hydromancer_generation = self.hydromancer_key_generation;
+        let hydromancer_api_key = self.hydromancer_api_key_for_task();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             inst.canvas.active_session = session;
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
@@ -34,6 +36,8 @@ impl TradingTerminal {
                     None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,
+                        read_data_provider_generation,
+                        hydromancer_generation,
                         hydromancer_api_key.clone(),
                     ),
                 ));
@@ -51,7 +55,9 @@ impl TradingTerminal {
         id: SpaghettiChartId,
     ) -> Task<Message> {
         let chart_backfill_source = self.chart_backfill_source;
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let read_data_provider_generation = self.read_data_provider_generation;
+        let hydromancer_generation = self.hydromancer_key_generation;
+        let hydromancer_api_key = self.hydromancer_api_key_for_task();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             if inst.session_granularity.is_none() {
                 return Task::none();
@@ -76,6 +82,8 @@ impl TradingTerminal {
                     None,
                     ChartBackfillFetchContext::new(
                         chart_backfill_source,
+                        read_data_provider_generation,
+                        hydromancer_generation,
                         hydromancer_api_key.clone(),
                     ),
                 ));

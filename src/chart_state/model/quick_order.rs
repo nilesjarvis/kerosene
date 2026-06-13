@@ -55,6 +55,17 @@ impl ChartInstance {
         self.chart.quick_order_line_phase = 0.0;
     }
 
+    pub(crate) fn reset_quick_order_for_account_reset(&mut self) {
+        self.quick_order = None;
+        self.chart.quick_order_open = false;
+        self.chart.quick_order_limit_price = None;
+        self.chart.quick_order_line_phase = 0.0;
+        self.last_quick_order_symbol.clear();
+        self.last_quick_order_quantity.clear();
+        self.last_quick_order_quantity_is_usd = false;
+        self.last_quick_order_percentage = 0.0;
+    }
+
     pub(crate) fn take_quick_order(&mut self) -> Option<QuickOrderForm> {
         self.remember_current_quick_order();
         let form = self.quick_order.take();
@@ -68,9 +79,11 @@ impl ChartInstance {
         let Some(form) = self.quick_order.as_ref() else {
             return;
         };
-        let quantity = form.quantity.clone();
-        let quantity_is_usd = form.quantity_is_usd;
-        let percentage = form.percentage;
+        let (quantity, quantity_is_usd, percentage) = if form.quantity_provenance.is_some() {
+            (String::new(), form.quantity_is_usd, 0.0)
+        } else {
+            (form.quantity.clone(), form.quantity_is_usd, form.percentage)
+        };
         let is_limit = form.is_limit;
 
         self.last_quick_order_symbol = self.symbol.clone();
@@ -81,10 +94,16 @@ impl ChartInstance {
     }
 
     fn remember_quick_order_form(&mut self, form: &QuickOrderForm) {
+        let (quantity, percentage) = if form.quantity_provenance.is_some() {
+            (String::new(), 0.0)
+        } else {
+            (form.quantity.clone(), form.percentage)
+        };
+
         self.last_quick_order_symbol = self.symbol.clone();
-        self.last_quick_order_quantity = form.quantity.clone();
+        self.last_quick_order_quantity = quantity;
         self.last_quick_order_quantity_is_usd = form.quantity_is_usd;
-        self.last_quick_order_percentage = form.percentage;
+        self.last_quick_order_percentage = percentage;
         self.last_quick_order_is_limit = form.is_limit;
     }
 

@@ -2,6 +2,7 @@ use super::{API_URL, CLIENT, KEROSENE_USER_AGENT};
 use crate::config::ChartBackfillSource;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Serialize;
+use zeroize::Zeroizing;
 
 mod model;
 mod normalize;
@@ -44,7 +45,7 @@ pub async fn fetch_candles(
 
 pub async fn fetch_chart_backfill_candles(
     source: ChartBackfillSource,
-    hydromancer_api_key: String,
+    hydromancer_api_key: Zeroizing<String>,
     coin: String,
     interval: String,
     start_time: u64,
@@ -55,7 +56,7 @@ pub async fn fetch_chart_backfill_candles(
             fetch_candles_from_endpoint(API_URL, None, coin, interval, start_time, end_time).await
         }
         ChartBackfillSource::Hydromancer => {
-            let api_key = hydromancer_api_key.trim().to_string();
+            let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
             if api_key.is_empty() {
                 return fetch_candles_from_endpoint(
                     API_URL, None, coin, interval, start_time, end_time,
@@ -102,7 +103,7 @@ pub async fn fetch_chart_backfill_candles(
 
 async fn fetch_candles_from_endpoint(
     url: &str,
-    bearer_token: Option<String>,
+    bearer_token: Option<Zeroizing<String>>,
     coin: String,
     interval: String,
     start_time: u64,
@@ -118,13 +119,14 @@ async fn fetch_candles_from_endpoint(
         },
     };
 
+    let redact_sensitive_response = bearer_token.is_some();
     let client = CLIENT.clone();
     let mut request = client
         .post(url)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
         .json(&body);
     if let Some(token) = bearer_token {
-        request = request.bearer_auth(token);
+        request = request.bearer_auth(token.as_str());
     }
 
     let response = request
@@ -144,7 +146,12 @@ async fn fetch_candles_from_endpoint(
         .await
         .map_err(|e| format!("Failed to read response: {e}"))?;
 
-    parse_candle_response(status, content_type.as_deref(), &text)
+    parse_candle_response(
+        status,
+        content_type.as_deref(),
+        &text,
+        redact_sensitive_response,
+    )
 }
 
 fn candle_interval_ms(interval: &str) -> Option<u64> {

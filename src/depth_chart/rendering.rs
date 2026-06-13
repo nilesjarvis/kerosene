@@ -2,7 +2,7 @@ use super::geometry::{
     DepthChartLayout, axis_size_label, depth_chart_layout, hover_target, marker_xs, side_points,
 };
 use super::{DepthChart, DepthChartState};
-use crate::helpers::{format_decimal_with_commas, format_size};
+use crate::helpers::{format_book_size, format_decimal_with_commas};
 use iced::widget::canvas::{self, Frame, Stroke};
 use iced::{Color, Point, Rectangle, Renderer, Theme};
 
@@ -47,7 +47,7 @@ impl DepthChart {
 
         let muted = theme.extended_palette().background.weak.text;
         self.draw_mid_marker(&mut frame, &layout, theme, muted);
-        draw_size_axis(&mut frame, &layout, muted);
+        draw_size_axis(&mut frame, &layout, muted, self.whole_contracts);
         self.draw_price_axis(&mut frame, &layout, muted);
         draw_order_markers(
             &mut frame,
@@ -171,7 +171,7 @@ impl DepthChart {
             content: format!(
                 "{} | {}",
                 format_decimal_with_commas(target.price, self.decimals),
-                format_size(target.cum)
+                depth_size_label(target.cum, self.whole_contracts)
             ),
             position: Point::new(
                 hover_pos.x.max(50.0).min(layout.width - 50.0),
@@ -234,11 +234,16 @@ fn draw_order_markers(frame: &mut Frame, xs: &[f32], layout: &DepthChartLayout, 
     }
 }
 
-fn draw_size_axis(frame: &mut Frame, layout: &DepthChartLayout, muted: Color) {
+fn draw_size_axis(
+    frame: &mut Frame,
+    layout: &DepthChartLayout,
+    muted: Color,
+    whole_contracts: bool,
+) {
     for fraction in SIZE_AXIS_FRACTIONS {
         let cum = layout.max_cum * fraction;
         frame.fill_text(canvas::Text {
-            content: axis_size_label(cum),
+            content: depth_axis_size_label(cum, whole_contracts),
             position: Point::new(layout.width - 4.0, layout.y_for_cum(cum)),
             color: muted,
             size: iced::Pixels(10.0),
@@ -247,5 +252,34 @@ fn draw_size_axis(frame: &mut Frame, layout: &DepthChartLayout, muted: Color) {
             font: crate::app_fonts::monospace_font(),
             ..Default::default()
         });
+    }
+}
+
+fn depth_size_label(size: f64, whole_contracts: bool) -> String {
+    format_book_size(size, whole_contracts)
+}
+
+fn depth_axis_size_label(size: f64, whole_contracts: bool) -> String {
+    if whole_contracts {
+        format_book_size(size, true)
+    } else {
+        axis_size_label(size)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{depth_axis_size_label, depth_size_label};
+
+    #[test]
+    fn depth_labels_use_whole_contracts_for_outcome_books() {
+        assert_eq!(depth_size_label(12_345.0, true), "12345");
+        assert_eq!(depth_axis_size_label(1_250.0, true), "1250");
+    }
+
+    #[test]
+    fn depth_labels_keep_existing_compact_formatting_for_non_outcome_books() {
+        assert_eq!(depth_size_label(12_345.0, false), "12.3K");
+        assert_eq!(depth_axis_size_label(1_250.0, false), "1.25K");
     }
 }

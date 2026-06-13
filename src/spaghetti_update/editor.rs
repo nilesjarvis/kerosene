@@ -53,7 +53,9 @@ impl TradingTerminal {
             .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
         let theme = self.theme();
         let chart_backfill_source = self.chart_backfill_source;
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let read_data_provider_generation = self.read_data_provider_generation;
+        let hydromancer_generation = self.hydromancer_key_generation;
+        let hydromancer_api_key = self.hydromancer_api_key_for_task();
         let mut task = Task::none();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id)
             && !inst.canvas.series.iter().any(|s| s.symbol == key)
@@ -84,7 +86,12 @@ impl TradingTerminal {
                 inst.canvas.active_session,
                 inst.session_granularity,
                 None,
-                ChartBackfillFetchContext::new(chart_backfill_source, hydromancer_api_key),
+                ChartBackfillFetchContext::new(
+                    chart_backfill_source,
+                    read_data_provider_generation,
+                    hydromancer_generation,
+                    hydromancer_api_key,
+                ),
             );
         }
         self.persist_config();

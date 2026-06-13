@@ -12,29 +12,24 @@ use iced::Task;
 
 impl TradingTerminal {
     pub(crate) fn clear_chart_for_muted_symbol(instance: &mut ChartInstance) {
-        instance.symbol.clear();
-        instance.symbol_display.clear();
+        instance.reset_quick_order_for_account_reset();
+        instance.set_symbol_identity(String::new(), String::new());
         instance.chart.status = ChartStatus::Loading;
         instance.chart.candles.clear();
+        instance.chart.clear_macro_candles();
         instance.chart.candle_cache.clear();
         instance.chart.active_position = None;
         instance.chart.active_orders.clear();
         instance.chart.trade_markers.clear();
         instance.chart.clear_hud_armed();
         instance.chart.set_market_reference_price(None);
-        instance.asset_ctx = None;
+        instance.set_asset_context(None);
         instance.candle_fetch_request = None;
         instance.candle_fetch_error = None;
         instance.editor_open = false;
         instance.editor_search_query.clear();
         instance.editor_selected_index = None;
-        instance.heatmap_last_fetch = None;
-        instance.heatmap_viewport = None;
-        instance.heatmap_status = None;
-        instance.heatmap_fetching = false;
-        Self::clear_heatmap_display(instance);
-        Self::clear_liquidation_display(instance);
-        Self::clear_earnings_display(instance);
+        Self::clear_chart_symbol_display_state(instance);
     }
 
     pub(crate) fn scrub_muted_ticker_state(&mut self) -> Task<Message> {
@@ -82,7 +77,7 @@ impl TradingTerminal {
         self.live_watchlist_flashes
             .retain(|symbol, _| !is_hidden_cache(symbol));
 
-        if self.account_data.is_some() {
+        if self.connected_order_account_snapshot().is_some() {
             self.sync_all_chart_overlays();
         }
         for state in self.wallet_detail_windows.values_mut() {
@@ -127,9 +122,7 @@ impl TradingTerminal {
                 let was_fixed = matches!(order_book.mode, OrderBookSymbolMode::Fixed(_));
                 order_book.mode = OrderBookSymbolMode::Active;
                 order_book.set_book(OrderBook::empty());
-                order_book.asset_ctx = None;
-                order_book.spread_history.clear();
-                order_book.clear_mid_price_history();
+                order_book.clear_asset_context();
                 order_book.clear_book_request();
                 order_book.book_loading = false;
                 order_book.book_error = None;
@@ -141,10 +134,19 @@ impl TradingTerminal {
             }
         }
 
-        for instance in self.charts.values_mut() {
-            if !instance.symbol.is_empty() && is_hidden(&instance.symbol) {
+        let hidden_chart_ids = self
+            .charts
+            .iter()
+            .filter_map(|(id, instance)| {
+                (!instance.symbol.is_empty() && is_hidden(&instance.symbol)).then_some(*id)
+            })
+            .collect::<Vec<_>>();
+        for chart_id in hidden_chart_ids {
+            if let Some(instance) = self.charts.get_mut(&chart_id) {
                 Self::clear_chart_for_muted_symbol(instance);
             }
+            self.clear_chart_pending_request_state(chart_id);
+            self.chart_quick_order_surface.remove(&chart_id);
         }
 
         for inst in self.spaghetti_charts.values_mut() {
@@ -193,8 +195,11 @@ mod tests {
         AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
         Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
     };
-    use crate::api::{ExchangeSymbol, MarketType};
-    use crate::session_data_state::{SessionDataInstance, SessionDataLookback};
+    use crate::api::{Candle, ExchangeSymbol, MarketType};
+    use crate::chart_state::{ChartInstance, ChartSurfaceId};
+    use crate::order_execution::QuickOrderForm;
+    use crate::session_data_state::{SessionDataInstance, SessionDataLookback, SessionDataRequest};
+    use crate::timeframe::Timeframe;
 
     fn perp_symbol(key: &str) -> ExchangeSymbol {
         ExchangeSymbol {
@@ -261,6 +266,21 @@ mod tests {
         }
     }
 
+    fn quick_order_form() -> QuickOrderForm {
+        QuickOrderForm {
+            price: 100.0,
+            quantity: "2.5".to_string(),
+            quantity_is_usd: false,
+            percentage: 25.0,
+            quantity_provenance: None,
+            is_limit: true,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        }
+    }
+
     #[test]
     fn scrub_hidden_symbol_state_refreshes_session_data_when_active_symbol_changes() {
         let mut terminal = TradingTerminal::boot().0;
@@ -271,14 +291,76 @@ mod tests {
             4,
             SessionDataInstance::new(4, "HYPE".to_string(), SessionDataLookback::FourWeeks),
         );
+        {
+            let instance = terminal.session_data.get_mut(&4).expect("session data");
+            instance.loading = true;
+            instance.pending_request = Some(SessionDataRequest {
+                id: 4,
+                symbol: "HYPE".to_string(),
+                lookback: SessionDataLookback::FourWeeks,
+                requested_at_ms: 123,
+            });
+        }
 
         let _task = terminal.scrub_hidden_symbol_state();
 
         let instance = terminal.session_data.get(&4).expect("session data");
         assert_eq!(instance.symbol, "BTC");
         assert!(instance.loading);
-        assert!(instance.pending_request.is_some());
+        let request = instance.pending_request.as_ref().expect("pending request");
+        assert_eq!(request.symbol, "BTC");
+        assert_ne!(request.requested_at_ms, 123);
         assert_eq!(terminal.active_symbol, "BTC");
+    }
+
+    #[test]
+    fn scrub_hidden_symbol_state_clears_chart_identity_and_order_state() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("HYPE"), perp_symbol("BTC")];
+        terminal.muted_tickers.insert("HYPE".to_string());
+        terminal.charts.clear();
+
+        let mut chart = ChartInstance::new(7, "HYPE".to_string(), Timeframe::H1);
+        chart.set_quick_order(quick_order_form());
+        chart.track_last_price_update(Some(100.0), 101.0, 1_000);
+        chart.chart.set_hud_armed_at(true, 1_000);
+        chart.chart.set_current_spread_at(Some(0.25), 1_000);
+        chart.chart.daily_candles = vec![Candle::test_flat(1_000, 100.0)];
+        chart.chart.weekly_candles = vec![Candle::test_flat(2_000, 100.0)];
+        chart.chart.monthly_candles = vec![Candle::test_flat(3_000, 100.0)];
+        chart.chart.funding_status = Some(("stale funding".to_string(), true));
+        terminal.charts.insert(7, chart);
+        terminal
+            .chart_quick_order_surface
+            .insert(7, ChartSurfaceId::Docked(7));
+        terminal
+            .heatmap_pending_charts
+            .insert("HYPE".to_string(), vec![7]);
+        terminal
+            .liquidation_pending_charts
+            .insert("HYPE".to_string(), vec![7]);
+
+        let _task = terminal.scrub_hidden_symbol_state();
+
+        let chart = terminal.charts.get(&7).expect("chart");
+        assert_eq!(chart.symbol, "");
+        assert_eq!(chart.symbol_display, "");
+        assert_eq!(chart.chart.symbol_key, "");
+        assert_eq!(chart.chart.symbol_label, "");
+        assert!(!chart.chart.hud_armed());
+        assert_eq!(chart.chart.current_spread, None);
+        assert_eq!(chart.chart.spread_history_bounds(), None);
+        assert!(chart.last_price_flash.is_none());
+        assert!(chart.quick_order.is_none());
+        assert!(!chart.chart.quick_order_open);
+        assert_eq!(chart.last_quick_order_symbol, "");
+        assert!(chart.chart.daily_candles.is_empty());
+        assert!(chart.chart.weekly_candles.is_empty());
+        assert!(chart.chart.monthly_candles.is_empty());
+        assert!(chart.chart.funding_status.is_none());
+        assert!(!terminal.chart_quick_order_surface.contains_key(&7));
+        assert!(!terminal.heatmap_pending_charts.contains_key("HYPE"));
+        assert!(!terminal.liquidation_pending_charts.contains_key("HYPE"));
     }
 
     #[test]

@@ -57,23 +57,53 @@ impl TradingTerminal {
 
     pub(crate) fn request_symbol_search_context_refresh(&mut self, force: bool) -> Task<Message> {
         let symbols = self.symbol_search_context_symbols();
+        if symbols.is_empty() {
+            self.symbol_search_ctxs.clear();
+            self.symbol_search_contexts_loading = false;
+            self.symbol_search_contexts_refresh_pending = false;
+            self.symbol_search_contexts_request_symbols.clear();
+            self.symbol_search_contexts_request_id =
+                self.symbol_search_contexts_request_id.saturating_add(1);
+            self.symbol_search_contexts_last_fetch_ms = None;
+            self.refresh_symbol_search_results();
+            return Task::none();
+        }
+
         let Some(plan) = plan_context_refresh(SymbolSearchContextRefreshInput {
             symbols,
             force,
             now_ms: Self::now_ms(),
             sort_mode: self.symbol_search_sort_mode,
-            contexts_loading: self.symbol_search_contexts_loading,
+            contexts_loading: false,
             contexts_last_fetch_ms: self.symbol_search_contexts_last_fetch_ms,
             contexts: &self.symbol_search_ctxs,
         }) else {
             return Task::none();
         };
 
+        if self.symbol_search_contexts_loading {
+            if force || self.symbol_search_contexts_request_symbols != plan.symbols {
+                self.symbol_search_contexts_refresh_pending = true;
+            }
+            return Task::none();
+        }
+
+        self.symbol_search_contexts_request_id =
+            self.symbol_search_contexts_request_id.saturating_add(1);
+        let request_id = self.symbol_search_contexts_request_id;
+        self.symbol_search_contexts_request_symbols = plan.symbols.clone();
+        self.symbol_search_contexts_refresh_pending = false;
         self.symbol_search_contexts_loading = true;
         self.symbol_search_status = None;
         let requested_at = plan.requested_at;
+        let requested_symbols = plan.symbols.clone();
         Task::perform(api::fetch_watchlist_contexts(plan.symbols), move |result| {
-            Message::SymbolSearchContextsLoaded(requested_at, result)
+            Message::SymbolSearchContextsLoaded(
+                request_id,
+                requested_symbols.clone(),
+                requested_at,
+                result,
+            )
         })
     }
 

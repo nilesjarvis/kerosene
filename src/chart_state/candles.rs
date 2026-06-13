@@ -1,11 +1,11 @@
-use super::{CandleFetchRequest, ChartBackfillFetchContext, ChartId};
+use super::{CandleFetchRequest, ChartBackfillFetchContext, ChartBackfillRequestContext, ChartId};
 use crate::api::{self, Candle};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
-use crate::config::ChartBackfillSource;
 use crate::message::Message;
 use crate::timeframe::Timeframe;
 use iced::Task;
+use zeroize::Zeroizing;
 
 mod cache;
 
@@ -16,7 +16,11 @@ pub(crate) const CANDLE_FETCH_MAX_ATTEMPTS: u8 = 4;
 impl TradingTerminal {
     /// Fetch daily/weekly/monthly candles for macro indicators, tagged with
     /// the chart ID and symbol that requested them.
-    pub(crate) fn fetch_macro_candles_tasks(chart_id: ChartId, coin: &str) -> Vec<Task<Message>> {
+    pub(crate) fn fetch_macro_candles_tasks(
+        chart_id: ChartId,
+        request_id: u64,
+        coin: &str,
+    ) -> Vec<Task<Message>> {
         let now_ms = Self::now_ms();
 
         let id = chart_id;
@@ -35,7 +39,9 @@ impl TradingTerminal {
                     now_ms.saturating_sub(Timeframe::D1.lookback_ms()),
                     now_ms,
                 ),
-                move |result| Message::MacroCandlesLoaded(id, s1.clone(), Timeframe::D1, result),
+                move |result| {
+                    Message::MacroCandlesLoaded(id, request_id, s1.clone(), Timeframe::D1, result)
+                },
             ),
             Task::perform(
                 api::fetch_candles(
@@ -44,7 +50,9 @@ impl TradingTerminal {
                     now_ms.saturating_sub(Timeframe::W1.lookback_ms()),
                     now_ms,
                 ),
-                move |result| Message::MacroCandlesLoaded(id, s2.clone(), Timeframe::W1, result),
+                move |result| {
+                    Message::MacroCandlesLoaded(id, request_id, s2.clone(), Timeframe::W1, result)
+                },
             ),
             Task::perform(
                 api::fetch_candles(
@@ -53,16 +61,33 @@ impl TradingTerminal {
                     now_ms.saturating_sub(Timeframe::Mo1.lookback_ms()),
                     now_ms,
                 ),
-                move |result| Message::MacroCandlesLoaded(id, s3.clone(), Timeframe::Mo1, result),
+                move |result| {
+                    Message::MacroCandlesLoaded(id, request_id, s3.clone(), Timeframe::Mo1, result)
+                },
             ),
         ]
+    }
+
+    pub(crate) fn queue_macro_candles_tasks(
+        &mut self,
+        chart_id: ChartId,
+        coin: &str,
+    ) -> Vec<Task<Message>> {
+        let Some(request_id) = self
+            .charts
+            .get_mut(&chart_id)
+            .map(|instance| instance.next_macro_candles_request_id())
+        else {
+            return Vec::new();
+        };
+        Self::fetch_macro_candles_tasks(chart_id, request_id, coin)
     }
 
     pub(crate) fn build_candle_fetch_request(
         chart_id: ChartId,
         coin: &str,
         tf: Timeframe,
-        source: ChartBackfillSource,
+        backfill: ChartBackfillRequestContext,
         cached_start_ms: Option<u64>,
         attempt: u8,
     ) -> CandleFetchRequest {
@@ -75,7 +100,9 @@ impl TradingTerminal {
             chart_id,
             symbol: coin.to_string(),
             timeframe: tf,
-            source,
+            source: backfill.source,
+            read_data_provider_generation: backfill.read_data_provider_generation,
+            hydromancer_key_generation: backfill.hydromancer_key_generation,
             start_ms: start,
             end_ms: now_ms,
             attempt,
@@ -91,9 +118,17 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn chart_backfill_request_context(&self) -> ChartBackfillRequestContext {
+        ChartBackfillRequestContext::new(
+            self.chart_backfill_source,
+            self.read_data_provider_generation,
+            self.hydromancer_key_generation,
+        )
+    }
+
     pub(crate) fn fetch_candles_task(
         request: CandleFetchRequest,
-        hydromancer_api_key: String,
+        hydromancer_api_key: Zeroizing<String>,
     ) -> Task<Message> {
         let delay_ms = Self::candle_fetch_retry_delay_ms(request.attempt);
         let fetch_request = request.clone();
@@ -124,7 +159,7 @@ impl TradingTerminal {
                 instance.chart.status = ChartStatus::Loading;
             }
         }
-        Self::fetch_candles_task(request, self.hydromancer_api_key.trim().to_string())
+        Self::fetch_candles_task(request, self.hydromancer_api_key_for_task())
     }
 
     pub(crate) fn queue_candle_fetch_for(
@@ -138,7 +173,7 @@ impl TradingTerminal {
             chart_id,
             coin,
             tf,
-            self.chart_backfill_source,
+            self.chart_backfill_request_context(),
             cached_start_ms,
             0,
         );
@@ -150,7 +185,9 @@ impl TradingTerminal {
         self.candle_data_cache_order.clear();
 
         let source = self.chart_backfill_source;
-        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
+        let backfill_context = self.chart_backfill_request_context();
+        let hydromancer_generation = self.hydromancer_key_generation;
+        let hydromancer_key = self.hydromancer_api_key_for_task();
         let chart_requests: Vec<_> = self
             .charts
             .iter()
@@ -162,7 +199,7 @@ impl TradingTerminal {
                     *chart_id,
                     &instance.symbol,
                     instance.interval,
-                    source,
+                    backfill_context,
                     None,
                     0,
                 )
@@ -170,6 +207,8 @@ impl TradingTerminal {
             .collect();
 
         for request in &chart_requests {
+            self.clear_chart_heatmap_pending_request_state(request.chart_id);
+            self.clear_chart_liquidation_pending_request_state(request.chart_id);
             if let Some(instance) = self.charts.get_mut(&request.chart_id) {
                 instance.chart.candles.clear();
                 instance.chart.status = ChartStatus::Loading;
@@ -227,7 +266,12 @@ impl TradingTerminal {
                     session,
                     session_granularity,
                     None,
-                    ChartBackfillFetchContext::new(source, hydromancer_key.clone()),
+                    ChartBackfillFetchContext::new(
+                        source,
+                        backfill_context.read_data_provider_generation,
+                        hydromancer_generation,
+                        hydromancer_key.clone(),
+                    ),
                 )
             },
         ));

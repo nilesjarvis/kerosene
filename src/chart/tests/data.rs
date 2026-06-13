@@ -1,4 +1,5 @@
 use super::candle_at;
+use crate::chart::data::MAX_CHART_CANDLES;
 use crate::chart::{CandlestickChart, ChartStatus};
 use crate::hydromancer_api::FundingRatePoint;
 
@@ -31,6 +32,47 @@ fn realtime_candle_update_rejects_malformed_candles() {
 
     assert_eq!(chart.candles.len(), 1);
     assert_eq!(chart.candles[0].close, 10.0);
+}
+
+#[test]
+fn realtime_candle_update_trims_oldest_candles_at_cap() {
+    let mut chart = CandlestickChart::new(1);
+    chart.candles = (1..=MAX_CHART_CANDLES)
+        .map(|idx| candle_at(idx as u64 * 60_000, idx as f64))
+        .collect();
+
+    chart.push_candle(candle_at((MAX_CHART_CANDLES as u64 + 1) * 60_000, 20_000.0));
+
+    assert_eq!(chart.candles.len(), MAX_CHART_CANDLES);
+    assert_eq!(
+        chart.candles.first().map(|candle| candle.open_time),
+        Some(120_000)
+    );
+    assert_eq!(
+        chart.candles.last().map(|candle| candle.open_time),
+        Some((MAX_CHART_CANDLES as u64 + 1) * 60_000)
+    );
+}
+
+#[test]
+fn realtime_candle_update_replaces_latest_candle_without_trimming() {
+    let mut chart = CandlestickChart::new(1);
+    chart.candles = (1..=MAX_CHART_CANDLES)
+        .map(|idx| candle_at(idx as u64 * 60_000, idx as f64))
+        .collect();
+    let latest_open_time = MAX_CHART_CANDLES as u64 * 60_000;
+
+    chart.push_candle(candle_at(latest_open_time, 20_000.0));
+
+    assert_eq!(chart.candles.len(), MAX_CHART_CANDLES);
+    assert_eq!(
+        chart.candles.first().map(|candle| candle.open_time),
+        Some(60_000)
+    );
+    assert_eq!(
+        chart.candles.last().map(|candle| candle.close),
+        Some(20_000.0)
+    );
 }
 
 #[test]

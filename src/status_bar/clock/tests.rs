@@ -1,4 +1,4 @@
-use super::{market_clock_text, market_is_active};
+use super::{market_clock_text, market_is_active, status_clock_times};
 use chrono::{TimeZone, Utc};
 
 #[test]
@@ -97,4 +97,17 @@ fn market_clock_text_shows_open_countdown_while_inactive() {
     );
 
     assert_eq!(label, "New York 09:00:00 EDT (opens in 0h 30m)");
+}
+
+#[test]
+fn status_clock_times_uses_supplied_timestamp() {
+    let expected_utc = Utc
+        .with_ymd_and_hms(2026, 5, 18, 14, 0, 0)
+        .single()
+        .expect("valid UTC timestamp");
+
+    let (utc, local) = status_clock_times(expected_utc.timestamp_millis() as u64);
+
+    assert_eq!(utc, expected_utc);
+    assert_eq!(local.timestamp_millis(), expected_utc.timestamp_millis());
 }

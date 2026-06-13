@@ -155,6 +155,17 @@ pub(crate) struct SessionDataRequest {
     pub(crate) requested_at_ms: u64,
 }
 
+impl SessionDataRequest {
+    pub(crate) fn matches_refresh_target(
+        &self,
+        id: SessionDataId,
+        symbol: &str,
+        lookback: SessionDataLookback,
+    ) -> bool {
+        self.id == id && self.symbol == symbol && self.lookback == lookback
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SessionDataInstance {
     pub(crate) id: SessionDataId,

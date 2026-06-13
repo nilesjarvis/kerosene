@@ -32,13 +32,17 @@ impl TradingTerminal {
         }
 
         self.calendar_loading = true;
+        self.calendar_request_id = self.calendar_request_id.wrapping_add(1);
+        let request_id = self.calendar_request_id;
         if force {
             self.calendar_error = None;
             self.calendar_retry_attempts = 0;
             self.calendar_next_retry = None;
         }
 
-        Task::perform(api::fetch_economic_calendar(), Message::CalendarLoaded)
+        Task::perform(api::fetch_economic_calendar(), move |result| {
+            Message::CalendarLoaded(request_id, result)
+        })
     }
 
     pub(crate) fn calendar_retry_delay_secs(attempts: u8) -> u64 {

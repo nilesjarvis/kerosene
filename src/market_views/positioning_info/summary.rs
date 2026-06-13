@@ -20,6 +20,7 @@ impl TradingTerminal {
         &self,
         data: &TickerPositions,
         instance: &PositioningInfoInstance,
+        now_ms: u64,
         theme: &Theme,
     ) -> Element<'static, Message> {
         let net_notional = data.total_long_notional - data.total_short_notional;
@@ -33,12 +34,7 @@ impl TradingTerminal {
         let updated = format_positioning_timestamp(&data.timestamp);
         let last_fetch = instance
             .last_fetch_ms
-            .map(|last| {
-                format!(
-                    "{} ago",
-                    helpers::format_relative_time(last, TradingTerminal::now_ms())
-                )
-            })
+            .map(|last| format!("{} ago", helpers::format_relative_time(last, now_ms)))
             .unwrap_or_else(|| "-".to_string());
 
         column![
@@ -79,16 +75,12 @@ impl TradingTerminal {
         &self,
         data: &PerpDeltas,
         instance: &PositioningInfoInstance,
+        now_ms: u64,
         theme: &Theme,
     ) -> Element<'static, Message> {
         let last_fetch = instance
             .change_last_fetch_ms
-            .map(|last| {
-                format!(
-                    "{} ago",
-                    helpers::format_relative_time(last, TradingTerminal::now_ms())
-                )
-            })
+            .map(|last| format!("{} ago", helpers::format_relative_time(last, now_ms)))
             .unwrap_or_else(|| "-".to_string());
         let shown = data.deltas.len().min(POSITIONING_CHANGE_ROW_LIMIT);
         let rows_label = if shown < data.deltas.len() {

@@ -8,7 +8,11 @@ fn candle_fetch_request_overlaps_cached_candle_refresh() {
         7,
         "BTC",
         Timeframe::H1,
-        crate::config::ChartBackfillSource::Hyperliquid,
+        crate::chart_state::ChartBackfillRequestContext::new(
+            crate::config::ChartBackfillSource::Hyperliquid,
+            0,
+            0,
+        ),
         Some(last_candle_ms),
         0,
     );

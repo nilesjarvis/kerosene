@@ -20,6 +20,7 @@ pub(super) fn plan_funding_request(
     muted: bool,
     coin: Option<String>,
     now_ms: u64,
+    hydromancer_key_generation: u64,
     api_key_missing: bool,
 ) -> FundingRequestPlan {
     if muted {
@@ -63,6 +64,7 @@ pub(super) fn plan_funding_request(
             chart_id: instance.id,
             symbol: instance.symbol.clone(),
             coin,
+            hydromancer_key_generation,
             start_ms: latest_time_ms,
             end_ms,
             mode: FundingFetchMode::Incremental,
@@ -81,6 +83,7 @@ pub(super) fn plan_funding_request(
         chart_id: instance.id,
         symbol: instance.symbol.clone(),
         coin,
+        hydromancer_key_generation,
         start_ms,
         end_ms,
         mode: FundingFetchMode::Snapshot,

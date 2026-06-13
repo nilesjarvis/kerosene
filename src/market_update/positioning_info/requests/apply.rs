@@ -12,8 +12,13 @@ impl TradingTerminal {
     pub(in crate::market_update::positioning_info) fn apply_positioning_info_loaded(
         &mut self,
         request_key: String,
+        hyperdash_generation: u64,
         result: Result<TickerPositions, String>,
     ) -> Task<Message> {
+        if !self.hyperdash_key_generation_is_current(hyperdash_generation) {
+            return Task::none();
+        }
+
         let pending = self
             .positioning_info_pending
             .remove(&request_key)
@@ -44,8 +49,13 @@ impl TradingTerminal {
     pub(in crate::market_update::positioning_info) fn apply_positioning_info_change_loaded(
         &mut self,
         request_key: String,
+        hyperdash_generation: u64,
         result: Result<PerpDeltas, String>,
     ) -> Task<Message> {
+        if !self.hyperdash_key_generation_is_current(hyperdash_generation) {
+            return Task::none();
+        }
+
         let pending = self
             .positioning_info_pending
             .remove(&request_key)

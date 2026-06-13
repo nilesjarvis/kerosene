@@ -112,10 +112,14 @@ impl CandlestickChart {
 
             state.drag = Some(DragKind::MoveOrder { oid: hit.order.oid });
             state.drag_start = Some(pos);
+            state.drag_order_coin = Some(hit.order.coin.clone());
             state.drag_order_new_price = Some(hit.order.limit_px);
             return Some(
-                canvas::Action::publish(Message::MoveOrderDragStarted { oid: hit.order.oid })
-                    .and_capture(),
+                canvas::Action::publish(Message::MoveOrderDragStarted {
+                    coin: hit.order.coin.clone(),
+                    oid: hit.order.oid,
+                })
+                .and_capture(),
             );
         }
 
@@ -169,6 +173,7 @@ impl CandlestickChart {
                 canvas::Action::publish(Message::SubmitHudOrder(HudOrderRequest {
                     chart_id: self.id,
                     surface_id: self.surface_id,
+                    symbol_key: self.symbol_key.clone(),
                     price,
                     quantity: hud_order_quantity(state),
                     order_type,
@@ -185,6 +190,12 @@ impl CandlestickChart {
                 .and_capture(),
             );
         }
+
+        let in_session_panel = layout.session_panel_h > 0.0
+            && visual_pos.x < chart_w
+            && visual_pos.y >= chart_h + layout.funding_panel_h
+            && visual_pos.y < chart_h + layout.funding_panel_h + layout.session_panel_h;
+        let in_main_plot = visual_pos.x < chart_w && visual_pos.y < chart_h;
 
         if visual_pos.x >= chart_w && visual_pos.y < chart_h {
             state.drag = Some(DragKind::PanY);
@@ -203,15 +214,7 @@ impl CandlestickChart {
             state.drag = Some(DragKind::PanFundingY);
             state.drag_start = Some(pos);
             state.drag_start_y_offset = state.funding_y_offset;
-        } else if layout.session_panel_h > 0.0
-            && visual_pos.x < chart_w
-            && visual_pos.y >= chart_h + layout.funding_panel_h
-            && visual_pos.y < chart_h + layout.funding_panel_h + layout.session_panel_h
-        {
-            state.drag = Some(DragKind::PanX);
-            state.drag_start = Some(pos);
-            state.drag_start_scroll = state.scroll_offset;
-        } else if visual_pos.x < chart_w && visual_pos.y < chart_h {
+        } else if in_session_panel || in_main_plot {
             state.drag = Some(DragKind::PanX);
             state.drag_start = Some(pos);
             state.drag_start_scroll = state.scroll_offset;

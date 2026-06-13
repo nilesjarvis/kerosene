@@ -79,6 +79,33 @@ fn filtered_indices_cache_sorts_by_volume_when_contexts_are_available() {
 }
 
 #[test]
+fn filtered_indices_do_not_rank_hip3_symbol_by_native_same_ticker_volume() {
+    let symbols = vec![
+        symbol("flx:BTC", "BTC", MarketType::Perp),
+        symbol("ETH", "ETH", MarketType::Perp),
+    ];
+    let favourites = Vec::new();
+    let contexts = HashMap::from([
+        ("BTC".to_string(), context(1_000.0)),
+        ("ETH".to_string(), context(10.0)),
+    ]);
+
+    let (indices, favourite_count) = filtered_symbol_search_indices(SymbolSearchResultsInput {
+        symbols: &symbols,
+        query: "",
+        sort_mode: SymbolSearchSortMode::Volume24h,
+        market_filter: SymbolSearchMarketFilter::All,
+        hip3_dex_filter: None,
+        favourite_symbols: &favourites,
+        contexts: &contexts,
+        is_muted: |_| false,
+    });
+
+    assert_eq!(indices, vec![1, 0]);
+    assert_eq!(favourite_count, 0);
+}
+
+#[test]
 fn filtered_indices_prefer_primary_known_hip3_dex_for_duplicate_tickers() {
     let symbols = vec![
         symbol("flx:CRCL", "CRCL", MarketType::Perp),

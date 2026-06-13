@@ -50,7 +50,7 @@ pub static CLIENT: LazyLock<Client> = LazyLock::new(|| {
         .unwrap_or_else(|_| Client::new())
 });
 
-const KEROSENE_USER_AGENT: &str = concat!("Kerosene/", env!("CARGO_PKG_VERSION"));
+pub(crate) const KEROSENE_USER_AGENT: &str = concat!("Kerosene/", env!("CARGO_PKG_VERSION"));
 
 pub const API_URL: &str = "https://api.hyperliquid.xyz/info";
 pub const OUTCOME_ASSET_ID_OFFSET: u32 = 100_000_000;

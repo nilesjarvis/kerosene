@@ -19,8 +19,8 @@ impl TradingTerminal {
             Message::ToggleChartEarningsMarkers(chart_id) => {
                 self.toggle_chart_earnings_markers(chart_id)
             }
-            Message::ChartEarningsEventsLoaded(ticker, result) => {
-                self.apply_sec_earnings_loaded(ticker, *result);
+            Message::ChartEarningsEventsLoaded(ticker, request_id, result) => {
+                self.apply_sec_earnings_loaded(ticker, request_id, *result);
                 Task::none()
             }
             _ => Task::none(),
@@ -91,6 +91,10 @@ impl TradingTerminal {
 
         self.sec_earnings_pending_charts
             .insert(ticker.clone(), vec![chart_id]);
+        self.sec_earnings_request_id = self.sec_earnings_request_id.wrapping_add(1);
+        let request_id = self.sec_earnings_request_id;
+        self.sec_earnings_pending_request_ids
+            .insert(ticker.clone(), request_id);
         if let Some(instance) = self.charts.get_mut(&chart_id) {
             instance.earnings_fetching = true;
             instance.earnings_pending_ticker = Some(ticker.clone());
@@ -98,7 +102,7 @@ impl TradingTerminal {
         }
 
         Task::perform(fetch_sec_earnings_events(ticker.clone()), move |result| {
-            Message::ChartEarningsEventsLoaded(ticker.clone(), Box::new(result))
+            Message::ChartEarningsEventsLoaded(ticker.clone(), request_id, Box::new(result))
         })
     }
 
@@ -142,6 +146,7 @@ impl TradingTerminal {
                 instance.show_earnings_markers = false;
                 Self::clear_earnings_display(instance);
             }
+            self.clear_chart_earnings_pending_request_state(chart_id);
             self.persist_config();
             return Task::none();
         }
@@ -183,9 +188,18 @@ impl TradingTerminal {
     fn apply_sec_earnings_loaded(
         &mut self,
         ticker: String,
+        request_id: u64,
         result: Result<Vec<SecEarningsEvent>, String>,
     ) {
         let ticker = ticker.to_ascii_uppercase();
+        let Some(pending_request_id) = self.sec_earnings_pending_request_ids.get(&ticker).copied()
+        else {
+            return;
+        };
+        if pending_request_id != request_id {
+            return;
+        }
+        self.sec_earnings_pending_request_ids.remove(&ticker);
         let pending = self
             .sec_earnings_pending_charts
             .remove(&ticker)
@@ -343,6 +357,20 @@ mod tests {
         }
     }
 
+    fn earnings_event(ticker: &str, accession_number: &str) -> SecEarningsEvent {
+        SecEarningsEvent {
+            ticker: ticker.to_string(),
+            company_name: format!("{ticker} Inc."),
+            cik: 1_045_819,
+            filing_date: "2026-05-28".to_string(),
+            filing_time_ms: 1_779_926_400_000,
+            report_date: Some("2026-05-28".to_string()),
+            form: "8-K".to_string(),
+            accession_number: accession_number.to_string(),
+            primary_document: format!("{}-20260528.htm", ticker.to_ascii_lowercase()),
+        }
+    }
+
     #[test]
     fn sec_earnings_ticker_requires_hip3_stock_perp() {
         assert_eq!(
@@ -441,6 +469,143 @@ mod tests {
             earnings_error_status("SEC response parse failed: expected value"),
             "EARN fetch failed"
         );
+    }
+
+    #[test]
+    fn stale_earnings_result_does_not_clear_current_pending_request() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal
+            .sec_earnings_pending_request_ids
+            .insert("NVDA".to_string(), 2);
+        terminal
+            .sec_earnings_pending_charts
+            .insert("NVDA".to_string(), vec![1]);
+
+        terminal.apply_sec_earnings_loaded(
+            "NVDA".to_string(),
+            1,
+            Ok(vec![earnings_event("NVDA", "old")]),
+        );
+
+        assert_eq!(
+            terminal.sec_earnings_pending_request_ids.get("NVDA"),
+            Some(&2)
+        );
+        assert_eq!(
+            terminal.sec_earnings_pending_charts.get("NVDA"),
+            Some(&vec![1])
+        );
+        assert!(!terminal.sec_earnings_cache.contains_key("NVDA"));
+    }
+
+    #[test]
+    fn stale_earnings_error_does_not_clear_current_chart_or_toast() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(1, "xyz:NVDA".to_string(), Timeframe::H1);
+        instance.show_earnings_markers = true;
+        instance.earnings_fetching = true;
+        instance.earnings_pending_ticker = Some("NVDA".to_string());
+        terminal.charts.insert(1, instance);
+        terminal
+            .sec_earnings_pending_request_ids
+            .insert("NVDA".to_string(), 2);
+        terminal
+            .sec_earnings_pending_charts
+            .insert("NVDA".to_string(), vec![1]);
+
+        terminal.apply_sec_earnings_loaded("NVDA".to_string(), 1, Err("old failure".to_string()));
+
+        assert_eq!(
+            terminal.sec_earnings_pending_request_ids.get("NVDA"),
+            Some(&2)
+        );
+        assert_eq!(
+            terminal.sec_earnings_pending_charts.get("NVDA"),
+            Some(&vec![1])
+        );
+        let instance = terminal.charts.get(&1).expect("chart");
+        assert!(instance.earnings_fetching);
+        assert_eq!(instance.earnings_pending_ticker.as_deref(), Some("NVDA"));
+        assert!(terminal.toasts.is_empty());
+    }
+
+    #[test]
+    fn current_earnings_result_applies_and_clears_pending_request() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal
+            .sec_earnings_pending_request_ids
+            .insert("NVDA".to_string(), 3);
+        terminal
+            .sec_earnings_pending_charts
+            .insert("NVDA".to_string(), Vec::new());
+
+        terminal.apply_sec_earnings_loaded(
+            "NVDA".to_string(),
+            3,
+            Ok(vec![earnings_event("NVDA", "accepted")]),
+        );
+
+        assert!(
+            !terminal
+                .sec_earnings_pending_request_ids
+                .contains_key("NVDA")
+        );
+        assert!(!terminal.sec_earnings_pending_charts.contains_key("NVDA"));
+        let events = terminal.sec_earnings_cache.get("NVDA").expect("cache");
+        assert_eq!(events[0].accession_number, "accepted");
+    }
+
+    #[test]
+    fn duplicate_earnings_result_after_completion_does_not_overwrite_cache() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal
+            .sec_earnings_cache
+            .insert("NVDA".to_string(), vec![earnings_event("NVDA", "accepted")]);
+
+        terminal.apply_sec_earnings_loaded(
+            "NVDA".to_string(),
+            7,
+            Ok(vec![earnings_event("NVDA", "duplicate")]),
+        );
+
+        let events = terminal.sec_earnings_cache.get("NVDA").expect("cache");
+        assert_eq!(events[0].accession_number, "accepted");
+    }
+
+    #[test]
+    fn disabling_earnings_markers_removes_pending_waiter_and_ignores_late_error() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = vec![symbol("xyz:NVDA", "NVDA", "stocks", MarketType::Perp)];
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(1, "xyz:NVDA".to_string(), Timeframe::H1);
+        instance.show_earnings_markers = true;
+        instance.earnings_fetching = true;
+        instance.earnings_pending_ticker = Some("NVDA".to_string());
+        instance.earnings_status = Some(("EARN loading".to_string(), false));
+        terminal.charts.insert(1, instance);
+        terminal
+            .sec_earnings_pending_request_ids
+            .insert("NVDA".to_string(), 7);
+        terminal
+            .sec_earnings_pending_charts
+            .insert("NVDA".to_string(), vec![1]);
+
+        let _task = terminal.toggle_chart_earnings_markers(1);
+        terminal.apply_sec_earnings_loaded("NVDA".to_string(), 7, Err("late failure".to_string()));
+
+        assert!(!terminal.sec_earnings_pending_charts.contains_key("NVDA"));
+        assert!(
+            !terminal
+                .sec_earnings_pending_request_ids
+                .contains_key("NVDA")
+        );
+        assert!(terminal.toasts.is_empty());
+        let instance = terminal.charts.get(&1).expect("chart");
+        assert!(!instance.show_earnings_markers);
+        assert!(!instance.earnings_fetching);
+        assert!(instance.earnings_pending_ticker.is_none());
+        assert!(instance.earnings_status.is_none());
     }
 
     #[test]

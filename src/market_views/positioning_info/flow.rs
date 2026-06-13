@@ -23,8 +23,9 @@ impl TradingTerminal {
     pub(in crate::market_views::positioning_info) fn view_positioning_info_flow(
         &self,
         instance: &PositioningInfoInstance,
+        now_ms: u64,
     ) -> Element<'_, Message> {
-        let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
+        let live_mark = positioning_live_mark(instance, now_ms);
         let denomination = self.display_denomination_context();
         let data = match &instance.change_data {
             Some(data) => {

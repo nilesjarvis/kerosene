@@ -157,9 +157,13 @@ impl TradingTerminal {
                 &user_order_levels,
                 whole_contracts,
             ),
-            OrderBookDisplayMode::DepthChart => {
-                Self::view_order_book_depth_chart(id, inst, render_tick, &user_order_levels)
-            }
+            OrderBookDisplayMode::DepthChart => Self::view_order_book_depth_chart(
+                id,
+                inst,
+                render_tick,
+                &user_order_levels,
+                whole_contracts,
+            ),
         };
 
         let mut content_col = column![title_row].spacing(4);
@@ -191,8 +195,8 @@ impl TradingTerminal {
     }
 
     fn user_order_book_levels(&self, symbol: &str, tick: f64) -> UserOrderBookLevels {
-        self.account_data
-            .as_ref()
+        self.connected_order_account_snapshot()
+            .map(|(_, data)| data)
             .map(|data| UserOrderBookLevels::from_orders(&data.open_orders, symbol, tick))
             .unwrap_or_default()
     }

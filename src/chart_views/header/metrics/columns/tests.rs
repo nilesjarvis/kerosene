@@ -1,7 +1,8 @@
 use super::{
     ChartHeaderMetricVisibility, asset_volume_label, format_asset_volume, format_funding_pct,
     format_open_interest, format_open_interest_notional, format_outcome_asset_volume,
-    format_outcome_volume, format_volume, open_interest_label, outcome_volume_label, parse_ctx_f64,
+    format_outcome_volume, format_volume, funding_countdown_from_minute_second,
+    open_interest_label, outcome_volume_label, parse_ctx_f64,
 };
 use crate::api::OutcomeVolume24h;
 
@@ -159,4 +160,11 @@ fn metric_visibility_collapses_in_priority_order() {
             show_funding: false,
         }
     );
+}
+
+#[test]
+fn funding_countdown_counts_to_next_hour() {
+    assert_eq!(funding_countdown_from_minute_second(0, 0), "60:00");
+    assert_eq!(funding_countdown_from_minute_second(12, 34), "47:26");
+    assert_eq!(funding_countdown_from_minute_second(59, 59), "00:01");
 }

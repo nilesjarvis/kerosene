@@ -1,5 +1,6 @@
 use super::*;
 use crate::account::AssetContext;
+use crate::market_state::MARKET_ASSET_CONTEXT_MAX_AGE_MS;
 
 fn asset_ctx(impact_pxs: Option<Vec<&str>>) -> AssetContext {
     AssetContext {
@@ -45,9 +46,30 @@ fn asset_context_spread_history_keeps_last_ten_seconds() {
 fn asset_context_reset_clears_spread_and_history() {
     let mut instance = instance();
     instance.set_asset_context(Some(asset_ctx(Some(vec!["100.25", "100.75"]))));
+    assert!(instance.asset_ctx_updated_at_ms.is_some());
 
     instance.set_asset_context(None);
 
+    assert!(instance.asset_ctx.is_none());
+    assert!(instance.asset_ctx_updated_at_ms.is_none());
+    assert_eq!(instance.chart.current_spread, None);
+    assert!(instance.chart.spread_history.is_empty());
+}
+
+#[test]
+fn stale_asset_context_expiry_clears_context_and_spread_history() {
+    let mut instance = instance();
+    instance.set_asset_context_at(Some(asset_ctx(Some(vec!["100.25", "100.75"]))), 1_000);
+
+    assert!(!instance.expire_asset_context_if_stale(1_000 + MARKET_ASSET_CONTEXT_MAX_AGE_MS));
+    assert!(instance.asset_ctx.is_some());
+    assert_eq!(instance.asset_ctx_updated_at_ms, Some(1_000));
+    assert_eq!(instance.chart.current_spread, Some(0.5));
+    assert!(!instance.chart.spread_history.is_empty());
+
+    assert!(instance.expire_asset_context_if_stale(1_000 + MARKET_ASSET_CONTEXT_MAX_AGE_MS + 1));
+    assert!(instance.asset_ctx.is_none());
+    assert!(instance.asset_ctx_updated_at_ms.is_none());
     assert_eq!(instance.chart.current_spread, None);
     assert!(instance.chart.spread_history.is_empty());
 }

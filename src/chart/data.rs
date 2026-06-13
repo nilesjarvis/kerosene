@@ -2,6 +2,9 @@ mod candles;
 mod earnings;
 mod funding;
 
+#[cfg(test)]
+pub(in crate::chart) use candles::MAX_CHART_CANDLES;
+
 use super::{
     CandlestickChart, ChartStatus, DEFAULT_FUNDING_PANEL_HEIGHT, DEFAULT_SESSION_PANEL_HEIGHT,
 };
@@ -25,6 +28,7 @@ impl CandlestickChart {
         Self {
             id,
             surface_id: ChartSurfaceId::Docked(id),
+            symbol_key: String::new(),
             symbol_label: String::new(),
             whole_unit_volume: false,
             timeframe: Timeframe::H1,
@@ -100,6 +104,7 @@ impl CandlestickChart {
         Self {
             id: self.id,
             surface_id: self.surface_id,
+            symbol_key: self.symbol_key.clone(),
             symbol_label: self.symbol_label.clone(),
             whole_unit_volume: self.whole_unit_volume,
             timeframe: self.timeframe,
@@ -211,8 +216,19 @@ impl CandlestickChart {
         }
     }
 
+    pub(crate) fn set_symbol_key(&mut self, symbol_key: String) {
+        if self.symbol_key != symbol_key {
+            self.symbol_key = symbol_key;
+            self.clear_hud_armed();
+        }
+    }
+
     pub(crate) fn set_clock_now_ms(&mut self, now_ms: u64) {
         self.clock_now_ms = now_ms;
+    }
+
+    pub(crate) fn clock_now_ms(&self) -> u64 {
+        self.clock_now_ms
     }
 
     pub(crate) fn set_market_reference_price(&mut self, price: Option<f64>) {

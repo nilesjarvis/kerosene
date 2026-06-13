@@ -1,3 +1,4 @@
+use crate::api::WatchlistContext;
 use crate::api::{MarketType, OutcomeSymbolInfo};
 
 use super::*;
@@ -71,6 +72,14 @@ fn row(symbol: &str, display: &str, mid_px: Option<f64>) -> LiveWatchlistRowData
     }
 }
 
+fn context(prev_day_px: f64) -> WatchlistContext {
+    WatchlistContext {
+        funding: None,
+        prev_day_px: Some(prev_day_px),
+        day_vlm: None,
+    }
+}
+
 #[test]
 fn watchlist_rows_resolve_outcome_display_through_canonical_label() {
     let mut terminal = TradingTerminal::boot().0;
@@ -103,6 +112,37 @@ fn watchlist_percent_change_requires_current_and_previous_prices() {
     assert_eq!(percent_change(Some(110.0), Some(0.0)), None);
     assert_eq!(percent_change(Some(f64::NAN), Some(100.0)), None);
     assert_eq!(percent_change(Some(100.0), Some(f64::INFINITY)), None);
+}
+
+#[test]
+fn watchlist_rows_do_not_borrow_native_context_for_prefixed_hip3_symbol() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(ExchangeSymbol {
+        key: "xyz:NVDA".to_string(),
+        ticker: "NVDA".to_string(),
+        category: "perp".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 0,
+        collateral_token: None,
+        sz_decimals: 2,
+        max_leverage: 10,
+        only_isolated: false,
+        market_type: MarketType::Perp,
+        outcome: None,
+    });
+    terminal.all_mids.insert("xyz:NVDA".to_string(), 110.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("xyz:NVDA".to_string(), crate::ws::now_ms());
+    terminal
+        .live_watchlist_ctxs
+        .insert("NVDA".to_string(), context(100.0));
+
+    let rows = terminal.live_watchlist_rows_for(&watchlist(&["xyz:NVDA"]));
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].pct_24h, None);
 }
 
 #[test]

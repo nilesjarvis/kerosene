@@ -12,8 +12,12 @@ impl TradingTerminal {
         _id: ChartId,
         symbol: String,
         interval: String,
+        source_context: crate::read_data_provider::MarketDataSourceContext,
         candle: Candle,
     ) -> Task<Message> {
+        if !self.market_stream_source_is_current(source_context) {
+            return Task::none();
+        }
         if self.symbol_key_is_hidden(&symbol) {
             return Task::none();
         }
@@ -47,6 +51,43 @@ impl TradingTerminal {
             );
         }
         Task::none()
+    }
+
+    pub(in crate::chart_update) fn apply_chart_ws_candle_lagged(
+        &mut self,
+        _id: ChartId,
+        symbol: String,
+        interval: String,
+        source_context: crate::read_data_provider::MarketDataSourceContext,
+        _skipped: u64,
+    ) -> Task<Message> {
+        if !self.market_stream_source_is_current(source_context) {
+            return Task::none();
+        }
+        if self.symbol_key_is_hidden(&symbol) {
+            return Task::none();
+        }
+
+        let reload_ids = self
+            .charts
+            .iter()
+            .filter_map(|(chart_id, instance)| {
+                (matches!(instance.chart.status, ChartStatus::Loaded)
+                    && instance.symbol == symbol
+                    && instance.interval.api_str() == interval)
+                    .then_some(*chart_id)
+            })
+            .collect::<Vec<_>>();
+
+        if reload_ids.is_empty() {
+            return Task::none();
+        }
+
+        let mut tasks = Vec::with_capacity(reload_ids.len());
+        for chart_id in reload_ids {
+            tasks.push(self.reload_chart_candles(chart_id));
+        }
+        Task::batch(tasks)
     }
 }
 

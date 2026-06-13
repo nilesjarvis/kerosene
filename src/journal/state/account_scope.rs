@@ -59,6 +59,7 @@ impl JournalState {
             snapshot_requests: HashMap::new(),
             snapshots: HashMap::new(),
             loading: false,
+            sync_request_id: 0,
             filter: JournalFilter::All,
             sort: JournalSort::TimeDesc,
             show_all_assets: false,
@@ -146,7 +147,7 @@ impl JournalState {
         self.edit_buffers.clear();
     }
 
-    fn snapshot_active_account_state(&self) -> JournalAccountState {
+    pub(crate) fn snapshot_active_account_state(&self) -> JournalAccountState {
         JournalAccountState {
             loaded_address: self.loaded_address.clone(),
             entries: self.entries.clone(),
@@ -170,7 +171,7 @@ impl JournalState {
         }
     }
 
-    fn restore_active_account_state(&mut self, state: JournalAccountState) {
+    pub(crate) fn restore_active_account_state(&mut self, state: JournalAccountState) {
         self.loaded_address = state.loaded_address;
         self.entries = state.entries;
         self.raw_fills = state.raw_fills;

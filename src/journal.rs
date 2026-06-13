@@ -23,9 +23,9 @@ pub use snapshot::{
     JournalTradeSnapshotStatus, build_journal_trade_snapshot, initial_snapshot_request,
     next_snapshot_request, unavailable_snapshot,
 };
-#[cfg(test)]
-pub use state::JournalAccountState;
-pub(crate) use state::{DEFAULT_JOURNAL_WINDOW_HEIGHT, DEFAULT_JOURNAL_WINDOW_WIDTH};
+pub(crate) use state::{
+    DEFAULT_JOURNAL_WINDOW_HEIGHT, DEFAULT_JOURNAL_WINDOW_WIDTH, JournalAccountState,
+};
 pub use state::{JournalFilter, JournalSort, JournalState, JournalSyncStatus};
 
 #[derive(Debug, Clone, Default, Serialize)]

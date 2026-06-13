@@ -81,6 +81,9 @@ impl ExchangeSymbol {
     /// Outcome questions expose fallback settlement contracts that are useful
     /// for metadata, but should not appear as user-selectable markets.
     pub fn is_user_selectable_market(&self) -> bool {
+        if self.market_type == MarketType::Outcome && self.outcome.is_none() {
+            return false;
+        }
         !self
             .outcome
             .as_ref()

@@ -5,7 +5,7 @@ use crate::market_sessions::{MarketSession, SessionAnchor};
 // ---------------------------------------------------------------------------
 
 /// Trading session for the normalization base time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Session {
     /// Most recent U.S. market open (9:30 AM ET).
     US,

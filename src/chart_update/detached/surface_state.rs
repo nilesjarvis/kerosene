@@ -4,7 +4,7 @@ use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::pane_state::PaneKind;
 
 use iced::window;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 // ---------------------------------------------------------------------------
 // Detached Chart Surface State
@@ -100,13 +100,50 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn clear_chart_pending_request_state(&mut self, chart_id: ChartId) {
+        self.clear_chart_heatmap_pending_request_state(chart_id);
+        self.clear_chart_liquidation_pending_request_state(chart_id);
+        self.clear_chart_earnings_pending_request_state(chart_id);
+    }
+
+    pub(crate) fn clear_chart_heatmap_pending_request_state(&mut self, chart_id: ChartId) {
+        retain_pending_chart_ids(&mut self.heatmap_pending_charts, chart_id);
+    }
+
+    pub(crate) fn clear_chart_liquidation_pending_request_state(&mut self, chart_id: ChartId) {
+        retain_pending_chart_ids(&mut self.liquidation_pending_charts, chart_id);
+    }
+
+    pub(crate) fn clear_chart_earnings_pending_request_state(&mut self, chart_id: ChartId) {
+        let empty_earnings_tickers =
+            remove_pending_chart_id(&mut self.sec_earnings_pending_charts, chart_id);
+        for ticker in empty_earnings_tickers {
+            self.sec_earnings_pending_charts.remove(&ticker);
+            self.sec_earnings_pending_request_ids.remove(&ticker);
+        }
+    }
+
+    pub(crate) fn clear_all_chart_pending_request_state(&mut self) {
+        self.heatmap_pending_charts.clear();
+        self.liquidation_pending_charts.clear();
+        self.sec_earnings_pending_charts.clear();
+        self.sec_earnings_pending_request_ids.clear();
+    }
+
     pub(crate) fn remove_detached_chart_window_state(&mut self, window_id: window::Id) -> bool {
         let Some(state) = self.detached_chart_windows.remove(&window_id) else {
             return false;
         };
         self.clear_chart_surface_state(state.chart_id, ChartSurfaceId::Detached(window_id));
         if !self.chart_is_docked(state.chart_id) {
+            self.clear_chart_pending_request_state(state.chart_id);
             self.charts.remove(&state.chart_id);
+        }
+        if self
+            .primary_chart_id
+            .is_some_and(|chart_id| !self.charts.contains_key(&chart_id))
+        {
+            self.sync_primary_chart_id_from_panes();
         }
         true
     }
@@ -138,6 +175,26 @@ impl TradingTerminal {
             self.chart_quick_order_surface.remove(&chart_id);
         }
     }
+}
+
+fn retain_pending_chart_ids(pending: &mut HashMap<String, Vec<ChartId>>, chart_id: ChartId) {
+    pending.retain(|_, waiting_charts| {
+        waiting_charts.retain(|pending_id| *pending_id != chart_id);
+        !waiting_charts.is_empty()
+    });
+}
+
+fn remove_pending_chart_id(
+    pending: &mut HashMap<String, Vec<ChartId>>,
+    chart_id: ChartId,
+) -> Vec<String> {
+    pending
+        .iter_mut()
+        .filter_map(|(key, waiting_charts)| {
+            waiting_charts.retain(|pending_id| *pending_id != chart_id);
+            waiting_charts.is_empty().then_some(key.clone())
+        })
+        .collect()
 }
 
 fn surface_is_valid(

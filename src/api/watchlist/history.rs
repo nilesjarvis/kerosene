@@ -7,7 +7,12 @@ use std::collections::HashMap;
 pub async fn fetch_watchlist_history(
     symbols: Vec<String>,
 ) -> Result<HashMap<String, (f64, f64, f64)>, String> {
-    fetch_symbol_history(symbols, history_baselines, None).await
+    fetch_symbol_history(
+        symbols,
+        history_baselines,
+        Some("No watchlist history available"),
+    )
+    .await
 }
 
 pub async fn fetch_screener_history(
@@ -50,6 +55,16 @@ async fn fetch_symbol_history<T>(
         }
     }
 
+    finish_symbol_history(map, requested, failed, last_error, all_failed_error)
+}
+
+fn finish_symbol_history<T>(
+    map: HashMap<String, T>,
+    requested: usize,
+    failed: usize,
+    last_error: Option<String>,
+    all_failed_error: Option<&str>,
+) -> Result<HashMap<String, T>, String> {
     if requested > 0
         && failed == requested
         && map.is_empty()

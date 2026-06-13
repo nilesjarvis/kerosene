@@ -165,6 +165,7 @@ fn fisheye_left_click_on_order_cancel_button_cancels_order() {
 #[test]
 fn hud_left_click_submits_hud_order_without_starting_pan() {
     let mut chart = chart_with_input_candles();
+    chart.set_symbol_key("BTC".to_string());
     chart.set_crosshair_style(ChartCrosshairStyle::Hud);
     chart.set_hud_armed_at(true, 0);
     let mut state = ChartState {
@@ -184,6 +185,7 @@ fn hud_left_click_submits_hud_order_without_starting_pan() {
         Message::SubmitHudOrder(request) => {
             assert_eq!(request.chart_id, chart.id);
             assert_eq!(request.surface_id, chart.surface_id);
+            assert_eq!(request.symbol_key, "BTC");
             assert_eq!(request.quantity, "2.5");
             assert_eq!(request.order_type, HudOrderType::Market);
             assert_eq!(request.market_side, HudOrderSide::Short);

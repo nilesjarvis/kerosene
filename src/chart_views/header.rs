@@ -61,7 +61,7 @@ impl TradingTerminal {
         } else {
             0.0
         };
-        let now_ms = Self::now_ms();
+        let now_ms = instance.chart.clock_now_ms();
         let sym_btn = self.view_chart_symbol_button(
             chart_id,
             instance,
@@ -99,7 +99,7 @@ impl TradingTerminal {
                 .iter()
                 .find(|symbol| symbol.key == instance.symbol)
                 .and_then(|symbol| symbol.outcome.as_ref())
-                .and_then(|info| info.time_left_label(Self::now_ms()));
+                .and_then(|info| info.time_left_label(now_ms));
 
             if let Some(ctx) = &instance.asset_ctx {
                 header_row = push_outcome_asset_context_columns(
@@ -138,6 +138,7 @@ impl TradingTerminal {
                 instance.asset_volume_as_notional,
                 instance.open_interest_as_notional,
                 metric_visibility,
+                now_ms,
             );
         }
 

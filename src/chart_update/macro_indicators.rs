@@ -89,11 +89,12 @@ impl TradingTerminal {
                     return self.maybe_fetch_chart_funding(id);
                 }
             }
-            Message::MacroCandlesLoaded(id, symbol, tf, result) => {
+            Message::MacroCandlesLoaded(id, request_id, symbol, tf, result) => {
                 if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();
                 }
                 if let Some(inst) = self.charts.get_mut(&id)
+                    && inst.macro_candles_request_id == request_id
                     && inst.symbol == symbol
                     && let Ok(candles) = result
                 {
@@ -122,6 +123,7 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::Candle;
     use crate::chart_state::ChartInstance;
     use crate::timeframe::Timeframe;
 
@@ -147,5 +149,53 @@ mod tests {
                 .iter()
                 .any(|config| config.id == 7 && config.macro_indicators.show_session_indicator)
         );
+    }
+
+    #[test]
+    fn stale_macro_candle_result_does_not_overwrite_current_batch() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        instance.macro_candles_request_id = 2;
+        instance.chart.daily_candles = vec![Candle::test_flat(2_000, 200.0)];
+        terminal.charts.insert(7, instance);
+
+        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
+            7,
+            1,
+            "BTC".to_string(),
+            Timeframe::D1,
+            Ok(vec![Candle::test_flat(1_000, 100.0)]),
+        ));
+
+        let instance = terminal.charts.get(&7).expect("chart instance");
+        assert_eq!(instance.macro_candles_request_id, 2);
+        assert_eq!(instance.chart.daily_candles.len(), 1);
+        assert_eq!(instance.chart.daily_candles[0].open_time, 2_000);
+        assert_eq!(instance.chart.daily_candles[0].close, 200.0);
+    }
+
+    #[test]
+    fn current_macro_candle_result_updates_matching_batch() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        instance.macro_candles_request_id = 2;
+        terminal.charts.insert(7, instance);
+
+        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
+            7,
+            2,
+            "BTC".to_string(),
+            Timeframe::W1,
+            Ok(vec![Candle::test_flat(3_000, 300.0)]),
+        ));
+
+        let instance = terminal.charts.get(&7).expect("chart instance");
+        assert_eq!(instance.chart.weekly_candles.len(), 1);
+        assert_eq!(instance.chart.weekly_candles[0].open_time, 3_000);
+        assert_eq!(instance.chart.weekly_candles[0].close, 300.0);
     }
 }

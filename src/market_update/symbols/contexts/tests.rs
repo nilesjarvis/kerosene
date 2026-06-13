@@ -12,7 +12,7 @@ fn context(day_vlm: f64) -> WatchlistContext {
 }
 
 #[test]
-fn contexts_loaded_success_extends_cache_and_clears_status() {
+fn contexts_loaded_success_replaces_cache_and_clears_status() {
     let mut loading = true;
     let mut last_fetch_ms = None;
     let mut contexts = HashMap::from([
@@ -36,7 +36,7 @@ fn contexts_loaded_success_extends_cache_and_clears_status() {
     assert!(!loading);
     assert_eq!(last_fetch_ms, Some(42));
     assert_eq!(contexts.get("BTC").map(|ctx| ctx.day_vlm), Some(Some(3.0)));
-    assert_eq!(contexts.get("SOL").map(|ctx| ctx.day_vlm), Some(Some(2.0)));
+    assert!(!contexts.contains_key("SOL"));
     assert_eq!(contexts.get("ETH").map(|ctx| ctx.day_vlm), Some(Some(4.0)));
     assert_eq!(status, None);
 }

@@ -16,6 +16,7 @@ impl TradingTerminal {
     pub(in crate::market_views::positioning_info) fn view_positioning_info_title<'a>(
         &'a self,
         instance: &'a PositioningInfoInstance,
+        now_ms: u64,
         theme: &Theme,
         compact_symbol_picker: bool,
     ) -> Element<'a, Message> {
@@ -100,7 +101,7 @@ impl TradingTerminal {
                 .map(|last| {
                     format!(
                         "Refresh • updated {} ago",
-                        helpers::format_relative_time(last, TradingTerminal::now_ms())
+                        helpers::format_relative_time(last, now_ms)
                     )
                 })
                 .unwrap_or_else(|| "Refresh • not loaded".to_string())

@@ -5,6 +5,13 @@ use crate::account::{
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::TradingTerminal;
 
+const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+fn set_connected_account_data(terminal: &mut TradingTerminal, data: AccountData) {
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+}
+
 fn outcome_symbol(key: &str) -> ExchangeSymbol {
     ExchangeSymbol {
         key: key.to_string(),
@@ -92,7 +99,7 @@ fn outcome_account_data() -> AccountData {
 fn outcome_balance_position_resolves_metrics_with_market_label() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols = vec![outcome_symbol("#950")];
-    terminal.account_data = Some(outcome_account_data());
+    set_connected_account_data(&mut terminal, outcome_account_data());
 
     let Some(metrics) = terminal.position_pnl_card_metrics("#950") else {
         panic!("outcome balance should synthesize an open position for the PnL card");
@@ -103,9 +110,26 @@ fn outcome_balance_position_resolves_metrics_with_market_label() {
 }
 
 #[test]
+fn summary_pnl_card_metrics_include_outcome_balance_positions() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![outcome_symbol("#950")];
+    set_connected_account_data(&mut terminal, outcome_account_data());
+
+    let Some(metrics) = terminal.summary_pnl_card_metrics() else {
+        panic!("summary PnL card should include synthesized outcome positions");
+    };
+
+    assert_eq!(metrics.ticker, "PORTFOLIO");
+    assert_eq!(metrics.context, "1 open position");
+    assert_eq!(metrics.upnl, 0.0);
+    assert_eq!(metrics.asset_move_pct, Some(0.0));
+    assert_eq!(metrics.leveraged_pct, Some(0.0));
+}
+
+#[test]
 fn pnl_card_position_lookup_misses_unknown_coins() {
     let mut terminal = TradingTerminal::boot().0;
-    terminal.account_data = Some(outcome_account_data());
+    set_connected_account_data(&mut terminal, outcome_account_data());
 
     assert!(terminal.pnl_card_position_for_coin("#999").is_none());
 }

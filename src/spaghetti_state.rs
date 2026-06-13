@@ -55,6 +55,18 @@ pub(crate) struct SpaghettiCandleFetch {
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
     pub(crate) source: crate::config::ChartBackfillSource,
+    pub(crate) read_data_provider_generation: u64,
+    pub(crate) hydromancer_key_generation: u64,
+    pub(crate) session: Option<spaghetti::Session>,
+    pub(crate) session_granularity: Option<Timeframe>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpaghettiWsCandleContext {
+    pub(crate) chart_id: SpaghettiChartId,
+    pub(crate) symbol: String,
+    pub(crate) timeframe: Timeframe,
+    pub(crate) source_context: crate::read_data_provider::MarketDataSourceContext,
     pub(crate) session: Option<spaghetti::Session>,
     pub(crate) session_granularity: Option<Timeframe>,
 }

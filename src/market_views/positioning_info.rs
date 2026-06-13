@@ -50,12 +50,15 @@ impl TradingTerminal {
             .into();
         };
 
+        let now_ms = self.status_bar_now_ms;
         let navigation = self.view_positioning_info_navigation(instance);
         let body = match instance.page {
             PositioningInfoPage::Positions => {
-                self.view_positioning_info_positions_page(instance, available_width, &theme)
+                self.view_positioning_info_positions_page(instance, now_ms, available_width, &theme)
             }
-            PositioningInfoPage::Change => self.view_positioning_info_change_page(instance, &theme),
+            PositioningInfoPage::Change => {
+                self.view_positioning_info_change_page(instance, now_ms, &theme)
+            }
         };
 
         container(column![navigation, rule::horizontal(1), body])

@@ -45,19 +45,14 @@ impl TradingTerminal {
             .unwrap_or_default();
         let mut cached_last_time = None;
         let cached_candles = self.get_cached_candles(&symbol, tf);
+        self.clear_chart_heatmap_pending_request_state(id);
+        self.clear_chart_liquidation_pending_request_state(id);
 
         if let Some(instance) = self.charts.get_mut(&id) {
             instance.interval = tf;
             instance.chart.set_timeframe(tf);
             instance.chart.clear_hud_armed();
-            instance.heatmap_last_fetch = None;
-            instance.heatmap_viewport = None;
-            instance.heatmap_status = None;
-            instance.heatmap_fetching = false;
-            instance.last_price_flash = None;
-            Self::clear_heatmap_display(instance);
-            Self::clear_liquidation_display(instance);
-            Self::clear_funding_display(instance);
+            Self::clear_chart_market_display_state(instance);
             instance.chart.request_view_reset();
             if let Some(candles) = cached_candles {
                 cached_last_time = candles.last().map(|c| c.open_time);
@@ -95,5 +90,42 @@ mod tests {
         let _task = terminal.switch_chart_candle_timeframe(1, Timeframe::M15);
 
         assert!(!terminal.charts.get(&1).unwrap().chart.hud_armed());
+    }
+
+    #[test]
+    fn timeframe_switch_prunes_chart_from_hyperdash_pending_requests() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
+        terminal
+            .charts
+            .insert(2, ChartInstance::new(2, "ETH".to_string(), Timeframe::H1));
+        terminal
+            .heatmap_pending_charts
+            .insert("heat-shared".to_string(), vec![1, 2]);
+        terminal
+            .heatmap_pending_charts
+            .insert("heat-only".to_string(), vec![1]);
+        terminal
+            .liquidation_pending_charts
+            .insert("liq-shared".to_string(), vec![1, 2]);
+        terminal
+            .liquidation_pending_charts
+            .insert("liq-only".to_string(), vec![1]);
+
+        let _task = terminal.switch_chart_candle_timeframe(1, Timeframe::M15);
+
+        assert_eq!(
+            terminal.heatmap_pending_charts.get("heat-shared"),
+            Some(&vec![2])
+        );
+        assert!(!terminal.heatmap_pending_charts.contains_key("heat-only"));
+        assert_eq!(
+            terminal.liquidation_pending_charts.get("liq-shared"),
+            Some(&vec![2])
+        );
+        assert!(!terminal.liquidation_pending_charts.contains_key("liq-only"));
     }
 }
