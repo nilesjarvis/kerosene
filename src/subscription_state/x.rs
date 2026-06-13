@@ -21,7 +21,8 @@ impl TradingTerminal {
                 handles: self.x_feed.handles.clone(),
                 reconnect_nonce,
             })
-            .map(move |event| Message::XFeedStreamEvent(reconnect_nonce, event)),
+            .with(reconnect_nonce)
+            .map(|(reconnect_nonce, event)| Message::XFeedStreamEvent(reconnect_nonce, event)),
         );
     }
 }

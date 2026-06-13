@@ -29,10 +29,13 @@ impl TradingTerminal {
                     (hydromancer_key.clone(), self.liquidations_reconnect_nonce),
                     crate::ws::ws_hydromancer_liquidations,
                 )
-                .map(move |message| Message::WsHydromancerLiquidation {
-                    hydromancer_key_generation,
-                    reconnect_nonce,
-                    message,
+                .with((hydromancer_key_generation, reconnect_nonce))
+                .map(|((hydromancer_key_generation, reconnect_nonce), message)| {
+                    Message::WsHydromancerLiquidation {
+                        hydromancer_key_generation,
+                        reconnect_nonce,
+                        message,
+                    }
                 }),
             );
         }
@@ -57,12 +60,24 @@ impl TradingTerminal {
                         ),
                         crate::ws::ws_hydromancer_tracked_trades,
                     )
-                    .map(move |message| Message::WsHydromancerTrackedTrades {
+                    .with((
                         hydromancer_key_generation,
                         reconnect_nonce,
-                        tracked_addresses: tracked_addresses_scope.clone(),
-                        message,
-                    }),
+                        tracked_addresses_scope,
+                    ))
+                    .map(
+                        |(
+                            (hydromancer_key_generation, reconnect_nonce, tracked_addresses),
+                            message,
+                        )| {
+                            Message::WsHydromancerTrackedTrades {
+                                hydromancer_key_generation,
+                                reconnect_nonce,
+                                tracked_addresses,
+                                message,
+                            }
+                        },
+                    ),
                 );
             }
         }

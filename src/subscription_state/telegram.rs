@@ -37,7 +37,10 @@ impl TradingTerminal {
                 },
                 telegram_fast_feed_stream,
             )
-            .map(move |event| Message::TelegramFastFeedEvent(fast_reconnect_nonce, event)),
+            .with(fast_reconnect_nonce)
+            .map(|(fast_reconnect_nonce, event)| {
+                Message::TelegramFastFeedEvent(fast_reconnect_nonce, event)
+            }),
         );
     }
 }
