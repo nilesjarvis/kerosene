@@ -23,8 +23,7 @@ fn test_kdf_config() -> SecretKdfConfig {
 #[test]
 fn encrypted_secrets_round_trip_with_password() {
     let profiles = vec![test_profile()];
-    let payload =
-        SecretPayload::from_credentials(&profiles, "hydro-secret", "hyper-secret", "x-secret");
+    let payload = SecretPayload::from_credentials(&profiles, "hydro-secret", "hyper-secret");
 
     let encrypted = encrypt_secrets_with_kdf(&payload, "correct horse", test_kdf_config())
         .expect("secrets should encrypt");
@@ -39,7 +38,7 @@ fn encrypted_secrets_reject_wrong_password() {
         wallet_address: String::new(),
         ..test_profile()
     }];
-    let payload = SecretPayload::from_credentials(&profiles, "", "", "");
+    let payload = SecretPayload::from_credentials(&profiles, "", "");
     let encrypted = encrypt_secrets_with_kdf(&payload, "right", test_kdf_config())
         .expect("secrets should encrypt");
 
@@ -50,7 +49,7 @@ fn encrypted_secrets_reject_wrong_password() {
 
 fn test_encrypted_config() -> EncryptedSecretsConfig {
     let profiles = vec![test_profile()];
-    let payload = SecretPayload::from_credentials(&profiles, "", "", "");
+    let payload = SecretPayload::from_credentials(&profiles, "", "");
     encrypt_secrets_with_kdf(&payload, "password", test_kdf_config()).expect("encrypt fixture")
 }
 

@@ -23,7 +23,6 @@ impl TradingTerminal {
             | Message::AddLiquidationsDistributionPane
             | Message::AddTrackedTradesPane
             | Message::AddTelegramFeedPane
-            | Message::AddXFeedPane
             | Message::AddAdvancedOrdersPane
             | Message::AddOutcomesPane
             | Message::AddHypeEtfsPane
@@ -132,21 +131,6 @@ mod tests {
         assert!(!terminal.add_widget_menu_open);
         assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed)));
         assert_eq!(terminal.telegram_feed.loading_channels, vec!["marketfeed"]);
-    }
-
-    #[test]
-    fn x_feed_add_message_opens_pane() {
-        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
-        terminal.add_widget_menu_open = true;
-
-        let _task = terminal.update_panes(Message::AddXFeedPane);
-
-        assert!(!terminal.add_widget_menu_open);
-        assert!(terminal.pane_is_open(|kind| matches!(kind, PaneKind::XFeed)));
-        assert_eq!(
-            terminal.x_feed.last_error.as_deref(),
-            Some("Enter an X API bearer token")
-        );
     }
 
     #[test]

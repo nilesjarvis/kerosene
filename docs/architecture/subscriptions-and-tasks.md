@@ -19,7 +19,6 @@ push_market_subscriptions
 push_user_data_subscriptions
 push_hydromancer_subscriptions
 push_telegram_subscriptions
-push_x_feed_subscriptions
 push_timer_subscriptions
 push_window_subscriptions
 push_post_window_timer_subscriptions

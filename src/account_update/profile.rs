@@ -417,7 +417,7 @@ mod tests {
         terminal.encrypted_secrets_unlocked = true;
         terminal.encrypted_secrets = Some(
             config::encrypt_secrets(
-                &config::SecretPayload::from_credentials(&terminal.accounts, "", "", ""),
+                &config::SecretPayload::from_credentials(&terminal.accounts, "", ""),
                 &terminal.encrypted_secret_password,
             )
             .expect("test encrypted payload"),

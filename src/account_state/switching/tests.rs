@@ -538,7 +538,6 @@ fn deferred_legacy_account_key_migrates_profile_hydromancer_key_before_cleanup()
                 &terminal.persisted_accounts_snapshot(),
                 &terminal.hydromancer_api_key,
                 &terminal.hyperdash_api_key,
-                &terminal.x_feed.bearer_token,
             )));
             true
         },

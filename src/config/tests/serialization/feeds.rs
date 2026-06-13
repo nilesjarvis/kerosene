@@ -13,10 +13,6 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
         telegram_feed_notifications_enabled: true,
         telegram_feed_fast_mode_enabled: true,
         telegram_feed_fast_api_id: Some(12345),
-        x_feed_handles: vec!["hyperliquidx".to_string(), "marketfeed".to_string()],
-        x_feed_notifications_enabled: true,
-        x_feed_streaming_enabled: true,
-        x_bearer_token: "secret-token".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -36,14 +32,6 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
     assert!(decoded.telegram_feed_notifications_enabled);
     assert!(decoded.telegram_feed_fast_mode_enabled);
     assert_eq!(decoded.telegram_feed_fast_api_id, Some(12345));
-    assert_eq!(
-        decoded.x_feed_handles,
-        vec!["hyperliquidx".to_string(), "marketfeed".to_string()]
-    );
-    assert!(decoded.x_feed_notifications_enabled);
-    assert!(decoded.x_feed_streaming_enabled);
-    assert_eq!(decoded.x_bearer_token.as_str(), "");
-    assert!(!json.contains("secret-token"));
 
     let mut legacy = default_config_value();
     remove_field(
@@ -71,21 +59,6 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
         "telegram_feed_fast_api_id",
         "config should serialize to object",
     );
-    remove_field(
-        &mut legacy,
-        "x_feed_handles",
-        "config should serialize to object",
-    );
-    remove_field(
-        &mut legacy,
-        "x_feed_notifications_enabled",
-        "config should serialize to object",
-    );
-    remove_field(
-        &mut legacy,
-        "x_feed_streaming_enabled",
-        "config should serialize to object",
-    );
     let decoded_legacy: KeroseneConfig =
         value_from_json(legacy, "legacy config should deserialize");
     assert_eq!(decoded_legacy.telegram_feed_channels, vec!["marketfeed"]);
@@ -93,8 +66,4 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
     assert!(!decoded_legacy.telegram_feed_notifications_enabled);
     assert!(!decoded_legacy.telegram_feed_fast_mode_enabled);
     assert_eq!(decoded_legacy.telegram_feed_fast_api_id, None);
-    assert!(decoded_legacy.x_feed_handles.is_empty());
-    assert!(!decoded_legacy.x_feed_notifications_enabled);
-    assert!(!decoded_legacy.x_feed_streaming_enabled);
-    assert_eq!(decoded_legacy.x_bearer_token.as_str(), "");
 }

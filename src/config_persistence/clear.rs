@@ -370,20 +370,6 @@ impl TradingTerminal {
         self.tracked_trade_alerts_enabled = defaults.tracked_trade_alerts_enabled;
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;
-        let x_cleanup_generation = self.x_feed.stream_reconnect_nonce;
-        let reset_x_stream_reconnect_nonce = x_cleanup_generation.wrapping_add(1);
-        let x_rule_cleanup_task = Self::x_feed_stream_rule_cleanup_task_for_token(
-            self.x_feed.bearer_token.clone().into_zeroizing(),
-            x_cleanup_generation,
-            x_cleanup_generation,
-        );
-        self.x_feed = crate::x_feed::XFeedState::new(
-            &defaults.x_feed_handles,
-            defaults.x_feed_notifications_enabled,
-            defaults.x_feed_streaming_enabled,
-            "",
-        );
-        self.x_feed.stream_reconnect_nonce = reset_x_stream_reconnect_nonce;
         clear_telegram_fast_pending_auth();
         clear_all_fast_channel_cursors_best_effort();
         self.telegram_feed = TelegramFeedState::new(
@@ -431,7 +417,7 @@ impl TradingTerminal {
         let backfill_task = self.reload_chart_backfills_for_source_change();
         let funding_task = self.refresh_enabled_funding_charts();
         Task::batch(
-            [backfill_task, funding_task, x_rule_cleanup_task]
+            [backfill_task, funding_task]
                 .into_iter()
                 .chain(
                     wallet_detail_window_ids
@@ -457,7 +443,6 @@ mod tests {
     use crate::chart::{HudSelectorKind, OrderOverlay, PositionOverlay, TradeMarker};
     use crate::chart_state::{CandleFetchRequest, ChartInstance, ChartSurfaceId};
     use crate::config::{AccountProfile, ChartBackfillSource, ClearConfigSummary};
-    use crate::message::Message;
     use crate::order_execution::{MoveOrderKey, PendingOrderAction, QuickOrderForm};
     use crate::signing::{ChaseLifecycle, ChaseOrder};
     use crate::telegram_fast_feed::{
@@ -926,39 +911,6 @@ mod tests {
     }
 
     #[test]
-    fn clearing_configs_invalidates_pending_x_rule_cleanup_result() {
-        let (mut terminal, _) = TradingTerminal::boot();
-        terminal.x_feed.bearer_token = sensitive_string("old-token");
-        terminal.x_feed.bearer_token_input = sensitive_string("old-token");
-        terminal.x_feed.streaming_enabled = true;
-        terminal.x_feed.stream_connected = true;
-        terminal.x_feed.stream_status = Some(("X stream connected".to_string(), false));
-        let stale_nonce = terminal.x_feed.stream_reconnect_nonce;
-
-        let _task = terminal.apply_config_clear_to_runtime(ClearConfigSummary {
-            files_removed: 1,
-            file_cleanup_failed: false,
-            keychain_entries_cleared: 0,
-            warnings: Vec::new(),
-        });
-
-        assert_ne!(terminal.x_feed.stream_reconnect_nonce, stale_nonce);
-        assert!(terminal.x_feed.bearer_token.is_empty());
-        assert!(!terminal.x_feed.streaming_enabled);
-        assert!(!terminal.x_feed.stream_connected);
-        assert_eq!(terminal.x_feed.stream_status, None);
-
-        let _task = terminal.update_x_feed(Message::XFeedRuleCleanupFinished {
-            cleanup_through_generation: stale_nonce,
-            reconnect_nonce: stale_nonce,
-            result: Box::new(Err("old cleanup failed".to_string())),
-        });
-
-        assert_eq!(terminal.x_feed.stream_status, None);
-        assert!(!terminal.x_feed.stream_connected);
-    }
-
-    #[test]
     fn clearing_configs_clears_wallet_detail_advanced_history_and_twap_runtime_state() {
         let (mut terminal, _) = TradingTerminal::boot();
         let wallet_detail_window_id = iced::window::Id::unique();
@@ -1214,8 +1166,6 @@ mod tests {
         terminal.hydromancer_key_input = sensitive_string("hydro-key");
         terminal.hyperdash_api_key = sensitive_string("hyperdash-key");
         terminal.hyperdash_key_input = sensitive_string("hyperdash-key");
-        terminal.x_feed.bearer_token = sensitive_string("x-token");
-        terminal.x_feed.bearer_token_input = sensitive_string("x-token");
         terminal.accounts = vec![AccountProfile {
             secret_id: "acct-a".to_string(),
             name: "Keep Me".to_string(),
@@ -1241,8 +1191,6 @@ mod tests {
         assert!(terminal.hydromancer_key_input.is_empty());
         assert!(terminal.hyperdash_api_key.is_empty());
         assert!(terminal.hyperdash_key_input.is_empty());
-        assert!(terminal.x_feed.bearer_token.is_empty());
-        assert!(terminal.x_feed.bearer_token_input.is_empty());
         assert_eq!(terminal.accounts.len(), 1);
         assert_eq!(terminal.accounts[0].name, "Main Trading");
         assert!(terminal.accounts[0].agent_key.is_empty());

@@ -43,7 +43,6 @@ It also includes singleton pane types:
 - `LiquidationsDistribution`
 - `TrackedTrades`
 - `TelegramFeed`
-- `XFeed`
 - `Outcomes`
 - `HypeEtfs`
 - `HypeUnstakingQueue`

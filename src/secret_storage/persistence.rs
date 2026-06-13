@@ -10,7 +10,6 @@ struct SecretPersistenceValues<'a> {
     accounts: &'a [config::AccountProfile],
     hydromancer_api_key: &'a str,
     hyperdash_api_key: &'a str,
-    x_bearer_token: &'a str,
     removed_profile_secret_ids: &'a [String],
 }
 
@@ -29,7 +28,6 @@ impl TradingTerminal {
             values.accounts,
             values.hydromancer_api_key,
             values.hyperdash_api_key,
-            values.x_bearer_token,
             values.removed_profile_secret_ids,
         ) {
             Ok(cleanup_warning) => {
@@ -68,13 +66,11 @@ impl TradingTerminal {
     ) -> bool {
         let hydromancer_api_key = Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
         let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
-        let x_bearer_token = Zeroizing::new(self.x_feed.bearer_token.as_str().to_string());
         self.persist_keychain_credentials_from_values(
             SecretPersistenceValues {
                 accounts,
                 hydromancer_api_key: hydromancer_api_key.as_str(),
                 hyperdash_api_key: hyperdash_api_key.as_str(),
-                x_bearer_token: x_bearer_token.as_str(),
                 removed_profile_secret_ids,
             },
             success_message,
@@ -101,7 +97,6 @@ impl TradingTerminal {
                     accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
-                    &self.x_feed.bearer_token,
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
@@ -140,7 +135,6 @@ impl TradingTerminal {
                     accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
-                    &self.x_feed.bearer_token,
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
@@ -160,13 +154,11 @@ impl TradingTerminal {
             config::CredentialStorageMode::OsKeychain => {
                 let accounts = self.persisted_accounts_snapshot();
                 let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
-                let x_bearer_token = Zeroizing::new(self.x_feed.bearer_token.as_str().to_string());
                 self.persist_keychain_credentials_from_values(
                     SecretPersistenceValues {
                         accounts: &accounts,
                         hydromancer_api_key,
                         hyperdash_api_key: hyperdash_api_key.as_str(),
-                        x_bearer_token: x_bearer_token.as_str(),
                         removed_profile_secret_ids: &[],
                     },
                     "Hydromancer key saved to OS keychain",
@@ -179,7 +171,6 @@ impl TradingTerminal {
                     &accounts,
                     hydromancer_api_key,
                     &self.hyperdash_api_key,
-                    &self.x_feed.bearer_token,
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
@@ -197,13 +188,11 @@ impl TradingTerminal {
                 let accounts = self.persisted_accounts_snapshot();
                 let hydromancer_api_key =
                     Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
-                let x_bearer_token = Zeroizing::new(self.x_feed.bearer_token.as_str().to_string());
                 self.persist_keychain_credentials_from_values(
                     SecretPersistenceValues {
                         accounts: &accounts,
                         hydromancer_api_key: hydromancer_api_key.as_str(),
                         hyperdash_api_key,
-                        x_bearer_token: x_bearer_token.as_str(),
                         removed_profile_secret_ids: &[],
                     },
                     "HyperDash key saved to OS keychain",
@@ -216,48 +205,10 @@ impl TradingTerminal {
                     &accounts,
                     &self.hydromancer_api_key,
                     hyperdash_api_key,
-                    &self.x_feed.bearer_token,
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
                     "HyperDash key saved to encrypted config",
-                );
-                self.secret_migration_save_blocked = !persisted;
-                persisted
-            }
-        }
-    }
-
-    pub(crate) fn persist_x_secret_from_token(&mut self, bearer_token: &str) -> bool {
-        match self.secret_storage_mode {
-            config::CredentialStorageMode::OsKeychain => {
-                let accounts = self.persisted_accounts_snapshot();
-                let hydromancer_api_key =
-                    Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
-                let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
-                self.persist_keychain_credentials_from_values(
-                    SecretPersistenceValues {
-                        accounts: &accounts,
-                        hydromancer_api_key: hydromancer_api_key.as_str(),
-                        hyperdash_api_key: hyperdash_api_key.as_str(),
-                        x_bearer_token: bearer_token,
-                        removed_profile_secret_ids: &[],
-                    },
-                    "X bearer token saved to OS keychain",
-                    "X keychain save failed; token was not committed",
-                )
-            }
-            config::CredentialStorageMode::EncryptedConfig => {
-                let accounts = self.persisted_accounts_snapshot();
-                let payload = config::SecretPayload::from_credentials(
-                    &accounts,
-                    &self.hydromancer_api_key,
-                    &self.hyperdash_api_key,
-                    bearer_token,
-                );
-                let persisted = self.persist_encrypted_secret_payload(
-                    payload,
-                    "X bearer token saved to encrypted config",
                 );
                 self.secret_migration_save_blocked = !persisted;
                 persisted

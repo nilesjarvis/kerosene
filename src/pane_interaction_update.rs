@@ -87,9 +87,6 @@ impl TradingTerminal {
                     && self.panes.iter().count() > 1
                     && let Some((closed_kind, sibling)) = self.panes.close(pane)
                 {
-                    let closed_x_feed = matches!(closed_kind, PaneKind::XFeed);
-                    let x_cleanup_generation = self.x_feed.stream_reconnect_nonce;
-                    let x_cleanup_token = self.x_feed.bearer_token.clone().into_zeroizing();
                     self.focus = Some(sibling);
                     let mut detached_window_to_close = None;
                     self.remove_widget_padding_override_for_kind(&closed_kind);
@@ -134,20 +131,6 @@ impl TradingTerminal {
                     }
                     self.persist_config();
                     let mut tasks = vec![self.sync_main_window_min_size()];
-                    if closed_x_feed
-                        && self.x_feed.streaming_enabled
-                        && !self.x_feed.bearer_token.trim().is_empty()
-                        && !self.x_feed.handles.is_empty()
-                    {
-                        self.x_feed.stream_connected = false;
-                        self.x_feed.stream_reconnect_nonce =
-                            self.x_feed.stream_reconnect_nonce.saturating_add(1);
-                        tasks.push(Self::x_feed_stream_rule_cleanup_task_for_token(
-                            x_cleanup_token,
-                            x_cleanup_generation,
-                            x_cleanup_generation,
-                        ));
-                    }
                     if let Some(window_id) = detached_window_to_close {
                         tasks.push(iced::window::close(window_id));
                     }

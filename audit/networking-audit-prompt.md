@@ -56,8 +56,7 @@ Three-layer stack, all sharing one global `reqwest::Client`
 
 Optional integrations: `src/hydromancer_api.rs` (bearer-auth REST, paginated
 funding history), `src/hyperdash_api/` (GraphQL), `src/telegram_feed.rs` +
-`src/telegram_fast_feed.rs` (HTML polling of t.me every 15s),
-`src/x_feed.rs` + `src/x_feed_stream.rs` (X API v2 bearer + stream).
+`src/telegram_fast_feed.rs` (HTML polling of t.me every 15s).
 
 ## Seeded Hypotheses (from a prior automated pass — VERIFY or REFUTE each)
 

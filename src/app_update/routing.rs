@@ -69,7 +69,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::AddAdvancedOrdersPane
         | Message::AddTrackedTradesPane
         | Message::AddTelegramFeedPane
-        | Message::AddXFeedPane
         | Message::AddOutcomesPane
         | Message::AddHypeEtfsPane
         | Message::AddHypeUnstakingQueuePane => UpdateRoute::Panes,
@@ -542,20 +541,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleTelegramPrivateChannelCandidatesExpanded
         | Message::TelegramFeedRemoveChannel(_)
         | Message::ToggleTelegramFeedChannelsExpanded
-        | Message::ToggleTelegramFeedNotifications
-        | Message::RefreshXFeed
-        | Message::XFeedRefreshTick
-        | Message::XFeedLoaded(_, _, _)
-        | Message::XFeedStreamEvent(_, _)
-        | Message::XFeedRuleCleanupFinished { .. }
-        | Message::XFeedBearerTokenChanged(_)
-        | Message::SaveXFeedBearerToken
-        | Message::XFeedSourceInputChanged(_)
-        | Message::XFeedAddSource
-        | Message::XFeedRemoveSource(_)
-        | Message::ToggleXFeedStreaming
-        | Message::ToggleXFeedNotifications
-        | Message::ToggleXFeedSourcesExpanded => UpdateRoute::Feed,
+        | Message::ToggleTelegramFeedNotifications => UpdateRoute::Feed,
 
         Message::HyperdashKeyInputChanged(_)
         | Message::SaveHyperdashKey

@@ -14,7 +14,6 @@ use super::{CustomFontConfig, DisplayFontConfig};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
 use crate::telegram_feed::{TelegramFeedPrivateChannelConfig, default_telegram_feed_channels};
-use crate::x_feed::default_x_feed_handles;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
@@ -337,15 +336,6 @@ pub struct KeroseneConfig {
     /// Private broadcast Telegram channels selected from the signed-in MTProto account.
     #[serde(default)]
     pub telegram_feed_private_channels: Vec<TelegramFeedPrivateChannelConfig>,
-    #[serde(default)]
-    pub x_feed_notifications_enabled: bool,
-    #[serde(default)]
-    pub x_feed_streaming_enabled: bool,
-    /// Public X handles shown by the X Feed widget.
-    #[serde(default = "default_x_feed_handles")]
-    pub x_feed_handles: Vec<String>,
-    #[serde(default, skip_serializing)]
-    pub x_bearer_token: Zeroizing<String>,
     /// Per-spaghetti (comparison) chart configurations.
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,

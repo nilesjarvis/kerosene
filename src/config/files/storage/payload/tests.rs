@@ -34,13 +34,11 @@ fn merge_plaintext_secrets_prefers_existing_payload_values() {
         ],
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
-        x_bearer_token: "global-x".to_string().into(),
         ..KeroseneConfig::default()
     };
     let mut payload = SecretPayload::from_credentials(
         &[test_profile("one", "existing-agent", "")],
         "existing-hydro",
-        "",
         "",
     );
 
@@ -53,7 +51,6 @@ fn merge_plaintext_secrets_prefers_existing_payload_values() {
     assert_eq!(payload.profile_agent_key("two"), Some("agent-two"));
     assert_eq!(payload.global_hydromancer_api_key(), "existing-hydro");
     assert_eq!(payload.global_hyperdash_api_key(), "global-hyper");
-    assert_eq!(payload.global_x_bearer_token(), "global-x");
 }
 
 #[test]
@@ -66,7 +63,7 @@ fn merge_plaintext_profile_key_records_wallet_binding() {
         )],
         ..KeroseneConfig::default()
     };
-    let mut payload = SecretPayload::from_credentials(&[], "", "", "");
+    let mut payload = SecretPayload::from_credentials(&[], "", "");
 
     assert!(merge_missing_plaintext_secrets_into_payload(
         &config,
@@ -99,7 +96,6 @@ fn merge_plaintext_profile_key_replaces_mismatched_wallet_binding() {
         &[test_profile_with_wallet("one", old_wallet, "stale-agent")],
         "",
         "",
-        "",
     );
 
     assert!(merge_missing_plaintext_secrets_into_payload(
@@ -126,14 +122,12 @@ fn apply_secret_payload_replaces_plaintext_and_clears_profile_integrations() {
         ],
         hydromancer_api_key: "old-global-hydro".to_string().into(),
         hyperdash_api_key: "old-global-hyper".to_string().into(),
-        x_bearer_token: "old-global-x".to_string().into(),
         ..KeroseneConfig::default()
     };
     let payload = SecretPayload::from_credentials(
         &[test_profile("one", "new-agent", "")],
         "new-global-hydro",
         "new-global-hyper",
-        "new-global-x",
     );
 
     apply_secret_payload(&mut config, &payload);
@@ -144,7 +138,6 @@ fn apply_secret_payload_replaces_plaintext_and_clears_profile_integrations() {
     assert_eq!(config.accounts[1].hydromancer_api_key.as_str(), "");
     assert_eq!(config.hydromancer_api_key.as_str(), "new-global-hydro");
     assert_eq!(config.hyperdash_api_key.as_str(), "new-global-hyper");
-    assert_eq!(config.x_bearer_token.as_str(), "new-global-x");
 }
 
 #[test]
@@ -169,7 +162,6 @@ fn apply_secret_payload_skips_wallet_binding_mismatch() {
             "0xabc0000000000000000000000000000000000000",
             "new-agent",
         )],
-        "",
         "",
         "",
     );
@@ -212,7 +204,6 @@ fn apply_secret_payload_preserving_plaintext_warning_redacts_account_name() {
             "0xabc0000000000000000000000000000000000000",
             "new-agent",
         )],
-        "",
         "",
         "",
     );

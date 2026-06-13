@@ -223,23 +223,6 @@ impl TradingTerminal {
         }
     }
 
-    pub(crate) fn push_x_feed_alert(&mut self, message: String) {
-        push_toast_entry(
-            &mut self.toasts,
-            &mut self.next_toast_id,
-            message.clone(),
-            false,
-        );
-
-        if self.sound_enabled {
-            sound::play_fill();
-        }
-
-        if self.desktop_notifications {
-            show_desktop_notification("Kerosene: X Feed", message);
-        }
-    }
-
     pub(crate) fn play_notification_sound(&self, is_error: bool) {
         let _theme = self.theme();
         if self.sound_enabled {

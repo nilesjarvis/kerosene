@@ -402,7 +402,7 @@ mod tests {
         terminal.encrypted_secret_password = sensitive_string("test-password");
         terminal.encrypted_secrets = Some(
             config::encrypt_secrets(
-                &config::SecretPayload::from_credentials(&terminal.accounts, "", "", ""),
+                &config::SecretPayload::from_credentials(&terminal.accounts, "", ""),
                 &terminal.encrypted_secret_password,
             )
             .expect("test encrypted payload"),

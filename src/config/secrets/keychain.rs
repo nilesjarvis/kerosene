@@ -114,13 +114,11 @@ pub fn store_keychain_secrets(
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
-    x_bearer_token: &str,
 ) -> Result<Option<String>, String> {
     store_keychain_secrets_with_profile_removals(
         profiles,
         hydromancer_api_key,
         hyperdash_api_key,
-        x_bearer_token,
         &[],
     )
 }
@@ -129,14 +127,12 @@ pub fn store_keychain_secrets_with_profile_removals(
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
-    x_bearer_token: &str,
     removed_profile_secret_ids: &[String],
 ) -> Result<Option<String>, String> {
     store_keychain_secrets_with_profile_removals_with(
         profiles,
         hydromancer_api_key,
         hyperdash_api_key,
-        x_bearer_token,
         removed_profile_secret_ids,
         KeychainProfileRemovalStoreHooks {
             load_payload: load_keychain_secret_payload,
@@ -172,7 +168,6 @@ fn store_keychain_secrets_with_profile_removals_with<
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
-    x_bearer_token: &str,
     removed_profile_secret_ids: &[String],
     mut hooks: KeychainProfileRemovalStoreHooks<
         LoadPayload,
@@ -189,12 +184,7 @@ where
     ClearBundleLegacy: FnMut(&SecretPayload) -> Result<(), String>,
     ClearRemovedProfile: FnMut(&str) -> Result<(), String>,
 {
-    let payload = SecretPayload::from_credentials(
-        profiles,
-        hydromancer_api_key,
-        hyperdash_api_key,
-        x_bearer_token,
-    );
+    let payload = SecretPayload::from_credentials(profiles, hydromancer_api_key, hyperdash_api_key);
     let requires_removed_profile_cleanup = removed_profile_secret_ids
         .iter()
         .any(|secret_id| removed_profile_legacy_cleanup_required(secret_id, &payload));
@@ -280,7 +270,6 @@ pub fn load_profile_secrets(profile: &mut AccountProfile) -> Result<(), String> 
 pub fn load_global_secrets(
     hydromancer_api_key: &mut Zeroizing<String>,
     hyperdash_api_key: &mut Zeroizing<String>,
-    x_bearer_token: &mut Zeroizing<String>,
 ) -> Result<(), String> {
     let mut errors = Vec::new();
     load_legacy_keychain_field(
@@ -295,13 +284,6 @@ pub fn load_global_secrets(
         "hyperdash_api_key",
         "HyperDash key",
         hyperdash_api_key,
-        &mut errors,
-    );
-    load_legacy_keychain_field(
-        GLOBAL_SECRET_ID,
-        "x_bearer_token",
-        "X bearer token",
-        x_bearer_token,
         &mut errors,
     );
 
@@ -439,9 +421,6 @@ fn clear_legacy_global_secret_entries() -> Result<(), String> {
     if let Err(e) = clear_legacy_global_secret_field("hyperdash_api_key") {
         errors.push(format!("HyperDash key delete failed: {e}"));
     }
-    if let Err(e) = clear_legacy_global_secret_field("x_bearer_token") {
-        errors.push(format!("X bearer token delete failed: {e}"));
-    }
 
     if errors.is_empty() {
         Ok(())
@@ -504,9 +483,6 @@ fn clear_legacy_keychain_entries_for_payload_with(
         errors.push(format!("shared credential cleanup failed: {e}"));
     }
     if let Err(e) = clear_global("hyperdash_api_key") {
-        errors.push(format!("shared credential cleanup failed: {e}"));
-    }
-    if let Err(e) = clear_global("x_bearer_token") {
         errors.push(format!("shared credential cleanup failed: {e}"));
     }
 
@@ -647,7 +623,7 @@ mod tests {
     #[test]
     fn payload_legacy_cleanup_clears_profiles_and_all_global_fields() {
         let profile = test_profile("profile-secret-id");
-        let payload = SecretPayload::from_credentials(std::slice::from_ref(&profile), "", "", "");
+        let payload = SecretPayload::from_credentials(std::slice::from_ref(&profile), "", "");
         let cleared_profiles = RefCell::new(Vec::new());
         let cleared_globals = RefCell::new(Vec::new());
 
@@ -673,7 +649,6 @@ mod tests {
             [
                 "hydromancer_api_key".to_string(),
                 "hyperdash_api_key".to_string(),
-                "x_bearer_token".to_string(),
             ]
         );
     }
@@ -708,10 +683,9 @@ mod tests {
             &[kept_profile.clone(), removed_profile.clone()],
             "",
             "",
-            "",
             &[removed_profile.secret_id.clone()],
             KeychainProfileRemovalStoreHooks {
-                load_payload: || Ok(Some(SecretPayload::from_credentials(&[], "", "", ""))),
+                load_payload: || Ok(Some(SecretPayload::from_credentials(&[], "", ""))),
                 store_payload: |payload: &SecretPayload| {
                     stored_payloads.borrow_mut().push(payload.clone());
                     Ok(())
@@ -757,13 +731,11 @@ mod tests {
             &[kept_profile.clone(), previous_removed_profile],
             "",
             "",
-            "",
         );
         let stored_payloads = RefCell::new(Vec::new());
 
         let result = store_keychain_secrets_with_profile_removals_with(
             &[kept_profile, removed_profile.clone()],
-            "",
             "",
             "",
             &[removed_profile.secret_id.clone()],
@@ -800,7 +772,7 @@ mod tests {
     #[test]
     fn profile_clear_does_not_store_bundle_when_legacy_cleanup_fails() {
         let profile = test_profile("profile-secret-id");
-        let payload = SecretPayload::from_credentials(std::slice::from_ref(&profile), "", "", "");
+        let payload = SecretPayload::from_credentials(std::slice::from_ref(&profile), "", "");
         let stored_payloads = RefCell::new(Vec::new());
 
         let result = clear_profile_secrets_with(
@@ -854,7 +826,6 @@ mod tests {
         let kept_profile = test_profile("kept-profile");
         let payload = SecretPayload::from_credentials(
             &[removed_profile.clone(), kept_profile.clone()],
-            "",
             "",
             "",
         );

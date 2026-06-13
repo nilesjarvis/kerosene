@@ -258,7 +258,6 @@ Representative fields:
 - tracked trades and de-duplication state
 - HyperDash key and liquidation/heatmap state
 - Telegram feed channels, fast-mode auth state, notifications
-- X feed bearer token, handles, streaming and notifications
 - calendar events and retry state
 - screener state and loaded contexts/history
 
@@ -268,7 +267,6 @@ Primary modules:
 - `hydromancer_api/`
 - `hyperdash_api/`, `hyperdash_update/`
 - `telegram_feed.rs`, `telegram_fast_feed.rs`
-- `x_feed.rs`, `x_feed_stream.rs`
 - `calendar_state.rs`, `calendar_update.rs`, `calendar_views/`
 - `screener_state.rs`, `screener_update.rs`, `screener_views.rs`
 

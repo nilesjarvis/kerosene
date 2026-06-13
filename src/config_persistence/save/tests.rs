@@ -259,7 +259,7 @@ fn persisted_accounts_snapshot_still_feeds_credential_payloads() {
     }];
 
     let accounts = terminal.persisted_accounts_snapshot();
-    let payload = SecretPayload::from_credentials(&accounts, "global-hydro", "global-hyper", "");
+    let payload = SecretPayload::from_credentials(&accounts, "global-hydro", "global-hyper");
 
     assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-secret"));
     assert_eq!(payload.global_hydromancer_api_key(), "global-hydro");

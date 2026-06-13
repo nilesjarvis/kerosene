@@ -150,7 +150,6 @@ fn load_os_keychain_secrets_with(
     mut load_global: impl FnMut(
         &mut zeroize::Zeroizing<String>,
         &mut zeroize::Zeroizing<String>,
-        &mut zeroize::Zeroizing<String>,
     ) -> Result<(), String>,
     mut push_warning: impl FnMut(String),
 ) {
@@ -246,7 +245,6 @@ fn load_os_keychain_secrets_with(
         &config.accounts,
         &config.hydromancer_api_key,
         &config.hyperdash_api_key,
-        &config.x_bearer_token,
     );
     if !payload.is_empty() {
         match store_payload(&payload) {
@@ -312,7 +310,6 @@ fn load_legacy_os_keychain_secrets_with_warnings(
     mut load_global: impl FnMut(
         &mut zeroize::Zeroizing<String>,
         &mut zeroize::Zeroizing<String>,
-        &mut zeroize::Zeroizing<String>,
     ) -> Result<(), String>,
     mut push_warning: impl FnMut(String),
 ) -> bool {
@@ -325,7 +322,6 @@ fn load_legacy_os_keychain_secrets_with_warnings(
     if let Err(error) = load_global(
         &mut config.hydromancer_api_key,
         &mut config.hyperdash_api_key,
-        &mut config.x_bearer_token,
     ) {
         push_warning(format!("Legacy shared credential read failed: {error}"));
         return false;
@@ -443,7 +439,6 @@ fn has_legacy_plaintext_secrets(config: &KeroseneConfig) -> bool {
     !config.agent_key.trim().is_empty()
         || !config.hydromancer_api_key.trim().is_empty()
         || !config.hyperdash_api_key.trim().is_empty()
-        || !config.x_bearer_token.trim().is_empty()
         || config.accounts.iter().any(|profile| {
             !profile.agent_key.trim().is_empty() || !profile.hydromancer_api_key.trim().is_empty()
         })
@@ -472,7 +467,6 @@ fn clear_plaintext_secret_fields(config: &mut KeroseneConfig) {
     }
     config.hydromancer_api_key.zeroize();
     config.hyperdash_api_key.zeroize();
-    config.x_bearer_token.zeroize();
 }
 
 fn lock_encrypted_config_secrets_with(

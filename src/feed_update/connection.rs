@@ -102,19 +102,13 @@ mod tests {
         terminal.encrypted_secret_password = sensitive_string("test-password");
         terminal.encrypted_secrets = Some(
             config::encrypt_secrets(
-                &config::SecretPayload::from_credentials(
-                    &[],
-                    hydromancer_key,
-                    "hyperdash-key",
-                    "x-token",
-                ),
+                &config::SecretPayload::from_credentials(&[], hydromancer_key, "hyperdash-key"),
                 &terminal.encrypted_secret_password,
             )
             .expect("test encrypted payload"),
         );
         terminal.encrypted_secrets_unlocked = unlocked;
         terminal.hyperdash_api_key = sensitive_string("hyperdash-key");
-        terminal.x_feed.bearer_token = sensitive_string("x-token");
         terminal.secret_migration_save_blocked = false;
         terminal.secret_store_status = None;
     }
@@ -258,7 +252,6 @@ mod tests {
         .expect("encrypted secrets should decrypt");
         assert_eq!(payload.global_hydromancer_api_key(), "new-hydro");
         assert_eq!(payload.global_hyperdash_api_key(), "hyperdash-key");
-        assert_eq!(payload.global_x_bearer_token(), "x-token");
         assert!(!terminal.secret_migration_save_blocked);
         assert!(terminal.config_save_due_at.is_some());
     }

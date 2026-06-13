@@ -87,7 +87,6 @@ impl TradingTerminal {
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
-            &self.x_feed.bearer_token,
         )
     }
 

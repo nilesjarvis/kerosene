@@ -407,12 +407,6 @@ impl TradingTerminal {
                 cfg.telegram_feed_fast_mode_enabled,
                 cfg.telegram_feed_fast_api_id,
             ),
-            x_feed: crate::x_feed::XFeedState::new(
-                &cfg.x_feed_handles,
-                cfg.x_feed_notifications_enabled,
-                cfg.x_feed_streaming_enabled,
-                cfg.x_bearer_token.trim().to_string(),
-            ),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg
                 .chart_timeframe_hotkey_prefix

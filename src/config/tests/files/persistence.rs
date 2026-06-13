@@ -523,7 +523,7 @@ fn encrypted_config_fixture(profiles: &[(&str, &str, &str)], password: &str) -> 
             hydromancer_api_key: "".to_string().into(),
         })
         .collect();
-    let payload = SecretPayload::from_credentials(&accounts, "", "", "");
+    let payload = SecretPayload::from_credentials(&accounts, "", "");
 
     KeroseneConfig {
         credential_storage_mode: CredentialStorageMode::EncryptedConfig,

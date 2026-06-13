@@ -24,7 +24,6 @@ enum KnownPaneKindConfig {
     LiquidationsDistribution,
     TrackedTrades,
     TelegramFeed,
-    XFeed,
     Outcomes,
     HypeEtfs,
     HypeUnstakingQueue,
@@ -61,7 +60,6 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::LiquidationsDistribution => Self::LiquidationsDistribution,
             KnownPaneKindConfig::TrackedTrades => Self::TrackedTrades,
             KnownPaneKindConfig::TelegramFeed => Self::TelegramFeed,
-            KnownPaneKindConfig::XFeed => Self::XFeed,
             KnownPaneKindConfig::Outcomes => Self::Outcomes,
             KnownPaneKindConfig::HypeEtfs => Self::HypeEtfs,
             KnownPaneKindConfig::HypeUnstakingQueue => Self::HypeUnstakingQueue,
@@ -176,9 +174,6 @@ impl Serialize for PaneKindConfig {
             PaneKindConfig::TelegramFeed => {
                 serializer.serialize_unit_variant("PaneKindConfig", 18, "TelegramFeed")
             }
-            PaneKindConfig::XFeed => {
-                serializer.serialize_unit_variant("PaneKindConfig", 19, "XFeed")
-            }
             PaneKindConfig::Outcomes => {
                 serializer.serialize_unit_variant("PaneKindConfig", 20, "Outcomes")
             }
@@ -197,5 +192,5 @@ impl Serialize for PaneKindConfig {
 }
 
 fn is_legacy_unsupported_pane(raw: &serde_json::Value) -> bool {
-    matches!(raw.as_str(), Some("Assistant" | "Unsupported"))
+    matches!(raw.as_str(), Some("Assistant" | "Unsupported" | "XFeed"))
 }

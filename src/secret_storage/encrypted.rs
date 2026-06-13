@@ -1,7 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::message::Message;
-use crate::x_feed::normalize_x_bearer_token_input;
 use iced::Task;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -16,7 +15,6 @@ impl TradingTerminal {
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
-            &self.x_feed.bearer_token,
         )
     }
 
@@ -158,10 +156,7 @@ impl TradingTerminal {
         self.secret_store_status = Some((success_message.to_string(), false));
     }
 
-    pub(crate) fn apply_secret_payload(
-        &mut self,
-        payload: config::SecretPayload,
-    ) -> (usize, Task<Message>) {
+    pub(crate) fn apply_secret_payload(&mut self, payload: config::SecretPayload) -> usize {
         let mut skipped_bound_profile_keys = 0;
         for profile in &mut self.accounts {
             profile.agent_key.zeroize();
@@ -210,28 +205,6 @@ impl TradingTerminal {
         if hyperdash_key_changed {
             self.bump_hyperdash_key_generation();
         }
-        let previous_x_token =
-            Zeroizing::new(normalize_x_bearer_token_input(&self.x_feed.bearer_token));
-        let x_cleanup_generation = self.x_feed.stream_reconnect_nonce;
-        let next_x_token = Zeroizing::new(normalize_x_bearer_token_input(
-            &payload.global.x_bearer_token,
-        ));
-        let x_token_changed = previous_x_token.as_str() != next_x_token.as_str();
-        self.x_feed.bearer_token.zeroize();
-        self.x_feed.bearer_token = next_x_token.as_str().to_string().into();
-        self.x_feed.bearer_token_input.zeroize();
-        self.x_feed.bearer_token_input = self.x_feed.bearer_token.clone();
-        self.x_feed.stream_connected = false;
-        self.x_feed.stream_reconnect_nonce = self.x_feed.stream_reconnect_nonce.saturating_add(1);
-        let x_rule_cleanup_task = if !previous_x_token.is_empty() && x_token_changed {
-            Self::x_feed_stream_rule_cleanup_task_for_token(
-                previous_x_token,
-                x_cleanup_generation,
-                self.x_feed.stream_reconnect_nonce,
-            )
-        } else {
-            Task::none()
-        };
 
         if hydromancer_key_changed {
             self.liquidations_last_rx_ms = None;
@@ -251,7 +224,7 @@ impl TradingTerminal {
             }
         }
 
-        (skipped_bound_profile_keys, x_rule_cleanup_task)
+        skipped_bound_profile_keys
     }
 
     pub(crate) fn unlock_encrypted_credentials(&mut self) -> Task<Message> {
@@ -294,8 +267,7 @@ impl TradingTerminal {
                 let legacy_bindings_migrated = payload.bind_unbound_profile_agent_keys_to_wallets(
                     &self.persisted_accounts_snapshot(),
                 );
-                let (skipped_bound_profile_keys, x_rule_cleanup_task) =
-                    self.apply_secret_payload(payload.clone());
+                let skipped_bound_profile_keys = self.apply_secret_payload(payload.clone());
                 self.secret_storage_mode = config::CredentialStorageMode::EncryptedConfig;
                 self.secret_storage_selection = config::CredentialStorageMode::EncryptedConfig;
                 self.encrypted_secrets_unlocked = true;
@@ -366,12 +338,9 @@ impl TradingTerminal {
                 self.encrypted_secret_password.zeroize();
                 self.encrypted_secret_confirm.zeroize();
                 if self.hydromancer_key_generation != hydromancer_generation_before {
-                    return Task::batch([
-                        self.refresh_hydromancer_dependent_data(),
-                        x_rule_cleanup_task,
-                    ]);
+                    return self.refresh_hydromancer_dependent_data();
                 }
-                return x_rule_cleanup_task;
+                return Task::none();
             }
             Err(error) => {
                 self.encrypted_secrets_unlocked = false;
@@ -507,10 +476,10 @@ mod tests {
     #[test]
     fn encrypted_payload_save_writes_candidate_config_before_reporting_success() {
         let password = "password";
-        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "old-hyper", "old-x");
+        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "old-hyper");
         let mut terminal = terminal_with_encrypted_payload(&old_payload, password);
         terminal.config_save_due_at = Some(std::time::Instant::now());
-        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "new-hyper", "new-x");
+        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "new-hyper");
         let save_called = Cell::new(false);
 
         let persisted = terminal.persist_encrypted_secret_payload_with(
@@ -531,7 +500,6 @@ mod tests {
                 .expect("candidate payload should decrypt");
                 assert_eq!(payload.global_hydromancer_api_key(), "new-hydro");
                 assert_eq!(payload.global_hyperdash_api_key(), "new-hyper");
-                assert_eq!(payload.global_x_bearer_token(), "new-x");
                 Ok(())
             },
         );
@@ -548,7 +516,6 @@ mod tests {
         .expect("committed payload should decrypt");
         assert_eq!(saved_payload.global_hydromancer_api_key(), "new-hydro");
         assert_eq!(saved_payload.global_hyperdash_api_key(), "new-hyper");
-        assert_eq!(saved_payload.global_x_bearer_token(), "new-x");
         assert_eq!(
             terminal.secret_store_status,
             Some(("Credentials saved to encrypted config".to_string(), false))
@@ -560,10 +527,10 @@ mod tests {
     #[test]
     fn encrypted_payload_config_save_failure_rolls_back_candidate_blob() {
         let password = "password";
-        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "old-hyper", "old-x");
+        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "old-hyper");
         let mut terminal = terminal_with_encrypted_payload(&old_payload, password);
         let original_encrypted = terminal.encrypted_secrets.clone();
-        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "new-hyper", "new-x");
+        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "new-hyper");
 
         let persisted = terminal.persist_encrypted_secret_payload_with(
             candidate,
@@ -584,7 +551,6 @@ mod tests {
         .expect("old payload should decrypt");
         assert_eq!(saved_payload.global_hydromancer_api_key(), "old-hydro");
         assert_eq!(saved_payload.global_hyperdash_api_key(), "old-hyper");
-        assert_eq!(saved_payload.global_x_bearer_token(), "old-x");
         assert!(terminal.secret_migration_save_blocked);
         let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
         assert!(*is_error);
@@ -596,9 +562,9 @@ mod tests {
     #[test]
     fn encrypted_payload_post_commit_save_warning_keeps_candidate_blob() {
         let password = "password";
-        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "", "");
+        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "");
         let mut terminal = terminal_with_encrypted_payload(&old_payload, password);
-        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "", "");
+        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "");
 
         let persisted = terminal.persist_encrypted_secret_payload_with(
             candidate,
@@ -628,10 +594,10 @@ mod tests {
     #[test]
     fn encrypted_payload_save_retry_is_not_blocked_by_previous_secret_failure() {
         let password = "password";
-        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "", "");
+        let old_payload = SecretPayload::from_credentials(&[], "old-hydro", "");
         let mut terminal = terminal_with_encrypted_payload(&old_payload, password);
         terminal.secret_migration_save_blocked = true;
-        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "", "");
+        let candidate = SecretPayload::from_credentials(&[], "new-hydro", "");
         let save_called = Cell::new(false);
 
         let persisted = terminal.persist_encrypted_secret_payload_with(
@@ -666,10 +632,9 @@ mod tests {
             }],
             "",
             "",
-            "",
         );
 
-        let (skipped, _task) = terminal.apply_secret_payload(payload);
+        let skipped = terminal.apply_secret_payload(payload);
 
         assert_eq!(skipped, 1);
         assert_eq!(terminal.accounts[0].agent_key.as_str(), "");
@@ -683,7 +648,6 @@ mod tests {
         terminal.hydromancer_key_input = sensitive_string("hydro-secret");
         terminal.hydromancer_key_generation = 991_000_004;
         terminal.hyperdash_api_key = sensitive_string("hyper-secret");
-        terminal.x_feed.bearer_token = sensitive_string("x-token");
         terminal.liquidations_last_rx_ms = Some(11);
         terminal.tracked_trades_last_rx_ms = Some(22);
         terminal.liquidations_reconnect_nonce = 3;
@@ -713,13 +677,12 @@ mod tests {
             .journal
             .expanded_snapshot_trade_ids
             .insert("perp:BTC:test".to_string());
-        let payload =
-            SecretPayload::from_credentials(&[], "hydro-secret", "hyper-secret", "x-token");
+        let payload = SecretPayload::from_credentials(&[], "hydro-secret", "hyper-secret");
 
         let sent_manager_reconnect = ws::hydromancer_manager_reconnect_sent_for_test(
             terminal.hydromancer_key_generation,
             || {
-                let (_skipped, _task) = terminal.apply_secret_payload(payload);
+                let _skipped = terminal.apply_secret_payload(payload);
             },
         );
 
@@ -755,7 +718,7 @@ mod tests {
         terminal.accounts = vec![account("acct-a", current_wallet)];
         terminal.active_account_index = 0;
         terminal.encrypted_secret_password = sensitive_string(password);
-        let mut payload = SecretPayload::from_credentials(&[], "", "", "");
+        let mut payload = SecretPayload::from_credentials(&[], "", "");
         assert!(payload.upsert_profile_agent_key("acct-a", "agent-key"));
         terminal.encrypted_secrets =
             Some(config::encrypt_secrets(&payload, password).expect("encrypt fixture"));
@@ -821,7 +784,7 @@ mod tests {
         terminal.accounts = vec![account("acct-a", current_wallet)];
         terminal.active_account_index = 0;
         terminal.encrypted_secret_password = sensitive_string(password);
-        let mut payload = SecretPayload::from_credentials(&[], "", "", "");
+        let mut payload = SecretPayload::from_credentials(&[], "", "");
         assert!(payload.upsert_profile_agent_key("acct-a", "agent-key"));
         terminal.encrypted_secrets =
             Some(config::encrypt_secrets(&payload, password).expect("encrypt fixture"));
@@ -878,7 +841,6 @@ mod tests {
             }],
             "",
             "",
-            "",
         );
         let mut terminal = terminal_with_encrypted_payload(&payload, password);
         terminal.accounts = vec![account("acct-a", current_wallet)];
@@ -928,7 +890,7 @@ mod tests {
     #[test]
     fn encrypted_unlock_requires_password_reentry_for_later_encrypted_save() {
         let password = "password";
-        let payload = SecretPayload::from_credentials(&[], "old-hydro", "", "");
+        let payload = SecretPayload::from_credentials(&[], "old-hydro", "");
         let mut terminal = terminal_with_encrypted_payload(&payload, password);
         terminal.encrypted_secrets_unlocked = false;
         let original_encrypted = terminal.encrypted_secrets.clone();
@@ -939,7 +901,7 @@ mod tests {
         assert!(terminal.encrypted_secret_password.is_empty());
 
         let persisted = terminal.persist_encrypted_secret_payload(
-            SecretPayload::from_credentials(&[], "new-hydro", "", ""),
+            SecretPayload::from_credentials(&[], "new-hydro", ""),
             "Credentials saved to encrypted config",
         );
 
@@ -974,7 +936,7 @@ mod tests {
         terminal.charts.insert(7, instance);
 
         let payload =
-            SecretPayload::from_credentials(&terminal.accounts, "new-hydromancer-key", "", "");
+            SecretPayload::from_credentials(&terminal.accounts, "new-hydromancer-key", "");
         terminal.encrypted_secrets =
             Some(config::encrypt_secrets(&payload, &terminal.encrypted_secret_password).unwrap());
 

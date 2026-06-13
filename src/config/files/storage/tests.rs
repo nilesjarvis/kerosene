@@ -24,7 +24,6 @@ fn test_profile_with_wallet(name: &str, wallet_address: &str, agent_key: &str) -
 fn no_legacy_global_secrets(
     _hydromancer_api_key: &mut zeroize::Zeroizing<String>,
     _hyperdash_api_key: &mut zeroize::Zeroizing<String>,
-    _x_bearer_token: &mut zeroize::Zeroizing<String>,
 ) -> Result<(), String> {
     Ok(())
 }
@@ -59,7 +58,6 @@ fn pending_keychain_delete_cleanup_removes_bundle_profile_before_secret_hydratio
             test_profile("account-a", "agent-a"),
             test_profile("account-b", "agent-b"),
         ],
-        "",
         "",
         "",
     ));
@@ -101,8 +99,7 @@ fn pending_keychain_delete_cleanup_failure_preserves_intent_and_redacts_warning(
         pending_keychain_profile_deletions: vec!["account-b".to_string()],
         ..KeroseneConfig::default()
     };
-    let bundle =
-        SecretPayload::from_credentials(&[test_profile("account-a", "agent-a")], "", "", "");
+    let bundle = SecretPayload::from_credentials(&[test_profile("account-a", "agent-a")], "", "");
     let warnings = RefCell::new(Vec::new());
 
     load_os_keychain_secrets_with(
@@ -500,7 +497,6 @@ fn corrupt_bundle_with_plaintext_secrets_blocks_config_save() {
             hydromancer_api_key: "profile-hydro".to_string().into(),
         }],
         hyperdash_api_key: "global-hyper".to_string().into(),
-        x_bearer_token: "global-x".to_string().into(),
         ..KeroseneConfig::default()
     };
     let legacy_reads = Cell::new(0);
@@ -534,7 +530,6 @@ fn corrupt_bundle_with_plaintext_secrets_blocks_config_save() {
     assert_eq!(config.accounts[0].agent_key.as_str(), "plain-agent");
     assert_eq!(config.hydromancer_api_key.as_str(), "profile-hydro");
     assert_eq!(config.hyperdash_api_key.as_str(), "global-hyper");
-    assert_eq!(config.x_bearer_token.as_str(), "global-x");
     assert!(warnings.borrow().iter().any(|warning| {
         warning.contains("Credential bundle read failed")
             && warning.contains("config saves are paused")
@@ -613,10 +608,9 @@ fn legacy_keychain_migration_reads_global_integration_keys_before_cleanup() {
             profile.agent_key = "one-agent".to_string().into();
             Ok(())
         },
-        |hydromancer_api_key, hyperdash_api_key, x_bearer_token| {
+        |hydromancer_api_key, hyperdash_api_key| {
             *hydromancer_api_key = "legacy-hydro".to_string().into();
             *hyperdash_api_key = "legacy-hyper".to_string().into();
-            *x_bearer_token = "legacy-x".to_string().into();
             Ok(())
         },
         |_| {},
@@ -628,14 +622,12 @@ fn legacy_keychain_migration_reads_global_integration_keys_before_cleanup() {
         .expect("legacy payload should be stored");
     assert_eq!(stored_payload.global_hydromancer_api_key(), "legacy-hydro");
     assert_eq!(stored_payload.global_hyperdash_api_key(), "legacy-hyper");
-    assert_eq!(stored_payload.global_x_bearer_token(), "legacy-x");
     let cleaned_payload = cleaned_payload
         .borrow()
         .clone()
         .expect("cleanup should use migrated payload");
     assert_eq!(cleaned_payload.global_hydromancer_api_key(), "legacy-hydro");
     assert_eq!(cleaned_payload.global_hyperdash_api_key(), "legacy-hyper");
-    assert_eq!(cleaned_payload.global_x_bearer_token(), "legacy-x");
 }
 
 #[test]
@@ -665,7 +657,7 @@ fn legacy_keychain_global_read_failure_blocks_store_and_cleanup() {
             profile_reads.set(profile_reads.get() + 1);
             Ok(())
         },
-        |_, _, _| Err("keychain denied read".to_string()),
+        |_, _| Err("keychain denied read".to_string()),
         |warning| warnings.borrow_mut().push(warning),
     );
 
@@ -696,7 +688,7 @@ fn legacy_plaintext_hydromancer_conflict_blocks_bundle_migration() {
         ],
         ..KeroseneConfig::default()
     };
-    let bundle = SecretPayload::from_credentials(&[], "", "", "");
+    let bundle = SecretPayload::from_credentials(&[], "", "");
     let stores = Cell::new(0);
     let cleanups = Cell::new(0);
     let warnings = RefCell::new(Vec::new());
@@ -792,7 +784,7 @@ fn valid_bundle_cleanup_scope_uses_payload_profiles_not_all_config_accounts() {
         accounts: vec![test_profile("one", ""), test_profile("two", "")],
         ..KeroseneConfig::default()
     };
-    let bundle = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "", "");
+    let bundle = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "");
     let cleaned_profiles = RefCell::new(Vec::new());
 
     load_os_keychain_secrets_with(
@@ -828,7 +820,7 @@ fn valid_partial_bundle_hydrates_missing_active_profile_from_legacy_keychain() {
         accounts: vec![test_profile("one", ""), test_profile("two", "")],
         ..KeroseneConfig::default()
     };
-    let bundle = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "", "");
+    let bundle = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "");
     let stored_payload = RefCell::new(None);
     let cleaned_payload = RefCell::new(None);
     let loaded_profiles = RefCell::new(Vec::new());
@@ -882,7 +874,7 @@ fn valid_partial_bundle_blocks_when_active_legacy_profile_read_fails() {
         accounts: vec![test_profile("one", ""), test_profile("two", "")],
         ..KeroseneConfig::default()
     };
-    let bundle = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "", "");
+    let bundle = SecretPayload::from_credentials(&[test_profile("one", "one-agent")], "", "");
     let stores = Cell::new(0);
     let cleanups = Cell::new(0);
     let loaded_profiles = RefCell::new(Vec::new());
@@ -927,7 +919,7 @@ fn valid_bundle_binds_legacy_unbound_profile_key_to_wallet() {
         accounts: vec![test_profile_with_wallet("one", current_wallet, "")],
         ..KeroseneConfig::default()
     };
-    let mut bundle = SecretPayload::from_credentials(&[], "", "", "");
+    let mut bundle = SecretPayload::from_credentials(&[], "", "");
     assert!(bundle.upsert_profile_agent_key("one", "legacy-agent"));
     let stored_payload = RefCell::new(None);
     let cleaned_payload = RefCell::new(None);
@@ -979,11 +971,9 @@ fn valid_bundle_merge_failure_preserves_plaintext_and_blocks_config_save() {
         accounts: vec![test_profile("one", "plain-agent"), test_profile("two", "")],
         hydromancer_api_key: "plain-hydro".to_string().into(),
         hyperdash_api_key: "plain-hyper".to_string().into(),
-        x_bearer_token: "plain-x".to_string().into(),
         ..KeroseneConfig::default()
     };
-    let bundle =
-        SecretPayload::from_credentials(&[test_profile("two", "bundle-agent")], "", "", "");
+    let bundle = SecretPayload::from_credentials(&[test_profile("two", "bundle-agent")], "", "");
     let attempted_store = RefCell::new(None);
     let cleanups = Cell::new(0);
     let warnings = RefCell::new(Vec::new());
@@ -1020,7 +1010,6 @@ fn valid_bundle_merge_failure_preserves_plaintext_and_blocks_config_save() {
     );
     assert_eq!(attempted_store.global_hydromancer_api_key(), "plain-hydro");
     assert_eq!(attempted_store.global_hyperdash_api_key(), "plain-hyper");
-    assert_eq!(attempted_store.global_x_bearer_token(), "plain-x");
 
     assert_eq!(cleanups.get(), 0);
     assert!(config.secret_migration_save_blocked);
@@ -1028,7 +1017,6 @@ fn valid_bundle_merge_failure_preserves_plaintext_and_blocks_config_save() {
     assert_eq!(config.accounts[1].agent_key.as_str(), "bundle-agent");
     assert_eq!(config.hydromancer_api_key.as_str(), "plain-hydro");
     assert_eq!(config.hyperdash_api_key.as_str(), "plain-hyper");
-    assert_eq!(config.x_bearer_token.as_str(), "plain-x");
     assert!(
         warnings
             .borrow()
@@ -1051,7 +1039,6 @@ fn valid_bundle_merge_replaces_stale_wallet_bound_agent_key_with_plaintext() {
     };
     let bundle = SecretPayload::from_credentials(
         &[test_profile_with_wallet("one", old_wallet, "stale-agent")],
-        "",
         "",
         "",
     );
@@ -1121,7 +1108,6 @@ fn valid_bundle_cleanup_skips_wallet_bound_profile_that_was_not_loaded() {
         &[test_profile_with_wallet("one", old_wallet, "stale-agent")],
         "hydro-secret",
         "",
-        "",
     );
     let cleaned_payload = RefCell::new(None);
     let warnings = RefCell::new(Vec::new());
@@ -1168,8 +1154,7 @@ fn valid_bundle_cleanup_runs_with_empty_authoritative_globals() {
         accounts: vec![test_profile("one", "")],
         ..KeroseneConfig::default()
     };
-    let bundle =
-        SecretPayload::from_credentials(&[test_profile("one", "bundle-agent")], "", "", "");
+    let bundle = SecretPayload::from_credentials(&[test_profile("one", "bundle-agent")], "", "");
     let cleaned_payload = RefCell::new(None);
 
     load_os_keychain_secrets_with(
@@ -1197,7 +1182,6 @@ fn valid_bundle_cleanup_runs_with_empty_authoritative_globals() {
     );
     assert_eq!(cleaned_payload.global_hydromancer_api_key(), "");
     assert_eq!(cleaned_payload.global_hyperdash_api_key(), "");
-    assert_eq!(cleaned_payload.global_x_bearer_token(), "");
 }
 
 #[test]
@@ -1307,7 +1291,6 @@ fn encrypted_config_lock_clears_all_plaintext_secret_fields() {
         }],
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
-        x_bearer_token: "x-token".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -1317,7 +1300,6 @@ fn encrypted_config_lock_clears_all_plaintext_secret_fields() {
     assert_eq!(config.accounts[0].hydromancer_api_key.as_str(), "");
     assert_eq!(config.hydromancer_api_key.as_str(), "");
     assert_eq!(config.hyperdash_api_key.as_str(), "");
-    assert_eq!(config.x_bearer_token.as_str(), "");
 }
 
 #[test]
@@ -1338,7 +1320,6 @@ fn encrypted_config_with_invalid_blob_locks_plaintext_and_blocks_save() {
         }],
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
-        x_bearer_token: "x-token".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -1350,7 +1331,6 @@ fn encrypted_config_with_invalid_blob_locks_plaintext_and_blocks_save() {
     assert_eq!(config.accounts[0].hydromancer_api_key.as_str(), "");
     assert_eq!(config.hydromancer_api_key.as_str(), "");
     assert_eq!(config.hyperdash_api_key.as_str(), "");
-    assert_eq!(config.x_bearer_token.as_str(), "");
     assert!(
         crate::config::secrets::take_secret_warnings()
             .iter()
@@ -1378,7 +1358,6 @@ fn encrypted_config_without_blob_locks_plaintext_and_blocks_save() {
         }],
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
-        x_bearer_token: "x-token".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -1390,7 +1369,6 @@ fn encrypted_config_without_blob_locks_plaintext_and_blocks_save() {
     assert_eq!(config.accounts[0].hydromancer_api_key.as_str(), "");
     assert_eq!(config.hydromancer_api_key.as_str(), "");
     assert_eq!(config.hyperdash_api_key.as_str(), "");
-    assert_eq!(config.x_bearer_token.as_str(), "");
     assert!(
         crate::config::secrets::take_secret_warnings()
             .iter()

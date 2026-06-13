@@ -13,6 +13,16 @@ fn legacy_assistant_pane_deserializes_as_unsupported() {
 }
 
 #[test]
+fn legacy_x_feed_pane_deserializes_as_unsupported() {
+    let layout: PaneLayoutConfig = value_from_json(
+        serde_json::json!({"Leaf": "XFeed"}),
+        "legacy x feed pane should deserialize",
+    );
+
+    assert_eq!(layout, PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported));
+}
+
+#[test]
 fn unknown_future_pane_round_trips_raw_json() {
     let raw_pane = serde_json::json!({
         "FuturePane": {
@@ -100,7 +110,6 @@ fn known_pane_variants_keep_existing_wire_shape() {
             PaneKindConfig::TelegramFeed,
             serde_json::json!("TelegramFeed"),
         ),
-        (PaneKindConfig::XFeed, serde_json::json!("XFeed")),
         (PaneKindConfig::Outcomes, serde_json::json!("Outcomes")),
         (PaneKindConfig::HypeEtfs, serde_json::json!("HypeEtfs")),
         (
@@ -157,17 +166,6 @@ fn telegram_feed_pane_round_trips() {
     let json = json_string(&layout, "telegram feed pane should serialize");
     let decoded: PaneLayoutConfig =
         serde_json::from_str(&json).expect("telegram feed pane should deserialize");
-
-    assert_eq!(decoded, layout);
-}
-
-#[test]
-fn x_feed_pane_round_trips() {
-    let layout = PaneLayoutConfig::Leaf(PaneKindConfig::XFeed);
-
-    let json = json_string(&layout, "x feed pane should serialize");
-    let decoded: PaneLayoutConfig =
-        serde_json::from_str(&json).expect("x feed pane should deserialize");
 
     assert_eq!(decoded, layout);
 }

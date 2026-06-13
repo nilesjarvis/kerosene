@@ -24,12 +24,11 @@ fn profile_with_wallet(secret_id: &str, wallet_address: &str, agent_key: &str) -
 fn secret_payload_skips_empty_profile_keys() {
     let profiles = vec![profile("acct-a", "agent-a"), profile("acct-b", "")];
 
-    let payload = SecretPayload::from_credentials(&profiles, "", "hyper", "x-token");
+    let payload = SecretPayload::from_credentials(&profiles, "", "hyper");
 
     assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
     assert_eq!(payload.profile_agent_key("acct-b"), None);
     assert_eq!(payload.global_hyperdash_api_key(), "hyper");
-    assert_eq!(payload.global_x_bearer_token(), "x-token");
     assert!(!payload.is_empty());
 }
 
@@ -48,7 +47,7 @@ fn secret_payload_binds_profile_keys_to_normalized_wallet_addresses() {
     let wallet = "0xABC0000000000000000000000000000000000000";
     let profiles = vec![profile_with_wallet("acct-a", wallet, "agent-a")];
 
-    let payload = SecretPayload::from_credentials(&profiles, "", "", "");
+    let payload = SecretPayload::from_credentials(&profiles, "", "");
 
     assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
     assert_eq!(
@@ -81,7 +80,7 @@ fn duplicate_profile_ids_prefer_matching_wallet_binding() {
         profile_with_wallet("acct-a", wallet_b, "agent-b"),
     ];
 
-    let payload = SecretPayload::from_credentials(&profiles, "", "", "");
+    let payload = SecretPayload::from_credentials(&profiles, "", "");
 
     assert_eq!(
         payload.profile_agent_key_for_wallet("acct-a", wallet_a),
@@ -97,7 +96,7 @@ fn duplicate_profile_ids_prefer_matching_wallet_binding() {
 
 #[test]
 fn legacy_unbound_profile_keys_still_load_for_any_wallet() {
-    let mut payload = SecretPayload::from_credentials(&[], "", "", "");
+    let mut payload = SecretPayload::from_credentials(&[], "", "");
     assert!(payload.upsert_profile_agent_key("acct-a", "agent-a"));
 
     assert_eq!(
@@ -115,7 +114,7 @@ fn legacy_unbound_profile_keys_still_load_for_any_wallet() {
 fn legacy_unbound_profile_keys_can_be_bound_to_current_wallet() {
     let current_wallet = "0xabc0000000000000000000000000000000000000";
     let other_wallet = "0xdef0000000000000000000000000000000000000";
-    let mut payload = SecretPayload::from_credentials(&[], "", "", "");
+    let mut payload = SecretPayload::from_credentials(&[], "", "");
     assert!(payload.upsert_profile_agent_key("acct-a", "agent-a"));
 
     assert!(
@@ -148,7 +147,7 @@ fn legacy_unbound_profile_keys_can_be_bound_to_current_wallet() {
 fn legacy_unbound_profile_binding_skips_invalid_missing_or_ambiguous_wallets() {
     let wallet_a = "0xabc0000000000000000000000000000000000000";
     let wallet_b = "0xdef0000000000000000000000000000000000000";
-    let mut payload = SecretPayload::from_credentials(&[], "", "", "");
+    let mut payload = SecretPayload::from_credentials(&[], "", "");
     assert!(payload.upsert_profile_agent_key("invalid", "invalid-agent"));
     assert!(payload.upsert_profile_agent_key("missing", "missing-agent"));
     assert!(payload.upsert_profile_agent_key("ambiguous", "ambiguous-agent"));
@@ -171,7 +170,7 @@ fn legacy_unbound_profile_binding_skips_invalid_missing_or_ambiguous_wallets() {
 
 #[test]
 fn secret_payload_mutators_keep_bundle_compact() {
-    let mut payload = SecretPayload::from_credentials(&[], "", "", "");
+    let mut payload = SecretPayload::from_credentials(&[], "", "");
 
     assert!(payload.is_empty());
     assert!(payload.upsert_profile_agent_key("acct-a", "agent-a"));
@@ -181,19 +180,7 @@ fn secret_payload_mutators_keep_bundle_compact() {
     assert_eq!(payload.profile_agent_key("acct-a"), None);
     assert!(payload.set_global_hydromancer_api_key("hydro"));
     assert!(!payload.set_global_hydromancer_api_key("hydro"));
-    assert!(payload.set_global_x_bearer_token("x-token"));
-    assert!(!payload.set_global_x_bearer_token("x-token"));
     assert!(!payload.is_empty());
-}
-
-#[test]
-fn global_secret_payload_defaults_missing_x_token() {
-    let json = r#"{"hydromancer_api_key":"hydro","hyperdash_api_key":"hyper"}"#;
-    let payload: GlobalSecretPayload = serde_json::from_str(json).unwrap();
-
-    assert_eq!(payload.hydromancer_api_key.as_str(), "hydro");
-    assert_eq!(payload.hyperdash_api_key.as_str(), "hyper");
-    assert_eq!(payload.x_bearer_token.as_str(), "");
 }
 
 #[test]
@@ -202,19 +189,16 @@ fn global_secret_payload_defaults_missing_integration_keys() {
 
     assert_eq!(payload.hydromancer_api_key.as_str(), "");
     assert_eq!(payload.hyperdash_api_key.as_str(), "");
-    assert_eq!(payload.x_bearer_token.as_str(), "");
 
     let payload: GlobalSecretPayload =
         serde_json::from_str(r#"{"hydromancer_api_key":"hydro"}"#).unwrap();
     assert_eq!(payload.hydromancer_api_key.as_str(), "hydro");
     assert_eq!(payload.hyperdash_api_key.as_str(), "");
-    assert_eq!(payload.x_bearer_token.as_str(), "");
 
     let payload: GlobalSecretPayload =
         serde_json::from_str(r#"{"hyperdash_api_key":"hyper"}"#).unwrap();
     assert_eq!(payload.hydromancer_api_key.as_str(), "");
     assert_eq!(payload.hyperdash_api_key.as_str(), "hyper");
-    assert_eq!(payload.x_bearer_token.as_str(), "");
 }
 
 #[test]
@@ -229,7 +213,6 @@ fn secret_payload_defaults_missing_global_bundle() {
     assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
     assert_eq!(payload.global_hydromancer_api_key(), "");
     assert_eq!(payload.global_hyperdash_api_key(), "");
-    assert_eq!(payload.global_x_bearer_token(), "");
 }
 
 #[test]
@@ -244,7 +227,6 @@ fn secret_payload_defaults_missing_profiles_bundle() {
     assert!(payload.profiles.is_empty());
     assert_eq!(payload.global_hydromancer_api_key(), "hydro");
     assert_eq!(payload.global_hyperdash_api_key(), "");
-    assert_eq!(payload.global_x_bearer_token(), "");
 }
 
 #[test]
@@ -254,8 +236,7 @@ fn secret_payload_debug_redacts_secret_values() {
         "0xABCDEFabcdefABCDEFabcdefABCDEFabcdefabcd",
         "agent-secret",
     )];
-    let payload =
-        SecretPayload::from_credentials(&profiles, "hydro-secret", "hyper-secret", "x-secret");
+    let payload = SecretPayload::from_credentials(&profiles, "hydro-secret", "hyper-secret");
 
     let rendered = format!("{payload:?}");
 
@@ -266,7 +247,6 @@ fn secret_payload_debug_redacts_secret_values() {
         "agent-secret",
         "hydro-secret",
         "hyper-secret",
-        "x-secret",
     ] {
         assert!(!rendered.contains(secret), "debug output leaked {secret}");
     }

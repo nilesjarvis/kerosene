@@ -1,5 +1,5 @@
 use super::min_size::clamp_split_ratio;
-use crate::app_state::{TradingTerminal, sensitive_string};
+use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -19,30 +19,6 @@ fn clamp_split_ratio_handles_invalid_axis_length() {
 }
 
 #[test]
-fn closing_x_feed_pane_invalidates_running_stream_generation() {
-    let (mut terminal, _) = TradingTerminal::boot();
-    terminal.x_feed.bearer_token = sensitive_string("x-token");
-    terminal.x_feed.handles = vec!["marketfeed".to_string()];
-    terminal.x_feed.streaming_enabled = true;
-    terminal.x_feed.stream_connected = true;
-
-    let _task = terminal.update_panes(Message::AddXFeedPane);
-    let x_pane = terminal
-        .find_pane_matching(|kind| matches!(kind, PaneKind::XFeed))
-        .expect("x feed pane");
-    let previous_nonce = terminal.x_feed.stream_reconnect_nonce;
-
-    let _task = terminal.update_pane_interactions(Message::ClosePane(x_pane));
-
-    assert!(!terminal.pane_is_open(|kind| matches!(kind, PaneKind::XFeed)));
-    assert!(!terminal.x_feed.stream_connected);
-    assert_eq!(
-        terminal.x_feed.stream_reconnect_nonce,
-        previous_nonce.saturating_add(1)
-    );
-}
-
-#[test]
 fn closing_chart_pane_prunes_pending_request_registries() {
     let (mut terminal, _) = TradingTerminal::boot();
     let chart_pane = terminal
@@ -53,7 +29,6 @@ fn closing_chart_pane_prunes_pending_request_registries() {
         _ => panic!("expected chart pane"),
     };
     let other_chart_id = chart_id.saturating_add(100);
-    let _task = terminal.update_panes(Message::AddXFeedPane);
     seed_pending_chart_requests(&mut terminal, chart_id, other_chart_id);
 
     let _task = terminal.update_pane_interactions(Message::ClosePane(chart_pane));

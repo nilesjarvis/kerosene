@@ -52,7 +52,6 @@ use crate::telegram_feed::{
 };
 use crate::timeframe::Timeframe;
 use crate::ws::WsUserData;
-use crate::x_feed::{XFeedPage, XFeedStreamEvent};
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
 use std::collections::HashMap;
@@ -279,7 +278,6 @@ pub(crate) enum Message {
     AddLiquidationsDistributionPane,
     AddTrackedTradesPane,
     AddTelegramFeedPane,
-    AddXFeedPane,
     AddOutcomesPane,
     AddHypeEtfsPane,
     AddHypeUnstakingQueuePane,
@@ -493,23 +491,6 @@ pub(crate) enum Message {
     TelegramFeedRemoveChannel(String),
     ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
-    RefreshXFeed,
-    XFeedRefreshTick,
-    XFeedLoaded(u64, Vec<String>, Box<Result<XFeedPage, String>>),
-    XFeedStreamEvent(u64, XFeedStreamEvent),
-    XFeedRuleCleanupFinished {
-        cleanup_through_generation: u64,
-        reconnect_nonce: u64,
-        result: Box<Result<(), String>>,
-    },
-    XFeedBearerTokenChanged(SecretInput),
-    SaveXFeedBearerToken,
-    XFeedSourceInputChanged(String),
-    XFeedAddSource,
-    XFeedRemoveSource(String),
-    ToggleXFeedStreaming,
-    ToggleXFeedNotifications,
-    ToggleXFeedSourcesExpanded,
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
@@ -944,7 +925,6 @@ mod tests {
                 1,
                 TelegramFastAuthMessageResult::new(Err("sentinel-secret".to_string())),
             ),
-            Message::XFeedBearerTokenChanged("sentinel-secret".into()),
             Message::WalletKeyInputChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),
             Message::HyperdashKeyInputChanged("sentinel-secret".into()),

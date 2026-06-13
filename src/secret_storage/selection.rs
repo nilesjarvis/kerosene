@@ -79,7 +79,6 @@ impl TradingTerminal {
             &[config::AccountProfile],
             &str,
             &str,
-            &str,
         ) -> Result<Option<String>, String>,
         load_keychain_secret_payload: impl FnOnce() -> Result<Option<config::SecretPayload>, String>,
         rollback_keychain_secret_payload: impl FnOnce(
@@ -105,7 +104,6 @@ impl TradingTerminal {
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
-            &self.x_feed.bearer_token,
         ) {
             Ok(cleanup_warning) => cleanup_warning,
             Err(error) => {
@@ -201,7 +199,6 @@ impl TradingTerminal {
         clear_keychain_secrets: impl FnOnce(&[config::AccountProfile]) -> Result<(), String>,
         load_keychain_secret_payload: impl FnMut() -> Result<Option<config::SecretPayload>, String>,
         load_global_secrets: impl FnMut(
-            &mut Zeroizing<String>,
             &mut Zeroizing<String>,
             &mut Zeroizing<String>,
         ) -> Result<(), String>,
@@ -307,7 +304,6 @@ impl TradingTerminal {
         mut load_global_secrets: impl FnMut(
             &mut Zeroizing<String>,
             &mut Zeroizing<String>,
-            &mut Zeroizing<String>,
         ) -> Result<(), String>,
         mut load_profile_secrets: impl FnMut(&mut config::AccountProfile) -> Result<(), String>,
     ) -> Result<config::SecretPayload, String> {
@@ -327,18 +323,12 @@ impl TradingTerminal {
         let mut hydromancer_api_key =
             Zeroizing::new(payload.global_hydromancer_api_key().to_string());
         let mut hyperdash_api_key = Zeroizing::new(payload.global_hyperdash_api_key().to_string());
-        let mut x_bearer_token = Zeroizing::new(payload.global_x_bearer_token().to_string());
-        load_global_secrets(
-            &mut hydromancer_api_key,
-            &mut hyperdash_api_key,
-            &mut x_bearer_token,
-        )
-        .map_err(|_| "OS keychain shared credentials could not be read".to_string())?;
+        load_global_secrets(&mut hydromancer_api_key, &mut hyperdash_api_key)
+            .map_err(|_| "OS keychain shared credentials could not be read".to_string())?;
         merge_missing_legacy_global_secrets(
             &mut payload,
             hydromancer_api_key.as_str(),
             hyperdash_api_key.as_str(),
-            x_bearer_token.as_str(),
         );
 
         for account in &mut accounts {
@@ -382,7 +372,6 @@ fn merge_missing_legacy_global_secrets(
     payload: &mut config::SecretPayload,
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
-    x_bearer_token: &str,
 ) {
     if payload.global_hydromancer_api_key().trim().is_empty()
         && !hydromancer_api_key.trim().is_empty()
@@ -392,9 +381,6 @@ fn merge_missing_legacy_global_secrets(
     if payload.global_hyperdash_api_key().trim().is_empty() && !hyperdash_api_key.trim().is_empty()
     {
         payload.set_global_hyperdash_api_key(hyperdash_api_key);
-    }
-    if payload.global_x_bearer_token().trim().is_empty() && !x_bearer_token.trim().is_empty() {
-        payload.set_global_x_bearer_token(x_bearer_token);
     }
 }
 
@@ -463,11 +449,6 @@ fn merge_missing_keychain_payload_secrets(
     {
         payload.set_global_hyperdash_api_key(keychain_payload.global_hyperdash_api_key());
     }
-    if payload.global_x_bearer_token().trim().is_empty()
-        && !keychain_payload.global_x_bearer_token().trim().is_empty()
-    {
-        payload.set_global_x_bearer_token(keychain_payload.global_x_bearer_token());
-    }
 }
 
 #[cfg(test)]
@@ -494,7 +475,6 @@ mod tests {
         terminal.wallet_key_input = sensitive_string("agent-a");
         terminal.hydromancer_api_key = sensitive_string("hydro-a");
         terminal.hyperdash_api_key = sensitive_string("hyper-a");
-        terminal.x_feed.bearer_token = sensitive_string("x-a");
         terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
         terminal.secret_storage_selection = config::CredentialStorageMode::EncryptedConfig;
         terminal.encrypted_secrets = None;
@@ -512,7 +492,6 @@ mod tests {
         terminal.wallet_key_input = sensitive_string("agent-a");
         terminal.hydromancer_api_key = sensitive_string("hydro-a");
         terminal.hyperdash_api_key = sensitive_string("hyper-a");
-        terminal.x_feed.bearer_token = sensitive_string("x-a");
         terminal.secret_storage_mode = config::CredentialStorageMode::EncryptedConfig;
         terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
         terminal.encrypted_secret_password = sensitive_string("correct horse");
@@ -531,7 +510,6 @@ mod tests {
     fn no_legacy_global_secret(
         _hydromancer_api_key: &mut Zeroizing<String>,
         _hyperdash_api_key: &mut Zeroizing<String>,
-        _x_bearer_token: &mut Zeroizing<String>,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -583,19 +561,18 @@ mod tests {
         let keychain_called = Cell::new(false);
         let cleanup_called = Cell::new(false);
         let previous_keychain_payload =
-            config::SecretPayload::from_credentials(&[account("stale", "stale-agent")], "", "", "");
+            config::SecretPayload::from_credentials(&[account("stale", "stale-agent")], "", "");
         let expected_keychain_payload = previous_keychain_payload.clone();
         let restored_keychain_payload = RefCell::new(None);
 
         terminal.apply_os_keychain_storage_selection_with(
             |_| Err("disk full".to_string()),
-            |profiles, hydromancer_key, hyperdash_key, x_token| {
+            |profiles, hydromancer_key, hyperdash_key| {
                 keychain_called.set(true);
                 assert_eq!(profiles.len(), 1);
                 assert_eq!(profiles[0].secret_id, "acct-a");
                 assert_eq!(hydromancer_key, "hydro-a");
                 assert_eq!(hyperdash_key, "hyper-a");
-                assert_eq!(x_token, "x-a");
                 Ok(None)
             },
             || Ok(Some(previous_keychain_payload)),
@@ -643,7 +620,7 @@ mod tests {
 
         terminal.apply_os_keychain_storage_selection_with(
             |_| Err(config::installed_config_save_error_for_test("sync denied")),
-            |_, _, _, _| {
+            |_, _, _| {
                 keychain_called.set(true);
                 Ok(None)
             },
@@ -687,13 +664,12 @@ mod tests {
                 saved_snapshot.replace(Some(snapshot.clone()));
                 Ok(())
             },
-            |profiles, hydromancer_key, hyperdash_key, x_token| {
+            |profiles, hydromancer_key, hyperdash_key| {
                 keychain_called.set(true);
                 assert_eq!(profiles.len(), 1);
                 assert_eq!(profiles[0].secret_id, "acct-a");
                 assert_eq!(hydromancer_key, "hydro-a");
                 assert_eq!(hyperdash_key, "hyper-a");
-                assert_eq!(x_token, "x-a");
                 Ok(None)
             },
             || Ok(None),
@@ -745,7 +721,7 @@ mod tests {
                 save_called.set(true);
                 Ok(())
             },
-            |_, _, _, _| Ok(None),
+            |_, _, _| Ok(None),
             || Ok(None),
             |_| panic!("rollback cleanup should not run after a successful config save"),
         );
@@ -764,7 +740,7 @@ mod tests {
 
         terminal.apply_os_keychain_storage_selection_with(
             |_| Err("disk full".to_string()),
-            |_, _, _, _| Ok(None),
+            |_, _, _| Ok(None),
             || Ok(None),
             |_| Err("access denied".to_string()),
         );
@@ -790,7 +766,7 @@ mod tests {
 
         terminal.apply_os_keychain_storage_selection_with(
             |_| Err("disk full".to_string()),
-            |_, _, _, _| Ok(None),
+            |_, _, _| Ok(None),
             || Err("keychain read failed".to_string()),
             |payload| {
                 cleanup_called.set(true);
@@ -825,7 +801,7 @@ mod tests {
 
         terminal.apply_os_keychain_storage_selection_with(
             |_| Err("disk full".to_string()),
-            |_, _, _, _| Ok(None),
+            |_, _, _| Ok(None),
             || panic!("snapshot should not run while OS keychain is already active"),
             |_| {
                 cleanup_called.set(true);
@@ -982,7 +958,6 @@ mod tests {
         assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
         assert_eq!(snapshot.hydromancer_api_key.as_str(), "");
         assert_eq!(snapshot.hyperdash_api_key.as_str(), "");
-        assert_eq!(snapshot.x_bearer_token.as_str(), "");
         assert!(!snapshots[1].pending_keychain_cleanup_all);
         assert!(terminal.config_save_due_at.is_none());
     }
@@ -1078,7 +1053,6 @@ mod tests {
             &[account("acct-a", "agent-a")],
             "",
             "keychain-hyper",
-            "",
         );
 
         terminal.apply_encrypted_config_storage_selection_with(
@@ -1188,7 +1162,6 @@ mod tests {
             }],
             "",
             "",
-            "",
         );
         let save_called = Cell::new(false);
         let cleanup_called = Cell::new(false);
@@ -1227,7 +1200,6 @@ mod tests {
         let mut terminal = terminal_ready_to_switch_to_encrypted();
         terminal.hydromancer_api_key = sensitive_string("");
         terminal.hyperdash_api_key = sensitive_string("");
-        terminal.x_feed.bearer_token = sensitive_string("");
         let saved_snapshot = RefCell::new(None);
         let cleanup_called = Cell::new(false);
         let loaded_profiles = RefCell::new(Vec::new());
@@ -1242,10 +1214,9 @@ mod tests {
                 Ok(())
             },
             no_keychain_payload,
-            |hydromancer_api_key, hyperdash_api_key, x_bearer_token| {
+            |hydromancer_api_key, hyperdash_api_key| {
                 assert!(hydromancer_api_key.trim().is_empty());
                 *hyperdash_api_key = sensitive_string("legacy-hyper").into_zeroizing();
-                *x_bearer_token = sensitive_string("legacy-x").into_zeroizing();
                 Ok(())
             },
             |profile| {
@@ -1274,7 +1245,6 @@ mod tests {
         .expect("encrypted payload should decrypt");
         assert_eq!(payload.global_hydromancer_api_key(), "legacy-profile-hydro");
         assert_eq!(payload.global_hyperdash_api_key(), "legacy-hyper");
-        assert_eq!(payload.global_x_bearer_token(), "legacy-x");
     }
 
     #[test]
@@ -1318,7 +1288,7 @@ mod tests {
     fn encrypted_storage_switch_overwrites_inactive_locked_blob_from_keychain_mode() {
         let mut terminal = terminal_ready_to_switch_to_encrypted();
         let stale_payload =
-            config::SecretPayload::from_credentials(&[account("stale", "stale-agent")], "", "", "");
+            config::SecretPayload::from_credentials(&[account("stale", "stale-agent")], "", "");
         terminal.encrypted_secrets =
             Some(config::encrypt_secrets(&stale_payload, "old password").expect("encrypt stale"));
         terminal.encrypted_secrets_unlocked = false;

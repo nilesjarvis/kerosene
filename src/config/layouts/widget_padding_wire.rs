@@ -51,7 +51,6 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
             }
             "TrackedTrades" => Ok(known(WidgetPaddingTargetConfig::TrackedTrades)),
             "TelegramFeed" => Ok(known(WidgetPaddingTargetConfig::TelegramFeed)),
-            "XFeed" => Ok(known(WidgetPaddingTargetConfig::XFeed)),
             "Outcomes" => Ok(known(WidgetPaddingTargetConfig::Outcomes)),
             "HypeEtfs" => Ok(known(WidgetPaddingTargetConfig::HypeEtfs)),
             "HypeUnstakingQueue" => Ok(known(WidgetPaddingTargetConfig::HypeUnstakingQueue)),
@@ -136,7 +135,6 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
             | "LiquidationsDistribution"
             | "TrackedTrades"
             | "TelegramFeed"
-            | "XFeed"
             | "Outcomes"
             | "HypeEtfs"
             | "HypeUnstakingQueue" => {

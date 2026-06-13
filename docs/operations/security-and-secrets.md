@@ -69,7 +69,6 @@ Plain config snapshots intentionally write empty secret fields:
 - `agent_key`
 - `hydromancer_api_key`
 - `hyperdash_api_key`
-- `x_bearer_token`
 
 Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys inside the selected secret

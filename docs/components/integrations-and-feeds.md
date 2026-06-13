@@ -14,9 +14,8 @@ streams.
 | Hyperliquid websocket | `src/ws.rs`, `src/ws/manager.rs`, `src/ws/market_streams/`, `src/ws/user_streams/` | Singleton exchange websocket, subscriptions, coalescing, routed market/user streams. |
 | Hydromancer | `src/hydromancer_api.rs`, `src/ws/hydromancer/`, `src/feed_update/connection.rs` | Funding history, authenticated liquidation/tracked-trade feeds, optional read-data provider. |
 | HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
-| Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, X feed, aggregation, alerts, rendering. |
+| Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, aggregation, alerts, rendering. |
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
-| X | `src/x_feed.rs`, `src/x_feed_stream.rs` | Recent posts and optional filtered stream. |
 | Calendar and screener | `src/calendar_*`, `src/screener_*` | Economic calendar, market screener contexts/history. |
 
 ## Hyperliquid REST
@@ -180,26 +179,6 @@ Fast-feed subscriptions require:
 Credentials used during login should not be persisted as plaintext input
 buffers.
 
-## X Feed
-
-X integration supports:
-
-- recent post fetches
-- optional stream mode
-- handle/source configuration
-- bearer token storage
-- alerts/notifications
-
-The bearer token is secret-bearing and should be normalized, stored through
-secret storage, and zeroized when replaced.
-
-X stream subscriptions should only run when:
-
-- pane is open
-- streaming is enabled
-- token is configured
-- source list is non-empty
-
 ## Calendar
 
 Calendar state covers economic events, impact/window filters, loading/error
@@ -259,7 +238,7 @@ Use focused tests in:
 - `src/hyperdash_api/**/tests.rs`
 - `src/hyperdash_update/**/tests.rs`
 - `src/feed_update/liquidations/tests.rs`
-- Telegram/X tests in `src/feed_update/`, `src/telegram_*`, and `src/x_feed*`
+- Telegram tests in `src/feed_update/` and `src/telegram_*`
 - `src/screener_*` tests
 - `src/calendar_*` tests
 
