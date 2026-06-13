@@ -1,100 +1,1382 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 // ---------------------------------------------------------------------------
 // Secret Storage Selection
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(crate) fn clear_keychain_credentials_best_effort(&mut self) {
-        let accounts = self.persisted_accounts_snapshot();
-        if let Err(error) = config::clear_all_keychain_secrets(&accounts) {
+    fn clear_keychain_credentials_best_effort_with(
+        &mut self,
+        clear_keychain_secrets: impl FnOnce(&[config::AccountProfile]) -> Result<(), String>,
+    ) -> bool {
+        let accounts = self.keychain_cleanup_profiles_snapshot();
+        if let Err(error) = clear_keychain_secrets(&accounts) {
             self.secret_store_status = Some((
-                format!("Encrypted credentials saved; OS keychain cleanup skipped: {error}"),
+                format!(
+                    "Encrypted credentials saved; OS keychain cleanup failed and will retry on next startup: {error}"
+                ),
                 true,
             ));
+            false
+        } else {
+            true
         }
+    }
+
+    pub(crate) fn keychain_cleanup_profiles_snapshot(&self) -> Vec<config::AccountProfile> {
+        let mut accounts = self.persisted_accounts_snapshot();
+        for secret_id in &self.pending_keychain_profile_deletions {
+            let secret_id = secret_id.trim();
+            if secret_id.is_empty()
+                || self.ghost_account_secret_ids.contains(secret_id)
+                || accounts
+                    .iter()
+                    .any(|profile| profile.secret_id == secret_id)
+            {
+                continue;
+            }
+            accounts.push(config::AccountProfile {
+                secret_id: secret_id.to_string(),
+                name: String::new(),
+                wallet_address: String::new(),
+                agent_key: String::new().into(),
+                hydromancer_api_key: String::new().into(),
+            });
+        }
+        accounts
     }
 
     pub(crate) fn apply_secret_storage_selection(&mut self) {
         match self.secret_storage_selection {
-            config::CredentialStorageMode::OsKeychain => {
-                if self.secret_storage_mode == config::CredentialStorageMode::EncryptedConfig
-                    && !self.encrypted_secrets_unlocked
-                {
-                    self.secret_store_status = Some((
-                        "Unlock encrypted credentials before moving them to the OS keychain"
-                            .to_string(),
-                        true,
-                    ));
-                    return;
-                }
+            config::CredentialStorageMode::OsKeychain => self
+                .apply_os_keychain_storage_selection_with(
+                    config::save_config,
+                    config::store_keychain_secrets,
+                    config::load_keychain_secret_payload,
+                    |payload| match payload {
+                        Some(payload) => config::store_secret_payload(payload),
+                        None => config::clear_keychain_secret_payload(),
+                    },
+                ),
+            config::CredentialStorageMode::EncryptedConfig => {
+                self.apply_encrypted_config_storage_selection_with(
+                    config::save_config,
+                    config::clear_all_keychain_secrets,
+                    config::load_keychain_secret_payload,
+                    config::load_legacy_global_secrets,
+                    config::load_legacy_profile_secrets,
+                );
+            }
+        }
+    }
 
-                let accounts = self.persisted_accounts_snapshot();
-                match config::store_keychain_secrets(
-                    &accounts,
-                    &self.hydromancer_api_key,
-                    &self.hyperdash_api_key,
-                    &self.x_feed.bearer_token,
-                ) {
-                    Ok(cleanup_warning) => {
-                        self.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
-                        self.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
-                        self.encrypted_secrets = None;
-                        self.encrypted_secret_password.zeroize();
-                        self.encrypted_secret_confirm.zeroize();
-                        self.encrypted_secrets_unlocked = false;
-                        self.secret_store_status = if let Some(cleanup_warning) = cleanup_warning {
-                            Some((
-                                format!(
-                                    "Credentials saved to OS keychain; legacy cleanup skipped: {cleanup_warning}"
-                                ),
-                                true,
-                            ))
-                        } else {
-                            Some(("Credentials saved to OS keychain".to_string(), false))
-                        };
-                        self.persist_config();
-                    }
-                    Err(error) => {
-                        self.secret_storage_selection = self.secret_storage_mode;
-                        self.secret_store_status = Some((
-                            format!(
-                                "OS keychain credential save failed: {error}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage."
-                            ),
-                            true,
+    fn apply_os_keychain_storage_selection_with(
+        &mut self,
+        save_config: impl FnMut(&config::KeroseneConfig) -> Result<(), String>,
+        store_keychain_secrets: impl FnOnce(
+            &[config::AccountProfile],
+            &str,
+            &str,
+            &str,
+        ) -> Result<Option<String>, String>,
+        load_keychain_secret_payload: impl FnOnce() -> Result<Option<config::SecretPayload>, String>,
+        rollback_keychain_secret_payload: impl FnOnce(
+            Option<&config::SecretPayload>,
+        ) -> Result<(), String>,
+    ) {
+        if self.secret_storage_mode == config::CredentialStorageMode::EncryptedConfig
+            && !self.encrypted_secrets_unlocked
+        {
+            self.secret_store_status = Some((
+                "Unlock encrypted credentials before moving them to the OS keychain".to_string(),
+                true,
+            ));
+            return;
+        }
+
+        let previous_mode = self.secret_storage_mode;
+        let previous_keychain_payload = (previous_mode
+            == config::CredentialStorageMode::EncryptedConfig)
+            .then(load_keychain_secret_payload);
+        let accounts = self.persisted_accounts_snapshot();
+        let cleanup_warning = match store_keychain_secrets(
+            &accounts,
+            &self.hydromancer_api_key,
+            &self.hyperdash_api_key,
+            &self.x_feed.bearer_token,
+        ) {
+            Ok(cleanup_warning) => cleanup_warning,
+            Err(error) => {
+                self.secret_storage_selection = self.secret_storage_mode;
+                self.secret_store_status = Some((
+                    format!(
+                        "OS keychain credential save failed: {error}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage."
+                    ),
+                    true,
+                ));
+                return;
+            }
+        };
+
+        let previous_encrypted_secrets = self.encrypted_secrets.clone();
+        let previous_unlocked = self.encrypted_secrets_unlocked;
+        let previous_save_block = self.secret_migration_save_blocked;
+        let previous_pending_cleanup_all = self.pending_keychain_cleanup_all;
+
+        self.secret_migration_save_blocked = false;
+        self.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        self.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        self.pending_keychain_cleanup_all = false;
+        self.encrypted_secrets = None;
+        self.encrypted_secrets_unlocked = false;
+
+        if let Err(error) = self.persist_config_immediately_with(save_config) {
+            if config::config_save_installed_snapshot(&error) {
+                self.encrypted_secret_password.zeroize();
+                self.encrypted_secret_confirm.zeroize();
+                self.secret_store_status = Some((
+                    Self::committed_config_save_warning("Credentials saved to OS keychain", &error),
+                    true,
+                ));
+                return;
+            }
+            let mut rollback_warnings = Vec::new();
+            if previous_mode == config::CredentialStorageMode::EncryptedConfig {
+                let restore_payload = match previous_keychain_payload {
+                    Some(Ok(payload)) => payload,
+                    Some(Err(error)) => {
+                        rollback_warnings.push(format!(
+                            "prior OS keychain payload snapshot failed: {error}"
                         ));
+                        None
                     }
+                    None => None,
+                };
+                if let Err(error) = rollback_keychain_secret_payload(restore_payload.as_ref()) {
+                    rollback_warnings.push(format!(
+                        "stale OS keychain rollback cleanup failed: {error}"
+                    ));
                 }
             }
-            config::CredentialStorageMode::EncryptedConfig => {
-                if !self.encrypted_password_is_ready() {
-                    return;
-                }
-                let confirm_required = self.secret_storage_mode
-                    != config::CredentialStorageMode::EncryptedConfig
-                    || self.encrypted_secrets.is_none()
-                    || !self.encrypted_secret_confirm.is_empty();
-                if confirm_required
-                    && self.encrypted_secret_password != self.encrypted_secret_confirm
-                {
+            self.secret_storage_mode = previous_mode;
+            self.secret_storage_selection = previous_mode;
+            self.encrypted_secrets = previous_encrypted_secrets;
+            self.encrypted_secrets_unlocked = previous_unlocked;
+            self.secret_migration_save_blocked = previous_save_block;
+            self.pending_keychain_cleanup_all = previous_pending_cleanup_all;
+            let active_storage = match previous_mode {
+                config::CredentialStorageMode::EncryptedConfig => "encrypted config",
+                config::CredentialStorageMode::OsKeychain => "OS keychain",
+            };
+            let mut status = format!(
+                "OS keychain credential config save failed: {error}; {active_storage} credentials remain active"
+            );
+            for warning in rollback_warnings {
+                status.push_str("; ");
+                status.push_str(&warning);
+            }
+            self.secret_store_status = Some((status, true));
+            return;
+        }
+
+        self.encrypted_secret_password.zeroize();
+        self.encrypted_secret_confirm.zeroize();
+        self.secret_store_status = if let Some(cleanup_warning) = cleanup_warning {
+            Some((
+                format!(
+                    "Credentials saved to OS keychain; legacy cleanup skipped: {cleanup_warning}"
+                ),
+                true,
+            ))
+        } else {
+            Some(("Credentials saved to OS keychain".to_string(), false))
+        };
+    }
+
+    fn apply_encrypted_config_storage_selection_with(
+        &mut self,
+        mut save_config: impl FnMut(&config::KeroseneConfig) -> Result<(), String>,
+        clear_keychain_secrets: impl FnOnce(&[config::AccountProfile]) -> Result<(), String>,
+        load_keychain_secret_payload: impl FnMut() -> Result<Option<config::SecretPayload>, String>,
+        load_global_secrets: impl FnMut(
+            &mut Zeroizing<String>,
+            &mut Zeroizing<String>,
+            &mut Zeroizing<String>,
+        ) -> Result<(), String>,
+        load_profile_secrets: impl FnMut(&mut config::AccountProfile) -> Result<(), String>,
+    ) {
+        if !self.encrypted_password_is_ready() {
+            return;
+        }
+        let confirm_required = self.secret_storage_mode
+            != config::CredentialStorageMode::EncryptedConfig
+            || self.encrypted_secrets.is_none()
+            || !self.encrypted_secret_confirm.is_empty();
+        if confirm_required && self.encrypted_secret_password != self.encrypted_secret_confirm {
+            self.secret_store_status = Some((
+                "Encrypted credential passwords do not match".to_string(),
+                true,
+            ));
+            return;
+        }
+
+        let previous_mode = self.secret_storage_mode;
+        let previous_encrypted_secrets = self.encrypted_secrets.clone();
+        let previous_unlocked = self.encrypted_secrets_unlocked;
+        let previous_save_block = self.secret_migration_save_blocked;
+        let previous_pending_cleanup_all = self.pending_keychain_cleanup_all;
+        let payload = match self.encrypted_storage_selection_payload(
+            load_keychain_secret_payload,
+            load_global_secrets,
+            load_profile_secrets,
+        ) {
+            Ok(payload) => payload,
+            Err(error) => {
+                self.secret_storage_selection = self.secret_storage_mode;
+                self.secret_store_status = Some((
+                    format!(
+                        "Encrypted credential migration failed: {error}; OS keychain credentials were left unchanged"
+                    ),
+                    true,
+                ));
+                return;
+            }
+        };
+        let Some(encrypted) = self.encrypted_secret_blob_for_payload(&payload) else {
+            return;
+        };
+
+        self.store_encrypted_secret_blob(encrypted, "Credentials saved to encrypted config");
+        {
+            self.secret_storage_mode = config::CredentialStorageMode::EncryptedConfig;
+            self.secret_storage_selection = config::CredentialStorageMode::EncryptedConfig;
+            self.pending_keychain_cleanup_all =
+                previous_mode == config::CredentialStorageMode::OsKeychain;
+            self.encrypted_secret_confirm.zeroize();
+
+            self.secret_migration_save_blocked = false;
+            if let Err(error) = self.persist_config_immediately_with(&mut save_config) {
+                if config::config_save_installed_snapshot(&error) {
                     self.secret_store_status = Some((
-                        "Encrypted credential passwords do not match".to_string(),
+                        Self::committed_config_save_warning(
+                            "Credentials saved to encrypted config; OS keychain cleanup was deferred",
+                            &error,
+                        ),
                         true,
                     ));
                     return;
                 }
+                self.secret_storage_mode = previous_mode;
+                self.secret_storage_selection = previous_mode;
+                self.encrypted_secrets = previous_encrypted_secrets;
+                self.encrypted_secrets_unlocked = previous_unlocked;
+                self.secret_migration_save_blocked = previous_save_block;
+                self.pending_keychain_cleanup_all = previous_pending_cleanup_all;
+                self.secret_store_status = Some((
+                    format!(
+                        "Encrypted credential config save failed: {error}; OS keychain credentials were left unchanged"
+                    ),
+                    true,
+                ));
+                return;
+            }
 
-                if self.persist_encrypted_credentials_blob("Credentials saved to encrypted config")
-                {
-                    self.secret_storage_mode = config::CredentialStorageMode::EncryptedConfig;
-                    self.secret_storage_selection = config::CredentialStorageMode::EncryptedConfig;
-                    self.encrypted_secret_confirm.zeroize();
-                    self.persist_config();
-                    self.clear_keychain_credentials_best_effort();
+            self.secret_migration_save_blocked = false;
+            if previous_mode == config::CredentialStorageMode::OsKeychain
+                && self.clear_keychain_credentials_best_effort_with(clear_keychain_secrets)
+            {
+                self.pending_keychain_cleanup_all = false;
+                self.pending_keychain_profile_deletions.clear();
+                if let Err(error) = self.persist_config_immediately_with(&mut save_config) {
+                    self.secret_store_status = Some((
+                        format!(
+                            "Encrypted credentials saved, but keychain cleanup state save failed: {error}"
+                        ),
+                        true,
+                    ));
                 }
             }
         }
+    }
+
+    fn encrypted_storage_selection_payload(
+        &self,
+        mut load_keychain_secret_payload: impl FnMut() -> Result<Option<config::SecretPayload>, String>,
+        mut load_global_secrets: impl FnMut(
+            &mut Zeroizing<String>,
+            &mut Zeroizing<String>,
+            &mut Zeroizing<String>,
+        ) -> Result<(), String>,
+        mut load_profile_secrets: impl FnMut(&mut config::AccountProfile) -> Result<(), String>,
+    ) -> Result<config::SecretPayload, String> {
+        let mut accounts = self.persisted_accounts_snapshot();
+        let mut payload = self.current_secret_payload();
+
+        if self.secret_storage_mode != config::CredentialStorageMode::OsKeychain {
+            return Ok(payload);
+        }
+
+        let keychain_payload = load_keychain_secret_payload()
+            .map_err(|_| "OS keychain credentials could not be read".to_string())?;
+        if let Some(keychain_payload) = keychain_payload.as_ref() {
+            merge_missing_keychain_payload_secrets(&mut payload, keychain_payload, &accounts);
+        }
+
+        let mut hydromancer_api_key =
+            Zeroizing::new(payload.global_hydromancer_api_key().to_string());
+        let mut hyperdash_api_key = Zeroizing::new(payload.global_hyperdash_api_key().to_string());
+        let mut x_bearer_token = Zeroizing::new(payload.global_x_bearer_token().to_string());
+        load_global_secrets(
+            &mut hydromancer_api_key,
+            &mut hyperdash_api_key,
+            &mut x_bearer_token,
+        )
+        .map_err(|_| "OS keychain shared credentials could not be read".to_string())?;
+        merge_missing_legacy_global_secrets(
+            &mut payload,
+            hydromancer_api_key.as_str(),
+            hyperdash_api_key.as_str(),
+            x_bearer_token.as_str(),
+        );
+
+        for account in &mut accounts {
+            let secret_id = account.secret_id.trim().to_string();
+            let wallet_address = account.wallet_address.clone();
+            if secret_id.is_empty() {
+                continue;
+            }
+
+            let missing_agent_key = payload
+                .profile_agent_key_for_wallet(&secret_id, &wallet_address)
+                .is_none();
+            if missing_agent_key
+                && keychain_payload.as_ref().is_some_and(|payload| {
+                    payload.profile_agent_key_binding_mismatches(&secret_id, &wallet_address)
+                })
+            {
+                return Err(
+                    "An OS keychain account key is bound to a different wallet address; re-enter and save that account key before switching storage"
+                        .to_string(),
+                );
+            }
+
+            load_profile_secrets(account)
+                .map_err(|_| "OS keychain profile credentials could not be read".to_string())?;
+            if missing_agent_key && !account.agent_key.trim().is_empty() {
+                payload.upsert_profile_agent_key_for_wallet(
+                    &secret_id,
+                    Some(&wallet_address),
+                    &account.agent_key,
+                );
+            }
+            merge_legacy_profile_hydromancer_key(&mut payload, account)?;
+        }
+
+        Ok(payload)
+    }
+}
+
+fn merge_missing_legacy_global_secrets(
+    payload: &mut config::SecretPayload,
+    hydromancer_api_key: &str,
+    hyperdash_api_key: &str,
+    x_bearer_token: &str,
+) {
+    if payload.global_hydromancer_api_key().trim().is_empty()
+        && !hydromancer_api_key.trim().is_empty()
+    {
+        payload.set_global_hydromancer_api_key(hydromancer_api_key);
+    }
+    if payload.global_hyperdash_api_key().trim().is_empty() && !hyperdash_api_key.trim().is_empty()
+    {
+        payload.set_global_hyperdash_api_key(hyperdash_api_key);
+    }
+    if payload.global_x_bearer_token().trim().is_empty() && !x_bearer_token.trim().is_empty() {
+        payload.set_global_x_bearer_token(x_bearer_token);
+    }
+}
+
+fn merge_legacy_profile_hydromancer_key(
+    payload: &mut config::SecretPayload,
+    account: &config::AccountProfile,
+) -> Result<(), String> {
+    let profile_hydromancer_key = account.hydromancer_api_key.trim();
+    if profile_hydromancer_key.is_empty() {
+        return Ok(());
+    }
+
+    let global_hydromancer_key = payload.global_hydromancer_api_key().trim();
+    if global_hydromancer_key.is_empty() {
+        payload.set_global_hydromancer_api_key(profile_hydromancer_key);
+        Ok(())
+    } else if global_hydromancer_key == profile_hydromancer_key {
+        Ok(())
+    } else {
+        Err(
+            "Multiple legacy Hydromancer API keys were found; choose and save the intended key before switching storage"
+                .to_string(),
+        )
+    }
+}
+
+fn merge_missing_keychain_payload_secrets(
+    payload: &mut config::SecretPayload,
+    keychain_payload: &config::SecretPayload,
+    accounts: &[config::AccountProfile],
+) {
+    for account in accounts {
+        let secret_id = account.secret_id.trim();
+        if secret_id.is_empty()
+            || payload
+                .profile_agent_key_for_wallet(secret_id, &account.wallet_address)
+                .is_some()
+        {
+            continue;
+        }
+
+        if let Some(agent_key) =
+            keychain_payload.profile_agent_key_for_wallet(secret_id, &account.wallet_address)
+        {
+            payload.upsert_profile_agent_key_for_wallet(
+                secret_id,
+                Some(&account.wallet_address),
+                agent_key,
+            );
+        }
+    }
+
+    if payload.global_hydromancer_api_key().trim().is_empty()
+        && !keychain_payload
+            .global_hydromancer_api_key()
+            .trim()
+            .is_empty()
+    {
+        payload.set_global_hydromancer_api_key(keychain_payload.global_hydromancer_api_key());
+    }
+    if payload.global_hyperdash_api_key().trim().is_empty()
+        && !keychain_payload
+            .global_hyperdash_api_key()
+            .trim()
+            .is_empty()
+    {
+        payload.set_global_hyperdash_api_key(keychain_payload.global_hyperdash_api_key());
+    }
+    if payload.global_x_bearer_token().trim().is_empty()
+        && !keychain_payload.global_x_bearer_token().trim().is_empty()
+    {
+        payload.set_global_x_bearer_token(keychain_payload.global_x_bearer_token());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app_state::sensitive_string;
+    use std::cell::{Cell, RefCell};
+
+    fn account(secret_id: &str, agent_key: &str) -> config::AccountProfile {
+        config::AccountProfile {
+            secret_id: secret_id.to_string(),
+            name: secret_id.to_string(),
+            wallet_address: "0x0000000000000000000000000000000000000001".to_string(),
+            agent_key: sensitive_string(agent_key).into_zeroizing(),
+            hydromancer_api_key: sensitive_string("").into_zeroizing(),
+        }
+    }
+
+    fn terminal_ready_to_switch_to_encrypted() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.accounts = vec![account("acct-a", "agent-a")];
+        terminal.active_account_index = 0;
+        terminal.last_persisted_active_account_secret_id = Some("acct-a".to_string());
+        terminal.wallet_key_input = sensitive_string("agent-a");
+        terminal.hydromancer_api_key = sensitive_string("hydro-a");
+        terminal.hyperdash_api_key = sensitive_string("hyper-a");
+        terminal.x_feed.bearer_token = sensitive_string("x-a");
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::EncryptedConfig;
+        terminal.encrypted_secrets = None;
+        terminal.encrypted_secrets_unlocked = false;
+        terminal.encrypted_secret_password = sensitive_string("correct horse");
+        terminal.encrypted_secret_confirm = sensitive_string("correct horse");
+        terminal
+    }
+
+    fn terminal_ready_to_switch_to_os_keychain() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.accounts = vec![account("acct-a", "agent-a")];
+        terminal.active_account_index = 0;
+        terminal.last_persisted_active_account_secret_id = Some("acct-a".to_string());
+        terminal.wallet_key_input = sensitive_string("agent-a");
+        terminal.hydromancer_api_key = sensitive_string("hydro-a");
+        terminal.hyperdash_api_key = sensitive_string("hyper-a");
+        terminal.x_feed.bearer_token = sensitive_string("x-a");
+        terminal.secret_storage_mode = config::CredentialStorageMode::EncryptedConfig;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        terminal.encrypted_secret_password = sensitive_string("correct horse");
+        terminal.encrypted_secret_confirm = sensitive_string("correct horse");
+        let payload = terminal.current_secret_payload();
+        terminal.encrypted_secrets =
+            Some(config::encrypt_secrets(&payload, "correct horse").expect("encrypt fixture"));
+        terminal.encrypted_secrets_unlocked = true;
+        terminal
+    }
+
+    fn no_keychain_payload() -> Result<Option<config::SecretPayload>, String> {
+        Ok(None)
+    }
+
+    fn no_legacy_global_secret(
+        _hydromancer_api_key: &mut Zeroizing<String>,
+        _hyperdash_api_key: &mut Zeroizing<String>,
+        _x_bearer_token: &mut Zeroizing<String>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn no_legacy_profile_secret(_profile: &mut config::AccountProfile) -> Result<(), String> {
+        Ok(())
+    }
+
+    #[test]
+    fn keychain_cleanup_profiles_snapshot_includes_pending_deleted_profiles_once() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.accounts.push(account("acct-b", "agent-b"));
+        terminal.accounts.push(account("ghost-acct", "ghost-agent"));
+        terminal
+            .ghost_account_secret_ids
+            .insert("ghost-acct".to_string());
+        terminal.pending_keychain_profile_deletions = vec![
+            " ".to_string(),
+            "acct-a".to_string(),
+            "acct-deleted".to_string(),
+            " acct-deleted ".to_string(),
+            "ghost-acct".to_string(),
+        ];
+
+        let profiles = terminal.keychain_cleanup_profiles_snapshot();
+
+        assert_eq!(
+            profiles
+                .iter()
+                .map(|profile| profile.secret_id.as_str())
+                .collect::<Vec<_>>(),
+            ["acct-a", "acct-b", "acct-deleted"]
+        );
+        let synthetic_profile = profiles
+            .iter()
+            .find(|profile| profile.secret_id == "acct-deleted")
+            .expect("pending deleted profile should be included for cleanup");
+        assert!(synthetic_profile.name.is_empty());
+        assert!(synthetic_profile.wallet_address.is_empty());
+        assert!(synthetic_profile.agent_key.is_empty());
+        assert!(synthetic_profile.hydromancer_api_key.is_empty());
+    }
+
+    #[test]
+    fn os_keychain_storage_switch_save_failure_keeps_encrypted_config_active() {
+        let mut terminal = terminal_ready_to_switch_to_os_keychain();
+        terminal.secret_migration_save_blocked = true;
+        let original_encrypted = terminal.encrypted_secrets.clone();
+        let keychain_called = Cell::new(false);
+        let cleanup_called = Cell::new(false);
+        let previous_keychain_payload =
+            config::SecretPayload::from_credentials(&[account("stale", "stale-agent")], "", "", "");
+        let expected_keychain_payload = previous_keychain_payload.clone();
+        let restored_keychain_payload = RefCell::new(None);
+
+        terminal.apply_os_keychain_storage_selection_with(
+            |_| Err("disk full".to_string()),
+            |profiles, hydromancer_key, hyperdash_key, x_token| {
+                keychain_called.set(true);
+                assert_eq!(profiles.len(), 1);
+                assert_eq!(profiles[0].secret_id, "acct-a");
+                assert_eq!(hydromancer_key, "hydro-a");
+                assert_eq!(hyperdash_key, "hyper-a");
+                assert_eq!(x_token, "x-a");
+                Ok(None)
+            },
+            || Ok(Some(previous_keychain_payload)),
+            |payload| {
+                cleanup_called.set(true);
+                restored_keychain_payload.replace(payload.cloned());
+                Ok(())
+            },
+        );
+
+        assert!(keychain_called.get());
+        assert!(cleanup_called.get());
+        assert_eq!(
+            *restored_keychain_payload.borrow(),
+            Some(expected_keychain_payload)
+        );
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        assert_eq!(
+            terminal.secret_storage_selection,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        assert_eq!(terminal.encrypted_secrets, original_encrypted);
+        assert!(terminal.encrypted_secrets_unlocked);
+        assert_eq!(terminal.encrypted_secret_password.as_str(), "correct horse");
+        assert!(terminal.secret_migration_save_blocked);
+        assert!(terminal.config_save_due_at.is_none());
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("disk full"));
+        assert!(status.contains("encrypted config credentials remain active"));
+        assert!(!status.contains("Credentials saved to OS keychain"));
+    }
+
+    #[test]
+    fn os_keychain_storage_switch_post_commit_warning_keeps_os_keychain_active() {
+        let mut terminal = terminal_ready_to_switch_to_os_keychain();
+        let keychain_called = Cell::new(false);
+        let rollback_called = Cell::new(false);
+
+        terminal.apply_os_keychain_storage_selection_with(
+            |_| Err(config::installed_config_save_error_for_test("sync denied")),
+            |_, _, _, _| {
+                keychain_called.set(true);
+                Ok(None)
+            },
+            || Ok(None),
+            |_| {
+                rollback_called.set(true);
+                Ok(())
+            },
+        );
+
+        assert!(keychain_called.get());
+        assert!(!rollback_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert_eq!(
+            terminal.secret_storage_selection,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert!(terminal.encrypted_secrets.is_none());
+        assert!(!terminal.encrypted_secrets_unlocked);
+        assert!(!terminal.secret_migration_save_blocked);
+        assert!(terminal.encrypted_secret_password.is_empty());
+        assert!(terminal.config_save_due_at.is_none());
+        let (status, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(status.contains("Credentials saved to OS keychain"));
+        assert!(status.contains("config durability could not be fully verified"));
+        assert!(!status.contains("remain active"));
+    }
+
+    #[test]
+    fn os_keychain_storage_switch_saves_snapshot_before_reporting_success() {
+        let mut terminal = terminal_ready_to_switch_to_os_keychain();
+        let saved_snapshot = RefCell::new(None);
+        let keychain_called = Cell::new(false);
+
+        terminal.apply_os_keychain_storage_selection_with(
+            |snapshot| {
+                saved_snapshot.replace(Some(snapshot.clone()));
+                Ok(())
+            },
+            |profiles, hydromancer_key, hyperdash_key, x_token| {
+                keychain_called.set(true);
+                assert_eq!(profiles.len(), 1);
+                assert_eq!(profiles[0].secret_id, "acct-a");
+                assert_eq!(hydromancer_key, "hydro-a");
+                assert_eq!(hyperdash_key, "hyper-a");
+                assert_eq!(x_token, "x-a");
+                Ok(None)
+            },
+            || Ok(None),
+            |_| panic!("rollback cleanup should not run after a successful config save"),
+        );
+
+        assert!(keychain_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert_eq!(
+            terminal.secret_storage_selection,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert!(terminal.encrypted_secrets.is_none());
+        assert!(!terminal.encrypted_secrets_unlocked);
+        assert!(terminal.encrypted_secret_password.is_empty());
+        assert!(terminal.encrypted_secret_confirm.is_empty());
+        assert!(terminal.config_save_due_at.is_none());
+        assert_eq!(
+            terminal.secret_store_status,
+            Some(("Credentials saved to OS keychain".to_string(), false))
+        );
+
+        let snapshot = saved_snapshot
+            .borrow()
+            .clone()
+            .expect("OS keychain snapshot should be saved before success");
+        assert_eq!(
+            snapshot.credential_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert!(snapshot.encrypted_secrets.is_none());
+        assert_eq!(snapshot.accounts.len(), 1);
+        assert_eq!(snapshot.accounts[0].secret_id, "acct-a");
+        assert!(snapshot.accounts[0].agent_key.is_empty());
+        assert!(snapshot.accounts[0].hydromancer_api_key.is_empty());
+    }
+
+    #[test]
+    fn os_keychain_storage_switch_can_recover_from_secret_migration_save_block() {
+        let mut terminal = terminal_ready_to_switch_to_os_keychain();
+        terminal.secret_migration_save_blocked = true;
+        let save_called = Cell::new(false);
+
+        terminal.apply_os_keychain_storage_selection_with(
+            |_| {
+                save_called.set(true);
+                Ok(())
+            },
+            |_, _, _, _| Ok(None),
+            || Ok(None),
+            |_| panic!("rollback cleanup should not run after a successful config save"),
+        );
+
+        assert!(save_called.get());
+        assert!(!terminal.secret_migration_save_blocked);
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+    }
+
+    #[test]
+    fn os_keychain_storage_switch_save_failure_reports_rollback_cleanup_failure() {
+        let mut terminal = terminal_ready_to_switch_to_os_keychain();
+
+        terminal.apply_os_keychain_storage_selection_with(
+            |_| Err("disk full".to_string()),
+            |_, _, _, _| Ok(None),
+            || Ok(None),
+            |_| Err("access denied".to_string()),
+        );
+
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("disk full"));
+        assert!(status.contains("encrypted config credentials remain active"));
+        assert!(status.contains("stale OS keychain rollback cleanup failed: access denied"));
+    }
+
+    #[test]
+    fn os_keychain_storage_switch_save_failure_reports_snapshot_failure() {
+        let mut terminal = terminal_ready_to_switch_to_os_keychain();
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_os_keychain_storage_selection_with(
+            |_| Err("disk full".to_string()),
+            |_, _, _, _| Ok(None),
+            || Err("keychain read failed".to_string()),
+            |payload| {
+                cleanup_called.set(true);
+                assert!(payload.is_none());
+                Ok(())
+            },
+        );
+
+        assert!(cleanup_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("disk full"));
+        assert!(status.contains("prior OS keychain payload snapshot failed: keychain read failed"));
+        assert!(!status.contains("rollback cleanup failed"));
+    }
+
+    #[test]
+    fn os_keychain_storage_save_failure_keeps_active_keychain_payload() {
+        let mut terminal = terminal_ready_to_switch_to_os_keychain();
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        terminal.encrypted_secrets = None;
+        terminal.encrypted_secrets_unlocked = false;
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_os_keychain_storage_selection_with(
+            |_| Err("disk full".to_string()),
+            |_, _, _, _| Ok(None),
+            || panic!("snapshot should not run while OS keychain is already active"),
+            |_| {
+                cleanup_called.set(true);
+                Ok(())
+            },
+        );
+
+        assert!(!cleanup_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("disk full"));
+        assert!(status.contains("OS keychain credentials remain active"));
+        assert!(!status.contains("encrypted config credentials remain active"));
+        assert!(!status.contains("rollback cleanup failed"));
+    }
+
+    #[test]
+    fn encrypted_storage_switch_save_failure_keeps_keychain_and_rolls_back_mode() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |_| Err("disk full".to_string()),
+            |_| {
+                cleanup_called.set(true);
+                Ok(())
+            },
+            no_keychain_payload,
+            no_legacy_global_secret,
+            no_legacy_profile_secret,
+        );
+
+        assert!(!cleanup_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert_eq!(
+            terminal.secret_storage_selection,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert!(terminal.encrypted_secrets.is_none());
+        assert!(!terminal.encrypted_secrets_unlocked);
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("disk full"));
+        assert!(status.contains("left unchanged"));
+    }
+
+    #[test]
+    fn encrypted_storage_switch_post_commit_warning_keeps_encrypted_mode_without_cleanup() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |_| Err(config::installed_config_save_error_for_test("sync denied")),
+            |_| {
+                cleanup_called.set(true);
+                Ok(())
+            },
+            no_keychain_payload,
+            no_legacy_global_secret,
+            no_legacy_profile_secret,
+        );
+
+        assert!(!cleanup_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        assert_eq!(
+            terminal.secret_storage_selection,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        assert!(terminal.encrypted_secrets.is_some());
+        assert!(terminal.encrypted_secrets_unlocked);
+        assert!(terminal.pending_keychain_cleanup_all);
+        assert!(!terminal.secret_migration_save_blocked);
+        assert!(terminal.config_save_due_at.is_none());
+        let (status, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(status.contains("Credentials saved to encrypted config"));
+        assert!(status.contains("OS keychain cleanup was deferred"));
+        assert!(status.contains("config durability could not be fully verified"));
+        assert!(!status.contains("left unchanged"));
+    }
+
+    #[test]
+    fn encrypted_storage_switch_saves_encrypted_snapshot_before_keychain_cleanup() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        let saved_snapshots = RefCell::new(Vec::new());
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |snapshot| {
+                saved_snapshots.borrow_mut().push(snapshot.clone());
+                Ok(())
+            },
+            |profiles| {
+                let snapshots = saved_snapshots.borrow();
+                assert_eq!(snapshots.len(), 1);
+                assert!(snapshots[0].pending_keychain_cleanup_all);
+                cleanup_called.set(true);
+                assert_eq!(profiles.len(), 1);
+                assert_eq!(profiles[0].secret_id, "acct-a");
+                Ok(())
+            },
+            no_keychain_payload,
+            no_legacy_global_secret,
+            no_legacy_profile_secret,
+        );
+
+        assert!(cleanup_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        assert_eq!(
+            terminal.secret_storage_selection,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        assert!(!terminal.pending_keychain_cleanup_all);
+        let snapshots = saved_snapshots.borrow();
+        assert_eq!(snapshots.len(), 2);
+        let snapshot = &snapshots[0];
+        assert_eq!(
+            snapshot.credential_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        assert!(snapshot.pending_keychain_cleanup_all);
+        assert!(snapshot.encrypted_secrets.is_some());
+        assert_eq!(snapshot.accounts.len(), 1);
+        assert_eq!(snapshot.accounts[0].secret_id, "acct-a");
+        assert!(snapshot.accounts[0].agent_key.is_empty());
+        assert!(snapshot.accounts[0].hydromancer_api_key.is_empty());
+        let payload = config::decrypt_secrets(
+            snapshot
+                .encrypted_secrets
+                .as_ref()
+                .expect("encrypted payload should be saved"),
+            "correct horse",
+        )
+        .expect("encrypted payload should decrypt");
+        assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
+        assert_eq!(snapshot.hydromancer_api_key.as_str(), "");
+        assert_eq!(snapshot.hyperdash_api_key.as_str(), "");
+        assert_eq!(snapshot.x_bearer_token.as_str(), "");
+        assert!(!snapshots[1].pending_keychain_cleanup_all);
+        assert!(terminal.config_save_due_at.is_none());
+    }
+
+    #[test]
+    fn encrypted_storage_switch_cleanup_failure_keeps_full_keychain_retry_intent() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        let saved_snapshots = RefCell::new(Vec::new());
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |snapshot| {
+                saved_snapshots.borrow_mut().push(snapshot.clone());
+                Ok(())
+            },
+            |_| Err("keychain denied".to_string()),
+            no_keychain_payload,
+            no_legacy_global_secret,
+            no_legacy_profile_secret,
+        );
+
+        assert!(terminal.pending_keychain_cleanup_all);
+        let saved_snapshots = saved_snapshots.borrow();
+        assert_eq!(saved_snapshots.len(), 1);
+        assert!(saved_snapshots[0].pending_keychain_cleanup_all);
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("cleanup failure should set status");
+        assert!(*is_error);
+        assert!(status.contains("will retry on next startup"));
+    }
+
+    #[test]
+    fn encrypted_storage_switch_cleans_pending_keychain_profiles_and_saves_cleared_intent() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal
+            .pending_keychain_profile_deletions
+            .push("acct-deleted".to_string());
+        let saved_snapshots = RefCell::new(Vec::new());
+        let cleaned_profiles = RefCell::new(Vec::new());
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |snapshot| {
+                saved_snapshots.borrow_mut().push(snapshot.clone());
+                Ok(())
+            },
+            |profiles| {
+                cleaned_profiles.replace(
+                    profiles
+                        .iter()
+                        .map(|profile| profile.secret_id.clone())
+                        .collect(),
+                );
+                Ok(())
+            },
+            no_keychain_payload,
+            no_legacy_global_secret,
+            no_legacy_profile_secret,
+        );
+
+        assert!(terminal.pending_keychain_profile_deletions.is_empty());
+        assert!(!terminal.pending_keychain_cleanup_all);
+        assert_eq!(
+            cleaned_profiles.borrow().as_slice(),
+            ["acct-a".to_string(), "acct-deleted".to_string()]
+        );
+        let saved_snapshots = saved_snapshots.borrow();
+        assert_eq!(saved_snapshots.len(), 2);
+        assert_eq!(
+            saved_snapshots[0]
+                .pending_keychain_profile_deletions
+                .as_slice(),
+            ["acct-deleted"]
+        );
+        assert!(saved_snapshots[0].pending_keychain_cleanup_all);
+        assert!(
+            saved_snapshots[1]
+                .pending_keychain_profile_deletions
+                .is_empty()
+        );
+        assert!(!saved_snapshots[1].pending_keychain_cleanup_all);
+    }
+
+    #[test]
+    fn encrypted_storage_switch_hydrates_deferred_legacy_profile_before_cleanup() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.accounts.push(account("acct-b", ""));
+        terminal.hyperdash_api_key = sensitive_string("");
+        let saved_snapshot = RefCell::new(None);
+        let cleanup_called = Cell::new(false);
+        let loaded_profiles = RefCell::new(Vec::new());
+        let keychain_payload = config::SecretPayload::from_credentials(
+            &[account("acct-a", "agent-a")],
+            "",
+            "keychain-hyper",
+            "",
+        );
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |snapshot| {
+                saved_snapshot.replace(Some(snapshot.clone()));
+                Ok(())
+            },
+            |profiles| {
+                cleanup_called.set(true);
+                assert_eq!(
+                    profiles
+                        .iter()
+                        .map(|profile| profile.secret_id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["acct-a", "acct-b"]
+                );
+                Ok(())
+            },
+            || Ok(Some(keychain_payload.clone())),
+            no_legacy_global_secret,
+            |profile| {
+                loaded_profiles.borrow_mut().push(profile.secret_id.clone());
+                if profile.secret_id == "acct-b" {
+                    profile.agent_key = sensitive_string("agent-b").into_zeroizing();
+                }
+                Ok(())
+            },
+        );
+
+        assert!(cleanup_called.get());
+        assert_eq!(loaded_profiles.borrow().as_slice(), ["acct-a", "acct-b"]);
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        let snapshot = saved_snapshot
+            .borrow()
+            .clone()
+            .expect("encrypted snapshot should be saved");
+        let encrypted = snapshot
+            .encrypted_secrets
+            .as_ref()
+            .expect("encrypted payload should be persisted");
+        let payload = config::decrypt_secrets(encrypted, "correct horse")
+            .expect("encrypted payload should decrypt");
+        assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
+        assert_eq!(payload.profile_agent_key("acct-b"), Some("agent-b"));
+        assert_eq!(payload.global_hyperdash_api_key(), "keychain-hyper");
+    }
+
+    #[test]
+    fn encrypted_storage_switch_blocks_when_deferred_legacy_profile_read_fails() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.accounts.push(account("acct-b", ""));
+        let save_called = Cell::new(false);
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |_| {
+                save_called.set(true);
+                Ok(())
+            },
+            |_| {
+                cleanup_called.set(true);
+                Ok(())
+            },
+            no_keychain_payload,
+            no_legacy_global_secret,
+            |profile| {
+                if profile.secret_id == "acct-b" {
+                    return Err("keychain locked".to_string());
+                }
+                Ok(())
+            },
+        );
+
+        assert!(!save_called.get());
+        assert!(!cleanup_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert_eq!(
+            terminal.secret_storage_selection,
+            config::CredentialStorageMode::OsKeychain
+        );
+        assert!(terminal.encrypted_secrets.is_none());
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("OS keychain profile credentials could not be read"));
+        assert!(status.contains("left unchanged"));
+    }
+
+    #[test]
+    fn encrypted_storage_switch_blocks_legacy_fallback_after_wallet_mismatch() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.accounts[0].wallet_address =
+            "0x2222222222222222222222222222222222222222".to_string();
+        terminal.accounts[0].agent_key = sensitive_string("").into_zeroizing();
+        let keychain_payload = config::SecretPayload::from_credentials(
+            &[config::AccountProfile {
+                wallet_address: "0x1111111111111111111111111111111111111111".to_string(),
+                ..account("acct-a", "stale-agent")
+            }],
+            "",
+            "",
+            "",
+        );
+        let save_called = Cell::new(false);
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |_| {
+                save_called.set(true);
+                Ok(())
+            },
+            |_| {
+                cleanup_called.set(true);
+                Ok(())
+            },
+            || Ok(Some(keychain_payload.clone())),
+            no_legacy_global_secret,
+            |_profile| panic!("mismatched keychain bundle must not fall back to legacy profile"),
+        );
+
+        assert!(!save_called.get());
+        assert!(!cleanup_called.get());
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::OsKeychain
+        );
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("bound to a different wallet address"));
+        assert!(status.contains("left unchanged"));
+    }
+
+    #[test]
+    fn encrypted_storage_switch_hydrates_legacy_integration_keys_before_cleanup() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.hydromancer_api_key = sensitive_string("");
+        terminal.hyperdash_api_key = sensitive_string("");
+        terminal.x_feed.bearer_token = sensitive_string("");
+        let saved_snapshot = RefCell::new(None);
+        let cleanup_called = Cell::new(false);
+        let loaded_profiles = RefCell::new(Vec::new());
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |snapshot| {
+                saved_snapshot.replace(Some(snapshot.clone()));
+                Ok(())
+            },
+            |_| {
+                cleanup_called.set(true);
+                Ok(())
+            },
+            no_keychain_payload,
+            |hydromancer_api_key, hyperdash_api_key, x_bearer_token| {
+                assert!(hydromancer_api_key.trim().is_empty());
+                *hyperdash_api_key = sensitive_string("legacy-hyper").into_zeroizing();
+                *x_bearer_token = sensitive_string("legacy-x").into_zeroizing();
+                Ok(())
+            },
+            |profile| {
+                loaded_profiles.borrow_mut().push(profile.secret_id.clone());
+                if profile.secret_id == "acct-a" {
+                    profile.hydromancer_api_key =
+                        sensitive_string("legacy-profile-hydro").into_zeroizing();
+                }
+                Ok(())
+            },
+        );
+
+        assert!(cleanup_called.get());
+        assert_eq!(loaded_profiles.borrow().as_slice(), ["acct-a"]);
+        let snapshot = saved_snapshot
+            .borrow()
+            .clone()
+            .expect("encrypted snapshot should be saved");
+        let payload = config::decrypt_secrets(
+            snapshot
+                .encrypted_secrets
+                .as_ref()
+                .expect("encrypted payload should be saved"),
+            "correct horse",
+        )
+        .expect("encrypted payload should decrypt");
+        assert_eq!(payload.global_hydromancer_api_key(), "legacy-profile-hydro");
+        assert_eq!(payload.global_hyperdash_api_key(), "legacy-hyper");
+        assert_eq!(payload.global_x_bearer_token(), "legacy-x");
+    }
+
+    #[test]
+    fn encrypted_storage_switch_blocks_conflicting_legacy_profile_hydromancer_keys() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.hydromancer_api_key = sensitive_string("");
+        terminal.accounts.push(account("acct-b", "agent-b"));
+        let save_called = Cell::new(false);
+        let cleanup_called = Cell::new(false);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |_| {
+                save_called.set(true);
+                Ok(())
+            },
+            |_| {
+                cleanup_called.set(true);
+                Ok(())
+            },
+            no_keychain_payload,
+            no_legacy_global_secret,
+            |profile| {
+                profile.hydromancer_api_key =
+                    sensitive_string(format!("{}-hydro", profile.secret_id)).into_zeroizing();
+                Ok(())
+            },
+        );
+
+        assert!(!save_called.get());
+        assert!(!cleanup_called.get());
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("failure status should be set");
+        assert!(*is_error);
+        assert!(status.contains("Multiple legacy Hydromancer API keys"));
+        assert!(status.contains("left unchanged"));
+    }
+
+    #[test]
+    fn encrypted_storage_switch_overwrites_inactive_locked_blob_from_keychain_mode() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        let stale_payload =
+            config::SecretPayload::from_credentials(&[account("stale", "stale-agent")], "", "", "");
+        terminal.encrypted_secrets =
+            Some(config::encrypt_secrets(&stale_payload, "old password").expect("encrypt stale"));
+        terminal.encrypted_secrets_unlocked = false;
+        let saved_snapshot = RefCell::new(None);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |snapshot| {
+                saved_snapshot.replace(Some(snapshot.clone()));
+                Ok(())
+            },
+            |_| Ok(()),
+            no_keychain_payload,
+            no_legacy_global_secret,
+            no_legacy_profile_secret,
+        );
+
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
+        let snapshot = saved_snapshot
+            .borrow()
+            .clone()
+            .expect("encrypted snapshot should be saved");
+        let payload = config::decrypt_secrets(
+            snapshot
+                .encrypted_secrets
+                .as_ref()
+                .expect("new encrypted payload should be saved"),
+            "correct horse",
+        )
+        .expect("new encrypted payload should decrypt");
+        assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
+        assert_eq!(payload.profile_agent_key("stale"), None);
+    }
+
+    #[test]
+    fn encrypted_storage_switch_can_recover_from_secret_migration_save_block() {
+        let mut terminal = terminal_ready_to_switch_to_encrypted();
+        terminal.secret_migration_save_blocked = true;
+        let save_called = Cell::new(false);
+
+        terminal.apply_encrypted_config_storage_selection_with(
+            |_| {
+                save_called.set(true);
+                Ok(())
+            },
+            |_| Ok(()),
+            no_keychain_payload,
+            no_legacy_global_secret,
+            no_legacy_profile_secret,
+        );
+
+        assert!(save_called.get());
+        assert!(!terminal.secret_migration_save_blocked);
+        assert_eq!(
+            terminal.secret_storage_mode,
+            config::CredentialStorageMode::EncryptedConfig
+        );
     }
 }

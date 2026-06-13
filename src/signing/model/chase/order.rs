@@ -1,7 +1,6 @@
 use super::{ChaseLifecycle, MIN_CHASE_REPRICE_INTERVAL};
+use crate::signing::CapturedAgentKey;
 use crate::signing::numbers::{float_to_wire, round_price};
-
-use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // Chase Order State
@@ -20,7 +19,7 @@ pub struct ChaseOrder {
     /// Agent key captured at chase start. Lifecycle requests must not read the
     /// mutable UI key field after this point, or account/key edits could reprice
     /// a live chase with the wrong trading identity.
-    pub agent_key: Zeroizing<String>,
+    pub agent_key: CapturedAgentKey,
     pub is_buy: bool,
     pub target_size: f64,
     pub filled_size: f64,

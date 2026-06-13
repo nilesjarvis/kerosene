@@ -1,6 +1,6 @@
 use super::super::model::{
     DEFAULT_ARGON2_ITERATIONS, DEFAULT_ARGON2_LANES, DEFAULT_ARGON2_MEMORY_KIB, SECRET_KEY_LEN,
-    SecretKdfConfig,
+    SECRET_SALT_LEN, SecretKdfConfig,
 };
 
 use argon2::{Algorithm, Argon2, Params, Version};
@@ -34,6 +34,50 @@ pub(super) fn decode_secret_field(field: &str, value: &str) -> Result<Vec<u8>, S
         .map_err(|e| format!("decode encrypted secret {field} failed: {e}"))
 }
 
+const MIN_ARGON2_MEMORY_KIB: u32 = 64;
+const MAX_ARGON2_MEMORY_KIB: u32 = 256 * 1024;
+const MIN_ARGON2_ITERATIONS: u32 = 1;
+const MAX_ARGON2_ITERATIONS: u32 = 10;
+const MIN_ARGON2_LANES: u32 = 1;
+const MAX_ARGON2_LANES: u32 = 8;
+
+fn validate_secret_kdf_parameters(kdf: &SecretKdfConfig, salt_len: usize) -> Result<(), String> {
+    if salt_len != SECRET_SALT_LEN {
+        return Err(format!(
+            "encrypted secret salt has invalid length {salt_len}"
+        ));
+    }
+    if !(MIN_ARGON2_MEMORY_KIB..=MAX_ARGON2_MEMORY_KIB).contains(&kdf.memory_kib) {
+        return Err(format!(
+            "secret KDF memory_kib {} is outside supported range {}..={}",
+            kdf.memory_kib, MIN_ARGON2_MEMORY_KIB, MAX_ARGON2_MEMORY_KIB
+        ));
+    }
+    if !(MIN_ARGON2_ITERATIONS..=MAX_ARGON2_ITERATIONS).contains(&kdf.iterations) {
+        return Err(format!(
+            "secret KDF iterations {} is outside supported range {}..={}",
+            kdf.iterations, MIN_ARGON2_ITERATIONS, MAX_ARGON2_ITERATIONS
+        ));
+    }
+    if !(MIN_ARGON2_LANES..=MAX_ARGON2_LANES).contains(&kdf.lanes) {
+        return Err(format!(
+            "secret KDF lanes {} is outside supported range {}..={}",
+            kdf.lanes, MIN_ARGON2_LANES, MAX_ARGON2_LANES
+        ));
+    }
+
+    Ok(())
+}
+
+pub(super) fn validate_secret_kdf_config(kdf: &SecretKdfConfig) -> Result<(), String> {
+    if kdf.algorithm != "argon2id" {
+        return Err("unsupported secret KDF".to_string());
+    }
+
+    let salt = decode_secret_field("salt", &kdf.salt)?;
+    validate_secret_kdf_parameters(kdf, salt.len())
+}
+
 pub(super) fn derive_secret_key(
     password: &str,
     kdf: &SecretKdfConfig,
@@ -41,10 +85,8 @@ pub(super) fn derive_secret_key(
     if password.is_empty() {
         return Err("credential password is required".to_string());
     }
-    if kdf.algorithm != "argon2id" {
-        return Err(format!("unsupported secret KDF '{}'", kdf.algorithm));
-    }
 
+    validate_secret_kdf_config(kdf)?;
     let salt = decode_secret_field("salt", &kdf.salt)?;
     let params = Params::new(
         kdf.memory_kib,

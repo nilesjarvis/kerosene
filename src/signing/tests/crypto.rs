@@ -1,4 +1,6 @@
-use crate::signing::crypto::action_hash_bytes;
+use crate::signing::crypto::{action_hash_bytes, sign_l1_action};
+
+const TEST_PRIVATE_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
 fn action_hash_or_panic(expires_after: Option<u64>) -> [u8; 32] {
     match action_hash_bytes(b"{}", None, 1, expires_after) {
@@ -39,4 +41,25 @@ fn action_hash_changes_when_expires_after_is_included() {
     let with_expiry = action_hash_or_panic(Some(1_700_000_000_000));
 
     assert_ne!(without_expiry, with_expiry);
+}
+
+#[test]
+fn sign_l1_action_accepts_prefixed_and_unprefixed_private_keys() {
+    let unprefixed =
+        sign_l1_action(TEST_PRIVATE_KEY, b"{}", None, 1, None).expect("unprefixed key should sign");
+    let prefixed = sign_l1_action(&format!("0x{TEST_PRIVATE_KEY}"), b"{}", None, 1, None)
+        .expect("prefixed key should sign");
+
+    assert_eq!(unprefixed, prefixed);
+}
+
+#[test]
+fn sign_l1_action_rejects_invalid_key_without_echoing_input() {
+    let invalid_key = format!("{TEST_PRIVATE_KEY}ff");
+    let error =
+        sign_l1_action(&invalid_key, b"{}", None, 1, None).expect_err("invalid length should fail");
+
+    assert!(error.contains("Invalid private key hex"));
+    assert!(!error.contains(&invalid_key));
+    assert!(!error.contains(TEST_PRIVATE_KEY));
 }

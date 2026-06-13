@@ -1,8 +1,10 @@
+mod agent_key;
 mod chase;
 mod exchange_order_kind;
 mod exchange_response;
 mod order_kind;
 
+pub(crate) use agent_key::CapturedAgentKey;
 pub use chase::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseStopPhase,
     ChaseVerificationReason, MAX_CHASE_CANCEL_RETRIES, MAX_CHASE_DRIFT_FRACTION,

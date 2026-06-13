@@ -1,4 +1,4 @@
-use crate::helpers::positive_finite_value;
+use crate::helpers::{positive_finite_value, redact_sensitive_response_text};
 
 use super::ExchangeResponse;
 use serde_json::Value;
@@ -14,7 +14,10 @@ impl ExchangeResponse {
             if let Some(raw) = &self.raw_response {
                 return format!("Error: {}", raw_exchange_response_summary(raw));
             }
-            return format!("Error: status={}", self.status);
+            return format!(
+                "Error: status={}",
+                redact_sensitive_response_text(&self.status)
+            );
         }
         let Some(inner) = &self.response else {
             return "No response body".to_string();
@@ -115,6 +118,54 @@ impl ExchangeResponse {
         statuses.iter().any(ambiguous_order_status)
     }
 
+    /// Whether a cancel response explicitly confirms cancellation.
+    pub fn is_confirmed_cancel_result(&self) -> bool {
+        if self.status != "ok" || self.raw_response.is_some() {
+            return false;
+        }
+        let Some(inner) = &self.response else {
+            return false;
+        };
+        if inner.response_type != "cancel" {
+            return false;
+        }
+        let Some(data) = &inner.data else {
+            return false;
+        };
+        !data.statuses.is_empty()
+            && data
+                .statuses
+                .iter()
+                .all(|status| status.as_str() == Some("success"))
+    }
+
+    /// Whether a modify response explicitly confirms the replacement order state.
+    pub fn is_confirmed_modify_result(&self) -> bool {
+        if self.status != "ok" || self.raw_response.is_some() || self.is_error() {
+            return false;
+        }
+        let Some(inner) = &self.response else {
+            return false;
+        };
+        if inner.response_type != "order" {
+            return false;
+        }
+        let Some(data) = &inner.data else {
+            return false;
+        };
+        !data.statuses.is_empty() && data.statuses.iter().all(confirmed_modify_status)
+    }
+
+    /// Whether a default exchange response explicitly confirms a non-order mutation.
+    pub fn is_confirmed_default_result(&self) -> bool {
+        self.status == "ok"
+            && self.raw_response.is_none()
+            && self
+                .response
+                .as_ref()
+                .is_some_and(|inner| inner.response_type == "default" && inner.data.is_none())
+    }
+
     /// Hyperliquid reports this for IOC orders that were marketable from the
     /// client's last book snapshot but found no resting liquidity at match time.
     pub fn is_ioc_no_match(&self) -> bool {
@@ -163,6 +214,23 @@ fn ambiguous_order_status(status: &Value) -> bool {
     true
 }
 
+fn confirmed_modify_status(status: &Value) -> bool {
+    if status.as_str() == Some("success") {
+        return true;
+    }
+    if let Some(resting) = status.get("resting") {
+        return resting
+            .get("oid")
+            .and_then(|value| value.as_u64())
+            .is_some();
+    }
+    if let Some(filled) = status.get("filled") {
+        return filled.get("oid").and_then(|value| value.as_u64()).is_some()
+            && filled_status_size(status).is_some();
+    }
+    false
+}
+
 fn filled_status_size(status: &Value) -> Option<f64> {
     status
         .get("filled")?
@@ -173,15 +241,16 @@ fn filled_status_size(status: &Value) -> Option<f64> {
 }
 
 fn raw_exchange_response_summary(value: &Value) -> String {
-    value
+    let summary = value
         .as_str()
         .map(ToString::to_string)
-        .unwrap_or_else(|| value.to_string())
+        .unwrap_or_else(|| value.to_string());
+    redact_sensitive_response_text(&summary)
 }
 
 fn status_summary(st: &Value, response_type: &str) -> String {
     if let Some(err) = st.get("error").and_then(|v| v.as_str()) {
-        return format!("Error: {err}");
+        return format!("Error: {}", redact_sensitive_response_text(err));
     }
     if let Some(filled) = st.get("filled") {
         let sz = filled
@@ -207,5 +276,5 @@ fn status_summary(st: &Value, response_type: &str) -> String {
             "Success".to_string()
         };
     }
-    format!("{st}")
+    redact_sensitive_response_text(&format!("{st}"))
 }

@@ -17,3 +17,12 @@ pub fn take_secret_warnings() -> Vec<String> {
         .map(|mut warnings| std::mem::take(&mut *warnings))
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+pub(crate) fn secret_warning_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("secret warning test lock should not be poisoned")
+}

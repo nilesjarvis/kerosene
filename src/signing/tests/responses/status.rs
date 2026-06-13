@@ -13,6 +13,7 @@ fn exchange_response_resting_status_reports_oid_without_error() {
     assert!(!response.is_error());
     assert!(!response.is_fully_filled());
     assert!(!response.is_ambiguous_order_result());
+    assert!(response.is_confirmed_modify_result());
 }
 
 #[test]
@@ -31,6 +32,7 @@ fn exchange_response_filled_status_reports_fill_and_completion() {
     assert!(!response.is_error());
     assert!(response.is_fully_filled());
     assert!(!response.is_ambiguous_order_result());
+    assert!(response.is_confirmed_modify_result());
 }
 
 #[test]
@@ -47,6 +49,40 @@ fn exchange_response_error_status_drives_error_transition() {
     assert!(response.is_error());
     assert!(!response.is_fully_filled());
     assert!(!response.is_ambiguous_order_result());
+    assert!(!response.is_confirmed_modify_result());
+}
+
+#[test]
+fn exchange_response_error_status_redacts_sensitive_values() {
+    let response = exchange_response(serde_json::json!({
+        "error": "rejected api_key=\"exchange-secret\" Authorization: Bearer bearer-secret sig=0x0123456789abcdef0123456789abcdef01234567"
+    }));
+
+    let summary = response.summary();
+
+    assert!(summary.contains("<redacted>"));
+    assert!(summary.contains("<redacted-hex>"));
+    for secret in [
+        "exchange-secret",
+        "bearer-secret",
+        "0123456789abcdef0123456789abcdef01234567",
+    ] {
+        assert!(!summary.contains(secret), "summary leaked {secret}");
+    }
+}
+
+#[test]
+fn exchange_response_unknown_status_redacts_sensitive_fallback() {
+    let response = exchange_response(serde_json::json!({
+        "status": {"api_key": "exchange-secret", "trace": "0x0123456789abcdef0123456789abcdef01234567"}
+    }));
+
+    let summary = response.summary();
+
+    assert!(summary.contains("<redacted>"));
+    assert!(summary.contains("<redacted-hex>"));
+    assert!(!summary.contains("exchange-secret"));
+    assert!(!summary.contains("0123456789abcdef0123456789abcdef01234567"));
 }
 
 #[test]
