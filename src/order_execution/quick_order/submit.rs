@@ -244,7 +244,7 @@ impl TradingTerminal {
             return Some(self.refresh_account_data());
         }
 
-        if !data.completeness.positions_complete {
+        if !data.completeness.positions_actionable {
             self.order_status = Some((
                 format!("Positions may be incomplete; refresh account data before {action}"),
                 true,

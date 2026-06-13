@@ -23,7 +23,10 @@ pub(crate) fn reject_if_positions_incomplete_for_action(
 
     let message = {
         let (_, account_data) = terminal.connected_order_account_snapshot()?;
-        if account_data.completeness.positions_complete {
+        // Allow a complete fallback snapshot (degraded but actionable) through —
+        // only a genuinely missing/partial positions view blocks risk-reducing
+        // actions. Otherwise a Hydromancer-without-key config could never close.
+        if account_data.completeness.positions_actionable {
             return None;
         }
         let detail = account_data

@@ -3,6 +3,7 @@ use crate::account::{
     AccountData, AccountDataCompleteness, AccountDataSection, AssetPosition, ClearinghouseState,
     MarginSummary, Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
 };
+use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::config::AccountProfile;
 use crate::order_execution::{OneShotPlacementContext, OrderSurface};
@@ -93,6 +94,44 @@ fn terminal_with_incomplete_fresh_account() -> TradingTerminal {
     account_data
         .completeness
         .mark_incomplete(AccountDataSection::Positions, "HIP-3 positions unavailable");
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data);
+    terminal.account_loading = false;
+    terminal
+}
+
+fn exchange_symbol(key: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "crypto".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 7,
+        collateral_token: None,
+        sz_decimals: 4,
+        max_leverage: 50,
+        only_isolated: false,
+        market_type: MarketType::Perp,
+        outcome: None,
+    }
+}
+
+fn terminal_with_degraded_fresh_account() -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot();
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.exchange_symbols = vec![exchange_symbol("BTC")];
+    let now_ms = TradingTerminal::now_ms();
+    terminal.all_mids.insert("BTC".to_string(), 100.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), now_ms);
+    let mut account_data = account_data_with_position("BTC", now_ms);
+    // A complete Hyperliquid fallback snapshot: degraded, but safe to close.
+    account_data.completeness.mark_degraded(
+        AccountDataSection::Positions,
+        "Hydromancer API key missing; used Hyperliquid fallback",
+    );
     terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data);
     terminal.account_loading = false;
     terminal

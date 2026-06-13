@@ -14,6 +14,13 @@ pub enum AccountDataSection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountDataCompleteness {
     pub positions_complete: bool,
+    /// Whether the positions snapshot is safe to act on for risk-reducing
+    /// controls (close/NUKE). A complete fallback snapshot — e.g. Hyperliquid
+    /// data served when the selected Hydromancer provider was unavailable — is
+    /// still actionable even though `positions_complete` is `false`. Genuinely
+    /// missing/partial positions (a failed HIP-3 fetch, a parse error) clear
+    /// this so we never close from a view that omits positions.
+    pub positions_actionable: bool,
     pub open_orders_complete: bool,
     pub fills_complete: bool,
     pub funding_complete: bool,
@@ -27,6 +34,7 @@ impl Default for AccountDataCompleteness {
     fn default() -> Self {
         Self {
             positions_complete: true,
+            positions_actionable: true,
             open_orders_complete: true,
             fills_complete: true,
             funding_complete: true,
@@ -48,6 +56,35 @@ impl AccountDataCompleteness {
     }
 
     pub fn mark_incomplete(&mut self, section: AccountDataSection, warning: impl Into<String>) {
+        self.mark_section_incomplete(section);
+        // Genuinely missing/partial positions are unsafe to act on: closing or
+        // NUKE-ing from a snapshot that omits positions risks under-closing
+        // exposure we never fetched. Block risk-reducing actions until a clean
+        // refresh lands.
+        if section == AccountDataSection::Positions {
+            self.positions_actionable = false;
+        }
+        self.record_warning(section, warning);
+    }
+
+    /// Flag a section as not fully reconciled even though the data it carries is
+    /// present and usable — e.g. positions served from a complete Hyperliquid
+    /// fallback (for the fetched scope) when the selected Hydromancer provider
+    /// had no key or failed. The partial-data warning still surfaces (and
+    /// `is_complete` stays `false`).
+    ///
+    /// This *preserves* `positions_actionable` rather than forcing it: it never
+    /// sets the flag back to `true`. So a snapshot already marked genuinely
+    /// incomplete (e.g. a HIP-3 clearinghouse fetch dropped those positions)
+    /// stays non-actionable even after a later degrade — closing/NUKE-ing from a
+    /// view that omits positions would under-close, so the block is intentional.
+    /// Do not "restore" actionability here.
+    pub fn mark_degraded(&mut self, section: AccountDataSection, warning: impl Into<String>) {
+        self.mark_section_incomplete(section);
+        self.record_warning(section, warning);
+    }
+
+    fn mark_section_incomplete(&mut self, section: AccountDataSection) {
         match section {
             AccountDataSection::Positions => self.positions_complete = false,
             AccountDataSection::OpenOrders => self.open_orders_complete = false,
@@ -55,7 +92,9 @@ impl AccountDataCompleteness {
             AccountDataSection::Funding => self.funding_complete = false,
             AccountDataSection::Fees => self.fees_complete = false,
         }
+    }
 
+    fn record_warning(&mut self, section: AccountDataSection, warning: impl Into<String>) {
         let warning = warning.into();
         if !warning.is_empty()
             && !self

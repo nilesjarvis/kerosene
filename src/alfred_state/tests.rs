@@ -311,6 +311,29 @@ fn alfred_nuke_disabled_for_incomplete_position_snapshot() {
 }
 
 #[test]
+fn alfred_nuke_enabled_for_degraded_fallback_snapshot() {
+    // Regression: a complete Hyperliquid fallback snapshot (degraded, but with
+    // usable positions) must keep the NUKE command enabled rather than locking
+    // out a Hydromancer-without-key config.
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.alfred.query = "nuke".to_string();
+    connect_ready_test_account(&mut terminal);
+    terminal.exchange_symbols = vec![exchange_symbol("BTC")];
+    let mut data = account_data_with_positions(vec!["BTC"], TradingTerminal::now_ms());
+    data.completeness.mark_degraded(
+        AccountDataSection::Positions,
+        "Hydromancer API key missing; used Hyperliquid fallback",
+    );
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+    add_mid(&mut terminal, "BTC", 100.0);
+
+    let command = nuke_command_or_panic(&terminal);
+
+    assert!(command.enabled);
+    assert_eq!(command.title, "NUKE 1 position");
+}
+
+#[test]
 fn alfred_nuke_disabled_for_hidden_unrouteable_exposure() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.alfred.query = "nuke".to_string();

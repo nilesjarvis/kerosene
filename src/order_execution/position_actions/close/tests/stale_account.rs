@@ -69,6 +69,26 @@ fn close_position_refuses_stale_account_snapshot_and_requests_refresh() {
 }
 
 #[test]
+fn close_position_allows_degraded_fallback_snapshot() {
+    // Regression: a complete Hyperliquid fallback snapshot (degraded, but with
+    // usable positions) must not be blocked by the positions-incomplete gate,
+    // and must not trigger the refresh loop that recreates the same flag.
+    let mut terminal = terminal_with_degraded_fresh_account();
+
+    let _task = terminal.execute_close_position("BTC", 1.0, true);
+
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(!is_error, "expected a non-error status, got: {message}");
+    assert!(message.contains("Closing"), "unexpected status: {message}");
+    assert!(!message.contains("Positions may be incomplete"));
+    assert_eq!(
+        terminal.pending_order_action,
+        Some(PendingOrderAction::ClosePosition)
+    );
+    assert!(!terminal.account_loading);
+}
+
+#[test]
 fn close_position_refuses_incomplete_position_snapshot_and_requests_refresh() {
     let mut terminal = terminal_with_incomplete_fresh_account();
 

@@ -156,6 +156,29 @@ fn terminal_with_incomplete_fresh_account() -> TradingTerminal {
     terminal
 }
 
+fn terminal_with_degraded_fresh_account() -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot();
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.exchange_symbols = vec![exchange_symbol("BTC")];
+    let now_ms = TradingTerminal::now_ms();
+    terminal.all_mids.insert("BTC".to_string(), 100.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), now_ms);
+    let mut account_data = stale_account_data();
+    account_data.fetched_at_ms = now_ms;
+    account_data.clearinghouse.asset_positions = vec![active_position("BTC", "1")];
+    // A complete Hyperliquid fallback snapshot: degraded, but safe to NUKE.
+    account_data.completeness.mark_degraded(
+        AccountDataSection::Positions,
+        "Hydromancer API key missing; used Hyperliquid fallback",
+    );
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data);
+    terminal.account_loading = false;
+    terminal
+}
+
 fn order_or_panic(order: Option<NukePositionOrder>, context: &str) -> NukePositionOrder {
     match order {
         Some(order) => order,

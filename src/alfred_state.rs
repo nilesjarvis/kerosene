@@ -120,7 +120,7 @@ impl TradingTerminal {
         let Some((_, account_data)) = self.connected_order_account_snapshot() else {
             return Some(command.disabled("No account data available"));
         };
-        if !account_data.completeness.positions_complete {
+        if !account_data.completeness.positions_actionable {
             let detail = account_data
                 .completeness
                 .section_warning(AccountDataSection::Positions)

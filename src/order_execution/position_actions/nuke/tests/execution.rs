@@ -1,6 +1,7 @@
 use super::{
     active_position, connect_test_account, exchange_symbol, order_status_or_panic,
-    stale_account_data, terminal_with_incomplete_fresh_account, terminal_with_stale_account,
+    stale_account_data, terminal_with_degraded_fresh_account,
+    terminal_with_incomplete_fresh_account, terminal_with_stale_account,
 };
 use crate::order_execution::{OneShotPlacementContext, OrderSurface, PendingOrderAction};
 use crate::order_update::PendingOneShotStatusRequest;
@@ -179,6 +180,23 @@ fn execute_nuke_refuses_incomplete_position_snapshot_and_requests_refresh() {
     assert!(message.contains("refresh before NUKE"));
     assert!(terminal.account_loading);
     assert!(terminal.pending_nuke_execution.is_none());
+}
+
+#[test]
+fn execute_nuke_arms_on_degraded_fallback_snapshot() {
+    // Regression: a complete Hyperliquid fallback snapshot (degraded, but with
+    // usable positions) must not be blocked by the positions-incomplete gate —
+    // otherwise a Hydromancer-without-key config could never close risk.
+    let mut terminal = terminal_with_degraded_fresh_account();
+
+    let _task = terminal.execute_nuke_positions();
+
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(!is_error, "expected a non-error status, got: {message}");
+    assert!(message.contains("Nuking"), "unexpected status: {message}");
+    assert!(!message.contains("Positions may be incomplete"));
+    assert!(terminal.pending_nuke_execution.is_some());
+    assert!(!terminal.account_loading);
 }
 
 #[test]

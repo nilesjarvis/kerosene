@@ -43,7 +43,12 @@ pub(super) async fn fetch_account_data_scoped_with_provider(
     let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
     if api_key.is_empty() {
         let mut data = super::fetch_account_data_scoped(address, scope).await?;
-        data.completeness.mark_incomplete(
+        // The Hyperliquid fallback returns a usable positions snapshot for the
+        // fetched scope; mark it degraded (not incomplete) so the warning still
+        // surfaces while close/NUKE controls stay enabled. If the inner fetch
+        // itself dropped positions (e.g. a HIP-3 failure), it already cleared
+        // `positions_actionable` and the degrade leaves that block in place.
+        data.completeness.mark_degraded(
             AccountDataSection::Positions,
             "Hydromancer API key missing; used Hyperliquid fallback",
         );
@@ -54,7 +59,7 @@ pub(super) async fn fetch_account_data_scoped_with_provider(
         Ok(data) => Ok(data),
         Err(error) => {
             let mut data = super::fetch_account_data_scoped(address, scope).await?;
-            data.completeness.mark_incomplete(
+            data.completeness.mark_degraded(
                 AccountDataSection::Positions,
                 crate::read_data_provider::fallback_warning("account refresh", &error),
             );
