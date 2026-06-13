@@ -40,18 +40,19 @@ where
             }
             false
         }
-        HydromancerCommand::Unsubscribe { topic } => match active_subs.unsubscribe(topic) {
-            HydromancerUnsubscribeResult::Removed {
-                payload,
-                became_empty,
-            } => {
-                let payload = hydromancer_unsubscribe_payload(&payload);
-                !send_text(write, payload.to_string()).await || became_empty
+        HydromancerCommand::Unsubscribe { topic, payload } => {
+            match active_subs.unsubscribe(topic, payload) {
+                HydromancerUnsubscribeResult::Removed {
+                    payload,
+                    became_empty,
+                } => {
+                    let payload = hydromancer_unsubscribe_payload(&payload);
+                    !send_text(write, payload.to_string()).await || became_empty
+                }
+                HydromancerUnsubscribeResult::StillActive
+                | HydromancerUnsubscribeResult::Missing => false,
             }
-            HydromancerUnsubscribeResult::StillActive | HydromancerUnsubscribeResult::Missing => {
-                false
-            }
-        },
+        }
         HydromancerCommand::Reconnect => true,
         // Shutdown is intercepted by the inner select arm in `task.rs`
         // before this dispatcher is called — but having the variant here
@@ -114,7 +115,7 @@ where
     let frame_action = session.apply_text_frame(&frame);
 
     match frame.kind {
-        HydromancerTextFrameKind::Connected => {
+        HydromancerTextFrameKind::Connected | HydromancerTextFrameKind::Reconnected => {
             let _ = broadcast_hydromancer_json(msg_tx, frame.json);
             if !frame_action.resend_subscriptions {
                 return false;
@@ -124,10 +125,6 @@ where
                     return true;
                 }
             }
-            false
-        }
-        HydromancerTextFrameKind::Reconnected => {
-            let _ = broadcast_hydromancer_json(msg_tx, frame.json);
             false
         }
         HydromancerTextFrameKind::Ping => {

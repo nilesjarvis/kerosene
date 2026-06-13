@@ -45,7 +45,24 @@ fn connected_frame_marks_ready_and_replays_subscriptions() {
 }
 
 #[test]
-fn reconnected_frame_marks_ready_without_subscription_replay() {
+fn session_debug_redacts_resume_material() {
+    let mut session = HydromancerSessionState::default();
+    let frame = parse_hydromancer_text_frame(
+        r#"{"type":"connected","sessionId":"session-secret","cursor":"cursor-secret"}"#,
+    )
+    .expect("connected frame");
+    session.apply_text_frame(&frame);
+
+    let rendered = format!("{session:?}");
+
+    assert!(rendered.contains("has_session_id: true"));
+    assert!(rendered.contains("has_last_cursor: true"));
+    assert!(!rendered.contains("session-secret"));
+    assert!(!rendered.contains("cursor-secret"));
+}
+
+#[test]
+fn reconnected_frame_marks_ready_and_replays_subscriptions() {
     let mut session = HydromancerSessionState::default();
     let frame = parse_hydromancer_text_frame(r#"{"type":"reconnected","sessionId":"next"}"#)
         .expect("reconnected frame");
@@ -57,7 +74,7 @@ fn reconnected_frame_marks_ready_without_subscription_replay() {
     assert_eq!(
         action,
         HydromancerFrameAction {
-            resend_subscriptions: false,
+            resend_subscriptions: true,
             send_pong: false
         }
     );

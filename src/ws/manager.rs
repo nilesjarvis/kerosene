@@ -1,12 +1,17 @@
 use self::commands::handle_ws_command;
 use self::frames::{WsTextFrame, parse_ws_text_frame};
 use self::subscriptions::ActiveWsSubscriptions;
-use self::timing::{EXCHANGE_WS_RECONNECT_POLICY, read_loop_timeout, stale_read_remaining};
+use self::timing::{
+    EXCHANGE_WS_RECONNECT_POLICY, ReconnectPolicy, WS_CONNECT_TIMEOUT_SECS, read_loop_timeout,
+    stale_read_remaining,
+};
 use super::WS_URL;
+use super::connect::{ConnectAttempt, connect_with_timeout};
+#[cfg(not(test))]
+use super::telemetry::{now_ms, telemetry_update_api_latency};
 use super::telemetry::{
-    now_ms, telemetry_add_rx, telemetry_add_tx, telemetry_mark_ws_ping_start, telemetry_on_connect,
-    telemetry_on_disconnect, telemetry_update_api_latency,
-    telemetry_update_ws_latency_from_ping_start,
+    telemetry_add_rx, telemetry_add_tx, telemetry_mark_ws_ping_start, telemetry_on_connect,
+    telemetry_on_disconnect, telemetry_update_ws_latency_from_ping_start,
 };
 use futures::SinkExt as _;
 use serde_json::Value;
@@ -23,7 +28,7 @@ mod timing;
 
 use self::coalescer::CoalescedSender;
 #[cfg(test)]
-use self::timing::{ReconnectPolicy, WS_READ_STALE_AFTER_SECS};
+use self::timing::WS_READ_STALE_AFTER_SECS;
 
 #[cfg(test)]
 mod integration_tests;
@@ -34,6 +39,11 @@ mod tests;
 // Global Multiplexer Setup
 // ---------------------------------------------------------------------------
 
+#[cfg(not(test))]
+const API_LATENCY_PROBE_INTERVAL: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const API_LATENCY_PROBE_INTERVAL: Duration = Duration::from_millis(50);
+
 #[derive(Clone, Debug)]
 pub struct WsRoutedMessage {
     pub channel: String,
@@ -43,8 +53,9 @@ pub struct WsRoutedMessage {
 #[derive(Debug)]
 pub enum WsCommand {
     Subscribe { topic: String, payload: Value },
-    Unsubscribe { topic: String },
+    Unsubscribe { topic: String, payload: Value },
     Ping,
+    Reconnect,
 }
 
 struct WsManager {
@@ -72,27 +83,6 @@ pub(crate) fn get_manager() -> (
             }
         });
 
-        tokio::spawn(async move {
-            loop {
-                let start_time = now_ms();
-                let client = crate::api::CLIENT.clone();
-                let req_payload = serde_json::json!({ "type": "ping" });
-
-                if let Ok(resp) = client
-                    .post(crate::api::API_URL)
-                    .json(&req_payload)
-                    .send()
-                    .await
-                    && resp.status().is_success()
-                {
-                    let latency = now_ms().saturating_sub(start_time);
-                    telemetry_update_api_latency(latency);
-                }
-
-                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            }
-        });
-
         tokio::spawn(ws_manager_task(WS_URL.to_string(), cmd_rx, msg_tx));
         WsManager { cmd_tx, msg_rx }
     });
@@ -101,8 +91,34 @@ pub(crate) fn get_manager() -> (
 
 pub(super) async fn ws_manager_task(
     ws_url: String,
+    cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
+    msg_tx: broadcast::Sender<WsRoutedMessage>,
+) {
+    ws_manager_task_with_api_probe(ws_url, cmd_rx, msg_tx, ApiLatencyProbe::production()).await;
+}
+
+async fn ws_manager_task_with_api_probe(
+    ws_url: String,
+    cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
+    msg_tx: broadcast::Sender<WsRoutedMessage>,
+    api_probe: ApiLatencyProbe,
+) {
+    ws_manager_task_with_options(
+        ws_url,
+        cmd_rx,
+        msg_tx,
+        api_probe,
+        Duration::from_secs(WS_CONNECT_TIMEOUT_SECS),
+    )
+    .await;
+}
+
+async fn ws_manager_task_with_options(
+    ws_url: String,
     mut cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
     msg_tx: broadcast::Sender<WsRoutedMessage>,
+    api_probe: ApiLatencyProbe,
+    connect_timeout: Duration,
 ) {
     let mut active_subs = ActiveWsSubscriptions::default();
     let mut coalescer = CoalescedSender::new(msg_tx);
@@ -113,11 +129,56 @@ pub(super) async fn ws_manager_task(
     let policy = EXCHANGE_WS_RECONNECT_POLICY;
     let mut reconnect_delay_secs = policy.base_delay_secs;
 
-    loop {
-        let ws_stream = match tokio_tungstenite::connect_async(&ws_url).await {
-            Ok((ws, _)) => ws,
-            Err(_) => {
-                tokio::time::sleep(Duration::from_secs(reconnect_delay_secs)).await;
+    'manager: loop {
+        if !drain_disconnected_ws_commands(&mut active_subs, &mut cmd_rx) {
+            return;
+        }
+        if reset_reconnect_backoff_if_idle(&active_subs, &mut reconnect_delay_secs, policy)
+            && !wait_for_ws_subscription(&mut active_subs, &mut cmd_rx).await
+        {
+            return;
+        }
+
+        let mut connect_fut = Box::pin(connect_with_timeout(
+            tokio_tungstenite::connect_async(&ws_url),
+            connect_timeout,
+        ));
+        let connect_result = loop {
+            let cmd_fut = Box::pin(cmd_rx.recv());
+            match select(connect_fut, cmd_fut).await {
+                Either::Left((connect_result, pending_cmd)) => {
+                    drop(pending_cmd);
+                    break connect_result;
+                }
+                Either::Right((cmd, pending_connect)) => {
+                    let Some(cmd) = cmd else {
+                        return;
+                    };
+                    match handle_connecting_ws_command(&mut active_subs, cmd) {
+                        ConnectingWsCommandAction::ContinueConnecting => {
+                            connect_fut = pending_connect;
+                        }
+                        ConnectingWsCommandAction::RestartLoop => {
+                            drop(pending_connect);
+                            continue 'manager;
+                        }
+                    }
+                }
+            }
+        };
+
+        let ws_stream = match connect_result {
+            ConnectAttempt::Finished(Ok((ws, _))) => ws,
+            ConnectAttempt::Finished(Err(_)) | ConnectAttempt::TimedOut => {
+                if !sleep_with_disconnected_ws_commands(
+                    Duration::from_secs(reconnect_delay_secs),
+                    &mut active_subs,
+                    &mut cmd_rx,
+                )
+                .await
+                {
+                    return;
+                }
                 reconnect_delay_secs = policy.next_delay(reconnect_delay_secs);
                 continue;
             }
@@ -128,6 +189,14 @@ pub(super) async fn ws_manager_task(
         let (mut write, mut read) = ws_stream.split();
         let mut disconnected = false;
         let mut last_rx_at = Instant::now();
+        let mut next_api_probe_at = Instant::now();
+
+        if !drain_disconnected_ws_commands(&mut active_subs, &mut cmd_rx) {
+            return;
+        }
+        if active_subs.is_empty() {
+            disconnected = true;
+        }
 
         for payload in active_subs.payloads() {
             let text = payload.to_string();
@@ -139,10 +208,17 @@ pub(super) async fn ws_manager_task(
         }
 
         while !disconnected {
+            let now = Instant::now();
+            if now >= next_api_probe_at {
+                api_probe.spawn();
+                next_api_probe_at = now + API_LATENCY_PROBE_INTERVAL;
+            }
+
             let cmd_fut = Box::pin(cmd_rx.recv());
             let read_fut = Box::pin(read.next());
             let stale_in = stale_read_remaining(last_rx_at.elapsed());
-            let timeout_in = read_loop_timeout(stale_in, coalescer.next_due());
+            let api_probe_in = next_api_probe_at.saturating_duration_since(Instant::now());
+            let timeout_in = read_loop_timeout(stale_in, coalescer.next_due()).min(api_probe_in);
 
             match tokio::time::timeout(timeout_in, select(cmd_fut, read_fut)).await {
                 Err(_) => {
@@ -168,6 +244,12 @@ pub(super) async fn ws_manager_task(
                         {
                             disconnected = true;
                         }
+                    }
+                    if action.disconnect_after_handling {
+                        disconnected = true;
+                    }
+                    if active_subs.is_empty() {
+                        disconnected = true;
                     }
                 }
                 Ok(Either::Left((None, _))) => {
@@ -201,21 +283,225 @@ pub(super) async fn ws_manager_task(
         telemetry_on_disconnect();
         let (delay_secs, next_delay_secs) =
             policy.after_disconnect(reconnect_delay_secs, connected_at.elapsed());
-        tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+        if !sleep_with_disconnected_ws_commands(
+            Duration::from_secs(delay_secs),
+            &mut active_subs,
+            &mut cmd_rx,
+        )
+        .await
+        {
+            return;
+        }
         reconnect_delay_secs = next_delay_secs;
+    }
+}
+
+#[derive(Clone)]
+enum ApiLatencyProbe {
+    #[cfg(not(test))]
+    Network,
+    #[cfg(test)]
+    Disabled,
+    #[cfg(test)]
+    Notify(mpsc::UnboundedSender<()>),
+}
+
+impl ApiLatencyProbe {
+    fn production() -> Self {
+        #[cfg(not(test))]
+        {
+            Self::Network
+        }
+        #[cfg(test)]
+        {
+            Self::Disabled
+        }
+    }
+
+    fn spawn(&self) {
+        match self {
+            #[cfg(not(test))]
+            Self::Network => {
+                tokio::spawn(update_api_latency_once());
+            }
+            #[cfg(test)]
+            Self::Disabled => {}
+            #[cfg(test)]
+            Self::Notify(probe_tx) => {
+                let _ = probe_tx.send(());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(super) async fn ws_manager_task_with_api_probe_notifier(
+    ws_url: String,
+    cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
+    msg_tx: broadcast::Sender<WsRoutedMessage>,
+    probe_tx: mpsc::UnboundedSender<()>,
+) {
+    ws_manager_task_with_api_probe(ws_url, cmd_rx, msg_tx, ApiLatencyProbe::Notify(probe_tx)).await;
+}
+
+#[cfg(test)]
+pub(super) async fn ws_manager_task_with_connect_timeout_for_test(
+    ws_url: String,
+    cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
+    msg_tx: broadcast::Sender<WsRoutedMessage>,
+    connect_timeout: Duration,
+) {
+    ws_manager_task_with_options(
+        ws_url,
+        cmd_rx,
+        msg_tx,
+        ApiLatencyProbe::Disabled,
+        connect_timeout,
+    )
+    .await;
+}
+
+#[cfg(not(test))]
+async fn update_api_latency_once() {
+    let start_time = now_ms();
+    let client = crate::api::CLIENT.clone();
+    let req_payload = serde_json::json!({ "type": "ping" });
+
+    if let Ok(resp) = client
+        .post(crate::api::API_URL)
+        .json(&req_payload)
+        .send()
+        .await
+        && resp.status().is_success()
+    {
+        let latency = now_ms().saturating_sub(start_time);
+        telemetry_update_api_latency(latency);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConnectingWsCommandAction {
+    ContinueConnecting,
+    RestartLoop,
+}
+
+fn reset_reconnect_backoff_if_idle(
+    active_subs: &ActiveWsSubscriptions,
+    reconnect_delay_secs: &mut u64,
+    policy: ReconnectPolicy,
+) -> bool {
+    if active_subs.is_empty() {
+        *reconnect_delay_secs = policy.base_delay_secs;
+        true
+    } else {
+        false
+    }
+}
+
+async fn wait_for_ws_subscription(
+    active_subs: &mut ActiveWsSubscriptions,
+    cmd_rx: &mut mpsc::UnboundedReceiver<WsCommand>,
+) -> bool {
+    while active_subs.is_empty() {
+        let Some(command) = cmd_rx.recv().await else {
+            return false;
+        };
+        handle_disconnected_ws_command(active_subs, command);
+    }
+    true
+}
+
+fn handle_connecting_ws_command(
+    active_subs: &mut ActiveWsSubscriptions,
+    command: WsCommand,
+) -> ConnectingWsCommandAction {
+    match command {
+        WsCommand::Subscribe { topic, payload } => {
+            active_subs.subscribe(topic, payload);
+            ConnectingWsCommandAction::ContinueConnecting
+        }
+        WsCommand::Unsubscribe { topic, payload } => {
+            active_subs.unsubscribe(topic, payload);
+            if active_subs.is_empty() {
+                ConnectingWsCommandAction::RestartLoop
+            } else {
+                ConnectingWsCommandAction::ContinueConnecting
+            }
+        }
+        WsCommand::Ping => ConnectingWsCommandAction::ContinueConnecting,
+        WsCommand::Reconnect => ConnectingWsCommandAction::RestartLoop,
+    }
+}
+
+fn handle_disconnected_ws_command(active_subs: &mut ActiveWsSubscriptions, command: WsCommand) {
+    match command {
+        WsCommand::Subscribe { topic, payload } => {
+            active_subs.subscribe(topic, payload);
+        }
+        WsCommand::Unsubscribe { topic, payload } => {
+            active_subs.unsubscribe(topic, payload);
+        }
+        WsCommand::Ping | WsCommand::Reconnect => {}
+    }
+}
+
+fn drain_disconnected_ws_commands(
+    active_subs: &mut ActiveWsSubscriptions,
+    cmd_rx: &mut mpsc::UnboundedReceiver<WsCommand>,
+) -> bool {
+    loop {
+        match cmd_rx.try_recv() {
+            Ok(command) => handle_disconnected_ws_command(active_subs, command),
+            Err(mpsc::error::TryRecvError::Empty) => return true,
+            Err(mpsc::error::TryRecvError::Disconnected) => return false,
+        }
+    }
+}
+
+async fn sleep_with_disconnected_ws_commands(
+    delay: Duration,
+    active_subs: &mut ActiveWsSubscriptions,
+    cmd_rx: &mut mpsc::UnboundedReceiver<WsCommand>,
+) -> bool {
+    if !drain_disconnected_ws_commands(active_subs, cmd_rx) {
+        return false;
+    }
+    if active_subs.is_empty() {
+        return true;
+    }
+
+    let sleep = tokio::time::sleep(delay);
+    tokio::pin!(sleep);
+
+    loop {
+        tokio::select! {
+            () = &mut sleep => {
+                return drain_disconnected_ws_commands(active_subs, cmd_rx);
+            }
+            command = cmd_rx.recv() => {
+                let Some(command) = command else {
+                    return false;
+                };
+                handle_disconnected_ws_command(active_subs, command);
+                if active_subs.is_empty() {
+                    return true;
+                }
+            }
+        }
     }
 }
 
 pub(crate) struct SubscriptionGuard {
     pub(crate) cmd_tx: mpsc::UnboundedSender<WsCommand>,
-    pub(crate) topics: Vec<String>,
+    pub(crate) subscriptions: Vec<(String, Value)>,
 }
 
 impl Drop for SubscriptionGuard {
     fn drop(&mut self) {
-        for topic in &self.topics {
+        for (topic, payload) in &self.subscriptions {
             let _ = self.cmd_tx.send(WsCommand::Unsubscribe {
                 topic: topic.clone(),
+                payload: payload.clone(),
             });
         }
     }

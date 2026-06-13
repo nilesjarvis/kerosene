@@ -1,20 +1,23 @@
+use super::{KeyedBookStreamEvent, WsStreamEvent};
 use crate::api::{OrderBook, parse_ws_book};
-use crate::ws::{SubscriptionGuard, WsCommand, get_manager};
+use crate::ws::{
+    L2BookSigfigs, SubscriptionGuard, WsCommand, get_manager, l2_book_payload_matches_sigfigs,
+};
 
 use futures::SinkExt as _;
 use std::pin::Pin;
 use tokio::sync::broadcast;
 
-type BookSigfigs = (Option<u8>, Option<u8>);
-type BookStream = Pin<Box<dyn futures::Stream<Item = (String, OrderBook)> + Send>>;
-type KeyedBookStream =
-    Pin<Box<dyn futures::Stream<Item = (u64, String, BookSigfigs, OrderBook)> + Send>>;
+type BookSigfigs = L2BookSigfigs;
+type BookEventStream =
+    Pin<Box<dyn futures::Stream<Item = WsStreamEvent<(String, OrderBook)>> + Send>>;
+type KeyedBookEventStream = Pin<Box<dyn futures::Stream<Item = KeyedBookStreamEvent> + Send>>;
 
 // ---------------------------------------------------------------------------
 // Order Book Streams
 // ---------------------------------------------------------------------------
 
-fn ws_book_stream(coin: &str, sigfigs: BookSigfigs) -> BookStream {
+fn ws_book_event_stream(coin: &str, sigfigs: BookSigfigs) -> BookEventStream {
     let coin = coin.to_string();
 
     Box::pin(iced::stream::channel(10, async move |mut output| {
@@ -42,6 +45,7 @@ fn ws_book_stream(coin: &str, sigfigs: BookSigfigs) -> BookStream {
             "method": "subscribe",
             "subscription": sub_payload
         });
+        let subscription = (topic.clone(), payload.clone());
 
         if cmd_tx
             .send(WsCommand::Subscribe {
@@ -52,9 +56,10 @@ fn ws_book_stream(coin: &str, sigfigs: BookSigfigs) -> BookStream {
         {
             return;
         }
+        let reconnect_tx = cmd_tx.clone();
         let _guard = SubscriptionGuard {
             cmd_tx,
-            topics: vec![topic],
+            subscriptions: vec![subscription],
         };
 
         loop {
@@ -62,16 +67,36 @@ fn ws_book_stream(coin: &str, sigfigs: BookSigfigs) -> BookStream {
                 Ok(msg) => {
                     if msg.channel == "l2Book"
                         && msg.data.get("coin").and_then(|v| v.as_str()) == Some(&coin)
+                        && l2_book_payload_matches_sigfigs(&msg.data, sigfigs)
                         && let Some(book) = parse_ws_book(&msg.data)
-                        && output.send((coin.clone(), book)).await.is_err()
+                        && output
+                            .send(WsStreamEvent::Item((coin.clone(), book)))
+                            .await
+                            .is_err()
                     {
                         return;
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    continue;
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    if output
+                        .send(WsStreamEvent::Lagged { skipped })
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    if !super::request_ws_reconnect_after_lag(&reconnect_tx) {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        super::WS_LAG_RECONNECT_PAUSE_SECS,
+                    ))
+                    .await;
                 }
-                Err(_) => {
+                Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
+                    return;
+                }
+                Err(_error) => {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
             }
@@ -79,11 +104,21 @@ fn ws_book_stream(coin: &str, sigfigs: BookSigfigs) -> BookStream {
     }))
 }
 
-pub fn ws_book_stream_keyed(params: &(u64, String, BookSigfigs)) -> KeyedBookStream {
+pub fn ws_book_stream_keyed_events(params: &(u64, String, BookSigfigs)) -> KeyedBookEventStream {
     let book_id = params.0;
+    let coin = params.1.clone();
     let sigfigs = params.2;
-    let inner = ws_book_stream(&params.1, params.2);
-    Box::pin(futures::StreamExt::map(inner, move |(coin, book)| {
-        (book_id, coin, sigfigs, book)
+    let inner = ws_book_event_stream(&params.1, params.2);
+    Box::pin(futures::StreamExt::map(inner, move |event| match event {
+        WsStreamEvent::Item((coin, book)) => {
+            KeyedBookStreamEvent::Item(book_id, coin, sigfigs, None, book)
+        }
+        WsStreamEvent::Lagged { skipped } => KeyedBookStreamEvent::Lagged {
+            id: book_id,
+            coin: coin.clone(),
+            sigfigs,
+            hydromancer_key_generation: None,
+            skipped,
+        },
     }))
 }

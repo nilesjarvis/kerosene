@@ -1,4 +1,5 @@
 use super::super::HydromancerRoutedMessage;
+use crate::ws::{L2BookSigfigs, l2_book_sigfigs_from_value};
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ pub(super) const HYDROMANCER_BOOK_COALESCE_INTERVAL: Duration = Duration::from_m
 struct CoalesceKey {
     msg_type: String,
     coin: String,
+    sigfigs: L2BookSigfigs,
 }
 
 #[derive(Debug)]
@@ -75,6 +77,7 @@ impl HydromancerCoalescedSender {
             return;
         };
         let now = Instant::now();
+        self.prune_stale_last_emitted(now);
 
         match self.last_emitted.get(&key).copied() {
             Some(last) if now.duration_since(last) < self.interval => {
@@ -87,6 +90,13 @@ impl HydromancerCoalescedSender {
                 self.last_emitted.insert(key, now);
             }
         }
+    }
+
+    fn prune_stale_last_emitted(&mut self, now: Instant) {
+        let interval = self.interval;
+        let pending = &self.pending;
+        self.last_emitted
+            .retain(|key, last| pending.contains_key(key) || now.duration_since(*last) < interval);
     }
 
     pub(super) fn next_due(&self) -> Option<Duration> {
@@ -175,9 +185,13 @@ fn coalesce_key(message: &HydromancerRoutedMessage) -> Option<CoalesceKey> {
         return None;
     }
 
-    single_l2_book_coin(message.data.as_ref()).map(|coin| CoalesceKey {
+    let value = message.data.as_ref();
+    single_l2_book_coin(value).map(|coin| CoalesceKey {
         msg_type: message.msg_type.clone(),
         coin,
+        sigfigs: single_l2_book_precision_value(value)
+            .map(l2_book_sigfigs_from_value)
+            .unwrap_or_else(|| l2_book_sigfigs_from_value(value)),
     })
 }
 
@@ -211,4 +225,31 @@ fn single_coin_from_items<'a>(items: impl Iterator<Item = &'a Value>) -> Option<
         found = Some(coin);
     }
     found.map(str::to_string)
+}
+
+fn single_l2_book_precision_value(value: &Value) -> Option<&Value> {
+    if value.get("coin").and_then(Value::as_str).is_some() {
+        return Some(value);
+    }
+
+    if let Some(data) = value.get("data") {
+        if data.get("coin").and_then(Value::as_str).is_some() {
+            return Some(data);
+        }
+        if let Some(items) = data.as_array()
+            && items.len() == 1
+            && items[0].get("coin").and_then(Value::as_str).is_some()
+        {
+            return Some(&items[0]);
+        }
+    }
+
+    if let Some(items) = value.get("books").and_then(Value::as_array)
+        && items.len() == 1
+        && items[0].get("coin").and_then(Value::as_str).is_some()
+    {
+        return Some(&items[0]);
+    }
+
+    None
 }

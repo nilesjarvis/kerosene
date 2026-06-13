@@ -77,6 +77,32 @@ fn book_messages_keep_latest_snapshot_per_coin() {
 }
 
 #[test]
+fn same_coin_book_messages_with_different_echoed_precision_do_not_collapse() {
+    let (sender, mut receiver) = broadcast::channel(8);
+    let mut coalescer = HydromancerCoalescedSender::with_interval(sender, Duration::from_secs(60));
+
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"coin": "BTC", "nSigFigs": 5, "mantissa": 1, "seq": 1}),
+    ));
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"coin": "BTC", "nSigFigs": 4, "mantissa": 1, "seq": 2}),
+    ));
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"coin": "BTC", "nSigFigs": 5, "mantissa": 1, "seq": 3}),
+    ));
+
+    assert_eq!(receive(&mut receiver).data["seq"], 1);
+    assert_eq!(receive(&mut receiver).data["seq"], 2);
+    assert!(receiver.try_recv().is_err());
+
+    assert_eq!(coalescer.flush_all(), 1);
+    assert_eq!(receive(&mut receiver).data["seq"], 3);
+}
+
+#[test]
 fn immediate_book_emit_drops_older_pending_for_same_key() {
     let (sender, mut receiver) = broadcast::channel(8);
     let mut coalescer =
@@ -198,4 +224,28 @@ fn ambiguous_book_batches_pass_through_without_splitting() {
     assert_eq!(message.data["data"][0]["seq"], 1);
     assert_eq!(message.data["data"][1]["seq"], 2);
     assert_eq!(coalescer.flush_all(), 0);
+}
+
+#[test]
+fn stale_last_emitted_history_is_pruned_on_book_submit() {
+    let (sender, mut receiver) = broadcast::channel(8);
+    let mut coalescer =
+        HydromancerCoalescedSender::with_interval(sender, Duration::from_millis(10));
+
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"coin": "BTC", "seq": 1}),
+    ));
+    assert_eq!(coalescer.last_emitted.len(), 1);
+
+    std::thread::sleep(Duration::from_millis(25));
+    coalescer.submit(routed(
+        "l2Book",
+        serde_json::json!({"coin": "ETH", "seq": 1}),
+    ));
+
+    assert_eq!(coalescer.last_emitted.len(), 1);
+    assert_eq!(receive(&mut receiver).data["seq"], 1);
+    assert_eq!(receive(&mut receiver).data["coin"], "ETH");
+    assert!(coalescer.next_due().is_none());
 }

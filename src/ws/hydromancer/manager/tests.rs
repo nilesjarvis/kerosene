@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[test]
@@ -20,6 +21,12 @@ fn hydromancer_read_remaining_decreases_then_saturates_at_zero() {
 }
 
 #[test]
+fn hydromancer_connect_timeout_is_bounded_below_read_timeout() {
+    assert_eq!(HYDROMANCER_CONNECT_TIMEOUT_SECS, 10);
+    const _: () = assert!(HYDROMANCER_CONNECT_TIMEOUT_SECS < HYDROMANCER_READ_TIMEOUT_SECS);
+}
+
+#[test]
 fn hydromancer_window_is_larger_than_the_app_level_stale_label() {
     // The status pane flags the feed as "Stale" after 75s; the reconnect
     // watchdog needs to fire later than that so the user sees the warning
@@ -29,10 +36,110 @@ fn hydromancer_window_is_larger_than_the_app_level_stale_label() {
 }
 
 #[test]
-fn hydromancer_manager_key_does_not_store_raw_api_key() {
-    let key = hydromancer_manager_key("  hydro-secret-token  ");
+fn hydromancer_manager_id_uses_generation_not_api_key() {
+    let first = HydromancerStreamKey::new("hydro-secret-token-a", 7);
+    let rotated_same_generation = HydromancerStreamKey::new("hydro-secret-token-b", 7);
+    let next_generation = HydromancerStreamKey::new("hydro-secret-token-b", 8);
 
-    assert_eq!(key, hydromancer_manager_key("hydro-secret-token"));
-    assert_ne!(key, "hydro-secret-token");
-    assert!(!key.contains("hydro-secret-token"));
+    assert_eq!(first.manager_id(), rotated_same_generation.manager_id());
+    assert_ne!(first.manager_id(), next_generation.manager_id());
+}
+
+fn remove_manager_for_test(manager_id: u64) {
+    let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
+    managers.remove(&manager_id);
+}
+
+fn insert_manager_for_test(
+    manager_id: u64,
+    task_id: u64,
+    cmd_tx: mpsc::UnboundedSender<HydromancerCommand>,
+) {
+    let (_msg_tx, msg_rx) = broadcast::channel(1);
+    let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
+    managers.insert(
+        manager_id,
+        HydromancerManager {
+            task_id,
+            cmd_tx,
+            msg_rx,
+        },
+    );
+}
+
+fn manager_exists_for_test(manager_id: u64) -> bool {
+    let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let managers = managers.lock().unwrap_or_else(|e| e.into_inner());
+    managers.contains_key(&manager_id)
+}
+
+#[test]
+fn finished_manager_cleanup_removes_matching_closed_entry() {
+    let manager_id = u64::MAX - 100;
+    let task_id = 1001;
+    remove_manager_for_test(manager_id);
+
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+    drop(cmd_rx);
+    insert_manager_for_test(manager_id, task_id, cmd_tx);
+
+    assert!(remove_hydromancer_manager_if_finished(manager_id, task_id));
+    assert!(!manager_exists_for_test(manager_id));
+}
+
+#[test]
+fn finished_manager_cleanup_keeps_replacement_entry() {
+    let manager_id = u64::MAX - 101;
+    let old_task_id = 2001;
+    let replacement_task_id = 2002;
+    remove_manager_for_test(manager_id);
+
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+    insert_manager_for_test(manager_id, replacement_task_id, cmd_tx);
+
+    assert!(!remove_hydromancer_manager_if_finished(
+        manager_id,
+        old_task_id
+    ));
+    assert!(manager_exists_for_test(manager_id));
+
+    drop(cmd_rx);
+    assert!(remove_hydromancer_manager_if_finished(
+        manager_id,
+        replacement_task_id
+    ));
+}
+
+#[test]
+fn reconnect_prunes_closed_registry_entry() {
+    let manager_id = u64::MAX - 102;
+    remove_manager_for_test(manager_id);
+
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+    drop(cmd_rx);
+    insert_manager_for_test(manager_id, 3001, cmd_tx);
+
+    reconnect_hydromancer(manager_id);
+
+    assert!(!manager_exists_for_test(manager_id));
+}
+
+#[test]
+fn routed_message_debug_redacts_json_payload() {
+    let message = HydromancerRoutedMessage {
+        msg_type: "connected".to_string(),
+        data: Arc::new(serde_json::json!({
+            "sessionId": "session-secret",
+            "cursor": "cursor-secret"
+        })),
+    };
+
+    let rendered = format!("{message:?}");
+
+    assert!(rendered.contains("connected"));
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains("session-secret"));
+    assert!(!rendered.contains("cursor-secret"));
 }

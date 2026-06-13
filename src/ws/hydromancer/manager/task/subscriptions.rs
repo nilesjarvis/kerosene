@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::collections::HashMap;
 
 #[cfg(test)]
 mod tests;
@@ -17,7 +16,14 @@ pub(super) enum HydromancerUnsubscribeResult {
 
 #[derive(Debug, Default)]
 pub(super) struct ActiveHydromancerSubscriptions {
-    entries: HashMap<String, (usize, Value)>,
+    entries: Vec<ActiveHydromancerSubscription>,
+}
+
+#[derive(Debug)]
+struct ActiveHydromancerSubscription {
+    topic: String,
+    count: usize,
+    payload: Value,
 }
 
 impl ActiveHydromancerSubscriptions {
@@ -26,28 +32,45 @@ impl ActiveHydromancerSubscriptions {
     }
 
     pub(super) fn subscribe(&mut self, topic: String, payload: Value) -> Option<Value> {
-        let entry = self.entries.entry(topic).or_insert((0, payload));
-        entry.0 += 1;
-
-        if entry.0 == 1 {
-            Some(entry.1.clone())
-        } else {
-            None
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.topic == topic && entry.payload == payload)
+        {
+            entry.count += 1;
+            return None;
         }
+
+        let outbound_payload = payload.clone();
+        self.entries.push(ActiveHydromancerSubscription {
+            topic,
+            count: 1,
+            payload,
+        });
+        Some(outbound_payload)
     }
 
-    pub(super) fn unsubscribe(&mut self, topic: String) -> HydromancerUnsubscribeResult {
-        let Some((count, payload)) = self.entries.get_mut(&topic) else {
+    pub(super) fn unsubscribe(
+        &mut self,
+        topic: String,
+        payload: Value,
+    ) -> HydromancerUnsubscribeResult {
+        let Some(index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.topic == topic && entry.payload == payload)
+        else {
             return HydromancerUnsubscribeResult::Missing;
         };
 
-        *count = count.saturating_sub(1);
-        if *count > 0 {
+        let entry = &mut self.entries[index];
+        entry.count = entry.count.saturating_sub(1);
+        if entry.count > 0 {
             return HydromancerUnsubscribeResult::StillActive;
         }
 
-        let payload = payload.clone();
-        self.entries.remove(&topic);
+        let payload = entry.payload.clone();
+        self.entries.remove(index);
         HydromancerUnsubscribeResult::Removed {
             payload,
             became_empty: self.entries.is_empty(),
@@ -55,6 +78,6 @@ impl ActiveHydromancerSubscriptions {
     }
 
     pub(super) fn payloads(&self) -> impl Iterator<Item = &Value> {
-        self.entries.values().map(|(_, payload)| payload)
+        self.entries.iter().map(|entry| &entry.payload)
     }
 }

@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use crate::x_feed_stream::{XFeedStreamParams, x_feed_stream};
+use crate::x_feed_stream::{XFeedStreamParams, x_feed_stream_subscription};
 use iced::Subscription;
 
 impl TradingTerminal {
@@ -14,16 +14,14 @@ impl TradingTerminal {
             return;
         }
 
+        let reconnect_nonce = self.x_feed.stream_reconnect_nonce;
         subs.push(
-            Subscription::run_with(
-                XFeedStreamParams {
-                    bearer_token: self.x_feed.bearer_token.trim().to_string(),
-                    handles: self.x_feed.handles.clone(),
-                    reconnect_nonce: self.x_feed.stream_reconnect_nonce,
-                },
-                x_feed_stream,
-            )
-            .map(Message::XFeedStreamEvent),
+            x_feed_stream_subscription(XFeedStreamParams {
+                bearer_token: self.x_feed.bearer_token.clone().into_zeroizing(),
+                handles: self.x_feed.handles.clone(),
+                reconnect_nonce,
+            })
+            .map(move |event| Message::XFeedStreamEvent(reconnect_nonce, event)),
         );
     }
 }

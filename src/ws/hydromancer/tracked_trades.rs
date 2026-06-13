@@ -4,7 +4,7 @@ use super::parsing::{
     tracked_trade_dedupe_key,
 };
 use super::recent::RecentHydromancerKeys;
-use super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerWsMessage};
+use super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, HydromancerWsMessage};
 use crate::ws::WsStream;
 
 use futures::SinkExt as _;
@@ -37,9 +37,9 @@ fn tracked_trade_subscription(addresses: Vec<String>) -> Option<(String, Value)>
 }
 
 pub fn ws_hydromancer_tracked_trades(
-    stream_key: &(String, u64, Vec<String>),
+    stream_key: &(HydromancerStreamKey, u64, Vec<String>),
 ) -> WsStream<HydromancerWsMessage> {
-    let api_key = stream_key.0.clone();
+    let manager_key = stream_key.0.clone();
     let addresses = stream_key.2.clone();
 
     Box::pin(iced::stream::channel(10000, async move |mut output| {
@@ -47,7 +47,8 @@ pub fn ws_hydromancer_tracked_trades(
             return;
         };
 
-        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(api_key);
+        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(manager_key);
+        let subscription = (topic.clone(), payload.clone());
 
         if cmd_tx
             .send(HydromancerCommand::Subscribe {
@@ -58,7 +59,8 @@ pub fn ws_hydromancer_tracked_trades(
         {
             return;
         }
-        let _guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![topic]);
+        let reconnect_tx = cmd_tx.clone();
+        let _guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![subscription]);
         let mut seen = RecentHydromancerKeys::new(50_000);
 
         loop {
@@ -89,8 +91,26 @@ pub fn ws_hydromancer_tracked_trades(
                         }
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(_) => {
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    if output
+                        .send(HydromancerWsMessage::Lagged { skipped })
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        HYDROMANCER_RECONNECT_DELAY_SECS,
+                    ))
+                    .await;
+                }
+                Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
+                    return;
+                }
+                Err(_error) => {
                     tokio::time::sleep(std::time::Duration::from_secs(
                         HYDROMANCER_RECONNECT_DELAY_SECS,
                     ))

@@ -40,3 +40,29 @@ fn outcome_charts_subscribe_to_asset_context_for_header_metrics() {
 
     assert_eq!(subscriptions.len(), 1);
 }
+
+#[test]
+fn chart_asset_context_lagged_event_maps_to_chart_message() {
+    let terminal = TradingTerminal::boot().0;
+    let source_context = terminal.market_data_source_context();
+
+    let message = chart_asset_ctx_stream_event_message((
+        source_context,
+        crate::ws::KeyedAssetContextStreamEvent::Lagged {
+            id: 7,
+            symbol: "BTC".to_string(),
+            hydromancer_key_generation: source_context.hydromancer_key_generation,
+            skipped: 9,
+        },
+    ));
+
+    match message {
+        Message::ChartWsAssetCtxLagged(id, symbol, mapped_context, skipped) => {
+            assert_eq!(id, 7);
+            assert_eq!(symbol, "BTC");
+            assert_eq!(mapped_context, source_context);
+            assert_eq!(skipped, 9);
+        }
+        other => panic!("expected chart asset-context lagged message, got {other:?}"),
+    }
+}

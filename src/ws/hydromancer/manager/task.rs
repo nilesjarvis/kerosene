@@ -2,6 +2,7 @@ use self::coalescer::HydromancerCoalescedSender;
 use self::lifecycle::{
     HydromancerTaskControlFlow, drain_pending_hydromancer_shutdown,
     handle_preconnect_hydromancer_command, hydromancer_sleep_or_shutdown,
+    hydromancer_wait_for_subscription_or_shutdown,
 };
 use self::messages::{
     broadcast_hydromancer_control, broadcast_hydromancer_reconnecting, hydromancer_connect_url,
@@ -10,9 +11,11 @@ use self::messages::{
 use self::session::HydromancerSessionState;
 use self::socket::{handle_hydromancer_command, handle_hydromancer_ws_message};
 use self::subscriptions::ActiveHydromancerSubscriptions;
+use super::super::super::connect::{ConnectAttempt, connect_with_timeout};
 use super::super::super::{telemetry_on_hydromancer_connect, telemetry_on_hydromancer_disconnect};
 use super::super::HYDROMANCER_RECONNECT_DELAY_SECS;
 use super::{
+    HYDROMANCER_CONNECT_TIMEOUT_SECS, HYDROMANCER_IDLE_SHUTDOWN_SECS,
     HYDROMANCER_MAX_CONNECT_RETRY_SECS, HYDROMANCER_READ_TIMEOUT_SECS, HydromancerCommand,
     HydromancerRoutedMessage, hydromancer_read_remaining,
 };
@@ -35,11 +38,27 @@ mod subscriptions;
 // ---------------------------------------------------------------------------
 
 pub(super) async fn hydromancer_manager_task(
-    api_key: String,
-    mut cmd_rx: mpsc::UnboundedReceiver<HydromancerCommand>,
+    api_key: Zeroizing<String>,
+    cmd_rx: mpsc::UnboundedReceiver<HydromancerCommand>,
     msg_tx: broadcast::Sender<HydromancerRoutedMessage>,
 ) {
-    let api_key = Zeroizing::new(api_key);
+    hydromancer_manager_task_with_options(
+        api_key,
+        cmd_rx,
+        msg_tx,
+        Duration::from_secs(HYDROMANCER_CONNECT_TIMEOUT_SECS),
+        None,
+    )
+    .await;
+}
+
+async fn hydromancer_manager_task_with_options(
+    api_key: Zeroizing<String>,
+    mut cmd_rx: mpsc::UnboundedReceiver<HydromancerCommand>,
+    msg_tx: broadcast::Sender<HydromancerRoutedMessage>,
+    connect_timeout: Duration,
+    connect_url_override: Option<String>,
+) {
     let mut active_subs = ActiveHydromancerSubscriptions::default();
     let mut coalescer = HydromancerCoalescedSender::new(msg_tx.clone());
     let mut retry_delay = 1;
@@ -49,17 +68,16 @@ pub(super) async fn hydromancer_manager_task(
     use futures::future::{Either, select};
 
     'manager: loop {
-        while active_subs.is_empty() {
-            match cmd_rx.recv().await {
-                Some(cmd) => {
-                    if handle_preconnect_hydromancer_command(cmd, &mut active_subs)
-                        == HydromancerTaskControlFlow::Shutdown
-                    {
-                        return;
-                    }
-                }
-                None => return,
-            }
+        if active_subs.is_empty()
+            && hydromancer_wait_for_subscription_or_shutdown(
+                &mut cmd_rx,
+                &mut active_subs,
+                Duration::from_secs(HYDROMANCER_IDLE_SHUTDOWN_SECS),
+            )
+            .await
+                == HydromancerTaskControlFlow::Shutdown
+        {
+            return;
         }
 
         // A Shutdown can be queued by key rotation while this task is between
@@ -77,9 +95,20 @@ pub(super) async fn hydromancer_manager_task(
         session.begin_connection();
         let _ = broadcast_hydromancer_control(&msg_tx, "connecting", session.connecting_data());
 
-        let url = hydromancer_connect_url(&api_key, session.session_id(), session.last_cursor());
+        let generated_url;
+        let connect_url = match connect_url_override.as_deref() {
+            Some(url) => url,
+            None => {
+                generated_url =
+                    hydromancer_connect_url(&api_key, session.session_id(), session.last_cursor());
+                generated_url.as_str()
+            }
+        };
 
-        let connect_fut = Box::pin(tokio_tungstenite::connect_async(&url));
+        let connect_fut = Box::pin(connect_with_timeout(
+            tokio_tungstenite::connect_async(connect_url),
+            connect_timeout,
+        ));
         let cmd_fut = Box::pin(cmd_rx.recv());
         let connect_result = match select(connect_fut, cmd_fut).await {
             Either::Left((connect_result, pending_cmd)) => {
@@ -107,11 +136,30 @@ pub(super) async fn hydromancer_manager_task(
         };
 
         let ws_stream = match connect_result {
-            Ok((ws, _)) => ws,
-            Err(e) => {
+            ConnectAttempt::Finished(Ok((ws, _))) => ws,
+            ConnectAttempt::Finished(Err(e)) => {
                 let _ = broadcast_hydromancer_reconnecting(
                     &msg_tx,
                     redact_hydromancer_error(e, &api_key),
+                    retry_delay,
+                );
+                if hydromancer_sleep_or_shutdown(
+                    &mut cmd_rx,
+                    &mut active_subs,
+                    Duration::from_secs(retry_delay),
+                )
+                .await
+                    == HydromancerTaskControlFlow::Shutdown
+                {
+                    return;
+                }
+                retry_delay = (retry_delay * 2).min(HYDROMANCER_MAX_CONNECT_RETRY_SECS);
+                continue 'manager;
+            }
+            ConnectAttempt::TimedOut => {
+                let _ = broadcast_hydromancer_reconnecting(
+                    &msg_tx,
+                    format!("connect timeout after {HYDROMANCER_CONNECT_TIMEOUT_SECS}s"),
                     retry_delay,
                 );
                 if hydromancer_sleep_or_shutdown(
