@@ -18,7 +18,7 @@ impl TradingTerminal {
                         }
                     }
                 },
-                tick_size: book.tick_size,
+                tick_size: Self::normalized_book_tick_size(book.tick_size),
                 display_mode: match book.display_mode {
                     OrderBookDisplayMode::DepthList => {
                         config::OrderBookDisplayModeConfig::DepthList

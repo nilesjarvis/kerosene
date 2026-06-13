@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 // Chart Candle Data
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum ReadDataProvider {
     #[default]
     Hyperliquid,

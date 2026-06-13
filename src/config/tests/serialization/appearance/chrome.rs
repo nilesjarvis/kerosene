@@ -189,3 +189,153 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert!(decoded_legacy.widget_padding.overrides.is_empty());
     assert!(decoded_legacy.custom_window_chrome_enabled);
 }
+
+#[test]
+fn widget_padding_unknown_targets_are_dropped_for_config_and_saved_layouts() {
+    let mut value = default_config_value();
+    let object = object_mut(&mut value, "config should serialize to object");
+    object.insert(
+        "widget_padding".to_string(),
+        serde_json::json!({
+            "default_px": 5.0,
+            "overrides": [
+                {
+                    "target": "Watchlist",
+                    "padding_px": 12.0
+                },
+                {
+                    "target": "FutureWidget",
+                    "padding_px": 16.0
+                },
+                {
+                    "target": {
+                        "FuturePane": {
+                            "id": 99
+                        }
+                    },
+                    "padding_px": 18.0
+                }
+            ]
+        }),
+    );
+    object.insert(
+        "saved_layouts".to_string(),
+        serde_json::json!([
+            {
+                "name": "future-padding",
+                "widget_padding": {
+                    "default_px": 4.0,
+                    "overrides": [
+                        {
+                            "target": "OrderEntry",
+                            "padding_px": 10.0
+                        },
+                        {
+                            "target": "RemovedPane",
+                            "padding_px": 11.0
+                        }
+                    ]
+                }
+            }
+        ]),
+    );
+
+    let decoded: KeroseneConfig = value_from_json(
+        value,
+        "config with unknown widget padding targets should deserialize",
+    );
+
+    assert_eq!(decoded.widget_padding.default_px, 5.0);
+    assert_eq!(decoded.widget_padding.overrides.len(), 1);
+    assert_eq!(
+        decoded.widget_padding.overrides[0].target,
+        WidgetPaddingTargetConfig::Watchlist
+    );
+    assert_eq!(decoded.widget_padding.overrides[0].padding_px, 12.0);
+
+    let layout_padding = &decoded.saved_layouts[0].widget_padding;
+    assert_eq!(layout_padding.default_px, 4.0);
+    assert_eq!(layout_padding.overrides.len(), 1);
+    assert_eq!(
+        layout_padding.overrides[0].target,
+        WidgetPaddingTargetConfig::OrderEntry
+    );
+    assert_eq!(layout_padding.overrides[0].padding_px, 10.0);
+}
+
+#[test]
+fn widget_padding_malformed_known_override_still_errors() {
+    for overrides in [
+        serde_json::json!([
+            {
+                "target": "Watchlist",
+                "padding_px": {
+                    "not": "a number"
+                }
+            }
+        ]),
+        serde_json::json!([
+            {
+                "target": {
+                    "Chart": {
+                        "chart_id": "bad"
+                    }
+                },
+                "padding_px": 12.0
+            }
+        ]),
+        serde_json::json!([
+            {
+                "target": {
+                    "Watchlist": {}
+                },
+                "padding_px": 12.0
+            }
+        ]),
+        serde_json::json!([
+            {
+                "padding_px": 12.0
+            }
+        ]),
+        serde_json::json!([
+            {
+                "target": null,
+                "padding_px": 12.0
+            }
+        ]),
+    ] {
+        let mut value = default_config_value();
+        let object = object_mut(&mut value, "config should serialize to object");
+        object.insert(
+            "widget_padding".to_string(),
+            serde_json::json!({
+                "default_px": 5.0,
+                "overrides": overrides
+            }),
+        );
+
+        assert!(serde_json::from_value::<KeroseneConfig>(value).is_err());
+    }
+
+    assert!(
+        serde_json::from_str::<KeroseneConfig>(
+            r#"{
+                "widget_padding": {
+                    "default_px": 5.0,
+                    "overrides": [
+                        {
+                            "target": {
+                                "FuturePane": {},
+                                "Chart": {
+                                    "chart_id": "bad"
+                                }
+                            },
+                            "padding_px": 12.0
+                        }
+                    ]
+                }
+            }"#
+        )
+        .is_err()
+    );
+}

@@ -80,6 +80,8 @@ pub struct KeroseneConfig {
     pub credential_storage_mode: CredentialStorageMode,
     #[serde(default)]
     pub encrypted_secrets: Option<EncryptedSecretsConfig>,
+    #[serde(skip)]
+    pub secret_migration_save_blocked: bool,
     #[serde(default)]
     pub main_window_width: Option<f32>,
     #[serde(default)]
@@ -96,6 +98,12 @@ pub struct KeroseneConfig {
     pub journal_window_height: Option<f32>,
     #[serde(default)]
     pub accounts: Vec<AccountProfile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_keychain_profile_deletions: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pending_keychain_cleanup_all: bool,
+    #[serde(skip)]
+    pub secret_cleanup_state_dirty: bool,
     #[serde(default)]
     pub active_account_index: usize,
 
@@ -259,6 +267,7 @@ pub struct KeroseneConfig {
     /// Whether the favourites ticker tape is visible below the account bar.
     #[serde(default)]
     pub ticker_tape_enabled: bool,
+    #[serde(default)]
     pub favourite_symbols: Vec<String>,
     /// Globally hidden ticker symbols. Matching is intentionally broad for plain
     /// tickers, so muting BTC also hides UBTC and HIP-3 BTC variants.
@@ -374,4 +383,8 @@ pub struct KeroseneConfig {
     /// Modifier prefix used with number keys to switch the active chart timeframe.
     #[serde(default)]
     pub chart_timeframe_hotkey_prefix: Option<HotkeyPrefixConfig>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }

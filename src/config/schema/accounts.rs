@@ -23,9 +23,9 @@ pub struct AccountProfile {
 impl fmt::Debug for AccountProfile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AccountProfile")
-            .field("secret_id", &self.secret_id)
+            .field("secret_id", &"<redacted>")
             .field("name", &self.name)
-            .field("wallet_address", &self.wallet_address)
+            .field("wallet_address", &"<redacted>")
             .field("agent_key", &"<redacted>")
             .field("hydromancer_api_key", &"<redacted>")
             .finish()
@@ -46,5 +46,34 @@ impl std::fmt::Display for CredentialStorageMode {
             Self::EncryptedConfig => "Encrypted Config",
         };
         f.write_str(label)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AccountProfile;
+
+    #[test]
+    fn account_profile_debug_redacts_secret_identity_metadata() {
+        let profile = AccountProfile {
+            secret_id: "acct-secret-id".to_string(),
+            name: "Trading Profile".to_string(),
+            wallet_address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".to_string(),
+            agent_key: "agent-secret".to_string().into(),
+            hydromancer_api_key: "hydro-secret".to_string().into(),
+        };
+
+        let rendered = format!("{profile:?}");
+
+        assert!(rendered.contains("Trading Profile"));
+        assert!(rendered.contains("<redacted>"));
+        for secret in [
+            "acct-secret-id",
+            "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "agent-secret",
+            "hydro-secret",
+        ] {
+            assert!(!rendered.contains(secret), "debug output leaked {secret}");
+        }
     }
 }

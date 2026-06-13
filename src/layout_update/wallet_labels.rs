@@ -30,6 +30,14 @@ impl TradingTerminal {
                 );
             }
             Message::ImportWalletLabels => {
+                if self.config_clear_requested || self.config_cleared_this_session {
+                    self.push_toast(
+                        "Wallet label import is disabled because config persistence is paused until restart.".to_string(),
+                        true,
+                    );
+                    return Task::none();
+                }
+
                 return Task::perform(
                     async {
                         let path = rfd::AsyncFileDialog::new()
@@ -60,6 +68,14 @@ impl TradingTerminal {
             },
             Message::WalletLabelsImported(result) => match result {
                 Ok(export) => {
+                    if self.config_clear_requested || self.config_cleared_this_session {
+                        self.push_toast(
+                            "Wallet label import was discarded because config persistence is paused until restart.".to_string(),
+                            true,
+                        );
+                        return Task::none();
+                    }
+
                     let labeled_addresses_before = self.labeled_wallet_addresses();
                     match Self::merge_wallet_label_export(&mut self.address_book, export) {
                         Ok(summary) => {
@@ -94,5 +110,84 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AddressBookEntryConfig, WALLET_LABELS_EXPORT_SCHEMA, WalletLabelsExport};
+
+    const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    fn wallet_label_export() -> WalletLabelsExport {
+        WalletLabelsExport {
+            schema: WALLET_LABELS_EXPORT_SCHEMA.to_string(),
+            exported_at_ms: 1,
+            labels: vec![AddressBookEntryConfig {
+                address: TEST_ADDRESS.to_string(),
+                label: "Imported".to_string(),
+                color: None,
+                tags: Vec::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn completed_wallet_label_import_is_discarded_after_config_clear() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_cleared_this_session = true;
+        terminal.wallet_tracker.open = true;
+
+        let _task = terminal
+            .update_wallet_label_io(Message::WalletLabelsImported(Ok(wallet_label_export())));
+
+        assert!(terminal.address_book.is_empty());
+        assert!(terminal.wallet_tracker.tracked_addresses.is_empty());
+        assert!(terminal.wallet_tracker.rows.is_empty());
+        assert!(terminal.wallet_tracker.core_refresh_queue.is_empty());
+        assert!(terminal.config_save_due_at.is_none());
+        assert!(
+            terminal.toasts.last().is_some_and(
+                |toast| toast.is_error && toast.message.contains("import was discarded")
+            )
+        );
+    }
+
+    #[test]
+    fn completed_wallet_label_import_is_discarded_while_config_clear_is_pending() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+        terminal.wallet_tracker.open = true;
+
+        let _task = terminal
+            .update_wallet_label_io(Message::WalletLabelsImported(Ok(wallet_label_export())));
+
+        assert!(terminal.address_book.is_empty());
+        assert!(terminal.wallet_tracker.tracked_addresses.is_empty());
+        assert!(terminal.wallet_tracker.rows.is_empty());
+        assert!(terminal.wallet_tracker.core_refresh_queue.is_empty());
+        assert!(terminal.config_save_due_at.is_none());
+        assert!(
+            terminal.toasts.last().is_some_and(
+                |toast| toast.is_error && toast.message.contains("import was discarded")
+            )
+        );
+    }
+
+    #[test]
+    fn wallet_label_import_start_is_blocked_after_config_clear() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_cleared_this_session = true;
+
+        let _task = terminal.update_wallet_label_io(Message::ImportWalletLabels);
+
+        assert!(
+            terminal
+                .toasts
+                .last()
+                .is_some_and(|toast| toast.is_error
+                    && toast.message.contains("import is disabled"))
+        );
     }
 }

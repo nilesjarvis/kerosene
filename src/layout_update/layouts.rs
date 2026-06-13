@@ -85,6 +85,15 @@ impl TradingTerminal {
                 return export_layout_task(layout);
             }
             Message::ImportLayout => {
+                if self.config_clear_requested || self.config_cleared_this_session {
+                    self.push_toast(
+                        "Layout import is disabled because config persistence is paused until restart."
+                            .to_string(),
+                        true,
+                    );
+                    return Task::none();
+                }
+
                 return import_layout_task();
             }
             Message::LayoutExported(result) => match result {
@@ -97,11 +106,20 @@ impl TradingTerminal {
             },
             Message::LayoutImported(result) => match result {
                 Ok(layout) => {
+                    if self.config_clear_requested || self.config_cleared_this_session {
+                        self.push_toast(
+                            "Layout import was discarded because config persistence is paused until restart."
+                                .to_string(),
+                            true,
+                        );
+                        return Task::none();
+                    }
+
                     let mut final_layout = layout;
                     final_layout.pane_layout = final_layout
                         .pane_layout
                         .take()
-                        .and_then(config::prune_unsupported_pane_layout);
+                        .and_then(config::prune_legacy_unsupported_pane_layout);
                     final_layout.widget_padding = final_layout.widget_padding.normalized();
                     let base_name = final_layout.name.clone();
                     let mut counter = 1;

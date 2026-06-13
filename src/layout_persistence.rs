@@ -68,6 +68,7 @@ impl TradingTerminal {
         let next_chart_id = widget_configs.next_chart_id;
         let next_spaghetti_id = widget_configs.next_spaghetti_id;
 
+        self.clear_all_chart_pending_request_state();
         boot_tasks.extend(self.restore_layout_chart_instances(
             &chart_configs,
             &spaghetti_configs,
@@ -77,7 +78,11 @@ impl TradingTerminal {
         boot_tasks.extend(self.close_detached_windows_for_missing_charts());
         self.prune_chart_surface_state();
 
+        self.preserved_loaded_pane_layout = layout.pane_layout.clone();
         self.restore_layout_panes(&layout);
+        boot_tasks.push(self.restore_layout_liquidation_distribution_symbol(
+            layout.liquidation_distribution_symbol.as_deref(),
+        ));
         self.apply_widget_padding_config(&layout.widget_padding);
         boot_tasks.push(self.restore_layout_order_books(&layout));
         self.restore_layout_live_watchlists(&layout);
@@ -118,5 +123,39 @@ impl TradingTerminal {
             .into_iter()
             .map(iced::window::close)
             .collect()
+    }
+
+    fn restore_layout_liquidation_distribution_symbol(
+        &mut self,
+        symbol: Option<&str>,
+    ) -> Task<Message> {
+        let Some(symbol) = symbol else {
+            return Task::none();
+        };
+
+        self.liquidation_distribution.loading = false;
+        self.liquidation_distribution.pending_request = None;
+
+        let symbol = symbol.trim();
+        if symbol.is_empty()
+            || self.symbol_key_is_hidden(symbol)
+            || self.hyperdash_coin_for_symbol(symbol).is_none()
+        {
+            self.liquidation_distribution.symbol.clear();
+            self.liquidation_distribution.symbol_search_query.clear();
+            self.liquidation_distribution.symbol_picker_open = false;
+            self.liquidation_distribution.error = None;
+            self.liquidation_distribution.clear_data_if_not_symbol("");
+            return Task::none();
+        }
+
+        let display = self.liquidation_distribution_symbol_display(symbol);
+        self.liquidation_distribution.symbol = symbol.to_string();
+        self.liquidation_distribution.symbol_search_query = display;
+        self.liquidation_distribution.symbol_picker_open = false;
+        self.liquidation_distribution.error = None;
+        self.liquidation_distribution
+            .clear_data_if_not_symbol(symbol);
+        self.request_liquidation_distribution_refresh(true)
     }
 }

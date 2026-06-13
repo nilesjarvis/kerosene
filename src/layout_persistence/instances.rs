@@ -45,8 +45,7 @@ impl TradingTerminal {
             // will arrive to repair the raw-key placeholder from
             // ChartInstance::new; resolve the display name here.
             let display = self.display_name_for_symbol(&chart_cfg.symbol);
-            instance.symbol_display = display.clone();
-            instance.chart.set_symbol_label(display);
+            instance.set_symbol_identity(chart_cfg.symbol.clone(), display);
             instance.chart.inverted = chart_cfg.inverted;
             instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
             instance.show_earnings_markers = chart_cfg.show_earnings_markers;
@@ -76,16 +75,21 @@ impl TradingTerminal {
                     id,
                     &chart_cfg.symbol,
                     tf,
-                    self.chart_backfill_source,
+                    self.chart_backfill_request_context(),
                     None,
                     0,
                 );
                 instance.candle_fetch_request = Some(request.clone());
                 boot_tasks.push(Self::fetch_candles_task(
                     request,
-                    self.hydromancer_api_key.trim().to_string(),
+                    self.hydromancer_api_key_for_task(),
                 ));
-                boot_tasks.extend(Self::fetch_macro_candles_tasks(id, &chart_cfg.symbol));
+                let macro_request_id = instance.next_macro_candles_request_id();
+                boot_tasks.extend(Self::fetch_macro_candles_tasks(
+                    id,
+                    macro_request_id,
+                    &chart_cfg.symbol,
+                ));
             } else if !chart_cfg.symbol.is_empty() {
                 Self::clear_chart_for_muted_symbol(&mut instance);
             }
@@ -151,7 +155,9 @@ impl TradingTerminal {
                     None,
                     ChartBackfillFetchContext::new(
                         self.chart_backfill_source,
-                        self.hydromancer_api_key.trim().to_string(),
+                        self.read_data_provider_generation,
+                        self.hydromancer_key_generation,
+                        self.hydromancer_api_key_for_task(),
                     ),
                 ));
             }

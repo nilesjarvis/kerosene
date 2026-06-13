@@ -1,5 +1,5 @@
 use super::{json_string, value_from_json};
-use crate::config::{KeroseneConfig, PaneKindConfig, PaneLayoutConfig};
+use crate::config::{BottomTabConfig, KeroseneConfig, PaneKindConfig, PaneLayoutConfig};
 use crate::session_data_state::SessionDataLookback;
 
 #[test]
@@ -10,6 +10,144 @@ fn legacy_assistant_pane_deserializes_as_unsupported() {
     );
 
     assert_eq!(layout, PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported));
+}
+
+#[test]
+fn unknown_future_pane_round_trips_raw_json() {
+    let raw_pane = serde_json::json!({
+        "FuturePane": {
+            "id": 42,
+            "label": "alpha",
+            "metadata": [true, null]
+        }
+    });
+    let raw_layout = serde_json::json!({ "Leaf": raw_pane.clone() });
+    let layout: PaneLayoutConfig = value_from_json(
+        raw_layout.clone(),
+        "future pane should deserialize as raw unknown data",
+    );
+
+    assert_eq!(
+        layout,
+        PaneLayoutConfig::Leaf(PaneKindConfig::Unknown(raw_pane))
+    );
+    assert_eq!(
+        serde_json::to_value(&layout).expect("future pane should serialize"),
+        raw_layout
+    );
+}
+
+#[test]
+fn known_pane_variants_keep_existing_wire_shape() {
+    let cases = vec![
+        (
+            PaneKindConfig::AccountSummary,
+            serde_json::json!("AccountSummary"),
+        ),
+        (
+            PaneKindConfig::Chart { chart_id: 7 },
+            serde_json::json!({ "Chart": { "chart_id": 7 } }),
+        ),
+        (
+            PaneKindConfig::OrderBook { id: 8 },
+            serde_json::json!({ "OrderBook": { "id": 8 } }),
+        ),
+        (PaneKindConfig::Watchlist, serde_json::json!("Watchlist")),
+        (
+            PaneKindConfig::LiveWatchlist { id: 9 },
+            serde_json::json!({ "LiveWatchlist": { "id": 9 } }),
+        ),
+        (
+            PaneKindConfig::PositioningInfo { id: 10 },
+            serde_json::json!({ "PositioningInfo": { "id": 10 } }),
+        ),
+        (
+            PaneKindConfig::SessionData { id: 11 },
+            serde_json::json!({ "SessionData": { "id": 11 } }),
+        ),
+        (PaneKindConfig::Portfolio, serde_json::json!("Portfolio")),
+        (PaneKindConfig::Income, serde_json::json!("Income")),
+        (
+            PaneKindConfig::BottomTabs {
+                active_tab: BottomTabConfig::FundingHistory,
+            },
+            serde_json::json!({ "BottomTabs": { "active_tab": "FundingHistory" } }),
+        ),
+        (PaneKindConfig::OrderEntry, serde_json::json!("OrderEntry")),
+        (
+            PaneKindConfig::AdvancedOrders,
+            serde_json::json!("AdvancedOrders"),
+        ),
+        (
+            PaneKindConfig::SpaghettiChart { spaghetti_id: 12 },
+            serde_json::json!({ "SpaghettiChart": { "spaghetti_id": 12 } }),
+        ),
+        (PaneKindConfig::Settings, serde_json::json!("Settings")),
+        (PaneKindConfig::Calendar, serde_json::json!("Calendar")),
+        (
+            PaneKindConfig::Liquidations,
+            serde_json::json!("Liquidations"),
+        ),
+        (
+            PaneKindConfig::LiquidationsDistribution,
+            serde_json::json!("LiquidationsDistribution"),
+        ),
+        (
+            PaneKindConfig::TrackedTrades,
+            serde_json::json!("TrackedTrades"),
+        ),
+        (
+            PaneKindConfig::TelegramFeed,
+            serde_json::json!("TelegramFeed"),
+        ),
+        (PaneKindConfig::XFeed, serde_json::json!("XFeed")),
+        (PaneKindConfig::Outcomes, serde_json::json!("Outcomes")),
+        (PaneKindConfig::HypeEtfs, serde_json::json!("HypeEtfs")),
+        (
+            PaneKindConfig::HypeUnstakingQueue,
+            serde_json::json!("HypeUnstakingQueue"),
+        ),
+        (
+            PaneKindConfig::Unsupported,
+            serde_json::json!("Unsupported"),
+        ),
+    ];
+
+    for (kind, expected_json) in cases {
+        assert_eq!(
+            serde_json::to_value(&kind).expect("pane kind should serialize"),
+            expected_json,
+            "serialized wire shape changed for {kind:?}"
+        );
+        assert_eq!(
+            serde_json::from_value::<PaneKindConfig>(expected_json.clone())
+                .expect("pane kind should deserialize"),
+            kind,
+            "deserialized wire shape changed for {expected_json}"
+        );
+    }
+}
+
+#[test]
+fn known_pane_future_fields_are_intentionally_dropped() {
+    let raw_pane = serde_json::json!({
+        "Chart": {
+            "chart_id": 7,
+            "future_field": {
+                "kept_by_newer_versions": true
+            }
+        }
+    });
+    let decoded: PaneKindConfig = value_from_json(
+        raw_pane,
+        "known pane with future fields should deserialize using the known schema",
+    );
+
+    assert_eq!(decoded, PaneKindConfig::Chart { chart_id: 7 });
+    assert_eq!(
+        serde_json::to_value(decoded).expect("known pane should serialize"),
+        serde_json::json!({ "Chart": { "chart_id": 7 } })
+    );
 }
 
 #[test]

@@ -41,7 +41,7 @@ impl ChartCrosshairStyle {
     }
 
     pub fn label(self) -> &'static str {
-        match self.normalized() {
+        match self {
             Self::Classic => "Classic",
             Self::Circle => "Circle",
             Self::Scope => "Scope",
@@ -50,7 +50,7 @@ impl ChartCrosshairStyle {
             Self::RacingHud => "Racing HUD",
             Self::Target => "Target",
             Self::Rectangle => "Rectangle",
-            Self::StackedRectangles => unreachable!("legacy crosshair style is normalized"),
+            Self::StackedRectangles => "Rectangle",
         }
     }
 
@@ -196,5 +196,18 @@ mod tests {
                 .any(|style| style.is_game_hud())
         );
         assert!(ChartCrosshairStyle::RacingHud.is_game_hud());
+    }
+
+    #[test]
+    fn legacy_stacked_rectangles_labels_and_displays_as_rectangle() {
+        assert_eq!(
+            ChartCrosshairStyle::StackedRectangles.normalized(),
+            ChartCrosshairStyle::Rectangle
+        );
+        assert_eq!(ChartCrosshairStyle::StackedRectangles.label(), "Rectangle");
+        assert_eq!(
+            ChartCrosshairStyle::StackedRectangles.to_string(),
+            "Rectangle"
+        );
     }
 }
