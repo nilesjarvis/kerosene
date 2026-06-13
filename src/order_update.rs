@@ -17,7 +17,9 @@ mod results;
 
 use quick_order::QuickOrderOpenRequest;
 
-pub(crate) use nuke::nuke_confirmation_is_armed;
+pub(crate) use form::OrderQuantityProvenance;
+pub(crate) use nuke::{NukeConfirmation, nuke_confirmation_is_armed};
+pub(crate) use results::PendingOneShotStatusRequest;
 
 impl TradingTerminal {
     pub(crate) fn update_order(&mut self, message: Message) -> Task<Message> {
@@ -42,7 +44,9 @@ impl TradingTerminal {
             Message::SetOrderLeverageCross(is_cross) => {
                 self.handle_set_order_leverage_cross(is_cross)
             }
-            Message::SubmitOrderLeverage => return self.submit_order_leverage_update(),
+            Message::SubmitOrderLeverage(snapshot) => {
+                return self.submit_order_leverage_update(snapshot);
+            }
             Message::OrderLeverageResult { context, result } => {
                 return self.handle_order_leverage_result(context, *result);
             }
@@ -58,15 +62,8 @@ impl TradingTerminal {
                 return self.handle_execute_preset(kind, preset, is_buy);
             }
             Message::DismissOrderStatus => self.handle_dismiss_order_status(),
-            Message::PlaceBuy | Message::PlaceSell => {
-                let is_buy = matches!(message, Message::PlaceBuy);
-                return match self.order_kind {
-                    crate::signing::OrderKind::Chase => self.start_chase(is_buy),
-                    crate::signing::OrderKind::Twap => self.start_twap(is_buy),
-                    crate::signing::OrderKind::Market
-                    | crate::signing::OrderKind::Limit
-                    | crate::signing::OrderKind::LimitIoc => self.execute_order(is_buy),
-                };
+            Message::PlaceOrder { is_buy, snapshot } => {
+                return self.execute_order_from_snapshot(is_buy, snapshot);
             }
             Message::OrderResult {
                 pending_indicator_id,
@@ -80,6 +77,19 @@ impl TradingTerminal {
                 result,
             } => {
                 return self.handle_cancel_result(account_address, pending_indicator_id, *result);
+            }
+            Message::CancelOrderStatusLoaded {
+                account_address,
+                oid,
+                symbol,
+                result,
+            } => {
+                return self.handle_cancel_order_status_result(
+                    account_address,
+                    oid,
+                    symbol,
+                    *result,
+                );
             }
             Message::ToggleCloseMenu(coin) => self.toggle_close_menu(coin),
             Message::ClosePosition {
@@ -112,10 +122,16 @@ impl TradingTerminal {
             } => {
                 return self.handle_nuke_placement_status_result(execution_id, context, *result);
             }
-            Message::OneShotPlacementStatusLoaded { context, result } => {
-                return self.handle_one_shot_placement_status_result(context, *result);
+            Message::OneShotPlacementStatusLoaded {
+                request_id,
+                context,
+                result,
+            } => {
+                return self.handle_one_shot_placement_status_result(request_id, context, *result);
             }
-            Message::StartChase(is_buy) => return self.start_chase(is_buy),
+            Message::StartChase { is_buy, snapshot } => {
+                return self.start_chase_from_snapshot(is_buy, snapshot);
+            }
             Message::StopChase => return self.stop_chase(),
             Message::StopChaseById(chase_id) => return self.stop_chase_by_id(chase_id),
             Message::StopAllAdvancedOrders => {
@@ -128,14 +144,35 @@ impl TradingTerminal {
             Message::TwapMinPriceChanged(value) => self.handle_twap_min_price_changed(value),
             Message::TwapMaxPriceChanged(value) => self.handle_twap_max_price_changed(value),
             Message::TwapRandomizeToggled(value) => self.handle_twap_randomize_toggled(value),
-            Message::StartTwap(is_buy) => return self.start_twap(is_buy),
+            Message::StartTwap { is_buy, snapshot } => {
+                return self.start_twap_from_snapshot(is_buy, snapshot);
+            }
             Message::StopTwap(twap_id) => return self.stop_twap(twap_id),
             Message::TwapTick => return self.handle_twap_tick(),
             Message::TwapBookUpdate {
                 twap_id,
                 coin,
+                sigfigs,
+                source_context,
                 book,
-            } => return self.handle_twap_book_update(twap_id, coin, book),
+            } => {
+                return self.handle_twap_book_update(twap_id, coin, sigfigs, source_context, book);
+            }
+            Message::TwapBookLagged {
+                twap_id,
+                coin,
+                sigfigs,
+                source_context,
+                skipped,
+            } => {
+                return self.handle_twap_book_lagged(
+                    twap_id,
+                    coin,
+                    sigfigs,
+                    source_context,
+                    skipped,
+                );
+            }
             Message::TwapSliceResult { twap_id, result } => {
                 return self.handle_twap_slice_result(twap_id, *result);
             }
@@ -145,6 +182,14 @@ impl TradingTerminal {
                 cloid,
                 result,
             } => return self.handle_twap_unexpected_cancel_result(twap_id, oid, cloid, *result),
+            Message::TwapUnexpectedCancelRetryDue {
+                twap_id,
+                oid,
+                cloid,
+                attempt,
+            } => {
+                return self.handle_twap_unexpected_cancel_retry_due(twap_id, oid, cloid, attempt);
+            }
             Message::TwapOrderStatusLoaded {
                 twap_id,
                 cloid,
@@ -160,8 +205,33 @@ impl TradingTerminal {
             Message::ChaseBookUpdate {
                 chase_id,
                 coin,
+                sigfigs,
+                source_context,
                 book,
-            } => return self.handle_chase_book_update(chase_id, coin, book),
+            } => {
+                return self.handle_chase_book_update(
+                    chase_id,
+                    coin,
+                    sigfigs,
+                    source_context,
+                    book,
+                );
+            }
+            Message::ChaseBookLagged {
+                chase_id,
+                coin,
+                sigfigs,
+                source_context,
+                skipped,
+            } => {
+                return self.handle_chase_book_lagged(
+                    chase_id,
+                    coin,
+                    sigfigs,
+                    source_context,
+                    skipped,
+                );
+            }
             Message::ChaseRepriceTick => return self.handle_chase_reprice_tick(),
             Message::ChasePlaceResult { chase_id, result } => {
                 return self.handle_chase_place_result(chase_id, *result);
@@ -214,14 +284,26 @@ impl TradingTerminal {
             }
             Message::QuickOrderToggleType(id) => self.handle_quick_order_toggle_type(id),
             Message::CloseQuickOrder(id) => self.handle_close_quick_order(id),
-            Message::SubmitQuickOrder(chart_id, is_buy) => {
-                return self.handle_submit_quick_order(chart_id, is_buy);
+            Message::SubmitQuickOrder {
+                chart_id,
+                is_buy,
+                snapshot,
+            } => {
+                return self.handle_submit_quick_order_from_snapshot(chart_id, is_buy, snapshot);
             }
             Message::QuickOrderResult {
                 pending_indicator_id,
                 context,
+                recovery,
                 result,
-            } => return self.handle_quick_order_result(pending_indicator_id, context, *result),
+            } => {
+                return self.handle_quick_order_result(
+                    pending_indicator_id,
+                    context,
+                    recovery,
+                    *result,
+                );
+            }
             Message::SubmitHudOrder(request) => return self.handle_submit_hud_order(request),
             Message::HudOrderResult {
                 pending_indicator_id,
@@ -229,42 +311,41 @@ impl TradingTerminal {
                 result,
             } => return self.handle_hud_order_result(pending_indicator_id, context, *result),
             Message::EscapePressed(window_id) => self.handle_order_escape_pressed(window_id),
-            Message::MoveOrderDragStarted { oid } => {
-                self.active_move_order_drag = Some(oid);
+            Message::MoveOrderDragStarted { coin, oid } => {
+                self.active_move_order_drag =
+                    Some(crate::order_execution::MoveOrderKey::new(coin, oid));
             }
-            Message::MoveOrder { oid, new_price } => {
+            Message::MoveOrder {
+                coin,
+                oid,
+                new_price,
+            } => {
                 self.active_move_order_drag = None;
-                return self.handle_move_order(oid, new_price);
+                return self.handle_move_order(coin, oid, new_price);
             }
             Message::MoveOrderModifyResult {
                 account_address,
+                coin,
                 oid,
                 pending_indicator_id,
                 result,
             } => {
                 return self.handle_move_order_modify_result(
                     account_address,
+                    coin,
                     oid,
                     pending_indicator_id,
                     *result,
                 );
             }
-            Message::ChaseRestingOrder {
+            Message::MoveOrderStatusLoaded {
+                account_address,
                 coin,
                 oid,
-                is_buy,
-                sz,
-                limit_px,
-                reduce_only,
-            } => {
-                return self.handle_chase_resting_order(
-                    coin,
-                    oid,
-                    is_buy,
-                    sz,
-                    limit_px,
-                    reduce_only,
-                );
+                result,
+            } => return self.handle_move_order_status_result(account_address, coin, oid, *result),
+            Message::ChaseRestingOrder { coin, oid } => {
+                return self.handle_chase_resting_order(coin, oid);
             }
             _ => {}
         }

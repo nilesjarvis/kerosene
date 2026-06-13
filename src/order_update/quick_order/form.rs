@@ -4,7 +4,10 @@ mod result;
 
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
-use calculations::{quick_order_quantity_for_percentage, toggled_quick_order_quantity_text};
+use crate::order_execution::QuickOrderQuantityProvenance;
+#[cfg(test)]
+use calculations::quick_order_quantity_for_percentage;
+use calculations::toggled_quick_order_quantity_text;
 
 impl TradingTerminal {
     pub(crate) fn handle_quick_order_qty_changed(&mut self, id: ChartId, qty: String) {
@@ -31,6 +34,7 @@ impl TradingTerminal {
         {
             form.quantity = qty;
             form.percentage = percentage;
+            form.quantity_provenance = None;
         }
     }
 
@@ -45,22 +49,35 @@ impl TradingTerminal {
         } else {
             0.0
         };
-        let max_notional = self.quick_order_max_notional(&symbol).unwrap_or(0.0);
+        let sizing_basis = self.quick_order_sizing_basis(&symbol);
         let reference_price = self.quick_order_reference_price(price, is_limit, &symbol);
         let decimals = self.quick_order_size_decimals(&symbol);
-        let quantity = quick_order_quantity_for_percentage(
-            percentage,
-            max_notional,
-            quantity_is_usd,
-            reference_price,
-            decimals,
-        );
+        let quantity = sizing_basis
+            .map(|basis| {
+                basis.quantity_for_percentage(
+                    percentage,
+                    quantity_is_usd,
+                    reference_price,
+                    decimals,
+                )
+            })
+            .unwrap_or_else(|| "0".to_string());
+        let quantity_provenance = sizing_basis.and_then(|_| {
+            self.quick_order_quantity_provenance(
+                &symbol,
+                quantity_is_usd,
+                percentage,
+                reference_price,
+                is_limit,
+            )
+        });
 
         if let Some(instance) = self.charts.get_mut(&id)
             && let Some(form) = &mut instance.quick_order
         {
             form.percentage = percentage;
             form.quantity = quantity;
+            form.quantity_provenance = quantity_provenance;
         }
     }
 
@@ -78,26 +95,57 @@ impl TradingTerminal {
         let reference_price = self.quick_order_reference_price(price, is_limit, &symbol);
         let decimals = self.quick_order_size_decimals(&symbol);
 
-        let quantity = self
+        let (current_quantity, current_percentage, had_provenance) = self
             .charts
             .get(&id)
             .and_then(|instance| instance.quick_order.as_ref())
             .map(|form| {
-                toggled_quick_order_quantity_text(
-                    &form.quantity,
+                (
+                    form.quantity.clone(),
+                    form.percentage,
+                    form.quantity_provenance.is_some(),
+                )
+            })
+            .unwrap_or_else(|| (String::new(), 0.0, false));
+        let (quantity, percentage, quantity_provenance) =
+            if had_provenance && current_percentage > 0.0 {
+                let sizing_basis = self.quick_order_sizing_basis(&symbol);
+                let quantity = sizing_basis
+                    .map(|basis| {
+                        basis.quantity_for_percentage(
+                            current_percentage,
+                            target_is_usd,
+                            reference_price,
+                            decimals,
+                        )
+                    })
+                    .unwrap_or_else(|| "0".to_string());
+                let provenance = sizing_basis.and_then(|_| {
+                    self.quick_order_quantity_provenance(
+                        &symbol,
+                        target_is_usd,
+                        current_percentage,
+                        reference_price,
+                        is_limit,
+                    )
+                });
+                (quantity, current_percentage, provenance)
+            } else {
+                let quantity = toggled_quick_order_quantity_text(
+                    &current_quantity,
                     target_is_usd,
                     reference_price,
                     decimals,
-                )
-            })
-            .unwrap_or_default();
-        let percentage = self.quick_order_percentage_for_quantity(
-            &symbol,
-            target_is_usd,
-            price,
-            is_limit,
-            &quantity,
-        );
+                );
+                let percentage = self.quick_order_percentage_for_quantity(
+                    &symbol,
+                    target_is_usd,
+                    price,
+                    is_limit,
+                    &quantity,
+                );
+                (quantity, percentage, None)
+            };
 
         if let Some(instance) = self.charts.get_mut(&id)
             && let Some(form) = &mut instance.quick_order
@@ -105,6 +153,7 @@ impl TradingTerminal {
             form.quantity_is_usd = target_is_usd;
             form.quantity = quantity;
             form.percentage = percentage;
+            form.quantity_provenance = quantity_provenance;
         }
     }
 
@@ -114,25 +163,61 @@ impl TradingTerminal {
             return;
         };
         let next_is_limit = !is_limit;
-        let quantity = self
+        let (current_quantity, current_percentage, had_provenance) = self
             .charts
             .get(&id)
             .and_then(|instance| instance.quick_order.as_ref())
-            .map(|form| form.quantity.clone())
-            .unwrap_or_default();
-        let percentage = self.quick_order_percentage_for_quantity(
-            &symbol,
-            quantity_is_usd,
-            price,
-            next_is_limit,
-            &quantity,
-        );
+            .map(|form| {
+                (
+                    form.quantity.clone(),
+                    form.percentage,
+                    form.quantity_provenance.is_some(),
+                )
+            })
+            .unwrap_or_else(|| (String::new(), 0.0, false));
+        let reference_price = self.quick_order_reference_price(price, next_is_limit, &symbol);
+        let decimals = self.quick_order_size_decimals(&symbol);
+        let (quantity, percentage, quantity_provenance) =
+            if had_provenance && current_percentage > 0.0 {
+                let sizing_basis = self.quick_order_sizing_basis(&symbol);
+                let quantity = sizing_basis
+                    .map(|basis| {
+                        basis.quantity_for_percentage(
+                            current_percentage,
+                            quantity_is_usd,
+                            reference_price,
+                            decimals,
+                        )
+                    })
+                    .unwrap_or_else(|| "0".to_string());
+                let provenance = sizing_basis.and_then(|_| {
+                    self.quick_order_quantity_provenance(
+                        &symbol,
+                        quantity_is_usd,
+                        current_percentage,
+                        reference_price,
+                        next_is_limit,
+                    )
+                });
+                (quantity, current_percentage, provenance)
+            } else {
+                let percentage = self.quick_order_percentage_for_quantity(
+                    &symbol,
+                    quantity_is_usd,
+                    price,
+                    next_is_limit,
+                    &current_quantity,
+                );
+                (current_quantity, percentage, None)
+            };
 
         if let Some(instance) = self.charts.get_mut(&id)
             && let Some(form) = &mut instance.quick_order
         {
             form.is_limit = next_is_limit;
+            form.quantity = quantity;
             form.percentage = percentage;
+            form.quantity_provenance = quantity_provenance;
             instance.chart.quick_order_limit_price = next_is_limit.then_some(form.price);
             instance.chart.quick_order_line_phase = 0.0;
             instance.last_quick_order_is_limit = form.is_limit;
@@ -144,6 +229,31 @@ impl TradingTerminal {
             instance.clear_quick_order();
         }
         self.chart_quick_order_surface.remove(&id);
+    }
+
+    fn quick_order_quantity_provenance(
+        &self,
+        symbol: &str,
+        quantity_is_usd: bool,
+        percentage: f32,
+        reference_price: Option<f64>,
+        is_limit: bool,
+    ) -> Option<QuickOrderQuantityProvenance> {
+        if !percentage.is_finite() || percentage <= 0.0 {
+            return None;
+        }
+        let (account_address, _) = self.connected_order_account_snapshot()?;
+        Some(QuickOrderQuantityProvenance {
+            account_address,
+            account_data_revision: self.account_data_revision,
+            symbol_key: symbol.to_string(),
+            quantity_is_usd,
+            percentage,
+            is_limit,
+            reference_price,
+            reduce_only: self.order_reduce_only,
+            market_universe: self.market_universe.clone(),
+        })
     }
 }
 

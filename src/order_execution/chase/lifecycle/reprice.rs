@@ -206,7 +206,7 @@ impl TradingTerminal {
                 false,
             );
         };
-        let key = chase.agent_key.trim().to_string();
+        let key = chase.agent_key.clone_for_task();
         if key.is_empty() {
             chase.lifecycle = ChaseLifecycle::Stopping {
                 phase: ChaseStopPhase::VerifyingCancel { oid },
@@ -249,7 +249,7 @@ impl TradingTerminal {
         self.last_advanced_exchange_request_at = Some(now);
         self.order_status = Some((format!("{status} {oid}"), false));
 
-        modify_order_task(key.into(), prepared, move |r| Message::ChaseModifyResult {
+        modify_order_task(key, prepared, move |r| Message::ChaseModifyResult {
             chase_id,
             oid,
             result: Box::new(r),

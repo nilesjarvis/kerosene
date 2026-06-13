@@ -29,12 +29,18 @@ pub(super) fn alfred_result_row(
     let detail_color = theme.extended_palette().background.weak.text;
     let tag = alfred_tag(&command.tag, theme, popup_scale);
     let title = alfred_title(command, title_color, popup_scale);
+    let detail = alfred_visible_detail(
+        command.enabled,
+        &command.detail,
+        command.disabled_reason.as_deref(),
+    )
+    .to_string();
 
     button(
         row![
             column![
                 title,
-                text(command.detail.clone())
+                text(detail)
                     .size(scaled_text(10.0, popup_scale))
                     .color(detail_color),
             ]
@@ -76,6 +82,18 @@ pub(super) fn alfred_result_row(
         }
     })
     .into()
+}
+
+fn alfred_visible_detail<'a>(
+    enabled: bool,
+    detail: &'a str,
+    disabled_reason: Option<&'a str>,
+) -> &'a str {
+    if enabled {
+        detail
+    } else {
+        disabled_reason.unwrap_or(detail)
+    }
 }
 
 fn alfred_title(

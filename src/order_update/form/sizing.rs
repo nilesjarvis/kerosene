@@ -2,7 +2,7 @@ use super::quantity::{order_percentage_for_quantity, quantity_for_percentage};
 
 mod position;
 
-pub(in crate::order_update::form) use position::position_size_for_symbol;
+pub(in crate::order_update) use position::position_size_for_symbol;
 use position::{percentage_for_position_quantity, position_quantity_for_percentage};
 
 // ---------------------------------------------------------------------------
@@ -10,13 +10,13 @@ use position::{percentage_for_position_quantity, position_quantity_for_percentag
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy)]
-pub(super) enum OrderSizingBasis {
+pub(in crate::order_update) enum OrderSizingBasis {
     MarginNotional { max_notional: f64 },
     ReduceOnlyPosition { position_size_coin: f64 },
 }
 
 impl OrderSizingBasis {
-    pub(super) fn percentage_for_quantity(
+    pub(in crate::order_update) fn percentage_for_quantity(
         self,
         quantity: f64,
         quantity_is_usd: bool,
@@ -38,7 +38,7 @@ impl OrderSizingBasis {
         }
     }
 
-    pub(super) fn quantity_for_percentage(
+    pub(in crate::order_update) fn quantity_for_percentage(
         self,
         percentage: f32,
         quantity_is_usd: bool,

@@ -4,6 +4,7 @@ use crate::helpers::{
     parse_finite_number,
 };
 use crate::message::Message;
+use crate::order_execution::OrderLeverageSubmissionSnapshot;
 use crate::signing::OrderKind;
 use iced::widget::{Space, button, container, row, text, text_input};
 use iced::{Color, Element, Fill, Length, Theme};
@@ -57,7 +58,7 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center);
         let mut margin_used = Some(0.0);
 
-        if let Some(data) = &self.account_data {
+        if let Some((_, data)) = self.connected_order_account_snapshot() {
             let original_coin = self.active_symbol.as_str();
             if let Some(pos) = data
                 .clearinghouse
@@ -88,8 +89,8 @@ impl TradingTerminal {
         theme: &Theme,
     ) -> Element<'static, Message> {
         let available_margin = self
-            .account_data
-            .as_ref()
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data)
             .map(|data| {
                 if self.is_outcome_coin(&self.active_symbol) {
                     data.available_margin_for_token(
@@ -149,7 +150,7 @@ impl TradingTerminal {
                 .style(leverage_apply_container_style)
                 .into()
         } else {
-            leverage_apply_button(can_apply)
+            leverage_apply_button(can_apply, self.order_leverage_submission_snapshot())
         };
 
         let controls = row![
@@ -326,7 +327,10 @@ fn leverage_mode_button(
     btn.into()
 }
 
-fn leverage_apply_button(enabled: bool) -> Element<'static, Message> {
+fn leverage_apply_button(
+    enabled: bool,
+    snapshot: OrderLeverageSubmissionSnapshot,
+) -> Element<'static, Message> {
     let mut btn = button(text("Apply").size(11).center())
         .padding([4, 8])
         .width(Length::Fixed(58.0))
@@ -359,7 +363,7 @@ fn leverage_apply_button(enabled: bool) -> Element<'static, Message> {
         });
 
     if enabled {
-        btn = btn.on_press(Message::SubmitOrderLeverage);
+        btn = btn.on_press(Message::SubmitOrderLeverage(snapshot));
     }
 
     btn.into()

@@ -1,10 +1,10 @@
 use super::{TWAP_DEFAULT_DURATION_MINUTES, TWAP_DEFAULT_SLICES};
 
 use crate::api::OrderBook;
+use crate::signing::CapturedAgentKey;
 
 use iced::window;
 use std::time::{Duration, Instant};
-use zeroize::Zeroizing;
 
 mod status;
 
@@ -14,7 +14,7 @@ pub(crate) use self::status::{TwapChildStatus, TwapPauseReason, TwapStatus};
 // Form State
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TwapOrderForm {
     pub(crate) duration_minutes: String,
     pub(crate) slices: String,
@@ -109,7 +109,7 @@ pub(crate) struct TwapOrder {
     pub(crate) coin: String,
     pub(crate) display_coin: String,
     pub(crate) account_address: String,
-    pub(crate) agent_key: Zeroizing<String>,
+    pub(crate) agent_key: CapturedAgentKey,
     pub(crate) is_buy: bool,
     pub(crate) target_size: f64,
     pub(crate) remaining_size: f64,
@@ -138,6 +138,7 @@ pub(crate) struct TwapOrder {
     pub(crate) retry_slice: Option<TwapPendingSlice>,
     pub(crate) status_check_cloid: Option<String>,
     pub(crate) status_check_retries: u32,
+    pub(crate) account_reconciliation_retries: u32,
     /// Deadline by which `account.fills` must observe a child the exchange
     /// already reported as `filled`. `None` when the TWAP is not awaiting
     /// reconciliation. Set when entering `AwaitingReconciliation`, cleared
@@ -157,7 +158,7 @@ pub(crate) struct TwapOrderInit {
     pub(crate) coin: String,
     pub(crate) display_coin: String,
     pub(crate) account_address: String,
-    pub(crate) agent_key: Zeroizing<String>,
+    pub(crate) agent_key: CapturedAgentKey,
     pub(crate) is_buy: bool,
     pub(crate) target_size: f64,
     pub(crate) asset: u32,

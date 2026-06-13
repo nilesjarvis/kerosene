@@ -1,4 +1,5 @@
 use crate::twap_state::{TwapChildOrder, TwapOrder, twap_weighted_average_fill_price};
+use std::time::Instant;
 
 use super::super::details::{order_child_id_text, short_id};
 
@@ -12,13 +13,11 @@ pub(super) fn twap_pause_text(twap: &TwapOrder) -> String {
         .unwrap_or_else(|| "-".to_string())
 }
 
-pub(super) fn twap_next_retry_text(twap: &TwapOrder) -> String {
+pub(super) fn twap_next_retry_text(twap: &TwapOrder, now: Instant) -> String {
     let Some(until) = twap.paused_until else {
         return "-".to_string();
     };
-    let seconds = until
-        .saturating_duration_since(std::time::Instant::now())
-        .as_secs();
+    let seconds = until.saturating_duration_since(now).as_secs();
     if seconds == 0 {
         "Now".to_string()
     } else {

@@ -3,6 +3,7 @@ use crate::order_execution::{cancel_order_by_cloid_task, cancel_order_task};
 use crate::twap_state::TwapChildOrder;
 
 use iced::Task;
+use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // TWAP Cancellation Helpers
@@ -41,7 +42,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_label(
 
 pub(in crate::order_execution::twap) fn twap_cancel_child_task(
     twap_id: u64,
-    key: String,
+    key: Zeroizing<String>,
     asset: u32,
     oid: Option<u64>,
     cloid: Option<String>,
@@ -60,7 +61,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
 
     if let Some(cloid) = cloid {
         let request_cloid = cloid.clone();
-        return cancel_order_by_cloid_task(key.into(), asset, request_cloid, move |result| {
+        return cancel_order_by_cloid_task(key, asset, request_cloid, move |result| {
             Message::TwapUnexpectedCancelResult {
                 twap_id,
                 oid: None,
@@ -73,7 +74,7 @@ pub(in crate::order_execution::twap) fn twap_cancel_child_task(
     let Some(oid) = oid else {
         return Task::none();
     };
-    cancel_order_task(key.into(), asset, oid, move |result| {
+    cancel_order_task(key, asset, oid, move |result| {
         Message::TwapUnexpectedCancelResult {
             twap_id,
             oid: Some(oid),

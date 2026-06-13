@@ -67,7 +67,7 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text),
             );
         } else {
-            let now_ms = Self::now_ms();
+            let now_ms = self.status_bar_now_ms;
             for entry in self.advanced_order_history.iter().take(40) {
                 rows = rows.push(history_order_row(entry, &theme, now_ms));
             }

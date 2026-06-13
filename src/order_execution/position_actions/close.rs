@@ -7,7 +7,10 @@ use crate::order_execution::{
 };
 use crate::signing::ExchangeOrderKind;
 
+use super::reject_if_positions_incomplete_for_action;
+
 use iced::Task;
+use zeroize::Zeroizing;
 
 #[cfg(test)]
 mod tests;
@@ -56,15 +59,12 @@ impl TradingTerminal {
         // The close menu closes after the first click, but a second queued
         // click still dispatches; without this gate a double-fired partial
         // close stacks (two 50% closes flatten the position).
-        if self.pending_order_action.is_some() {
-            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
+        if self.reject_if_pending_trading_request("closing positions") {
             return Task::none();
         }
-        let key = self.wallet_key_input.trim().to_string();
-        if key.is_empty() || self.connected_address.is_none() {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+        let Some((key, account_address)) = self.order_signing_context() else {
             return Task::none();
-        }
+        };
         if self.account_loading {
             self.order_status = Some((
                 "Account refresh in progress; wait for fresh account data before closing".into(),
@@ -72,8 +72,14 @@ impl TradingTerminal {
             ));
             return Task::none();
         }
+        if self.reject_if_account_reconciliation_required("closing", "account data") {
+            return Task::none();
+        }
 
-        let Some(account_data) = self.account_data.as_ref() else {
+        if let Some(task) = reject_if_positions_incomplete_for_action(self, "closing positions") {
+            return task;
+        }
+        let Some(account_data) = self.account_data_for_order_account(&account_address) else {
             self.order_status = Some((
                 "No account data available; refresh before closing".into(),
                 true,
@@ -149,12 +155,20 @@ impl TradingTerminal {
             }
         };
 
-        self.submit_prepared_close_position_order(key, coin, fraction, use_market, prepared)
+        self.submit_prepared_close_position_order(
+            key,
+            account_address,
+            coin,
+            fraction,
+            use_market,
+            prepared,
+        )
     }
 
     fn submit_prepared_close_position_order(
         &mut self,
-        key: String,
+        key: Zeroizing<String>,
+        account_address: String,
         coin: &str,
         fraction: f64,
         use_market: bool,
@@ -168,7 +182,6 @@ impl TradingTerminal {
         ));
         self.pending_order_action = Some(PendingOrderAction::ClosePosition);
 
-        let account_address = self.connected_address.clone().unwrap_or_default();
         let pending_indicator_id = if use_market {
             self.add_pending_market_order_placement_indicator(
                 account_address.clone(),
@@ -188,7 +201,7 @@ impl TradingTerminal {
         };
 
         let (request, context) = prepared.place_request_with_context(&account_address);
-        place_order_task(key.into(), request, move |r| Message::ClosePositionResult {
+        place_order_task(key, request, move |r| Message::ClosePositionResult {
             pending_indicator_id,
             context,
             result: Box::new(r),

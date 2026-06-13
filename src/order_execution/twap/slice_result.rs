@@ -93,10 +93,17 @@ impl TradingTerminal {
                     } else if response.is_error() {
                         match classify_twap_exchange_error(&summary_text) {
                             TwapExchangeErrorAction::Retry(reason) => {
-                                finish_attempt = false;
                                 refresh_policy = TwapAccountRefresh::None;
                                 let retry_count = pending.retry_count.saturating_add(1);
-                                if retry_count > TWAP_MAX_RETRY_ATTEMPTS {
+                                if twap.stop_requested {
+                                    twap.retry_slice = None;
+                                    if let Some(child) = twap.child_order_mut(pending.index) {
+                                        child.status = TwapChildStatus::NoFill;
+                                        child.retry_count = retry_count;
+                                        child.exchange_summary = summary_text.clone();
+                                    }
+                                } else if retry_count > TWAP_MAX_RETRY_ATTEMPTS {
+                                    finish_attempt = false;
                                     if let Some(child) = twap.child_order_mut(pending.index) {
                                         child.status = TwapChildStatus::Rejected;
                                         child.retry_count = retry_count;
@@ -118,6 +125,7 @@ impl TradingTerminal {
                                         true,
                                     ));
                                 } else {
+                                    finish_attempt = false;
                                     let mut retry_slice = pending.clone();
                                     retry_slice.retry_count = retry_count;
                                     twap.retry_slice = Some(retry_slice);
@@ -264,12 +272,9 @@ impl TradingTerminal {
                             ),
                             true,
                         );
-                        cancel_unexpected = Some((
-                            twap.agent_key.trim().to_string(),
-                            twap.asset,
-                            Some(oid),
-                            Some(pending.cloid.clone()),
-                        ));
+                        let key = twap.agent_key.clone_for_task();
+                        cancel_unexpected =
+                            Some((key, twap.asset, Some(oid), Some(pending.cloid.clone())));
                         status_update = Some((
                             format!(
                                 "TWAP slice {} unexpectedly rested; cancelling",

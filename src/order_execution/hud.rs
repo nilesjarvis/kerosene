@@ -26,6 +26,7 @@ impl HudOrderSide {
 pub(crate) struct HudOrderRequest {
     pub(crate) chart_id: ChartId,
     pub(crate) surface_id: ChartSurfaceId,
+    pub(crate) symbol_key: String,
     pub(crate) price: f64,
     pub(crate) quantity: String,
     pub(crate) order_type: HudOrderType,

@@ -4,6 +4,7 @@ use crate::account::{
 };
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::{TradingTerminal, sensitive_string};
+use crate::config::AccountProfile;
 use crate::order_execution::{MoveOrderContextError, PendingMoveOrderContext};
 
 fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
@@ -111,7 +112,7 @@ pub(super) fn account_data_with_order(order: OpenOrder) -> AccountData {
         funding_history: Vec::new(),
         fee_rates: UserFeeRates::default(),
         completeness: AccountDataCompleteness::default(),
-        fetched_at_ms: 1,
+        fetched_at_ms: TradingTerminal::now_ms(),
     }
 }
 
@@ -121,13 +122,24 @@ pub(super) fn terminal_with_move_order(
     mid: f64,
 ) -> TradingTerminal {
     let (mut terminal, _) = TradingTerminal::boot();
-    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
-    terminal.wallet_key_input = sensitive_string("agent-key");
+    let account = "0xabc0000000000000000000000000000000000000";
+    terminal.connected_address = Some(account.to_string());
+    terminal.wallet_address_input = account.to_string();
+    terminal.accounts = vec![AccountProfile {
+        secret_id: "acct-a".to_string(),
+        name: "Account A".to_string(),
+        wallet_address: account.to_string(),
+        agent_key: sensitive_string("").into_zeroizing(),
+        hydromancer_api_key: sensitive_string("").into_zeroizing(),
+    }];
+    terminal.active_account_index = 0;
+    terminal.set_committed_agent_key_for_test("agent-key");
     terminal.muted_tickers.clear();
     terminal.exchange_symbols = vec![
         symbol(order_coin, MarketType::Perp),
         symbol("ETH", MarketType::Perp),
     ];
+    terminal.account_data_address = Some(account.to_string());
     terminal.account_data = Some(account_data_with_order(open_order(order_coin, 42, "100")));
     terminal.all_mids.clear();
     terminal.all_mids_updated_at_ms.clear();

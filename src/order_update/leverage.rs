@@ -3,7 +3,7 @@ use crate::account::AccountDataFetchScope;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::order_execution::PendingLeverageUpdateContext;
+use crate::order_execution::{OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext};
 use crate::signing::{ExchangeResponse, update_leverage};
 
 use iced::Task;
@@ -49,22 +49,63 @@ impl TradingTerminal {
         self.order_leverage_is_cross = is_cross;
     }
 
-    pub(crate) fn submit_order_leverage_update(&mut self) -> Task<Message> {
+    pub(crate) fn order_leverage_submission_snapshot(&self) -> OrderLeverageSubmissionSnapshot {
+        OrderLeverageSubmissionSnapshot {
+            symbol_key: self.active_symbol.clone(),
+            leverage_input: self.order_leverage_input.clone(),
+            is_cross: self.order_leverage_is_cross,
+        }
+    }
+
+    fn order_leverage_submission_snapshot_matches(
+        &self,
+        snapshot: &OrderLeverageSubmissionSnapshot,
+    ) -> bool {
+        self.active_symbol == snapshot.symbol_key
+            && self.order_leverage_input == snapshot.leverage_input
+            && self.order_leverage_is_cross == snapshot.is_cross
+    }
+
+    pub(crate) fn submit_order_leverage_update(
+        &mut self,
+        snapshot: OrderLeverageSubmissionSnapshot,
+    ) -> Task<Message> {
         if self.pending_leverage_update.is_some() {
             return Task::none();
         }
-
-        let key = self.wallet_key_input.trim().to_string();
-        let Some(address) = self.connected_address.clone() else {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+        if !self.order_leverage_submission_snapshot_matches(&snapshot) {
+            self.order_status = Some((
+                "Leverage settings changed; review and apply again".into(),
+                true,
+            ));
             return Task::none();
-        };
-        if key.is_empty() {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+        }
+        if self.reject_if_pending_trading_request("updating leverage") {
+            return Task::none();
+        }
+        if self.account_loading {
+            self.order_status = Some((
+                "Account refresh in progress; wait for fresh account data before updating leverage"
+                    .into(),
+                true,
+            ));
+            return Task::none();
+        }
+        if self.reject_if_account_reconciliation_required("updating leverage", "account data") {
             return Task::none();
         }
 
-        let Some(symbol) = self.active_order_leverage_symbol().cloned() else {
+        let Some((key, address)) = self.order_signing_context() else {
+            return Task::none();
+        };
+
+        let Some(symbol) = self
+            .resolve_exchange_symbol_by_key_or_ticker(&snapshot.symbol_key)
+            .filter(|symbol| {
+                symbol.market_type == MarketType::Perp && self.exchange_symbol_is_orderable(symbol)
+            })
+            .cloned()
+        else {
             self.order_status = Some((
                 "Leverage is only available for perpetual markets".into(),
                 true,
@@ -73,7 +114,7 @@ impl TradingTerminal {
         };
 
         let constraints = order_leverage_constraints_for_symbol(&symbol);
-        let Some(leverage) = parse_leverage_input(&self.order_leverage_input) else {
+        let Some(leverage) = parse_leverage_input(&snapshot.leverage_input) else {
             self.order_status = Some(("Enter leverage as a whole number".into(), true));
             return Task::none();
         };
@@ -89,8 +130,8 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let is_cross = self.order_leverage_is_cross && constraints.cross_allowed;
-        if self.order_leverage_is_cross && !constraints.cross_allowed {
+        let is_cross = snapshot.is_cross && constraints.cross_allowed;
+        if snapshot.is_cross && !constraints.cross_allowed {
             self.order_leverage_is_cross = false;
             self.order_status = Some((
                 format!(
@@ -119,12 +160,7 @@ impl TradingTerminal {
         self.order_status = Some(("Updating leverage...".into(), false));
 
         Task::perform(
-            update_leverage(
-                key.into(),
-                context.asset,
-                context.is_cross,
-                context.leverage,
-            ),
+            update_leverage(key, context.asset, context.is_cross, context.leverage),
             move |result| Message::OrderLeverageResult {
                 context: context.clone(),
                 result: Box::new(result),
@@ -142,16 +178,14 @@ impl TradingTerminal {
         }
         self.pending_leverage_update = None;
 
-        let account_still_current =
-            self.connected_address.as_deref() == Some(context.address.as_str());
-        if !account_still_current {
+        if !self.connected_order_account_matches(&context.address) {
             return Task::none();
         }
 
         let should_refresh = result_requires_account_refresh(&result);
 
         match result {
-            Ok(response) if !response.is_error() => {
+            Ok(response) if response.is_confirmed_default_result() => {
                 self.order_leverage_dropdown_open = false;
                 if self.active_symbol == context.symbol_key {
                     self.order_leverage_input = context.leverage.to_string();
@@ -165,6 +199,15 @@ impl TradingTerminal {
                         context.leverage
                     ),
                     false,
+                ));
+            }
+            Ok(response) if !response.is_error() => {
+                self.order_status = Some((
+                    format!(
+                        "Leverage update status uncertain: {}; refreshing account data",
+                        response.summary()
+                    ),
+                    true,
                 ));
             }
             Ok(response) => {
@@ -198,8 +241,8 @@ impl TradingTerminal {
         let symbol_key = symbol.key.clone();
         let constraints = order_leverage_constraints_for_symbol(symbol);
         let account_setting = self
-            .account_data
-            .as_ref()
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data)
             .and_then(|data| data.get_leverage_for(&symbol_key, &self.exchange_symbols))
             .filter(|(_, _, is_actual)| *is_actual);
         let existing = parse_leverage_input(&self.order_leverage_input)
@@ -254,7 +297,17 @@ fn parse_leverage_input(value: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::account::{
+        AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
+        Position, PositionLeverage, SpotClearinghouseState,
+    };
     use crate::api::MarketType;
+    use crate::app_state::sensitive_string;
+    use crate::config::AccountProfile;
+    use crate::order_execution::{PendingNukeExecution, PendingOrderAction};
+
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+    const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
 
     fn symbol(key: &str, max_leverage: u32, only_isolated: bool) -> ExchangeSymbol {
         ExchangeSymbol {
@@ -344,9 +397,264 @@ mod tests {
         }
     }
 
+    fn leverage_submit_terminal() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        terminal.accounts = vec![AccountProfile {
+            secret_id: "acct-a".to_string(),
+            name: "Account A".to_string(),
+            wallet_address: TEST_ACCOUNT.to_string(),
+            agent_key: sensitive_string("").into_zeroizing(),
+            hydromancer_api_key: sensitive_string("").into_zeroizing(),
+        }];
+        terminal.active_account_index = 0;
+        terminal.set_committed_agent_key_for_test("agent-key");
+        terminal.active_symbol = "BTC".to_string();
+        terminal.exchange_symbols = vec![symbol("BTC", 50, false)];
+        terminal.order_leverage_input = "5".to_string();
+        terminal
+    }
+
+    fn account_data_with_leverage(coin: &str, is_cross: bool, leverage: u32) -> AccountData {
+        AccountData {
+            fetch_scope: Default::default(),
+            request_weight_estimate: 0,
+            account_abstraction: Default::default(),
+            clearinghouse: ClearinghouseState {
+                margin_summary: MarginSummary {
+                    account_value: "0".to_string(),
+                    total_ntl_pos: "0".to_string(),
+                    total_margin_used: "0".to_string(),
+                },
+                cross_margin_summary: None,
+                cross_maintenance_margin_used: None,
+                withdrawable: "0".to_string(),
+                asset_positions: vec![AssetPosition {
+                    position: Position {
+                        coin: coin.to_string(),
+                        szi: "1".to_string(),
+                        entry_px: "100".to_string(),
+                        position_value: "100".to_string(),
+                        unrealized_pnl: "0".to_string(),
+                        liquidation_px: None,
+                        leverage: PositionLeverage {
+                            leverage_type: if is_cross { "cross" } else { "isolated" }.to_string(),
+                            value: leverage,
+                        },
+                        margin_used: "0".to_string(),
+                        cum_funding: None,
+                    },
+                    liquidation_px: None,
+                }],
+            },
+            clearinghouses_by_dex: std::collections::HashMap::new(),
+            spot: SpotClearinghouseState {
+                balances: Vec::new(),
+                portfolio_margin_enabled: false,
+                portfolio_margin_ratio: None,
+                token_to_available_after_maintenance: None,
+            },
+            open_orders: Vec::new(),
+            fills: Vec::new(),
+            funding_history: Vec::new(),
+            fee_rates: Default::default(),
+            completeness: AccountDataCompleteness::default(),
+            fetched_at_ms: 1,
+        }
+    }
+
     fn ok_exchange_response() -> ExchangeResponse {
         serde_json::from_str(r#"{"status":"ok","response":{"type":"default"}}"#)
             .expect("valid exchange response")
+    }
+
+    fn raw_ok_exchange_response() -> ExchangeResponse {
+        serde_json::from_str(r#"{"status":"ok","response":"schema-shifted"}"#)
+            .expect("valid exchange response")
+    }
+
+    fn missing_body_ok_exchange_response() -> ExchangeResponse {
+        serde_json::from_str(r#"{"status":"ok"}"#).expect("valid exchange response")
+    }
+
+    fn order_shaped_ok_exchange_response() -> ExchangeResponse {
+        serde_json::from_str(
+            r#"{"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":42}}]}}}"#,
+        )
+        .expect("valid exchange response")
+    }
+
+    fn assert_stale_leverage_snapshot_rejected(terminal: &TradingTerminal) {
+        assert!(terminal.pending_leverage_update.is_none());
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "Leverage settings changed; review and apply again".to_string(),
+                true
+            ))
+        );
+    }
+
+    fn assert_uncertain_leverage_result_refreshes(
+        terminal: &TradingTerminal,
+        expected_summary: &str,
+    ) {
+        assert_eq!(terminal.pending_leverage_update, None);
+        assert!(terminal.order_leverage_dropdown_open);
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
+
+        let Some((message, is_error)) = &terminal.order_status else {
+            panic!("missing leverage status");
+        };
+        assert!(*is_error);
+        assert!(message.contains("Leverage update status uncertain"));
+        assert!(message.contains(expected_summary));
+        assert!(message.contains("refreshing account data"));
+    }
+
+    #[test]
+    fn leverage_submit_rejects_pending_order_action() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert!(terminal.pending_leverage_update.is_none());
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "Wait for pending trading requests to finish before updating leverage".to_string(),
+                true
+            ))
+        );
+    }
+
+    #[test]
+    fn leverage_submit_rejects_pending_nuke_execution() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        terminal.pending_nuke_execution = Some(PendingNukeExecution::new(1, 1, 0));
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert!(terminal.pending_leverage_update.is_none());
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "Wait for pending trading requests to finish before updating leverage".to_string(),
+                true
+            ))
+        );
+    }
+
+    #[test]
+    fn leverage_submit_rejects_pending_account_reconciliation() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        terminal.account_reconciliation_required = true;
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert!(terminal.pending_leverage_update.is_none());
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "Account refresh pending; wait for fresh account data before updating leverage"
+                    .to_string(),
+                true
+            ))
+        );
+    }
+
+    #[test]
+    fn leverage_submit_rejects_account_loading_even_without_reconciliation_flag() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        terminal.account_loading = true;
+        terminal.account_reconciliation_required = false;
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert!(terminal.pending_leverage_update.is_none());
+        assert_eq!(
+            terminal.order_status,
+            Some((
+                "Account refresh in progress; wait for fresh account data before updating leverage"
+                    .to_string(),
+                true
+            ))
+        );
+    }
+
+    #[test]
+    fn leverage_submit_rejects_stale_symbol_snapshot() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        terminal.active_symbol = "ETH".to_string();
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert_stale_leverage_snapshot_rejected(&terminal);
+    }
+
+    #[test]
+    fn leverage_submit_rejects_changed_input_snapshot() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        terminal.order_leverage_input = "6".to_string();
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert_stale_leverage_snapshot_rejected(&terminal);
+    }
+
+    #[test]
+    fn leverage_submit_rejects_changed_margin_mode_snapshot() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        terminal.order_leverage_is_cross = !terminal.order_leverage_is_cross;
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert_stale_leverage_snapshot_rejected(&terminal);
+    }
+
+    #[test]
+    fn leverage_submit_ignores_duplicate_while_pending_even_if_snapshot_is_stale() {
+        let mut terminal = leverage_submit_terminal();
+        let snapshot = terminal.order_leverage_submission_snapshot();
+        let pending = pending_context("BTC", true, 5);
+        terminal.pending_leverage_update = Some(pending.clone());
+        terminal.order_status = Some(("Updating leverage...".to_string(), false));
+        terminal.order_leverage_input = "6".to_string();
+
+        let _task = terminal.submit_order_leverage_update(snapshot);
+
+        assert_eq!(terminal.pending_leverage_update, Some(pending));
+        assert_eq!(
+            terminal.order_status,
+            Some(("Updating leverage...".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn leverage_form_sync_ignores_stale_account_snapshot() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
+        terminal.account_data = Some(account_data_with_leverage("BTC", false, 25));
+        terminal.active_symbol = "BTC".to_string();
+        terminal.exchange_symbols = vec![symbol("BTC", 50, false)];
+        terminal.order_leverage_input = "7".to_string();
+        terminal.order_leverage_is_cross = false;
+
+        terminal.sync_order_leverage_form_for_active_symbol();
+
+        assert_eq!(terminal.order_leverage_input, "7");
+        assert!(terminal.order_leverage_is_cross);
     }
 
     #[test]
@@ -370,6 +678,62 @@ mod tests {
             terminal.order_status,
             Some(("BTC leverage updated: Cross 12x".to_string(), false))
         );
+    }
+
+    #[test]
+    fn leverage_result_raw_ok_does_not_confirm_success_and_refreshes() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal.active_symbol = "BTC".to_string();
+        terminal.order_leverage_input = "99".to_string();
+        terminal.order_leverage_is_cross = false;
+        terminal.order_leverage_dropdown_open = true;
+        let context = pending_context("BTC", true, 12);
+        terminal.pending_leverage_update = Some(context.clone());
+
+        let _ = terminal.handle_order_leverage_result(context, Ok(raw_ok_exchange_response()));
+
+        assert_eq!(terminal.order_leverage_input, "99");
+        assert!(!terminal.order_leverage_is_cross);
+        assert_uncertain_leverage_result_refreshes(&terminal, "No response body");
+    }
+
+    #[test]
+    fn leverage_result_missing_body_ok_does_not_confirm_success_and_refreshes() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal.active_symbol = "BTC".to_string();
+        terminal.order_leverage_input = "99".to_string();
+        terminal.order_leverage_is_cross = false;
+        terminal.order_leverage_dropdown_open = true;
+        let context = pending_context("BTC", true, 12);
+        terminal.pending_leverage_update = Some(context.clone());
+
+        let _ =
+            terminal.handle_order_leverage_result(context, Ok(missing_body_ok_exchange_response()));
+
+        assert_eq!(terminal.order_leverage_input, "99");
+        assert!(!terminal.order_leverage_is_cross);
+        assert_uncertain_leverage_result_refreshes(&terminal, "No response body");
+    }
+
+    #[test]
+    fn leverage_result_order_shaped_ok_does_not_confirm_success_and_refreshes() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal.active_symbol = "BTC".to_string();
+        terminal.order_leverage_input = "99".to_string();
+        terminal.order_leverage_is_cross = false;
+        terminal.order_leverage_dropdown_open = true;
+        let context = pending_context("BTC", true, 12);
+        terminal.pending_leverage_update = Some(context.clone());
+
+        let _ =
+            terminal.handle_order_leverage_result(context, Ok(order_shaped_ok_exchange_response()));
+
+        assert_eq!(terminal.order_leverage_input, "99");
+        assert!(!terminal.order_leverage_is_cross);
+        assert_uncertain_leverage_result_refreshes(&terminal, "Resting (oid 42)");
     }
 
     #[test]

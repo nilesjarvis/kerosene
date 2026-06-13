@@ -12,6 +12,35 @@ fn start_chase_keeps_base_size_when_quantity_is_not_usd() {
 }
 
 #[test]
+fn start_chase_from_snapshot_accepts_matching_click_context() {
+    let mut terminal = chase_ready_terminal();
+    let snapshot = terminal.advanced_order_start_snapshot();
+
+    let _task = terminal.start_chase_from_snapshot(true, snapshot);
+
+    let chase = selected_chase(&terminal);
+    assert_eq!(chase.target_size, 2.5);
+    assert!(chase.is_buy);
+}
+
+#[test]
+fn start_chase_from_snapshot_rejects_changed_click_context() {
+    let mut terminal = chase_ready_terminal();
+    let snapshot = terminal.advanced_order_start_snapshot();
+    terminal.order_quantity = "3.5".to_string();
+
+    let _task = terminal.start_chase_from_snapshot(true, snapshot);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(terminal.pending_order_action, None);
+    assert!(
+        order_status_error_contains(&terminal, "Chase settings changed"),
+        "status should explain the stale click context: {:?}",
+        terminal.order_status
+    );
+}
+
+#[test]
 fn start_chase_quantizes_base_size_to_asset_precision() {
     let mut terminal = chase_ready_terminal();
     terminal.order_quantity = "1.239".to_string();
@@ -92,4 +121,22 @@ fn start_chase_rejects_usd_notional_with_stale_mid() {
 
     assert!(terminal.chase_orders.is_empty());
     assert_eq!(terminal.pending_order_action, None);
+}
+
+#[test]
+fn start_chase_rejects_non_orderable_fallback_outcome() {
+    let mut terminal = chase_ready_terminal();
+    terminal.active_symbol = "#66".to_string();
+    terminal.active_symbol_display = "Recurring Fallback".to_string();
+    terminal.exchange_symbols = vec![fallback_outcome_symbol("#66")];
+
+    let _task = terminal.start_chase(true);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(terminal.pending_order_action, None);
+    assert!(
+        order_status_error_contains(&terminal, "not a tradable market"),
+        "status should explain the non-orderable symbol: {:?}",
+        terminal.order_status
+    );
 }

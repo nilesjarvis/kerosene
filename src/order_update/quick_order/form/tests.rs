@@ -1,13 +1,16 @@
 use super::{quick_order_quantity_for_percentage, toggled_quick_order_quantity_text};
 use crate::account::{
-    AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
-    SpotClearinghouseState, UserFeeRates,
+    AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
+    Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
 };
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartInstance;
 use crate::order_execution::QuickOrderForm;
 use crate::timeframe::Timeframe;
+
+const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
 
 fn symbol(key: &str) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -56,6 +59,28 @@ fn account_data_without_positions() -> AccountData {
         completeness: AccountDataCompleteness::default(),
         fetched_at_ms: TradingTerminal::now_ms(),
     }
+}
+
+fn account_data_with_position(coin: &str, szi: &str) -> AccountData {
+    let mut data = account_data_without_positions();
+    data.clearinghouse.asset_positions = vec![AssetPosition {
+        position: Position {
+            coin: coin.to_string(),
+            szi: szi.to_string(),
+            entry_px: "100".to_string(),
+            position_value: "0".to_string(),
+            unrealized_pnl: "0".to_string(),
+            liquidation_px: None,
+            leverage: PositionLeverage {
+                leverage_type: "cross".to_string(),
+                value: 10,
+            },
+            margin_used: "0".to_string(),
+            cum_funding: None,
+        },
+        liquidation_px: None,
+    }];
+    data
 }
 
 #[test]
@@ -110,9 +135,20 @@ fn toggled_quick_order_quantity_converts_when_reference_price_is_available() {
 fn quick_order_max_notional_uses_one_x_when_leverage_is_only_symbol_limit() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols = vec![symbol("BTC")];
-    terminal.account_data = Some(account_data_without_positions());
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data_without_positions());
 
     assert_eq!(terminal.quick_order_max_notional("BTC"), Some(1_000.0));
+}
+
+#[test]
+fn quick_order_max_notional_ignores_stale_account_snapshot() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(OTHER_ACCOUNT, account_data_without_positions());
+
+    assert_eq!(terminal.quick_order_max_notional("BTC"), None);
 }
 
 #[test]
@@ -127,6 +163,7 @@ fn quick_order_toggle_denomination_does_not_change_main_ticket_denomination() {
         quantity: "1".to_string(),
         quantity_is_usd: false,
         percentage: 0.0,
+        quantity_provenance: None,
         is_limit: true,
         click_x: 0.0,
         click_y: 0.0,
@@ -145,4 +182,173 @@ fn quick_order_toggle_denomination_does_not_change_main_ticket_denomination() {
     assert!(form.quantity_is_usd);
     assert_eq!(form.quantity, "100.00");
     assert!(!terminal.order_quantity_is_usd);
+}
+
+#[test]
+fn quick_order_percentage_records_source_and_manual_edit_clears_it() {
+    let chart_id = 7;
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data_without_positions());
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance.set_quick_order(QuickOrderForm {
+        price: 100.0,
+        quantity: String::new(),
+        quantity_is_usd: false,
+        percentage: 0.0,
+        quantity_provenance: None,
+        is_limit: true,
+        click_x: 0.0,
+        click_y: 0.0,
+        chart_w: 400.0,
+        chart_h: 240.0,
+    });
+    terminal.charts.insert(chart_id, instance);
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 25.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    let provenance = form
+        .quantity_provenance
+        .as_ref()
+        .expect("percentage-derived quantity should have provenance");
+    assert_eq!(provenance.account_address, TEST_ACCOUNT);
+    assert_eq!(
+        provenance.account_data_revision,
+        terminal.account_data_revision
+    );
+    assert_eq!(provenance.symbol_key, "BTC");
+    assert!(!provenance.quantity_is_usd);
+    assert_eq!(provenance.reference_price, Some(100.0));
+
+    terminal.handle_quick_order_qty_changed(chart_id, "1.25".to_string());
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "1.25");
+    assert!(form.quantity_provenance.is_none());
+}
+
+#[test]
+fn reduce_only_quick_order_percentage_sizes_coin_quantity_from_position() {
+    let chart_id = 7;
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.order_reduce_only = true;
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        account_data_with_position("BTC", "2"),
+    );
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance.set_quick_order(QuickOrderForm {
+        price: 100.0,
+        quantity: String::new(),
+        quantity_is_usd: false,
+        percentage: 0.0,
+        quantity_provenance: None,
+        is_limit: true,
+        click_x: 0.0,
+        click_y: 0.0,
+        chart_w: 400.0,
+        chart_h: 240.0,
+    });
+    terminal.charts.insert(chart_id, instance);
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 25.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "0.50000");
+    assert!(
+        form.quantity_provenance
+            .as_ref()
+            .is_some_and(|provenance| provenance.reduce_only)
+    );
+}
+
+#[test]
+fn reduce_only_quick_order_percentage_sizes_usd_quantity_from_position_notional() {
+    let chart_id = 7;
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.order_reduce_only = true;
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        account_data_with_position("BTC", "2"),
+    );
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance.set_quick_order(QuickOrderForm {
+        price: 100.0,
+        quantity: String::new(),
+        quantity_is_usd: true,
+        percentage: 0.0,
+        quantity_provenance: None,
+        is_limit: true,
+        click_x: 0.0,
+        click_y: 0.0,
+        chart_w: 400.0,
+        chart_h: 240.0,
+    });
+    terminal.charts.insert(chart_id, instance);
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 25.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "50.00");
+    assert!(
+        form.quantity_provenance
+            .as_ref()
+            .is_some_and(|provenance| provenance.reduce_only)
+    );
+}
+
+#[test]
+fn reduce_only_quick_order_percentage_without_position_fails_closed() {
+    let chart_id = 7;
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.order_reduce_only = true;
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data_without_positions());
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance.set_quick_order(QuickOrderForm {
+        price: 100.0,
+        quantity: "stale".to_string(),
+        quantity_is_usd: false,
+        percentage: 0.0,
+        quantity_provenance: None,
+        is_limit: true,
+        click_x: 0.0,
+        click_y: 0.0,
+        chart_w: 400.0,
+        chart_h: 240.0,
+    });
+    terminal.charts.insert(chart_id, instance);
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 25.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "0");
+    assert!(form.quantity_provenance.is_none());
 }

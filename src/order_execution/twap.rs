@@ -52,9 +52,16 @@ impl TradingTerminal {
         let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
             return Task::none();
         };
+        if twap.status.is_terminal() {
+            return Task::none();
+        }
         twap.stop_requested = true;
         twap.stop_reason = Some((reason.clone(), is_error));
-        if twap.pending_op.is_some() {
+        let waiting_for_in_flight_resolution = twap.pending_op.is_some()
+            || twap.status_check_cloid.is_some()
+            || twap.reconciliation_deadline.is_some()
+            || twap.has_status_unknown_child();
+        if waiting_for_in_flight_resolution {
             twap.status = TwapStatus::Stopping;
             self.order_status = Some((format!("{reason}: waiting for in-flight slice"), is_error));
         } else {
@@ -70,9 +77,17 @@ impl TradingTerminal {
         &mut self,
         twap_id: u64,
         coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: crate::read_data_provider::MarketDataSourceContext,
         book: crate::api::OrderBook,
     ) -> Task<Message> {
+        if !self.market_stream_source_is_current(source_context) {
+            return Task::none();
+        }
         if self.symbol_key_is_hidden(&coin) {
+            return Task::none();
+        }
+        if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
             return Task::none();
         }
         let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
@@ -89,6 +104,7 @@ impl TradingTerminal {
             && twap.pause_reason == Some(TwapPauseReason::StaleMarketData)
         {
             twap.clear_pause();
+            twap.status = TwapStatus::Running;
             twap.push_event(
                 TwapEventKind::Reconciled,
                 "TWAP resumed: market data is fresh".to_string(),
@@ -100,21 +116,69 @@ impl TradingTerminal {
         Task::none()
     }
 
+    pub(crate) fn handle_twap_book_lagged(
+        &mut self,
+        twap_id: u64,
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: crate::read_data_provider::MarketDataSourceContext,
+        skipped: u64,
+    ) -> Task<Message> {
+        if !self.market_stream_source_is_current(source_context) {
+            return Task::none();
+        }
+        if self.symbol_key_is_hidden(&coin) {
+            return Task::none();
+        }
+        if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
+            return Task::none();
+        }
+        let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
+            return Task::none();
+        };
+        if twap.coin != coin || twap.status.is_terminal() || twap.stop_requested {
+            return Task::none();
+        }
+
+        twap.latest_book = None;
+        if twap.pending_op.is_some() {
+            return Task::none();
+        }
+
+        let should_mark_stale = matches!(
+            twap.status,
+            TwapStatus::Running | TwapStatus::WaitingForMarket
+        ) || twap.pause_reason == Some(TwapPauseReason::StaleMarketData);
+        if should_mark_stale && twap.pause_reason != Some(TwapPauseReason::StaleMarketData) {
+            let message = format!("TWAP paused: market data lagged ({skipped} L2 updates skipped)");
+            twap.pause(
+                TwapPauseReason::StaleMarketData,
+                None,
+                message.clone(),
+                true,
+            );
+            self.order_status = Some((message, true));
+        }
+        Task::none()
+    }
+
     pub(crate) fn handle_twap_tick(&mut self) -> Task<Message> {
         let now = Instant::now();
         if self.expire_twap_reconciliation_timeouts(now) {
             return Task::none();
         }
-        if let Some(twap_id) = self
+        let expired_ids: Vec<_> = self
             .twap_orders
             .iter()
-            .find(|(_, twap)| {
+            .filter(|(_, twap)| {
                 !twap.status.is_terminal() && twap.pending_op.is_none() && now >= twap.ends_at
             })
             .map(|(id, _)| *id)
-        {
-            self.expire_twap_if_deadline_passed(twap_id, now);
-            return Task::none();
+            .collect();
+        for twap_id in expired_ids {
+            if self.expire_twap_if_deadline_passed(twap_id, now) {
+                return Task::none();
+            }
         }
         let Some(twap_id) = self
             .twap_orders

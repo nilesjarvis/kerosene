@@ -1,4 +1,4 @@
-use super::super::fills::fill_summary_for_oid;
+use super::super::fills::fill_summary_for_order;
 use super::super::model::{TwapChildStatus, TwapOrder, TwapStatus};
 use crate::account::UserFill;
 use crate::helpers::positive_finite_value;
@@ -32,12 +32,14 @@ impl TwapOrder {
 
     pub(crate) fn reconcile_fills(&mut self, fills: &[UserFill]) {
         let had_status_unknown = self.has_status_unknown_child();
+        let expected_coin = self.coin.as_str();
+        let expected_is_buy = self.is_buy;
 
         for child in &mut self.child_orders {
             let Some(oid) = child.oid else {
                 continue;
             };
-            let summary = fill_summary_for_oid(fills, oid);
+            let summary = fill_summary_for_order(fills, oid, expected_coin, expected_is_buy);
             if let Some(summary) = summary {
                 child.filled_size = child.filled_size.max(summary.filled_size);
                 child.avg_price = summary.avg_price.or(child.avg_price);

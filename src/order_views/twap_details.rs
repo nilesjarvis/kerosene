@@ -31,7 +31,7 @@ impl TradingTerminal {
         let content = column![
             twap_header(twap, &theme),
             rule::horizontal(1),
-            twap_summary(twap, &theme),
+            twap_summary(twap, self.status_bar_now, &theme),
             rule::horizontal(1),
             twap_child_orders(twap, &theme),
             rule::horizontal(1),

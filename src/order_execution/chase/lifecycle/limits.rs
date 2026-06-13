@@ -1,4 +1,5 @@
 use crate::helpers::positive_finite_value;
+use crate::order_execution::order_account_addresses_match;
 use crate::signing::{
     ChaseOrder, MAX_CHASE_DRIFT_FRACTION, MAX_CHASE_DURATION, MAX_CHASE_REPRICES,
 };
@@ -37,7 +38,8 @@ impl ChaseLimitReason {
 }
 
 pub(super) fn chase_account_matches(chase: &ChaseOrder, connected_address: Option<&str>) -> bool {
-    connected_address == Some(chase.account_address.as_str())
+    connected_address
+        .is_some_and(|connected| order_account_addresses_match(connected, &chase.account_address))
 }
 
 pub(super) fn chase_reprice_limit_reason(

@@ -11,6 +11,9 @@ mod order_book;
 mod reduce_only;
 mod reference_price;
 
+const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";
+
 fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
     ExchangeSymbol {
         key: key.to_string(),
@@ -120,7 +123,11 @@ fn terminal_with_position(coin: &str, szi: &str) -> TradingTerminal {
     terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
     terminal.order_kind = OrderKind::Market;
     terminal.order_price.clear();
-    terminal.account_data = Some(account_data_with_positions(vec![asset_position(coin, szi)]));
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        account_data_with_positions(vec![asset_position(coin, szi)]),
+    );
     terminal
 }
 
@@ -139,4 +146,107 @@ fn margin_order_sizing_uses_one_x_when_leverage_is_only_symbol_limit() {
     };
 
     assert_eq!(max_notional, 1_000.0);
+}
+
+#[test]
+fn order_quantity_change_ignores_stale_account_snapshot_for_percentage() {
+    let mut terminal = terminal_with_position("BTC", "0");
+    terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
+    terminal.order_quantity_is_usd = true;
+    terminal.order_percentage = 75.0;
+
+    terminal.handle_order_quantity_changed("500".to_string());
+
+    assert_eq!(terminal.order_percentage, 0.0);
+}
+
+#[test]
+fn order_percentage_change_ignores_stale_account_snapshot_for_quantity() {
+    let mut terminal = terminal_with_position("BTC", "0");
+    terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
+    terminal.order_quantity_is_usd = true;
+    terminal.order_quantity = "unchanged".to_string();
+
+    terminal.handle_order_percentage_changed(50.0);
+
+    assert_eq!(terminal.order_quantity, "unchanged");
+}
+
+#[test]
+fn percentage_quantity_records_source_and_manual_edit_clears_it() {
+    let mut terminal = terminal_with_position("BTC", "0");
+    terminal.order_quantity_is_usd = true;
+
+    terminal.handle_order_percentage_changed(50.0);
+
+    assert!(terminal.order_quantity_provenance.is_some());
+
+    terminal.handle_order_quantity_changed("500".to_string());
+
+    assert!(terminal.order_quantity_provenance.is_none());
+    assert_eq!(terminal.order_quantity, "500");
+}
+
+#[test]
+fn percentage_quantity_recomputes_provenance_when_denomination_toggles() {
+    let mut terminal = terminal_with_position("BTC", "0");
+    terminal.order_quantity_is_usd = true;
+    terminal.all_mids.insert("BTC".to_string(), 100.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), TradingTerminal::now_ms());
+
+    terminal.handle_order_percentage_changed(25.0);
+    assert!(
+        terminal
+            .order_quantity_provenance
+            .as_ref()
+            .is_some_and(|provenance| provenance.quantity_is_usd)
+    );
+
+    terminal.handle_toggle_order_denomination();
+
+    assert!(!terminal.order_quantity_is_usd);
+    assert_eq!(terminal.order_quantity, "25.00000");
+    assert!(
+        terminal
+            .order_quantity_provenance
+            .as_ref()
+            .is_some_and(|provenance| !provenance.quantity_is_usd)
+    );
+}
+
+#[test]
+fn active_symbol_change_clears_percentage_quantity_provenance() {
+    let mut terminal = terminal_with_position("BTC", "0");
+    terminal
+        .exchange_symbols
+        .push(symbol("ETH", MarketType::Perp));
+    terminal.order_quantity_is_usd = true;
+    terminal.handle_order_percentage_changed(50.0);
+
+    terminal.apply_active_symbol_selection("ETH".to_string(), "ETH".to_string());
+
+    assert!(terminal.order_quantity.is_empty());
+    assert_eq!(terminal.order_percentage, 0.0);
+    assert!(terminal.order_quantity_provenance.is_none());
+}
+
+#[test]
+fn percentage_quantity_reselection_without_account_snapshot_clears_stale_derived_quantity() {
+    let mut terminal = terminal_with_position("BTC", "0");
+    terminal.order_quantity_is_usd = true;
+    terminal.handle_order_percentage_changed(50.0);
+
+    assert!(!terminal.order_quantity.is_empty());
+    assert!(terminal.order_quantity_provenance.is_some());
+
+    terminal.account_data = None;
+    terminal.account_data_address = None;
+    terminal.bump_account_data_revision();
+    terminal.handle_order_percentage_changed(25.0);
+
+    assert!(terminal.order_quantity.is_empty());
+    assert_eq!(terminal.order_percentage, 0.0);
+    assert!(terminal.order_quantity_provenance.is_none());
 }

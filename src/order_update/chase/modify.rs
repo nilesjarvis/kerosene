@@ -9,7 +9,6 @@ use crate::twap_state::ADVANCED_ORDER_GLOBAL_EXCHANGE_INTERVAL;
 use iced::Task;
 use std::time::Instant;
 
-use super::super::results::result_requires_account_refresh;
 use super::cancel::chase_terminal_cancel_error;
 
 #[cfg(test)]
@@ -38,25 +37,41 @@ impl TradingTerminal {
         oid: u64,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        let should_refresh = result_requires_account_refresh(&result);
         if !self.chase_orders.contains_key(&chase_id) {
-            return self.refresh_after_chase_result(should_refresh);
+            return Task::none();
         }
+        let Some(chase_account_address) = self
+            .chase_orders
+            .get(&chase_id)
+            .map(|chase| chase.account_address.clone())
+        else {
+            return Task::none();
+        };
         let lifecycle = self
             .chase_orders
             .get(&chase_id)
             .map(|chase| chase.lifecycle);
         let Some(lifecycle) = lifecycle else {
-            return self.refresh_after_chase_result(false);
+            return Task::none();
         };
         if !lifecycle.expects_modify_result(oid) {
-            return self.refresh_after_chase_result(false);
+            return Task::none();
         }
 
         match result {
             Ok(resp) => {
                 if resp.is_error() {
                     return self.handle_chase_modify_error(chase_id, oid, resp.summary());
+                }
+                if !resp.is_confirmed_modify_result() {
+                    return self.check_chase_order_status(
+                        chase_id,
+                        oid,
+                        format!(
+                            "Chase checking order status: modify response was not confirmed ({})",
+                            resp.summary()
+                        ),
+                    );
                 }
                 if resp.is_fully_filled() {
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
@@ -68,7 +83,10 @@ impl TradingTerminal {
                         };
                     }
                     self.order_status = Some((resp.summary(), false));
-                    return self.refresh_after_chase_result(true);
+                    return self.refresh_after_chase_result_for_order_account(
+                        true,
+                        &chase_account_address,
+                    );
                 }
 
                 let resting_oid = resp.order_oid().unwrap_or(oid);
@@ -80,7 +98,7 @@ impl TradingTerminal {
                     format!("Chasing (oid {resting_oid}); refreshing account data..."),
                     false,
                 ));
-                self.refresh_after_chase_result(true)
+                self.refresh_after_chase_result_for_order_account(true, &chase_account_address)
             }
             Err(e) => self.check_chase_order_status(
                 chase_id,

@@ -63,6 +63,10 @@ impl TradingTerminal {
         chase_id: u64,
         reason: String,
     ) -> Task<Message> {
+        let chase_account_address = self
+            .chase_orders
+            .get(&chase_id)
+            .map(|chase| chase.account_address.clone());
         let Some((account_address, cloid)) = self.chase_orders.get(&chase_id).and_then(|chase| {
             chase
                 .current_cloid
@@ -77,7 +81,11 @@ impl TradingTerminal {
                 reason
             );
             self.fail_chase_order(chase_id, summary);
-            return self.refresh_account_data();
+            return chase_account_address
+                .as_deref()
+                .map_or_else(Task::none, |address| {
+                    self.refresh_account_data_for_order_account(address)
+                });
         };
 
         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
@@ -99,8 +107,9 @@ impl TradingTerminal {
             true,
         ));
         let request_cloid = cloid.clone();
+        let account_refresh_task = self.refresh_account_data_for_order_account(&account_address);
         Task::batch([
-            self.refresh_account_data(),
+            account_refresh_task,
             Task::perform(
                 fetch_order_status_by_cloid(account_address, request_cloid),
                 move |result| Message::ChaseOrderStatusLoaded {
@@ -120,14 +129,24 @@ impl TradingTerminal {
         let owns_startup_pending = self.chase_place_result_owns_startup_pending(chase_id);
         let should_refresh = result_requires_account_refresh(&result);
         if !self.chase_orders.contains_key(&chase_id) {
-            return self.refresh_after_chase_result(should_refresh);
+            return Task::none();
         }
+        let Some(chase_account_address) = self
+            .chase_orders
+            .get(&chase_id)
+            .map(|chase| chase.account_address.clone())
+        else {
+            return Task::none();
+        };
         if !self
             .chase_orders
             .get(&chase_id)
             .is_some_and(|chase| chase.lifecycle.expects_place_result())
         {
-            return self.refresh_after_chase_result(should_refresh);
+            return self.refresh_after_chase_result_for_order_account(
+                should_refresh,
+                &chase_account_address,
+            );
         }
         if owns_startup_pending {
             self.clear_chase_startup_pending_if_owned(chase_id);
@@ -152,7 +171,7 @@ impl TradingTerminal {
                         };
                     }
                     self.order_status = Some((resp.summary(), false));
-                    return self.refresh_account_data();
+                    return self.refresh_account_data_for_order_account(&chase_account_address);
                 } else {
                     let stop_cancel_request = self
                         .chase_orders
@@ -180,7 +199,10 @@ impl TradingTerminal {
                             },
                         );
                         return if should_refresh {
-                            Task::batch([self.refresh_account_data(), cancel_task])
+                            Task::batch([
+                                self.refresh_account_data_for_order_account(&chase_account_address),
+                                cancel_task,
+                            ])
                         } else {
                             cancel_task
                         };
@@ -210,12 +232,16 @@ impl TradingTerminal {
                 return self.check_chase_place_status_by_cloid(chase_id, e);
             }
         }
-        self.refresh_after_chase_result(should_refresh)
+        self.refresh_after_chase_result_for_order_account(should_refresh, &chase_account_address)
     }
 
-    pub(super) fn refresh_after_chase_result(&mut self, should_refresh: bool) -> Task<Message> {
+    pub(super) fn refresh_after_chase_result_for_order_account(
+        &mut self,
+        should_refresh: bool,
+        account_address: &str,
+    ) -> Task<Message> {
         if should_refresh {
-            self.refresh_account_data()
+            self.refresh_account_data_for_order_account(account_address)
         } else {
             Task::none()
         }

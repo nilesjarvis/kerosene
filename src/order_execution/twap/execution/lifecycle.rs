@@ -53,6 +53,9 @@ impl TradingTerminal {
         now: Instant,
     ) {
         if let Some(twap) = self.twap_orders.get_mut(&twap_id) {
+            if twap.status.is_terminal() {
+                return;
+            }
             if twap.stop_requested {
                 let (message, is_error) = twap
                     .stop_reason

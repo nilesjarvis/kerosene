@@ -1,5 +1,6 @@
 use super::formatting::{
-    child_id_text, twap_pause_text, twap_status_check_text, weighted_average_fill_price,
+    child_id_text, twap_next_retry_text, twap_pause_text, twap_status_check_text,
+    weighted_average_fill_price,
 };
 use crate::twap_state::{
     TwapChildOrder, TwapChildStatus, TwapOrder, TwapOrderInit, TwapPauseReason,
@@ -48,9 +49,15 @@ fn twap_detail_identifiers_and_status_text_match_display_contract() {
     assert_eq!(twap_status_check_text(&twap), "-");
 
     twap.pause_reason = Some(TwapPauseReason::RateLimited);
+    twap.paused_until = Some(now + Duration::from_secs(12));
     twap.status_check_cloid = Some("1234567890abcdef".to_string());
     twap.status_check_retries = 2;
     assert_eq!(twap_pause_text(&twap), "Rate limited");
+    assert_eq!(twap_next_retry_text(&twap, now), "12s");
+    assert_eq!(
+        twap_next_retry_text(&twap, now + Duration::from_secs(12)),
+        "Now"
+    );
     assert_eq!(twap_status_check_text(&twap), "1234567890... (2)");
 }
 

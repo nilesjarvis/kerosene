@@ -77,6 +77,7 @@ fn nuke_order_converts_to_cloid_backed_reduce_only_market_request() {
     assert!(request.reduce_only);
     let cloid = request.cloid.expect("NUKE request should have cloid");
     assert_eq!(context.cloid, cloid);
+    assert_eq!(context.account_address, "0xabc");
     assert_eq!(context.surface, OrderSurface::Nuke);
     assert_eq!(context.symbol_key, "BTC");
     assert_eq!(cloid.len(), 34);

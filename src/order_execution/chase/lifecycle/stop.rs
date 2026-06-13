@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
 use crate::order_execution::cancel_order_task;
-use crate::signing::{ChaseLifecycle, ChaseStopPhase};
+use crate::signing::{ChaseLifecycle, ChaseStopPhase, MAX_CHASE_CANCEL_RETRIES};
 
 use super::{ChaseLimitReason, chase_reprice_limit_reason};
 
@@ -58,7 +58,7 @@ impl TradingTerminal {
                 asset,
                 oid,
             } => {
-                let key = chase.agent_key.trim().to_string();
+                let key = chase.agent_key.clone_for_task();
                 if key.is_empty() {
                     self.order_status = Some((
                         "Chase stopped: original agent key is unavailable".into(),
@@ -68,12 +68,10 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
-                cancel_order_task(key.into(), asset, oid, move |r| {
-                    Message::ChaseCancelResult {
-                        chase_id,
-                        oid,
-                        result: Box::new(r),
-                    }
+                cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
+                    chase_id,
+                    oid,
+                    result: Box::new(r),
                 })
             }
             StopChaseAction::AwaitPlaceResult => {
@@ -149,14 +147,34 @@ impl TradingTerminal {
         let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
             return Task::none();
         };
-        let key = chase.agent_key.trim().to_string();
         let reason = reason.into();
+        if chase.cancel_retries >= MAX_CHASE_CANCEL_RETRIES {
+            let manual_status = chase.stop_reason.clone().unwrap_or_else(|| {
+                (
+                    format!(
+                        concat!(
+                            "Chase requires manual check: cancel status could not be confirmed ",
+                            "after {} attempts; check open orders"
+                        ),
+                        MAX_CHASE_CANCEL_RETRIES
+                    ),
+                    true,
+                )
+            });
+            chase.lifecycle = ChaseLifecycle::Stopping {
+                phase: ChaseStopPhase::VerifyingCancel { oid },
+            };
+            chase.stop_reason = Some(manual_status.clone());
+            self.order_status = Some(manual_status);
+            return Task::none();
+        }
         chase.record_oid(oid);
         chase.current_oid = Some(oid);
         chase.lifecycle = ChaseLifecycle::Stopping {
             phase: ChaseStopPhase::Canceling { oid },
         };
         chase.stop_reason = Some((reason.clone(), is_error));
+        let key = chase.agent_key.clone_for_task();
         if key.is_empty() {
             self.order_status = Some((
                 format!("{reason}: manual check required; original agent key is unavailable"),
@@ -167,11 +185,35 @@ impl TradingTerminal {
 
         let asset = chase.asset;
         self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
-        cancel_order_task(key.into(), asset, oid, move |r| {
-            Message::ChaseCancelResult {
-                chase_id,
-                oid,
-                result: Box::new(r),
+        cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
+            chase_id,
+            oid,
+            result: Box::new(r),
+        })
+    }
+
+    pub(in crate::order_execution::chase::lifecycle) fn next_stopped_chase_cancel_retry(
+        &self,
+        now: Instant,
+    ) -> Option<(u64, String, bool)> {
+        self.chase_orders.iter().find_map(|(id, chase)| {
+            if matches!(
+                chase.lifecycle,
+                ChaseLifecycle::Stopping {
+                    phase: ChaseStopPhase::VerifyingCancel { .. }
+                }
+            ) && chase.current_oid.is_some()
+                && chase.cancel_retries > 0
+                && chase.cancel_retries < crate::signing::MAX_CHASE_CANCEL_RETRIES
+                && chase.can_reprice_now(now)
+            {
+                let (reason, is_error) = chase
+                    .stop_reason
+                    .clone()
+                    .unwrap_or_else(|| ("Chase stopped".to_string(), false));
+                Some((*id, reason, is_error))
+            } else {
+                None
             }
         })
     }
@@ -180,28 +222,7 @@ impl TradingTerminal {
         if !self.can_send_chase_exchange_request(now) {
             return Task::none();
         }
-        let Some((chase_id, reason, is_error)) =
-            self.chase_orders.iter().find_map(|(id, chase)| {
-                if matches!(
-                    chase.lifecycle,
-                    ChaseLifecycle::Stopping {
-                        phase: ChaseStopPhase::VerifyingCancel { .. }
-                    }
-                ) && chase.current_oid.is_some()
-                    && chase.cancel_retries > 0
-                    && chase.cancel_retries < crate::signing::MAX_CHASE_CANCEL_RETRIES
-                    && chase.can_reprice_now(now)
-                {
-                    let (reason, is_error) = chase
-                        .stop_reason
-                        .clone()
-                        .unwrap_or_else(|| ("Chase stopped".to_string(), false));
-                    Some((*id, reason, is_error))
-                } else {
-                    None
-                }
-            })
-        else {
+        let Some((chase_id, reason, is_error)) = self.next_stopped_chase_cancel_retry(now) else {
             return Task::none();
         };
 

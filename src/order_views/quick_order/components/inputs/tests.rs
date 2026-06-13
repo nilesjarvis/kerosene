@@ -7,6 +7,7 @@ fn quick_order_form(quantity: &str, quantity_is_usd: bool) -> QuickOrderForm {
         quantity: quantity.to_string(),
         quantity_is_usd,
         percentage: 0.0,
+        quantity_provenance: None,
         is_limit: true,
         click_x: 0.0,
         click_y: 0.0,

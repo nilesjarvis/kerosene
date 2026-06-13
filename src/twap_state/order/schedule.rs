@@ -1,4 +1,4 @@
-use super::super::model::{TwapEventKind, TwapOrder, TwapStatus};
+use super::super::model::{TwapEventKind, TwapOrder, TwapPauseReason, TwapStatus};
 use super::super::{
     TWAP_MIN_INTERVAL, TWAP_RANDOM_JITTER, TWAP_RETRY_BASE_DELAY, TWAP_RETRY_MAX_DELAY,
 };
@@ -17,9 +17,19 @@ impl TwapOrder {
 
     pub(crate) fn can_schedule_at(&self, now: Instant) -> bool {
         self.can_schedule()
+            && !matches!(
+                (self.status, self.pause_reason),
+                (TwapStatus::Paused, Some(TwapPauseReason::StaleMarketData))
+            )
             && self.status_check_cloid.is_none()
             && self.next_slice_due <= now
             && self.paused_until.is_none_or(|until| until <= now)
+    }
+
+    pub(crate) fn needs_timer_tick(&self) -> bool {
+        !self.status.is_terminal()
+            && ((!self.stop_requested && self.pending_op.is_none())
+                || self.reconciliation_deadline.is_some())
     }
 
     /// Pure predicate so the timeout policy can be unit-tested against

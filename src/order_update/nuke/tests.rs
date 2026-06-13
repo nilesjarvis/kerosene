@@ -1,5 +1,6 @@
 use super::confirmation::{
-    NUKE_CONFIRMATION_WINDOW, nuke_arm_status_for_plan, nuke_confirmation_is_armed,
+    NUKE_CONFIRMATION_WINDOW, NukeConfirmation, nuke_arm_status_for_plan,
+    nuke_confirmation_is_armed,
 };
 use crate::order_execution::{NukePlan, NukePositionOrder, NukeSkipReason};
 
@@ -79,14 +80,21 @@ fn nuke_arm_status_refuses_hidden_unrouteable_exposure() {
 #[test]
 fn nuke_confirmation_is_only_armed_inside_window() {
     let now = Instant::now();
+    let confirmation = NukeConfirmation::new(
+        now - NUKE_CONFIRMATION_WINDOW,
+        Some("0xabc"),
+        &NukePlan::default(),
+    );
+    let expired_confirmation = NukeConfirmation::new(
+        now - NUKE_CONFIRMATION_WINDOW - Duration::from_millis(1),
+        Some("0xabc"),
+        &NukePlan::default(),
+    );
 
     assert!(!nuke_confirmation_is_armed(None, now));
-    assert!(nuke_confirmation_is_armed(
-        Some(now - NUKE_CONFIRMATION_WINDOW),
-        now
-    ));
+    assert!(nuke_confirmation_is_armed(Some(&confirmation), now));
     assert!(!nuke_confirmation_is_armed(
-        Some(now - NUKE_CONFIRMATION_WINDOW - Duration::from_millis(1)),
+        Some(&expired_confirmation),
         now
     ));
 }

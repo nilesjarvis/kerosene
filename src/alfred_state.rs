@@ -1,3 +1,4 @@
+use crate::account::AccountDataSection;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::order_execution::NukePlan;
@@ -91,18 +92,63 @@ impl TradingTerminal {
             &["nuke", "close", "all", "flatten", "positions", "market"],
         );
 
-        if self.wallet_key_input.trim().is_empty() || self.connected_address.is_none() {
+        let Some(account_address) = self.connected_order_account_address() else {
             return Some(command.disabled("Connect wallet and enter agent key first"));
+        };
+        if !self.has_active_committed_agent_key() {
+            return Some(command.disabled("Connect wallet and enter agent key first"));
+        }
+        if !self.active_wallet_context_matches_connected_account(&account_address) {
+            return Some(command.disabled(
+                "Connected wallet no longer matches the active account; reconnect before trading",
+            ));
+        }
+        if self.has_pending_trading_request() {
+            return Some(
+                command.disabled("Wait for pending trading requests to finish before NUKE"),
+            );
         }
         if self.account_loading {
             return Some(command.disabled("Account refresh in progress"));
         }
-        if self.account_data.is_none() {
+        if self.account_reconciliation_required {
+            return Some(
+                command
+                    .disabled("Account refresh pending; wait for fresh account data before NUKE"),
+            );
+        }
+        let Some((_, account_data)) = self.connected_order_account_snapshot() else {
             return Some(command.disabled("No account data available"));
+        };
+        if !account_data.completeness.positions_complete {
+            let detail = account_data
+                .completeness
+                .section_warning(AccountDataSection::Positions)
+                .unwrap_or_else(|| {
+                    "Positions may be incomplete: refresh account data before relying on positions"
+                        .to_string()
+                });
+            return Some(command.disabled_with_message(format!("{detail}; refresh before NUKE")));
+        }
+        let now_ms = Self::now_ms();
+        if !account_data.is_fresh_for_position_action(now_ms) {
+            let age_label = account_data
+                .position_action_snapshot_age_ms(now_ms)
+                .map(|age| format!("{}s old", age.div_ceil(1000)))
+                .unwrap_or_else(|| "from the future".to_string());
+            return Some(command.disabled_with_message(format!(
+                "Account data is stale ({age_label}); refresh before NUKE"
+            )));
         }
 
         match self.plan_nuke_positions() {
             Ok(plan) if plan.is_empty() => Some(command.disabled("No positions to close")),
+            Ok(plan) if !plan.hidden_skipped.is_empty() => {
+                Some(command.disabled_with_message(format!(
+                    "Cannot NUKE: hidden exposure unresolvable: {}",
+                    plan.format_hidden_skip_list()
+                )))
+            }
             Ok(plan) if plan.ready.is_empty() => Some(
                 command.disabled_with_message(format!("Cannot NUKE: {}", plan.format_skip_list())),
             ),

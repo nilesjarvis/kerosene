@@ -6,6 +6,8 @@ use crate::signing::{ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason};
 use iced::Task;
 use std::time::Instant;
 
+use super::returned_oid_mismatches;
+
 // ---------------------------------------------------------------------------
 // OID Status Results
 // ---------------------------------------------------------------------------
@@ -23,9 +25,44 @@ impl TradingTerminal {
         if chase.current_oid != Some(oid) {
             return Task::none();
         }
+        let chase_account_address = chase.account_address.clone();
+        let cancel_already_in_flight = matches!(
+            chase.lifecycle,
+            ChaseLifecycle::Stopping {
+                phase: ChaseStopPhase::Canceling { oid: pending_oid },
+            } if pending_oid == oid
+        );
 
         match result {
+            Ok(status) if returned_oid_mismatches(&status, oid) => {
+                self.order_status = Some((
+                    format!(
+                        concat!(
+                            "Chase order status ignored: response oid did not match ",
+                            "request {} ({})"
+                        ),
+                        oid, status.raw_summary
+                    ),
+                    true,
+                ));
+                Task::none()
+            }
             Ok(status) if status.is_open() => {
+                if cancel_already_in_flight {
+                    let is_error = self
+                        .chase_orders
+                        .get(&chase_id)
+                        .and_then(|chase| chase.stop_reason.as_ref().map(|(_, is_error)| *is_error))
+                        .unwrap_or(false);
+                    self.order_status = Some((
+                        format!(
+                            "Chase stopping: cancel already in flight for order {oid}; orderStatus still reports open ({})",
+                            status.raw_summary
+                        ),
+                        is_error,
+                    ));
+                    return Task::none();
+                }
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.record_oid(oid);
                     if chase.lifecycle.is_stopping() {
@@ -57,9 +94,25 @@ impl TradingTerminal {
                     ),
                     false,
                 ));
-                self.refresh_account_data()
+                self.refresh_account_data_for_order_account(&chase_account_address)
             }
             Ok(status) if status.is_filled() => {
+                if self
+                    .chase_orders
+                    .get(&chase_id)
+                    .is_some_and(|chase| chase.lifecycle.is_stopping())
+                    && !self.chase_orders.get(&chase_id).is_some_and(|chase| {
+                        self.connected_order_account_matches(&chase.account_address)
+                    })
+                {
+                    let summary = format!(
+                        "Chase stopped: order filled according to orderStatus ({})",
+                        status.raw_summary
+                    );
+                    self.order_status = Some((summary.clone(), false));
+                    self.archive_disconnected_stopping_chase(chase_id, summary);
+                    return Task::none();
+                }
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.record_oid(oid);
                     let filled_size = chase.remaining_size;
@@ -73,7 +126,7 @@ impl TradingTerminal {
                     status.raw_summary
                 );
                 self.order_status = Some((summary.clone(), false));
-                self.refresh_account_data()
+                self.refresh_account_data_for_order_account(&chase_account_address)
             }
             Ok(status) if status.is_definitive_no_fill_terminal() => {
                 if self
@@ -94,7 +147,10 @@ impl TradingTerminal {
                             phase: ChaseStopPhase::VerifyingCancel { oid },
                         };
                     }
-                    return self.refresh_account_data();
+                    if self.archive_disconnected_stopping_chase(chase_id, message.clone()) {
+                        return Task::none();
+                    }
+                    return self.refresh_account_data_for_order_account(&chase_account_address);
                 }
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.lifecycle = ChaseLifecycle::Verifying {
@@ -108,9 +164,13 @@ impl TradingTerminal {
                     ),
                     false,
                 ));
-                self.refresh_account_data()
+                self.refresh_account_data_for_order_account(&chase_account_address)
             }
             Ok(status) if status.is_no_fill_terminal() => {
+                let was_stopping = self
+                    .chase_orders
+                    .get(&chase_id)
+                    .is_some_and(|chase| chase.lifecycle.is_stopping());
                 let summary = format!(
                     "Chase stopped: order no longer open ({}); no replacement will be placed",
                     status.raw_summary
@@ -124,8 +184,11 @@ impl TradingTerminal {
                         phase: ChaseStopPhase::VerifyingCancel { oid },
                     };
                 }
-                self.order_status = Some((summary, true));
-                self.refresh_account_data()
+                self.order_status = Some((summary.clone(), true));
+                if was_stopping && self.archive_disconnected_stopping_chase(chase_id, summary) {
+                    return Task::none();
+                }
+                self.refresh_account_data_for_order_account(&chase_account_address)
             }
             Ok(status) if status.is_missing() => {
                 if self
@@ -133,6 +196,17 @@ impl TradingTerminal {
                     .get(&chase_id)
                     .is_some_and(|chase| chase.lifecycle.is_stopping())
                 {
+                    let can_refresh_chase_account =
+                        self.connected_order_account_matches(&chase_account_address);
+                    let archive_summary = (!can_refresh_chase_account).then(|| {
+                        format!(
+                            concat!(
+                                "Chase stopped: orderStatus did not find previous account ",
+                                "order {} ({})"
+                            ),
+                            oid, status.raw_summary
+                        )
+                    });
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         chase.record_oid(oid);
                         chase.current_oid = Some(oid);
@@ -140,6 +214,14 @@ impl TradingTerminal {
                             phase: ChaseStopPhase::VerifyingCancel { oid },
                         };
                         chase.last_reprice_at = Some(Instant::now());
+                        if let Some(summary) = &archive_summary {
+                            chase.stop_reason = Some((summary.clone(), true));
+                        }
+                    }
+                    if let Some(summary) = archive_summary {
+                        self.order_status = Some((summary.clone(), true));
+                        self.archive_disconnected_stopping_chase(chase_id, summary);
+                        return Task::none();
                     }
                     self.order_status = Some((
                         format!(
@@ -151,7 +233,7 @@ impl TradingTerminal {
                         ),
                         true,
                     ));
-                    return self.refresh_account_data();
+                    return self.refresh_account_data_for_order_account(&chase_account_address);
                 }
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.lifecycle = ChaseLifecycle::Verifying {
@@ -174,7 +256,7 @@ impl TradingTerminal {
                     status.raw_summary
                 );
                 self.fail_chase_order(chase_id, summary);
-                self.refresh_account_data()
+                self.refresh_account_data_for_order_account(&chase_account_address)
             }
             Err(error) => {
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
@@ -209,7 +291,7 @@ impl TradingTerminal {
                     ),
                     true,
                 ));
-                self.refresh_account_data()
+                self.refresh_account_data_for_order_account(&chase_account_address)
             }
         }
     }

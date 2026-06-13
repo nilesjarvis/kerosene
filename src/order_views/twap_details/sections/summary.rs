@@ -8,6 +8,7 @@ use super::super::formatting::{
 };
 use iced::widget::{column, row};
 use iced::{Element, Theme};
+use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // TWAP Summary
@@ -15,6 +16,7 @@ use iced::{Element, Theme};
 
 pub(in crate::order_views::twap_details) fn twap_summary<'a>(
     twap: &TwapOrder,
+    now: Instant,
     theme: &Theme,
 ) -> Element<'a, Message> {
     let weak = theme.extended_palette().background.weak.text;
@@ -65,7 +67,7 @@ pub(in crate::order_views::twap_details) fn twap_summary<'a>(
         row![
             metric("Status", twap.status.label().to_string(), weak),
             metric("Pause", twap_pause_text(twap), weak),
-            metric("Next Retry", twap_next_retry_text(twap), weak),
+            metric("Next Retry", twap_next_retry_text(twap, now), weak),
             metric("Status Check", twap_status_check_text(twap), weak),
         ]
         .spacing(8),

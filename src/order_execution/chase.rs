@@ -4,8 +4,8 @@ use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
 use crate::order_execution::{
-    AdvancedOrderKind, OrderOperation, OrderSurface, PendingOrderAction,
-    validate_surface_market_type,
+    AdvancedOrderKind, AdvancedOrderStartSnapshot, OrderOperation, OrderSurface,
+    PendingOrderAction, validate_surface_market_type,
 };
 use crate::signing::{ChaseLifecycle, ChaseOrder};
 use iced::Task;
@@ -105,12 +105,27 @@ impl TradingTerminal {
             .unwrap_or((None, None))
     }
 
+    pub(crate) fn start_chase_from_snapshot(
+        &mut self,
+        is_buy: bool,
+        snapshot: AdvancedOrderStartSnapshot,
+    ) -> Task<Message> {
+        if self.reject_stale_advanced_order_start_snapshot(AdvancedOrderKind::Chase, &snapshot) {
+            return Task::none();
+        }
+
+        self.start_chase(is_buy)
+    }
+
     pub(crate) fn start_chase(&mut self, is_buy: bool) -> Task<Message> {
         let _theme = self.theme();
         let Some(start_context) = self.advanced_order_start_context(AdvancedOrderKind::Chase)
         else {
             return Task::none();
         };
+        if let Some(task) = self.stale_percentage_order_quantity_task("starting a chase") {
+            return task;
+        }
 
         let raw_qty: f64 = match helpers::parse_positive_number(&self.order_quantity) {
             Some(v) => v,
@@ -123,11 +138,19 @@ impl TradingTerminal {
         let sym = self
             .exchange_symbols
             .iter()
-            .find(|s| s.key == self.active_symbol);
+            .find(|s| s.key == self.active_symbol)
+            .cloned();
         let Some(sym) = sym else {
             self.order_status = Some((format!("Symbol '{}' not found", self.active_symbol), true));
             return Task::none();
         };
+        if let Err(error) = self.validate_exchange_symbol_orderable(
+            &sym,
+            OrderSurface::Chase.orderability_context_label(),
+        ) {
+            self.order_status = Some((error, true));
+            return Task::none();
+        }
         if let Err(error) = validate_surface_market_type(
             OrderSurface::Chase,
             OrderOperation::Place,

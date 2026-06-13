@@ -35,6 +35,9 @@ impl TradingTerminal {
             if twap.status_check_cloid.as_deref() != Some(cloid.as_str()) {
                 return Task::none();
             }
+            if twap.status.is_terminal() {
+                return Task::none();
+            }
 
             match result {
                 Ok(status) if status.is_missing() => {
@@ -138,14 +141,11 @@ impl TradingTerminal {
                         format!("Slice unexpectedly open after status check; cancelling {cloid}"),
                         true,
                     );
-                    cancel_unexpected = Some((
-                        twap.agent_key.trim().to_string(),
-                        twap.asset,
-                        status.oid,
-                        Some(cloid.clone()),
-                    ));
+                    let key = twap.agent_key.clone_for_task();
+                    cancel_unexpected = Some((key, twap.asset, status.oid, Some(cloid.clone())));
                 }
                 Ok(status) if status.is_filled() => {
+                    twap.account_reconciliation_retries = 0;
                     twap.update_child_orders_matching(
                         |child| child.cloid.as_deref() == Some(cloid.as_str()),
                         |child| {

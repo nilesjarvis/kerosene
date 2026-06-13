@@ -130,6 +130,7 @@ pub(crate) struct OneShotPlacementContext {
     pub(crate) cloid: String,
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
+    pub(crate) order_kind: ExchangeOrderKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,6 +212,7 @@ impl PreparedExchangeOrder {
             cloid,
             surface: self.surface,
             symbol_key: self.symbol_key.clone(),
+            order_kind: self.order_kind,
         };
         (request, context)
     }
@@ -370,7 +372,7 @@ impl OrderSurface {
         }
     }
 
-    fn orderability_context_label(self) -> &'static str {
+    pub(crate) fn orderability_context_label(self) -> &'static str {
         match self {
             Self::Ticket | Self::Preset | Self::Chase | Self::Twap => "Active",
             Self::QuickOrder | Self::Hud => "Chart",

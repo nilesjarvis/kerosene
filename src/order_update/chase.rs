@@ -11,6 +11,32 @@ use iced::Task;
 use std::time::Instant;
 
 impl TradingTerminal {
+    pub(super) fn archive_disconnected_stopping_chase(
+        &mut self,
+        chase_id: u64,
+        summary: String,
+    ) -> bool {
+        let should_archive = self.chase_orders.get(&chase_id).is_some_and(|chase| {
+            chase.lifecycle.is_stopping()
+                && !self.connected_order_account_matches(&chase.account_address)
+        });
+        if should_archive {
+            self.remove_chase_order_with_summary(chase_id, Some(summary));
+        }
+        should_archive
+    }
+
+    pub(super) fn refresh_account_data_for_order_account(
+        &mut self,
+        account_address: &str,
+    ) -> Task<Message> {
+        if self.connected_order_account_matches(account_address) {
+            self.refresh_account_data()
+        } else {
+            Task::none()
+        }
+    }
+
     pub(crate) fn check_chase_order_status(
         &mut self,
         chase_id: u64,
@@ -18,9 +44,10 @@ impl TradingTerminal {
         status: impl Into<String>,
     ) -> Task<Message> {
         let status = status.into();
-        let can_refresh_chase_account = self.chase_orders.get(&chase_id).is_some_and(|chase| {
-            self.connected_address.as_deref() == Some(chase.account_address.as_str())
-        });
+        let can_refresh_chase_account = self
+            .chase_orders
+            .get(&chase_id)
+            .is_some_and(|chase| self.connected_order_account_matches(&chase.account_address));
         let account_address = self
             .chase_orders
             .get(&chase_id)

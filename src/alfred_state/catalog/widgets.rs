@@ -1,4 +1,3 @@
-use crate::account::AccountData;
 use crate::alfred_state::{AlfredCommand, AlfredCommandId, AlfredCommandKind};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -16,9 +15,8 @@ impl TradingTerminal {
         let can_add_pane = target.is_some();
         let no_pane_reason = "Alfred needs an open pane to add this widget";
         let can_add_income = self
-            .account_data
-            .as_ref()
-            .is_some_and(AccountData::is_portfolio_margin);
+            .connected_order_account_snapshot()
+            .is_some_and(|(_, data)| data.is_portfolio_margin());
 
         let portfolio_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio));
         let income_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Income));

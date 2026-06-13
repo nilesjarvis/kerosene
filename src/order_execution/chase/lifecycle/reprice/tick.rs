@@ -36,6 +36,10 @@ impl TradingTerminal {
             };
         }
 
+        if let Some((chase_id, reason, is_error)) = self.next_stopped_chase_cancel_retry(now) {
+            return self.stop_chase_by_id_with_reason(chase_id, reason, is_error);
+        }
+
         let Some((chase_id, action)) = self.next_queued_chase_reprice_action(now) else {
             return Task::none();
         };

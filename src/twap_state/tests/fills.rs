@@ -1,6 +1,6 @@
 use super::{
     TwapChildOrder, TwapChildStatus, TwapStatus, exchange_response_from_value, test_twap_order,
-    twap_response_fill_summary, user_fill,
+    twap_response_fill_summary, user_fill, user_fill_for,
 };
 
 use std::time::Instant;
@@ -68,6 +68,142 @@ fn status_unknown_twap_reconciles_to_partial_or_completed_from_account_fills() {
     completed.reconcile_fills(&[user_fill(42, "1.0", "100")]);
     assert_eq!(completed.status, TwapStatus::Completed);
     assert_eq!(completed.remaining_size, 0.0);
+}
+
+#[test]
+fn twap_fill_reconciliation_requires_matching_coin_and_side() {
+    let now = Instant::now();
+    let mut twap = test_twap_order(now, 2.0, false, 2);
+    twap.coin = "flx:BTC".to_string();
+    twap.child_orders.push(TwapChildOrder {
+        index: 1,
+        requested_at: now,
+        planned_size: 1.0,
+        limit_price: 100.0,
+        oid: Some(42),
+        cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
+        status: TwapChildStatus::AwaitingReconciliation,
+        exchange_summary: "filled".to_string(),
+        filled_size: 0.0,
+        avg_price: None,
+        fee: 0.0,
+        retry_count: 0,
+    });
+
+    twap.reconcile_fills(&[
+        user_fill_for("BTC", "B", 42, "1.0", "100"),
+        user_fill_for("flx:BTC", "A", 42, "1.0", "100"),
+        user_fill_for("flx:BTC", "B", 42, "0.25", "100"),
+    ]);
+
+    assert_eq!(twap.child_orders[0].filled_size, 0.25);
+    assert_eq!(twap.filled_size, 0.25);
+    assert_eq!(twap.remaining_size, 1.75);
+}
+
+#[test]
+fn twap_fill_reconciliation_distinguishes_native_and_hip3_same_oid() {
+    let now = Instant::now();
+    let mut native = test_twap_order(now, 1.0, false, 2);
+    native.child_orders.push(TwapChildOrder {
+        index: 1,
+        requested_at: now,
+        planned_size: 1.0,
+        limit_price: 100.0,
+        oid: Some(42),
+        cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
+        status: TwapChildStatus::AwaitingReconciliation,
+        exchange_summary: "filled".to_string(),
+        filled_size: 0.0,
+        avg_price: None,
+        fee: 0.0,
+        retry_count: 0,
+    });
+    native.reconcile_fills(&[user_fill_for("flx:BTC", "B", 42, "1.0", "100")]);
+    assert_eq!(native.filled_size, 0.0);
+    assert_eq!(native.remaining_size, 1.0);
+
+    let mut hip3 = test_twap_order(now, 1.0, false, 2);
+    hip3.coin = "flx:BTC".to_string();
+    hip3.child_orders.push(TwapChildOrder {
+        index: 1,
+        requested_at: now,
+        planned_size: 1.0,
+        limit_price: 100.0,
+        oid: Some(42),
+        cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
+        status: TwapChildStatus::AwaitingReconciliation,
+        exchange_summary: "filled".to_string(),
+        filled_size: 0.0,
+        avg_price: None,
+        fee: 0.0,
+        retry_count: 0,
+    });
+    hip3.reconcile_fills(&[
+        user_fill_for("BTC", "B", 42, "1.0", "100"),
+        user_fill_for("flx:BTC", "B", 42, "0.4", "100"),
+    ]);
+    assert_eq!(hip3.filled_size, 0.4);
+    assert_eq!(hip3.remaining_size, 0.6);
+}
+
+#[test]
+fn twap_sell_fill_reconciliation_requires_ask_side() {
+    let now = Instant::now();
+    let mut twap = test_twap_order(now, 1.0, false, 2);
+    twap.is_buy = false;
+    twap.child_orders.push(TwapChildOrder {
+        index: 1,
+        requested_at: now,
+        planned_size: 1.0,
+        limit_price: 100.0,
+        oid: Some(42),
+        cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
+        status: TwapChildStatus::AwaitingReconciliation,
+        exchange_summary: "filled".to_string(),
+        filled_size: 0.0,
+        avg_price: None,
+        fee: 0.0,
+        retry_count: 0,
+    });
+
+    twap.reconcile_fills(&[
+        user_fill_for("BTC", "B", 42, "1.0", "100"),
+        user_fill_for("BTC", "A", 42, "0.25", "100"),
+    ]);
+
+    assert_eq!(twap.child_orders[0].filled_size, 0.25);
+    assert_eq!(twap.filled_size, 0.25);
+    assert_eq!(twap.remaining_size, 0.75);
+}
+
+#[test]
+fn twap_fill_reconciliation_requires_exact_spot_and_outcome_symbols() {
+    for (expected_coin, mismatched_coin) in [("@107", "BTC"), ("#950", "@107")] {
+        let now = Instant::now();
+        let mut twap = test_twap_order(now, 1.0, false, 2);
+        twap.coin = expected_coin.to_string();
+        twap.child_orders.push(TwapChildOrder {
+            index: 1,
+            requested_at: now,
+            planned_size: 1.0,
+            limit_price: 100.0,
+            oid: Some(42),
+            cloid: Some("0x1234567890abcdef1234567890abcdef".to_string()),
+            status: TwapChildStatus::AwaitingReconciliation,
+            exchange_summary: "filled".to_string(),
+            filled_size: 0.0,
+            avg_price: None,
+            fee: 0.0,
+            retry_count: 0,
+        });
+
+        twap.reconcile_fills(&[user_fill_for(mismatched_coin, "B", 42, "1.0", "100")]);
+
+        assert_eq!(twap.child_orders[0].filled_size, 0.0, "{expected_coin}");
+        assert_eq!(twap.filled_size, 0.0, "{expected_coin}");
+        assert_eq!(twap.remaining_size, 1.0, "{expected_coin}");
+    }
 }
 
 #[test]

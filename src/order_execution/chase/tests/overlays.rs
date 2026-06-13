@@ -19,10 +19,12 @@ fn removing_chase_order_resyncs_chart_order_overlays() {
             is_moving: false,
             pending_state: None,
         });
+    terminal.account_data_address = Some(TEST_ACCOUNT.to_string());
+    terminal.account_data = Some(account_data_with_order(open_order(42)));
 
-    let _task =
-        terminal.handle_chase_resting_order("BTC".to_string(), 42, true, 1.0, 100.0, Some(false));
+    let _task = terminal.handle_chase_resting_order("BTC".to_string(), 42);
     let chase_id = selected_chase_id(&terminal);
+    terminal.account_data = None;
 
     terminal.remove_chase_order(chase_id);
 
