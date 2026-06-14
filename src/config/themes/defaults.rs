@@ -148,6 +148,13 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             ],
             chart: Some(("#098551", "#CF202F")),
         },
+        ThemeSpec {
+            name: "ubuntu",
+            colors: [
+                "#1B0E18", "#F3EAEF", "#F66D2C", "#33D17A", "#FFD24A", "#F5465F",
+            ],
+            chart: Some(("#3FD17D", "#E84C72")),
+        },
     ]
     .into_iter()
     .map(theme_from_spec)

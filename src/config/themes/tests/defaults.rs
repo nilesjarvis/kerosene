@@ -5,7 +5,7 @@ fn default_theme_is_kerosene() {
     assert_eq!(default_theme(), "Custom: Kerosene");
 }
 
-fn default_theme_expectations() -> [ThemeExpectation<'static>; 12] {
+fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
     [
         ThemeExpectation {
             name: "Kerosene",
@@ -138,6 +138,17 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 12] {
             danger: "#CF202F",
             chart_bull: Some("#098551"),
             chart_bear: Some("#CF202F"),
+        },
+        ThemeExpectation {
+            name: "ubuntu",
+            background: "#1B0E18",
+            text: "#F3EAEF",
+            primary: "#F66D2C",
+            success: "#33D17A",
+            warning: "#FFD24A",
+            danger: "#F5465F",
+            chart_bull: Some("#3FD17D"),
+            chart_bear: Some("#E84C72"),
         },
     ]
 }
