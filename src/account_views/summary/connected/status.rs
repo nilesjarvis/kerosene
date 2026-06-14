@@ -17,6 +17,9 @@ impl TradingTerminal {
             .into()
     }
 
+    // Non-loading status only: the loading state routes to the skeleton in
+    // `view_connected_account_summary`, so this renders the genuine no-data /
+    // error / warning message.
     fn view_connected_account_status_layout(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
         let ready_status = self.connected_order_account_snapshot().map(|(_, data)| {
@@ -27,13 +30,6 @@ impl TradingTerminal {
                 .unwrap_or_else(|| "All markets".to_string());
             format!("{scope} refresh (~{} API wt)", data.request_weight_estimate)
         });
-        let loading_label = if self.account_loading {
-            "Loading account...".to_string()
-        } else if let Some(status) = ready_status {
-            status
-        } else {
-            "No account data".to_string()
-        };
         let account_warning = self
             .connected_order_account_snapshot()
             .and_then(|(_, data)| {
@@ -45,7 +41,8 @@ impl TradingTerminal {
             .account_error
             .as_deref()
             .or(account_warning.as_deref())
-            .unwrap_or(&loading_label)
+            .or(ready_status.as_deref())
+            .unwrap_or("No account data")
             .to_string();
         let account_status_color = if self.account_error.is_some() {
             theme.palette().danger
@@ -54,32 +51,16 @@ impl TradingTerminal {
         } else {
             theme.extended_palette().background.weak.text
         };
-        let status_widget: Element<'_, Message> = if self.account_loading {
-            row![
-                self.summary_account_picker(),
-                vertical_spacer(),
-                self.view_spinner(16),
-                text(account_status_text)
-                    .size(11)
-                    .color(account_status_color)
-                    .width(Fill),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center)
-            .into()
-        } else {
-            row![
-                self.summary_account_picker(),
-                vertical_spacer(),
-                text(account_status_text)
-                    .size(11)
-                    .color(account_status_color)
-                    .width(Fill),
-            ]
-            .spacing(6)
-            .align_y(iced::Alignment::Center)
-            .into()
-        };
+        let status_widget = row![
+            self.summary_account_picker(),
+            vertical_spacer(),
+            text(account_status_text)
+                .size(11)
+                .color(account_status_color)
+                .width(Fill),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
         let actions = self.connected_status_actions_row();
         let items: Element<'_, Message> = if available_width < CONNECTED_STATUS_ACTION_BREAKPOINT {
             column![

@@ -13,8 +13,30 @@ use compaction::ConnectedSummaryCompaction;
 use iced::widget::{Row, Space, column, row};
 use iced::{Element, Fill, Theme};
 use metrics_display::{
-    available_color, portfolio_margin_ratio_color, summary_metric, summary_metric_colored,
+    available_color, portfolio_margin_ratio_color, skeleton_metric, summary_metric,
+    summary_metric_colored,
 };
+
+// ---------------------------------------------------------------------------
+// Connected Summary Skeleton
+// ---------------------------------------------------------------------------
+
+/// `(label_width, value_width)` for the four core metrics that are always
+/// present, in render order: Total Value, Available, Notional Pos, Eff Lev.
+/// Portfolio-margin-only columns are omitted since the account mode is unknown
+/// until data arrives.
+const SKELETON_METRICS: [(f32, f32); 4] = [(56.0, 92.0), (48.0, 76.0), (62.0, 84.0), (40.0, 52.0)];
+const SKELETON_PULSE_BASE: f32 = 0.18;
+const SKELETON_PULSE_AMP: f32 = 0.10;
+const SKELETON_PULSE_OFFSET: f32 = 0.7;
+
+/// Alpha for a value placeholder, breathing within a calm band. The per-metric
+/// phase offset turns the breathe into a gentle left-to-right sweep across the
+/// row, echoing the chart skeleton's shimmer without a canvas.
+fn skeleton_value_alpha(phase: f32, index: usize) -> f32 {
+    let wave = 0.5 + 0.5 * (phase - index as f32 * SKELETON_PULSE_OFFSET).sin();
+    SKELETON_PULSE_BASE + SKELETON_PULSE_AMP * wave
+}
 
 impl TradingTerminal {
     pub(super) fn connected_summary_base_row<'a>(&'a self) -> Row<'a, Message> {
@@ -51,6 +73,54 @@ impl TradingTerminal {
             self.push_connected_summary_actions(metrics, compaction)
                 .into()
         }
+    }
+
+    /// Loading placeholder shown on first load (connected, no snapshot yet).
+    /// Mirrors [`Self::view_connected_summary_layout`] structurally — same base
+    /// row, metric positions, action row and wrap breakpoint — so the flip from
+    /// skeleton to real metrics does not shift the layout.
+    pub(super) fn view_connected_summary_skeleton(
+        &self,
+        available_width: f32,
+    ) -> Element<'_, Message> {
+        let theme = self.theme();
+        let compaction = ConnectedSummaryCompaction::for_width(available_width);
+        let metrics = self.connected_summary_skeleton_row(&theme);
+
+        if available_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT {
+            column![
+                metrics,
+                row![
+                    Space::new().width(Fill),
+                    self.connected_summary_actions_row(compaction)
+                ]
+                .width(Fill)
+                .align_y(iced::Alignment::Center),
+            ]
+            .spacing(6)
+            .width(Fill)
+            .into()
+        } else {
+            self.push_connected_summary_actions(metrics, compaction)
+                .into()
+        }
+    }
+
+    fn connected_summary_skeleton_row<'a>(&'a self, theme: &Theme) -> Row<'a, Message> {
+        let phase = self.spinner_phase;
+        let mut items = self.connected_summary_base_row();
+        for (index, (label_w, value_w)) in SKELETON_METRICS.iter().enumerate() {
+            if index > 0 {
+                items = items.push(vertical_spacer());
+            }
+            items = items.push(skeleton_metric(
+                *label_w,
+                *value_w,
+                skeleton_value_alpha(phase, index),
+                theme,
+            ));
+        }
+        items.width(Fill)
     }
 
     fn connected_summary_metrics_row<'a>(
