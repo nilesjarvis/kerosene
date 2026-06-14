@@ -606,3 +606,56 @@ fn deferred_legacy_account_key_blocks_conflicting_profile_hydromancer_key_cleanu
     assert!(status.contains("Multiple legacy Hydromancer API keys"));
     assert!(status.contains("legacy account credentials were left unchanged"));
 }
+
+#[test]
+fn account_switch_marks_connect_pending_so_summary_does_not_flash_disconnected() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.accounts = vec![
+        account(
+            "account-a",
+            "Account A",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        account(
+            "account-b",
+            "Account B",
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+    ];
+    terminal.active_account_index = 0;
+    terminal.wallet_address_input = terminal.accounts[0].wallet_address.clone();
+    terminal.connected_address = Some(terminal.accounts[0].wallet_address.clone());
+
+    let _task = terminal.switch_account_task(1);
+
+    // The connect is deferred (connected_address is cleared) but the summary
+    // must treat the window as connecting, not as the disconnected add-account
+    // form, so it shows the skeleton instead of flashing.
+    assert_eq!(terminal.connected_address, None);
+    assert!(terminal.account_connect_pending);
+    assert!(terminal.account_summary_is_connected_or_connecting());
+    assert!(terminal.account_summary_is_loading());
+}
+
+#[test]
+fn account_switch_to_addressless_account_does_not_mark_connect_pending() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.accounts = vec![
+        account(
+            "account-a",
+            "Account A",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        account("account-b", "Account B", ""),
+    ];
+    terminal.active_account_index = 0;
+    terminal.wallet_address_input = terminal.accounts[0].wallet_address.clone();
+    terminal.connected_address = Some(terminal.accounts[0].wallet_address.clone());
+
+    let _task = terminal.switch_account_task(1);
+
+    // No address to connect to -> genuinely disconnected, the add-account form
+    // is the correct thing to show.
+    assert!(!terminal.account_connect_pending);
+    assert!(!terminal.account_summary_is_connected_or_connecting());
+}

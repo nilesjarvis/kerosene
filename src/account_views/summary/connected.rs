@@ -14,7 +14,7 @@ impl TradingTerminal {
                 let theme = self.theme();
                 self.view_connected_summary_layout(data, &theme, size.width)
             }))
-        } else if self.account_loading {
+        } else if self.account_summary_is_loading() {
             wrap_connected_summary(responsive(move |size| {
                 self.view_connected_summary_skeleton(size.width)
             }))

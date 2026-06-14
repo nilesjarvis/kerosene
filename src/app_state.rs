@@ -396,6 +396,11 @@ pub(crate) struct TradingTerminal {
     pub(crate) account_data_address: Option<String>,
     pub(crate) account_data_revision: u64,
     pub(crate) account_loading: bool,
+    /// Transient: a wallet connect has been dispatched (account switch / boot)
+    /// but not yet processed. Bridges the one-frame gap where `connected_address`
+    /// is `None` so the summary shows the connecting skeleton instead of flashing
+    /// the disconnected add-account form.
+    pub(crate) account_connect_pending: bool,
     pub(crate) account_data_request_generation: u64,
     pub(crate) account_twap_reconciliation_generations: HashMap<String, u64>,
     // A refresh was requested while one was already in flight; run one

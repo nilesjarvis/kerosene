@@ -45,6 +45,10 @@ impl TradingTerminal {
             &str,
         ) -> bool,
     ) -> Task<Message> {
+        // The deferred connect (account switch / boot) is now being processed,
+        // so the connecting-skeleton bridge is no longer needed; every path
+        // below settles `connected_address` to its real value.
+        self.account_connect_pending = false;
         let Some(addr) = Self::normalize_wallet_address(&self.wallet_address_input) else {
             if !self.wallet_address_input.trim().is_empty() {
                 if self.account_change_blocked_by_pending_trading_request("changing wallets") {
@@ -295,6 +299,7 @@ impl TradingTerminal {
     }
 
     pub(super) fn disconnect_wallet(&mut self) -> Task<Message> {
+        self.account_connect_pending = false;
         self.account_picker_open = false;
         self.account_picker_rename_index = None;
         if self.account_change_blocked_by_pending_trading_request("disconnecting wallet") {
@@ -788,6 +793,35 @@ mod tests {
         assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
         assert!(terminal.account_loading);
         assert!(terminal.account_reconciliation_required);
+    }
+
+    #[test]
+    fn connect_wallet_clears_pending_connect_bridge_flag() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.accounts = vec![account("acct-a", TEST_ACCOUNT, "agent-key")];
+        terminal.active_account_index = 0;
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        // Simulate the in-flight switch/boot state where the summary is showing
+        // the connecting skeleton.
+        terminal.account_connect_pending = true;
+
+        let _task = terminal.connect_wallet();
+
+        // Processing the connect settles the real address and retires the bridge.
+        assert!(!terminal.account_connect_pending);
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+    }
+
+    #[test]
+    fn disconnect_wallet_clears_pending_connect_bridge_flag() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.account_connect_pending = true;
+
+        let _task = terminal.disconnect_wallet();
+
+        assert!(!terminal.account_connect_pending);
+        assert_eq!(terminal.connected_address, None);
     }
 
     #[test]

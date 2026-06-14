@@ -236,6 +236,7 @@ impl TradingTerminal {
         self.account_data = None;
         self.account_data_address = None;
         self.account_loading = false;
+        self.account_connect_pending = false;
         self.account_refresh_followup_pending = false;
         self.account_reconciliation_required = false;
         self.account_error = None;

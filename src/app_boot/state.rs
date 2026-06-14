@@ -249,6 +249,7 @@ impl TradingTerminal {
             account_data_address: None,
             account_data_revision: 0,
             account_loading: boot_account.has_wallet,
+            account_connect_pending: false,
             account_data_request_generation: 0,
             account_twap_reconciliation_generations: HashMap::new(),
             account_refresh_followup_pending: false,

@@ -29,13 +29,28 @@ impl TradingTerminal {
     }
 
     pub(crate) fn view_account_summary(&self) -> Element<'_, Message> {
-        let content = if self.connected_address.is_none() {
-            self.view_disconnected_account_summary()
-        } else {
+        let content = if self.account_summary_is_connected_or_connecting() {
             self.view_connected_account_summary()
+        } else {
+            self.view_disconnected_account_summary()
         };
 
         self.view_account_summary_with_menus(content)
+    }
+
+    /// Whether the connected summary (metrics or its loading skeleton) should be
+    /// shown rather than the disconnected add-account form. Covers the transient
+    /// window during an account switch / boot where `connected_address` is still
+    /// `None` but a connect is already loading or in flight.
+    pub(crate) fn account_summary_is_connected_or_connecting(&self) -> bool {
+        self.connected_address.is_some() || self.account_summary_is_loading()
+    }
+
+    /// Whether the connected summary should render its loading skeleton: either
+    /// account data is loading, or a connect was just dispatched (switch / boot)
+    /// and has not yet been processed.
+    pub(crate) fn account_summary_is_loading(&self) -> bool {
+        self.account_loading || self.account_connect_pending
     }
 
     pub(crate) fn pane_grid_min_size(&self) -> f32 {
@@ -43,7 +58,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn account_summary_bar_height(&self) -> f32 {
-        if self.connected_address.is_none() {
+        if !self.account_summary_is_connected_or_connecting() {
             return ACCOUNT_SUMMARY_WRAPPED_HEIGHT;
         }
 
@@ -56,12 +71,13 @@ impl TradingTerminal {
         // the loading height pre-match the populated height so the no-data ->
         // data flip never jumps. The narrower status breakpoint only applies to
         // the genuine non-loading no-data / error message.
-        let needs_wrapped_height =
-            if self.connected_order_account_snapshot().is_some() || self.account_loading {
-                content_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT
-            } else {
-                content_width < CONNECTED_STATUS_ACTION_BREAKPOINT
-            };
+        let needs_wrapped_height = if self.connected_order_account_snapshot().is_some()
+            || self.account_summary_is_loading()
+        {
+            content_width < CONNECTED_SUMMARY_ACTION_BREAKPOINT
+        } else {
+            content_width < CONNECTED_STATUS_ACTION_BREAKPOINT
+        };
 
         if needs_wrapped_height {
             ACCOUNT_SUMMARY_WRAPPED_HEIGHT

@@ -323,8 +323,13 @@ impl TradingTerminal {
         self.persist_config();
 
         if !self.wallet_address_input.trim().is_empty() {
+            // Mark the connect as in-flight so the summary renders the connecting
+            // skeleton during the gap before ConnectWallet is processed, rather
+            // than flashing the disconnected add-account form.
+            self.account_connect_pending = true;
             Task::done(Message::ConnectWallet)
         } else {
+            self.account_connect_pending = false;
             Task::done(Message::DisconnectWallet)
         }
     }
