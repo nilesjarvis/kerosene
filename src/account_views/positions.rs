@@ -9,6 +9,7 @@ use crate::helpers::format_price;
 use crate::message::Message;
 use crate::order_pending_indicators::ProjectedPositionDelta;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Column, column, container, responsive, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
 
@@ -240,7 +241,8 @@ fn opening_position_row<'a>(
     container(
         text(opening_position_label(delta, &symbol_label, &size_label))
             .size(11)
-            .color(theme.palette().primary),
+            .color(theme.palette().primary)
+            .wrapping(Wrapping::None),
     )
     .padding([4, 8])
     .into()

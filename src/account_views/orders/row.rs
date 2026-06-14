@@ -6,6 +6,7 @@ use crate::helpers::{self, optional_value_color, parse_positive_finite_number};
 use crate::message::Message;
 use crate::order_pending_indicators::{OptimisticOrderRowState, PendingOrderIndicator};
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
@@ -31,6 +32,7 @@ impl TradingTerminal {
             text("Cancelling\u{2026}")
                 .size(12)
                 .color(theme.extended_palette().background.weak.text)
+                .wrapping(Wrapping::None)
                 .into()
         } else if can_cancel {
             compact_action_button(
@@ -80,7 +82,7 @@ impl TradingTerminal {
             order.coin.clone()
         };
         coin_content = coin_content
-            .push(text(coin_label).size(12))
+            .push(text(coin_label).size(12).wrapping(Wrapping::None))
             .align_y(iced::Alignment::Center);
 
         let denomination = self.display_denomination_context();
@@ -95,6 +97,7 @@ impl TradingTerminal {
             .font(crate::app_fonts::monospace_font())
             .color(theme.palette().primary)
             .width(Fill)
+            .wrapping(Wrapping::None)
             .into()
         } else {
             text(format_open_order_price(
@@ -106,18 +109,24 @@ impl TradingTerminal {
             .font(crate::app_fonts::monospace_font())
             .color(optional_value_color(limit_px, weak_color, invalid_color))
             .width(Fill)
+            .wrapping(Wrapping::None)
             .into()
         };
 
         row![
             coin_content.width(Fill),
-            text(side_str).size(12).color(side_color).width(Fill),
+            text(side_str)
+                .size(12)
+                .color(side_color)
+                .width(Fill)
+                .wrapping(Wrapping::None),
             price_cell,
             text(format_open_order_size(sz, &order.sz))
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .color(optional_value_color(sz, weak_color, invalid_color))
-                .width(Fill),
+                .width(Fill)
+                .wrapping(Wrapping::None),
             container(row![chase_cell, cancel_cell].spacing(4)).width(120),
         ]
         .spacing(4)
@@ -155,12 +164,21 @@ impl TradingTerminal {
             indicator.symbol.clone()
         };
         coin_content = coin_content
-            .push(text(coin_label).size(12).color(weak_color))
+            .push(
+                text(coin_label)
+                    .size(12)
+                    .color(weak_color)
+                    .wrapping(Wrapping::None),
+            )
             .align_y(iced::Alignment::Center);
 
         row![
             coin_content.width(Fill),
-            text(side_str).size(12).color(side_color).width(Fill),
+            text(side_str)
+                .size(12)
+                .color(side_color)
+                .width(Fill)
+                .wrapping(Wrapping::None),
             text(format_open_order_price(
                 limit_px,
                 is_outcome_order,
@@ -169,13 +187,21 @@ impl TradingTerminal {
             .size(12)
             .font(crate::app_fonts::monospace_font())
             .color(weak_color)
-            .width(Fill),
+            .width(Fill)
+            .wrapping(Wrapping::None),
             text(indicator.size.clone())
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .color(weak_color)
-                .width(Fill),
-            container(text("Placing\u{2026}").size(12).color(weak_color)).width(120),
+                .width(Fill)
+                .wrapping(Wrapping::None),
+            container(
+                text("Placing\u{2026}")
+                    .size(12)
+                    .color(weak_color)
+                    .wrapping(Wrapping::None)
+            )
+            .width(120),
         ]
         .spacing(4)
         .align_y(iced::Alignment::Center)

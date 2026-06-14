@@ -6,6 +6,7 @@ use crate::helpers::parse_finite_number;
 use crate::message::Message;
 
 use super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
+use iced::widget::text::Wrapping;
 use iced::widget::{button, container, row, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
 
@@ -31,7 +32,7 @@ impl TradingTerminal {
                 "Show hidden positions"
             };
             tooltip(
-                button(text(label).size(10).center())
+                button(text(label).size(10).center().wrapping(Wrapping::None))
                     .on_press(Message::ToggleShowHiddenPositions)
                     .padding([2, 5])
                     .style(|theme: &Theme, status| {
@@ -70,11 +71,17 @@ impl TradingTerminal {
             } else {
                 "\u{2622} NUKE"
             };
-            button(text(nuke_label).size(10).center().width(Fill))
-                .on_press(Message::NukePositions)
-                .padding([2, 8])
-                .style(move |theme: &Theme, status| nuke_button_style(theme, status, nuke_armed))
-                .into()
+            button(
+                text(nuke_label)
+                    .size(10)
+                    .center()
+                    .width(Fill)
+                    .wrapping(Wrapping::None),
+            )
+            .on_press(Message::NukePositions)
+            .padding([2, 8])
+            .style(move |theme: &Theme, status| nuke_button_style(theme, status, nuke_armed))
+            .into()
         } else {
             text("").size(12).into()
         };
@@ -88,6 +95,7 @@ impl TradingTerminal {
                 text(label)
                     .size(11)
                     .color(theme.extended_palette().background.weak.text)
+                    .wrapping(Wrapping::None)
             ];
             if self.positions_sort_column == col {
                 let icon = if self.positions_sort_direction == config::SortDirection::Ascending {
@@ -98,7 +106,8 @@ impl TradingTerminal {
                 row_content = row_content.push(
                     text(icon)
                         .size(11)
-                        .color(theme.extended_palette().background.weak.text),
+                        .color(theme.extended_palette().background.weak.text)
+                        .wrapping(Wrapping::None),
                 );
             }
 

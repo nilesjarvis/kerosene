@@ -5,6 +5,7 @@ use crate::denomination::DisplayDenominationContext;
 use crate::helpers::{self, optional_value_color, parse_finite_number};
 use crate::message::Message;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, container, row, text};
 use iced::{Color, Element, Fill, Theme};
 
@@ -49,10 +50,26 @@ pub(super) fn balance_row(
 
     row![
         balance_coin_cell(display_coin, coin_color).width(Fill),
-        text(total_str).size(12).color(total_color).width(Fill),
-        text(hold_str).size(12).color(hold_color).width(Fill),
-        text(avail_str).size(12).color(available_color).width(Fill),
-        text(entry_str).size(12).color(entry_color).width(Fill),
+        text(total_str)
+            .size(12)
+            .color(total_color)
+            .width(Fill)
+            .wrapping(Wrapping::None),
+        text(hold_str)
+            .size(12)
+            .color(hold_color)
+            .width(Fill)
+            .wrapping(Wrapping::None),
+        text(avail_str)
+            .size(12)
+            .color(available_color)
+            .width(Fill)
+            .wrapping(Wrapping::None),
+        text(entry_str)
+            .size(12)
+            .color(entry_color)
+            .width(Fill)
+            .wrapping(Wrapping::None),
         container(action_cell).width(60),
     ]
     .spacing(4)
@@ -122,6 +139,11 @@ fn balance_coin_cell(coin: String, coin_color: Color) -> iced::widget::Row<'stat
     }
 
     coin_content
-        .push(text(coin).size(12).color(coin_color))
+        .push(
+            text(coin)
+                .size(12)
+                .color(coin_color)
+                .wrapping(Wrapping::None),
+        )
         .align_y(iced::Alignment::Center)
 }
