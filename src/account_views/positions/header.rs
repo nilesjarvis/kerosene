@@ -5,7 +5,10 @@ use crate::config;
 use crate::helpers::parse_finite_number;
 use crate::message::Message;
 
-use super::{POSITION_ACTION_WIDTH, PositionColumnVisibility};
+use super::{
+    POSITION_ACTION_WIDTH, POSITION_ENTRY_WIDTH, POSITION_FUNDING_WIDTH, POSITION_LEVERAGE_WIDTH,
+    POSITION_LIQ_WIDTH, POSITION_MARK_WIDTH, POSITION_SIDE_WIDTH, PositionColumnVisibility,
+};
 use iced::widget::text::Wrapping;
 use iced::widget::{button, container, row, text, tooltip};
 use iced::{Color, Element, Fill, Theme};
@@ -90,7 +93,7 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center)
             .into();
 
-        let sort_btn = |label: &'static str, col: PositionsSortColumn| {
+        let sort_btn = |label: &'static str, col: PositionsSortColumn, width: iced::Length| {
             let mut row_content = row![
                 text(label)
                     .size(11)
@@ -118,30 +121,70 @@ impl TradingTerminal {
                     ..Default::default()
                 })
                 .padding(0)
-                .width(Fill)
+                .width(width)
         };
 
         let mut header_row = row![
-            sort_btn("Symbol", PositionsSortColumn::Symbol),
-            sort_btn("Side", PositionsSortColumn::Side),
-            sort_btn("Size", PositionsSortColumn::Size),
-            sort_btn("Entry", PositionsSortColumn::Entry),
+            sort_btn("Symbol", PositionsSortColumn::Symbol, iced::Length::Fill),
+            sort_btn(
+                "Side",
+                PositionsSortColumn::Side,
+                iced::Length::Fixed(POSITION_SIDE_WIDTH)
+            ),
+            sort_btn("Size", PositionsSortColumn::Size, iced::Length::Fill),
         ];
+        if columns.entry {
+            header_row = header_row.push(sort_btn(
+                "Entry",
+                PositionsSortColumn::Entry,
+                iced::Length::Fixed(POSITION_ENTRY_WIDTH),
+            ));
+        }
         if columns.liquidation {
-            header_row = header_row.push(sort_btn("Liq", PositionsSortColumn::Liquidation));
+            header_row = header_row.push(sort_btn(
+                "Liq",
+                PositionsSortColumn::Liquidation,
+                iced::Length::Fixed(POSITION_LIQ_WIDTH),
+            ));
+        }
+        if columns.mark {
+            header_row = header_row.push(sort_btn(
+                "Mark",
+                PositionsSortColumn::Mark,
+                iced::Length::Fixed(POSITION_MARK_WIDTH),
+            ));
         }
         header_row = header_row
-            .push(sort_btn("Mark", PositionsSortColumn::Mark))
-            .push(sort_btn("Value", PositionsSortColumn::Value))
-            .push(sort_btn("uPnL", PositionsSortColumn::UnrealizedPnl));
+            .push(sort_btn(
+                "Value",
+                PositionsSortColumn::Value,
+                iced::Length::Fill,
+            ))
+            .push(sort_btn(
+                "uPnL",
+                PositionsSortColumn::UnrealizedPnl,
+                iced::Length::Fill,
+            ));
         if columns.funding {
-            header_row = header_row.push(sort_btn("Funding", PositionsSortColumn::Funding));
+            header_row = header_row.push(sort_btn(
+                "Funding",
+                PositionsSortColumn::Funding,
+                iced::Length::Fixed(POSITION_FUNDING_WIDTH),
+            ));
         }
         if columns.total_pnl {
-            header_row = header_row.push(sort_btn("Total PnL", PositionsSortColumn::TotalPnl));
+            header_row = header_row.push(sort_btn(
+                "Total PnL",
+                PositionsSortColumn::TotalPnl,
+                iced::Length::Fill,
+            ));
         }
         if columns.leverage {
-            header_row = header_row.push(sort_btn("Lev", PositionsSortColumn::Leverage));
+            header_row = header_row.push(sort_btn(
+                "Lev",
+                PositionsSortColumn::Leverage,
+                iced::Length::Fixed(POSITION_LEVERAGE_WIDTH),
+            ));
         }
         header_row = header_row.push(container(action_cell).width(POSITION_ACTION_WIDTH));
 
