@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use std::sync::Once;
 
-/// How long non-error toasts are visible before auto-dismissing (seconds).
+/// How long toasts are visible before auto-dismissing (seconds).
 pub(crate) const TOAST_LIFETIME_SECS: u64 = 5;
 /// Maximum toasts visible at once.
 const MAX_TOASTS: usize = 8;
@@ -108,10 +108,6 @@ impl Toast {
 }
 
 pub(crate) fn toast_auto_dismiss_due(toast: &Toast, now: std::time::Instant) -> bool {
-    if toast.is_error {
-        return false;
-    }
-
     now.duration_since(toast.created_at).as_secs() >= TOAST_LIFETIME_SECS
 }
 
@@ -263,14 +259,17 @@ mod tests {
     }
 
     #[test]
-    fn error_toasts_do_not_auto_dismiss() {
+    fn stale_error_toasts_auto_dismiss() {
+        // Error toasts share the standard lifetime — a stale one is due just
+        // like an info toast. Regression for the d6fa890 change that exempted
+        // errors from auto-dismiss and left them on screen indefinitely.
         let mut error = toast(1, true);
         error.created_at = error
             .created_at
-            .checked_sub(std::time::Duration::from_secs(TOAST_LIFETIME_SECS + 60))
+            .checked_sub(std::time::Duration::from_secs(TOAST_LIFETIME_SECS))
             .expect("test timestamp should be representable");
 
-        assert!(!toast_auto_dismiss_due(&error, std::time::Instant::now()));
+        assert!(toast_auto_dismiss_due(&error, std::time::Instant::now()));
     }
 
     #[test]
