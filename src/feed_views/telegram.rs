@@ -561,7 +561,7 @@ impl TradingTerminal {
                     .channel_profiles
                     .get(&post.channel)
                     .cloned();
-                let ticker_impacts = self.telegram_ticker_impact_cards(post, now_ms);
+                let ticker_impacts = self.telegram_ticker_impact_cards(post);
                 rows.push(telegram_post_card(
                     post.clone(),
                     profile,
@@ -585,11 +585,7 @@ impl TradingTerminal {
             .into()
     }
 
-    fn telegram_ticker_impact_cards(
-        &self,
-        post: &TelegramFeedPost,
-        now_ms: u64,
-    ) -> Vec<TelegramTickerImpactCard> {
+    fn telegram_ticker_impact_cards(&self, post: &TelegramFeedPost) -> Vec<TelegramTickerImpactCard> {
         post.ticker_mentions
             .iter()
             .filter_map(|mention| {
@@ -610,9 +606,14 @@ impl TradingTerminal {
                     matched_text: mention.matched_text.clone(),
                     source: mention.source,
                     confidence: mention.confidence,
+                    // Mid freshness must be judged against the real wall clock,
+                    // because mids are stamped with it on arrival. Using the
+                    // status-bar snapshot here makes a just-arrived mid look
+                    // "future"-dated (and thus stale) between status ticks, which
+                    // flickers the price in and out.
                     impact_pct: telegram_price_impact_pct(
                         mention.reference_price,
-                        self.resolve_mid_for_symbol_at(&mention.symbol, now_ms),
+                        self.resolve_mid_for_symbol(&mention.symbol),
                     ),
                 })
             })

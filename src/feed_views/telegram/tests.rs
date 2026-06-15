@@ -100,7 +100,7 @@ fn telegram_ticker_impact_cards_resolve_outcome_display_label() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols.push(outcome_symbol("#950"));
 
-    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("#950", "OUT95-YES"), 0);
+    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("#950", "OUT95-YES"));
 
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0].ticker, "YES: Will BTC close green?");
@@ -112,7 +112,7 @@ fn telegram_ticker_impact_cards_keep_perp_tickers() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols.push(perp_symbol("HYPE"));
 
-    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("HYPE", "HYPE"), 0);
+    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("HYPE", "HYPE"));
 
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0].ticker, "HYPE");
@@ -133,14 +133,14 @@ fn telegram_ticker_impact_cards_compute_signed_impact_against_fresh_mid() {
     post.ticker_mentions[0].source = SymbolAliasSource::Ticker;
 
     // A rise vs the reference reads positive...
-    let cards = terminal.telegram_ticker_impact_cards(&post, now_ms);
+    let cards = terminal.telegram_ticker_impact_cards(&post);
     assert_eq!(cards.len(), 1);
     let impact = cards[0].impact_pct.expect("impact");
     assert!((impact - 10.0).abs() < 1e-9, "expected +10%, got {impact}");
 
     // ...and a fall reads negative (guards against an argument swap).
     terminal.all_mids.insert("HYPE".to_string(), 90.0);
-    let cards = terminal.telegram_ticker_impact_cards(&post, now_ms);
+    let cards = terminal.telegram_ticker_impact_cards(&post);
     let impact = cards[0].impact_pct.expect("impact");
     assert!((impact + 10.0).abs() < 1e-9, "expected -10%, got {impact}");
 
@@ -149,7 +149,7 @@ fn telegram_ticker_impact_cards_compute_signed_impact_against_fresh_mid() {
     terminal
         .all_mids_updated_at_ms
         .insert("HYPE".to_string(), now_ms.saturating_sub(60_000));
-    let cards = terminal.telegram_ticker_impact_cards(&post, now_ms);
+    let cards = terminal.telegram_ticker_impact_cards(&post);
     assert_eq!(cards[0].impact_pct, None);
 }
 
@@ -158,11 +158,11 @@ fn telegram_ticker_impact_cards_drop_unorderable_and_spot_mentions() {
     let mut terminal = TradingTerminal::boot().0;
 
     // A mention whose symbol is no longer in the exchange list is dropped.
-    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("GHOST", "GHOST"), 0);
+    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("GHOST", "GHOST"));
     assert!(cards.is_empty());
 
     // A spot symbol is dropped even when present.
     terminal.exchange_symbols.push(spot_symbol("@1", "PURR"));
-    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("@1", "PURR"), 0);
+    let cards = terminal.telegram_ticker_impact_cards(&post_with_mention("@1", "PURR"));
     assert!(cards.is_empty());
 }
