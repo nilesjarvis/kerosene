@@ -107,6 +107,14 @@ impl TradingTerminal {
                 self.persist_config();
                 Task::none()
             }
+            Message::ToggleTelegramFeedOutcomeMarkets => {
+                // Display-time filter only, so the toggle is instant and never
+                // drops already-captured outcome mentions or their references.
+                self.telegram_feed.include_outcome_markets =
+                    !self.telegram_feed.include_outcome_markets;
+                self.persist_config();
+                Task::none()
+            }
             _ => Task::none(),
         }
     }

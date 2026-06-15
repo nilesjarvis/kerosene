@@ -491,6 +491,7 @@ pub(crate) enum Message {
     TelegramFeedRemoveChannel(String),
     ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
+    ToggleTelegramFeedOutcomeMarkets,
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),

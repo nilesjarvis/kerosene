@@ -379,6 +379,7 @@ impl TradingTerminal {
             defaults.telegram_feed_notifications_enabled,
             defaults.telegram_feed_fast_mode_enabled,
             defaults.telegram_feed_fast_api_id,
+            defaults.telegram_feed_include_outcome_markets,
         );
         self.order_presets = defaults.order_presets;
         self.order_quantity_is_usd = defaults.order_quantity_is_usd;

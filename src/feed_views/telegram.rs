@@ -91,6 +91,7 @@ impl TradingTerminal {
             .style(telegram_action_button);
 
         let notification_button = self.view_telegram_notification_button();
+        let outcomes_button = self.view_telegram_outcomes_button();
         let fast_button = self.view_telegram_fast_button();
         let private_button = self.view_telegram_private_channels_button();
         let refresh_button = self.view_telegram_refresh_button();
@@ -101,6 +102,7 @@ impl TradingTerminal {
                 row![
                     add_button,
                     notification_button,
+                    outcomes_button,
                     fast_button,
                     private_button,
                     Space::new().width(Fill),
@@ -117,6 +119,7 @@ impl TradingTerminal {
                 input,
                 add_button,
                 notification_button,
+                outcomes_button,
                 fast_button,
                 private_button,
                 refresh_button
@@ -174,6 +177,27 @@ impl TradingTerminal {
             .padding([5, 10])
             .style(move |theme: &Theme, status| telegram_toggle_button(theme, status, enabled))
             .into()
+    }
+
+    fn view_telegram_outcomes_button(&self) -> Element<'static, Message> {
+        let enabled = self.telegram_feed.include_outcome_markets;
+        let label = if enabled {
+            "Outcomes: ON"
+        } else {
+            "Outcomes: OFF"
+        };
+
+        let toggle = button(text(label).size(11).center())
+            .on_press(Message::ToggleTelegramFeedOutcomeMarkets)
+            .padding([5, 10])
+            .style(move |theme: &Theme, status| telegram_toggle_button(theme, status, enabled));
+
+        tooltip(
+            toggle,
+            text("Show outcome (prediction) markets in ticker chips").size(10),
+            tooltip::Position::Top,
+        )
+        .into()
     }
 
     fn view_telegram_fast_button(&self) -> Element<'_, Message> {
@@ -585,7 +609,11 @@ impl TradingTerminal {
             .into()
     }
 
-    fn telegram_ticker_impact_cards(&self, post: &TelegramFeedPost) -> Vec<TelegramTickerImpactCard> {
+    fn telegram_ticker_impact_cards(
+        &self,
+        post: &TelegramFeedPost,
+    ) -> Vec<TelegramTickerImpactCard> {
+        let include_outcomes = self.telegram_feed.include_outcome_markets;
         post.ticker_mentions
             .iter()
             .filter_map(|mention| {
@@ -593,6 +621,7 @@ impl TradingTerminal {
                     .resolve_exchange_symbol_by_key_or_ticker(&mention.symbol)
                     .filter(|symbol| {
                         symbol.market_type != MarketType::Spot
+                            && (include_outcomes || symbol.market_type != MarketType::Outcome)
                             && self.exchange_symbol_is_orderable(symbol)
                     })?;
                 let ticker = if symbol.outcome.is_some() {

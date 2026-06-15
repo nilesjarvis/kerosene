@@ -239,6 +239,7 @@ pub(crate) struct TelegramFeedState {
     pub(crate) private_channel_candidates_request_id: u64,
     pub(crate) private_channel_candidates_expanded: bool,
     pub(crate) notifications_enabled: bool,
+    pub(crate) include_outcome_markets: bool,
     pub(crate) fast_mode_enabled: bool,
     pub(crate) fast_api_id: Option<i32>,
     pub(crate) fast_api_id_input: String,
@@ -295,6 +296,7 @@ impl fmt::Debug for TelegramFeedState {
                 &self.private_channel_candidates_expanded,
             )
             .field("notifications_enabled", &self.notifications_enabled)
+            .field("include_outcome_markets", &self.include_outcome_markets)
             .field("fast_mode_enabled", &self.fast_mode_enabled)
             .field("fast_api_id", &self.fast_api_id)
             .field("fast_api_id_input", &self.fast_api_id_input)
@@ -345,6 +347,7 @@ impl TelegramFeedState {
         notifications_enabled: bool,
         fast_mode_enabled: bool,
         fast_api_id: Option<i32>,
+        include_outcome_markets: bool,
     ) -> Self {
         let (channels, public_channels_capped) = normalized_channel_list_with_status(channels);
         Self {
@@ -355,6 +358,7 @@ impl TelegramFeedState {
             private_channel_candidates_request_id: 0,
             private_channel_candidates_expanded: false,
             notifications_enabled,
+            include_outcome_markets,
             fast_mode_enabled,
             fast_api_id,
             fast_api_id_input: fast_api_id
@@ -1103,7 +1107,7 @@ mod tests {
 
     #[test]
     fn telegram_feed_state_debug_redacts_fast_credentials() {
-        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345));
+        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345), true);
         state.fast_api_hash_input = "hash-secret".to_string().into();
         state.fast_phone_input = "+15555550123".to_string();
         state.fast_code_input = "code-secret".to_string().into();
@@ -1130,7 +1134,7 @@ mod tests {
 
     #[test]
     fn telegram_fast_input_fields_debug_redact_when_formatted_directly() {
-        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345));
+        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345), true);
         state.fast_api_hash_input = "hash-secret".to_string().into();
         state.fast_code_input = "code-secret".to_string().into();
         state.fast_password_input = "password-secret".to_string().into();
@@ -1258,7 +1262,7 @@ mod tests {
             .map(|index| format!("channel_{index}"))
             .collect::<Vec<_>>();
 
-        let state = TelegramFeedState::new(&channels, &[], false, false, None);
+        let state = TelegramFeedState::new(&channels, &[], false, false, None, true);
 
         assert_eq!(state.channels.len(), TELEGRAM_FEED_MAX_PUBLIC_CHANNELS);
         assert_eq!(

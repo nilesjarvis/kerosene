@@ -324,6 +324,10 @@ pub struct KeroseneConfig {
     pub liquidation_feed_aggregation_enabled: bool,
     #[serde(default)]
     pub telegram_feed_notifications_enabled: bool,
+    /// Show outcome (prediction) markets in Telegram Feed ticker chips. Defaults
+    /// to true so upgrades keep existing behaviour.
+    #[serde(default = "default_true")]
+    pub telegram_feed_include_outcome_markets: bool,
     /// Optional Telegram MTProto fast-feed mode. Secret session material is stored separately.
     #[serde(default)]
     pub telegram_feed_fast_mode_enabled: bool,

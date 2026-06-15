@@ -11,6 +11,7 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
             title: "Private Macro".to_string(),
         }],
         telegram_feed_notifications_enabled: true,
+        telegram_feed_include_outcome_markets: false,
         telegram_feed_fast_mode_enabled: true,
         telegram_feed_fast_api_id: Some(12345),
         ..KeroseneConfig::default()

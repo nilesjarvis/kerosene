@@ -541,7 +541,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleTelegramPrivateChannelCandidatesExpanded
         | Message::TelegramFeedRemoveChannel(_)
         | Message::ToggleTelegramFeedChannelsExpanded
-        | Message::ToggleTelegramFeedNotifications => UpdateRoute::Feed,
+        | Message::ToggleTelegramFeedNotifications
+        | Message::ToggleTelegramFeedOutcomeMarkets => UpdateRoute::Feed,
 
         Message::HyperdashKeyInputChanged(_)
         | Message::SaveHyperdashKey

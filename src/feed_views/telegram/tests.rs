@@ -119,6 +119,25 @@ fn telegram_ticker_impact_cards_keep_perp_tickers() {
 }
 
 #[test]
+fn telegram_ticker_impact_cards_honor_outcome_markets_toggle() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(outcome_symbol("#950"));
+    terminal.exchange_symbols.push(perp_symbol("HYPE"));
+
+    // Toggle off: outcome markets are excluded, perps remain.
+    terminal.telegram_feed.include_outcome_markets = false;
+    let outcome = terminal.telegram_ticker_impact_cards(&post_with_mention("#950", "OUT95-YES"));
+    assert!(outcome.is_empty());
+    let perp = terminal.telegram_ticker_impact_cards(&post_with_mention("HYPE", "HYPE"));
+    assert_eq!(perp.len(), 1);
+
+    // Toggle on: outcome markets show again.
+    terminal.telegram_feed.include_outcome_markets = true;
+    let outcome = terminal.telegram_ticker_impact_cards(&post_with_mention("#950", "OUT95-YES"));
+    assert_eq!(outcome.len(), 1);
+}
+
+#[test]
 fn telegram_ticker_impact_cards_compute_signed_impact_against_fresh_mid() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols.push(perp_symbol("HYPE"));
