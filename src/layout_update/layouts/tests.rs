@@ -15,6 +15,64 @@ fn normalized_layout_name_trims_and_rejects_empty_names() {
     assert_eq!(normalized_layout_name("   "), None);
 }
 
+#[test]
+fn saving_a_named_layout_appends_activates_and_clears_input() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let saved_before = terminal.saved_layouts.len();
+    terminal.layout_input = "Scalp".to_string();
+
+    let _task = terminal.update_saved_layouts(Message::SaveLayout("Scalp".to_string()));
+
+    assert_eq!(terminal.saved_layouts.len(), saved_before + 1);
+    assert!(
+        terminal
+            .saved_layouts
+            .iter()
+            .any(|layout| layout.name == "Scalp")
+    );
+    assert_eq!(terminal.active_layout_name.as_deref(), Some("Scalp"));
+    assert!(terminal.layout_input.is_empty());
+}
+
+#[test]
+fn saving_a_layout_with_an_existing_name_overwrites_in_place() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.saved_layouts.push(saved_layout("Scalp"));
+    let len_before = terminal.saved_layouts.len();
+    // Seeded "Scalp" has no liquidation distribution symbol; the fresh snapshot
+    // will, so a successful in-place overwrite is observable.
+    terminal.liquidation_distribution.symbol = "BTC".to_string();
+    terminal.layout_input = "Scalp".to_string();
+
+    let _task = terminal.update_saved_layouts(Message::SaveLayout("Scalp".to_string()));
+
+    assert_eq!(terminal.saved_layouts.len(), len_before);
+    let scalp: Vec<_> = terminal
+        .saved_layouts
+        .iter()
+        .filter(|layout| layout.name == "Scalp")
+        .collect();
+    assert_eq!(scalp.len(), 1);
+    assert_eq!(
+        scalp[0].liquidation_distribution_symbol.as_deref(),
+        Some("BTC")
+    );
+    assert_eq!(terminal.active_layout_name.as_deref(), Some("Scalp"));
+    assert!(terminal.layout_input.is_empty());
+}
+
+#[test]
+fn saving_a_blank_layout_name_is_a_no_op() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let saved_before = terminal.saved_layouts.clone();
+    terminal.layout_input = "   ".to_string();
+
+    let _task = terminal.update_saved_layouts(Message::SaveLayout("   ".to_string()));
+
+    assert_eq!(terminal.saved_layouts, saved_before);
+    assert_eq!(terminal.layout_input, "   ");
+}
+
 fn saved_layout(name: &str) -> SavedLayout {
     let cfg = KeroseneConfig::default();
     SavedLayout {

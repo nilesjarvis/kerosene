@@ -7,7 +7,7 @@ use iced::widget::container as container_style;
 use iced::widget::{Column, button, container, row, rule, scrollable, text, text_input};
 use iced::{Color, Element, Fill, Length, Theme};
 
-use self::actions::{layout_action_button, layout_header_update_button};
+use self::actions::{layout_action_button, layout_add_button, layout_header_update_button};
 use self::labels::{
     BUTTON_LABEL_CHARS, ROW_LABEL_CHARS, layout_switcher_button_label, layout_switcher_label,
 };
@@ -41,7 +41,8 @@ impl TradingTerminal {
                 ]
                 .align_y(iced::Alignment::Center),
             )
-            .push(rule::horizontal(1));
+            .push(rule::horizontal(1))
+            .push(self.view_layout_switcher_add_row());
 
         if self.saved_layouts.is_empty() {
             menu = menu.push(
@@ -73,6 +74,22 @@ impl TradingTerminal {
                 ..Default::default()
             })
             .into()
+    }
+
+    fn view_layout_switcher_add_row(&self) -> Element<'_, Message> {
+        row![
+            text_input("New layout name...", &self.layout_input)
+                .style(helpers::text_input_style)
+                .on_input(Message::LayoutInputChanged)
+                .on_submit(Message::SaveLayout(self.layout_input.clone()))
+                .size(11)
+                .padding([4, 6])
+                .width(Fill),
+            layout_add_button(self.layout_input.clone()),
+        ]
+        .spacing(4)
+        .align_y(iced::Alignment::Center)
+        .into()
     }
 
     fn view_layout_switcher_row<'a>(
