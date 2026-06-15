@@ -703,6 +703,9 @@ pub(crate) enum Message {
     ChartEarningsMarkerHoverAnimationTick,
     ChartWsAssetCtxUpdate(ChartId, String, MarketDataSourceContext, AssetContext),
     ChartWsAssetCtxLagged(ChartId, String, MarketDataSourceContext, u64),
+    /// Result of the REST `metaAndAssetCtxs` fallback fetch for a chart symbol
+    /// (chart id, symbol the fetch was issued for, fetched context).
+    ChartAssetContextRestFetched(ChartId, String, Result<Option<AssetContext>, String>),
     ChartViewportChanged(ChartId, ChartSurfaceId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
     ChartSessionPanelHeightChanged(ChartId, u16, bool),

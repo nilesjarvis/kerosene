@@ -24,6 +24,8 @@ impl ChartInstance {
             chart,
             asset_ctx: None,
             asset_ctx_updated_at_ms: None,
+            asset_ctx_from_rest: false,
+            asset_ctx_rest_in_flight: false,
             editor_open: false,
             header_collapsed: false,
             editor_search_query: String::new(),
@@ -84,6 +86,8 @@ impl ChartInstance {
             chart: self.chart.clone_for_chart_id(id),
             asset_ctx: self.asset_ctx.clone(),
             asset_ctx_updated_at_ms: self.asset_ctx_updated_at_ms,
+            asset_ctx_from_rest: self.asset_ctx_from_rest,
+            asset_ctx_rest_in_flight: false,
             editor_open: false,
             header_collapsed: self.header_collapsed,
             editor_search_query: String::new(),
@@ -139,6 +143,44 @@ impl ChartInstance {
         }
         self.asset_ctx_updated_at_ms = asset_ctx.as_ref().map(|_| now_ms);
         self.asset_ctx = asset_ctx;
+        // This setter is the live `activeAssetCtx` WebSocket / clear path; any
+        // prior REST provenance no longer applies.
+        self.asset_ctx_from_rest = false;
+    }
+
+    /// Apply an `AssetContext` fetched from the REST `metaAndAssetCtxs`
+    /// fallback. Marks the context as REST-sourced so a later live WebSocket
+    /// push (via [`set_asset_context_at`]) can take over without being treated
+    /// as stale, and so the poller knows to refresh it on a timer.
+    pub(crate) fn fill_asset_context_from_rest(&mut self, ctx: AssetContext, now_ms: u64) {
+        self.chart
+            .set_current_spread_at(ctx.impact_spread(), now_ms);
+        self.asset_ctx_updated_at_ms = Some(now_ms);
+        self.asset_ctx = Some(ctx);
+        self.asset_ctx_from_rest = true;
+    }
+
+    /// Whether this chart should issue a REST asset-context fetch now.
+    ///
+    /// Fires when there is no context at all, or when the existing context is
+    /// REST-sourced and is approaching the staleness expiry (so it is refreshed
+    /// before [`expire_asset_context_if_stale`] would blank the header). Live
+    /// WebSocket-sourced context is left untouched. `refresh_ms` must be below
+    /// `MARKET_ASSET_CONTEXT_MAX_AGE_MS` to avoid a flicker between expiry and
+    /// the refreshed fetch landing.
+    pub(crate) fn needs_rest_asset_context(&self, now_ms: u64, refresh_ms: u64) -> bool {
+        if self.asset_ctx_rest_in_flight || self.symbol.is_empty() {
+            return false;
+        }
+        match self.asset_ctx {
+            None => true,
+            Some(_) => {
+                self.asset_ctx_from_rest
+                    && self.asset_ctx_updated_at_ms.is_some_and(|updated_at_ms| {
+                        now_ms.saturating_sub(updated_at_ms) >= refresh_ms
+                    })
+            }
+        }
     }
 
     pub(crate) fn expire_asset_context_if_stale(&mut self, now_ms: u64) -> bool {
@@ -174,6 +216,8 @@ impl ChartInstance {
             chart: CandlestickChart::new(id),
             asset_ctx: None,
             asset_ctx_updated_at_ms: None,
+            asset_ctx_from_rest: false,
+            asset_ctx_rest_in_flight: false,
             editor_open: true,
             header_collapsed: false,
             editor_search_query: String::new(),

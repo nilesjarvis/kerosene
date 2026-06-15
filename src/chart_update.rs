@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::chart::HudSelectorKind;
-use crate::chart_state::ChartInstance;
+use crate::chart_state::{ChartId, ChartInstance};
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use crate::sound;
@@ -11,6 +11,11 @@ mod detached;
 mod earnings;
 mod editor;
 mod macro_indicators;
+
+/// How often a chart whose `asset_ctx` is REST-sourced re-fetches it. Kept
+/// below `MARKET_ASSET_CONTEXT_MAX_AGE_MS` (15s) so the context is refreshed
+/// before the staleness expiry would blank the header metrics.
+const CHART_ASSET_CONTEXT_REST_REFRESH_MS: u64 = 10_000;
 
 impl TradingTerminal {
     pub(crate) fn clear_chart_market_display_state(instance: &mut ChartInstance) {
@@ -227,6 +232,23 @@ impl TradingTerminal {
                     }
                 }
             }
+            Message::ChartAssetContextRestFetched(id, symbol, result) => {
+                let hidden = self.symbol_key_is_hidden(&symbol);
+                let now_ms = Self::now_ms();
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.asset_ctx_rest_in_flight = false;
+                    if instance.symbol != symbol || hidden {
+                        return Task::none();
+                    }
+                    // Fill only when there is no context, or the existing one is
+                    // itself REST-sourced — never clobber a live WebSocket push.
+                    if let Ok(Some(ctx)) = result
+                        && (instance.asset_ctx.is_none() || instance.asset_ctx_from_rest)
+                    {
+                        instance.fill_asset_context_from_rest(ctx, now_ms);
+                    }
+                }
+            }
             Message::ChartViewportChanged(id, surface_id, viewport) => {
                 self.chart_surface_viewports.insert(surface_id, viewport);
                 let chart_symbol = self
@@ -289,6 +311,41 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+
+    /// Issue REST `metaAndAssetCtxs` fetches for charts whose `asset_ctx` is
+    /// missing or whose REST-sourced context is approaching staleness. This
+    /// backstops the `activeAssetCtx` WebSocket stream — notably for HIP-3
+    /// `dex:coin` perps, whose context the stream may not deliver — so the
+    /// header's 24h-volume and open-interest metrics keep rendering. Live
+    /// WebSocket context always takes precedence (see the fetch handler).
+    pub(crate) fn queue_chart_asset_context_rest_fetches(
+        &mut self,
+        now_ms: u64,
+    ) -> Vec<Task<Message>> {
+        let targets: Vec<(ChartId, String)> = self
+            .charts
+            .values()
+            .filter(|instance| {
+                instance.needs_rest_asset_context(now_ms, CHART_ASSET_CONTEXT_REST_REFRESH_MS)
+                    && !self.symbol_key_is_hidden(&instance.symbol)
+            })
+            .map(|instance| (instance.id, instance.symbol.clone()))
+            .collect();
+
+        targets
+            .into_iter()
+            .map(|(id, symbol)| {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.asset_ctx_rest_in_flight = true;
+                }
+                let fetch_symbol = symbol.clone();
+                Task::perform(
+                    crate::api::fetch_chart_asset_context(fetch_symbol),
+                    move |result| Message::ChartAssetContextRestFetched(id, symbol.clone(), result),
+                )
+            })
+            .collect()
     }
 
     fn play_hud_ui_sound(&self, sound: sound::HudUiSound) {
@@ -516,5 +573,141 @@ mod tests {
         ));
 
         assert!(terminal.charts[&7].asset_ctx.is_none());
+    }
+
+    fn asset_ctx_with_metrics(open_interest: &str, day_ntl_vlm: &str) -> AssetContext {
+        AssetContext {
+            funding: Some("0.0000125".to_string()),
+            open_interest: Some(open_interest.to_string()),
+            oracle_px: None,
+            mark_px: None,
+            mid_px: None,
+            prev_day_px: None,
+            day_ntl_vlm: Some(day_ntl_vlm.to_string()),
+            day_base_vlm: None,
+            impact_pxs: None,
+        }
+    }
+
+    fn terminal_with_hip3_chart() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal.charts.insert(
+            7,
+            ChartInstance::new(7, "xyz:NVDA".to_string(), Timeframe::H1),
+        );
+        terminal
+    }
+
+    #[test]
+    fn rest_fetch_fills_missing_hip3_asset_context() {
+        let mut terminal = terminal_with_hip3_chart();
+        if let Some(instance) = terminal.charts.get_mut(&7) {
+            instance.asset_ctx_rest_in_flight = true;
+        }
+
+        let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
+            7,
+            "xyz:NVDA".to_string(),
+            Ok(Some(asset_ctx_with_metrics("11560.744", "987654.0"))),
+        ));
+
+        let instance = &terminal.charts[&7];
+        assert!(!instance.asset_ctx_rest_in_flight);
+        let ctx = instance.asset_ctx.as_ref().expect("rest-filled asset_ctx");
+        assert_eq!(ctx.open_interest.as_deref(), Some("11560.744"));
+        assert_eq!(ctx.day_ntl_vlm.as_deref(), Some("987654.0"));
+        assert!(instance.asset_ctx_from_rest);
+    }
+
+    #[test]
+    fn rest_fetch_does_not_clobber_live_ws_context() {
+        let mut terminal = terminal_with_hip3_chart();
+        let now_ms = TradingTerminal::now_ms();
+        if let Some(instance) = terminal.charts.get_mut(&7) {
+            // Live WebSocket context (set_asset_context_at marks it WS-sourced).
+            instance.set_asset_context_at(Some(asset_ctx_with_metrics("1.0", "2.0")), now_ms);
+        }
+
+        let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
+            7,
+            "xyz:NVDA".to_string(),
+            Ok(Some(asset_ctx_with_metrics("9999.0", "8888.0"))),
+        ));
+
+        let instance = &terminal.charts[&7];
+        let ctx = instance.asset_ctx.as_ref().expect("ws asset_ctx preserved");
+        assert_eq!(ctx.open_interest.as_deref(), Some("1.0"));
+        assert!(!instance.asset_ctx_from_rest);
+    }
+
+    #[test]
+    fn rest_fetch_ignored_after_symbol_change() {
+        let mut terminal = terminal_with_hip3_chart();
+        if let Some(instance) = terminal.charts.get_mut(&7) {
+            instance.asset_ctx_rest_in_flight = true;
+        }
+
+        // The fetch resolves for a symbol the chart no longer displays.
+        let _task = terminal.update_chart(Message::ChartAssetContextRestFetched(
+            7,
+            "xyz:TSLA".to_string(),
+            Ok(Some(asset_ctx_with_metrics("1.0", "2.0"))),
+        ));
+
+        let instance = &terminal.charts[&7];
+        assert!(instance.asset_ctx.is_none());
+        assert!(!instance.asset_ctx_rest_in_flight);
+    }
+
+    #[test]
+    fn status_tick_queues_rest_fetch_only_when_context_missing() {
+        let mut terminal = terminal_with_hip3_chart();
+        let now_ms = TradingTerminal::now_ms();
+
+        let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
+        assert_eq!(tasks.len(), 1);
+        assert!(terminal.charts[&7].asset_ctx_rest_in_flight);
+
+        // A fetch already in flight is not duplicated.
+        let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
+        assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn status_tick_skips_rest_fetch_when_live_ws_context_present() {
+        let mut terminal = terminal_with_hip3_chart();
+        let now_ms = TradingTerminal::now_ms();
+        if let Some(instance) = terminal.charts.get_mut(&7) {
+            instance.set_asset_context_at(Some(asset_ctx("100")), now_ms);
+        }
+
+        let tasks = terminal.queue_chart_asset_context_rest_fetches(now_ms);
+        assert!(tasks.is_empty());
+        assert!(!terminal.charts[&7].asset_ctx_rest_in_flight);
+    }
+
+    #[test]
+    fn rest_refresh_eligibility_respects_provenance_and_age() {
+        let now_ms = 1_000_000;
+        let refresh_ms = CHART_ASSET_CONTEXT_REST_REFRESH_MS;
+        let mut instance = ChartInstance::new(7, "xyz:NVDA".to_string(), Timeframe::H1);
+
+        // No context yet -> eligible.
+        assert!(instance.needs_rest_asset_context(now_ms, refresh_ms));
+
+        // Fresh REST context -> not yet due; aged REST context -> due for refresh.
+        instance.fill_asset_context_from_rest(asset_ctx("100"), now_ms);
+        assert!(!instance.needs_rest_asset_context(now_ms, refresh_ms));
+        assert!(instance.needs_rest_asset_context(now_ms + refresh_ms, refresh_ms));
+
+        // Live WebSocket context is never refreshed by the poller, even when old.
+        instance.set_asset_context_at(Some(asset_ctx("100")), now_ms);
+        assert!(!instance.needs_rest_asset_context(now_ms + refresh_ms * 10, refresh_ms));
+
+        // An in-flight fetch suppresses duplicates.
+        instance.set_asset_context(None);
+        instance.asset_ctx_rest_in_flight = true;
+        assert!(!instance.needs_rest_asset_context(now_ms, refresh_ms));
     }
 }

@@ -105,6 +105,14 @@ pub(crate) struct ChartInstance {
     pub(crate) chart: CandlestickChart,
     pub(crate) asset_ctx: Option<AssetContext>,
     pub(crate) asset_ctx_updated_at_ms: Option<u64>,
+    /// Whether the current `asset_ctx` came from the REST `metaAndAssetCtxs`
+    /// fallback rather than the `activeAssetCtx` WebSocket stream. REST-sourced
+    /// context is refreshed on a timer and is always superseded by a live WS
+    /// push; it is never allowed to clobber WS data.
+    pub(crate) asset_ctx_from_rest: bool,
+    /// Whether a REST asset-context fetch is currently in flight for this chart
+    /// (dedupes the status-tick poller).
+    pub(crate) asset_ctx_rest_in_flight: bool,
     /// Whether the inline symbol editor is open.
     pub(crate) editor_open: bool,
     /// Whether the chart header is collapsed to a ticker-only strip.

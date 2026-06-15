@@ -1,5 +1,6 @@
 mod calendar;
 mod candles;
+mod chart_asset_context;
 mod exchange_symbols;
 mod hype_etfs;
 mod hype_unstaking_queue;
@@ -14,6 +15,7 @@ pub use calendar::{CalendarEvent, fetch_economic_calendar};
 pub use candles::{
     Candle, fetch_candles, fetch_chart_backfill_candles, is_valid_candle, normalize_candles,
 };
+pub(crate) use chart_asset_context::fetch_chart_asset_context;
 pub use exchange_symbols::{
     ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols,
 };

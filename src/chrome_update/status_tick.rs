@@ -17,6 +17,7 @@ impl TradingTerminal {
             self.stop_chase_if_limits_reached(now),
             self.retry_stopped_chase_cancels(now),
         ];
+        tasks.extend(self.queue_chart_asset_context_rest_fetches(now_ms));
 
         self.drain_sound_status_messages();
 
