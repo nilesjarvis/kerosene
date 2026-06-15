@@ -52,6 +52,37 @@ fn wallet_hype_fill(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn spot_fill(
+    time: u64,
+    tid: u64,
+    oid: u64,
+    coin: &str,
+    side: &str,
+    px: &str,
+    sz: &str,
+    fee: &str,
+    fee_token: &str,
+    closed_pnl: &str,
+) -> UserFill {
+    UserFill {
+        coin: coin.to_string(),
+        px: px.to_string(),
+        sz: sz.to_string(),
+        side: side.to_string(),
+        time,
+        start_position: "0.0".to_string(),
+        dir: if side == "A" { "Sell" } else { "Buy" }.to_string(),
+        closed_pnl: closed_pnl.to_string(),
+        hash: format!("0x{time:x}{tid:x}{oid:x}"),
+        oid,
+        crossed: false,
+        fee: fee.to_string(),
+        tid,
+        fee_token: fee_token.to_string(),
+    }
+}
+
 fn assert_approx_eq(actual: f64, expected: f64) {
     assert!(
         (actual - expected).abs() <= 1e-6,

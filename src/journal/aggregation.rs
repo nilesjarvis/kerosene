@@ -7,7 +7,9 @@ mod model;
 mod position;
 
 use builders::{apply_non_perp_fill, new_flip_trade, new_non_perp_trade, new_perp_trade};
-use helpers::{add_legacy_note_id, legacy_trade_id, parse_fill_values, stable_trade_id};
+use helpers::{
+    add_legacy_note_id, legacy_trade_id, non_perp_fee_usd, parse_fill_values, stable_trade_id,
+};
 use position::{
     fill_position_transition, is_non_perp_coin, resolved_start_position, signed_fill_size,
 };
@@ -55,10 +57,15 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
         // Spot and outcome trades don't have a concept of open margin positions.
         // We aggregate their executions simply by Order ID.
         if is_non_perp_coin(&coin) {
+            // Non-USDC spot fees (base-token buy fees) are converted to USD so the
+            // trade card, per-asset table, and totals stay consistently USD-denominated.
+            let fee_usd = non_perp_fee_usd(fee, &fill.fee_token, px);
             let mut trade = spot_trades
                 .remove(&fill.oid)
                 .unwrap_or_else(|| new_non_perp_trade(&coin, &fill));
-            apply_non_perp_fill(&mut trade, &coin, &fill, signed_sz, sz, px, fee);
+            apply_non_perp_fill(
+                &mut trade, &coin, &fill, signed_sz, sz, px, fee_usd, closed_pnl,
+            );
             record_attributed_fill(
                 &mut trade_details,
                 &trade.id,
@@ -72,7 +79,7 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
                 } else {
                     JournalAttributedFillRole::Reduce
                 },
-                fee,
+                fee_usd,
                 closed_pnl,
             );
             spot_trades.insert(fill.oid, trade);
