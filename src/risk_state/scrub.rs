@@ -169,6 +169,9 @@ impl TradingTerminal {
         }
 
         self.refresh_live_watchlist_row_caches();
+        // A muted ticker or a narrowed market universe changes which Telegram
+        // mentions are orderable, so re-resolve stored posts (no-op when empty).
+        self.refresh_telegram_ticker_mentions();
 
         let mut tasks = session_data_refresh_ids
             .into_iter()

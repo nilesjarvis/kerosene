@@ -20,6 +20,11 @@ use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
 use zeroize::{Zeroize, Zeroizing};
 
+/// When no recorded mid exists at a post's publication time, the current live mid
+/// is only an honest baseline if the post is this recent; older posts get no
+/// price-impact percentage rather than one anchored to a late price.
+const TELEGRAM_REFERENCE_FALLBACK_MAX_AGE_MS: u64 = 90_000;
+
 impl TradingTerminal {
     pub(crate) fn update_telegram_feed(&mut self, message: Message) -> Task<Message> {
         match message {
@@ -712,6 +717,7 @@ impl TradingTerminal {
                             .clone();
                         let mentions = self.telegram_ticker_mentions_for_text(
                             &post.text,
+                            post.timestamp_ms,
                             now_ms,
                             &previous_mentions,
                         );
@@ -731,8 +737,12 @@ impl TradingTerminal {
                         if treat_as_new {
                             post.first_seen_ms = now_ms;
                         }
-                        let mentions =
-                            self.telegram_ticker_mentions_for_text(&post.text, now_ms, &[]);
+                        let mentions = self.telegram_ticker_mentions_for_text(
+                            &post.text,
+                            post.timestamp_ms,
+                            now_ms,
+                            &[],
+                        );
                         post.ticker_mentions = mentions;
                         if treat_as_new {
                             new_posts.push(post.clone());
@@ -777,25 +787,40 @@ impl TradingTerminal {
         let mut posts = std::mem::take(&mut self.telegram_feed.posts);
         for post in &mut posts {
             let previous_mentions = post.ticker_mentions.clone();
-            post.ticker_mentions =
-                self.telegram_ticker_mentions_for_text(&post.text, now_ms, &previous_mentions);
+            post.ticker_mentions = self.telegram_ticker_mentions_for_text(
+                &post.text,
+                post.timestamp_ms,
+                now_ms,
+                &previous_mentions,
+            );
         }
         self.telegram_feed.posts = posts;
     }
 
     pub(crate) fn fill_missing_telegram_ticker_reference_prices(&mut self, now_ms: u64) {
-        if self.telegram_feed.posts.is_empty() {
+        // Runs on every mids tick; skip the take/reinsert churn once every mention
+        // already has a baseline.
+        let has_missing = self.telegram_feed.posts.iter().any(|post| {
+            post.ticker_mentions
+                .iter()
+                .any(|mention| mention.reference_price.is_none())
+        });
+        if !has_missing {
             return;
         }
 
         let mut posts = std::mem::take(&mut self.telegram_feed.posts);
         for post in &mut posts {
             for mention in &mut post.ticker_mentions {
-                if mention.reference_price.is_none() {
-                    mention.reference_price = self.resolve_mid_for_symbol(&mention.symbol);
-                    if mention.reference_price.is_some() {
-                        mention.reference_seen_ms = now_ms;
-                    }
+                if mention.reference_price.is_none()
+                    && let Some(price) = self.telegram_reference_price_for_mention(
+                        &mention.symbol,
+                        post.timestamp_ms,
+                        now_ms,
+                    )
+                {
+                    mention.reference_price = Some(price);
+                    mention.reference_seen_ms = now_ms;
                 }
             }
         }
@@ -805,7 +830,8 @@ impl TradingTerminal {
     fn telegram_ticker_mentions_for_text(
         &self,
         text: &str,
-        reference_seen_ms: u64,
+        post_timestamp_ms: u64,
+        now_ms: u64,
         previous_mentions: &[TelegramTickerMention],
     ) -> Vec<TelegramTickerMention> {
         self.telegram_feed
@@ -828,17 +854,26 @@ impl TradingTerminal {
                     mention.matched_text = matched.matched_text;
                     mention.source = matched.source;
                     mention.confidence = matched.confidence;
-                    if mention.reference_price.is_none() {
-                        mention.reference_price = self.resolve_mid_for_symbol(&matched.symbol_key);
-                        if mention.reference_price.is_some() {
-                            mention.reference_seen_ms = reference_seen_ms;
-                        }
+                    if mention.reference_price.is_none()
+                        && let Some(price) = self.telegram_reference_price_for_mention(
+                            &matched.symbol_key,
+                            post_timestamp_ms,
+                            now_ms,
+                        )
+                    {
+                        mention.reference_price = Some(price);
+                        mention.reference_seen_ms = now_ms;
                     }
                     mention
                 } else {
+                    let reference_price = self.telegram_reference_price_for_mention(
+                        &matched.symbol_key,
+                        post_timestamp_ms,
+                        now_ms,
+                    );
                     TelegramTickerMention {
-                        reference_price: self.resolve_mid_for_symbol(&matched.symbol_key),
-                        reference_seen_ms,
+                        reference_seen_ms: if reference_price.is_some() { now_ms } else { 0 },
+                        reference_price,
                         symbol: matched.symbol_key,
                         ticker: matched.ticker,
                         matched_text: matched.matched_text,
@@ -848,6 +883,31 @@ impl TradingTerminal {
                 }
             })
             .collect()
+    }
+
+    /// The price-impact baseline for a freshly mentioned ticker. Prefers the mid
+    /// recorded at or just before the message was published (the true pre-news
+    /// price), so the displayed `%` measures the move *since the headline*. Falls
+    /// back to the current live mid only when the post is recent enough that
+    /// "now" is a faithful proxy for publication time; otherwise returns `None`
+    /// so the chip shows no (misleading) percentage.
+    fn telegram_reference_price_for_mention(
+        &self,
+        symbol: &str,
+        post_timestamp_ms: u64,
+        now_ms: u64,
+    ) -> Option<f64> {
+        let candidates = self.mid_candidates_for_symbol(symbol);
+        if let Some(price) = self
+            .screener
+            .mid_sample_at_or_before(&candidates, post_timestamp_ms)
+        {
+            return Some(price);
+        }
+        if now_ms.saturating_sub(post_timestamp_ms) <= TELEGRAM_REFERENCE_FALLBACK_MAX_AGE_MS {
+            return self.resolve_mid_for_symbol_at(symbol, now_ms);
+        }
+        None
     }
 
     fn store_telegram_channel_profile(
@@ -2139,6 +2199,12 @@ mod tests {
         terminal
             .all_mids_updated_at_ms
             .insert("BTC".to_string(), TradingTerminal::now_ms());
+        // The baseline is anchored to a mid recorded at/before the message time
+        // (timestamp_ms 1_000), not to whenever the app noticed the post.
+        terminal.record_screener_mid_samples(
+            &std::collections::HashMap::from([("BTC".to_string(), 100.0)]),
+            500,
+        );
         let mut post = sample_post("marketfeed", 1);
         post.text = "BTC is moving".to_string();
 
@@ -2172,6 +2238,10 @@ mod tests {
         terminal
             .all_mids_updated_at_ms
             .insert("BTC".to_string(), TradingTerminal::now_ms());
+        terminal.record_screener_mid_samples(
+            &std::collections::HashMap::from([("BTC".to_string(), 100.0)]),
+            500,
+        );
         let mut initial = sample_post("marketfeed", 1);
         initial.text = "BTC is moving".to_string();
 
@@ -2196,6 +2266,106 @@ mod tests {
         let mentions = &terminal.telegram_feed.posts[0].ticker_mentions;
         assert_eq!(mentions.len(), 1);
         assert_eq!(mentions[0].reference_price, Some(100.0));
+    }
+
+    #[test]
+    fn reference_price_anchors_to_message_time_not_late_mid() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.exchange_symbols = vec![exchange_symbol("BTC", "BTC")];
+        terminal
+            .telegram_feed
+            .rebuild_ticker_mention_resolver(&terminal.exchange_symbols);
+        // Pre-news price recorded at/just before the message timestamp (1_000).
+        terminal.record_screener_mid_samples(
+            &std::collections::HashMap::from([("BTC".to_string(), 100.0)]),
+            500,
+        );
+        // The market has already moved by the time we see the post; the current
+        // (late) mid must NOT become the baseline.
+        terminal.all_mids.insert("BTC".to_string(), 200.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut post = sample_post("marketfeed", 1);
+        post.text = "BTC is moving".to_string();
+
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", vec![post])),
+        );
+
+        let mentions = &terminal.telegram_feed.posts[0].ticker_mentions;
+        assert_eq!(mentions[0].reference_price, Some(100.0));
+    }
+
+    #[test]
+    fn reference_price_suppressed_for_old_post_without_message_time_sample() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+        terminal.exchange_symbols = vec![exchange_symbol("BTC", "BTC")];
+        terminal
+            .telegram_feed
+            .rebuild_ticker_mention_resolver(&terminal.exchange_symbols);
+        // A fresh mid exists, but the post is ancient (timestamp 1_000) and there
+        // is no recorded mid at message time, so anchoring to it would mislead.
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut post = sample_post("marketfeed", 1);
+        post.text = "BTC is moving".to_string();
+
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page("marketfeed", vec![post])),
+        );
+
+        let mentions = &terminal.telegram_feed.posts[0].ticker_mentions;
+        assert_eq!(mentions.len(), 1);
+        assert_eq!(mentions[0].reference_price, None);
+        // No price captured => no baseline timestamp stamped.
+        assert_eq!(mentions[0].reference_seen_ms, 0);
+    }
+
+    #[test]
+    fn fill_missing_reference_uses_recent_fallback_and_is_immutable() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.exchange_symbols = vec![exchange_symbol("BTC", "BTC")];
+        let mut post = sample_post("marketfeed", 1); // timestamp_ms = 1_000
+        post.ticker_mentions = vec![TelegramTickerMention {
+            symbol: "BTC".to_string(),
+            ticker: "BTC".to_string(),
+            matched_text: "BTC".to_string(),
+            source: crate::symbol_mentions::SymbolAliasSource::Ticker,
+            confidence: 100,
+            reference_price: None,
+            reference_seen_ms: 0,
+        }];
+        terminal.telegram_feed.posts = vec![post];
+
+        // No message-time sample, but the post is recent relative to `now`, so the
+        // current fresh mid is an acceptable baseline.
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), 50_000);
+        terminal.fill_missing_telegram_ticker_reference_prices(60_000);
+        let mention = &terminal.telegram_feed.posts[0].ticker_mentions[0];
+        assert_eq!(mention.reference_price, Some(100.0));
+        assert_eq!(mention.reference_seen_ms, 60_000);
+
+        // A later mids tick must NOT rebase an already-captured reference.
+        terminal.all_mids.insert("BTC".to_string(), 200.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), 65_000);
+        terminal.fill_missing_telegram_ticker_reference_prices(70_000);
+        let mention = &terminal.telegram_feed.posts[0].ticker_mentions[0];
+        assert_eq!(mention.reference_price, Some(100.0));
+        assert_eq!(mention.reference_seen_ms, 60_000);
     }
 
     #[test]

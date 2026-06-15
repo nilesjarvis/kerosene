@@ -114,6 +114,97 @@ fn avoids_ambiguous_lowercase_bare_ticker_words() {
 }
 
 #[test]
+fn bare_lowercase_common_word_tickers_do_not_match() {
+    let symbols = vec![
+        symbol("PUMP", "PUMP", MarketType::Perp),
+        symbol("PEOPLE", "PEOPLE", MarketType::Perp),
+        symbol("BAN", "BAN", MarketType::Perp),
+        symbol("MOVE", "MOVE", MarketType::Perp),
+        symbol("BTC", "BTC", MarketType::Perp),
+    ];
+
+    // Ordinary English prose must never light up tickers that happen to be common
+    // words. Before the strong-match gate, 3+ char word tickers matched bare
+    // lowercase text and showed a live price-impact chip next to unrelated news.
+    let mentions = resolve_symbol_mentions(
+        "a lot of people are bullish and this will pump soon unless they move to ban it",
+        &symbols,
+    );
+
+    assert!(
+        mentions.is_empty(),
+        "expected no mentions, got {mentions:?}"
+    );
+}
+
+#[test]
+fn uppercase_common_word_ticker_still_matches_in_normal_text() {
+    let symbols = vec![symbol("PUMP", "PUMP", MarketType::Perp)];
+
+    // Uppercase in ordinary (non-headline) prose is still a deliberate signal.
+    let mentions = resolve_symbol_mentions("desk thinks PUMP rips after the unlock", &symbols);
+
+    assert_eq!(
+        pairs(&mentions),
+        vec![("PUMP".to_string(), "PUMP".to_string())]
+    );
+}
+
+#[test]
+fn all_caps_headline_suppresses_ambiguous_words_but_keeps_real_tickers() {
+    let symbols = vec![
+        symbol("GO", "GO", MarketType::Perp),
+        symbol("ON", "ON", MarketType::Perp),
+        symbol("PEOPLE", "PEOPLE", MarketType::Perp),
+        symbol("BTC", "BTC", MarketType::Perp),
+    ];
+
+    // In an all-caps headline uppercase carries no signal, so common words must
+    // not resolve; only the genuine ticker BTC should.
+    let mentions = resolve_symbol_mentions(
+        "BREAKING MARKETS GO WILD AS PEOPLE PILE ON AND BTC RIPS HIGHER TODAY",
+        &symbols,
+    );
+
+    assert_eq!(
+        pairs(&mentions),
+        vec![("BTC".to_string(), "BTC".to_string())]
+    );
+}
+
+#[test]
+fn cashtag_overrides_all_caps_headline_suppression() {
+    let symbols = vec![symbol("GO", "GO", MarketType::Perp)];
+
+    // An explicit cashtag is a deliberate reference even inside a shouty headline.
+    let mentions = resolve_symbol_mentions(
+        "BREAKING TRADERS PILE INTO $GO ACROSS GLOBAL MARKETS THIS MORNING",
+        &symbols,
+    );
+
+    assert_eq!(pairs(&mentions), vec![("GO".to_string(), "GO".to_string())]);
+}
+
+#[test]
+fn explicit_ticker_survives_nested_keyword_phrase() {
+    let mut ldo = symbol("LDO", "LDO", MarketType::Perp);
+    ldo.keywords = vec!["eth staking".to_string()];
+    let symbols = vec![ldo, symbol("ETH", "ETH", MarketType::Perp)];
+
+    let mentions = resolve_symbol_mentions("ETH staking inflows grew this week", &symbols);
+
+    // The explicitly-typed ETH must not be hidden by LDO's "eth staking" keyword;
+    // both are legitimate, distinct symbols.
+    assert_eq!(
+        pairs(&mentions),
+        vec![
+            ("ETH".to_string(), "ETH".to_string()),
+            ("LDO".to_string(), "LDO".to_string()),
+        ]
+    );
+}
+
+#[test]
 fn prefers_perp_when_tickers_overlap() {
     let symbols = vec![
         symbol("@107", "HYPE", MarketType::Spot),

@@ -145,6 +145,22 @@ fn generic_outcome_keywords_do_not_alias_every_outcome_market() {
 }
 
 #[test]
+fn non_ascii_display_name_alias_matches() {
+    let symbols = vec![symbol_with_metadata("xyz:ETO", "ETO", Some("Étoile"), &[])];
+
+    // An alias whose first character is non-ASCII must still resolve; the scan
+    // previously skipped non-ASCII starts and could never find it.
+    let mentions = resolve_symbol_mentions("Étoile gains traction in europe", &symbols);
+
+    assert_eq!(
+        pairs(&mentions),
+        vec![("xyz:ETO".to_string(), "ETO".to_string())]
+    );
+    assert_eq!(mentions[0].matched_text, "Étoile");
+    assert_eq!(mentions[0].source, SymbolAliasSource::DisplayName);
+}
+
+#[test]
 fn key_suffix_aliases_include_stripped_leading_u() {
     let symbols = vec![symbol("xyz:UNATGAS", "UNATGAS", MarketType::Perp)];
 

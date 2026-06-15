@@ -561,7 +561,7 @@ impl TradingTerminal {
                     .channel_profiles
                     .get(&post.channel)
                     .cloned();
-                let ticker_impacts = self.telegram_ticker_impact_cards(post);
+                let ticker_impacts = self.telegram_ticker_impact_cards(post, now_ms);
                 rows.push(telegram_post_card(
                     post.clone(),
                     profile,
@@ -588,6 +588,7 @@ impl TradingTerminal {
     fn telegram_ticker_impact_cards(
         &self,
         post: &TelegramFeedPost,
+        now_ms: u64,
     ) -> Vec<TelegramTickerImpactCard> {
         post.ticker_mentions
             .iter()
@@ -611,7 +612,7 @@ impl TradingTerminal {
                     confidence: mention.confidence,
                     impact_pct: telegram_price_impact_pct(
                         mention.reference_price,
-                        self.resolve_mid_for_symbol(&mention.symbol),
+                        self.resolve_mid_for_symbol_at(&mention.symbol, now_ms),
                     ),
                 })
             })
@@ -910,7 +911,15 @@ fn telegram_ticker_impact_card(
     danger_text: Color,
 ) -> Element<'static, Message> {
     let symbol = impact.symbol.clone();
-    let ticker = impact.ticker.clone();
+    // A fuzzy association (keyword / display-name guess) must not read as an
+    // explicit ticker mention; mark it with a leading "~" and a muted label.
+    let fuzzy = telegram_source_is_fuzzy(impact.source);
+    let ticker_label = if fuzzy {
+        format!("~{}", impact.ticker)
+    } else {
+        impact.ticker.clone()
+    };
+    let ticker_color = if fuzzy { muted_text } else { primary_text };
     let impact_label = telegram_impact_label(impact.impact_pct);
     let impact_color =
         telegram_impact_color(impact.impact_pct, muted_text, success_text, danger_text);
@@ -922,10 +931,10 @@ fn telegram_ticker_impact_card(
     let chip = button(
         row![
             icon,
-            text(ticker)
+            text(ticker_label)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
-                .color(primary_text),
+                .color(ticker_color),
             text(impact_label)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
@@ -980,11 +989,20 @@ fn telegram_ticker_match_tooltip(impact: &TelegramTickerImpactCard) -> Option<St
     }
 
     Some(format!(
-        "Matched \"{}\" as {} ({})",
+        "Matched \"{}\" as {} · confidence {}%",
         matched,
         telegram_symbol_alias_source_label(impact.source),
         impact.confidence
     ))
+}
+
+fn telegram_source_is_fuzzy(source: SymbolAliasSource) -> bool {
+    matches!(
+        source,
+        SymbolAliasSource::DisplayName
+            | SymbolAliasSource::Keyword
+            | SymbolAliasSource::CuratedKeyword
+    )
 }
 
 fn telegram_symbol_alias_source_label(source: SymbolAliasSource) -> &'static str {

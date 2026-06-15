@@ -222,6 +222,22 @@ impl ScreenerState {
                 .and_then(|samples| sample_at_or_before(samples, target_ms))
         })
     }
+
+    /// Most recent recorded mid at or before `target_ms` across any of the
+    /// candidate mid keys. Used to anchor a Telegram ticker's price-impact
+    /// baseline to the message publication time rather than to whenever the app
+    /// first noticed the post.
+    pub(crate) fn mid_sample_at_or_before(
+        &self,
+        candidates: &[String],
+        target_ms: u64,
+    ) -> Option<f64> {
+        candidates.iter().find_map(|candidate| {
+            self.samples
+                .get(candidate)
+                .and_then(|samples| sample_at_or_before(samples, target_ms))
+        })
+    }
 }
 
 impl TradingTerminal {

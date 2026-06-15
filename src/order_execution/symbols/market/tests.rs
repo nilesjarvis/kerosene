@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 mod active_symbol;
 mod live_mids;
+mod mid_candidates;
 mod orderability;
 
 fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
