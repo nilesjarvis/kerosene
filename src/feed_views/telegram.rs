@@ -35,6 +35,7 @@ struct TelegramTickerImpactCard {
     source: SymbolAliasSource,
     confidence: u8,
     impact_pct: Option<f64>,
+    is_outcome: bool,
 }
 
 impl TradingTerminal {
@@ -624,7 +625,8 @@ impl TradingTerminal {
                             && (include_outcomes || symbol.market_type != MarketType::Outcome)
                             && self.exchange_symbol_is_orderable(symbol)
                     })?;
-                let ticker = if symbol.outcome.is_some() {
+                let is_outcome = symbol.outcome.is_some();
+                let ticker = if is_outcome {
                     Self::exchange_symbol_display_name(symbol)
                 } else {
                     mention.ticker.clone()
@@ -644,6 +646,7 @@ impl TradingTerminal {
                         mention.reference_price,
                         self.resolve_mid_for_symbol(&mention.symbol),
                     ),
+                    is_outcome,
                 })
             })
             .collect()
@@ -917,20 +920,33 @@ fn telegram_ticker_impact_cards(
     success_text: Color,
     danger_text: Color,
 ) -> Element<'static, Message> {
-    impacts
-        .into_iter()
-        .fold(row![].spacing(6).width(Fill), |row, impact| {
-            row.push(telegram_ticker_impact_card(
-                impact,
-                primary_text,
-                muted_text,
-                success_text,
-                danger_text,
-            ))
-        })
-        .wrap()
-        .vertical_spacing(6)
-        .into()
+    // Keep normal (perp) markets and outcome (prediction) markets on their own
+    // rows so the two kinds of enrichment never sit side by side.
+    let (outcome, normal): (Vec<_>, Vec<_>) =
+        impacts.into_iter().partition(|impact| impact.is_outcome);
+
+    let mut groups = column![].spacing(6).width(Fill);
+    for group in [normal, outcome] {
+        if group.is_empty() {
+            continue;
+        }
+        let chips = group
+            .into_iter()
+            .fold(row![].spacing(6).width(Fill), |row, impact| {
+                row.push(telegram_ticker_impact_card(
+                    impact,
+                    primary_text,
+                    muted_text,
+                    success_text,
+                    danger_text,
+                ))
+            })
+            .wrap()
+            .vertical_spacing(6);
+        groups = groups.push(chips);
+    }
+
+    groups.into()
 }
 
 fn telegram_ticker_impact_card(

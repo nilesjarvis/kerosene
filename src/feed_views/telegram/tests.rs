@@ -105,6 +105,7 @@ fn telegram_ticker_impact_cards_resolve_outcome_display_label() {
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0].ticker, "YES: Will BTC close green?");
     assert_eq!(cards[0].symbol, "#950");
+    assert!(cards[0].is_outcome);
 }
 
 #[test]
@@ -116,6 +117,7 @@ fn telegram_ticker_impact_cards_keep_perp_tickers() {
 
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0].ticker, "HYPE");
+    assert!(!cards[0].is_outcome);
 }
 
 #[test]
