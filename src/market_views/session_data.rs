@@ -12,7 +12,7 @@ use iced::mouse;
 use iced::widget::canvas::{self, Frame, Path, Stroke, Text};
 use iced::widget::{
     Space, button, canvas as canvas_widget, column, container, responsive, row, scrollable, text,
-    text_input,
+    text_input, tooltip,
 };
 use iced::{Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
 
@@ -136,10 +136,18 @@ impl TradingTerminal {
                 .color(theme.extended_palette().background.weak.text)
                 .into()
         };
-        let refresh = button(refresh_label)
-            .on_press_maybe((!instance.loading).then_some(Message::RefreshSessionData(instance.id)))
-            .padding([3, 8])
-            .style(move |theme: &Theme, status| compact_button_style(theme, status, false));
+        let refresh = tooltip(
+            button(refresh_label)
+                .on_press_maybe(
+                    (!instance.loading).then_some(Message::RefreshSessionData(instance.id)),
+                )
+                .padding([3, 8])
+                .style(move |theme: &Theme, status| compact_button_style(theme, status, false)),
+            tooltip_body("Re-fetch session history for this market."),
+            tooltip::Position::Bottom,
+        );
+
+        let legend = view_legend_icon(theme);
 
         let status = session_data_status(instance);
         let status_text = text(status)
@@ -148,7 +156,7 @@ impl TradingTerminal {
 
         if available_width < 520.0 {
             column![
-                row![symbol_button, refresh]
+                row![symbol_button, Space::new().width(Fill), legend, refresh]
                     .spacing(6)
                     .align_y(Alignment::Center),
                 lookbacks,
@@ -162,6 +170,7 @@ impl TradingTerminal {
                 lookbacks,
                 Space::new().width(Fill),
                 status_text,
+                legend,
                 refresh
             ]
             .spacing(8)
@@ -388,17 +397,22 @@ fn view_verdict_line(
         SessionVerdict::Insufficient {
             total_samples,
             min_required,
-        } => row![
-            accent,
-            text(format!(
-                "Not enough completed sessions to call a trend ({total_samples} so far, need {min_required}+ per bucket)"
-            ))
-            .size(11)
-            .color(weak),
-        ]
-        .spacing(5)
-        .align_y(Alignment::Center)
-        .into(),
+        } => {
+            let line = row![
+                accent,
+                text(format!(
+                    "Not enough completed sessions to call a trend ({total_samples} so far, need {min_required}+ per bucket)"
+                ))
+                .size(11)
+                .color(weak),
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center);
+            wrap_verdict_tooltip(
+                line,
+                "A trend is only called once a weekday or session bucket has enough completed sessions to be meaningful. Widen the lookback to gather more.",
+            )
+        }
         SessionVerdict::Edge { strongest, weakest } => {
             let mut line = row![
                 accent,
@@ -406,13 +420,15 @@ fn view_verdict_line(
                 text(strongest.label.clone())
                     .size(11)
                     .color(theme.palette().text),
-                text(helpers::format_signed_percent_value(strongest.average_return_pct))
-                    .size(11)
-                    .font(crate::app_fonts::monospace_font())
-                    .color(helpers::signed_number_color(
-                        strongest.average_return_pct,
-                        theme
-                    )),
+                text(helpers::format_signed_percent_value(
+                    strongest.average_return_pct
+                ))
+                .size(11)
+                .font(crate::app_fonts::monospace_font())
+                .color(helpers::signed_number_color(
+                    strongest.average_return_pct,
+                    theme
+                )),
                 text("\u{00b7}").size(11).color(weak),
                 text(format!("{:.0}% win", strongest.win_rate_pct))
                     .size(11)
@@ -437,18 +453,32 @@ fn view_verdict_line(
                             .color(theme.palette().text),
                     )
                     .push(
-                        text(helpers::format_signed_percent_value(weakest.average_return_pct))
-                            .size(11)
-                            .font(crate::app_fonts::monospace_font())
-                            .color(helpers::signed_number_color(
-                                weakest.average_return_pct,
-                                theme,
-                            )),
+                        text(helpers::format_signed_percent_value(
+                            weakest.average_return_pct,
+                        ))
+                        .size(11)
+                        .font(crate::app_fonts::monospace_font())
+                        .color(helpers::signed_number_color(
+                            weakest.average_return_pct,
+                            theme,
+                        )),
                     );
             }
-            line.into()
+            wrap_verdict_tooltip(
+                line,
+                "The strongest and weakest buckets by average open-to-close return, across both weekdays and market sessions. Only buckets with enough samples qualify; n is the sample count and win is the share that closed green.",
+            )
         }
     }
+}
+
+fn wrap_verdict_tooltip<'a>(
+    line: impl Into<Element<'a, Message>>,
+    body: &'static str,
+) -> Element<'a, Message> {
+    container(tooltip(line, tooltip_body(body), tooltip::Position::Bottom))
+        .width(Fill)
+        .into()
 }
 
 fn view_kpi_strip(
@@ -469,22 +499,43 @@ fn view_kpi_strip(
         .map(|ms| format!("{} ago", helpers::format_relative_time(ms, now_ms)));
 
     let tiles: Vec<Element<'static, Message>> = vec![
-        view_kpi_tile_winrate(win, theme),
+        view_kpi_tile_winrate(
+            win,
+            theme,
+            "Share of all completed sessions that closed in the green, over the selected lookback. The bar fills toward 100%, with a tick at 50%.",
+        ),
         view_kpi_tile(
             "AVG MOVE",
             avg_move.map(|value| format!("{value:.2}%")),
             theme.palette().text,
             theme,
+            "Average size of a session's open-to-close move, regardless of direction — a sense of typical volatility.",
         ),
-        view_kpi_tile_signed("TOTAL", total, theme),
-        view_kpi_tile_streak(streak, theme),
+        view_kpi_tile_signed(
+            "TOTAL",
+            total,
+            theme,
+            "Compounded return from holding through every completed session in the lookback.",
+        ),
+        view_kpi_tile_streak(
+            streak,
+            theme,
+            "How many of the most recent sessions have run in the same direction (\u{25b2} up / \u{25bc} down).",
+        ),
         view_kpi_tile(
             "BUSIEST",
             active.map(|weekday| weekday.label().to_string()),
             theme.palette().text,
             theme,
+            "Weekday with the most traded volume over the lookback.",
         ),
-        view_kpi_tile("UPDATED", freshness, weak, theme),
+        view_kpi_tile(
+            "UPDATED",
+            freshness,
+            weak,
+            theme,
+            "How long ago this session history was last fetched.",
+        ),
     ];
 
     if available_width >= KPI_WRAP_WIDTH {
@@ -512,6 +563,7 @@ fn view_kpi_tile(
     value: Option<String>,
     value_color: Color,
     theme: &Theme,
+    tip: &'static str,
 ) -> Element<'static, Message> {
     let (value, value_color) = match value {
         Some(value) => (value, value_color),
@@ -530,17 +582,18 @@ fn view_kpi_tile(
             .color(value_color),
     ]
     .spacing(2);
-    container(body)
+    let tile = container(body)
         .padding([4, 7])
         .width(Fill)
-        .style(kpi_tile_style)
-        .into()
+        .style(kpi_tile_style);
+    kpi_tooltip(tile, tip)
 }
 
 fn view_kpi_tile_signed(
     label: &str,
     value: Option<f64>,
     theme: &Theme,
+    tip: &'static str,
 ) -> Element<'static, Message> {
     match value {
         Some(value) => view_kpi_tile(
@@ -548,30 +601,41 @@ fn view_kpi_tile_signed(
             Some(helpers::format_signed_percent_value(value)),
             helpers::signed_number_color(value, theme),
             theme,
+            tip,
         ),
-        None => view_kpi_tile(label, None, theme.palette().text, theme),
+        None => view_kpi_tile(label, None, theme.palette().text, theme, tip),
     }
 }
 
-fn view_kpi_tile_streak(streak: Option<SessionStreak>, theme: &Theme) -> Element<'static, Message> {
+fn view_kpi_tile_streak(
+    streak: Option<SessionStreak>,
+    theme: &Theme,
+    tip: &'static str,
+) -> Element<'static, Message> {
     match streak {
         Some(streak) if streak.positive => view_kpi_tile(
             "STREAK",
             Some(format!("\u{25b2} {}", streak.length)),
             theme.palette().success,
             theme,
+            tip,
         ),
         Some(streak) => view_kpi_tile(
             "STREAK",
             Some(format!("\u{25bc} {}", streak.length)),
             theme.palette().danger,
             theme,
+            tip,
         ),
-        None => view_kpi_tile("STREAK", None, theme.palette().text, theme),
+        None => view_kpi_tile("STREAK", None, theme.palette().text, theme, tip),
     }
 }
 
-fn view_kpi_tile_winrate(rate: Option<f64>, theme: &Theme) -> Element<'static, Message> {
+fn view_kpi_tile_winrate(
+    rate: Option<f64>,
+    theme: &Theme,
+    tip: &'static str,
+) -> Element<'static, Message> {
     let weak = theme.extended_palette().background.weak.text;
     let label = text("WIN RATE").size(9).color(weak);
     let value: Element<'static, Message> = match rate {
@@ -595,11 +659,63 @@ fn view_kpi_tile_winrate(rate: Option<f64>, theme: &Theme) -> Element<'static, M
             .color(weak)
             .into(),
     };
-    container(column![label, value].spacing(2))
+    let tile = container(column![label, value].spacing(2))
         .padding([4, 7])
         .width(Fill)
-        .style(kpi_tile_style)
+        .style(kpi_tile_style);
+    kpi_tooltip(tile, tip)
+}
+
+fn kpi_tooltip<'a>(
+    content: impl Into<Element<'a, Message>>,
+    tip: &'static str,
+) -> Element<'a, Message> {
+    container(tooltip(content, tooltip_body(tip), tooltip::Position::Top))
+        .width(Fill)
         .into()
+}
+
+fn tooltip_body(body: &'static str) -> Element<'static, Message> {
+    container(text(body).size(10))
+        .padding([5, 8])
+        .max_width(280.0)
+        .style(tooltip_container_style)
+        .into()
+}
+
+fn tooltip_container_style(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(
+            Color {
+                a: 0.98,
+                ..theme.extended_palette().background.strong.color
+            }
+            .into(),
+        ),
+        text_color: Some(theme.palette().text),
+        border: iced::Border {
+            width: 1.0,
+            color: Color {
+                a: 0.45,
+                ..theme.palette().primary
+            },
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    }
+}
+
+fn view_legend_icon(theme: &Theme) -> Element<'static, Message> {
+    tooltip(
+        text("\u{24d8}")
+            .size(13)
+            .color(theme.extended_palette().background.weak.text),
+        tooltip_body(
+            "How to read the lane:\n\u{2022} Bar = average return, centered at 0% (right = gains, left = losses).\n\u{2022} Bullet = win rate, with a tick at 50%.\n\u{2022} Fainter bars mean fewer samples; dots mean no completed sessions.\n\u{2022} The marked row is the strongest day or session.\nHover any row for its exact numbers.",
+        ),
+        tooltip::Position::Bottom,
+    )
+    .into()
 }
 
 fn kpi_tile_style(theme: &Theme) -> container::Style {
@@ -619,11 +735,25 @@ fn lookback_button(
     active: bool,
     id: SessionDataId,
 ) -> Element<'static, Message> {
-    button(text(lookback.label()).size(10).center())
-        .on_press(Message::SessionDataLookbackChanged(id, lookback))
-        .padding([3, 7])
-        .style(move |theme: &Theme, status| compact_button_style(theme, status, active))
-        .into()
+    tooltip(
+        button(text(lookback.label()).size(10).center())
+            .on_press(Message::SessionDataLookbackChanged(id, lookback))
+            .padding([3, 7])
+            .style(move |theme: &Theme, status| compact_button_style(theme, status, active)),
+        tooltip_body(lookback_tooltip(lookback)),
+        tooltip::Position::Bottom,
+    )
+    .into()
+}
+
+fn lookback_tooltip(lookback: SessionDataLookback) -> &'static str {
+    match lookback {
+        SessionDataLookback::FourWeeks => "Summarize the last 4 weeks of completed sessions.",
+        SessionDataLookback::EightWeeks => "Summarize the last 8 weeks of completed sessions.",
+        SessionDataLookback::ThreeMonths => "Summarize the last 3 months of completed sessions.",
+        SessionDataLookback::SixMonths => "Summarize the last 6 months of completed sessions.",
+        SessionDataLookback::OneYear => "Summarize the last 12 months of completed sessions.",
+    }
 }
 
 fn compact_button_style(theme: &Theme, status: button::Status, active: bool) -> button::Style {
