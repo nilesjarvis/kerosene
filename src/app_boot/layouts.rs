@@ -1,13 +1,50 @@
 use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
+use crate::config::default_tick_size;
 use crate::config::{KeroseneConfig, SavedLayout};
+use crate::helpers::valid_book_tick_size;
 use crate::pane_state::PaneKind;
 use iced::widget::pane_grid;
 
 impl TradingTerminal {
+    pub(crate) fn normalized_book_tick_size(tick_size: f64) -> f64 {
+        if valid_book_tick_size(tick_size) {
+            tick_size
+        } else {
+            default_tick_size()
+        }
+    }
+
+    pub(crate) fn normalized_order_book_tick_size(tick_size: f64, fallback_tick_size: f64) -> f64 {
+        if valid_book_tick_size(tick_size) {
+            tick_size
+        } else {
+            Self::normalized_book_tick_size(fallback_tick_size)
+        }
+    }
+
+    pub(crate) fn normalize_saved_layout_order_book_ticks(layout: &mut SavedLayout) {
+        layout.book_tick_size = Self::normalized_book_tick_size(layout.book_tick_size);
+        for order_book in &mut layout.order_books {
+            order_book.tick_size =
+                Self::normalized_order_book_tick_size(order_book.tick_size, layout.book_tick_size);
+        }
+    }
+
+    pub(crate) fn saved_layouts_config_values(&self) -> Vec<SavedLayout> {
+        self.saved_layouts
+            .iter()
+            .cloned()
+            .map(|mut layout| {
+                Self::normalize_saved_layout_order_book_ticks(&mut layout);
+                layout
+            })
+            .collect()
+    }
+
     pub(crate) fn register_last_layout(cfg: &mut KeroseneConfig) {
-        let last_layout = SavedLayout {
+        let mut last_layout = SavedLayout {
             name: "last".to_string(),
             pane_layout: cfg.pane_layout.clone(),
             layout_ratios: cfg.layout_ratios.clone(),
@@ -19,10 +56,13 @@ impl TradingTerminal {
             spaghetti_charts: cfg.spaghetti_charts.clone(),
             widget_padding: cfg.widget_padding.clone().normalized(),
             active_symbol: cfg.active_symbol.clone(),
+            liquidation_distribution_symbol: Some(
+                cfg.liquidation_distribution_symbol.trim().to_string(),
+            ),
             active_timeframe: cfg.active_timeframe.clone(),
             order_kind: cfg.order_kind.clone(),
             reduce_only: cfg.reduce_only,
-            book_tick_size: cfg.book_tick_size,
+            book_tick_size: Self::normalized_book_tick_size(cfg.book_tick_size),
             favourite_symbols: cfg.favourite_symbols.clone(),
             ticker_tape_enabled: cfg.ticker_tape_enabled,
             active_theme: cfg.active_theme.clone(),
@@ -39,6 +79,7 @@ impl TradingTerminal {
             preset_is_usd: cfg.preset_is_usd,
             order_presets: cfg.order_presets.clone(),
         };
+        Self::normalize_saved_layout_order_book_ticks(&mut last_layout);
 
         if let Some(pos) = cfg
             .saved_layouts

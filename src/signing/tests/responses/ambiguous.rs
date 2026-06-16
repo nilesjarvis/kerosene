@@ -38,4 +38,5 @@ fn exchange_response_ambiguous_ok_body_requires_reconciliation() {
     let empty_statuses = exchange_response_with_statuses(Vec::new());
     assert!(!empty_statuses.is_error());
     assert!(empty_statuses.is_ambiguous_order_result());
+    assert!(!empty_statuses.is_confirmed_modify_result());
 }

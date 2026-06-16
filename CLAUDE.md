@@ -45,7 +45,7 @@ Multi-instance widgets (charts, order books, watchlists, spaghetti charts) are k
 - **Panes/windows**: pane types are defined in `PaneKind`. Adding one touches pane creation, view dispatch, layout persistence, default widget config, and tests. Detached windows carry `window::Id` in messages.
 - **Persistence**: persisted state goes through `config*` modules (JSON at the platform config dir). Wire-format changes need serialization tests and backwards-compatible defaults to preserve saved layouts.
 - **Secrets**: keychain/encrypted-secret handling lives in `secret_storage/`; use `SensitiveString`/`Zeroizing` patterns. Order placement and signing (`signing/` — EIP-712 + MessagePack action payloads) changes require focused tests for request construction, response parsing, and failure handling.
-- **Transport**: REST types/fetchers in `api/`, WebSocket streams/managers in `ws/`; optional integrations in `hydromancer_api/`, `hyperdash_api/`, and the Telegram/X feed modules.
+- **Transport**: REST types/fetchers in `api/`, WebSocket streams/managers in `ws/`; optional integrations in `hydromancer_api/`, `hyperdash_api/`, and the Telegram feed module.
 - **Charts**: iced `canvas::Program<Message>` rendering with state in `chart_state`/`chart`. Keep expensive geometry bounded to the visible range; invalidate caches on data, theme, scale, or viewport changes; keep interaction math in chart update modules with focused tests.
 
 ## Conventions that bite

@@ -25,6 +25,7 @@ impl TradingTerminal {
 
     fn view_liquidations_distribution_sized(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
+        let now_ms = self.status_bar_now_ms;
         let denomination = self.display_denomination_context();
         let state = &self.liquidation_distribution;
         let refresh_btn = self.view_liquidations_distribution_refresh_button(state.loading);
@@ -76,6 +77,7 @@ impl TradingTerminal {
             content = content
                 .push(self.view_liquidations_distribution_metrics(
                     data,
+                    now_ms,
                     available_width,
                     &denomination,
                     &theme,
@@ -340,12 +342,13 @@ impl TradingTerminal {
     fn view_liquidations_distribution_metrics(
         &self,
         data: &LiquidationDistributionData,
+        now_ms: u64,
         available_width: f32,
         denomination: &DisplayDenominationContext,
         theme: &Theme,
     ) -> Element<'static, Message> {
         let total = data.total_long_usd + data.total_short_usd;
-        let updated = helpers::format_relative_time(data.fetched_at_ms, Self::now_ms());
+        let updated = helpers::format_relative_time(data.fetched_at_ms, now_ms);
         let first_row = row![
             metric_block("Mark", denomination.format_price(data.request.mark), theme),
             metric_block(

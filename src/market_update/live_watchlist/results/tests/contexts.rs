@@ -24,7 +24,7 @@ fn contexts_loaded_replaces_context_map_and_records_fetch_time() {
 }
 
 #[test]
-fn contexts_loaded_error_keeps_existing_contexts_and_sets_status() {
+fn contexts_loaded_error_keeps_existing_contexts_without_marking_fresh() {
     let mut loading = true;
     let mut last_fetch_ms = None;
     let mut contexts = HashMap::from([("BTC".to_string(), context(1.0))]);
@@ -40,7 +40,7 @@ fn contexts_loaded_error_keeps_existing_contexts_and_sets_status() {
     );
 
     assert!(!loading);
-    assert_eq!(last_fetch_ms, Some(50));
+    assert_eq!(last_fetch_ms, None);
     assert_eq!(contexts.get("BTC").map(|ctx| ctx.day_vlm), Some(Some(1.0)));
     assert_eq!(
         status,

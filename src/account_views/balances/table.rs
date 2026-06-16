@@ -1,6 +1,7 @@
 use crate::account_views::table_helpers::account_table_scroll;
 use crate::message::Message;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Column, column, container, row, rule, text};
 use iced::{Element, Fill, Theme};
 
@@ -26,11 +27,17 @@ pub(super) fn balances_rows_table(rows: Column<'static, Message>) -> Element<'st
 
 fn balances_header() -> Element<'static, Message> {
     row![
-        text("Asset").size(12).width(Fill),
-        text("Total").size(12).width(Fill),
-        text("Hold").size(12).width(Fill),
-        text("Available").size(12).width(Fill),
-        text("Entry Ntl").size(12).width(Fill),
+        text("Asset").size(12).width(Fill).wrapping(Wrapping::None),
+        text("Total").size(12).width(Fill).wrapping(Wrapping::None),
+        text("Hold").size(12).width(Fill).wrapping(Wrapping::None),
+        text("Available")
+            .size(12)
+            .width(Fill)
+            .wrapping(Wrapping::None),
+        text("Entry Ntl")
+            .size(12)
+            .width(Fill)
+            .wrapping(Wrapping::None),
         text("").size(12).width(60),
     ]
     .spacing(4)

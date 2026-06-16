@@ -32,11 +32,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn ghost_wallet_task(&mut self, address: String) -> Task<Message> {
-        if self.pending_order_action.is_some() {
-            self.push_toast(
-                "Wait for the pending order request before switching accounts".to_string(),
-                true,
-            );
+        if self.account_change_blocked_by_pending_trading_request("switching accounts") {
             return Task::none();
         }
 
@@ -47,6 +43,13 @@ impl TradingTerminal {
 
         if let Some(index) = self.find_ghost_account_by_wallet_address(&address) {
             return self.switch_account_task(index);
+        }
+
+        if self.account_change_blocked_by_active_chase("switching accounts") {
+            return Task::none();
+        }
+        if self.account_change_blocked_by_uncertain_twap("switching accounts") {
+            return Task::none();
         }
 
         let profile = AccountProfile {
@@ -71,7 +74,11 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if self.account_change_blocked_by_active_chase("forgetting a ghost wallet") {
+        if self.account_change_blocked_by_active_automation("forgetting a ghost wallet") {
+            return Task::none();
+        }
+
+        if self.account_change_blocked_by_pending_trading_request("forgetting a ghost wallet") {
             return Task::none();
         }
 

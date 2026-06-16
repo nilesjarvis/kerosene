@@ -13,6 +13,8 @@ Secret-bearing values include:
 - HyperDash API key
 - X bearer token
 - Telegram fast-mode login code/password/API hash while in memory
+- Telegram API hash embedded at build time through
+  `KEROSENE_TELEGRAM_API_HASH`
 - encrypted secret password/confirmation inputs
 - any future API token or signing key
 
@@ -67,7 +69,6 @@ Plain config snapshots intentionally write empty secret fields:
 - `agent_key`
 - `hydromancer_api_key`
 - `hyperdash_api_key`
-- `x_bearer_token`
 
 Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys inside the selected secret
@@ -106,6 +107,16 @@ Hydromancer, HyperDash, and X keys are only needed in:
 Saving or replacing keys should update secret storage and clear stale
 connection/cache state when required. Hydromancer key rotation should evict old
 websocket managers so old-key tasks stop.
+
+## Release-Time Embedded Credentials
+
+Kerosene can be built with optional Telegram fast-mode defaults through
+`KEROSENE_TELEGRAM_API_ID` and `KEROSENE_TELEGRAM_API_HASH`. The API hash is
+compiled into the binary when set. Public release builds should leave these
+variables unset unless the bundled Telegram application credentials are
+explicitly approved as public, non-user-specific, and rotation-safe. Without
+bundled values, users can enter their own Telegram developer API ID and hash
+when enabling fast mode.
 
 ## UI And Output Safety
 

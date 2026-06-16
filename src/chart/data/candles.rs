@@ -5,6 +5,8 @@ use crate::api::{Candle, is_valid_candle, normalize_candles};
 // Candle Data Lifecycle
 // ---------------------------------------------------------------------------
 
+pub(in crate::chart) const MAX_CHART_CANDLES: usize = 10_000;
+
 impl CandlestickChart {
     /// Replace all candle data (e.g. after initial fetch or interval change).
     pub fn set_candles(&mut self, candles: Vec<Candle>) {
@@ -29,10 +31,7 @@ impl CandlestickChart {
             self.candles.append(&mut new_candles);
         }
 
-        if self.candles.len() > 10000 {
-            let trim_len = self.candles.len() - 10000;
-            self.candles.drain(0..trim_len);
-        }
+        trim_to_max_chart_candles(&mut self.candles);
 
         self.status = if self.candles.is_empty() {
             ChartStatus::Error("No candle data returned".to_string())
@@ -52,6 +51,7 @@ impl CandlestickChart {
                 *last = candle;
             } else {
                 self.candles.push(candle);
+                trim_to_max_chart_candles(&mut self.candles);
             }
         } else {
             self.candles.push(candle);
@@ -69,5 +69,12 @@ impl CandlestickChart {
         self.weekly_candles.clear();
         self.monthly_candles.clear();
         self.candle_cache.clear();
+    }
+}
+
+fn trim_to_max_chart_candles(candles: &mut Vec<Candle>) {
+    if candles.len() > MAX_CHART_CANDLES {
+        let trim_len = candles.len() - MAX_CHART_CANDLES;
+        candles.drain(0..trim_len);
     }
 }

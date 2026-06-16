@@ -26,17 +26,21 @@ impl TradingTerminal {
             return;
         }
 
+        let fast_reconnect_nonce = self.telegram_feed.fast_reconnect_nonce;
         subs.push(
             Subscription::run_with(
                 TelegramFastFeedStreamParams {
                     api_id,
                     channels: self.telegram_feed.channels.clone(),
                     private_channels: self.telegram_feed.private_channels.clone(),
-                    reconnect_nonce: self.telegram_feed.fast_reconnect_nonce,
+                    reconnect_nonce: fast_reconnect_nonce,
                 },
                 telegram_fast_feed_stream,
             )
-            .map(Message::TelegramFastFeedEvent),
+            .with(fast_reconnect_nonce)
+            .map(|(fast_reconnect_nonce, event)| {
+                Message::TelegramFastFeedEvent(fast_reconnect_nonce, event)
+            }),
         );
     }
 }

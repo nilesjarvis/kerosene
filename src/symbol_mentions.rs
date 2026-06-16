@@ -8,9 +8,17 @@ const STRONG_TICKER_WORDS: &[&str] = &[
     "GO", "HAS", "HE", "IN", "IS", "IT", "ME", "NEW", "NO", "NOT", "OF", "ON", "OR", "S", "SEC",
     "SHE", "THE", "TO", "TRUMP", "UP", "US", "USD", "USDC", "USDT", "WE", "YES",
 ];
-const AMBIGUOUS_BARE_TICKER_WORDS: &[&str] = &["APT", "FLOW", "LINK", "MOVE", "NEAR", "OIL"];
+const AMBIGUOUS_BARE_TICKER_WORDS: &[&str] = &[
+    "APT", "BAN", "FLOW", "LINK", "MOVE", "NEAR", "OIL", "PEOPLE", "PUMP",
+];
 const GENERIC_OUTCOME_ALIAS_WORDS: &[&str] = &["OUTCOME", "PREDICTION"];
 const DEFAULT_OIL_SYMBOL_KEYS: &[&str] = &["xyz:CL"];
+/// Minimum uppercase letters before a message can be treated as an all-caps
+/// headline; below this a lone uppercase ticker should still resolve.
+const SHOUTY_MIN_UPPERCASE: usize = 10;
+/// Lowercase letters must stay below `uppercase / SHOUTY_MAX_LOWER_RATIO` for a
+/// message to count as shouty (i.e. predominantly uppercase).
+const SHOUTY_MAX_LOWER_RATIO: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum SymbolAliasSource {
@@ -59,6 +67,7 @@ pub(crate) struct SymbolMentionResolver {
     aliases: Vec<SymbolAlias>,
     single_char_aliases: HashMap<u8, Vec<usize>>,
     prefix_aliases: HashMap<[u8; 2], Vec<usize>>,
+    has_non_ascii_alias_prefix: bool,
 }
 
 impl SymbolMentionResolver {
@@ -118,11 +127,16 @@ impl SymbolMentionResolver {
         }
 
         let uppercase_text = text.to_ascii_uppercase();
+        let shouty_context = text_is_shouty(text);
         let mut candidates = Vec::new();
         let bytes = uppercase_text.as_bytes();
 
         for (index, ch) in uppercase_text.char_indices() {
-            if !ch.is_ascii() {
+            // A non-ASCII character can still start an alias (e.g. a display name
+            // or keyword beginning with an accented letter). Skip such starts only
+            // when no alias begins with a non-ASCII byte, preserving the ASCII
+            // fast path for the common (emoji-heavy) message.
+            if !ch.is_ascii() && !self.has_non_ascii_alias_prefix {
                 continue;
             }
             let first = bytes[index];
@@ -131,6 +145,7 @@ impl SymbolMentionResolver {
                     text,
                     &uppercase_text,
                     index,
+                    shouty_context,
                     alias_indices,
                     &mut candidates,
                 );
@@ -142,6 +157,7 @@ impl SymbolMentionResolver {
                     text,
                     &uppercase_text,
                     index,
+                    shouty_context,
                     alias_indices,
                     &mut candidates,
                 );
@@ -154,8 +170,12 @@ impl SymbolMentionResolver {
     fn from_aliases(aliases: Vec<SymbolAlias>) -> Self {
         let mut single_char_aliases: HashMap<u8, Vec<usize>> = HashMap::new();
         let mut prefix_aliases: HashMap<[u8; 2], Vec<usize>> = HashMap::new();
+        let mut has_non_ascii_alias_prefix = false;
         for (index, alias) in aliases.iter().enumerate() {
             let bytes = alias.phrase_upper.as_bytes();
+            if bytes.first().is_some_and(|byte| !byte.is_ascii()) {
+                has_non_ascii_alias_prefix = true;
+            }
             match bytes {
                 [first] => single_char_aliases.entry(*first).or_default().push(index),
                 [first, second, ..] => prefix_aliases
@@ -170,6 +190,7 @@ impl SymbolMentionResolver {
             aliases,
             single_char_aliases,
             prefix_aliases,
+            has_non_ascii_alias_prefix,
         }
     }
 
@@ -178,12 +199,15 @@ impl SymbolMentionResolver {
         text: &str,
         uppercase_text: &str,
         index: usize,
+        shouty_context: bool,
         alias_indices: &[usize],
         candidates: &mut Vec<CandidateMention>,
     ) {
         for alias_index in alias_indices {
             let alias = &self.aliases[*alias_index];
-            if let Some(candidate) = alias_match_at(text, uppercase_text, index, alias) {
+            if let Some(candidate) =
+                alias_match_at(text, uppercase_text, index, shouty_context, alias)
+            {
                 candidates.push(candidate);
             }
         }
@@ -365,6 +389,7 @@ fn alias_match_at(
     text: &str,
     uppercase_text: &str,
     index: usize,
+    shouty_context: bool,
     alias: &SymbolAlias,
 ) -> Option<CandidateMention> {
     if !uppercase_text[index..].starts_with(&alias.phrase_upper) {
@@ -386,12 +411,21 @@ fn alias_match_at(
     }
 
     let original = &text[index..end];
-    if alias.match_policy == MatchPolicy::Ticker
-        && ticker_requires_strong_match(&alias.phrase_upper)
-        && !prefixed
-        && !original_match_is_strong(original)
-    {
-        return None;
+    if alias.match_policy == MatchPolicy::Ticker && !prefixed {
+        // An all-caps headline is not evidence that an ambiguous, word-like
+        // ticker (short, or a common word such as ON/OR/GO/OIL) was meant as a
+        // symbol, because EVERYTHING is uppercase there. Require an explicit
+        // $/# cashtag for those tickers in that context.
+        if shouty_context && ticker_is_ambiguous_word(&alias.phrase_upper) {
+            return None;
+        }
+        // A bare ticker must look deliberate: UPPERCASE in the original text (the
+        // cashtag case is handled above). Lowercase prose never resolves a
+        // ticker, even when the symbol is a >=3 character common word like
+        // PUMP/PEOPLE/BAN.
+        if !original_match_is_strong(original) {
+            return None;
+        }
     }
 
     Some(CandidateMention {
@@ -479,12 +513,16 @@ fn contextual_source_suppresses_nested_ticker(
     container: SymbolAliasSource,
     nested: SymbolAliasSource,
 ) -> bool {
+    // Deliberate multi-word mappings (a curated rule like "crude oil" -> CL, or a
+    // symbol's display name) win over a ticker that happens to be a substring of
+    // the phrase. Auto-derived keywords are intentionally NOT in this set: a
+    // keyword such as "eth staking" must not hide an explicitly-typed ETH, which
+    // the user clearly named. (Post strong-match gating, any nested ticker here is
+    // already an explicit uppercase/cashtag reference.)
     matches!(
         (container, nested),
         (
-            SymbolAliasSource::CuratedKeyword
-                | SymbolAliasSource::DisplayName
-                | SymbolAliasSource::Keyword,
+            SymbolAliasSource::CuratedKeyword | SymbolAliasSource::DisplayName,
             SymbolAliasSource::Ticker | SymbolAliasSource::Key | SymbolAliasSource::KeySuffix
         )
     )
@@ -519,7 +557,9 @@ fn source_rank(source: SymbolAliasSource) -> u8 {
     }
 }
 
-fn ticker_requires_strong_match(candidate: &str) -> bool {
+/// A ticker that is either very short or a known common word, so an uppercase
+/// occurrence in an all-caps headline is not enough to treat it as a symbol.
+fn ticker_is_ambiguous_word(candidate: &str) -> bool {
     let alphanumeric_len = candidate
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric())
@@ -527,6 +567,24 @@ fn ticker_requires_strong_match(candidate: &str) -> bool {
     alphanumeric_len <= 2
         || STRONG_TICKER_WORDS.contains(&candidate)
         || AMBIGUOUS_BARE_TICKER_WORDS.contains(&candidate)
+}
+
+/// True when the message reads as an all-caps headline, where uppercase carries
+/// no signal of intent. Requires a substantial run of uppercase letters with
+/// little or no lowercase, so a bare uppercase ticker ("BTC", "LINK moved") is
+/// not misclassified as shouty.
+fn text_is_shouty(text: &str) -> bool {
+    let mut uppercase = 0usize;
+    let mut lowercase = 0usize;
+    for ch in text.chars() {
+        if ch.is_ascii_uppercase() {
+            uppercase += 1;
+        } else if ch.is_ascii_lowercase() {
+            lowercase += 1;
+        }
+    }
+    uppercase >= SHOUTY_MIN_UPPERCASE
+        && lowercase.saturating_mul(SHOUTY_MAX_LOWER_RATIO) < uppercase
 }
 
 fn metadata_alias_is_safe(phrase: &str) -> bool {

@@ -70,6 +70,7 @@ impl TwapOrder {
             retry_slice: None,
             status_check_cloid: None,
             status_check_retries: 0,
+            account_reconciliation_retries: 0,
             reconciliation_deadline: None,
             cancel_retries: 0,
             stop_requested: false,
@@ -111,7 +112,14 @@ impl TwapOrder {
         message: String,
         is_error: bool,
     ) {
-        self.status = TwapStatus::Paused;
+        if self.status.is_terminal() {
+            return;
+        }
+        self.status = if self.stop_requested {
+            TwapStatus::Stopping
+        } else {
+            TwapStatus::Paused
+        };
         self.pause_reason = Some(reason);
         self.paused_until = paused_until;
         if let Some(until) = paused_until {
@@ -181,6 +189,10 @@ impl std::fmt::Debug for TwapOrder {
             .field("retry_slice", &self.retry_slice)
             .field("status_check_cloid", &self.status_check_cloid)
             .field("status_check_retries", &self.status_check_retries)
+            .field(
+                "account_reconciliation_retries",
+                &self.account_reconciliation_retries,
+            )
             .field("reconciliation_deadline", &self.reconciliation_deadline)
             .field("cancel_retries", &self.cancel_retries)
             .field("stop_requested", &self.stop_requested)

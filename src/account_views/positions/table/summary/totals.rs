@@ -1,4 +1,5 @@
 use super::super::sort::PositionRowData;
+use crate::account::position_upnl_from_mark_or_wire;
 use crate::helpers::{finite_value, parse_finite_number};
 
 // ---------------------------------------------------------------------------
@@ -97,14 +98,12 @@ pub(super) fn position_summary_position_upnl_value(
     wire_upnl_raw: &str,
     live_mid: Option<f64>,
 ) -> Option<f64> {
-    match (
-        live_mid,
+    position_upnl_from_mark_or_wire(
         parse_summary_number(szi_raw),
         parse_summary_number(entry_raw),
-    ) {
-        (Some(mid), Some(szi), Some(entry)) => Some(szi * (mid - entry)),
-        _ => parse_summary_number(wire_upnl_raw),
-    }
+        parse_summary_number(wire_upnl_raw),
+        live_mid,
+    )
 }
 
 pub(super) fn position_summary_spot_balance_value(

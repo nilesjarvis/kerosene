@@ -35,7 +35,6 @@ impl WidgetPaddingTargetConfig {
             PaneKind::LiquidationsDistribution => Self::LiquidationsDistribution,
             PaneKind::TrackedTrades => Self::TrackedTrades,
             PaneKind::TelegramFeed => Self::TelegramFeed,
-            PaneKind::XFeed => Self::XFeed,
             PaneKind::Outcomes => Self::Outcomes,
             PaneKind::HypeEtfs => Self::HypeEtfs,
             PaneKind::HypeUnstakingQueue => Self::HypeUnstakingQueue,

@@ -50,6 +50,8 @@ impl TradingTerminal {
 
         if self.primary_chart_id == Some(id) {
             self.clear_all_chart_surface_state(id);
+            self.clear_chart_heatmap_pending_request_state(id);
+            self.clear_chart_liquidation_pending_request_state(id);
             if let Some(instance) = self.charts.get_mut(&id) {
                 instance.annotations.clear();
                 instance.next_annotation_id = 0;
@@ -57,15 +59,7 @@ impl TradingTerminal {
                 instance.editor_open = false;
                 instance.editor_search_query.clear();
                 instance.editor_selected_index = None;
-                instance.heatmap_last_fetch = None;
-                instance.heatmap_viewport = None;
-                instance.heatmap_status = None;
-                instance.heatmap_fetching = false;
-                instance.last_price_flash = None;
-                Self::clear_heatmap_display(instance);
-                Self::clear_liquidation_display(instance);
-                Self::clear_funding_display(instance);
-                Self::clear_earnings_display(instance);
+                Self::clear_chart_symbol_display_state(instance);
             }
 
             let switch_task = self.switch_active_symbol_internal(key);
@@ -88,6 +82,8 @@ impl TradingTerminal {
             self.cache_candles(&old_symbol, old_tf, old_candles);
         }
         self.clear_all_chart_surface_state(id);
+        self.clear_chart_heatmap_pending_request_state(id);
+        self.clear_chart_liquidation_pending_request_state(id);
 
         let mut cached_last_time = None;
         let target_interval = self
@@ -103,10 +99,8 @@ impl TradingTerminal {
             let display = sym
                 .map(Self::exchange_symbol_display_name)
                 .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
-            instance.symbol = key.clone();
-            instance.symbol_display = display.clone();
+            instance.set_symbol_identity(key.clone(), display);
             instance.chart.whole_unit_volume = whole_unit_volume;
-            instance.chart.set_symbol_label(display);
             instance.chart.request_view_reset();
             instance.chart.clear_hud_armed();
             instance.chart.clear_macro_candles();
@@ -124,16 +118,8 @@ impl TradingTerminal {
             instance.editor_open = false;
             instance.editor_search_query.clear();
             instance.editor_selected_index = None;
-            instance.heatmap_last_fetch = None;
-            instance.heatmap_viewport = None;
-            instance.heatmap_status = None;
-            instance.heatmap_fetching = false;
             instance.candle_fetch_error = None;
-            instance.last_price_flash = None;
-            Self::clear_heatmap_display(instance);
-            Self::clear_liquidation_display(instance);
-            Self::clear_funding_display(instance);
-            Self::clear_earnings_display(instance);
+            Self::clear_chart_symbol_display_state(instance);
             tf = instance.interval;
         }
         self.sync_chart_position_for(id);
@@ -142,7 +128,7 @@ impl TradingTerminal {
         self.sync_chart_market_reference_prices();
         self.persist_config();
         let mut tasks = vec![self.queue_candle_fetch_for(id, &key, tf, cached_last_time)];
-        tasks.extend(Self::fetch_macro_candles_tasks(id, &key));
+        tasks.extend(self.queue_macro_candles_tasks(id, &key));
         if self
             .charts
             .get(&id)

@@ -1,4 +1,8 @@
 use super::{chase, chase_by_id};
+use crate::account::{
+    AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary, OpenOrder,
+    SpotClearinghouseState,
+};
 use crate::app_state::TradingTerminal;
 use crate::order_execution::PendingOrderAction;
 use crate::signing::ChaseLifecycle;
@@ -10,6 +14,54 @@ fn terminal_ready_for_chase_place() -> TradingTerminal {
     terminal.account_reconciliation_required = false;
     terminal.last_advanced_exchange_request_at = None;
     terminal
+}
+
+fn open_order(coin: &str, oid: u64) -> OpenOrder {
+    OpenOrder {
+        coin: coin.to_string(),
+        side: "B".to_string(),
+        limit_px: "100".to_string(),
+        sz: "1".to_string(),
+        oid,
+        timestamp: 1,
+        reduce_only: Some(false),
+        is_trigger: None,
+        order_type: None,
+        tif: None,
+        trigger_px: None,
+    }
+}
+
+fn account_data_with_open_orders(open_orders: Vec<OpenOrder>) -> AccountData {
+    AccountData {
+        fetch_scope: Default::default(),
+        request_weight_estimate: 0,
+        account_abstraction: Default::default(),
+        clearinghouse: ClearinghouseState {
+            margin_summary: MarginSummary {
+                account_value: "0".to_string(),
+                total_ntl_pos: "0".to_string(),
+                total_margin_used: "0".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "0".to_string(),
+            asset_positions: Vec::new(),
+        },
+        clearinghouses_by_dex: std::collections::HashMap::new(),
+        spot: SpotClearinghouseState {
+            balances: Vec::new(),
+            portfolio_margin_enabled: false,
+            portfolio_margin_ratio: None,
+            token_to_available_after_maintenance: None,
+        },
+        open_orders,
+        fills: Vec::new(),
+        funding_history: Vec::new(),
+        fee_rates: Default::default(),
+        completeness: AccountDataCompleteness::default(),
+        fetched_at_ms: 1,
+    }
 }
 
 #[test]
@@ -26,6 +78,24 @@ fn chase_place_uses_unfilled_residual_size() {
     let chase = chase_by_id(&terminal, 1);
     assert_eq!(chase.lifecycle, ChaseLifecycle::Placing);
     assert!((chase.remaining_size - 0.9).abs() < 1e-12);
+}
+
+#[test]
+fn chase_place_ignores_same_oid_open_order_with_mismatched_identity() {
+    let mut terminal = terminal_ready_for_chase_place();
+    let mut chase = chase();
+    chase.current_oid = None;
+    chase.known_oids = vec![42];
+    terminal.account_data_address = Some(chase.account_address.clone());
+    terminal.account_data = Some(account_data_with_open_orders(vec![open_order("ETH", 42)]));
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.chase_place_at_best(1, 101.0);
+
+    let chase = chase_by_id(&terminal, 1);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Placing);
+    assert_eq!(chase.current_oid, None);
+    assert_eq!(terminal.order_status, None);
 }
 
 #[test]

@@ -51,3 +51,61 @@ fn chart_instance_mut(terminal: &mut TradingTerminal, chart_id: ChartId) -> &mut
         None => panic!("chart instance {chart_id}"),
     }
 }
+
+fn seed_chart_pending_requests(
+    terminal: &mut TradingTerminal,
+    chart_id: ChartId,
+    other_chart_id: ChartId,
+) {
+    terminal
+        .heatmap_pending_charts
+        .insert("heat-shared".to_string(), vec![chart_id, other_chart_id]);
+    terminal
+        .heatmap_pending_charts
+        .insert("heat-only".to_string(), vec![chart_id]);
+    terminal
+        .liquidation_pending_charts
+        .insert("liq-shared".to_string(), vec![chart_id, other_chart_id]);
+    terminal
+        .liquidation_pending_charts
+        .insert("liq-only".to_string(), vec![chart_id]);
+    terminal
+        .sec_earnings_pending_charts
+        .insert("NVDA".to_string(), vec![chart_id, other_chart_id]);
+    terminal
+        .sec_earnings_pending_charts
+        .insert("TSLA".to_string(), vec![chart_id]);
+    terminal
+        .sec_earnings_pending_request_ids
+        .insert("NVDA".to_string(), 7);
+    terminal
+        .sec_earnings_pending_request_ids
+        .insert("TSLA".to_string(), 8);
+}
+
+fn assert_chart_pending_requests_pruned(terminal: &TradingTerminal, other_chart_id: ChartId) {
+    assert_eq!(
+        terminal.heatmap_pending_charts.get("heat-shared"),
+        Some(&vec![other_chart_id])
+    );
+    assert!(!terminal.heatmap_pending_charts.contains_key("heat-only"));
+    assert_eq!(
+        terminal.liquidation_pending_charts.get("liq-shared"),
+        Some(&vec![other_chart_id])
+    );
+    assert!(!terminal.liquidation_pending_charts.contains_key("liq-only"));
+    assert_eq!(
+        terminal.sec_earnings_pending_charts.get("NVDA"),
+        Some(&vec![other_chart_id])
+    );
+    assert_eq!(
+        terminal.sec_earnings_pending_request_ids.get("NVDA"),
+        Some(&7)
+    );
+    assert!(!terminal.sec_earnings_pending_charts.contains_key("TSLA"));
+    assert!(
+        !terminal
+            .sec_earnings_pending_request_ids
+            .contains_key("TSLA")
+    );
+}

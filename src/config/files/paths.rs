@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Platform-appropriate config file path.
@@ -18,13 +19,35 @@ pub(in crate::config) fn backup_config_path(path: &Path) -> PathBuf {
     path.with_extension("json.bak")
 }
 
-pub(super) fn temp_config_path(path: &Path) -> PathBuf {
+fn unique_config_sidecar_path(path: &Path, marker: &str) -> PathBuf {
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    path.with_extension(format!("json.tmp-{pid}-{nanos}"))
+    let mut file_name = path
+        .file_name()
+        .map(OsString::from)
+        .unwrap_or_else(|| OsString::from("config.json"));
+    file_name.push(format!(".{marker}-{pid}-{nanos}"));
+
+    path.parent()
+        .map(|parent| parent.join(&file_name))
+        .unwrap_or_else(|| PathBuf::from(file_name))
+}
+
+pub(in crate::config) fn config_sidecar_prefix(path: &Path, marker: &str) -> Option<String> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| format!("{name}.{marker}-"))
+}
+
+pub(super) fn temp_config_path(path: &Path) -> PathBuf {
+    unique_config_sidecar_path(path, "tmp")
+}
+
+pub(super) fn replacement_rollback_path(path: &Path) -> PathBuf {
+    unique_config_sidecar_path(path, "replace-old")
 }
 
 pub fn journal_cache_path(address: &str) -> Option<PathBuf> {

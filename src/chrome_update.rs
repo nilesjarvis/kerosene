@@ -1,11 +1,11 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::notification_state::toast_auto_dismiss_due;
-use crate::sound;
 use iced::{Task, clipboard};
 use std::time::Instant;
 
 mod menus;
+mod status_tick;
 
 impl TradingTerminal {
     pub(crate) fn update_chrome(&mut self, message: Message) -> Task<Message> {
@@ -111,8 +111,8 @@ impl TradingTerminal {
                 } else {
                     self.toasts.retain(|t| !toast_auto_dismiss_due(t, now));
                 }
-                if self.nuke_confirmation.is_some_and(|armed_at| {
-                    !crate::order_update::nuke_confirmation_is_armed(Some(armed_at), now)
+                if self.nuke_confirmation.as_ref().is_some_and(|confirmation| {
+                    !crate::order_update::nuke_confirmation_is_armed(Some(confirmation), now)
                 }) {
                     self.nuke_confirmation = None;
                 }
@@ -130,35 +130,7 @@ impl TradingTerminal {
                     (self.ticker_tape_scroll_px + 1.2).rem_euclid(100_000.0);
             }
             Message::StatusBarTick => {
-                let now = Instant::now();
-                let now_ms = Self::now_ms();
-                for instance in self.charts.values_mut() {
-                    instance.chart.set_clock_now_ms(now_ms);
-                }
-                self.sync_chart_display_denominations();
-                self.sync_chart_market_reference_prices();
-                self.expire_pending_order_indicators();
-                let config_save_task = self.flush_config_save_if_due(now);
-                let chase_limit_task = self.stop_chase_if_limits_reached(now);
-                let chase_cancel_retry_task = self.retry_stopped_chase_cancels(now);
-                for status in sound::take_status_messages() {
-                    self.push_silent_toast(status.message, status.is_error);
-                }
-                if self.is_calendar_open()
-                    && !self.calendar_loading
-                    && self
-                        .calendar_next_retry
-                        .is_some_and(|retry_at| now >= retry_at)
-                {
-                    self.calendar_next_retry = None;
-                    return Task::batch([
-                        config_save_task,
-                        chase_limit_task,
-                        chase_cancel_retry_task,
-                        self.request_calendar_refresh(false),
-                    ]);
-                }
-                return Task::batch([config_save_task, chase_limit_task, chase_cancel_retry_task]);
+                return self.handle_status_bar_tick();
             }
             Message::ConfigSaved(result) => {
                 return self.handle_config_save_result(result);

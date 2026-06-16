@@ -1,4 +1,4 @@
-use super::http::post_info_json;
+use super::http::{account_analytics_preview, post_info_json};
 use super::model::{PortfolioBucket, PortfolioHistory};
 use crate::api::{API_URL, CLIENT};
 use crate::helpers::parse_finite_json_number;
@@ -31,11 +31,7 @@ async fn fetch_portfolio_history_from_url(
 
     let entries = raw.as_array().ok_or_else(|| {
         let preview = raw.to_string();
-        let snippet = if preview.len() > 180 {
-            format!("{}...", &preview[..180])
-        } else {
-            preview
-        };
+        let snippet = account_analytics_preview(&preview);
         format!("portfolio response was not an array: {snippet}")
     })?;
 

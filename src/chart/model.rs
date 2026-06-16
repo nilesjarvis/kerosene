@@ -64,7 +64,8 @@ pub(super) fn heatmap_rect_budget(fisheye_distorts: bool, view_panning: bool) ->
 pub struct CandlestickChart {
     pub id: u64,
     pub(in crate::chart) surface_id: ChartSurfaceId,
-    pub(in crate::chart) symbol_label: String,
+    pub(crate) symbol_key: String,
+    pub(crate) symbol_label: String,
     /// Whether candle volume is denominated in whole contracts (outcome markets).
     pub(crate) whole_unit_volume: bool,
     pub(in crate::chart) timeframe: Timeframe,

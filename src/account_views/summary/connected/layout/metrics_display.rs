@@ -1,7 +1,7 @@
 use super::super::metrics::ConnectedSummaryValues;
 use crate::message::Message;
 
-use iced::widget::{column, container, text};
+use iced::widget::{Space, column, container, text};
 use iced::{Color, Element, Theme};
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,60 @@ fn summary_metric_with_color(
         .align_x(iced::Alignment::Start),
     )
     .into()
+}
+
+// ---------------------------------------------------------------------------
+// Connected Summary Skeleton Placeholders
+// ---------------------------------------------------------------------------
+
+const SKELETON_LABEL_HEIGHT: f32 = 9.0;
+const SKELETON_VALUE_HEIGHT: f32 = 13.0;
+const SKELETON_LABEL_ALPHA: f32 = 0.10;
+
+/// A single placeholder metric mirroring [`summary_metric`]'s two-line stack
+/// (dim label bar over a brighter value bar), used by the loading skeleton so
+/// the real label/value text lands in the same position when data arrives.
+pub(super) fn skeleton_metric(
+    label_w: f32,
+    value_w: f32,
+    value_alpha: f32,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    let neutral = theme.extended_palette().background.weak.text;
+
+    container(
+        column![
+            skeleton_bar(
+                label_w,
+                SKELETON_LABEL_HEIGHT,
+                SKELETON_LABEL_ALPHA,
+                neutral
+            ),
+            skeleton_bar(value_w, SKELETON_VALUE_HEIGHT, value_alpha, neutral),
+        ]
+        .spacing(1)
+        .align_x(iced::Alignment::Start),
+    )
+    .into()
+}
+
+fn skeleton_bar(width: f32, height: f32, alpha: f32, neutral: Color) -> Element<'static, Message> {
+    container(Space::new().width(width).height(height))
+        .style(move |_theme: &Theme| container::Style {
+            background: Some(
+                Color {
+                    a: alpha,
+                    ..neutral
+                }
+                .into(),
+            ),
+            border: iced::Border {
+                radius: (height * 0.5).into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 pub(super) fn portfolio_margin_ratio_color(

@@ -12,7 +12,7 @@ const POSITION_EPSILON: f64 = 1e-12;
 impl TradingTerminal {
     pub(crate) fn account_positions_with_outcomes(&self) -> Vec<AssetPosition> {
         let mut positions = Vec::new();
-        let Some(data) = self.account_data.as_ref() else {
+        let Some((_, data)) = self.connected_order_account_snapshot() else {
             return positions;
         };
 

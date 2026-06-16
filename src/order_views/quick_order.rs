@@ -1,7 +1,7 @@
 mod components;
 
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartId;
+use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::helpers::format_price;
 use crate::message::Message;
 use crate::order_execution::QuickOrderForm;
@@ -19,6 +19,7 @@ impl TradingTerminal {
         &'a self,
         chart_id: ChartId,
         form: &'a QuickOrderForm,
+        surface_id: ChartSurfaceId,
         chart_surface: Element<'a, Message>,
     ) -> Element<'a, Message> {
         let theme = self.theme();
@@ -32,7 +33,7 @@ impl TradingTerminal {
         let title_row = Self::quick_order_title_row(chart_id, form, type_label);
         let qty_input = Self::quick_order_quantity_input(chart_id, form);
         let size_controls = self.quick_order_size_controls(chart_id, form);
-        let action_row = self.quick_order_action_row(chart_id);
+        let action_row = self.quick_order_action_row(chart_id, surface_id, form);
         let fee_el = self.quick_order_fee_estimate(form);
 
         let qty_header = row![

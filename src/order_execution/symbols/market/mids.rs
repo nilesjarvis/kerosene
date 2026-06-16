@@ -9,7 +9,6 @@ use crate::signing::OrderKind;
 
 impl TradingTerminal {
     pub(crate) fn mid_candidates_for_symbol(&self, symbol: &str) -> Vec<String> {
-        let _theme = self.theme();
         let mut out = Vec::new();
         let mut push_unique = |value: String| {
             if !value.is_empty() && !out.contains(&value) {
@@ -45,12 +44,17 @@ impl TradingTerminal {
     }
 
     pub(crate) fn resolve_mid_for_symbol(&self, symbol: &str) -> Option<f64> {
-        let _theme = self.theme();
+        self.resolve_mid_for_symbol_at(symbol, Self::now_ms())
+    }
+
+    /// Like [`resolve_mid_for_symbol`] but with an explicit clock, so view code
+    /// can use the frame's snapshot time instead of reading the wall clock.
+    pub(crate) fn resolve_mid_for_symbol_at(&self, symbol: &str, now_ms: u64) -> Option<f64> {
         resolve_live_mid_from_candidates(
             &self.mid_candidates_for_symbol(symbol),
             &self.all_mids,
             &self.all_mids_updated_at_ms,
-            Self::now_ms(),
+            now_ms,
         )
     }
 

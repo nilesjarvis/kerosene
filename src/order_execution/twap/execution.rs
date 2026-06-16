@@ -27,7 +27,7 @@ impl TradingTerminal {
             return Task::none();
         }
         if let Some(twap) = self.twap_orders.get(&twap_id)
-            && self.connected_address.as_deref() != Some(twap.account_address.as_str())
+            && !self.connected_order_account_matches(&twap.account_address)
         {
             return self.stop_twap_with_reason(
                 twap_id,
@@ -148,7 +148,7 @@ impl TradingTerminal {
         let Some(twap) = self.twap_orders.get_mut(&twap_id) else {
             return Task::none();
         };
-        let key = twap.agent_key.trim().to_string();
+        let key = twap.agent_key.clone_for_task();
         if key.is_empty() {
             return self.stop_twap_with_reason(
                 twap_id,
@@ -249,11 +249,9 @@ impl TradingTerminal {
         };
         let request = prepared.place_request_with_existing_cloid(pending_slice.cloid);
 
-        place_order_task(key.into(), request, move |result| {
-            Message::TwapSliceResult {
-                twap_id,
-                result: Box::new(result),
-            }
+        place_order_task(key, request, move |result| Message::TwapSliceResult {
+            twap_id,
+            result: Box::new(result),
         })
     }
 }

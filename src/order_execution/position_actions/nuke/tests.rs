@@ -4,11 +4,12 @@ use super::planning::{
     plan_nuke_positions_from_inputs,
 };
 use crate::account::{
-    AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
-    Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
+    AccountData, AccountDataCompleteness, AccountDataSection, AssetPosition, ClearinghouseState,
+    MarginSummary, Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
 };
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::{TradingTerminal, sensitive_string};
+use crate::config::AccountProfile;
 use crate::order_execution::pricing::DEFAULT_MARKET_SLIPPAGE_PCT;
 
 mod classification;
@@ -17,6 +18,20 @@ mod orders;
 mod planning;
 
 const DEFAULT_MARKET_SLIPPAGE: f64 = DEFAULT_MARKET_SLIPPAGE_PCT / 100.0;
+const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+fn connect_test_account(terminal: &mut TradingTerminal) {
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+    terminal.accounts = vec![AccountProfile {
+        secret_id: "acct-a".to_string(),
+        name: "Account A".to_string(),
+        wallet_address: TEST_ACCOUNT.to_string(),
+        agent_key: sensitive_string("").into_zeroizing(),
+        hydromancer_api_key: sensitive_string("").into_zeroizing(),
+    }];
+    terminal.active_account_index = 0;
+}
 
 fn perp_sym() -> NukeSymbolInfo {
     NukeSymbolInfo {
@@ -113,9 +128,53 @@ fn exchange_symbol(key: &str) -> ExchangeSymbol {
 
 fn terminal_with_stale_account() -> TradingTerminal {
     let (mut terminal, _) = TradingTerminal::boot();
-    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
-    terminal.wallet_key_input = sensitive_string("agent-key");
-    terminal.account_data = Some(stale_account_data());
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, stale_account_data());
+    terminal.account_loading = false;
+    terminal
+}
+
+fn terminal_with_incomplete_fresh_account() -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot();
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.exchange_symbols = vec![exchange_symbol("BTC")];
+    let now_ms = TradingTerminal::now_ms();
+    terminal.all_mids.insert("BTC".to_string(), 100.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), now_ms);
+    let mut account_data = stale_account_data();
+    account_data.fetched_at_ms = now_ms;
+    account_data.clearinghouse.asset_positions = vec![active_position("BTC", "1")];
+    account_data
+        .completeness
+        .mark_incomplete(AccountDataSection::Positions, "HIP-3 positions unavailable");
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data);
+    terminal.account_loading = false;
+    terminal
+}
+
+fn terminal_with_degraded_fresh_account() -> TradingTerminal {
+    let (mut terminal, _) = TradingTerminal::boot();
+    connect_test_account(&mut terminal);
+    terminal.set_committed_agent_key_for_test("agent-key");
+    terminal.exchange_symbols = vec![exchange_symbol("BTC")];
+    let now_ms = TradingTerminal::now_ms();
+    terminal.all_mids.insert("BTC".to_string(), 100.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), now_ms);
+    let mut account_data = stale_account_data();
+    account_data.fetched_at_ms = now_ms;
+    account_data.clearinghouse.asset_positions = vec![active_position("BTC", "1")];
+    // A complete Hyperliquid fallback snapshot: degraded, but safe to NUKE.
+    account_data.completeness.mark_degraded(
+        AccountDataSection::Positions,
+        "Hydromancer API key missing; used Hyperliquid fallback",
+    );
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, account_data);
     terminal.account_loading = false;
     terminal
 }

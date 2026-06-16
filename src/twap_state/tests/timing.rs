@@ -1,5 +1,6 @@
 use super::{
-    TWAP_RECONCILIATION_TIMEOUT, TwapOrder, TwapPauseReason, test_twap_order, twap_child_cloid,
+    TWAP_RECONCILIATION_TIMEOUT, TwapOrder, TwapPauseReason, TwapStatus, test_twap_order,
+    twap_child_cloid,
 };
 
 use std::time::{Duration, Instant};
@@ -33,6 +34,40 @@ fn paused_status_check_blocks_scheduling_until_reconciled() {
 
     twap.status_check_cloid = None;
     assert!(twap.can_schedule_at(now));
+}
+
+#[test]
+fn stale_market_data_pause_blocks_scheduling_until_cleared() {
+    let now = Instant::now();
+    let mut twap = test_twap_order(now, 1.0, false, 2);
+    twap.pause(
+        TwapPauseReason::StaleMarketData,
+        None,
+        "stale market data".to_string(),
+        true,
+    );
+
+    assert!(!twap.can_schedule_at(now));
+
+    twap.clear_pause();
+    assert!(twap.can_schedule_at(now));
+}
+
+#[test]
+fn stopped_twap_with_reconciliation_deadline_still_needs_timer_tick() {
+    let now = Instant::now();
+    let mut twap = test_twap_order(now, 1.0, false, 2);
+
+    assert!(twap.needs_timer_tick());
+
+    twap.stop_requested = true;
+    assert!(!twap.needs_timer_tick());
+
+    twap.reconciliation_deadline = Some(now);
+    assert!(twap.needs_timer_tick());
+
+    twap.status = TwapStatus::Stopped;
+    assert!(!twap.needs_timer_tick());
 }
 
 #[test]

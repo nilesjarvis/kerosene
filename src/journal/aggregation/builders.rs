@@ -29,6 +29,7 @@ pub(super) fn new_non_perp_trade(coin: &str, fill: &UserFill) -> AggregatedTrade
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn apply_non_perp_fill(
     trade: &mut AggregatedTrade,
     coin: &str,
@@ -37,12 +38,16 @@ pub(super) fn apply_non_perp_fill(
     sz: f64,
     px: f64,
     fee: f64,
+    closed_pnl: f64,
 ) {
     add_legacy_note_id(trade, format!("{}_{}", coin, fill.oid));
     trade.end_time = Some(fill.time);
     trade.max_position += signed_sz;
     trade.volume += sz * px;
     trade.fee += fee;
+    // Hyperliquid reports realized PnL on closing (sell) spot fills, mirroring the
+    // perp paths' `trade.pnl += closed_pnl`. Buy fills carry ~0 closedPnl.
+    trade.pnl += closed_pnl;
     trade.fill_count += 1;
 
     trade.total_entry_size += sz;

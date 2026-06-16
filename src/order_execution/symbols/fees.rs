@@ -12,7 +12,7 @@ impl TradingTerminal {
         is_spot: bool,
     ) -> Option<(f64, f64)> {
         let _theme = self.theme();
-        let rates = &self.account_data.as_ref()?.fee_rates;
+        let rates = &self.connected_order_account_snapshot()?.1.fee_rates;
         let rate = rates.rate_for(is_limit, is_spot)?;
         let notional = price * qty;
         let notional = positive_finite_value(notional)?;

@@ -7,6 +7,7 @@ use crate::config;
 use crate::hyperdash_api::{HeatmapFetchParams, LiquidationHeatmap, LiquidationLevel};
 use crate::order_execution::QuickOrderForm;
 use crate::timeframe::Timeframe;
+use zeroize::Zeroizing;
 
 pub(crate) type ChartId = u64;
 
@@ -25,21 +26,53 @@ pub(crate) struct CandleFetchRequest {
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
     pub(crate) source: config::ChartBackfillSource,
+    pub(crate) read_data_provider_generation: u64,
+    pub(crate) hydromancer_key_generation: u64,
     pub(crate) start_ms: u64,
     pub(crate) end_ms: u64,
     pub(crate) attempt: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChartBackfillRequestContext {
+    pub(crate) source: config::ChartBackfillSource,
+    pub(crate) read_data_provider_generation: u64,
+    pub(crate) hydromancer_key_generation: u64,
+}
+
+impl ChartBackfillRequestContext {
+    pub(crate) fn new(
+        source: config::ChartBackfillSource,
+        read_data_provider_generation: u64,
+        hydromancer_key_generation: u64,
+    ) -> Self {
+        Self {
+            source,
+            read_data_provider_generation,
+            hydromancer_key_generation,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct ChartBackfillFetchContext {
     pub(crate) source: config::ChartBackfillSource,
-    pub(crate) hydromancer_api_key: String,
+    pub(crate) read_data_provider_generation: u64,
+    pub(crate) hydromancer_key_generation: u64,
+    pub(crate) hydromancer_api_key: Zeroizing<String>,
 }
 
 impl ChartBackfillFetchContext {
-    pub(crate) fn new(source: config::ChartBackfillSource, hydromancer_api_key: String) -> Self {
+    pub(crate) fn new(
+        source: config::ChartBackfillSource,
+        read_data_provider_generation: u64,
+        hydromancer_key_generation: u64,
+        hydromancer_api_key: Zeroizing<String>,
+    ) -> Self {
         Self {
             source,
+            read_data_provider_generation,
+            hydromancer_key_generation,
             hydromancer_api_key,
         }
     }
@@ -50,6 +83,7 @@ pub(crate) struct FundingFetchRequest {
     pub(crate) chart_id: ChartId,
     pub(crate) symbol: String,
     pub(crate) coin: String,
+    pub(crate) hydromancer_key_generation: u64,
     pub(crate) start_ms: u64,
     pub(crate) end_ms: u64,
     pub(crate) mode: FundingFetchMode,
@@ -70,6 +104,15 @@ pub(crate) struct ChartInstance {
     pub(crate) interval: Timeframe,
     pub(crate) chart: CandlestickChart,
     pub(crate) asset_ctx: Option<AssetContext>,
+    pub(crate) asset_ctx_updated_at_ms: Option<u64>,
+    /// Whether the current `asset_ctx` came from the REST `metaAndAssetCtxs`
+    /// fallback rather than the `activeAssetCtx` WebSocket stream. REST-sourced
+    /// context is refreshed on a timer and is always superseded by a live WS
+    /// push; it is never allowed to clobber WS data.
+    pub(crate) asset_ctx_from_rest: bool,
+    /// Whether a REST asset-context fetch is currently in flight for this chart
+    /// (dedupes the status-tick poller).
+    pub(crate) asset_ctx_rest_in_flight: bool,
     /// Whether the inline symbol editor is open.
     pub(crate) editor_open: bool,
     /// Whether the chart header is collapsed to a ticker-only strip.
@@ -135,6 +178,8 @@ pub(crate) struct ChartInstance {
     pub(crate) funding_fetch_request: Option<FundingFetchRequest>,
     /// Last time this chart attempted a funding history fetch.
     pub(crate) funding_last_attempt_ms: Option<u64>,
+    /// Latest macro candle request batch for stale-response guards.
+    pub(crate) macro_candles_request_id: u64,
     /// Active macro indicators configuration.
     pub(crate) macro_indicators: config::MacroIndicatorsConfig,
     /// Toggle state for the macro indicators dropdown menu.

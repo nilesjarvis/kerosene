@@ -1,6 +1,27 @@
 use super::note;
-use crate::journal::{JournalState, JournalSyncStatus};
+use crate::journal::{JournalFilter, JournalState, JournalSyncStatus};
 use std::collections::HashMap;
+
+#[test]
+fn journal_filter_matches_expected_coin_prefixes() {
+    let cases = [
+        ("BTC", true, true, false, false),
+        ("xyz:NVDA", true, true, false, false),
+        ("@107", true, false, true, false),
+        ("#950", true, false, false, true),
+    ];
+
+    for (coin, all, perp, spot, outcome) in cases {
+        assert_eq!(JournalFilter::All.matches_coin(coin), all, "{coin} all");
+        assert_eq!(JournalFilter::Perp.matches_coin(coin), perp, "{coin} perp");
+        assert_eq!(JournalFilter::Spot.matches_coin(coin), spot, "{coin} spot");
+        assert_eq!(
+            JournalFilter::Outcome.matches_coin(coin),
+            outcome,
+            "{coin} outcome"
+        );
+    }
+}
 
 #[test]
 fn journal_state_migrates_legacy_notes_to_active_account() {

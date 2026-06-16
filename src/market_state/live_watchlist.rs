@@ -33,9 +33,9 @@ impl TradingTerminal {
             now_ms: Self::now_ms(),
             contexts_last_fetch_ms: self.live_watchlist_contexts_last_fetch_ms,
             contexts: &self.live_watchlist_ctxs,
-            contexts_loading: self.live_watchlist_contexts_loading,
+            contexts_loading: false,
             history_loaded_at: &self.live_watchlist_history_loaded_at,
-            history_loading: self.live_watchlist_history_loading,
+            history_loading: false,
         });
         if !plan.has_requests() {
             return Task::none();
@@ -44,31 +44,64 @@ impl TradingTerminal {
         let mut tasks = Vec::new();
 
         if !plan.context_symbols.is_empty() {
-            self.live_watchlist_contexts_loading = true;
-            let requested_at = plan.requested_at;
-            tasks.push(Task::perform(
-                api::fetch_watchlist_contexts(plan.context_symbols),
-                move |result| Message::LiveWatchlistContextsLoaded(requested_at, result),
-            ));
+            if self.live_watchlist_contexts_loading {
+                if plan.context_symbols != self.live_watchlist_contexts_request_symbols {
+                    self.live_watchlist_contexts_refresh_pending = true;
+                }
+            } else {
+                self.live_watchlist_contexts_request_id =
+                    self.live_watchlist_contexts_request_id.saturating_add(1);
+                let request_id = self.live_watchlist_contexts_request_id;
+                let requested_symbols = plan.context_symbols.clone();
+                self.live_watchlist_contexts_request_symbols = requested_symbols.clone();
+                self.live_watchlist_contexts_refresh_pending = false;
+                self.live_watchlist_contexts_loading = true;
+                let requested_at = plan.requested_at;
+                tasks.push(Task::perform(
+                    api::fetch_watchlist_contexts(plan.context_symbols),
+                    move |result| {
+                        Message::LiveWatchlistContextsLoaded(
+                            request_id,
+                            requested_symbols.clone(),
+                            requested_at,
+                            result,
+                        )
+                    },
+                ));
+            }
         }
 
         if !plan.history_symbols.is_empty() {
-            self.live_watchlist_history_loading = true;
-            let requested_symbols = plan.history_symbols.clone();
-            let requested_at = plan.requested_at;
-            tasks.push(Task::perform(
-                api::fetch_watchlist_history(plan.history_symbols),
-                move |result| {
-                    Message::LiveWatchlistHistoryLoaded(
-                        requested_symbols.clone(),
-                        requested_at,
-                        result,
-                    )
-                },
-            ));
+            if self.live_watchlist_history_loading {
+                if plan.history_symbols != self.live_watchlist_history_request_symbols {
+                    self.live_watchlist_history_refresh_pending = true;
+                }
+            } else {
+                self.live_watchlist_history_request_id =
+                    self.live_watchlist_history_request_id.saturating_add(1);
+                let request_id = self.live_watchlist_history_request_id;
+                let requested_symbols = plan.history_symbols.clone();
+                self.live_watchlist_history_request_symbols = requested_symbols.clone();
+                self.live_watchlist_history_refresh_pending = false;
+                self.live_watchlist_history_loading = true;
+                let requested_at = plan.requested_at;
+                tasks.push(Task::perform(
+                    api::fetch_watchlist_history(plan.history_symbols),
+                    move |result| {
+                        Message::LiveWatchlistHistoryLoaded(
+                            request_id,
+                            requested_symbols.clone(),
+                            requested_at,
+                            result,
+                        )
+                    },
+                ));
+            }
         }
 
-        self.live_watchlist_status = None;
+        if !tasks.is_empty() {
+            self.live_watchlist_status = None;
+        }
         Task::batch(tasks)
     }
 }

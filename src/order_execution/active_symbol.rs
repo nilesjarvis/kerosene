@@ -12,6 +12,7 @@ impl TradingTerminal {
         if self.active_symbol != key {
             self.order_quantity.clear();
             self.order_percentage = 0.0;
+            self.order_quantity_provenance = None;
             self.order_leverage_dropdown_open = false;
         }
 
@@ -56,9 +57,14 @@ impl TradingTerminal {
         self.apply_active_symbol_selection(valid_key.clone(), display.clone());
         self.refresh_order_price_for_symbol(&valid_key);
         self.reset_active_order_books_for_symbol(&valid_key);
+        for inst in self.charts.values_mut() {
+            inst.clear_quick_order();
+        }
+        self.chart_quick_order_surface.clear();
 
         let mut candle_task = Task::none();
         if let Some(primary_id) = self.primary_chart_id {
+            self.clear_all_chart_surface_state(primary_id);
             let mut old_cache_data = None;
             if let Some(instance) = self.charts.get(&primary_id)
                 && !instance.chart.candles.is_empty()
@@ -84,21 +90,11 @@ impl TradingTerminal {
 
             let mut fetch_tf = None;
             if let Some(instance) = self.charts.get_mut(&primary_id) {
-                instance.symbol = valid_key.clone();
-                instance.symbol_display = display.clone();
-                instance.chart.set_symbol_label(display);
+                instance.set_symbol_identity(valid_key.clone(), display.clone());
                 instance.chart.request_view_reset();
                 instance.chart.clear_hud_armed();
                 instance.chart.clear_macro_candles();
-                instance.heatmap_last_fetch = None;
-                instance.heatmap_viewport = None;
-                instance.heatmap_status = None;
-                instance.heatmap_fetching = false;
-                instance.last_price_flash = None;
-                Self::clear_heatmap_display(instance);
-                Self::clear_liquidation_display(instance);
-                Self::clear_funding_display(instance);
-                Self::clear_earnings_display(instance);
+                Self::clear_chart_symbol_display_state(instance);
 
                 if let Some(candles) = cached_candles {
                     cached_last_time = candles.last().map(|c| c.open_time);
@@ -109,7 +105,7 @@ impl TradingTerminal {
                     instance.chart.candle_cache.clear();
                 }
 
-                instance.asset_ctx = None;
+                instance.set_asset_context(None);
                 instance.candle_fetch_error = None;
                 fetch_tf = Some(instance.interval);
             }
@@ -117,7 +113,7 @@ impl TradingTerminal {
             if let Some(tf) = fetch_tf {
                 let mut tasks =
                     vec![self.queue_candle_fetch_for(primary_id, &valid_key, tf, cached_last_time)];
-                tasks.extend(Self::fetch_macro_candles_tasks(primary_id, &valid_key));
+                tasks.extend(self.queue_macro_candles_tasks(primary_id, &valid_key));
                 if self
                     .charts
                     .get(&primary_id)
@@ -130,10 +126,6 @@ impl TradingTerminal {
         }
 
         self.sync_all_chart_overlays();
-        for inst in self.charts.values_mut() {
-            inst.clear_quick_order();
-        }
-        self.chart_quick_order_surface.clear();
         self.persist_config();
 
         let active_book_ids: Vec<_> = self

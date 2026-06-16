@@ -1,6 +1,7 @@
-use crate::{api::CLIENT, helpers::response_snippet};
+use crate::{api::CLIENT, helpers::sensitive_response_snippet};
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // Hydromancer REST API
@@ -43,7 +44,7 @@ pub(crate) async fn fetch_funding_history(
     coin: String,
     start_time_ms: u64,
     end_time_ms: u64,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<Vec<FundingRatePoint>, String> {
     if coin.trim().is_empty() {
         return Err("Hydromancer funding request missing coin".to_string());
@@ -64,7 +65,7 @@ pub(crate) async fn fetch_funding_history(
             cursor,
             Some(end_time_ms),
             FUNDING_HISTORY_PAGE_LIMIT,
-            &api_key,
+            api_key.as_str(),
         )
         .await?;
         if page.is_empty() {
@@ -115,7 +116,7 @@ async fn fetch_funding_history_page(
         .clone()
         .post(HYDROMANCER_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .header("Authorization", format!("Bearer {}", api_key.trim()))
+        .bearer_auth(api_key.trim())
         .json(&body)
         .send()
         .await
@@ -131,7 +132,7 @@ async fn fetch_funding_history_page(
         return Err(format!(
             "Hydromancer funding HTTP {}: {}",
             status.as_u16(),
-            response_snippet(&text),
+            sensitive_response_snippet(&text),
         ));
     }
 

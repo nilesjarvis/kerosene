@@ -10,6 +10,7 @@ use crate::signing::{ExchangeOrderKind, ExchangeResponse};
 use crate::sound;
 
 use iced::{Point, Size, Task};
+use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // HUD Chart Order Submission
@@ -25,6 +26,11 @@ impl TradingTerminal {
             self.order_status = Some(("HUD order ignored: chart surface changed".into(), true));
             return Task::none();
         }
+        let chart_symbol = instance.symbol.clone();
+        if chart_symbol != request.symbol_key {
+            self.order_status = Some(("HUD order ignored: chart symbol changed".into(), true));
+            return Task::none();
+        }
         if !instance.chart.hud_order_submission_enabled() {
             self.order_status = Some((
                 "HUD trading is in safe mode; arm the chart first".into(),
@@ -33,20 +39,6 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        // Chart clicks can queue faster than results return; serialize HUD
-        // submissions on the same pending flag the one-shot results clear.
-        if self.pending_order_action.is_some() {
-            self.order_status = Some(("Wait for the pending order action to finish".into(), true));
-            return Task::none();
-        }
-
-        let key = self.wallet_key_input.trim().to_string();
-        if key.is_empty() || self.connected_address.is_none() {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return Task::none();
-        }
-
-        let chart_symbol = instance.symbol.clone();
         if chart_symbol.is_empty() {
             self.order_status = Some(("Select a chart symbol before HUD trading".into(), true));
             return Task::none();
@@ -58,14 +50,35 @@ impl TradingTerminal {
         } else {
             ExchangeOrderKind::Limit
         };
+        let is_buy = if is_market_order {
+            request.market_side.is_buy()
+        } else {
+            match request.limit_side {
+                Some(side) => side.is_buy(),
+                None => {
+                    self.order_status =
+                        Some(("No click-time side for HUD limit order".into(), true));
+                    return Task::none();
+                }
+            }
+        };
+
+        // Chart clicks can queue faster than results return; serialize HUD
+        // submissions through the same pending-request gate as ticket orders.
+        if self.reject_if_pending_trading_request("placing a HUD order") {
+            return Task::none();
+        }
+        if self.reject_if_account_reconciliation_required("placing a HUD order", "account data") {
+            return Task::none();
+        }
+
+        let Some((key, account_address)) = self.order_signing_context() else {
+            return Task::none();
+        };
         let intent = PlaceIntent {
             surface: OrderSurface::Hud,
             symbol_key: chart_symbol,
-            is_buy: if is_market_order {
-                request.market_side.is_buy()
-            } else {
-                false
-            },
+            is_buy,
             order_kind,
             price_source: match request.order_type {
                 HudOrderType::Limit => PriceSource::LimitInput {
@@ -85,30 +98,21 @@ impl TradingTerminal {
             },
             reduce_only_source: ReduceOnlySource::Form(self.order_reduce_only),
         };
-        let mut prepared = match self.prepare_place_order(intent) {
+        let prepared = match self.prepare_place_order(intent) {
             Ok(prepared) => prepared,
             Err(message) => {
                 self.order_status = Some((message, true));
                 return Task::none();
             }
         };
-        if !is_market_order {
-            prepared.is_buy = match request.limit_side {
-                Some(side) => side.is_buy(),
-                None => {
-                    self.order_status =
-                        Some(("No click-time side for HUD limit order".into(), true));
-                    return Task::none();
-                }
-            };
-        }
 
-        self.submit_prepared_hud_order(key, request, prepared, is_market_order)
+        self.submit_prepared_hud_order(key, account_address, request, prepared, is_market_order)
     }
 
     fn submit_prepared_hud_order(
         &mut self,
-        key: String,
+        key: Zeroizing<String>,
+        account_address: String,
         request: HudOrderRequest,
         prepared: PreparedExchangeOrder,
         is_market_order: bool,
@@ -140,7 +144,6 @@ impl TradingTerminal {
             );
         }
 
-        let account_address = self.connected_address.clone().unwrap_or_default();
         let pending_indicator_id = if is_market_order {
             self.add_pending_market_order_placement_indicator(
                 account_address.clone(),
@@ -160,7 +163,7 @@ impl TradingTerminal {
         };
 
         let (request, context) = prepared.place_request_with_context(&account_address);
-        place_order_task(key.into(), request, move |result| Message::HudOrderResult {
+        place_order_task(key, request, move |result| Message::HudOrderResult {
             pending_indicator_id,
             context,
             result: Box::new(result),
@@ -230,9 +233,25 @@ mod tests {
     use crate::api::{ExchangeSymbol, MarketType};
     use crate::app_state::sensitive_string;
     use crate::chart_state::{ChartInstance, ChartSurfaceId};
-    use crate::config::ChartCrosshairStyle;
+    use crate::config::{AccountProfile, ChartCrosshairStyle};
     use crate::order_execution::{HudOrderSide, PendingOrderAction};
+    use crate::order_update::PendingOneShotStatusRequest;
     use crate::timeframe::Timeframe;
+
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+    fn connect_test_account(terminal: &mut TradingTerminal) {
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        terminal.accounts = vec![AccountProfile {
+            secret_id: "acct-a".to_string(),
+            name: "Account A".to_string(),
+            wallet_address: TEST_ACCOUNT.to_string(),
+            agent_key: sensitive_string("").into_zeroizing(),
+            hydromancer_api_key: sensitive_string("").into_zeroizing(),
+        }];
+        terminal.active_account_index = 0;
+    }
 
     fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
         ExchangeSymbol {
@@ -255,8 +274,8 @@ mod tests {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.charts.clear();
         terminal.pending_order_action = None;
-        terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
-        terminal.wallet_key_input = sensitive_string("agent-key");
+        connect_test_account(&mut terminal);
+        terminal.set_committed_agent_key_for_test("agent-key");
 
         let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
         instance.chart.set_crosshair_style(ChartCrosshairStyle::Hud);
@@ -271,6 +290,7 @@ mod tests {
         HudOrderRequest {
             chart_id: 1,
             surface_id,
+            symbol_key: "BTC".to_string(),
             price: 100.0,
             quantity: "1".to_string(),
             order_type: HudOrderType::Limit,
@@ -281,6 +301,19 @@ mod tests {
             chart_w: 400.0,
             chart_h: 240.0,
         }
+    }
+
+    fn pending_one_shot_status_request() -> PendingOneShotStatusRequest {
+        PendingOneShotStatusRequest::new(
+            7,
+            &OneShotPlacementContext {
+                account_address: TEST_ACCOUNT.to_string(),
+                cloid: "0x00000000000000000000000000000003".to_string(),
+                surface: OrderSurface::Hud,
+                symbol_key: "BTC".to_string(),
+                order_kind: ExchangeOrderKind::Limit,
+            },
+        )
     }
 
     #[test]
@@ -316,6 +349,34 @@ mod tests {
     }
 
     #[test]
+    fn hud_order_submission_rejects_symbol_mismatch_after_click() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![
+            symbol("BTC", MarketType::Perp),
+            symbol("ETH", MarketType::Perp),
+        ];
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.symbol_key = "BTC".to_string();
+        terminal
+            .charts
+            .get_mut(&1)
+            .expect("chart should exist")
+            .symbol = "ETH".to_string();
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("HUD order ignored: chart symbol changed", true))
+        );
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
+    }
+
+    #[test]
     fn hud_order_submission_rejects_while_order_action_pending() {
         let mut terminal = terminal_with_hud_chart(true);
         terminal.pending_order_action = Some(PendingOrderAction::Sell);
@@ -327,12 +388,58 @@ mod tests {
                 .order_status
                 .as_ref()
                 .map(|(message, is_error)| (message.as_str(), *is_error)),
-            Some(("Wait for the pending order action to finish", true))
+            Some((
+                "Wait for pending trading requests to finish before placing a HUD order",
+                true
+            ))
         );
         assert_eq!(
             terminal.pending_order_action,
             Some(PendingOrderAction::Sell)
         );
+    }
+
+    #[test]
+    fn hud_order_submission_rejects_while_one_shot_status_pending() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.pending_one_shot_status_request = Some(pending_one_shot_status_request());
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some((
+                "Wait for pending trading requests to finish before placing a HUD order",
+                true
+            ))
+        );
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_one_shot_status_request.is_some());
+        assert!(terminal.pending_order_indicators.is_empty());
+    }
+
+    #[test]
+    fn hud_order_submission_rejects_while_account_reconciliation_is_pending() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.account_reconciliation_required = true;
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some((
+                "Account refresh pending; wait for fresh account data before placing a HUD order",
+                true
+            ))
+        );
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
     }
 
     #[test]
@@ -347,6 +454,7 @@ mod tests {
                 cloid: "0x00000000000000000000000000000000".to_string(),
                 surface: OrderSurface::Hud,
                 symbol_key: "BTC".to_string(),
+                order_kind: ExchangeOrderKind::Market,
             },
             Err("exchange request failed".into()),
         );
@@ -396,6 +504,39 @@ mod tests {
                 .map(|(message, is_error)| (message.as_str(), *is_error)),
             Some(("Placing HUD limit LONG 1 BTC...", false))
         );
+        let indicator = terminal
+            .pending_order_indicators
+            .values()
+            .next()
+            .expect("HUD pending indicator");
+        assert_eq!(indicator.account_address, TEST_ACCOUNT);
+    }
+
+    #[test]
+    fn hud_limit_submission_uses_click_time_short_side() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.price = 110.0;
+        request.limit_side = Some(HudOrderSide::Short);
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            terminal.pending_order_action,
+            Some(PendingOrderAction::Sell)
+        );
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("Placing HUD limit SHORT 1 BTC...", false))
+        );
     }
 
     #[test]
@@ -419,5 +560,56 @@ mod tests {
             Some(("No click-time side for HUD limit order", true))
         );
         assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn hud_limit_submission_rejects_missing_click_time_side_before_quantity_preflight() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.limit_side = None;
+        request.quantity = "0".to_string();
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("No click-time side for HUD limit order", true))
+        );
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
+    }
+
+    #[test]
+    fn hud_limit_submission_rejects_missing_click_time_side_before_signing_context() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.accounts.clear();
+        terminal.set_committed_agent_key_for_test("");
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.limit_side = None;
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("No click-time side for HUD limit order", true))
+        );
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
     }
 }

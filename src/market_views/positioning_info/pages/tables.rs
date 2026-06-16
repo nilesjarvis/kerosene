@@ -20,11 +20,12 @@ impl TradingTerminal {
         &self,
         data: &TickerPositions,
         instance: &PositioningInfoInstance,
+        now_ms: u64,
         available_width: f32,
         theme: &Theme,
     ) -> Element<'static, Message> {
         let columns = PositioningInfoColumns::for_width(available_width);
-        let live_mark = positioning_live_mark(instance, TradingTerminal::now_ms());
+        let live_mark = positioning_live_mark(instance, now_ms);
         let max_notional = data
             .positions
             .iter()

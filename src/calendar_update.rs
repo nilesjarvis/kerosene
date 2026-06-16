@@ -4,13 +4,19 @@ use chrono::{DateTime, Local, Utc};
 use iced::Task;
 use std::time::{Duration, Instant};
 
+const CALENDAR_REFRESH_INTERVAL_SECS: u64 = 15 * 60;
+
 impl TradingTerminal {
     pub(crate) fn update_calendar(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::RefreshCalendar => {
                 return self.request_calendar_refresh(true);
             }
-            Message::CalendarLoaded(result) => {
+            Message::CalendarLoaded(request_id, result) => {
+                if !self.calendar_loading || request_id != self.calendar_request_id {
+                    return Task::none();
+                }
+
                 let now = Instant::now();
                 self.calendar_loading = false;
                 match result {
@@ -67,17 +73,106 @@ impl TradingTerminal {
                     }
                 }
             }
-            Message::Tick if self.is_calendar_open() && !self.calendar_loading => {
-                let should_fetch = self
-                    .calendar_last_fetch
-                    .is_none_or(|last_fetch| last_fetch.elapsed().as_secs() >= 15 * 60);
-                if should_fetch {
-                    return self.request_calendar_refresh(false);
-                }
+            Message::Tick
+                if self.is_calendar_open()
+                    && !self.calendar_loading
+                    && calendar_refresh_is_due(self.calendar_last_fetch, self.status_bar_now) =>
+            {
+                return self.request_calendar_refresh(false);
             }
             _ => {}
         }
 
         Task::none()
+    }
+}
+
+fn calendar_refresh_is_due(last_fetch: Option<Instant>, now: Instant) -> bool {
+    last_fetch.is_none_or(|last_fetch| {
+        now.saturating_duration_since(last_fetch).as_secs() >= CALENDAR_REFRESH_INTERVAL_SECS
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::api::CalendarEvent;
+    use iced::widget::pane_grid;
+
+    fn event(title: &str) -> CalendarEvent {
+        CalendarEvent {
+            title: title.to_string(),
+            country: "US".to_string(),
+            date: "2026-06-12T12:00:00+00:00".to_string(),
+            impact: "High".to_string(),
+            forecast: String::new(),
+            previous: String::new(),
+        }
+    }
+
+    fn terminal_with_calendar_pane() -> TradingTerminal {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let (panes, _) = pane_grid::State::new(crate::pane_state::PaneKind::Calendar);
+        terminal.panes = panes;
+        terminal
+    }
+
+    #[test]
+    fn calendar_refresh_allocates_request_id() {
+        let mut terminal = terminal_with_calendar_pane();
+
+        let _task = terminal.request_calendar_refresh(false);
+
+        assert!(terminal.calendar_loading);
+        assert_eq!(terminal.calendar_request_id, 1);
+    }
+
+    #[test]
+    fn stale_loaded_message_does_not_clear_current_refresh() {
+        let mut terminal = terminal_with_calendar_pane();
+        terminal.calendar_loading = true;
+        terminal.calendar_request_id = 2;
+        terminal.calendar_error = Some("current error".to_string());
+
+        let _task = terminal.update_calendar(Message::CalendarLoaded(1, Ok(vec![event("stale")])));
+
+        assert!(terminal.calendar_loading);
+        assert!(terminal.calendar_events.is_empty());
+        assert_eq!(terminal.calendar_error.as_deref(), Some("current error"));
+        assert!(terminal.calendar_last_fetch.is_none());
+    }
+
+    #[test]
+    fn duplicate_loaded_message_after_completion_is_ignored() {
+        let mut terminal = terminal_with_calendar_pane();
+        terminal.calendar_loading = false;
+        terminal.calendar_request_id = 7;
+        terminal.calendar_events = vec![event("accepted")];
+
+        let _task =
+            terminal.update_calendar(Message::CalendarLoaded(7, Ok(vec![event("duplicate")])));
+
+        assert_eq!(terminal.calendar_events.len(), 1);
+        assert_eq!(terminal.calendar_events[0].title, "accepted");
+    }
+
+    #[test]
+    fn calendar_refresh_due_uses_supplied_tick_clock() {
+        let now = Instant::now();
+
+        assert!(calendar_refresh_is_due(None, now));
+        assert!(!calendar_refresh_is_due(
+            Some(now - Duration::from_secs(CALENDAR_REFRESH_INTERVAL_SECS - 1)),
+            now
+        ));
+        assert!(calendar_refresh_is_due(
+            Some(now - Duration::from_secs(CALENDAR_REFRESH_INTERVAL_SECS)),
+            now
+        ));
+        assert!(!calendar_refresh_is_due(
+            Some(now + Duration::from_secs(1)),
+            now
+        ));
     }
 }

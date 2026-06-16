@@ -8,13 +8,18 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{format_price, format_size};
 use crate::message::Message;
 
-use super::super::{POSITION_ACTION_WIDTH, PositionColumnVisibility, PositionNumberMode};
+use super::super::{
+    POSITION_ACTION_WIDTH, POSITION_ENTRY_WIDTH, POSITION_FUNDING_WIDTH, POSITION_LEVERAGE_WIDTH,
+    POSITION_LIQ_WIDTH, POSITION_MARK_WIDTH, POSITION_SIDE_WIDTH, PositionColumnVisibility,
+    PositionNumberMode,
+};
 use super::format_position_compact_number;
 use super::sort::PositionRowData;
 use cells::{position_symbol_button, position_upnl_cell};
 #[cfg(test)]
 use formatting::format_position_signed_amount;
 use formatting::{format_position_entry_price, trim_decimal_zeros};
+use iced::widget::text::Wrapping;
 use iced::widget::{container, row, text};
 use iced::{Element, Fill, Theme, color};
 
@@ -59,6 +64,7 @@ impl TradingTerminal {
         .size(12)
         .font(crate::app_fonts::monospace_font())
         .color(color!(0xff9d66))
+        .wrapping(Wrapping::None)
         .into();
 
         let funding_color = match data.funding_since_open {
@@ -100,38 +106,53 @@ impl TradingTerminal {
                 .font(crate::app_fonts::monospace_font())
                 .color(theme.palette().primary)
                 .width(Fill)
+                .wrapping(Wrapping::None)
                 .into(),
             None => text(size_str)
                 .size(12)
                 .font(crate::app_fonts::monospace_font())
                 .width(Fill)
+                .wrapping(Wrapping::None)
                 .into(),
         };
 
         let mut row_content = row![
             container(symbol_btn).width(Fill),
-            text(side).size(12).color(side_color).width(Fill),
-            size_cell,
-            text(entry_str)
+            text(side)
                 .size(12)
-                .font(crate::app_fonts::monospace_font())
-                .width(Fill),
+                .color(side_color)
+                .width(POSITION_SIDE_WIDTH)
+                .wrapping(Wrapping::None),
+            size_cell,
         ];
-        if columns.liquidation {
-            row_content = row_content.push(container(liq_element).width(Fill));
+        if columns.entry {
+            row_content = row_content.push(
+                text(entry_str)
+                    .size(12)
+                    .font(crate::app_fonts::monospace_font())
+                    .width(POSITION_ENTRY_WIDTH)
+                    .wrapping(Wrapping::None),
+            );
         }
-        row_content = row_content
-            .push(
+        if columns.liquidation {
+            row_content = row_content.push(container(liq_element).width(POSITION_LIQ_WIDTH));
+        }
+        if columns.mark {
+            row_content = row_content.push(
                 text(mark_str)
                     .size(12)
                     .font(crate::app_fonts::monospace_font())
-                    .width(Fill),
-            )
+                    .width(POSITION_MARK_WIDTH)
+                    .wrapping(Wrapping::None),
+            );
+        }
+        row_content = row_content
             .push(
                 text(pnl_displays.value)
                     .size(12)
                     .font(crate::app_fonts::monospace_font())
-                    .width(Fill),
+                    .width(Fill)
+                    .wrapping(Wrapping::None),
             )
             .push(container(upnl_cell).width(Fill));
         if columns.funding {
@@ -140,7 +161,8 @@ impl TradingTerminal {
                     .size(12)
                     .font(crate::app_fonts::monospace_font())
                     .color(funding_color)
-                    .width(Fill),
+                    .width(POSITION_FUNDING_WIDTH)
+                    .wrapping(Wrapping::None),
             );
         }
         if columns.total_pnl {
@@ -149,7 +171,8 @@ impl TradingTerminal {
                     .size(13)
                     .font(crate::app_fonts::monospace_font())
                     .color(total_pnl_color)
-                    .width(Fill),
+                    .width(Fill)
+                    .wrapping(Wrapping::None),
             );
         }
         if columns.leverage {
@@ -158,7 +181,8 @@ impl TradingTerminal {
                     .size(12)
                     .font(crate::app_fonts::monospace_font())
                     .color(theme.extended_palette().background.weak.text)
-                    .width(Fill),
+                    .width(POSITION_LEVERAGE_WIDTH)
+                    .wrapping(Wrapping::None),
             );
         }
         row_content = row_content

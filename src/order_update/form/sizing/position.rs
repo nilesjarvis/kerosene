@@ -59,7 +59,7 @@ pub(super) fn position_quantity_for_percentage(
     }
 }
 
-pub(in crate::order_update::form) fn position_size_for_symbol(
+pub(in crate::order_update) fn position_size_for_symbol(
     clearinghouse: &ClearinghouseState,
     active_symbol: &str,
 ) -> Option<f64> {

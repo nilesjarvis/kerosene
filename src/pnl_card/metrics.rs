@@ -106,11 +106,9 @@ impl TradingTerminal {
 
     pub(super) fn visible_pnl_card_positions(
         &self,
-    ) -> impl Iterator<Item = &account::AssetPosition> {
-        self.account_data
-            .as_ref()
+    ) -> impl Iterator<Item = account::AssetPosition> + '_ {
+        self.account_positions_with_outcomes()
             .into_iter()
-            .flat_map(|data| data.clearinghouse.asset_positions.iter())
             .filter(|ap| {
                 !self.symbol_key_is_hidden(&ap.position.coin)
                     && (self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))

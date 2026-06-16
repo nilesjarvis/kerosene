@@ -6,7 +6,6 @@ mod connection;
 mod liquidations;
 mod telegram;
 mod tracked_trades;
-mod x;
 
 impl TradingTerminal {
     pub(crate) fn update_feed(&mut self, message: Message) -> Task<Message> {
@@ -15,17 +14,18 @@ impl TradingTerminal {
             | Message::SaveHydromancerKey
             | Message::ReconnectLiquidations
             | Message::ReconnectTrackedTrades) => return self.update_feed_connection(message),
-            message @ (Message::WsHydromancerLiquidation(_)
+            message @ (Message::WsHydromancerLiquidation { .. }
             | Message::ClearLiquidations
             | Message::LiquidationFeedScrolled(_)) => {
                 return self.update_liquidation_feed(message);
             }
-            message @ (Message::WsHydromancerTrackedTrades(_) | Message::ClearTrackedTrades) => {
+            message
+            @ (Message::WsHydromancerTrackedTrades { .. } | Message::ClearTrackedTrades) => {
                 return self.update_tracked_trade_feed(message);
             }
             message @ (Message::RefreshTelegramFeed
             | Message::TelegramFeedRefreshTick
-            | Message::TelegramFeedLoaded(_, _)
+            | Message::TelegramFeedLoaded(_, _, _)
             | Message::TelegramAvatarLoaded(_, _, _, _)
             | Message::ToggleTelegramFastFeed
             | Message::TelegramFastApiIdChanged(_)
@@ -37,32 +37,19 @@ impl TradingTerminal {
             | Message::TelegramFastSubmitCode
             | Message::TelegramFastSubmitPassword
             | Message::TelegramFastSignOut
-            | Message::TelegramFastAuthResult(_)
-            | Message::TelegramFastFeedEvent(_)
+            | Message::TelegramFastAuthResult(_, _)
+            | Message::TelegramFastFeedEvent(_, _)
             | Message::TelegramFeedChannelInputChanged(_)
             | Message::TelegramFeedAddChannel
             | Message::TelegramPrivateChannelsRefresh
-            | Message::TelegramPrivateChannelsLoaded(_)
+            | Message::TelegramPrivateChannelsLoaded(_, _)
             | Message::TelegramFeedAddPrivateChannel(_)
             | Message::ToggleTelegramPrivateChannelCandidatesExpanded
             | Message::TelegramFeedRemoveChannel(_)
             | Message::ToggleTelegramFeedChannelsExpanded
-            | Message::ToggleTelegramFeedNotifications) => {
+            | Message::ToggleTelegramFeedNotifications
+            | Message::ToggleTelegramFeedOutcomeMarkets) => {
                 return self.update_telegram_feed(message);
-            }
-            message @ (Message::RefreshXFeed
-            | Message::XFeedRefreshTick
-            | Message::XFeedLoaded(_)
-            | Message::XFeedStreamEvent(_)
-            | Message::XFeedBearerTokenChanged(_)
-            | Message::SaveXFeedBearerToken
-            | Message::XFeedSourceInputChanged(_)
-            | Message::XFeedAddSource
-            | Message::XFeedRemoveSource(_)
-            | Message::ToggleXFeedStreaming
-            | Message::ToggleXFeedNotifications
-            | Message::ToggleXFeedSourcesExpanded) => {
-                return self.update_x_feed(message);
             }
             _ => {}
         }

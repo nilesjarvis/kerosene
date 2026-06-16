@@ -1,7 +1,9 @@
 use super::calculations::parse_positive_finite;
+use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
 use crate::helpers::positive_finite_value;
+use crate::order_update::form::sizing::{OrderSizingBasis, position_size_for_symbol};
 
 // ---------------------------------------------------------------------------
 // Quick Order Form Context
@@ -19,7 +21,7 @@ impl TradingTerminal {
         ))
     }
 
-    pub(super) fn quick_order_reference_price(
+    pub(crate) fn quick_order_reference_price(
         &self,
         form_price: f64,
         is_limit: bool,
@@ -41,8 +43,27 @@ impl TradingTerminal {
             .unwrap_or(4)
     }
 
+    #[cfg(test)]
     pub(super) fn quick_order_max_notional(&self, symbol: &str) -> Option<f64> {
-        let data = self.account_data.as_ref()?;
+        let (_, data) = self.connected_order_account_snapshot()?;
+        self.quick_order_margin_notional(symbol, data)
+    }
+
+    pub(super) fn quick_order_sizing_basis(&self, symbol: &str) -> Option<OrderSizingBasis> {
+        let (_, data) = self.connected_order_account_snapshot()?;
+        if self.quick_order_reduce_only_position_sizing_enabled(symbol) {
+            return position_size_for_symbol(self.visible_clearinghouse_state(data), symbol).map(
+                |position_size| OrderSizingBasis::ReduceOnlyPosition {
+                    position_size_coin: position_size,
+                },
+            );
+        }
+
+        self.quick_order_margin_notional(symbol, data)
+            .map(|max_notional| OrderSizingBasis::MarginNotional { max_notional })
+    }
+
+    fn quick_order_margin_notional(&self, symbol: &str, data: &AccountData) -> Option<f64> {
         let available_margin = self.visible_available_margin_usdc(data)?;
         let available_margin = positive_finite_value(available_margin)?;
 
@@ -52,6 +73,10 @@ impl TradingTerminal {
             .map(|(_, leverage, _)| leverage as f64)
             .unwrap_or(1.0);
         positive_finite_value(available_margin * max_leverage)
+    }
+
+    fn quick_order_reduce_only_position_sizing_enabled(&self, symbol: &str) -> bool {
+        self.order_reduce_only && !self.is_spot_coin(symbol) && !self.is_outcome_coin(symbol)
     }
 
     pub(super) fn quick_order_percentage_for_quantity(
@@ -65,25 +90,13 @@ impl TradingTerminal {
         let Some(quantity) = parse_positive_finite(quantity) else {
             return 0.0;
         };
-        let Some(max_notional) = self.quick_order_max_notional(symbol) else {
+        let Some(sizing_basis) = self.quick_order_sizing_basis(symbol) else {
             return 0.0;
         };
-
-        let target_notional = if quantity_is_usd {
-            quantity
-        } else {
-            let Some(reference_price) =
-                self.quick_order_reference_price(form_price, is_limit, symbol)
-            else {
-                return 0.0;
-            };
-            quantity * reference_price
-        };
-
-        let Some(target_notional) = positive_finite_value(target_notional) else {
-            return 0.0;
-        };
-
-        (((target_notional / max_notional) * 100.0) as f32).clamp(0.0, 100.0)
+        sizing_basis.percentage_for_quantity(
+            quantity,
+            quantity_is_usd,
+            self.quick_order_reference_price(form_price, is_limit, symbol),
+        )
     }
 }

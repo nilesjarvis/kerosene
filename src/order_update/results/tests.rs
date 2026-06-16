@@ -7,6 +7,7 @@ use crate::message::Message;
 use crate::order_execution::{
     OneShotPlacementContext, OrderSurface, PendingNukeExecution, QuickOrderForm,
 };
+use crate::signing::ExchangeOrderKind;
 use crate::timeframe::Timeframe;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
@@ -52,11 +53,26 @@ fn malformed_ok_response() -> ExchangeResponse {
 }
 
 fn one_shot_context() -> OneShotPlacementContext {
+    one_shot_context_with_kind(ExchangeOrderKind::Limit)
+}
+
+fn one_shot_context_with_kind(order_kind: ExchangeOrderKind) -> OneShotPlacementContext {
     OneShotPlacementContext {
         account_address: TEST_ACCOUNT.to_string(),
         cloid: "0x00000000000000000000000000000000".to_string(),
         surface: OrderSurface::Ticket,
         symbol_key: "BTC".to_string(),
+        order_kind,
+    }
+}
+
+fn one_shot_context_with_cloid(
+    cloid: &str,
+    order_kind: ExchangeOrderKind,
+) -> OneShotPlacementContext {
+    OneShotPlacementContext {
+        cloid: cloid.to_string(),
+        ..one_shot_context_with_kind(order_kind)
     }
 }
 
@@ -110,6 +126,7 @@ fn one_shot_outcome_context(symbol_key: &str) -> OneShotPlacementContext {
         cloid: "0x00000000000000000000000000000000".to_string(),
         surface: OrderSurface::Ticket,
         symbol_key: symbol_key.to_string(),
+        order_kind: ExchangeOrderKind::Limit,
     }
 }
 
@@ -119,12 +136,14 @@ fn nuke_context(symbol_key: &str) -> OneShotPlacementContext {
         cloid: format!("0x{symbol_key:0<32}"),
         surface: OrderSurface::Nuke,
         symbol_key: symbol_key.to_string(),
+        order_kind: ExchangeOrderKind::Market,
     }
 }
 
 fn terminal_with_connected_account() -> TradingTerminal {
     let (mut terminal, _) = TradingTerminal::boot();
     terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    terminal.account_data_address = Some(TEST_ACCOUNT.to_string());
     terminal
 }
 
@@ -137,12 +156,20 @@ fn order_status(status: &str) -> OrderStatusResult {
     }
 }
 
+fn begin_one_shot_status_request(
+    terminal: &mut TradingTerminal,
+    context: &OneShotPlacementContext,
+) -> u64 {
+    terminal.begin_one_shot_status_request(context)
+}
+
 fn quick_order_form() -> QuickOrderForm {
     QuickOrderForm {
         price: 100.0,
         quantity: "1".to_string(),
         quantity_is_usd: false,
         percentage: 0.0,
+        quantity_provenance: None,
         is_limit: true,
         click_x: 10.0,
         click_y: 20.0,
@@ -362,7 +389,7 @@ fn execution_result_classifier_separates_rejected_ambiguous_and_transport_unknow
     let ambiguous = classify_execution_result(Ok(malformed_ok_response()));
     assert_eq!(ambiguous.kind, ExecutionOutcomeKind::Ambiguous);
     assert_eq!(ambiguous.status, "No response body");
-    assert!(!ambiguous.is_error);
+    assert!(ambiguous.is_error);
     assert!(ambiguous.refresh_account);
 
     let unknown = classify_execution_result(Err(
@@ -397,18 +424,186 @@ fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
 #[test]
 fn one_shot_order_status_result_normalizes_terminal_statuses() {
     let mut terminal = terminal_with_connected_account();
+    let context = one_shot_context();
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
 
-    let _task = terminal
-        .handle_one_shot_placement_status_result(one_shot_context(), Ok(order_status("open")));
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id,
+        context,
+        Ok(order_status("open")),
+    );
     let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
     assert!(message.contains("Ticket placement confirmed by orderStatus for BTC"));
+    assert!(terminal.pending_one_shot_status_request.is_none());
 
-    let _task = terminal
-        .handle_one_shot_placement_status_result(one_shot_context(), Ok(order_status("rejected")));
+    let context = one_shot_context();
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id,
+        context,
+        Ok(order_status("rejected")),
+    );
     let (message, is_error) = terminal.order_status.expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Ticket placement rejected according to orderStatus for BTC"));
+    assert!(terminal.pending_one_shot_status_request.is_none());
+}
+
+#[test]
+fn one_shot_status_result_with_stale_request_id_is_ignored() {
+    let mut terminal = terminal_with_connected_account();
+    let context = one_shot_context();
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
+
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id.wrapping_add(1),
+        context,
+        Ok(order_status("open")),
+    );
+
+    assert!(terminal.order_status.is_none());
+    assert_eq!(
+        terminal
+            .pending_one_shot_status_request
+            .as_ref()
+            .map(|request| request.request_id),
+        Some(request_id)
+    );
+}
+
+#[test]
+fn stale_one_shot_status_after_newer_outcome_is_ignored() {
+    let mut terminal = terminal_with_connected_account();
+    let old_context = one_shot_context_with_kind(ExchangeOrderKind::Market);
+    let _task = terminal.apply_one_shot_placement_outcome(
+        old_context.clone(),
+        ExecutionOutcome {
+            kind: ExecutionOutcomeKind::TransportUnknown,
+            status: "exchange request failed".to_string(),
+            is_error: true,
+            refresh_account: false,
+        },
+    );
+    let old_request_id = terminal
+        .pending_one_shot_status_request
+        .as_ref()
+        .expect("status request should be pending")
+        .request_id;
+
+    let newer_context = one_shot_context_with_cloid(
+        "0x00000000000000000000000000000001",
+        ExchangeOrderKind::Limit,
+    );
+    let _task = terminal.apply_one_shot_placement_outcome(
+        newer_context,
+        ExecutionOutcome {
+            kind: ExecutionOutcomeKind::Filled,
+            status: "Filled avgPx=100 totalSz=1".to_string(),
+            is_error: false,
+            refresh_account: false,
+        },
+    );
+    let current_status = terminal.order_status.clone();
+    assert!(terminal.pending_one_shot_status_request.is_none());
+
+    let _task = terminal.handle_one_shot_placement_status_result(
+        old_request_id,
+        old_context,
+        Ok(order_status("open")),
+    );
+
+    assert_eq!(terminal.order_status, current_status);
+    assert!(!terminal.account_loading);
+}
+
+#[test]
+fn one_shot_ioc_like_order_status_open_is_unexpected_resting_error() {
+    for order_kind in [ExchangeOrderKind::Market, ExchangeOrderKind::LimitIoc] {
+        let mut terminal = terminal_with_connected_account();
+        let context = one_shot_context_with_kind(order_kind);
+        let request_id = begin_one_shot_status_request(&mut terminal, &context);
+
+        let _task = terminal.handle_one_shot_placement_status_result(
+            request_id,
+            context,
+            Ok(order_status("open")),
+        );
+
+        let (message, is_error) = terminal.order_status.expect("status should be set");
+        assert!(is_error);
+        assert!(message.contains("Ticket"));
+        assert!(message.contains(order_kind.label()));
+        assert!(message.contains("unexpectedly rested"));
+        assert!(message.contains("cancel 0x00000000000000000000000000000000"));
+    }
+}
+
+#[test]
+fn one_shot_ioc_like_direct_resting_response_is_unexpected_resting_error() {
+    let mut terminal = terminal_with_connected_account();
+
+    let _task = terminal.handle_order_result(
+        None,
+        one_shot_context_with_kind(ExchangeOrderKind::Market),
+        Ok(exchange_response(vec![serde_json::json!({
+            "resting": {
+                "oid": 42_u64
+            }
+        })])),
+    );
+
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("Ticket market order unexpectedly rested for BTC"));
+    assert!(message.contains("Resting (oid 42)"));
+}
+
+#[test]
+fn one_shot_limit_direct_resting_response_remains_successful() {
+    let mut terminal = terminal_with_connected_account();
+
+    let _task = terminal.handle_order_result(
+        None,
+        one_shot_context_with_kind(ExchangeOrderKind::Limit),
+        Ok(exchange_response(vec![serde_json::json!({
+            "resting": {
+                "oid": 42_u64
+            }
+        })])),
+    );
+
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(!is_error);
+    assert_eq!(message, "Resting (oid 42)");
+}
+
+#[test]
+fn one_shot_success_during_refresh_backoff_marks_reconciliation_required() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.account_refresh_backoff_until_ms = Some(TradingTerminal::now_ms() + 60_000);
+
+    let _task = terminal.handle_order_result(
+        None,
+        one_shot_context_with_kind(ExchangeOrderKind::Limit),
+        Ok(exchange_response(vec![serde_json::json!({
+            "resting": {
+                "oid": 42_u64
+            }
+        })])),
+    );
+
+    assert!(!terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    assert!(
+        terminal
+            .account_error
+            .as_deref()
+            .is_some_and(|error| error.contains("rate limited"))
+    );
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(!is_error);
+    assert_eq!(message, "Resting (oid 42)");
 }
 
 #[test]
@@ -431,8 +626,11 @@ fn one_shot_statuses_use_outcome_display_label_not_raw_key() {
     assert!(message.contains(&format!("placement status unknown for {label}")));
     assert!(!message.contains("#660"));
 
+    let context = one_shot_outcome_context("#660");
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
     let _task = terminal.handle_one_shot_placement_status_result(
-        one_shot_outcome_context("#660"),
+        request_id,
+        context,
         Ok(order_status("open")),
     );
     let (message, _) = terminal.order_status.clone().expect("status should be set");
@@ -457,8 +655,13 @@ fn one_shot_results_are_ignored_after_account_switch() {
 
     assert!(terminal.order_status.is_none());
 
-    let _task = terminal
-        .handle_one_shot_placement_status_result(one_shot_context(), Ok(order_status("open")));
+    let context = one_shot_context();
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id,
+        context,
+        Ok(order_status("open")),
+    );
 
     assert!(terminal.order_status.is_none());
 }
@@ -472,7 +675,9 @@ fn nuke_results_aggregate_until_all_children_settle() {
         7,
         nuke_context("BTC"),
         Ok(exchange_response(vec![serde_json::json!({
-            "resting": {
+            "filled": {
+                "totalSz": "1",
+                "avgPx": "100",
                 "oid": 42_u64
             }
         })])),
@@ -519,12 +724,50 @@ fn nuke_uncertain_child_waits_for_order_status_before_aggregating() {
     let _task = terminal.handle_nuke_placement_status_result(
         9,
         nuke_context("BTC"),
-        Ok(order_status("open")),
+        Ok(order_status("filled")),
     );
 
     let (message, is_error) = terminal.order_status.expect("status should be set");
     assert!(!is_error);
     assert_eq!(message, "NUKE completed: 1/1 confirmed");
+    assert!(terminal.pending_nuke_execution.is_none());
+}
+
+#[test]
+fn nuke_direct_resting_market_child_is_uncertain_not_confirmed() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.pending_nuke_execution = Some(PendingNukeExecution::new(13, 1, 0));
+
+    let _task = terminal.handle_nuke_result(
+        13,
+        nuke_context("BTC"),
+        Ok(exchange_response(vec![serde_json::json!({
+            "resting": {
+                "oid": 42_u64
+            }
+        })])),
+    );
+
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("NUKE market order unexpectedly rested for BTC"));
+    assert!(terminal.pending_nuke_execution.is_none());
+}
+
+#[test]
+fn nuke_status_open_market_child_is_uncertain_not_confirmed() {
+    let mut terminal = terminal_with_connected_account();
+    terminal.pending_nuke_execution = Some(PendingNukeExecution::new(14, 1, 0));
+
+    let _task = terminal.handle_nuke_placement_status_result(
+        14,
+        nuke_context("BTC"),
+        Ok(order_status("open")),
+    );
+
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("NUKE market order unexpectedly rested for BTC"));
     assert!(terminal.pending_nuke_execution.is_none());
 }
 
@@ -559,8 +802,12 @@ fn nuke_results_after_account_switch_clear_stale_execution_without_status() {
 }
 
 fn open_order(oid: u64) -> crate::account::OpenOrder {
+    open_order_for(oid, "BTC")
+}
+
+fn open_order_for(oid: u64, coin: &str) -> crate::account::OpenOrder {
     crate::account::OpenOrder {
-        coin: "BTC".to_string(),
+        coin: coin.to_string(),
         side: "B".to_string(),
         limit_px: "100".to_string(),
         sz: "1".to_string(),
@@ -615,7 +862,10 @@ fn terminal_with_pending_cancel() -> (TradingTerminal, Option<u64>) {
         .charts
         .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));
     let order = open_order(42);
-    terminal.account_data = Some(account_data_with_open_orders(vec![order.clone()]));
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        account_data_with_open_orders(vec![order.clone()]),
+    );
     let pending_id =
         terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
     assert!(pending_id.is_some());
@@ -669,6 +919,75 @@ fn cancel_result_error_keeps_local_order() {
 }
 
 #[test]
+fn cancel_result_ambiguous_ack_is_uncertain_and_keeps_local_order() {
+    let (mut terminal, pending_id) = terminal_with_pending_cancel();
+
+    let _task = terminal.handle_cancel_result(
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(malformed_ok_response()),
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("Cancel status unknown"));
+    assert!(message.contains("refreshing account data"));
+}
+
+#[test]
+fn cancel_order_status_open_keeps_cancel_uncertain_and_local_order() {
+    let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+
+    let _task = terminal.handle_cancel_order_status_result(
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+        Ok(order_status("open")),
+    );
+
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("still uncertain"));
+    assert!(message.contains("reports open"));
+}
+
+#[test]
+fn cancel_order_status_terminal_removes_local_order() {
+    let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+
+    let _task = terminal.handle_cancel_order_status_result(
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+        Ok(order_status("canceled")),
+    );
+
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert!(data.open_orders.is_empty());
+    assert!(
+        terminal
+            .charts
+            .get(&1)
+            .expect("chart")
+            .chart
+            .active_orders
+            .is_empty()
+    );
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(!is_error);
+    assert!(message.contains("Cancel resolved"));
+}
+
+#[test]
 fn cancel_result_after_account_switch_clears_indicator_without_status() {
     let (mut terminal, pending_id) = terminal_with_pending_cancel();
     terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
@@ -684,6 +1003,88 @@ fn cancel_result_after_account_switch_clears_indicator_without_status() {
     assert!(terminal.order_status.is_none());
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
+}
+
+#[test]
+fn cancel_result_success_removes_only_matching_symbol_for_same_oid() {
+    let mut terminal = terminal_with_connected_account();
+    let target_order = open_order_for(42, "flx:BTC");
+    let other_order = open_order_for(42, "xyz:BTC");
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        account_data_with_open_orders(vec![target_order.clone(), other_order.clone()]),
+    );
+    let pending_id =
+        terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &target_order);
+    assert!(pending_id.is_some());
+
+    let _task = terminal.handle_cancel_result(
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
+    );
+
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert_eq!(data.open_orders[0].coin, other_order.coin);
+    assert_eq!(data.open_orders[0].oid, 42);
+}
+
+#[test]
+fn cancel_result_success_ignores_open_orders_from_stale_account_snapshot() {
+    let (mut terminal, pending_id) = terminal_with_pending_cancel();
+    terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
+
+    let _task = terminal.handle_cancel_result(
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(cancel_exchange_response(vec![serde_json::json!("success")])),
+    );
+
+    assert!(terminal.pending_order_indicators.is_empty());
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert_eq!(data.open_orders[0].oid, 42);
+}
+
+#[test]
+fn cancel_status_terminal_removes_only_matching_symbol_for_same_oid() {
+    let mut terminal = terminal_with_connected_account();
+    let target_order = open_order_for(42, "flx:BTC");
+    let other_order = open_order_for(42, "xyz:BTC");
+    terminal.set_account_data_for_address_for_test(
+        TEST_ACCOUNT,
+        account_data_with_open_orders(vec![target_order.clone(), other_order.clone()]),
+    );
+
+    let _task = terminal.handle_cancel_order_status_result(
+        TEST_ACCOUNT.to_string(),
+        42,
+        target_order.coin,
+        Ok(order_status("canceled")),
+    );
+
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert_eq!(data.open_orders[0].coin, other_order.coin);
+    assert_eq!(data.open_orders[0].oid, 42);
+}
+
+#[test]
+fn cancel_status_terminal_ignores_open_orders_from_stale_account_snapshot() {
+    let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+    terminal.account_data_address = Some(OTHER_ACCOUNT.to_string());
+
+    let _task = terminal.handle_cancel_order_status_result(
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+        Ok(order_status("canceled")),
+    );
+
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert_eq!(data.open_orders[0].oid, 42);
 }
 
 #[test]

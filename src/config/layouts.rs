@@ -1,4 +1,5 @@
 mod pane_kind_wire;
+mod widget_padding_wire;
 
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +29,7 @@ pub enum BottomTabConfig {
 }
 
 /// Persisted pane content kind.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PaneKindConfig {
     AccountSummary,
     Chart {
@@ -64,12 +65,13 @@ pub enum PaneKindConfig {
     LiquidationsDistribution,
     TrackedTrades,
     TelegramFeed,
-    XFeed,
     Outcomes,
     HypeEtfs,
     HypeUnstakingQueue,
     /// Legacy or unknown persisted panes that no longer have runtime support.
     Unsupported,
+    /// Raw forward-compatible pane data from a newer config schema.
+    Unknown(serde_json::Value),
 }
 
 /// Stable identity for widget-level appearance overrides.
@@ -94,7 +96,6 @@ pub enum WidgetPaddingTargetConfig {
     LiquidationsDistribution,
     TrackedTrades,
     TelegramFeed,
-    XFeed,
     Outcomes,
     HypeEtfs,
     HypeUnstakingQueue,
@@ -110,7 +111,10 @@ pub struct WidgetPaddingOverrideConfig {
 pub struct WidgetPaddingConfig {
     #[serde(default = "default_widget_padding")]
     pub default_px: f32,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "widget_padding_wire::deserialize_overrides"
+    )]
     pub overrides: Vec<WidgetPaddingOverrideConfig>,
 }
 
@@ -156,16 +160,39 @@ pub enum PaneLayoutConfig {
     },
 }
 
+/// Drop panes this version cannot instantiate when building a live runtime layout.
 pub fn prune_unsupported_pane_layout(layout: PaneLayoutConfig) -> Option<PaneLayoutConfig> {
+    prune_pane_layout(layout, |kind| {
+        matches!(
+            kind,
+            PaneKindConfig::Unsupported
+                | PaneKindConfig::AccountSummary
+                | PaneKindConfig::Unknown(_)
+        )
+    })
+}
+
+/// Drop known removed panes while preserving raw future pane data for persistence.
+pub fn prune_legacy_unsupported_pane_layout(layout: PaneLayoutConfig) -> Option<PaneLayoutConfig> {
+    prune_pane_layout(layout, |kind| {
+        matches!(
+            kind,
+            PaneKindConfig::Unsupported | PaneKindConfig::AccountSummary
+        )
+    })
+}
+
+fn prune_pane_layout(
+    layout: PaneLayoutConfig,
+    should_prune_leaf: fn(&PaneKindConfig) -> bool,
+) -> Option<PaneLayoutConfig> {
     match layout {
-        PaneLayoutConfig::Leaf(PaneKindConfig::Unsupported | PaneKindConfig::AccountSummary) => {
-            None
-        }
+        PaneLayoutConfig::Leaf(kind) if should_prune_leaf(&kind) => None,
         PaneLayoutConfig::Leaf(kind) => Some(PaneLayoutConfig::Leaf(kind)),
         PaneLayoutConfig::Split { axis, ratio, a, b } => {
             match (
-                prune_unsupported_pane_layout(*a),
-                prune_unsupported_pane_layout(*b),
+                prune_pane_layout(*a, should_prune_leaf),
+                prune_pane_layout(*b, should_prune_leaf),
             ) {
                 (Some(a), Some(b)) => Some(PaneLayoutConfig::Split {
                     axis,
@@ -204,6 +231,8 @@ pub struct SavedLayout {
 
     #[serde(default = "default_symbol")]
     pub active_symbol: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub liquidation_distribution_symbol: Option<String>,
     #[serde(default = "default_timeframe")]
     pub active_timeframe: String,
     #[serde(default = "default_order_kind")]

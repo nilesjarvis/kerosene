@@ -29,11 +29,15 @@ impl TradingTerminal {
                 self.hype_etfs.view = view;
                 Task::none()
             }
-            Message::HypeEtfsLoaded(result) => {
+            Message::HypeEtfsLoaded(request_id, result) => {
+                if !self.hype_etfs.loading || request_id != self.hype_etfs.refresh_request_id {
+                    return Task::none();
+                }
+
                 self.hype_etfs.loading = false;
-                self.hype_etfs.last_fetch = Some(Instant::now());
                 match *result {
                     Ok(data) => {
+                        self.hype_etfs.last_fetch = Some(Instant::now());
                         self.hype_etfs.data = Some(data);
                         self.hype_etfs.error = None;
                     }
@@ -48,7 +52,9 @@ impl TradingTerminal {
     }
 
     pub(crate) fn request_hype_etfs_refresh(&mut self, force: bool) -> Task<Message> {
-        if self.hype_etfs.loading {
+        if self.hype_etfs.loading
+            || (!force && !self.pane_is_open(|kind| matches!(kind, PaneKind::HypeEtfs)))
+        {
             return Task::none();
         }
 
@@ -63,8 +69,10 @@ impl TradingTerminal {
 
         self.hype_etfs.loading = true;
         self.hype_etfs.error = None;
-        Task::perform(fetch_hype_etfs(), |result| {
-            Message::HypeEtfsLoaded(Box::new(result))
+        self.hype_etfs.refresh_request_id = self.hype_etfs.refresh_request_id.wrapping_add(1);
+        let request_id = self.hype_etfs.refresh_request_id;
+        Task::perform(fetch_hype_etfs(), move |result| {
+            Message::HypeEtfsLoaded(request_id, Box::new(result))
         })
     }
 }

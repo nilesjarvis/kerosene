@@ -3,14 +3,28 @@ use crate::config;
 use std::collections::HashMap;
 
 impl TradingTerminal {
+    fn config_snapshot_accounts(&self) -> Vec<config::AccountProfile> {
+        self.accounts
+            .iter()
+            .filter(|profile| !self.ghost_account_secret_ids.contains(&profile.secret_id))
+            .map(|profile| config::AccountProfile {
+                secret_id: profile.secret_id.clone(),
+                name: profile.name.clone(),
+                wallet_address: profile.wallet_address.clone(),
+                agent_key: String::new().into(),
+                hydromancer_api_key: String::new().into(),
+            })
+            .collect()
+    }
+
     /// Build a config snapshot from the current state.
     pub(super) fn config_snapshot(&self) -> config::KeroseneConfig {
-        if self.config_cleared_this_session {
+        if self.config_clear_requested || self.config_cleared_this_session {
             return config::KeroseneConfig::default();
         }
 
         let layout_snapshot = self.saved_layout_snapshot("current".to_string());
-        let persisted_accounts = self.persisted_accounts_snapshot();
+        let persisted_accounts = self.config_snapshot_accounts();
         let active_account_index = self.persisted_active_account_index(&persisted_accounts);
         let hidden_positions_by_account =
             self.persisted_hidden_positions_by_account(&persisted_accounts);
@@ -22,10 +36,11 @@ impl TradingTerminal {
         };
 
         config::KeroseneConfig {
-            saved_layouts: self.saved_layouts.clone(),
+            saved_layouts: self.saved_layouts_config_values(),
             active_layout_name: self.active_layout_name.clone(),
             credential_storage_mode: self.secret_storage_mode,
             encrypted_secrets: self.encrypted_secrets.clone(),
+            secret_migration_save_blocked: false,
             book_tick_size: layout_snapshot.book_tick_size,
             order_books: layout_snapshot.order_books,
             layout_ratios: layout_snapshot.layout_ratios,
@@ -84,6 +99,9 @@ impl TradingTerminal {
             display_denomination: self.display_denomination.clone().normalized(),
             chart_screenshot_settings: self.chart_screenshot_settings.clone(),
             accounts: persisted_accounts,
+            pending_keychain_profile_deletions: self.pending_keychain_profile_deletions.clone(),
+            pending_keychain_cleanup_all: self.pending_keychain_cleanup_all,
+            secret_cleanup_state_dirty: false,
             active_account_index,
             agent_key: String::new().into(),
             wallet_address: String::new(),
@@ -121,14 +139,11 @@ impl TradingTerminal {
             liquidation_feed_aggregation_enabled: layout_snapshot
                 .liquidation_feed_aggregation_enabled,
             telegram_feed_notifications_enabled: self.telegram_feed.notifications_enabled,
+            telegram_feed_include_outcome_markets: self.telegram_feed.include_outcome_markets,
             telegram_feed_fast_mode_enabled: self.telegram_feed.fast_mode_enabled,
             telegram_feed_fast_api_id: self.telegram_feed.fast_api_id,
             telegram_feed_channels: self.telegram_feed.channels.clone(),
             telegram_feed_private_channels: self.telegram_feed.private_channels.clone(),
-            x_feed_notifications_enabled: self.x_feed.notifications_enabled,
-            x_feed_streaming_enabled: self.x_feed.streaming_enabled,
-            x_feed_handles: self.x_feed.handles.clone(),
-            x_bearer_token: String::new().into(),
 
             spaghetti_charts: layout_snapshot.spaghetti_charts,
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),

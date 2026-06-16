@@ -17,6 +17,7 @@ use iced::widget::{
     Column, Row, Space, button, column, container, responsive, row, rule, scrollable,
 };
 use iced::{Color, Element, Fill, Theme, color};
+use std::time::Instant;
 
 const HYPE_UNSTAKING_ROW_LIMIT: usize = 250;
 const HYPE_UNSTAKING_WALLET_ACTION_WIDTH: f32 = 150.0;
@@ -55,11 +56,12 @@ impl TradingTerminal {
     fn view_hype_unstaking_queue_sized(&self, available_width: f32) -> Element<'_, Message> {
         let theme = self.theme();
         let compact = available_width < 680.0;
-        let now_ms = Self::now_ms();
+        let now_ms = self.status_bar_now_ms;
         let denomination = self.display_denomination_context();
         let hype_mid = self.hype_unstaking_notional_mid(now_ms);
 
-        let status_text = hype_unstaking_status_text(&self.hype_unstaking_queue);
+        let status_text =
+            hype_unstaking_status_text(&self.hype_unstaking_queue, self.status_bar_now);
         let status_color = if self.hype_unstaking_queue.error.is_some() {
             theme.palette().danger
         } else {
@@ -406,7 +408,7 @@ fn hype_unstaking_scroll_direction() -> iced::widget::scrollable::Direction {
     )
 }
 
-fn hype_unstaking_status_text(state: &HypeUnstakingQueueState) -> String {
+fn hype_unstaking_status_text(state: &HypeUnstakingQueueState, now: Instant) -> String {
     if state.loading && state.data.is_none() {
         "Loading queue...".to_string()
     } else if state.loading {
@@ -418,7 +420,7 @@ fn hype_unstaking_status_text(state: &HypeUnstakingQueueState) -> String {
             format!("Showing last good data; refresh failed: {error}")
         }
     } else if let Some(last_fetch) = state.last_fetch {
-        let age = last_fetch.elapsed().as_secs();
+        let age = now.saturating_duration_since(last_fetch).as_secs();
         if age < 60 {
             "Updated just now".to_string()
         } else {
@@ -916,6 +918,7 @@ fn format_local_time_ms(time_ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn formats_hype_amount_with_selected_denomination_notional() {
@@ -952,6 +955,70 @@ mod tests {
         assert_eq!(
             hype_unstaking_wallet_tooltip(&display, "0x1234567890abcdef1234567890abcdef12345678"),
             "Market Maker Alpha (0x1234567890abcdef1234567890abcdef12345678)"
+        );
+    }
+
+    #[test]
+    fn hype_unstaking_status_uses_supplied_tick_clock_for_age() {
+        let now = Instant::now();
+        let state = HypeUnstakingQueueState {
+            last_fetch: Some(now - Duration::from_secs(30)),
+            ..Default::default()
+        };
+        assert_eq!(hype_unstaking_status_text(&state, now), "Updated just now");
+
+        let state = HypeUnstakingQueueState {
+            last_fetch: Some(now - Duration::from_secs(125)),
+            ..Default::default()
+        };
+        assert_eq!(hype_unstaking_status_text(&state, now), "Updated 2m ago");
+    }
+
+    #[test]
+    fn hype_unstaking_status_handles_loading_and_error_states() {
+        let now = Instant::now();
+
+        assert_eq!(
+            hype_unstaking_status_text(
+                &HypeUnstakingQueueState {
+                    loading: true,
+                    ..Default::default()
+                },
+                now,
+            ),
+            "Loading queue..."
+        );
+        assert_eq!(
+            hype_unstaking_status_text(
+                &HypeUnstakingQueueState {
+                    loading: true,
+                    data: Some(Default::default()),
+                    ..Default::default()
+                },
+                now,
+            ),
+            "Refreshing..."
+        );
+        assert_eq!(
+            hype_unstaking_status_text(
+                &HypeUnstakingQueueState {
+                    error: Some("network".to_string()),
+                    ..Default::default()
+                },
+                now,
+            ),
+            "Load failed: network"
+        );
+        assert_eq!(
+            hype_unstaking_status_text(
+                &HypeUnstakingQueueState {
+                    error: Some("network".to_string()),
+                    data: Some(Default::default()),
+                    ..Default::default()
+                },
+                now,
+            ),
+            "Showing last good data; refresh failed: network"
         );
     }
 

@@ -1,6 +1,9 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::ws::{ws_book_stream_keyed, ws_hydromancer_book_stream_keyed};
+use crate::ws::{
+    HydromancerStreamKey, KeyedBookStreamEvent, ws_book_stream_keyed_events,
+    ws_hydromancer_book_stream_keyed_events,
+};
 
 use iced::Subscription;
 
@@ -13,9 +16,11 @@ impl TradingTerminal {
         &self,
         subs: &mut Vec<Subscription<Message>>,
     ) {
-        if self.twap_orders.values().any(|twap| {
-            !twap.status.is_terminal() && !twap.stop_requested && twap.pending_op.is_none()
-        }) {
+        if self
+            .twap_orders
+            .values()
+            .any(|twap| twap.needs_timer_tick())
+        {
             subs.push(
                 iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::TwapTick),
             );
@@ -31,34 +36,70 @@ impl TradingTerminal {
                 continue;
             }
             let sigfigs = self.canonical_l2_book_sigfigs(&twap.coin);
+            let source_context = self.market_data_source_context();
             if let Some(api_key) = self.hydromancer_read_provider_key() {
+                let hydromancer_key_generation = self.hydromancer_key_generation;
+                let stream_key =
+                    HydromancerStreamKey::from_zeroizing(api_key, hydromancer_key_generation);
                 subs.push(
                     Subscription::run_with(
-                        (api_key, twap.id, twap.coin.clone(), sigfigs),
-                        ws_hydromancer_book_stream_keyed,
+                        (stream_key, twap.id, twap.coin.clone(), sigfigs),
+                        ws_hydromancer_book_stream_keyed_events,
                     )
-                    .map(|(twap_id, coin, _sigfigs, book)| {
-                        Message::TwapBookUpdate {
-                            twap_id,
-                            coin,
-                            book,
-                        }
-                    }),
+                    .with(source_context)
+                    .map(twap_book_stream_event_message),
                 );
             } else {
                 subs.push(
                     Subscription::run_with(
                         (twap.id, twap.coin.clone(), sigfigs),
-                        ws_book_stream_keyed,
+                        ws_book_stream_keyed_events,
                     )
-                    .map(|(twap_id, coin, _sigfigs, book)| {
-                        Message::TwapBookUpdate {
-                            twap_id,
-                            coin,
-                            book,
-                        }
-                    }),
+                    .with(source_context)
+                    .map(twap_book_stream_event_message),
                 );
+            }
+        }
+    }
+}
+
+fn twap_book_stream_event_message(
+    (source_context, event): (
+        crate::read_data_provider::MarketDataSourceContext,
+        KeyedBookStreamEvent,
+    ),
+) -> Message {
+    match event {
+        KeyedBookStreamEvent::Item(twap_id, coin, sigfigs, hydromancer_key_generation, book) => {
+            debug_assert_eq!(
+                source_context.hydromancer_key_generation,
+                hydromancer_key_generation
+            );
+            Message::TwapBookUpdate {
+                twap_id,
+                coin,
+                sigfigs,
+                source_context,
+                book,
+            }
+        }
+        KeyedBookStreamEvent::Lagged {
+            id,
+            coin,
+            sigfigs,
+            hydromancer_key_generation,
+            skipped,
+        } => {
+            debug_assert_eq!(
+                source_context.hydromancer_key_generation,
+                hydromancer_key_generation
+            );
+            Message::TwapBookLagged {
+                twap_id: id,
+                coin,
+                sigfigs,
+                source_context,
+                skipped,
             }
         }
     }

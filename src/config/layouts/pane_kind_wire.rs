@@ -1,6 +1,6 @@
 use super::{BottomTabConfig, PaneKindConfig};
-use serde::Deserialize;
-use serde::de::IgnoredAny;
+use serde::ser::SerializeStructVariant;
+use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Deserialize)]
 enum KnownPaneKindConfig {
@@ -24,7 +24,6 @@ enum KnownPaneKindConfig {
     LiquidationsDistribution,
     TrackedTrades,
     TelegramFeed,
-    XFeed,
     Outcomes,
     HypeEtfs,
     HypeUnstakingQueue,
@@ -34,7 +33,7 @@ enum KnownPaneKindConfig {
 #[serde(untagged)]
 enum PaneKindConfigWire {
     Known(KnownPaneKindConfig),
-    Unknown(IgnoredAny),
+    Unknown(serde_json::Value),
 }
 
 impl From<KnownPaneKindConfig> for PaneKindConfig {
@@ -61,7 +60,6 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::LiquidationsDistribution => Self::LiquidationsDistribution,
             KnownPaneKindConfig::TrackedTrades => Self::TrackedTrades,
             KnownPaneKindConfig::TelegramFeed => Self::TelegramFeed,
-            KnownPaneKindConfig::XFeed => Self::XFeed,
             KnownPaneKindConfig::Outcomes => Self::Outcomes,
             KnownPaneKindConfig::HypeEtfs => Self::HypeEtfs,
             KnownPaneKindConfig::HypeUnstakingQueue => Self::HypeUnstakingQueue,
@@ -76,7 +74,123 @@ impl<'de> Deserialize<'de> for PaneKindConfig {
     {
         Ok(match PaneKindConfigWire::deserialize(deserializer)? {
             PaneKindConfigWire::Known(kind) => kind.into(),
-            PaneKindConfigWire::Unknown(_unknown) => Self::Unsupported,
+            PaneKindConfigWire::Unknown(raw) if is_legacy_unsupported_pane(&raw) => {
+                Self::Unsupported
+            }
+            PaneKindConfigWire::Unknown(raw) => Self::Unknown(raw),
         })
     }
+}
+
+impl Serialize for PaneKindConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            PaneKindConfig::AccountSummary => {
+                serializer.serialize_unit_variant("PaneKindConfig", 0, "AccountSummary")
+            }
+            PaneKindConfig::Chart { chart_id } => {
+                let mut variant =
+                    serializer.serialize_struct_variant("PaneKindConfig", 1, "Chart", 1)?;
+                variant.serialize_field("chart_id", chart_id)?;
+                variant.end()
+            }
+            PaneKindConfig::OrderBook { id } => {
+                let mut variant =
+                    serializer.serialize_struct_variant("PaneKindConfig", 2, "OrderBook", 1)?;
+                variant.serialize_field("id", id)?;
+                variant.end()
+            }
+            PaneKindConfig::Watchlist => {
+                serializer.serialize_unit_variant("PaneKindConfig", 3, "Watchlist")
+            }
+            PaneKindConfig::LiveWatchlist { id } => {
+                let mut variant =
+                    serializer.serialize_struct_variant("PaneKindConfig", 4, "LiveWatchlist", 1)?;
+                variant.serialize_field("id", id)?;
+                variant.end()
+            }
+            PaneKindConfig::PositioningInfo { id } => {
+                let mut variant = serializer.serialize_struct_variant(
+                    "PaneKindConfig",
+                    5,
+                    "PositioningInfo",
+                    1,
+                )?;
+                variant.serialize_field("id", id)?;
+                variant.end()
+            }
+            PaneKindConfig::SessionData { id } => {
+                let mut variant =
+                    serializer.serialize_struct_variant("PaneKindConfig", 6, "SessionData", 1)?;
+                variant.serialize_field("id", id)?;
+                variant.end()
+            }
+            PaneKindConfig::Portfolio => {
+                serializer.serialize_unit_variant("PaneKindConfig", 7, "Portfolio")
+            }
+            PaneKindConfig::Income => {
+                serializer.serialize_unit_variant("PaneKindConfig", 8, "Income")
+            }
+            PaneKindConfig::BottomTabs { active_tab } => {
+                let mut variant =
+                    serializer.serialize_struct_variant("PaneKindConfig", 9, "BottomTabs", 1)?;
+                variant.serialize_field("active_tab", active_tab)?;
+                variant.end()
+            }
+            PaneKindConfig::OrderEntry => {
+                serializer.serialize_unit_variant("PaneKindConfig", 10, "OrderEntry")
+            }
+            PaneKindConfig::AdvancedOrders => {
+                serializer.serialize_unit_variant("PaneKindConfig", 11, "AdvancedOrders")
+            }
+            PaneKindConfig::SpaghettiChart { spaghetti_id } => {
+                let mut variant = serializer.serialize_struct_variant(
+                    "PaneKindConfig",
+                    12,
+                    "SpaghettiChart",
+                    1,
+                )?;
+                variant.serialize_field("spaghetti_id", spaghetti_id)?;
+                variant.end()
+            }
+            PaneKindConfig::Settings => {
+                serializer.serialize_unit_variant("PaneKindConfig", 13, "Settings")
+            }
+            PaneKindConfig::Calendar => {
+                serializer.serialize_unit_variant("PaneKindConfig", 14, "Calendar")
+            }
+            PaneKindConfig::Liquidations => {
+                serializer.serialize_unit_variant("PaneKindConfig", 15, "Liquidations")
+            }
+            PaneKindConfig::LiquidationsDistribution => {
+                serializer.serialize_unit_variant("PaneKindConfig", 16, "LiquidationsDistribution")
+            }
+            PaneKindConfig::TrackedTrades => {
+                serializer.serialize_unit_variant("PaneKindConfig", 17, "TrackedTrades")
+            }
+            PaneKindConfig::TelegramFeed => {
+                serializer.serialize_unit_variant("PaneKindConfig", 18, "TelegramFeed")
+            }
+            PaneKindConfig::Outcomes => {
+                serializer.serialize_unit_variant("PaneKindConfig", 20, "Outcomes")
+            }
+            PaneKindConfig::HypeEtfs => {
+                serializer.serialize_unit_variant("PaneKindConfig", 21, "HypeEtfs")
+            }
+            PaneKindConfig::HypeUnstakingQueue => {
+                serializer.serialize_unit_variant("PaneKindConfig", 22, "HypeUnstakingQueue")
+            }
+            PaneKindConfig::Unsupported => {
+                serializer.serialize_unit_variant("PaneKindConfig", 23, "Unsupported")
+            }
+            PaneKindConfig::Unknown(raw) => raw.serialize(serializer),
+        }
+    }
+}
+
+fn is_legacy_unsupported_pane(raw: &serde_json::Value) -> bool {
+    matches!(raw.as_str(), Some("Assistant" | "Unsupported" | "XFeed"))
 }

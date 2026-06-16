@@ -1,4 +1,5 @@
 use crate::account::OpenOrder;
+use crate::order_execution::open_order_matches_chase_identity;
 use crate::signing::ChaseOrder;
 
 // ---------------------------------------------------------------------------
@@ -17,6 +18,10 @@ pub(super) fn apply_open_order_to_chase(
     chase: &mut ChaseOrder,
     order: &OpenOrder,
 ) -> Result<bool, ()> {
+    if !open_order_matches_chase_identity(chase, order) {
+        return Err(());
+    }
+
     let sz = order.sz.parse::<f64>().map_err(|_| ())?;
     let oversized = chase.sync_open_remaining_size(sz).ok_or(())?;
     if !chase.remaining_size.is_finite() {
@@ -43,11 +48,15 @@ pub(super) fn apply_open_order_to_chase(
 pub(super) fn first_open_chase_oid(chase: &ChaseOrder, open_orders: &[OpenOrder]) -> Option<u64> {
     chase
         .current_oid
-        .filter(|oid| open_orders.iter().any(|order| order.oid == *oid))
+        .filter(|oid| {
+            open_orders
+                .iter()
+                .any(|order| order.oid == *oid && open_order_matches_chase_identity(chase, order))
+        })
         .or_else(|| {
             open_orders
                 .iter()
-                .find(|order| chase.tracks_oid(order.oid))
+                .find(|order| open_order_matches_chase_identity(chase, order))
                 .map(|order| order.oid)
         })
 }

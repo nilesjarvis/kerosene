@@ -1,5 +1,6 @@
 use super::SPREAD_HISTORY_LIMIT;
 use crate::chart::{CandlestickChart, TIME_AXIS_HEIGHT};
+use crate::config::ChartCrosshairStyle;
 use crate::timeframe::Timeframe;
 
 #[test]
@@ -43,6 +44,15 @@ fn invalid_spread_keeps_recent_history_baseline() {
 
     assert_eq!(chart.current_spread, None);
     assert_eq!(chart.spread_history.len(), 1);
+}
+
+#[test]
+fn legacy_stacked_rectangles_crosshair_style_is_normalized_on_set() {
+    let mut chart = CandlestickChart::new(1);
+
+    chart.set_crosshair_style(ChartCrosshairStyle::StackedRectangles);
+
+    assert_eq!(chart.crosshair_style, ChartCrosshairStyle::Rectangle);
 }
 
 #[test]

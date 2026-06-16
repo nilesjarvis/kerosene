@@ -23,8 +23,8 @@ pub(super) fn handle_preconnect_hydromancer_command(
             active_subs.subscribe(topic, payload);
             HydromancerTaskControlFlow::Continue
         }
-        HydromancerCommand::Unsubscribe { topic } => {
-            active_subs.unsubscribe(topic);
+        HydromancerCommand::Unsubscribe { topic, payload } => {
+            active_subs.unsubscribe(topic, payload);
             HydromancerTaskControlFlow::Continue
         }
         HydromancerCommand::Reconnect => HydromancerTaskControlFlow::Continue,
@@ -46,11 +46,49 @@ pub(super) fn drain_pending_hydromancer_shutdown(
     HydromancerTaskControlFlow::Continue
 }
 
+pub(super) async fn hydromancer_wait_for_subscription_or_shutdown(
+    cmd_rx: &mut mpsc::UnboundedReceiver<HydromancerCommand>,
+    active_subs: &mut ActiveHydromancerSubscriptions,
+    idle_timeout: Duration,
+) -> HydromancerTaskControlFlow {
+    let mut idle_fut = Box::pin(tokio::time::sleep(idle_timeout));
+
+    loop {
+        if !active_subs.is_empty() {
+            return HydromancerTaskControlFlow::Continue;
+        }
+
+        let cmd_fut = Box::pin(cmd_rx.recv());
+        match futures::future::select(cmd_fut, idle_fut).await {
+            futures::future::Either::Left((cmd, remaining_idle)) => {
+                idle_fut = remaining_idle;
+                match cmd {
+                    Some(cmd) => {
+                        if handle_preconnect_hydromancer_command(cmd, active_subs)
+                            == HydromancerTaskControlFlow::Shutdown
+                        {
+                            return HydromancerTaskControlFlow::Shutdown;
+                        }
+                    }
+                    None => return HydromancerTaskControlFlow::Shutdown,
+                }
+            }
+            futures::future::Either::Right((_, _)) => {
+                return HydromancerTaskControlFlow::Shutdown;
+            }
+        }
+    }
+}
+
 pub(super) async fn hydromancer_sleep_or_shutdown(
     cmd_rx: &mut mpsc::UnboundedReceiver<HydromancerCommand>,
     active_subs: &mut ActiveHydromancerSubscriptions,
     duration: Duration,
 ) -> HydromancerTaskControlFlow {
+    if active_subs.is_empty() {
+        return HydromancerTaskControlFlow::Continue;
+    }
+
     let mut sleep_fut = Box::pin(tokio::time::sleep(duration));
 
     loop {

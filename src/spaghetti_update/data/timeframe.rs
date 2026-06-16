@@ -67,7 +67,9 @@ impl TradingTerminal {
         let mut tasks = Vec::new();
         let mut cached_updates = Vec::new();
         let chart_backfill_source = self.chart_backfill_source;
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let read_data_provider_generation = self.read_data_provider_generation;
+        let hydromancer_generation = self.hydromancer_key_generation;
+        let hydromancer_api_key = self.hydromancer_api_key_for_task();
         let target_tf = Self::spaghetti_effective_timeframe_for(
             inst_interval,
             inst_active_session,
@@ -88,7 +90,12 @@ impl TradingTerminal {
                 inst_active_session,
                 inst_session_granularity,
                 cached_last_time,
-                ChartBackfillFetchContext::new(chart_backfill_source, hydromancer_api_key.clone()),
+                ChartBackfillFetchContext::new(
+                    chart_backfill_source,
+                    read_data_provider_generation,
+                    hydromancer_generation,
+                    hydromancer_api_key.clone(),
+                ),
             ));
         }
 

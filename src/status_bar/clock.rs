@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::app_time::{local_datetime_from_unix_ms, utc_datetime_from_unix_ms};
 use crate::helpers;
 use crate::market_sessions::{MARKET_CLOCK_SESSIONS, MarketSession};
 use crate::message::Message;
@@ -20,8 +21,7 @@ use session::{session_clock_text, session_is_active};
 impl TradingTerminal {
     pub(super) fn status_clock_row(&self, separated: bool) -> Row<'static, Message> {
         let theme = self.theme();
-        let now_utc = Utc::now();
-        let local_now = Local::now();
+        let (now_utc, local_now) = status_clock_times(self.status_bar_now_ms);
         let local_text = format!(
             "Local {:02}:{:02}:{:02} {}",
             local_now.hour(),
@@ -38,6 +38,13 @@ impl TradingTerminal {
             push_clock_gap(row, separated).push(market_clock(session, now_utc, &theme))
         })
     }
+}
+
+fn status_clock_times(now_ms: u64) -> (DateTime<Utc>, DateTime<Local>) {
+    (
+        utc_datetime_from_unix_ms(now_ms),
+        local_datetime_from_unix_ms(now_ms),
+    )
 }
 
 fn push_clock_gap(row: Row<'static, Message>, separated: bool) -> Row<'static, Message> {

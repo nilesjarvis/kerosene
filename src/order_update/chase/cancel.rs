@@ -32,17 +32,27 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let should_refresh = result_requires_account_refresh(&result);
         if !self.chase_orders.contains_key(&chase_id) {
-            return self.refresh_after_chase_result(should_refresh);
+            return Task::none();
         }
+        let Some(chase_account_address) = self
+            .chase_orders
+            .get(&chase_id)
+            .map(|chase| chase.account_address.clone())
+        else {
+            return Task::none();
+        };
         let lifecycle = self
             .chase_orders
             .get(&chase_id)
             .map(|chase| chase.lifecycle);
         let Some(lifecycle) = lifecycle else {
-            return self.refresh_after_chase_result(should_refresh);
+            return Task::none();
         };
         if !lifecycle.expects_cancel_result(oid) {
-            return self.refresh_after_chase_result(should_refresh);
+            return self.refresh_after_chase_result_for_order_account(
+                should_refresh,
+                &chase_account_address,
+            );
         }
 
         match result {
@@ -60,16 +70,16 @@ impl TradingTerminal {
                         );
                     }
                     self.handle_chase_cancel_error(chase_id, oid, summary, false);
-                } else {
-                    let stop_status = self.chase_orders.get(&chase_id).and_then(|chase| {
-                        chase
-                            .stop_reason
-                            .clone()
-                            .or_else(|| Some(("Chase stopped".to_string(), false)))
-                    });
-                    if let Some((message, is_error)) = stop_status {
-                        self.order_status = Some((message, is_error));
+                    if self.archive_disconnected_manual_check_chase(chase_id) {
+                        return Task::none();
                     }
+                } else if resp.is_confirmed_cancel_result() {
+                    let stop_status = self
+                        .chase_orders
+                        .get(&chase_id)
+                        .and_then(|chase| chase.stop_reason.clone())
+                        .unwrap_or_else(|| ("Chase stopped".to_string(), false));
+                    self.order_status = Some(stop_status.clone());
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         chase.record_oid(oid);
                         chase.current_oid = Some(oid);
@@ -78,7 +88,19 @@ impl TradingTerminal {
                             phase: ChaseStopPhase::VerifyingCancel { oid },
                         };
                     }
-                    return self.refresh_after_chase_result(true);
+                    if self.archive_disconnected_stopping_chase(chase_id, stop_status.0) {
+                        return Task::none();
+                    }
+                    return self.refresh_after_chase_result_for_order_account(
+                        true,
+                        &chase_account_address,
+                    );
+                } else {
+                    return self.handle_chase_uncertain_cancel_result(
+                        chase_id,
+                        oid,
+                        resp.summary(),
+                    );
                 }
             }
             Err(e) => {
@@ -86,7 +108,7 @@ impl TradingTerminal {
             }
         }
 
-        self.refresh_after_chase_result(should_refresh)
+        self.refresh_after_chase_result_for_order_account(should_refresh, &chase_account_address)
     }
 
     fn handle_chase_uncertain_cancel_result(
@@ -96,6 +118,10 @@ impl TradingTerminal {
         message: String,
     ) -> Task<Message> {
         let mut retry_count = 0;
+        let chase_account_address = self
+            .chase_orders
+            .get(&chase_id)
+            .map(|chase| chase.account_address.clone());
         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.cancel_retries += 1;
             retry_count = chase.cancel_retries;
@@ -103,18 +129,24 @@ impl TradingTerminal {
                 phase: ChaseStopPhase::VerifyingCancel { oid },
             };
             if retry_count >= signing::MAX_CHASE_CANCEL_RETRIES {
-                self.order_status = Some((
-                    format!(
-                        concat!(
-                            "Chase requires manual check: cancel status could not be confirmed ",
-                            "after {} attempts; check open orders (last: {})"
-                        ),
-                        signing::MAX_CHASE_CANCEL_RETRIES,
-                        message
+                let manual_status = format!(
+                    concat!(
+                        "Chase requires manual check: cancel status could not be confirmed ",
+                        "after {} attempts; check open orders (last: {})"
                     ),
-                    true,
-                ));
-                return self.refresh_account_data();
+                    signing::MAX_CHASE_CANCEL_RETRIES,
+                    message
+                );
+                chase.stop_reason = Some((manual_status.clone(), true));
+                self.order_status = Some((manual_status, true));
+                if self.archive_disconnected_manual_check_chase(chase_id) {
+                    return Task::none();
+                }
+                return chase_account_address
+                    .as_deref()
+                    .map_or_else(Task::none, |address| {
+                        self.refresh_account_data_for_order_account(address)
+                    });
             }
         }
 
@@ -131,6 +163,16 @@ impl TradingTerminal {
                 message
             ),
         )
+    }
+
+    fn archive_disconnected_manual_check_chase(&mut self, chase_id: u64) -> bool {
+        let summary = self
+            .chase_orders
+            .get(&chase_id)
+            .and_then(|chase| chase.stop_reason.as_ref())
+            .filter(|(message, is_error)| *is_error && message.contains("manual check"))
+            .map(|(message, _)| message.clone());
+        summary.is_some_and(|summary| self.archive_disconnected_stopping_chase(chase_id, summary))
     }
 
     fn handle_chase_cancel_error(
@@ -152,13 +194,12 @@ impl TradingTerminal {
                 } else {
                     String::new()
                 };
-                self.order_status = Some((
-                    format!(
-                        "Chase requires manual check: cancel failed {} times{}; check open orders",
-                        chase.cancel_retries, suffix
-                    ),
-                    true,
-                ));
+                let manual_status = format!(
+                    "Chase requires manual check: cancel failed {} times{}; check open orders",
+                    chase.cancel_retries, suffix
+                );
+                chase.stop_reason = Some((manual_status.clone(), true));
+                self.order_status = Some((manual_status, true));
             } else {
                 self.order_status = Some((
                     format!(

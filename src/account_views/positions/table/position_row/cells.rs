@@ -2,6 +2,7 @@ use crate::helpers;
 use crate::message::Message;
 use crate::pnl_card::PnlCardTarget;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, row, text};
 use iced::{Color, Element, Theme};
 
@@ -20,7 +21,7 @@ pub(super) fn position_symbol_button(
         coin_content = coin_content.push(icon).push(Space::new().width(4.0));
     }
     coin_content = coin_content
-        .push(text(label).size(12))
+        .push(text(label).size(12).wrapping(Wrapping::None))
         .align_y(iced::Alignment::Center);
 
     button(coin_content)
@@ -50,7 +51,8 @@ pub(super) fn position_upnl_cell(
         text(upnl)
             .size(12)
             .font(crate::app_fonts::monospace_font())
-            .color(color),
+            .color(color)
+            .wrapping(Wrapping::None),
     )
     .on_press(Message::OpenPnlCard(PnlCardTarget::Position(coin_key)))
     .padding([1, 2])

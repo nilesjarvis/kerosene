@@ -10,6 +10,7 @@ impl TradingTerminal {
     pub(super) fn view_wallet_tracker_state<'a>(
         &'a self,
         row_data: &WalletTrackerRow,
+        now_ms: u64,
         theme: &Theme,
     ) -> Element<'a, Message> {
         if row_data.loading {
@@ -30,7 +31,7 @@ impl TradingTerminal {
             )
             .into()
         } else if let Some(updated_at) = row_data.last_updated_ms {
-            text(helpers::format_relative_time(updated_at, Self::now_ms()))
+            text(helpers::format_relative_time(updated_at, now_ms))
                 .size(11)
                 .color(theme.extended_palette().background.weak.text)
                 .into()

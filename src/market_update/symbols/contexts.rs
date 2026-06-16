@@ -22,7 +22,7 @@ pub(super) fn apply_contexts_loaded(
     match result {
         Ok(loaded_contexts) => {
             *last_fetch_ms = Some(requested_at);
-            contexts.extend(loaded_contexts);
+            *contexts = loaded_contexts;
             *status = None;
         }
         Err(error) => {

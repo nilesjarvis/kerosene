@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
+use crate::order_execution::TwapOrderStartSnapshot;
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
 use iced::{Alignment, Color, Element, Fill, Theme, color};
@@ -54,17 +55,20 @@ impl TradingTerminal {
         ]
         .spacing(5);
 
+        let snapshot = self.twap_order_start_snapshot();
         let buy = twap_start_button(
             format!("TWAP BUY {}", self.active_symbol_display.to_uppercase()),
             true,
             theme.palette().success,
             can_start,
+            snapshot.clone(),
         );
         let sell = twap_start_button(
             format!("TWAP SELL {}", self.active_symbol_display.to_uppercase()),
             false,
             theme.palette().danger,
             can_start,
+            snapshot,
         );
 
         let mut form = form.push(container(settings).padding([6, 7]).width(Fill).style(
@@ -111,11 +115,18 @@ fn twap_start_button(
     is_buy: bool,
     accent: Color,
     enabled: bool,
+    snapshot: TwapOrderStartSnapshot,
 ) -> Element<'static, Message> {
     let message = if is_buy {
-        Message::StartTwap(true)
+        Message::StartTwap {
+            is_buy: true,
+            snapshot,
+        }
     } else {
-        Message::StartTwap(false)
+        Message::StartTwap {
+            is_buy: false,
+            snapshot,
+        }
     };
     let bg_hover = if is_buy {
         color!(0x162c1d)

@@ -2,6 +2,7 @@ use super::actions::HyperliquidL1Action;
 use super::crypto::sign_l1_action;
 use super::model::{ExchangeOrderKind, ExchangeResponse};
 use crate::app_time::now_ms;
+use crate::helpers::sensitive_response_snippet;
 
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -51,9 +52,27 @@ async fn sign_and_post(
     action: &HyperliquidL1Action,
     vault_address: Option<&str>,
 ) -> Result<ExchangeResponse, String> {
+    let payload = build_signed_exchange_payload(private_key, action, vault_address)?;
+    post_exchange(&payload).await
+}
+
+fn build_signed_exchange_payload(
+    private_key: Zeroizing<String>,
+    action: &HyperliquidL1Action,
+    vault_address: Option<&str>,
+) -> Result<Value, String> {
+    let nonce = exchange_nonce_ms();
+    build_signed_exchange_payload_with_nonce(private_key, action, vault_address, nonce)
+}
+
+fn build_signed_exchange_payload_with_nonce(
+    private_key: Zeroizing<String>,
+    action: &HyperliquidL1Action,
+    vault_address: Option<&str>,
+    nonce: u64,
+) -> Result<Value, String> {
     let msgpack_bytes =
         rmp_serde::to_vec_named(action).map_err(|e| format!("Msgpack error: {e}"))?;
-    let nonce = exchange_nonce_ms();
     let expires_after = nonce.saturating_add(EXCHANGE_EXPIRES_AFTER_MS);
     let signature = sign_l1_action(
         private_key.as_str(),
@@ -62,37 +81,23 @@ async fn sign_and_post(
         nonce,
         Some(expires_after),
     )?;
+    drop(private_key);
     let action_json =
         serde_json::to_value(action).map_err(|e| format!("JSON serialize error: {e}"))?;
-    post_exchange(
-        &action_json,
-        &signature,
-        nonce,
-        vault_address,
-        Some(expires_after),
-    )
-    .await
-}
-
-async fn post_exchange(
-    action_json: &Value,
-    signature: &Value,
-    nonce: u64,
-    vault_address: Option<&str>,
-    expires_after: Option<u64>,
-) -> Result<ExchangeResponse, String> {
-    let payload = serde_json::json!({
+    Ok(serde_json::json!({
         "action": action_json,
         "nonce": nonce,
         "signature": signature,
         "vaultAddress": vault_address,
         "expiresAfter": expires_after,
-    });
+    }))
+}
 
+async fn post_exchange(payload: &Value) -> Result<ExchangeResponse, String> {
     let client = crate::api::CLIENT.clone();
     let raw = client
         .post(EXCHANGE_URL)
-        .json(&payload)
+        .json(payload)
         .send()
         .await
         .map_err(|e| format!("Exchange request failed: {e}"))?
@@ -100,7 +105,43 @@ async fn post_exchange(
         .await
         .map_err(|e| format!("Failed to read response: {e}"))?;
 
-    serde_json::from_str::<ExchangeResponse>(&raw).map_err(|_| format!("Exchange error: {raw}"))
+    parse_exchange_response(&raw)
+}
+
+#[cfg(test)]
+fn exchange_payload_nonce(payload: &Value) -> Option<u64> {
+    payload.get("nonce").and_then(Value::as_u64)
+}
+
+#[cfg(test)]
+fn exchange_payload_expires_after(payload: &Value) -> Option<u64> {
+    payload.get("expiresAfter").and_then(Value::as_u64)
+}
+
+#[cfg(test)]
+fn exchange_payload_vault_address(payload: &Value) -> Option<&str> {
+    payload.get("vaultAddress").and_then(Value::as_str)
+}
+
+#[cfg(test)]
+fn exchange_payload_signature(payload: &Value) -> Option<&Value> {
+    payload.get("signature")
+}
+
+#[cfg(test)]
+fn exchange_payload_action(payload: &Value) -> Option<&Value> {
+    payload.get("action")
+}
+
+#[cfg(test)]
+fn exchange_payload_contains_private_key(payload: &Value, private_key: &str) -> bool {
+    let rendered = payload.to_string();
+    rendered.contains(private_key) || rendered.contains(private_key.trim_start_matches("0x"))
+}
+
+fn parse_exchange_response(raw: &str) -> Result<ExchangeResponse, String> {
+    serde_json::from_str::<ExchangeResponse>(raw)
+        .map_err(|_| format!("Exchange error: {}", sensitive_response_snippet(raw)))
 }
 
 /// Place an order with a Hyperliquid client order id.

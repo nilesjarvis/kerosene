@@ -20,6 +20,7 @@ pub(super) fn journal_filter_controls(
         (journal::JournalFilter::All, "All"),
         (journal::JournalFilter::Perp, "Perp"),
         (journal::JournalFilter::Spot, "Spot"),
+        (journal::JournalFilter::Outcome, "Outcome"),
     ] {
         let is_active = active_filter == filter.0;
         filter_row = filter_row.push(

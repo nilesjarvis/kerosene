@@ -27,6 +27,7 @@ pub(super) fn push_asset_context_columns<'a>(
     asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
+    now_ms: u64,
 ) -> Row<'a, Message> {
     if ctx.funding.is_some() {
         push_perp_metric_columns(
@@ -39,6 +40,7 @@ pub(super) fn push_asset_context_columns<'a>(
             asset_volume_as_notional,
             open_interest_as_notional,
             visibility,
+            now_ms,
         )
     } else {
         push_spot_metric_columns(

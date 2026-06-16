@@ -49,9 +49,7 @@ impl TradingTerminal {
         for inst in self.order_books.values_mut() {
             if inst.mode == OrderBookSymbolMode::Active {
                 inst.set_book(OrderBook::empty());
-                inst.asset_ctx = None;
-                inst.spread_history.clear();
-                inst.clear_mid_price_history();
+                inst.clear_asset_context();
                 inst.reset_tick_options_basis();
                 inst.set_tick_size(default_tick);
                 inst.clear_book_request();
@@ -64,6 +62,7 @@ impl TradingTerminal {
 
     pub(in crate::market_update::order_book) fn apply_order_book_loaded(
         &mut self,
+        request_id: u64,
         id: OrderBookId,
         coin: String,
         tick_size: f64,
@@ -86,18 +85,24 @@ impl TradingTerminal {
         if !tick_still_current {
             return Task::none();
         }
+        let request_still_current = self.order_books.get(&id).is_some_and(|inst| {
+            inst.pending_book_request_matches_id(request_id, &coin, tick_size, sigfigs)
+        });
+        if !request_still_current {
+            return Task::none();
+        }
         if !order_book_response_matches_expected_precision(
             tick_size,
             sigfigs,
             self.resolve_mid_for_symbol(&coin),
         ) {
             if let Some(inst) = self.order_books.get_mut(&id) {
-                inst.clear_matching_book_request(sigfigs);
+                inst.clear_matching_book_request(request_id, &coin, tick_size, sigfigs);
             }
             return self.order_book_fetch_task_for_id(id);
         }
         if let Some(inst) = self.order_books.get_mut(&id) {
-            inst.clear_matching_book_request(sigfigs);
+            inst.clear_matching_book_request(request_id, &coin, tick_size, sigfigs);
             inst.book_loading = false;
             match result {
                 Ok(book) => {
@@ -196,7 +201,8 @@ impl TradingTerminal {
         };
 
         if self.order_books.get(&id).is_some_and(|inst| {
-            inst.book_loading && inst.pending_book_sigfigs() == Some(plan.sigfigs)
+            inst.book_loading
+                && inst.pending_book_request_matches(&plan.symbol, plan.tick_size, plan.sigfigs)
         }) {
             return Task::none();
         }
@@ -204,19 +210,22 @@ impl TradingTerminal {
         if let Some(inst) = self.order_books.get_mut(&id) {
             inst.book_loading = true;
             inst.book_error = None;
-            inst.mark_book_request(plan.sigfigs);
+            let request_id =
+                inst.mark_book_request(plan.symbol.clone(), plan.tick_size, plan.sigfigs);
+            return Task::perform(
+                fetch_order_book(plan.symbol.clone(), plan.sigfigs),
+                move |result| Message::BookLoaded {
+                    request_id,
+                    id: plan.id,
+                    coin: plan.symbol,
+                    tick_size: plan.tick_size,
+                    sigfigs: plan.sigfigs,
+                    result,
+                },
+            );
         }
 
-        Task::perform(
-            fetch_order_book(plan.symbol.clone(), plan.sigfigs),
-            move |result| Message::BookLoaded {
-                id: plan.id,
-                coin: plan.symbol,
-                tick_size: plan.tick_size,
-                sigfigs: plan.sigfigs,
-                result,
-            },
-        )
+        Task::none()
     }
 
     pub(crate) fn order_book_fetch_tasks_for_all(&mut self) -> Task<Message> {

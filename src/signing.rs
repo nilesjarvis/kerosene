@@ -8,6 +8,7 @@ pub use client::{
     PlaceOrderRequest, cancel_order, cancel_order_by_cloid, modify_order, place_order_with_cloid,
     update_leverage,
 };
+pub(crate) use model::CapturedAgentKey;
 pub use model::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseStopPhase,
     ChaseVerificationReason, ExchangeOrderKind, ExchangeResponse, MAX_CHASE_CANCEL_RETRIES,

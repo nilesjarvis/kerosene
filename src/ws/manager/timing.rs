@@ -9,6 +9,7 @@ use std::time::Duration;
 // and is the recovery path for half-open sockets left behind by VPN/NAT rebinds,
 // where reads silently stall while writes still queue into the kernel buffer.
 pub(super) const WS_READ_STALE_AFTER_SECS: u64 = 45;
+pub(super) const WS_CONNECT_TIMEOUT_SECS: u64 = 10;
 
 pub(super) fn stale_read_remaining(last_rx_elapsed: Duration) -> Duration {
     Duration::from_secs(WS_READ_STALE_AFTER_SECS).saturating_sub(last_rx_elapsed)

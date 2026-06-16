@@ -1,5 +1,7 @@
 use super::*;
 use crate::chart_state::ChartInstance;
+use crate::config::ReadDataProvider;
+use crate::read_data_provider::MarketDataSourceContext;
 use crate::timeframe::Timeframe;
 
 fn candle(open_time: u64, close: f64) -> Candle {
@@ -20,6 +22,16 @@ fn last_close(terminal: &TradingTerminal, id: ChartId) -> Option<f64> {
         .candles
         .last()
         .map(|candle| candle.close)
+}
+
+fn source_context(
+    terminal: &TradingTerminal,
+    hydromancer_key_generation: Option<u64>,
+) -> MarketDataSourceContext {
+    MarketDataSourceContext {
+        hydromancer_key_generation,
+        ..terminal.market_data_source_context()
+    }
 }
 
 #[test]
@@ -49,10 +61,182 @@ fn ws_candle_update_fans_out_to_matching_chart_instances() {
         1,
         "BTC".to_string(),
         "1h".to_string(),
+        source_context(&terminal, None),
         candle(2_000, 101.0),
     );
 
     assert_eq!(last_close(&terminal, 1), Some(101.0));
     assert_eq!(last_close(&terminal, 2), Some(101.0));
     assert_eq!(last_close(&terminal, 3), Some(100.0));
+}
+
+#[test]
+fn ws_candle_lagged_queues_reload_for_matching_chart_instances() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut first = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    first.chart.status = ChartStatus::Loaded;
+    first.chart.set_candles(vec![candle(1_000, 100.0)]);
+
+    let mut second = ChartInstance::new(2, "BTC".to_string(), Timeframe::H1);
+    second.chart.status = ChartStatus::Loaded;
+    second.chart.set_candles(vec![candle(1_000, 100.0)]);
+
+    let mut different_timeframe = ChartInstance::new(3, "BTC".to_string(), Timeframe::M5);
+    different_timeframe.chart.status = ChartStatus::Loaded;
+    different_timeframe
+        .chart
+        .set_candles(vec![candle(1_000, 100.0)]);
+
+    terminal.charts.insert(1, first);
+    terminal.charts.insert(2, second);
+    terminal.charts.insert(3, different_timeframe);
+
+    let _task = terminal.apply_chart_ws_candle_lagged(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        3,
+    );
+
+    assert!(terminal.charts[&1].candle_fetch_request.is_some());
+    assert!(terminal.charts[&2].candle_fetch_request.is_some());
+    assert!(terminal.charts[&3].candle_fetch_request.is_none());
+}
+
+#[test]
+fn stale_hydromancer_ws_candle_generation_does_not_update_chart() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.read_data_provider = ReadDataProvider::Hydromancer;
+    terminal.hydromancer_api_key = "hydro-key".to_string().into();
+    terminal.hydromancer_key_generation = 2;
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, Some(1)),
+        candle(2_000, 101.0),
+    );
+
+    assert_eq!(last_close(&terminal, 1), Some(100.0));
+}
+
+#[test]
+fn stale_hyperliquid_ws_candle_generation_does_not_update_chart() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+    let stale_context = source_context(&terminal, None);
+    terminal.bump_read_data_provider_generation();
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        stale_context,
+        candle(2_000, 101.0),
+    );
+
+    assert_eq!(last_close(&terminal, 1), Some(100.0));
+}
+
+#[test]
+fn ws_candle_update_ignores_inactive_provider_source() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.hydromancer_key_generation = 2;
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, Some(2)),
+        candle(2_000, 101.0),
+    );
+    assert_eq!(last_close(&terminal, 1), Some(100.0));
+
+    terminal.read_data_provider = ReadDataProvider::Hydromancer;
+    terminal.hydromancer_api_key = "hydro-key".to_string().into();
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(3_000, 102.0),
+    );
+    assert_eq!(last_close(&terminal, 1), Some(100.0));
+}
+
+#[test]
+fn stale_hydromancer_ws_candle_lag_does_not_reload_chart() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.read_data_provider = ReadDataProvider::Hydromancer;
+    terminal.hydromancer_api_key = "hydro-key".to_string().into();
+    terminal.hydromancer_key_generation = 2;
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_lagged(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, Some(1)),
+        3,
+    );
+
+    assert!(terminal.charts[&1].candle_fetch_request.is_none());
+}
+
+#[test]
+fn ws_candle_lag_ignores_inactive_provider_source() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.hydromancer_key_generation = 2;
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_lagged(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, Some(2)),
+        3,
+    );
+    assert!(terminal.charts[&1].candle_fetch_request.is_none());
+
+    terminal.read_data_provider = ReadDataProvider::Hydromancer;
+    terminal.hydromancer_api_key = "hydro-key".to_string().into();
+    let _task = terminal.apply_chart_ws_candle_lagged(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        3,
+    );
+    assert!(terminal.charts[&1].candle_fetch_request.is_none());
 }

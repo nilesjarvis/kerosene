@@ -48,3 +48,15 @@ pub(in crate::order_execution::twap::tests) fn missing_status(cloid: &str) -> Or
         raw_summary: format!("unknownOid cloid={cloid}"),
     }
 }
+
+pub(in crate::order_execution::twap::tests) fn open_status(
+    cloid: &str,
+    oid: u64,
+) -> OrderStatusResult {
+    OrderStatusResult {
+        status: "open".to_string(),
+        oid: Some(oid),
+        cloid: Some(cloid.to_string()),
+        raw_summary: format!("open oid={oid} cloid={cloid}"),
+    }
+}

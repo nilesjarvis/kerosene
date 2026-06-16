@@ -24,7 +24,7 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         &configs,
         &std::collections::HashSet::new(),
         crate::config::ChartBackfillSource::Hyperliquid,
-        String::new(),
+        &zeroize::Zeroizing::new(String::new()),
     );
 
     assert!(tasks.is_empty());

@@ -1,5 +1,6 @@
 mod data;
 mod http;
+mod position_metrics;
 mod spot;
 mod types;
 mod wallets;
@@ -10,6 +11,9 @@ pub(crate) use data::{
     hydromancer_portfolio_chunk_size,
 };
 pub use data::{fetch_account_data_scoped_with_provider, fetch_all_mids};
+pub(crate) use position_metrics::{
+    position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire,
+};
 pub use types::*;
 pub use wallets::{
     fetch_wallet_details_scoped_with_provider,

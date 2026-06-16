@@ -98,6 +98,7 @@ impl TradingTerminal {
                             if let Some(window_id) = detached_window_to_close {
                                 self.remove_detached_chart_window_state(window_id);
                             }
+                            self.clear_chart_pending_request_state(id);
                             self.charts.remove(&id);
                             if self.primary_chart_id == Some(id) {
                                 self.primary_chart_id = self.charts.keys().next().copied();

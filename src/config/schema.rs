@@ -14,7 +14,6 @@ use super::{CustomFontConfig, DisplayFontConfig};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
 use crate::telegram_feed::{TelegramFeedPrivateChannelConfig, default_telegram_feed_channels};
-use crate::x_feed::default_x_feed_handles;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
@@ -80,6 +79,8 @@ pub struct KeroseneConfig {
     pub credential_storage_mode: CredentialStorageMode,
     #[serde(default)]
     pub encrypted_secrets: Option<EncryptedSecretsConfig>,
+    #[serde(skip)]
+    pub secret_migration_save_blocked: bool,
     #[serde(default)]
     pub main_window_width: Option<f32>,
     #[serde(default)]
@@ -96,6 +97,12 @@ pub struct KeroseneConfig {
     pub journal_window_height: Option<f32>,
     #[serde(default)]
     pub accounts: Vec<AccountProfile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pending_keychain_profile_deletions: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pending_keychain_cleanup_all: bool,
+    #[serde(skip)]
+    pub secret_cleanup_state_dirty: bool,
     #[serde(default)]
     pub active_account_index: usize,
 
@@ -259,6 +266,7 @@ pub struct KeroseneConfig {
     /// Whether the favourites ticker tape is visible below the account bar.
     #[serde(default)]
     pub ticker_tape_enabled: bool,
+    #[serde(default)]
     pub favourite_symbols: Vec<String>,
     /// Globally hidden ticker symbols. Matching is intentionally broad for plain
     /// tickers, so muting BTC also hides UBTC and HIP-3 BTC variants.
@@ -316,6 +324,10 @@ pub struct KeroseneConfig {
     pub liquidation_feed_aggregation_enabled: bool,
     #[serde(default)]
     pub telegram_feed_notifications_enabled: bool,
+    /// Show outcome (prediction) markets in Telegram Feed ticker chips. Defaults
+    /// to true so upgrades keep existing behaviour.
+    #[serde(default = "default_true")]
+    pub telegram_feed_include_outcome_markets: bool,
     /// Optional Telegram MTProto fast-feed mode. Secret session material is stored separately.
     #[serde(default)]
     pub telegram_feed_fast_mode_enabled: bool,
@@ -328,15 +340,6 @@ pub struct KeroseneConfig {
     /// Private broadcast Telegram channels selected from the signed-in MTProto account.
     #[serde(default)]
     pub telegram_feed_private_channels: Vec<TelegramFeedPrivateChannelConfig>,
-    #[serde(default)]
-    pub x_feed_notifications_enabled: bool,
-    #[serde(default)]
-    pub x_feed_streaming_enabled: bool,
-    /// Public X handles shown by the X Feed widget.
-    #[serde(default = "default_x_feed_handles")]
-    pub x_feed_handles: Vec<String>,
-    #[serde(default, skip_serializing)]
-    pub x_bearer_token: Zeroizing<String>,
     /// Per-spaghetti (comparison) chart configurations.
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,
@@ -374,4 +377,8 @@ pub struct KeroseneConfig {
     /// Modifier prefix used with number keys to switch the active chart timeframe.
     #[serde(default)]
     pub chart_timeframe_hotkey_prefix: Option<HotkeyPrefixConfig>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }

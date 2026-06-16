@@ -1,4 +1,5 @@
 use super::fixtures::{account_data_with_timestamp, chase_order, chase_order_by_id, open_order};
+use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::signing::{ChaseLifecycle, ChaseOrder, ChaseVerificationReason};
 use crate::ws::WsUserData;
@@ -20,6 +21,11 @@ fn refresh_ready_terminal() -> TradingTerminal {
     terminal.account_reconciliation_required = false;
     terminal.last_advanced_exchange_request_at = None;
     terminal
+}
+
+fn set_account_data_for_connected_account(terminal: &mut TradingTerminal, data: AccountData) {
+    terminal.account_data_address = terminal.connected_address.clone();
+    terminal.account_data = Some(data);
 }
 
 fn verifying_chase(reason: ChaseVerificationReason) -> ChaseOrder {

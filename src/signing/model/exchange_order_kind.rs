@@ -15,6 +15,18 @@ impl ExchangeOrderKind {
             Self::Limit => "Gtc",
         }
     }
+
+    pub(crate) fn allows_resting_response(self) -> bool {
+        matches!(self, Self::Limit)
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Market => "market",
+            Self::Limit => "limit",
+            Self::LimitIoc => "limit IOC",
+        }
+    }
 }
 
 impl TryFrom<OrderKind> for ExchangeOrderKind {

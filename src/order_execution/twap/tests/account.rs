@@ -1,7 +1,8 @@
 use super::fixtures::{
-    empty_account_data, filled_status, missing_status, pending_twap, reconciliation_deadline,
-    test_twap, twap_by_id, user_fill,
+    empty_account_data, filled_status, missing_status, open_status, pending_twap,
+    reconciliation_deadline, test_twap, twap_by_id, user_fill,
 };
+use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
 use crate::twap_state::{TWAP_RECONCILIATION_TIMEOUT, TwapChildStatus, TwapOrder, TwapStatus};
 
@@ -28,6 +29,11 @@ fn switched_account_terminal() -> TradingTerminal {
 
 fn origin_account_terminal() -> TradingTerminal {
     terminal_for_account(ORIGIN_ADDRESS)
+}
+
+fn set_account_data_for_connected_account(terminal: &mut TradingTerminal, data: AccountData) {
+    terminal.account_data_address = terminal.connected_address.clone();
+    terminal.account_data = Some(data);
 }
 
 fn reconciliation_twap(now: Instant) -> TwapOrder {

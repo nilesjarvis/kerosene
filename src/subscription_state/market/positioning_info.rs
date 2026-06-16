@@ -1,7 +1,10 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use crate::ws::{ws_asset_ctx_stream_symbol, ws_hydromancer_asset_ctx_stream_symbol};
+use crate::ws::{
+    HydromancerStreamKey, SymbolAssetContextStreamEvent, ws_asset_ctx_stream_symbol,
+    ws_hydromancer_asset_ctx_stream_symbol,
+};
 
 use iced::Subscription;
 
@@ -36,7 +39,10 @@ impl TradingTerminal {
             symbols.push(instance.symbol.clone());
         }
 
-        let hydromancer_key = self.hydromancer_read_provider_key();
+        let hydromancer_key = self.hydromancer_read_provider_key().map(|api_key| {
+            HydromancerStreamKey::from_zeroizing(api_key, self.hydromancer_key_generation)
+        });
+        let source_context = self.market_data_source_context();
         for symbol in symbols {
             if let Some(api_key) = hydromancer_key.clone() {
                 subs.push(
@@ -44,14 +50,44 @@ impl TradingTerminal {
                         (api_key, symbol.clone()),
                         ws_hydromancer_asset_ctx_stream_symbol,
                     )
-                    .map(|(symbol, ctx)| Message::PositioningInfoWsAssetCtxUpdate(symbol, ctx)),
+                    .with(source_context)
+                    .map(positioning_asset_ctx_stream_event_message),
                 );
             } else {
                 subs.push(
                     Subscription::run_with((symbol.clone(),), ws_asset_ctx_stream_symbol)
-                        .map(|(symbol, ctx)| Message::PositioningInfoWsAssetCtxUpdate(symbol, ctx)),
+                        .with(source_context)
+                        .map(positioning_asset_ctx_stream_event_message),
                 );
             }
+        }
+    }
+}
+
+pub(super) fn positioning_asset_ctx_stream_event_message(
+    (source_context, event): (
+        crate::read_data_provider::MarketDataSourceContext,
+        SymbolAssetContextStreamEvent,
+    ),
+) -> Message {
+    match event {
+        SymbolAssetContextStreamEvent::Item(symbol, hydromancer_key_generation, ctx) => {
+            debug_assert_eq!(
+                source_context.hydromancer_key_generation,
+                hydromancer_key_generation
+            );
+            Message::PositioningInfoWsAssetCtxUpdate(symbol, source_context, *ctx)
+        }
+        SymbolAssetContextStreamEvent::Lagged {
+            symbol,
+            hydromancer_key_generation,
+            skipped,
+        } => {
+            debug_assert_eq!(
+                source_context.hydromancer_key_generation,
+                hydromancer_key_generation
+            );
+            Message::PositioningInfoWsAssetCtxLagged(symbol, source_context, skipped)
         }
     }
 }

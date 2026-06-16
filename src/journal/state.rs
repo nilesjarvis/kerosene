@@ -20,6 +20,18 @@ pub enum JournalFilter {
     All,
     Perp,
     Spot,
+    Outcome,
+}
+
+impl JournalFilter {
+    pub fn matches_coin(self, coin: &str) -> bool {
+        match self {
+            Self::All => true,
+            Self::Perp => !coin.starts_with('@') && !coin.starts_with('#'),
+            Self::Spot => coin.starts_with('@'),
+            Self::Outcome => coin.starts_with('#'),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +74,7 @@ pub struct JournalState {
     pub snapshot_requests: HashMap<String, JournalTradeSnapshotRequest>,
     pub snapshots: HashMap<String, JournalTradeSnapshot>,
     pub loading: bool,
+    pub sync_request_id: u64,
     pub filter: JournalFilter,
     pub sort: JournalSort,
     pub show_all_assets: bool,
@@ -78,6 +91,11 @@ pub struct JournalState {
 }
 
 impl JournalState {
+    pub fn next_sync_request_id(&mut self) -> u64 {
+        self.sync_request_id = self.sync_request_id.saturating_add(1);
+        self.sync_request_id
+    }
+
     pub fn begin_chart_reveal(&mut self, now_ms: u64) {
         self.chart_reveal_started_ms = Some(now_ms);
         self.chart_reveal_progress = 0.0;

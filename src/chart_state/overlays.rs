@@ -3,6 +3,7 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart::{OrderOverlay, OrderOverlayPendingState, PositionOverlay};
 use crate::helpers::{parse_positive_finite_number, positive_finite_value, values_match_approx};
+use crate::order_execution::MoveOrderKey;
 use crate::order_pending_indicators::PendingOrderIndicatorKind;
 
 mod trades;
@@ -73,7 +74,9 @@ impl TradingTerminal {
                     sz: chase.remaining_size,
                     is_buy: chase.is_buy,
                     oid,
-                    is_moving: self.pending_move_order_contexts.contains_key(&oid),
+                    is_moving: self
+                        .pending_move_order_contexts
+                        .contains_key(&MoveOrderKey::new(chase.coin.as_str(), oid)),
                     pending_state: None,
                 })
             })
@@ -85,8 +88,8 @@ impl TradingTerminal {
             })
             .collect();
         let mut order_overlays: Vec<OrderOverlay> = self
-            .account_data
-            .as_ref()
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data)
             .map(|data| {
                 data.open_orders
                     .iter()
@@ -100,7 +103,9 @@ impl TradingTerminal {
                             sz,
                             is_buy: o.side == "B",
                             oid: o.oid,
-                            is_moving: self.pending_move_order_contexts.contains_key(&o.oid),
+                            is_moving: self
+                                .pending_move_order_contexts
+                                .contains_key(&MoveOrderKey::new(o.coin.as_str(), o.oid)),
                             pending_state: None,
                         })
                     })
@@ -207,8 +212,8 @@ impl TradingTerminal {
         }
 
         let mut trade_markers = self
-            .account_data
-            .as_ref()
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data)
             .map(|data| trade_markers_for_symbol(&data.fills, &symbol))
             .unwrap_or_default();
         trade_markers.sort_by_key(|marker| marker.time_ms);
@@ -270,7 +275,7 @@ impl TradingTerminal {
             return None;
         }
 
-        let data = self.account_data.as_ref()?;
+        let (_, data) = self.connected_order_account_snapshot()?;
         let available_margin = positive_finite_value(self.visible_available_margin_usdc(data)?)?;
         let leverage = data
             .get_leverage_for(symbol, &self.exchange_symbols)
@@ -397,7 +402,11 @@ mod tests {
     fn set_open_orders(terminal: &mut TradingTerminal, orders: Vec<crate::account::OpenOrder>) {
         let mut data = account_data_with_leverage("BTC", 1);
         data.open_orders = orders;
-        terminal.account_data = Some(data);
+        let address = terminal
+            .connected_address
+            .clone()
+            .expect("test connected account");
+        terminal.set_account_data_for_address_for_test(address, data);
     }
 
     fn chart_orders(terminal: &TradingTerminal) -> &[crate::chart::OrderOverlay] {
@@ -534,7 +543,11 @@ mod tests {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.charts.clear();
         terminal.exchange_symbols = vec![symbol("BTC")];
-        terminal.account_data = Some(account_data_with_leverage("BTC", 10));
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.set_account_data_for_address_for_test(
+            TEST_ACCOUNT,
+            account_data_with_leverage("BTC", 10),
+        );
         terminal
             .charts
             .insert(1, ChartInstance::new(1, "BTC".to_string(), Timeframe::H1));

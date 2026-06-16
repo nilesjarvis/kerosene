@@ -17,6 +17,7 @@ pub(in crate::market_views::outcomes) struct OutcomeMarketSet<'a> {
 impl TradingTerminal {
     pub(super) fn grouped_outcome_markets(&self) -> Vec<OutcomeMarketSet<'_>> {
         let mut grouped: BTreeMap<(u8, u32), OutcomeMarketSet<'_>> = BTreeMap::new();
+        let now_ms = self.status_bar_now_ms;
         let query = self.outcome_search_query.trim();
         for sym in self.exchange_symbols.iter().filter(|sym| {
             sym.market_type == MarketType::Outcome
@@ -29,13 +30,13 @@ impl TradingTerminal {
                     Some(question_id) => (
                         (0, question_id),
                         format!("question:{question_id}"),
-                        outcome_question_title(info),
+                        outcome_question_title(info, now_ms),
                         true,
                     ),
                     None => (
                         (1, info.outcome_id),
                         format!("outcome:{}", info.outcome_id),
-                        info.market_label_with_countdown(Self::now_ms()),
+                        info.market_label_with_countdown(now_ms),
                         false,
                     ),
                 };
@@ -63,7 +64,7 @@ impl TradingTerminal {
     }
 }
 
-fn outcome_question_title(info: &crate::api::OutcomeSymbolInfo) -> String {
+fn outcome_question_title(info: &crate::api::OutcomeSymbolInfo, now_ms: u64) -> String {
     if info.question_class.as_deref() == Some("priceBucket")
         && let Some(underlying) = info.question_underlying.as_deref()
     {
@@ -74,7 +75,7 @@ fn outcome_question_title(info: &crate::api::OutcomeSymbolInfo) -> String {
         .as_ref()
         .filter(|name| !name.trim().is_empty() && name.trim() != "Recurring")
         .cloned()
-        .unwrap_or_else(|| info.market_label_with_countdown(TradingTerminal::now_ms()))
+        .unwrap_or_else(|| info.market_label_with_countdown(now_ms))
 }
 
 fn outcome_symbol_matches_search(symbol: &ExchangeSymbol, query: &str) -> bool {

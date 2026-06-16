@@ -109,6 +109,12 @@ Outputs go under `target/`:
 The script installs missing Rust packaging tools where possible and uses
 `Cargo.toml` package metadata.
 
+Before building public release artifacts, confirm that
+`KEROSENE_TELEGRAM_API_HASH` is unset unless the bundled Telegram application
+credentials are explicitly approved for public distribution. If it is set, the
+hash is compiled into the binary. Leaving it unset preserves the user-supplied
+Telegram fast-mode login path.
+
 ## macOS Packaging
 
 macOS packaging must run on macOS:

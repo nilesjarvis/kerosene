@@ -19,7 +19,6 @@ push_market_subscriptions
 push_user_data_subscriptions
 push_hydromancer_subscriptions
 push_telegram_subscriptions
-push_x_feed_subscriptions
 push_timer_subscriptions
 push_window_subscriptions
 push_post_window_timer_subscriptions
@@ -47,6 +46,15 @@ They cover:
 The order-book subscription path chooses Hyperliquid or Hydromancer stream
 helpers based on the configured read-data provider and available Hydromancer
 key. Hidden or unsupported symbols are skipped before subscriptions are added.
+
+L2 book subscriptions use one canonical live precision per coin across
+order-book panes, Chase, and TWAP. Stream helpers filter frames when a provider
+echoes `nSigFigs` or `mantissa`, and the coalescers keep echoed precision
+variants in separate pending slots. When a provider omits those precision
+fields, individual frames cannot be positively attributed after they arrive on
+the shared manager, so new L2 consumers should continue to subscribe through
+the canonical precision path or use an isolated stream before introducing
+same-coin multi-precision live subscriptions.
 
 ## User Data Subscriptions
 

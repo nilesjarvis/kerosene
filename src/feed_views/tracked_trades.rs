@@ -10,7 +10,7 @@ use iced::{Element, Fill};
 impl TradingTerminal {
     pub(crate) fn view_tracked_trades(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        let now_ms = Self::now_ms();
+        let now_ms = self.status_bar_now_ms;
         let labeled_addresses = self.labeled_wallet_addresses();
         let tracked_addresses = self.tracked_trade_subscription_addresses();
 

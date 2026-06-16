@@ -10,6 +10,14 @@ fn chase_context_allows_same_connected_account() {
         &chase(),
         Some("0xabc0000000000000000000000000000000000000")
     ));
+    assert!(chase_account_matches(
+        &chase(),
+        Some(" 0xabc0000000000000000000000000000000000000 ")
+    ));
+    assert!(chase_account_matches(
+        &chase(),
+        Some(" 0XABC0000000000000000000000000000000000000 ")
+    ));
 }
 
 #[test]

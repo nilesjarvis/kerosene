@@ -18,7 +18,7 @@ fn active_account_delete_is_blocked_while_chase_order_is_active() {
     ];
     terminal.active_account_index = 0;
     terminal.wallet_address_input = terminal.accounts[0].wallet_address.clone();
-    terminal.wallet_key_input = terminal.accounts[0].agent_key.clone();
+    terminal.wallet_key_input = terminal.accounts[0].agent_key.clone().into();
     terminal.connected_address = Some(terminal.accounts[0].wallet_address.clone());
     terminal.chase_orders.insert(
         42,

@@ -175,19 +175,18 @@ impl TradingTerminal {
         if !self.optimistic_account_updates {
             return Vec::new();
         }
-        let Some(account_address) = self.connected_address.as_deref() else {
+        let Some(account_address) = self.connected_order_account_address() else {
             return Vec::new();
         };
         let open_orders = self
-            .account_data
-            .as_ref()
-            .map(|data| data.open_orders.as_slice())
-            .unwrap_or(&[]);
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data.open_orders.as_slice())
+            .unwrap_or_default();
         self.pending_order_indicators
             .values()
             .filter(|indicator| {
                 indicator.kind == PendingOrderIndicatorKind::Placing
-                    && indicator.account_address == account_address
+                    && pending_indicator_is_for_account(indicator, &account_address)
                     && !placing_indicator_matches_confirmed_order(indicator, open_orders)
             })
             .cloned()
@@ -205,10 +204,12 @@ impl TradingTerminal {
         if !self.optimistic_account_updates {
             return None;
         }
-        let account_address = self.connected_address.as_deref()?;
+        let account_address = self.connected_order_account_address()?;
         let mut modifying = None;
         for indicator in self.pending_order_indicators.values() {
-            if indicator.account_address != account_address || indicator.oid != Some(oid) {
+            if !pending_indicator_is_for_account(indicator, &account_address)
+                || indicator.oid != Some(oid)
+            {
                 continue;
             }
             match indicator.kind {
@@ -235,13 +236,13 @@ impl TradingTerminal {
         if !self.optimistic_account_updates {
             return Vec::new();
         }
-        let Some(account_address) = self.connected_address.as_deref() else {
+        let Some(account_address) = self.connected_order_account_address() else {
             return Vec::new();
         };
         let mut accumulators: Vec<PositionDeltaAccumulator> = Vec::new();
         for indicator in self.pending_order_indicators.values() {
             if indicator.kind != PendingOrderIndicatorKind::MarketPlacing
-                || indicator.account_address != account_address
+                || !pending_indicator_is_for_account(indicator, &account_address)
             {
                 continue;
             }
@@ -251,22 +252,18 @@ impl TradingTerminal {
             let Some(size) = parse_positive_finite_number(&indicator.size) else {
                 continue;
             };
-            let accumulator = match accumulators
+            match accumulators
                 .iter_mut()
                 .find(|accumulator| accumulator.symbol == indicator.symbol)
             {
-                Some(accumulator) => accumulator,
+                Some(accumulator) => accumulator.add(size, indicator.is_buy, &indicator.price),
                 None => {
-                    accumulators.push(PositionDeltaAccumulator::new(
-                        indicator.symbol.clone(),
-                        indicator.is_buy,
-                    ));
-                    accumulators
-                        .last_mut()
-                        .expect("accumulator was just pushed")
+                    let mut accumulator =
+                        PositionDeltaAccumulator::new(indicator.symbol.clone(), indicator.is_buy);
+                    accumulator.add(size, indicator.is_buy, &indicator.price);
+                    accumulators.push(accumulator);
                 }
-            };
-            accumulator.add(size, indicator.is_buy, &indicator.price);
+            }
         }
         accumulators
             .into_iter()
@@ -283,11 +280,18 @@ impl TradingTerminal {
     }
 
     pub(crate) fn has_pending_cancel_indicator(&self, oid: u64) -> bool {
-        let account_address = self.connected_address.as_deref();
+        let account_address = self.connected_order_account_address();
         self.pending_order_indicators.values().any(|indicator| {
             indicator.kind == PendingOrderIndicatorKind::Cancelling
                 && indicator.oid == Some(oid)
-                && account_address == Some(indicator.account_address.as_str())
+                && pending_indicator_is_for_connected_account(indicator, account_address.as_deref())
+        })
+    }
+
+    pub(crate) fn has_pending_order_indicator_for_connected_account(&self) -> bool {
+        let account_address = self.connected_order_account_address();
+        self.pending_order_indicators.values().any(|indicator| {
+            pending_indicator_is_for_connected_account(indicator, account_address.as_deref())
         })
     }
 
@@ -298,7 +302,7 @@ impl TradingTerminal {
     /// only ever shrinks projections toward the authoritative state, never
     /// inflates them.
     pub(crate) fn consume_pending_market_order_fills(&mut self, fills: &[UserFill]) -> bool {
-        let Some(account_address) = self.connected_address.clone() else {
+        let Some(account_address) = self.connected_order_account_address() else {
             return false;
         };
         let mut changed = false;
@@ -312,7 +316,7 @@ impl TradingTerminal {
                 .iter()
                 .filter(|(_, indicator)| {
                     indicator.kind == PendingOrderIndicatorKind::MarketPlacing
-                        && indicator.account_address == account_address
+                        && pending_indicator_is_for_account(indicator, &account_address)
                         && indicator.symbol == fill.coin
                         && indicator.is_buy == fill_is_buy
                         && fill_time_covers_indicator(fill.time, indicator.created_at_ms)
@@ -347,11 +351,15 @@ impl TradingTerminal {
         changed
     }
 
-    pub(crate) fn pending_cancel_indicator_oid(&self, pending_id: Option<u64>) -> Option<u64> {
+    pub(crate) fn pending_cancel_indicator_order(
+        &self,
+        pending_id: Option<u64>,
+    ) -> Option<(u64, String)> {
         let indicator = self.pending_order_indicators.get(&pending_id?)?;
-        (indicator.kind == PendingOrderIndicatorKind::Cancelling)
-            .then_some(indicator.oid)
-            .flatten()
+        if indicator.kind != PendingOrderIndicatorKind::Cancelling {
+            return None;
+        }
+        Some((indicator.oid?, indicator.symbol.clone()))
     }
 
     pub(crate) fn pending_modification_price(&self, pending_id: Option<u64>) -> Option<String> {
@@ -386,11 +394,11 @@ impl TradingTerminal {
         &self,
         symbol: &str,
     ) -> Vec<(u64, PendingOrderIndicator)> {
-        let account_address = self.connected_address.as_deref();
+        let account_address = self.connected_order_account_address();
         self.pending_order_indicators
             .iter()
             .filter_map(|(pending_id, indicator)| {
-                (account_address == Some(indicator.account_address.as_str())
+                (pending_indicator_is_for_connected_account(indicator, account_address.as_deref())
                     && indicator.symbol == symbol)
                     .then_some((*pending_id, indicator.clone()))
             })
@@ -451,6 +459,20 @@ impl PositionDeltaAccumulator {
             estimated_price,
         }
     }
+}
+
+fn pending_indicator_is_for_connected_account(
+    indicator: &PendingOrderIndicator,
+    connected_account: Option<&str>,
+) -> bool {
+    connected_account.is_some_and(|account| pending_indicator_is_for_account(indicator, account))
+}
+
+fn pending_indicator_is_for_account(
+    indicator: &PendingOrderIndicator,
+    account_address: &str,
+) -> bool {
+    indicator.account_address == account_address
 }
 
 /// The exchange commits orders before the place ack returns, so the
@@ -647,8 +669,11 @@ mod tests {
         assert!(cancel_id.is_some());
         assert!(terminal.has_pending_cancel_indicator(42));
         assert!(!terminal.has_pending_cancel_indicator(43));
-        assert_eq!(terminal.pending_cancel_indicator_oid(cancel_id), Some(42));
-        assert_eq!(terminal.pending_cancel_indicator_oid(placement_id), None);
+        assert_eq!(
+            terminal.pending_cancel_indicator_order(cancel_id),
+            Some((42, "BTC".to_string()))
+        );
+        assert_eq!(terminal.pending_cancel_indicator_order(placement_id), None);
     }
 
     #[test]
@@ -944,7 +969,10 @@ mod tests {
 
         assert!(pending_id.is_some());
         assert!(terminal.has_pending_cancel_indicator(42));
-        assert_eq!(terminal.pending_cancel_indicator_oid(pending_id), Some(42));
+        assert_eq!(
+            terminal.pending_cancel_indicator_order(pending_id),
+            Some((42, "BTC".to_string()))
+        );
     }
 
     #[test]
@@ -983,6 +1011,88 @@ mod tests {
     }
 
     #[test]
+    fn pending_indicators_use_trimmed_connected_account() {
+        let mut terminal = terminal_with_chart();
+        terminal.connected_address = Some(format!(" {TEST_ACCOUNT} "));
+        terminal.optimistic_account_updates = true;
+
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+        let cancel_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+        );
+        assert!(cancel_id.is_some());
+
+        assert!(terminal.has_pending_cancel_indicator(42));
+        assert_eq!(terminal.pending_order_indicators_for_symbol("BTC").len(), 2);
+        assert_eq!(terminal.optimistic_position_deltas().len(), 1);
+    }
+
+    #[test]
+    fn pending_indicators_ignore_blank_connected_account() {
+        let mut terminal = terminal_with_chart();
+        terminal.connected_address = Some("   ".to_string());
+        terminal.optimistic_account_updates = true;
+
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+        let cancel_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+        );
+        assert!(cancel_id.is_some());
+        let created_at_ms = terminal
+            .pending_order_indicators
+            .values()
+            .find(|indicator| indicator.kind == PendingOrderIndicatorKind::MarketPlacing)
+            .expect("market indicator")
+            .created_at_ms;
+
+        assert!(!terminal.has_pending_cancel_indicator(42));
+        assert!(
+            terminal
+                .pending_order_indicators_for_symbol("BTC")
+                .is_empty()
+        );
+        assert!(terminal.optimistic_position_deltas().is_empty());
+        assert!(terminal.optimistic_open_order_rows().is_empty());
+        assert_eq!(terminal.optimistic_open_order_row_state(42), None);
+        assert!(!terminal.consume_pending_market_order_fills(&[user_fill(
+            "BTC",
+            "B",
+            "1",
+            created_at_ms + 50,
+        )]));
+    }
+
+    #[test]
+    fn pending_indicator_account_predicate_requires_exact_connected_account() {
+        let mut terminal = terminal_with_chart();
+        let pending_id = terminal
+            .add_pending_order_placement_indicator(
+                TEST_ACCOUNT.to_string(),
+                "BTC".to_string(),
+                true,
+                "1".to_string(),
+                "100".to_string(),
+            )
+            .expect("indicator should be created");
+        let indicator = terminal
+            .pending_order_indicators
+            .get(&pending_id)
+            .expect("indicator should be stored");
+
+        assert!(pending_indicator_is_for_connected_account(
+            indicator,
+            Some(TEST_ACCOUNT)
+        ));
+        assert!(!pending_indicator_is_for_connected_account(indicator, None));
+        assert!(!pending_indicator_is_for_connected_account(
+            indicator,
+            Some("0xdef0000000000000000000000000000000000000")
+        ));
+    }
+
+    #[test]
     fn placing_rows_are_deduplicated_against_confirmed_open_orders() {
         let mut terminal = terminal_with_chart();
         terminal.optimistic_account_updates = true;
@@ -991,6 +1101,7 @@ mod tests {
         let mut confirmed = open_order(42, "B");
         confirmed.limit_px = "100.0".to_string();
         confirmed.sz = "1.0".to_string();
+        terminal.account_data_address = Some(TEST_ACCOUNT.to_string());
         terminal.account_data = Some(account_data_with_open_orders(vec![confirmed]));
 
         terminal.add_pending_order_placement_indicator(

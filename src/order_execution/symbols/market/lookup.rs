@@ -36,15 +36,15 @@ impl TradingTerminal {
         symbol: &ExchangeSymbol,
         hidden_context: &str,
     ) -> Result<(), String> {
-        if !symbol.is_user_selectable_market() {
-            return Err(format!(
-                "{} is not a tradable market",
-                Self::exchange_symbol_display_name(symbol)
-            ));
-        }
         if symbol.market_type == MarketType::Outcome && symbol.outcome.is_none() {
             return Err(format!(
                 "{} outcome metadata is incomplete",
+                Self::exchange_symbol_display_name(symbol)
+            ));
+        }
+        if !symbol.is_user_selectable_market() {
+            return Err(format!(
+                "{} is not a tradable market",
                 Self::exchange_symbol_display_name(symbol)
             ));
         }

@@ -29,6 +29,8 @@ pub struct JournalTradeSnapshotRequest {
     pub trade_id: String,
     pub coin: String,
     pub source: ChartBackfillSource,
+    pub read_data_provider_generation: u64,
+    pub hydromancer_key_generation: u64,
     pub timeframe: Timeframe,
     pub ladder_index: usize,
     pub trade_start_ms: u64,
@@ -80,6 +82,8 @@ pub fn initial_snapshot_request(
     address: String,
     trade: &AggregatedTrade,
     source: ChartBackfillSource,
+    read_data_provider_generation: u64,
+    hydromancer_key_generation: u64,
     now_ms: u64,
 ) -> Result<JournalTradeSnapshotRequest, String> {
     if trade.coin.starts_with('@') || trade.coin.starts_with('#') {
@@ -94,14 +98,61 @@ pub fn initial_snapshot_request(
     let trade_end_ms = trade.end_time.unwrap_or(now_ms).max(trade.start_time);
     let ladder_index = initial_ladder_index(trade.start_time, trade_end_ms);
     snapshot_request_for_ladder_index(
-        account_key,
-        address,
+        SnapshotRequestContext {
+            account_key,
+            address,
+            source,
+            read_data_provider_generation,
+            hydromancer_key_generation,
+            trade_end_ms,
+            is_open: trade.end_time.is_none(),
+        },
         trade,
-        source,
-        trade_end_ms,
-        trade.end_time.is_none(),
         ladder_index,
     )
+}
+
+struct SnapshotRequestContext {
+    account_key: Option<String>,
+    address: String,
+    source: ChartBackfillSource,
+    read_data_provider_generation: u64,
+    hydromancer_key_generation: u64,
+    trade_end_ms: u64,
+    is_open: bool,
+}
+
+fn snapshot_request_for_ladder_index(
+    context: SnapshotRequestContext,
+    trade: &AggregatedTrade,
+    ladder_index: usize,
+) -> Result<JournalTradeSnapshotRequest, String> {
+    let timeframe = *SNAPSHOT_LADDER
+        .get(ladder_index)
+        .ok_or_else(|| "No candle timeframe available for snapshot.".to_string())?;
+    let duration = context.trade_end_ms.saturating_sub(trade.start_time);
+    let padding = snapshot_padding_ms(duration, timeframe);
+
+    Ok(JournalTradeSnapshotRequest {
+        account_key: context.account_key,
+        address: context.address,
+        trade_id: trade.id.clone(),
+        coin: trade.coin.clone(),
+        source: context.source,
+        read_data_provider_generation: context.read_data_provider_generation,
+        hydromancer_key_generation: context.hydromancer_key_generation,
+        timeframe,
+        ladder_index,
+        trade_start_ms: trade.start_time,
+        trade_end_ms: context.trade_end_ms,
+        is_open: context.is_open,
+        start_ms: trade.start_time.saturating_sub(padding),
+        end_ms: if context.is_open {
+            context.trade_end_ms
+        } else {
+            context.trade_end_ms.saturating_add(padding)
+        },
+    })
 }
 
 pub fn next_snapshot_request(
@@ -118,6 +169,8 @@ pub fn next_snapshot_request(
         trade_id: request.trade_id.clone(),
         coin: request.coin.clone(),
         source: request.source,
+        read_data_provider_generation: request.read_data_provider_generation,
+        hydromancer_key_generation: request.hydromancer_key_generation,
         timeframe,
         ladder_index: next_ladder_index,
         trade_start_ms: request.trade_start_ms,
@@ -215,41 +268,6 @@ pub fn snapshot_markers_for_details(details: &JournalTradeDetails) -> Vec<TradeM
         .collect();
     markers.sort_by_key(|marker| marker.time_ms);
     markers
-}
-
-fn snapshot_request_for_ladder_index(
-    account_key: Option<String>,
-    address: String,
-    trade: &AggregatedTrade,
-    source: ChartBackfillSource,
-    trade_end_ms: u64,
-    is_open: bool,
-    ladder_index: usize,
-) -> Result<JournalTradeSnapshotRequest, String> {
-    let timeframe = *SNAPSHOT_LADDER
-        .get(ladder_index)
-        .ok_or_else(|| "No candle timeframe available for snapshot.".to_string())?;
-    let duration = trade_end_ms.saturating_sub(trade.start_time);
-    let padding = snapshot_padding_ms(duration, timeframe);
-
-    Ok(JournalTradeSnapshotRequest {
-        account_key,
-        address,
-        trade_id: trade.id.clone(),
-        coin: trade.coin.clone(),
-        source,
-        timeframe,
-        ladder_index,
-        trade_start_ms: trade.start_time,
-        trade_end_ms,
-        is_open,
-        start_ms: trade.start_time.saturating_sub(padding),
-        end_ms: if is_open {
-            trade_end_ms
-        } else {
-            trade_end_ms.saturating_add(padding)
-        },
-    })
 }
 
 fn initial_ladder_index(trade_start_ms: u64, trade_end_ms: u64) -> usize {
@@ -454,6 +472,8 @@ mod tests {
             trade_id: "perp:BTC:test".to_string(),
             coin: "BTC".to_string(),
             source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: 0,
+            hydromancer_key_generation: 0,
             timeframe: Timeframe::M1,
             ladder_index: 0,
             trade_start_ms: 1_000,

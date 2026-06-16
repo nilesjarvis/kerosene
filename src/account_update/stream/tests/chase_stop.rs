@@ -8,6 +8,7 @@ fn websocket_open_order_update_does_not_override_stop_verification() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000".to_string();
     terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some(address.clone());
     terminal.account_data = Some(account_data_with_timestamp(1_000));
 
     let mut chase = chase_order();
@@ -40,13 +41,15 @@ fn websocket_open_order_update_does_not_override_stop_verification() {
 #[test]
 fn stopped_chase_clears_only_after_no_known_open_orders_remain() {
     let mut terminal = TradingTerminal::boot().0;
-    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
     let mut chase = chase_order();
     chase.lifecycle = ChaseLifecycle::Stopping {
         phase: ChaseStopPhase::VerifyingCancel { oid: 42 },
     };
     chase.stop_reason = Some(("Chase stopped".to_string(), false));
     terminal.chase_orders.insert(1, chase);
+    terminal.account_data_address = Some(address);
     terminal.account_data = Some(account_data_with_timestamp(1_000));
 
     let _task = terminal.reconcile_chase_after_account_refresh();
@@ -61,7 +64,8 @@ fn stopped_chase_clears_only_after_no_known_open_orders_remain() {
 #[test]
 fn stopped_chase_cancels_next_known_open_order_before_clearing() {
     let mut terminal = TradingTerminal::boot().0;
-    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
     let mut chase = chase_order();
     chase.known_oids.push(43);
     chase.lifecycle = ChaseLifecycle::Stopping {
@@ -71,6 +75,7 @@ fn stopped_chase_cancels_next_known_open_order_before_clearing() {
     terminal.chase_orders.insert(1, chase);
     let mut data = account_data_with_timestamp(1_000);
     data.open_orders = vec![open_order(43, Some(false))];
+    terminal.account_data_address = Some(address);
     terminal.account_data = Some(data);
 
     let _task = terminal.reconcile_chase_after_account_refresh();

@@ -10,23 +10,28 @@ mod tests;
 pub(super) fn build_user_stream_subscriptions(
     address: Option<&str>,
     dexes: &[String],
+    include_mids: bool,
 ) -> Vec<(String, Value)> {
-    let mut subscriptions = vec![(
-        "allMids".to_string(),
-        serde_json::json!({
-            "method": "subscribe",
-            "subscription": { "type": "allMids" }
-        }),
-    )];
+    let mut subscriptions = Vec::new();
 
-    for dex in dexes.iter().filter(|dex| !dex.is_empty()) {
+    if include_mids {
         subscriptions.push((
-            format!("allMids:{dex}"),
+            "allMids".to_string(),
             serde_json::json!({
                 "method": "subscribe",
-                "subscription": { "type": "allMids", "dex": dex }
+                "subscription": { "type": "allMids" }
             }),
         ));
+
+        for dex in dexes.iter().filter(|dex| !dex.is_empty()) {
+            subscriptions.push((
+                format!("allMids:{dex}"),
+                serde_json::json!({
+                    "method": "subscribe",
+                    "subscription": { "type": "allMids", "dex": dex }
+                }),
+            ));
+        }
     }
 
     let Some(address) = address else {

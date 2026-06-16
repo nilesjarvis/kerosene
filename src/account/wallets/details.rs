@@ -9,6 +9,7 @@ use super::super::{
 };
 use crate::api::API_URL;
 use crate::app_time::now_ms;
+use zeroize::Zeroizing;
 
 /// Fetch detailed watch-only wallet state for a detachable details window.
 ///
@@ -100,13 +101,13 @@ pub async fn fetch_wallet_details_scoped_with_provider(
     address: String,
     scope: AccountDataFetchScope,
     provider: crate::config::ReadDataProvider,
-    hydromancer_api_key: String,
+    hydromancer_api_key: Zeroizing<String>,
 ) -> Result<WalletDetailsData, String> {
     if provider != crate::config::ReadDataProvider::Hydromancer {
         return fetch_wallet_details_scoped(address, scope).await;
     }
 
-    let api_key = hydromancer_api_key.trim().to_string();
+    let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
     if api_key.is_empty() {
         return fetch_wallet_details_scoped(address, scope).await;
     }
@@ -128,7 +129,7 @@ pub async fn fetch_wallet_details_scoped_with_provider(
 async fn fetch_wallet_details_scoped_hydromancer(
     address: String,
     scope: AccountDataFetchScope,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<WalletDetailsData, String> {
     let portfolio_fut =
         fetch_hydromancer_portfolio_state(address.clone(), scope.clone(), api_key.clone());

@@ -1,6 +1,7 @@
 use super::super::orders::apply_open_order_to_chase;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::order_execution::open_order_matches_chase_identity;
 use crate::signing::{ChaseLifecycle, ChaseVerificationReason};
 
 use iced::Task;
@@ -14,22 +15,29 @@ impl TradingTerminal {
         &mut self,
     ) -> Task<Message> {
         let mut needs_refresh = false;
-        let open_orders = self
-            .account_data
-            .as_ref()
-            .map(|data| data.open_orders.clone())
-            .unwrap_or_default();
+        let Some((_, data)) = self.connected_order_account_snapshot() else {
+            return Task::none();
+        };
+        let open_orders = data.open_orders.clone();
         let chase_ids: Vec<u64> = self.chase_orders.keys().copied().collect();
         let mut cancel_ids = Vec::new();
 
         for chase_id in chase_ids {
-            let Some((oid, lifecycle, has_pending)) = self
-                .chase_orders
-                .get(&chase_id)
-                .map(|chase| (chase.current_oid, chase.lifecycle, chase.has_pending_op()))
+            let Some((oid, lifecycle, has_pending, account_matches)) =
+                self.chase_orders.get(&chase_id).map(|chase| {
+                    (
+                        chase.current_oid,
+                        chase.lifecycle,
+                        chase.has_pending_op(),
+                        self.connected_order_account_matches(&chase.account_address),
+                    )
+                })
             else {
                 continue;
             };
+            if !account_matches {
+                continue;
+            }
             let Some(oid) = oid else {
                 continue;
             };
@@ -39,7 +47,12 @@ impl TradingTerminal {
             if lifecycle.is_stopping() {
                 continue;
             }
-            match open_orders.iter().find(|order| order.oid == oid) {
+            let Some(chase_snapshot) = self.chase_orders.get(&chase_id) else {
+                continue;
+            };
+            match open_orders.iter().find(|order| {
+                order.oid == oid && open_order_matches_chase_identity(chase_snapshot, order)
+            }) {
                 Some(order) => {
                     let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
                         continue;
@@ -63,17 +76,12 @@ impl TradingTerminal {
                             }
                         }
                         Err(()) => {
-                            self.order_status = Some((
-                                "Chase stopped: invalid remaining size from open orders".into(),
-                                true,
-                            ));
-                            cancel_ids.push((
-                                chase_id,
-                                oid,
-                                "Chase stopped: invalid remaining size from open orders"
-                                    .to_string(),
-                                true,
-                            ));
+                            let summary = concat!(
+                                "Chase stopped: open-orders stream could not verify the ",
+                                "chased order"
+                            );
+                            self.order_status = Some((summary.into(), true));
+                            cancel_ids.push((chase_id, oid, summary.to_string(), true));
                         }
                     }
                 }

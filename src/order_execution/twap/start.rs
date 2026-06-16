@@ -3,7 +3,8 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_number, positive_finite_value};
 use crate::message::Message;
 use crate::order_execution::{
-    AdvancedOrderKind, OrderOperation, OrderSurface, validate_surface_market_type,
+    AdvancedOrderKind, OrderOperation, OrderSurface, TwapOrderStartSnapshot,
+    validate_surface_market_type,
 };
 use crate::signing::float_to_wire;
 use crate::twap_state::{
@@ -59,10 +60,25 @@ impl TradingTerminal {
         self.twap_form.randomize = value;
     }
 
+    pub(crate) fn start_twap_from_snapshot(
+        &mut self,
+        is_buy: bool,
+        snapshot: TwapOrderStartSnapshot,
+    ) -> Task<Message> {
+        if self.reject_stale_twap_order_start_snapshot(&snapshot) {
+            return Task::none();
+        }
+
+        self.start_twap(is_buy)
+    }
+
     pub(crate) fn start_twap(&mut self, is_buy: bool) -> Task<Message> {
         let Some(start_context) = self.advanced_order_start_context(AdvancedOrderKind::Twap) else {
             return Task::none();
         };
+        if let Some(task) = self.stale_percentage_order_quantity_task("starting a TWAP") {
+            return task;
+        }
 
         let now = Instant::now();
         // start_twap completes synchronously, so the pending-order flag never
@@ -87,6 +103,7 @@ impl TradingTerminal {
             .exchange_symbols
             .iter()
             .find(|symbol| symbol.key == self.active_symbol)
+            .cloned()
         else {
             self.order_status = Some((
                 format!(
@@ -97,6 +114,13 @@ impl TradingTerminal {
             ));
             return Task::none();
         };
+        if let Err(error) = self.validate_exchange_symbol_orderable(
+            &sym,
+            OrderSurface::Twap.orderability_context_label(),
+        ) {
+            self.order_status = Some((error, true));
+            return Task::none();
+        }
         if let Err(error) =
             validate_surface_market_type(OrderSurface::Twap, OrderOperation::Place, sym.market_type)
         {

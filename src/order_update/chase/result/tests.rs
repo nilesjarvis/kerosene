@@ -150,3 +150,19 @@ fn replacement_place_result_preserves_unrelated_pending_order_action() {
     let chase = chase_from_terminal(&terminal, 1);
     assert_eq!(chase.current_oid, Some(9001));
 }
+
+#[test]
+fn late_place_result_without_chase_does_not_refresh_current_account() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xdef0000000000000000000000000000000000000".to_string());
+
+    let response = exchange_response(vec![serde_json::json!({
+        "resting": {
+            "oid": 9001_u64
+        }
+    })]);
+    let _task = terminal.handle_chase_place_result(1, Ok(response));
+
+    assert!(!terminal.account_loading);
+    assert!(terminal.chase_orders.is_empty());
+}

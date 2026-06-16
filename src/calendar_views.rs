@@ -3,9 +3,11 @@ mod events;
 mod helpers;
 
 use crate::app_state::TradingTerminal;
+use crate::app_time::{local_datetime_from_unix_ms, utc_datetime_from_unix_ms};
 use crate::message::Message;
 use iced::widget::{column, container, responsive, rule, scrollable};
 use iced::{Element, Fill};
+use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // Economic calendar view
@@ -20,29 +22,16 @@ impl TradingTerminal {
         let theme = self.theme();
         let compact = available_width < 560.0;
         let medium = available_width < 860.0;
-        let now_utc = chrono::Utc::now();
-        let now_local = chrono::Local::now();
+        let now_utc = utc_datetime_from_unix_ms(self.status_bar_now_ms);
+        let now_local = local_datetime_from_unix_ms(self.status_bar_now_ms);
 
-        let status_text = if self.calendar_loading && self.calendar_events.is_empty() {
-            "Loading events...".to_string()
-        } else if self.calendar_loading {
-            "Refreshing...".to_string()
-        } else if let Some(err) = &self.calendar_error {
-            if self.calendar_events.is_empty() {
-                format!("Load failed: {err}")
-            } else {
-                format!("Showing last good data; refresh failed: {err}")
-            }
-        } else if let Some(last) = self.calendar_last_fetch {
-            let age = last.elapsed().as_secs();
-            if age < 60 {
-                "Updated just now".to_string()
-            } else {
-                format!("Updated {}m ago", age / 60)
-            }
-        } else {
-            "Not loaded".to_string()
-        };
+        let status_text = calendar_status_text(
+            self.calendar_loading,
+            !self.calendar_events.is_empty(),
+            self.calendar_error.as_deref(),
+            self.calendar_last_fetch,
+            self.status_bar_now,
+        );
         let status_color = if self.calendar_error.is_some() {
             theme.palette().danger
         } else {
@@ -81,5 +70,76 @@ impl TradingTerminal {
             .height(Fill)
             .padding(8)
             .into()
+    }
+}
+
+fn calendar_status_text(
+    loading: bool,
+    has_events: bool,
+    error: Option<&str>,
+    last_fetch: Option<Instant>,
+    now: Instant,
+) -> String {
+    if loading && !has_events {
+        "Loading events...".to_string()
+    } else if loading {
+        "Refreshing...".to_string()
+    } else if let Some(err) = error {
+        if has_events {
+            format!("Showing last good data; refresh failed: {err}")
+        } else {
+            format!("Load failed: {err}")
+        }
+    } else if let Some(last_fetch) = last_fetch {
+        let age = now.saturating_duration_since(last_fetch).as_secs();
+        if age < 60 {
+            "Updated just now".to_string()
+        } else {
+            format!("Updated {}m ago", age / 60)
+        }
+    } else {
+        "Not loaded".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calendar_status_text;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn calendar_status_uses_supplied_tick_clock_for_age() {
+        let now = Instant::now();
+
+        assert_eq!(
+            calendar_status_text(false, true, None, Some(now - Duration::from_secs(30)), now),
+            "Updated just now"
+        );
+        assert_eq!(
+            calendar_status_text(false, true, None, Some(now - Duration::from_secs(125)), now),
+            "Updated 2m ago"
+        );
+    }
+
+    #[test]
+    fn calendar_status_handles_loading_and_error_states() {
+        let now = Instant::now();
+
+        assert_eq!(
+            calendar_status_text(true, false, None, None, now),
+            "Loading events..."
+        );
+        assert_eq!(
+            calendar_status_text(true, true, None, None, now),
+            "Refreshing..."
+        );
+        assert_eq!(
+            calendar_status_text(false, false, Some("network"), None, now),
+            "Load failed: network"
+        );
+        assert_eq!(
+            calendar_status_text(false, true, Some("network"), None, now),
+            "Showing last good data; refresh failed: network"
+        );
     }
 }

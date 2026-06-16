@@ -3,6 +3,7 @@ use super::funding_history_start_ms;
 use super::responses::{
     fee_rates_from_response, funding_history_from_response, hip3_open_orders_from_response,
 };
+use super::{frontend_open_orders_payload, user_fills_payload};
 use crate::account::{
     AccountAbstractionMode, AccountData, AccountDataCompleteness, AccountDataFetchScope,
     AccountDataSection, ClearinghouseState, HIP3_DEXES, OpenOrder, SpotClearinghouseState,
@@ -11,12 +12,13 @@ use crate::account::{
 use crate::api::CLIENT;
 use crate::app_time::now_ms;
 use crate::config::ReadDataProvider;
-use crate::helpers::text_excerpt;
+use crate::helpers::sensitive_response_excerpt;
 use crate::hydromancer_api::HYDROMANCER_API_URL;
 
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use zeroize::Zeroizing;
 
 pub(crate) type PortfolioClearinghouses = (
     ClearinghouseState,
@@ -32,16 +34,21 @@ pub(super) async fn fetch_account_data_scoped_with_provider(
     address: String,
     scope: AccountDataFetchScope,
     provider: ReadDataProvider,
-    hydromancer_api_key: String,
+    hydromancer_api_key: Zeroizing<String>,
 ) -> Result<AccountData, String> {
     if provider != ReadDataProvider::Hydromancer {
         return super::fetch_account_data_scoped(address, scope).await;
     }
 
-    let api_key = hydromancer_api_key.trim().to_string();
+    let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
     if api_key.is_empty() {
         let mut data = super::fetch_account_data_scoped(address, scope).await?;
-        data.completeness.mark_incomplete(
+        // The Hyperliquid fallback returns a usable positions snapshot for the
+        // fetched scope; mark it degraded (not incomplete) so the warning still
+        // surfaces while close/NUKE controls stay enabled. If the inner fetch
+        // itself dropped positions (e.g. a HIP-3 failure), it already cleared
+        // `positions_actionable` and the degrade leaves that block in place.
+        data.completeness.mark_degraded(
             AccountDataSection::Positions,
             "Hydromancer API key missing; used Hyperliquid fallback",
         );
@@ -52,7 +59,7 @@ pub(super) async fn fetch_account_data_scoped_with_provider(
         Ok(data) => Ok(data),
         Err(error) => {
             let mut data = super::fetch_account_data_scoped(address, scope).await?;
-            data.completeness.mark_incomplete(
+            data.completeness.mark_degraded(
                 AccountDataSection::Positions,
                 crate::read_data_provider::fallback_warning("account refresh", &error),
             );
@@ -64,7 +71,7 @@ pub(super) async fn fetch_account_data_scoped_with_provider(
 async fn fetch_account_data_scoped_hydromancer(
     address: String,
     scope: AccountDataFetchScope,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<AccountData, String> {
     let request_weight_estimate = scope.estimated_info_weight();
     let portfolio_fut =
@@ -76,8 +83,8 @@ async fn fetch_account_data_scoped_hydromancer(
         if fetch_main_orders {
             Some(
                 send_hydromancer_info(
-                    serde_json::json!({"type": "frontendOpenOrders", "user": main_orders_address}),
-                    &api_key,
+                    frontend_open_orders_payload(&main_orders_address, None),
+                    api_key.as_str(),
                 )
                 .await,
             )
@@ -85,21 +92,18 @@ async fn fetch_account_data_scoped_hydromancer(
             None
         }
     };
-    let fills_fut = send_hydromancer_info(
-        serde_json::json!({"type": "userFills", "user": address.clone()}),
-        &api_key,
-    );
+    let fills_fut = send_hydromancer_info(user_fills_payload(&address), api_key.as_str());
     let funding_fut = send_hydromancer_info(
         serde_json::json!({
             "type": "userFunding",
             "user": address.clone(),
             "startTime": funding_history_start_ms()
         }),
-        &api_key,
+        api_key.as_str(),
     );
     let fees_fut = send_hydromancer_info(
         serde_json::json!({"type": "userFees", "user": address.clone()}),
-        &api_key,
+        api_key.as_str(),
     );
 
     let hip3_dexes = scope.hip3_dexes(HIP3_DEXES);
@@ -111,12 +115,8 @@ async fn fetch_account_data_scoped_hydromancer(
             (
                 dex.clone(),
                 send_hydromancer_info(
-                    serde_json::json!({
-                        "type": "frontendOpenOrders",
-                        "user": address,
-                        "dex": dex
-                    }),
-                    &api_key,
+                    frontend_open_orders_payload(&address, Some(&dex)),
+                    api_key.as_str(),
                 )
                 .await,
             )
@@ -189,7 +189,7 @@ pub(crate) fn hydromancer_portfolio_chunk_size(scope: &AccountDataFetchScope) ->
 pub(crate) async fn fetch_hydromancer_portfolio_state(
     address: String,
     scope: AccountDataFetchScope,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<HydromancerPortfolioState, String> {
     match scope {
         AccountDataFetchScope::AllMarkets { .. } => {
@@ -200,7 +200,7 @@ pub(crate) async fn fetch_hydromancer_portfolio_state(
                     "user": address,
                     "dex": "ALL_DEXES"
                 }),
-                &api_key,
+                api_key.as_str(),
             )
             .await?;
             parse_portfolio_state(raw)
@@ -213,7 +213,7 @@ pub(crate) async fn fetch_hydromancer_portfolio_state(
                     "type": "portfolioState",
                     "user": address,
                 }),
-                &api_key,
+                api_key.as_str(),
             );
             let dex_fut = post_hydromancer_value(
                 "portfolioState",
@@ -222,7 +222,7 @@ pub(crate) async fn fetch_hydromancer_portfolio_state(
                     "user": address,
                     "dex": dex_payload,
                 }),
-                &api_key,
+                api_key.as_str(),
             );
             let (native_raw, dex_raw) = futures::future::join(native_fut, dex_fut).await;
             merge_native_and_dex_portfolio_states(native_raw?, dex_raw?, &dex)
@@ -233,7 +233,7 @@ pub(crate) async fn fetch_hydromancer_portfolio_state(
 pub(crate) async fn fetch_hydromancer_portfolio_states(
     addresses: Vec<String>,
     scope: AccountDataFetchScope,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Vec<(String, Result<HydromancerPortfolioState, String>)> {
     if addresses.is_empty() {
         return Vec::new();
@@ -245,7 +245,7 @@ pub(crate) async fn fetch_hydromancer_portfolio_states(
                 addresses.clone(),
                 Some("ALL_DEXES"),
                 100,
-                &api_key,
+                api_key.as_str(),
             )
             .await;
             addresses
@@ -261,13 +261,17 @@ pub(crate) async fn fetch_hydromancer_portfolio_states(
                 .collect()
         }
         AccountDataFetchScope::Hip3Dex { dex } => {
-            let native_fut =
-                fetch_hydromancer_batch_portfolio_values(addresses.clone(), None, 500, &api_key);
+            let native_fut = fetch_hydromancer_batch_portfolio_values(
+                addresses.clone(),
+                None,
+                500,
+                api_key.as_str(),
+            );
             let dex_fut = fetch_hydromancer_batch_portfolio_values(
                 addresses.clone(),
                 Some(dex.as_str()),
                 500,
-                &api_key,
+                api_key.as_str(),
             );
             let (native_states, dex_states) = futures::future::join(native_fut, dex_fut).await;
             addresses
@@ -298,7 +302,7 @@ pub(crate) async fn fetch_hydromancer_portfolio_states(
 pub(crate) async fn fetch_hydromancer_frontend_open_orders_scoped(
     address: String,
     scope: AccountDataFetchScope,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<Vec<OpenOrder>, String> {
     let mut order_futs = Vec::new();
     if scope.fetches_main_open_orders() {
@@ -307,7 +311,7 @@ pub(crate) async fn fetch_hydromancer_frontend_open_orders_scoped(
             String::new(),
             post_hydromancer_vec::<OpenOrder>(
                 "frontendOpenOrders",
-                serde_json::json!({"type": "frontendOpenOrders", "user": order_address}),
+                frontend_open_orders_payload(&order_address, None),
                 api_key.clone(),
             ),
         ));
@@ -319,11 +323,7 @@ pub(crate) async fn fetch_hydromancer_frontend_open_orders_scoped(
             dex.clone(),
             post_hydromancer_vec::<OpenOrder>(
                 "frontendOpenOrders",
-                serde_json::json!({
-                    "type": "frontendOpenOrders",
-                    "user": order_address,
-                    "dex": dex,
-                }),
+                frontend_open_orders_payload(&order_address, Some(&dex)),
                 api_key.clone(),
             ),
         ));
@@ -388,7 +388,7 @@ async fn post_hydromancer_value(
         .await
         .map_err(|e| format!("{label} response read failed: {e}"))?;
     if !status.is_success() {
-        let body = text_excerpt(&text, 160);
+        let body = sensitive_response_excerpt(&text, 160);
         return if body.is_empty() {
             Err(format!("{label} request failed with HTTP {status}"))
         } else {
@@ -402,12 +402,12 @@ async fn post_hydromancer_value(
 async fn post_hydromancer_vec<T>(
     label: &'static str,
     payload: Value,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<Vec<T>, String>
 where
     T: for<'de> Deserialize<'de>,
 {
-    let value = post_hydromancer_value(label, payload, &api_key).await?;
+    let value = post_hydromancer_value(label, payload, api_key.as_str()).await?;
     serde_json::from_value(value).map_err(|e| format!("{label} parse failed: {e}"))
 }
 
@@ -532,7 +532,7 @@ where
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        let body = text_excerpt(&body, 160);
+        let body = sensitive_response_excerpt(&body, 160);
         if body.is_empty() {
             warnings.push(format!("{label} request failed with HTTP {status}"));
         } else {

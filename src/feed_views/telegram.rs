@@ -35,11 +35,12 @@ struct TelegramTickerImpactCard {
     source: SymbolAliasSource,
     confidence: u8,
     impact_pct: Option<f64>,
+    is_outcome: bool,
 }
 
 impl TradingTerminal {
     pub(crate) fn view_telegram_feed(&self) -> Element<'_, Message> {
-        let now_ms = Self::now_ms();
+        let now_ms = self.status_bar_now_ms;
 
         container(responsive(move |size| {
             self.view_telegram_feed_sized(now_ms, size.width)
@@ -91,6 +92,7 @@ impl TradingTerminal {
             .style(telegram_action_button);
 
         let notification_button = self.view_telegram_notification_button();
+        let outcomes_button = self.view_telegram_outcomes_button();
         let fast_button = self.view_telegram_fast_button();
         let private_button = self.view_telegram_private_channels_button();
         let refresh_button = self.view_telegram_refresh_button();
@@ -101,6 +103,7 @@ impl TradingTerminal {
                 row![
                     add_button,
                     notification_button,
+                    outcomes_button,
                     fast_button,
                     private_button,
                     Space::new().width(Fill),
@@ -117,6 +120,7 @@ impl TradingTerminal {
                 input,
                 add_button,
                 notification_button,
+                outcomes_button,
                 fast_button,
                 private_button,
                 refresh_button
@@ -174,6 +178,27 @@ impl TradingTerminal {
             .padding([5, 10])
             .style(move |theme: &Theme, status| telegram_toggle_button(theme, status, enabled))
             .into()
+    }
+
+    fn view_telegram_outcomes_button(&self) -> Element<'static, Message> {
+        let enabled = self.telegram_feed.include_outcome_markets;
+        let label = if enabled {
+            "Outcomes: ON"
+        } else {
+            "Outcomes: OFF"
+        };
+
+        let toggle = button(text(label).size(11).center())
+            .on_press(Message::ToggleTelegramFeedOutcomeMarkets)
+            .padding([5, 10])
+            .style(move |theme: &Theme, status| telegram_toggle_button(theme, status, enabled));
+
+        tooltip(
+            toggle,
+            text("Show outcome (prediction) markets in ticker chips").size(10),
+            tooltip::Position::Top,
+        )
+        .into()
     }
 
     fn view_telegram_fast_button(&self) -> Element<'_, Message> {
@@ -589,6 +614,7 @@ impl TradingTerminal {
         &self,
         post: &TelegramFeedPost,
     ) -> Vec<TelegramTickerImpactCard> {
+        let include_outcomes = self.telegram_feed.include_outcome_markets;
         post.ticker_mentions
             .iter()
             .filter_map(|mention| {
@@ -596,9 +622,11 @@ impl TradingTerminal {
                     .resolve_exchange_symbol_by_key_or_ticker(&mention.symbol)
                     .filter(|symbol| {
                         symbol.market_type != MarketType::Spot
+                            && (include_outcomes || symbol.market_type != MarketType::Outcome)
                             && self.exchange_symbol_is_orderable(symbol)
                     })?;
-                let ticker = if symbol.outcome.is_some() {
+                let is_outcome = symbol.outcome.is_some();
+                let ticker = if is_outcome {
                     Self::exchange_symbol_display_name(symbol)
                 } else {
                     mention.ticker.clone()
@@ -609,10 +637,16 @@ impl TradingTerminal {
                     matched_text: mention.matched_text.clone(),
                     source: mention.source,
                     confidence: mention.confidence,
+                    // Mid freshness must be judged against the real wall clock,
+                    // because mids are stamped with it on arrival. Using the
+                    // status-bar snapshot here makes a just-arrived mid look
+                    // "future"-dated (and thus stale) between status ticks, which
+                    // flickers the price in and out.
                     impact_pct: telegram_price_impact_pct(
                         mention.reference_price,
                         self.resolve_mid_for_symbol(&mention.symbol),
                     ),
+                    is_outcome,
                 })
             })
             .collect()
@@ -886,20 +920,33 @@ fn telegram_ticker_impact_cards(
     success_text: Color,
     danger_text: Color,
 ) -> Element<'static, Message> {
-    impacts
-        .into_iter()
-        .fold(row![].spacing(6).width(Fill), |row, impact| {
-            row.push(telegram_ticker_impact_card(
-                impact,
-                primary_text,
-                muted_text,
-                success_text,
-                danger_text,
-            ))
-        })
-        .wrap()
-        .vertical_spacing(6)
-        .into()
+    // Keep normal (perp) markets and outcome (prediction) markets on their own
+    // rows so the two kinds of enrichment never sit side by side.
+    let (outcome, normal): (Vec<_>, Vec<_>) =
+        impacts.into_iter().partition(|impact| impact.is_outcome);
+
+    let mut groups = column![].spacing(6).width(Fill);
+    for group in [normal, outcome] {
+        if group.is_empty() {
+            continue;
+        }
+        let chips = group
+            .into_iter()
+            .fold(row![].spacing(6).width(Fill), |row, impact| {
+                row.push(telegram_ticker_impact_card(
+                    impact,
+                    primary_text,
+                    muted_text,
+                    success_text,
+                    danger_text,
+                ))
+            })
+            .wrap()
+            .vertical_spacing(6);
+        groups = groups.push(chips);
+    }
+
+    groups.into()
 }
 
 fn telegram_ticker_impact_card(
@@ -910,7 +957,15 @@ fn telegram_ticker_impact_card(
     danger_text: Color,
 ) -> Element<'static, Message> {
     let symbol = impact.symbol.clone();
-    let ticker = impact.ticker.clone();
+    // A fuzzy association (keyword / display-name guess) must not read as an
+    // explicit ticker mention; mark it with a leading "~" and a muted label.
+    let fuzzy = telegram_source_is_fuzzy(impact.source);
+    let ticker_label = if fuzzy {
+        format!("~{}", impact.ticker)
+    } else {
+        impact.ticker.clone()
+    };
+    let ticker_color = if fuzzy { muted_text } else { primary_text };
     let impact_label = telegram_impact_label(impact.impact_pct);
     let impact_color =
         telegram_impact_color(impact.impact_pct, muted_text, success_text, danger_text);
@@ -922,10 +977,10 @@ fn telegram_ticker_impact_card(
     let chip = button(
         row![
             icon,
-            text(ticker)
+            text(ticker_label)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
-                .color(primary_text),
+                .color(ticker_color),
             text(impact_label)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
@@ -980,11 +1035,20 @@ fn telegram_ticker_match_tooltip(impact: &TelegramTickerImpactCard) -> Option<St
     }
 
     Some(format!(
-        "Matched \"{}\" as {} ({})",
+        "Matched \"{}\" as {} · confidence {}%",
         matched,
         telegram_symbol_alias_source_label(impact.source),
         impact.confidence
     ))
+}
+
+fn telegram_source_is_fuzzy(source: SymbolAliasSource) -> bool {
+    matches!(
+        source,
+        SymbolAliasSource::DisplayName
+            | SymbolAliasSource::Keyword
+            | SymbolAliasSource::CuratedKeyword
+    )
 }
 
 fn telegram_symbol_alias_source_label(source: SymbolAliasSource) -> &'static str {

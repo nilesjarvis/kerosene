@@ -17,6 +17,10 @@ fn wallet_position_upnl_prefers_live_mark_only_with_valid_inputs() {
         Some(20.0)
     );
     assert_eq!(
+        wallet_position_upnl(Some(-2.0), Some(100.0), "-99", Some(90.0)),
+        Some(20.0)
+    );
+    assert_eq!(
         wallet_position_upnl(Some(2.0), None, "1", Some(100.0)),
         Some(1.0)
     );

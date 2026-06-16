@@ -27,6 +27,9 @@ pub struct DepthChart {
     pub mid: Option<f64>,
     pub tick: f64,
     pub decimals: usize,
+    /// Outcome books trade whole contracts, so cumulative labels should not
+    /// display fractional base-unit sizes.
+    pub whole_contracts: bool,
     /// Tick-bucket prices holding the user's resting orders, for the
     /// baseline markers.
     pub user_bid_prices: Vec<f64>,

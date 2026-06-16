@@ -8,6 +8,7 @@ pub(super) fn parse_positive_finite(value: &str) -> Option<f64> {
     parse_positive_number(value)
 }
 
+#[cfg(test)]
 pub(super) fn quick_order_quantity_for_percentage(
     percentage: f32,
     max_notional: f64,

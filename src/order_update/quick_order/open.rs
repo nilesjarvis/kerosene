@@ -82,7 +82,9 @@ impl TradingTerminal {
             }
         }
 
-        if self.connected_address.is_none() || self.wallet_key_input.trim().is_empty() {
+        if self.connected_order_account_address().is_none()
+            || !self.has_active_committed_agent_key()
+        {
             self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
             return Task::none();
         }
@@ -117,6 +119,7 @@ impl TradingTerminal {
                 quantity,
                 quantity_is_usd,
                 percentage,
+                quantity_provenance: None,
                 is_limit,
                 click_x,
                 click_y,

@@ -15,6 +15,9 @@ mod themes;
 mod wallets;
 
 pub use clear::{ClearConfigSummary, clear_all_configs};
+pub(crate) use files::config_save_installed_snapshot;
+#[cfg(test)]
+pub(crate) use files::installed_config_save_error_for_test;
 pub use files::{
     custom_font_path, custom_sound_path, font_storage_dir, journal_cache_path, load_config,
     save_config, sound_storage_dir,
@@ -30,7 +33,7 @@ pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};
 pub use layouts::{
     AxisConfig, BottomTabConfig, PaneKindConfig, PaneLayoutConfig, SavedLayout,
     WidgetPaddingConfig, WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig,
-    prune_unsupported_pane_layout,
+    prune_legacy_unsupported_pane_layout, prune_unsupported_pane_layout,
 };
 pub use live_watchlist::{
     LiveWatchlistColumn, LiveWatchlistConfig, LiveWatchlistSortColumn, SortDirection,
@@ -78,11 +81,17 @@ pub use schema::{
     normalize_ui_scale, normalize_widget_padding,
 };
 pub use screenshot::ChartScreenshotSettingsConfig;
-pub(crate) use secrets::load_profile_secrets as load_legacy_profile_secrets;
+pub(crate) use secrets::push_secret_warning;
 pub use secrets::{
-    EncryptedSecretsConfig, SecretPayload, clear_all_keychain_secrets, clear_profile_secrets,
-    decrypt_secrets, encrypt_secrets, store_keychain_secrets, take_secret_warnings,
+    EncryptedSecretsConfig, SecretPayload, clear_all_keychain_secrets,
+    clear_keychain_secret_payload, clear_profile_secrets, decrypt_secrets, encrypt_secrets,
+    store_keychain_secrets, store_keychain_secrets_with_profile_removals, take_secret_warnings,
 };
+pub(crate) use secrets::{
+    clear_profile_secrets_by_id, load_global_secrets as load_legacy_global_secrets,
+    load_profile_secrets as load_legacy_profile_secrets,
+};
+pub(crate) use secrets::{load_keychain_secret_payload, store_secret_payload};
 pub(crate) use themes::default_custom_themes;
 pub use themes::{CustomThemeConfig, default_theme};
 pub use wallets::{
@@ -90,7 +99,7 @@ pub use wallets::{
     WalletTrackerConfig,
 };
 
-use files::{backup_config_path, config_path};
+use files::{backup_config_path, config_path, config_sidecar_prefix};
 
 fn config_warnings() -> &'static Mutex<Vec<String>> {
     static WARNINGS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();

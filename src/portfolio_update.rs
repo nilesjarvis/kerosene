@@ -1,4 +1,3 @@
-use crate::account::AccountData;
 use crate::account_analytics::{fetch_income_data, fetch_portfolio_history};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -6,6 +5,30 @@ use chrono::{DateTime, Utc};
 use iced::Task;
 
 impl TradingTerminal {
+    pub(crate) fn start_portfolio_refresh_for_address(&mut self, address: String) -> Task<Message> {
+        if self.portfolio.loading {
+            self.portfolio.queue_refresh_followup();
+            return Task::none();
+        }
+        let requested_addr = address.clone();
+        let request_id = self.portfolio.begin_refresh();
+        Task::perform(fetch_portfolio_history(address), move |r| {
+            Message::PortfolioLoaded(requested_addr.clone(), request_id, Box::new(r))
+        })
+    }
+
+    pub(crate) fn start_income_refresh_for_address(&mut self, address: String) -> Task<Message> {
+        if self.income.loading {
+            self.income.queue_refresh_followup();
+            return Task::none();
+        }
+        let requested_addr = address.clone();
+        let request_id = self.income.begin_refresh();
+        Task::perform(fetch_income_data(address), move |r| {
+            Message::IncomeLoaded(requested_addr.clone(), request_id, Box::new(r))
+        })
+    }
+
     pub(crate) fn update_portfolio_income(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SetPortfolioScope(scope) if self.portfolio.scope != scope => {
@@ -20,19 +43,21 @@ impl TradingTerminal {
                 self.portfolio.pnl_value_display_mode = mode;
             }
             Message::RefreshPortfolio => {
-                if let Some(addr) = &self.connected_address {
-                    let requested_addr = addr.clone();
-                    self.portfolio.loading = true;
-                    return Task::perform(fetch_portfolio_history(addr.clone()), move |r| {
-                        Message::PortfolioLoaded(requested_addr.clone(), Box::new(r))
-                    });
+                if let Some(addr) = self.connected_address.clone() {
+                    return self.start_portfolio_refresh_for_address(addr);
                 }
             }
-            Message::PortfolioLoaded(address, result) => {
-                if self.connected_address.as_deref() != Some(address.as_str()) {
+            Message::PortfolioLoaded(address, request_id, result) => {
+                if !self.portfolio.finish_refresh(request_id) {
                     return Task::none();
                 }
-                self.portfolio.loading = false;
+                let followup_pending = self.portfolio.take_refresh_followup();
+                if self.connected_address.as_deref() != Some(address.as_str()) {
+                    if followup_pending && let Some(addr) = self.connected_address.clone() {
+                        return self.start_portfolio_refresh_for_address(addr);
+                    }
+                    return Task::none();
+                }
                 match *result {
                     Ok(data) => {
                         self.portfolio.data = Some(data);
@@ -42,25 +67,34 @@ impl TradingTerminal {
                         self.portfolio.last_error = Some(e);
                     }
                 }
+                if followup_pending && let Some(addr) = self.connected_address.clone() {
+                    return self.start_portfolio_refresh_for_address(addr);
+                }
             }
             Message::RefreshIncome => {
                 let is_pm = self
-                    .account_data
-                    .as_ref()
-                    .is_some_and(AccountData::is_portfolio_margin);
-                if is_pm && let Some(addr) = &self.connected_address {
-                    let requested_addr = addr.clone();
-                    self.income.loading = true;
-                    return Task::perform(fetch_income_data(addr.clone()), move |r| {
-                        Message::IncomeLoaded(requested_addr.clone(), Box::new(r))
-                    });
+                    .connected_order_account_snapshot()
+                    .is_some_and(|(_, data)| data.is_portfolio_margin());
+                if is_pm && let Some(addr) = self.connected_address.clone() {
+                    return self.start_income_refresh_for_address(addr);
                 }
             }
-            Message::IncomeLoaded(address, result) => {
-                if self.connected_address.as_deref() != Some(address.as_str()) {
+            Message::IncomeLoaded(address, request_id, result) => {
+                if !self.income.finish_refresh(request_id) {
                     return Task::none();
                 }
-                self.income.loading = false;
+                let followup_pending = self.income.take_refresh_followup();
+                if self.connected_address.as_deref() != Some(address.as_str()) {
+                    if followup_pending {
+                        let is_pm = self
+                            .connected_order_account_snapshot()
+                            .is_some_and(|(_, data)| data.is_portfolio_margin());
+                        if is_pm && let Some(addr) = self.connected_address.clone() {
+                            return self.start_income_refresh_for_address(addr);
+                        }
+                    }
+                    return Task::none();
+                }
                 match *result {
                     Ok(data) => {
                         let latest_payment =
@@ -106,6 +140,14 @@ impl TradingTerminal {
                     }
                     Err(e) => {
                         self.income.last_error = Some(e);
+                    }
+                }
+                if followup_pending {
+                    let is_pm = self
+                        .connected_order_account_snapshot()
+                        .is_some_and(|(_, data)| data.is_portfolio_margin());
+                    if is_pm && let Some(addr) = self.connected_address.clone() {
+                        return self.start_income_refresh_for_address(addr);
                     }
                 }
             }

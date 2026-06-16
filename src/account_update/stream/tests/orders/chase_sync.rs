@@ -1,5 +1,6 @@
 use super::{
-    ChaseLifecycle, ChaseVerificationReason, apply_open_order_to_chase, chase_order, open_order,
+    ChaseLifecycle, ChaseVerificationReason, apply_open_order_to_chase, chase_order,
+    first_open_chase_oid, open_order,
 };
 
 #[test]
@@ -42,6 +43,72 @@ fn open_order_sync_rejects_invalid_remaining_size() {
 
     assert_eq!(apply_open_order_to_chase(&mut chase, &order), Err(()));
     assert_eq!(chase.remaining_size, 1.0);
+}
+
+#[test]
+fn open_order_sync_rejects_coin_mismatch() {
+    let mut chase = chase_order();
+    let mut order = open_order(42, Some(false));
+    order.coin = "ETH".to_string();
+
+    assert_eq!(apply_open_order_to_chase(&mut chase, &order), Err(()));
+    assert_eq!(chase.remaining_size, 1.0);
+}
+
+#[test]
+fn open_order_sync_rejects_side_mismatch() {
+    let mut chase = chase_order();
+    let mut order = open_order(42, Some(false));
+    order.side = "A".to_string();
+
+    assert_eq!(apply_open_order_to_chase(&mut chase, &order), Err(()));
+    assert_eq!(chase.remaining_size, 1.0);
+}
+
+#[test]
+fn open_order_sync_rejects_reduce_only_mismatch_for_perp_chase() {
+    let mut chase = chase_order();
+    let order = open_order(42, Some(true));
+
+    assert_eq!(apply_open_order_to_chase(&mut chase, &order), Err(()));
+    assert_eq!(chase.remaining_size, 1.0);
+}
+
+#[test]
+fn open_order_sync_rejects_unknown_reduce_only_for_perp_chase() {
+    let mut chase = chase_order();
+    let order = open_order(42, None);
+
+    assert_eq!(apply_open_order_to_chase(&mut chase, &order), Err(()));
+    assert_eq!(chase.remaining_size, 1.0);
+}
+
+#[test]
+fn first_open_chase_oid_ignores_same_oid_with_mismatched_identity() {
+    let chase = chase_order();
+    let mut wrong_coin = open_order(42, Some(false));
+    wrong_coin.coin = "ETH".to_string();
+    let mut wrong_side = open_order(42, Some(false));
+    wrong_side.side = "A".to_string();
+    let wrong_reduce_only = open_order(42, Some(true));
+
+    assert_eq!(
+        first_open_chase_oid(&chase, &[wrong_coin, wrong_side, wrong_reduce_only]),
+        None
+    );
+}
+
+#[test]
+fn first_open_chase_oid_finds_matching_known_order_after_same_oid_mismatch() {
+    let chase = chase_order();
+    let mut wrong_coin = open_order(42, Some(false));
+    wrong_coin.coin = "ETH".to_string();
+    let matching = open_order(42, Some(false));
+
+    assert_eq!(
+        first_open_chase_oid(&chase, &[wrong_coin, matching]),
+        Some(42)
+    );
 }
 
 #[test]

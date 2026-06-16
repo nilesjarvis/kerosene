@@ -18,6 +18,7 @@ impl TradingTerminal {
         group: OutcomeMarketSet<'a>,
         available_width: f32,
     ) -> Element<'a, Message> {
+        let now_ms = self.status_bar_now_ms;
         let collapsed = self.outcome_collapsed_market_groups.contains(&group.key);
         let toggle_label = if collapsed { "+" } else { "-" };
         let toggle_button = button(text(toggle_label).size(12).center())
@@ -76,9 +77,13 @@ impl TradingTerminal {
                     outcomes = outcomes.push(rule::horizontal(1));
                 }
                 is_first = false;
-                if let Some(outcome) =
-                    self.view_outcome_market_group(theme, sides.clone(), available_width, nested)
-                {
+                if let Some(outcome) = self.view_outcome_market_group(
+                    theme,
+                    sides.clone(),
+                    now_ms,
+                    available_width,
+                    nested,
+                ) {
                     outcomes = outcomes.push(outcome);
                 }
             }
@@ -96,6 +101,7 @@ impl TradingTerminal {
         &'a self,
         theme: &Theme,
         mut sides: Vec<&'a ExchangeSymbol>,
+        now_ms: u64,
         available_width: f32,
         nested: bool,
     ) -> Option<Element<'a, Message>> {
@@ -107,7 +113,7 @@ impl TradingTerminal {
         });
 
         let info = sides.iter().find_map(|sym| sym.outcome.as_ref())?;
-        let market = outcome_market_title(info, nested);
+        let market = outcome_market_title(info, nested, now_ms);
 
         let mut market_header = row![
             text(market)
@@ -243,7 +249,7 @@ fn outcome_market_set_summary(group: &OutcomeMarketSet<'_>) -> String {
     )
 }
 
-fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool) -> String {
+fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool, now_ms: u64) -> String {
     if nested {
         let label = info.side_condition_short_label();
         if !label.trim().is_empty() {
@@ -251,7 +257,7 @@ fn outcome_market_title(info: &crate::api::OutcomeSymbolInfo, nested: bool) -> S
         }
     }
 
-    info.market_label_with_countdown(TradingTerminal::now_ms())
+    info.market_label_with_countdown(now_ms)
 }
 
 fn outcome_market_set_volume(

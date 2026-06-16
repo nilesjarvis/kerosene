@@ -1,5 +1,3 @@
-use crate::account::AccountData;
-use crate::account_analytics::{fetch_income_data, fetch_portfolio_history};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_management::AddPaneOutcome;
@@ -20,34 +18,25 @@ impl TradingTerminal {
 
                 if !matches!(outcome, AddPaneOutcome::Failed)
                     && self.portfolio.data.is_none()
-                    && let Some(addr) = &self.connected_address
+                    && let Some(addr) = self.connected_address.clone()
                 {
-                    let requested_addr = addr.clone();
-                    self.portfolio.loading = true;
-                    return Task::perform(fetch_portfolio_history(addr.clone()), move |r| {
-                        Message::PortfolioLoaded(requested_addr.clone(), Box::new(r))
-                    });
+                    return self.start_portfolio_refresh_for_address(addr);
                 }
             }
             Message::AddIncomePane => {
                 self.add_widget_menu_open = false;
                 let is_pm = self
-                    .account_data
-                    .as_ref()
-                    .is_some_and(AccountData::is_portfolio_margin);
+                    .connected_order_account_snapshot()
+                    .is_some_and(|(_, data)| data.is_portfolio_margin());
                 if let Some(pane) = self.find_pane_matching(|kind| matches!(kind, PaneKind::Income))
                 {
                     self.focus = Some(pane);
                     self.push_toast("Income is already open".to_string(), false);
                     if is_pm
                         && self.income.data.is_none()
-                        && let Some(addr) = &self.connected_address
+                        && let Some(addr) = self.connected_address.clone()
                     {
-                        let requested_addr = addr.clone();
-                        self.income.loading = true;
-                        return Task::perform(fetch_income_data(addr.clone()), move |r| {
-                            Message::IncomeLoaded(requested_addr.clone(), Box::new(r))
-                        });
+                        return self.start_income_refresh_for_address(addr);
                     }
                     return Task::none();
                 }
@@ -69,13 +58,9 @@ impl TradingTerminal {
 
                 if !matches!(outcome, AddPaneOutcome::Failed)
                     && self.income.data.is_none()
-                    && let Some(addr) = &self.connected_address
+                    && let Some(addr) = self.connected_address.clone()
                 {
-                    let requested_addr = addr.clone();
-                    self.income.loading = true;
-                    return Task::perform(fetch_income_data(addr.clone()), move |r| {
-                        Message::IncomeLoaded(requested_addr.clone(), Box::new(r))
-                    });
+                    return self.start_income_refresh_for_address(addr);
                 }
             }
             Message::AddCalendarPane => {
@@ -142,18 +127,6 @@ impl TradingTerminal {
                     return self.request_telegram_feed_refresh();
                 }
             }
-            Message::AddXFeedPane => {
-                self.add_widget_menu_open = false;
-                let outcome = self.add_or_focus_singleton_pane(
-                    self.add_widget_axis(),
-                    PaneKind::XFeed,
-                    "X Feed",
-                    |kind| matches!(kind, PaneKind::XFeed),
-                );
-                if !matches!(outcome, AddPaneOutcome::Failed) && self.x_feed.posts.is_empty() {
-                    return self.request_x_feed_refresh();
-                }
-            }
             Message::AddOutcomesPane => {
                 self.add_widget_menu_open = false;
                 self.add_or_focus_singleton_pane(
@@ -183,9 +156,7 @@ impl TradingTerminal {
                     "HYPE Unstaking Queue",
                     |kind| matches!(kind, PaneKind::HypeUnstakingQueue),
                 );
-                if !matches!(outcome, AddPaneOutcome::Failed)
-                    && self.hype_unstaking_queue.data.is_none()
-                {
+                if !matches!(outcome, AddPaneOutcome::Failed) {
                     return self.request_hype_unstaking_queue_refresh(false);
                 }
             }

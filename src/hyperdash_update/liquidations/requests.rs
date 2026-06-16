@@ -57,11 +57,14 @@ impl TradingTerminal {
             instance.chart.candle_cache.clear();
         }
 
-        let api_key = self.hyperdash_api_key.trim().to_string();
+        let api_key = self.hyperdash_api_key.trim().to_string().into();
+        let generation = self.hyperdash_key_generation;
         let response_key = liquidation_request_key(&coin, min, max, timestamp_secs);
         Task::perform(
             fetch_liquidation_levels_at(coin, min, max, timestamp_secs, api_key),
-            move |result| Message::ChartLiquidationLoaded(response_key.clone(), Box::new(result)),
+            move |result| {
+                Message::ChartLiquidationLoaded(response_key.clone(), generation, Box::new(result))
+            },
         )
     }
 }

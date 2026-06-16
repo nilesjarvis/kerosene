@@ -37,8 +37,30 @@ const TELEGRAM_FAST_RESOLVE_RETRY_DELAY: Duration = Duration::from_secs(10);
 const TELEGRAM_SESSION_OPEN_RETRY_ATTEMPTS: usize = 3;
 const TELEGRAM_SESSION_OPEN_RETRY_DELAY: Duration = Duration::from_millis(250);
 const TELEGRAM_POOL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED: &str =
+    "Telegram fast local session was removed, but remote sign-out could not be confirmed";
+pub(crate) const TELEGRAM_FAST_SESSION_CLEAR_FAILED: &str =
+    "Telegram fast session sign-out could not remove the local session files";
 type ChannelIdMap = Arc<RwLock<HashMap<PeerId, FastChannelIdentity>>>;
-type ChannelCursorMap = Arc<RwLock<HashMap<String, u64>>>;
+type ChannelCursorMap = Arc<RwLock<HashMap<String, FastChannelCursor>>>;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct FastCursorGeneration {
+    global: u64,
+    channel: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FastChannelCursor {
+    message_id: u64,
+    generation: FastCursorGeneration,
+}
+
+#[derive(Debug, Default)]
+struct FastCursorGenerations {
+    global: u64,
+    channels: HashMap<String, u64>,
+}
 
 // Cursors live for the whole process so that subscription restarts (reconnect
 // nonce bumps, channel edits) keep gap-recovery backfill instead of falling
@@ -46,6 +68,41 @@ type ChannelCursorMap = Arc<RwLock<HashMap<String, u64>>>;
 fn fast_channel_cursors() -> ChannelCursorMap {
     static CURSORS: OnceLock<ChannelCursorMap> = OnceLock::new();
     Arc::clone(CURSORS.get_or_init(|| Arc::new(RwLock::new(HashMap::new()))))
+}
+
+fn fast_cursor_generations() -> &'static Mutex<FastCursorGenerations> {
+    static GENERATIONS: OnceLock<Mutex<FastCursorGenerations>> = OnceLock::new();
+    GENERATIONS.get_or_init(|| Mutex::new(FastCursorGenerations::default()))
+}
+
+fn fast_cursor_generation(channel: &str) -> FastCursorGeneration {
+    let Ok(generations) = fast_cursor_generations().lock() else {
+        return FastCursorGeneration::default();
+    };
+    FastCursorGeneration {
+        global: generations.global,
+        channel: generations
+            .channels
+            .get(channel)
+            .copied()
+            .unwrap_or_default(),
+    }
+}
+
+fn advance_fast_channel_cursor_generation(channel: &str) {
+    let Ok(mut generations) = fast_cursor_generations().lock() else {
+        return;
+    };
+    let entry = generations.channels.entry(channel.to_string()).or_default();
+    *entry = entry.saturating_add(1);
+}
+
+fn advance_all_fast_cursor_generations() {
+    let Ok(mut generations) = fast_cursor_generations().lock() else {
+        return;
+    };
+    generations.global = generations.global.saturating_add(1);
+    generations.channels.clear();
 }
 
 // Serializes short-lived client operations (auth, private channel scans)
@@ -59,9 +116,75 @@ fn telegram_client_op_lock() -> &'static tokio::sync::Mutex<()> {
 // would skip the initial history backfill. Contention is rare and losing the
 // race only degrades to the old behavior.
 pub(crate) fn clear_fast_channel_cursor(channel: &str) {
+    advance_fast_channel_cursor_generation(channel);
     if let Ok(mut cursors) = fast_channel_cursors().try_write() {
         cursors.remove(channel);
     }
+}
+
+pub(crate) fn clear_all_fast_channel_cursors_best_effort() {
+    advance_all_fast_cursor_generations();
+    if let Ok(mut cursors) = fast_channel_cursors().try_write() {
+        cursors.clear();
+    }
+}
+
+#[cfg(test)]
+pub(crate) async fn set_fast_channel_cursor_for_test(channel: &str, message_id: u64) {
+    let generation = fast_cursor_generation(channel);
+    fast_channel_cursors().write().await.insert(
+        channel.to_string(),
+        FastChannelCursor {
+            message_id,
+            generation,
+        },
+    );
+}
+
+#[cfg(test)]
+pub(crate) async fn fast_channel_cursor_message_id_for_test(channel: &str) -> u64 {
+    let generation = fast_cursor_generation(channel);
+    channel_cursor_message_id(&fast_channel_cursors(), channel, generation).await
+}
+
+#[cfg(test)]
+pub(crate) fn fast_channel_cursor_test_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+#[cfg(test)]
+pub(crate) fn telegram_fast_pending_auth_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(test)]
+pub(crate) fn set_telegram_fast_pending_auth_placeholders_for_test(entries: &[(&str, u64)]) {
+    if let Ok(mut pending) = pending_auths().lock() {
+        pending.clear();
+        pending.extend(entries.iter().map(|(path, request_id)| {
+            ((PathBuf::from(path), *request_id), PendingAuth::Placeholder)
+        }));
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn telegram_fast_pending_auth_request_ids_for_test() -> Vec<u64> {
+    let Ok(pending) = pending_auths().lock() else {
+        return Vec::new();
+    };
+    let mut ids = pending
+        .keys()
+        .map(|(_, request_id)| *request_id)
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids
+}
+
+async fn clear_all_fast_channel_cursors() {
+    advance_all_fast_cursor_generations();
+    fast_channel_cursors().write().await.clear();
 }
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
@@ -110,6 +233,7 @@ pub(crate) struct TelegramFastFeedStreamParams {
 struct FastChannelIdentity {
     key: String,
     title: String,
+    cursor_generation: FastCursorGeneration,
 }
 
 #[derive(Debug, Clone)]
@@ -122,7 +246,10 @@ struct FastChannelTarget {
 enum PendingAuth {
     Login(LoginToken),
     Password(Box<PasswordToken>),
+    #[cfg(test)]
+    Placeholder,
 }
+type PendingAuthKey = (PathBuf, u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FastFeedSessionExit {
@@ -130,8 +257,8 @@ enum FastFeedSessionExit {
     Stop,
 }
 
-fn pending_auths() -> &'static Mutex<HashMap<PathBuf, PendingAuth>> {
-    static PENDING: OnceLock<Mutex<HashMap<PathBuf, PendingAuth>>> = OnceLock::new();
+fn pending_auths() -> &'static Mutex<HashMap<PendingAuthKey, PendingAuth>> {
+    static PENDING: OnceLock<Mutex<HashMap<PendingAuthKey, PendingAuth>>> = OnceLock::new();
     PENDING.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -149,6 +276,7 @@ pub(crate) fn bundled_telegram_api_hash() -> Option<&'static str> {
 
 pub(crate) async fn request_telegram_fast_login_code(
     api_id: i32,
+    request_id: u64,
     api_hash: Zeroizing<String>,
     phone: String,
 ) -> Result<TelegramFastAuthOutcome, String> {
@@ -167,7 +295,7 @@ pub(crate) async fn request_telegram_fast_login_code(
         if client
             .is_authorized()
             .await
-            .map_err(|e| format!("Telegram authorization check failed: {e}"))?
+            .map_err(|_| "Telegram authorization check failed".to_string())?
         {
             return Ok(TelegramFastAuthOutcome::SignedIn {
                 display_name: "Telegram".to_string(),
@@ -177,9 +305,12 @@ pub(crate) async fn request_telegram_fast_login_code(
         let token = client
             .request_login_code(&phone, &api_hash)
             .await
-            .map_err(|e| format!("Telegram login code request failed: {e}"))?;
+            .map_err(|_| "Telegram login code request failed".to_string())?;
         if let Ok(mut pending) = pending_auths().lock() {
-            pending.insert(session_path.clone(), PendingAuth::Login(token));
+            pending.insert(
+                (session_path.clone(), request_id),
+                PendingAuth::Login(token),
+            );
         }
         Ok(TelegramFastAuthOutcome::CodeSent)
     })
@@ -188,6 +319,8 @@ pub(crate) async fn request_telegram_fast_login_code(
 
 pub(crate) async fn submit_telegram_fast_login_code(
     api_id: i32,
+    challenge_request_id: u64,
+    result_request_id: u64,
     code: Zeroizing<String>,
 ) -> Result<TelegramFastAuthOutcome, String> {
     let code = Zeroizing::new(code.trim().to_string());
@@ -200,14 +333,21 @@ pub(crate) async fn submit_telegram_fast_login_code(
     let token = match pending_auths()
         .lock()
         .map_err(|_| "Telegram login state is unavailable".to_string())?
-        .remove(&session_path)
+        .remove(&(session_path.clone(), challenge_request_id))
     {
         Some(PendingAuth::Login(token)) => token,
         Some(PendingAuth::Password(password)) => {
             if let Ok(mut pending) = pending_auths().lock() {
-                pending.insert(session_path, PendingAuth::Password(password));
+                pending.insert(
+                    (session_path, challenge_request_id),
+                    PendingAuth::Password(password),
+                );
             }
             return Err("Enter the Telegram 2FA password".to_string());
+        }
+        #[cfg(test)]
+        Some(PendingAuth::Placeholder) => {
+            return Err("Request a Telegram login code first".to_string());
         }
         None => return Err("Request a Telegram login code first".to_string()),
     };
@@ -222,11 +362,14 @@ pub(crate) async fn submit_telegram_fast_login_code(
                 if let Some(session_path) = telegram_fast_session_path()
                     && let Ok(mut pending) = pending_auths().lock()
                 {
-                    pending.insert(session_path, PendingAuth::Password(Box::new(password)));
+                    pending.insert(
+                        (session_path, result_request_id),
+                        PendingAuth::Password(Box::new(password)),
+                    );
                 }
                 Ok(TelegramFastAuthOutcome::PasswordRequired { hint })
             }
-            Err(err) => Err(format!("Telegram sign-in failed: {err}")),
+            Err(_) => Err("Telegram sign-in failed".to_string()),
         }
     })
     .await
@@ -234,6 +377,8 @@ pub(crate) async fn submit_telegram_fast_login_code(
 
 pub(crate) async fn submit_telegram_fast_password(
     api_id: i32,
+    challenge_request_id: u64,
+    result_request_id: u64,
     password: Zeroizing<String>,
 ) -> Result<TelegramFastAuthOutcome, String> {
     if password.trim().is_empty() {
@@ -245,14 +390,21 @@ pub(crate) async fn submit_telegram_fast_password(
     let token = match pending_auths()
         .lock()
         .map_err(|_| "Telegram login state is unavailable".to_string())?
-        .remove(&session_path)
+        .remove(&(session_path.clone(), challenge_request_id))
     {
         Some(PendingAuth::Password(token)) => *token,
         Some(PendingAuth::Login(login)) => {
             if let Ok(mut pending) = pending_auths().lock() {
-                pending.insert(session_path, PendingAuth::Login(login));
+                pending.insert(
+                    (session_path, challenge_request_id),
+                    PendingAuth::Login(login),
+                );
             }
             return Err("Submit the Telegram login code first".to_string());
+        }
+        #[cfg(test)]
+        Some(PendingAuth::Placeholder) => {
+            return Err("No Telegram 2FA challenge is pending".to_string());
         }
         None => return Err("No Telegram 2FA challenge is pending".to_string()),
     };
@@ -263,40 +415,58 @@ pub(crate) async fn submit_telegram_fast_password(
                 display_name: user.first_name().unwrap_or("Telegram").to_string(),
             }),
             Err(SignInError::InvalidPassword(token)) => {
-                let hint = token.hint().map(str::to_string);
                 if let Some(session_path) = telegram_fast_session_path()
                     && let Ok(mut pending) = pending_auths().lock()
                 {
-                    pending.insert(session_path, PendingAuth::Password(Box::new(token)));
+                    pending.insert(
+                        (session_path, result_request_id),
+                        PendingAuth::Password(Box::new(token)),
+                    );
                 }
-                Err(format!(
-                    "Telegram 2FA password was invalid{}",
-                    hint.map(|hint| format!("; hint: {hint}"))
-                        .unwrap_or_default()
-                ))
+                Err("Telegram 2FA password was invalid".to_string())
             }
-            Err(err) => Err(format!("Telegram 2FA sign-in failed: {err}")),
+            Err(_) => Err("Telegram 2FA sign-in failed".to_string()),
         }
     })
     .await
 }
 
 pub(crate) async fn sign_out_telegram_fast(api_id: i32) -> Result<TelegramFastAuthOutcome, String> {
-    let result = with_telegram_client(api_id, |client| async move {
+    let remote_result = with_telegram_client(api_id, |client| async move {
         if client
             .is_authorized()
             .await
-            .map_err(|e| format!("Telegram authorization check failed: {e}"))?
+            .map_err(|_| "Telegram authorization check failed".to_string())?
         {
-            let _ = client.sign_out().await;
+            client
+                .sign_out()
+                .await
+                .map_err(|_| "Telegram remote sign-out failed".to_string())?;
         }
-        Ok(TelegramFastAuthOutcome::SignedOut)
+        Ok(())
     })
     .await;
-    clear_pending_auth();
-    clear_telegram_fast_session_files();
-    fast_channel_cursors().write().await.clear();
+    clear_telegram_fast_pending_auth();
+    let result = telegram_fast_sign_out_outcome(remote_result, clear_telegram_fast_session_files());
+    if result.is_ok() {
+        clear_all_fast_channel_cursors().await;
+    }
     result
+}
+
+fn telegram_fast_sign_out_outcome(
+    remote_result: Result<(), String>,
+    session_clear_result: Result<usize, String>,
+) -> Result<TelegramFastAuthOutcome, String> {
+    if let Err(error) = session_clear_result {
+        return Err(format!("{TELEGRAM_FAST_SESSION_CLEAR_FAILED}: {error}"));
+    }
+
+    Ok(TelegramFastAuthOutcome::SignedOut {
+        warning: remote_result
+            .err()
+            .map(|_| TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string()),
+    })
 }
 
 pub(crate) async fn list_telegram_private_channel_candidates(
@@ -309,7 +479,7 @@ pub(crate) async fn list_telegram_private_channel_candidates(
             if !client
                 .is_authorized()
                 .await
-                .map_err(|e| format!("Telegram authorization check failed: {e}"))?
+                .map_err(|_| "Telegram authorization check failed".to_string())?
             {
                 return Err("Sign in to Telegram fast mode first".to_string());
             }
@@ -319,7 +489,7 @@ pub(crate) async fn list_telegram_private_channel_candidates(
             while let Some(dialog) = dialogs
                 .next()
                 .await
-                .map_err(|e| format!("Telegram channel list failed: {e}"))?
+                .map_err(|_| "Telegram channel list failed".to_string())?
             {
                 let Peer::Channel(channel) = dialog.peer else {
                     continue;
@@ -447,14 +617,8 @@ async fn run_telegram_fast_feed_session(
 
     let authorized = match client.is_authorized().await {
         Ok(authorized) => authorized,
-        Err(err) => {
-            let _ = send_status(
-                output,
-                false,
-                false,
-                &format!("Telegram authorization check failed: {err}"),
-            )
-            .await;
+        Err(_) => {
+            let _ = send_status(output, false, false, "Telegram authorization check failed").await;
             handle.quit();
             return FastFeedSessionExit::Retry;
         }
@@ -471,10 +635,13 @@ async fn run_telegram_fast_feed_session(
         .await;
     let channels = normalized_channel_set(&params.channels);
     let private_channels = normalized_private_channel_map(&params.private_channels);
+    let channel_cursor_generations =
+        fast_cursor_generations_for_channels(&channels, &private_channels);
     let channel_ids = Arc::new(RwLock::new(HashMap::new()));
     let background_client = client.clone();
     let background_channels = channels.clone();
     let background_private_channels = private_channels.clone();
+    let background_channel_cursor_generations = channel_cursor_generations.clone();
     let background_channel_ids = Arc::clone(&channel_ids);
     let background_channel_cursors = Arc::clone(&channel_cursors);
     let mut background_output = output.clone();
@@ -490,6 +657,7 @@ async fn run_telegram_fast_feed_session(
             &background_client,
             background_channels,
             background_private_channels,
+            background_channel_cursor_generations,
             &background_channel_ids,
             background_channel_cursors,
             &mut background_output,
@@ -537,12 +705,12 @@ async fn run_telegram_fast_feed_session(
                     health_handle.quit();
                     return;
                 }
-                Err(err) => {
+                Err(_) => {
                     let _ = send_status(
                         &mut health_output,
                         false,
                         false,
-                        &format!("Telegram fast feed health check failed: {err}"),
+                        "Telegram fast feed health check failed",
                     )
                     .await;
                     health_handle.quit();
@@ -569,9 +737,14 @@ async fn run_telegram_fast_feed_session(
     loop {
         match updates.next().await {
             Ok(Update::NewMessage(message)) | Ok(Update::MessageEdited(message)) => {
-                let Some(page) =
-                    fast_page_from_message(&channels, &private_channels, &channel_ids, &message)
-                        .await
+                let Some(page) = fast_page_from_message(
+                    &channels,
+                    &private_channels,
+                    &channel_cursor_generations,
+                    &channel_ids,
+                    &message,
+                )
+                .await
                 else {
                     continue;
                 };
@@ -596,15 +769,23 @@ async fn run_telegram_fast_feed_session(
                     handle.quit();
                     return FastFeedSessionExit::Stop;
                 }
-                record_channel_cursor(&channel_cursors, &channel, max_message_id).await;
+                let cursor_generation =
+                    cursor_generation_for_channel(&channel_cursor_generations, &channel);
+                record_channel_cursor(
+                    &channel_cursors,
+                    &channel,
+                    max_message_id,
+                    cursor_generation,
+                )
+                .await;
             }
             Ok(_) => {}
-            Err(err) => {
+            Err(_) => {
                 let _ = send_status(
                     output,
                     false,
                     false,
-                    &format!("Telegram fast feed disconnected; reconnecting: {err}"),
+                    "Telegram fast feed disconnected; reconnecting",
                 )
                 .await;
                 background_task.abort();
@@ -645,10 +826,52 @@ fn fast_retry_delay_after_session(current: Duration, session_connected: bool) ->
     }
 }
 
-fn clear_pending_auth() {
+pub(crate) fn clear_telegram_fast_pending_auth() -> usize {
     if let Ok(mut pending) = pending_auths().lock() {
-        pending.clear();
+        clear_pending_auth_map(&mut pending)
+    } else {
+        0
     }
+}
+
+pub(crate) fn clear_telegram_fast_pending_auth_for_request(request_id: u64) -> usize {
+    if let Ok(mut pending) = pending_auths().lock() {
+        clear_pending_auth_map_for_request(&mut pending, request_id)
+    } else {
+        0
+    }
+}
+
+pub(crate) fn clear_telegram_fast_pending_auth_except_request(request_id: u64) -> usize {
+    if let Ok(mut pending) = pending_auths().lock() {
+        clear_pending_auth_map_except_request(&mut pending, request_id)
+    } else {
+        0
+    }
+}
+
+fn clear_pending_auth_map(pending: &mut HashMap<PendingAuthKey, PendingAuth>) -> usize {
+    let cleared = pending.len();
+    pending.clear();
+    cleared
+}
+
+fn clear_pending_auth_map_for_request(
+    pending: &mut HashMap<PendingAuthKey, PendingAuth>,
+    request_id: u64,
+) -> usize {
+    let original_len = pending.len();
+    pending.retain(|(_, pending_request_id), _| *pending_request_id != request_id);
+    original_len.saturating_sub(pending.len())
+}
+
+fn clear_pending_auth_map_except_request(
+    pending: &mut HashMap<PendingAuthKey, PendingAuth>,
+    request_id: u64,
+) -> usize {
+    let original_len = pending.len();
+    pending.retain(|(_, pending_request_id), _| *pending_request_id == request_id);
+    original_len.saturating_sub(pending.len())
 }
 
 fn live_first_updates_configuration() -> UpdatesConfiguration {
@@ -679,9 +902,22 @@ where
     let pool_task = tokio::spawn(runner.run());
     let result = f(client).await;
     handle.quit();
-    let _ = tokio::time::timeout(TELEGRAM_POOL_SHUTDOWN_TIMEOUT, pool_task).await;
+    let _ = shutdown_telegram_pool_task(pool_task, TELEGRAM_POOL_SHUTDOWN_TIMEOUT).await;
     tighten_session_permissions(&session_path);
     result
+}
+
+async fn shutdown_telegram_pool_task(
+    mut pool_task: tokio::task::JoinHandle<()>,
+    timeout: Duration,
+) -> bool {
+    if tokio::time::timeout(timeout, &mut pool_task).await.is_ok() {
+        return false;
+    }
+
+    pool_task.abort();
+    let _ = pool_task.await;
+    true
 }
 
 // The session file is shared with the live feed stream; transient SQLite lock
@@ -733,12 +969,28 @@ fn tighten_session_permissions(path: &Path) {
 #[cfg(not(unix))]
 fn tighten_session_permissions(_path: &Path) {}
 
-fn clear_telegram_fast_session_files() {
+pub(crate) fn clear_telegram_fast_session_files() -> Result<usize, String> {
     let Some(path) = telegram_fast_session_path() else {
-        return;
+        return Ok(0);
     };
-    for candidate in session_file_family(&path) {
-        let _ = std::fs::remove_file(candidate);
+    clear_telegram_fast_session_files_at(&path)
+}
+
+pub(crate) fn clear_telegram_fast_session_files_at(path: &Path) -> Result<usize, String> {
+    let mut removed = 0;
+    let mut errors = Vec::new();
+    for candidate in session_file_family(path) {
+        match std::fs::remove_file(&candidate) {
+            Ok(()) => removed += 1,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => errors.push(format!("remove {} failed: {e}", candidate.display())),
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(removed)
+    } else {
+        Err(errors.join("; "))
     }
 }
 
@@ -770,6 +1022,7 @@ async fn resolve_and_backfill_fast_channels(
     client: &Client,
     mut pending_channels: HashSet<String>,
     mut pending_private_channels: HashMap<i64, TelegramFeedPrivateChannelConfig>,
+    channel_cursor_generations: HashMap<String, FastCursorGeneration>,
     channel_ids: &ChannelIdMap,
     channel_cursors: ChannelCursorMap,
     output: &mut mpsc::Sender<TelegramFastFeedEvent>,
@@ -780,6 +1033,7 @@ async fn resolve_and_backfill_fast_channels(
             client,
             &pending_channels,
             &pending_private_channels,
+            &channel_cursor_generations,
             channel_ids,
         )
         .await;
@@ -814,6 +1068,7 @@ async fn resolve_fast_channel_targets(
     client: &Client,
     channels: &HashSet<String>,
     private_channels: &HashMap<i64, TelegramFeedPrivateChannelConfig>,
+    channel_cursor_generations: &HashMap<String, FastCursorGeneration>,
     channel_ids: &ChannelIdMap,
 ) -> Vec<FastChannelTarget> {
     let mut targets = Vec::new();
@@ -828,6 +1083,10 @@ async fn resolve_fast_channel_targets(
             let identity = FastChannelIdentity {
                 key: channel.clone(),
                 title: peer.name().unwrap_or(channel).to_string(),
+                cursor_generation: cursor_generation_for_channel(
+                    channel_cursor_generations,
+                    channel,
+                ),
             };
             channel_ids
                 .write()
@@ -860,6 +1119,10 @@ async fn resolve_fast_channel_targets(
         let identity = FastChannelIdentity {
             key: config.key(),
             title: normalize_private_channel_title(channel.title(), peer_id),
+            cursor_generation: cursor_generation_for_channel(
+                channel_cursor_generations,
+                &config.key(),
+            ),
         };
         channel_ids
             .write()
@@ -886,12 +1149,12 @@ async fn backfill_fast_channels(
 ) {
     for target in targets {
         let mut posts = Vec::new();
-        let cursor = channel_cursors
-            .read()
-            .await
-            .get(&target.identity.key)
-            .copied()
-            .unwrap_or_default();
+        let cursor = channel_cursor_message_id(
+            &channel_cursors,
+            &target.identity.key,
+            target.identity.cursor_generation,
+        )
+        .await;
         // With a cursor, every backfilled message is newer than what was
         // already delivered, so it is live news arriving late, not history.
         let (limit, source) = if cursor == 0 {
@@ -919,15 +1182,12 @@ async fn backfill_fast_channels(
                     posts.push(post);
                 }
                 Ok(None) => break,
-                Err(err) => {
+                Err(_) => {
                     let _ = send_status(
                         output,
                         true,
                         false,
-                        &format!(
-                            "Telegram backfill incomplete for {}: {err}",
-                            target.identity.title
-                        ),
+                        "Telegram backfill incomplete; continuing",
                     )
                     .await;
                     break;
@@ -954,13 +1214,20 @@ async fn backfill_fast_channels(
         {
             return;
         }
-        record_channel_cursor(&channel_cursors, &target.identity.key, max_message_id).await;
+        record_channel_cursor(
+            &channel_cursors,
+            &target.identity.key,
+            max_message_id,
+            target.identity.cursor_generation,
+        )
+        .await;
     }
 }
 
 async fn fast_page_from_message(
     channels: &HashSet<String>,
     private_channels: &HashMap<i64, TelegramFeedPrivateChannelConfig>,
+    channel_cursor_generations: &HashMap<String, FastCursorGeneration>,
     channel_ids: &ChannelIdMap,
     message: &grammers_client::update::Message,
 ) -> Option<TelegramFeedPage> {
@@ -975,10 +1242,14 @@ async fn fast_page_from_message(
     let identity = if let Some(channel) = public_channel {
         FastChannelIdentity {
             title: channel.clone(),
+            cursor_generation: cursor_generation_for_channel(channel_cursor_generations, &channel),
             key: channel,
         }
-    } else if let Some(identity) = private_identity_for_peer_id(message.peer_id(), private_channels)
-    {
+    } else if let Some(identity) = private_identity_for_peer_id(
+        message.peer_id(),
+        private_channels,
+        channel_cursor_generations,
+    ) {
         identity
     } else {
         channel_ids.read().await.get(&message.peer_id()).cloned()?
@@ -994,13 +1265,16 @@ async fn fast_page_from_message(
 fn private_identity_for_peer_id(
     peer_id: PeerId,
     private_channels: &HashMap<i64, TelegramFeedPrivateChannelConfig>,
+    channel_cursor_generations: &HashMap<String, FastCursorGeneration>,
 ) -> Option<FastChannelIdentity> {
     if peer_id.kind() != PeerKind::Channel {
         return None;
     }
     let config = private_channels.get(&peer_id.bare_id())?;
+    let key = config.key();
     Some(FastChannelIdentity {
-        key: config.key(),
+        cursor_generation: cursor_generation_for_channel(channel_cursor_generations, &key),
+        key,
         title: config.title.clone(),
     })
 }
@@ -1067,6 +1341,31 @@ fn normalized_private_channel_map(
         .collect()
 }
 
+fn fast_cursor_generations_for_channels(
+    channels: &HashSet<String>,
+    private_channels: &HashMap<i64, TelegramFeedPrivateChannelConfig>,
+) -> HashMap<String, FastCursorGeneration> {
+    channels
+        .iter()
+        .map(|channel| (channel.clone(), fast_cursor_generation(channel)))
+        .chain(private_channels.values().map(|channel| {
+            let key = channel.key();
+            let generation = fast_cursor_generation(&key);
+            (key, generation)
+        }))
+        .collect()
+}
+
+fn cursor_generation_for_channel(
+    generations: &HashMap<String, FastCursorGeneration>,
+    channel: &str,
+) -> FastCursorGeneration {
+    generations
+        .get(channel)
+        .copied()
+        .unwrap_or_else(|| fast_cursor_generation(channel))
+}
+
 fn telegram_post_url(channel: &str, message_id: u64) -> String {
     telegram_private_channel_peer_id_from_key(channel)
         .map(|peer_id| format!("https://t.me/c/{peer_id}/{message_id}"))
@@ -1081,18 +1380,66 @@ fn status_event(connected: bool, auth_required: bool, message: &str) -> Telegram
     }
 }
 
-async fn record_channel_cursor(channel_cursors: &ChannelCursorMap, channel: &str, message_id: u64) {
+async fn channel_cursor_message_id(
+    channel_cursors: &ChannelCursorMap,
+    channel: &str,
+    generation: FastCursorGeneration,
+) -> u64 {
+    channel_cursors
+        .read()
+        .await
+        .get(channel)
+        .and_then(|cursor| (cursor.generation == generation).then_some(cursor.message_id))
+        .unwrap_or_default()
+}
+
+async fn record_channel_cursor(
+    channel_cursors: &ChannelCursorMap,
+    channel: &str,
+    message_id: u64,
+    generation: FastCursorGeneration,
+) {
     if message_id == 0 {
         return;
     }
+    if fast_cursor_generation(channel) != generation {
+        return;
+    }
     let mut cursors = channel_cursors.write().await;
-    let entry = cursors.entry(channel.to_string()).or_default();
-    *entry = (*entry).max(message_id);
+    if fast_cursor_generation(channel) != generation {
+        cursors.remove(channel);
+        return;
+    }
+    let entry = cursors
+        .entry(channel.to_string())
+        .or_insert(FastChannelCursor {
+            message_id: 0,
+            generation,
+        });
+    if entry.generation != generation {
+        *entry = FastChannelCursor {
+            message_id,
+            generation,
+        };
+    } else {
+        entry.message_id = entry.message_id.max(message_id);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tokio::sync::oneshot;
+
+    fn placeholder_pending_auths(entries: &[(&str, u64)]) -> HashMap<PendingAuthKey, PendingAuth> {
+        entries
+            .iter()
+            .map(|(path, request_id)| {
+                ((PathBuf::from(path), *request_id), PendingAuth::Placeholder)
+            })
+            .collect()
+    }
 
     #[test]
     fn connected_session_resets_reconnect_backoff() {
@@ -1110,6 +1457,68 @@ mod tests {
     }
 
     #[test]
+    fn clear_pending_auth_drops_abandoned_challenges() {
+        let mut pending = placeholder_pending_auths(&[
+            ("/tmp/kerosene-telegram-a.session", 1),
+            ("/tmp/kerosene-telegram-b.session", 2),
+        ]);
+
+        assert_eq!(clear_pending_auth_map(&mut pending), 2);
+        assert_eq!(clear_pending_auth_map(&mut pending), 0);
+    }
+
+    #[test]
+    fn clear_pending_auth_for_request_drops_only_matching_challenges() {
+        let mut pending = placeholder_pending_auths(&[
+            ("/tmp/kerosene-telegram-a.session", 1),
+            ("/tmp/kerosene-telegram-b.session", 2),
+        ]);
+
+        assert_eq!(clear_pending_auth_map_for_request(&mut pending, 1), 1);
+        assert!(pending.contains_key(&(PathBuf::from("/tmp/kerosene-telegram-b.session"), 2)));
+        assert_eq!(clear_pending_auth_map(&mut pending), 1);
+    }
+
+    #[test]
+    fn clear_pending_auth_except_request_drops_abandoned_challenges() {
+        let mut pending = placeholder_pending_auths(&[
+            ("/tmp/kerosene-telegram-a.session", 1),
+            ("/tmp/kerosene-telegram-a.session", 2),
+            ("/tmp/kerosene-telegram-b.session", 3),
+        ]);
+
+        assert_eq!(clear_pending_auth_map_except_request(&mut pending, 2), 2);
+        assert_eq!(pending.len(), 1);
+        assert!(pending.contains_key(&(PathBuf::from("/tmp/kerosene-telegram-a.session"), 2)));
+        assert_eq!(clear_pending_auth_map_except_request(&mut pending, 2), 0);
+    }
+
+    #[test]
+    fn sign_out_outcome_fails_when_local_session_clear_fails() {
+        let result = telegram_fast_sign_out_outcome(
+            Ok(()),
+            Err("remove /tmp/kerosene-telegram-fast.session failed: denied".to_string()),
+        );
+
+        let error = result.expect_err("local session clear failure should fail sign-out");
+        assert!(error.starts_with(TELEGRAM_FAST_SESSION_CLEAR_FAILED));
+        assert!(error.contains("denied"));
+    }
+
+    #[test]
+    fn sign_out_outcome_warns_when_remote_sign_out_fails_but_local_session_clears() {
+        let result = telegram_fast_sign_out_outcome(Err("network unavailable".to_string()), Ok(1))
+            .expect("local session clear should complete sign-out");
+
+        assert_eq!(
+            result,
+            TelegramFastAuthOutcome::SignedOut {
+                warning: Some(TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string())
+            }
+        );
+    }
+
+    #[test]
     fn fast_updates_are_configured_live_first() {
         let config = live_first_updates_configuration();
 
@@ -1118,6 +1527,35 @@ mod tests {
             config.update_queue_limit,
             Some(TELEGRAM_FAST_UPDATE_QUEUE_LIMIT)
         );
+    }
+
+    #[tokio::test]
+    async fn telegram_pool_shutdown_returns_without_abort_when_task_completes() {
+        let task = tokio::spawn(async {});
+
+        let aborted = shutdown_telegram_pool_task(task, Duration::from_secs(1)).await;
+
+        assert!(!aborted);
+    }
+
+    #[tokio::test]
+    async fn telegram_pool_shutdown_aborts_after_timeout() {
+        let (started_tx, started_rx) = oneshot::channel();
+        let aborted = Arc::new(AtomicBool::new(false));
+        let aborted_for_task = Arc::clone(&aborted);
+        let task = tokio::spawn(async move {
+            let _guard = DropGuard::new(move || {
+                aborted_for_task.store(true, Ordering::SeqCst);
+            });
+            let _ = started_tx.send(());
+            futures::future::pending::<()>().await;
+        });
+        started_rx.await.expect("task should start");
+
+        let did_abort = shutdown_telegram_pool_task(task, Duration::from_millis(1)).await;
+
+        assert!(did_abort);
+        assert!(aborted.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -1147,12 +1585,81 @@ mod tests {
             title: "Private Macro".to_string(),
         }];
         let mapped = normalized_private_channel_map(&channels);
+        let generations = fast_cursor_generations_for_channels(&HashSet::new(), &mapped);
 
         let identity =
-            private_identity_for_peer_id(PeerId::channel_unchecked(42), &mapped).unwrap();
+            private_identity_for_peer_id(PeerId::channel_unchecked(42), &mapped, &generations)
+                .unwrap();
 
         assert_eq!(identity.key, "private:42");
         assert_eq!(identity.title, "Private Macro");
-        assert!(private_identity_for_peer_id(PeerId::chat_unchecked(42), &mapped).is_none());
+        assert!(
+            private_identity_for_peer_id(PeerId::chat_unchecked(42), &mapped, &generations)
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn channel_cursor_clear_invalidates_late_records_from_old_generation() {
+        let _guard = fast_channel_cursor_test_lock().lock().await;
+        clear_all_fast_channel_cursors().await;
+        let cursors = fast_channel_cursors();
+        let channel = "marketfeed_cursor_clear";
+        let initial_generation = fast_cursor_generation(channel);
+
+        record_channel_cursor(&cursors, channel, 10, initial_generation).await;
+        assert_eq!(
+            channel_cursor_message_id(&cursors, channel, initial_generation).await,
+            10
+        );
+
+        clear_fast_channel_cursor(channel);
+        record_channel_cursor(&cursors, channel, 11, initial_generation).await;
+        let next_generation = fast_cursor_generation(channel);
+
+        assert_eq!(
+            channel_cursor_message_id(&cursors, channel, initial_generation).await,
+            0
+        );
+        assert_eq!(
+            channel_cursor_message_id(&cursors, channel, next_generation).await,
+            0
+        );
+
+        record_channel_cursor(&cursors, channel, 12, next_generation).await;
+        assert_eq!(
+            channel_cursor_message_id(&cursors, channel, next_generation).await,
+            12
+        );
+        clear_all_fast_channel_cursors().await;
+    }
+
+    #[tokio::test]
+    async fn clearing_all_cursors_invalidates_late_records_from_old_generation() {
+        let _guard = fast_channel_cursor_test_lock().lock().await;
+        clear_all_fast_channel_cursors().await;
+        let cursors = fast_channel_cursors();
+        let channel = "marketfeed_clear_all";
+        let initial_generation = fast_cursor_generation(channel);
+
+        record_channel_cursor(&cursors, channel, 10, initial_generation).await;
+        assert_eq!(
+            channel_cursor_message_id(&cursors, channel, initial_generation).await,
+            10
+        );
+
+        clear_all_fast_channel_cursors_best_effort();
+        record_channel_cursor(&cursors, channel, 11, initial_generation).await;
+        let next_generation = fast_cursor_generation(channel);
+
+        assert_eq!(
+            channel_cursor_message_id(&cursors, channel, initial_generation).await,
+            0
+        );
+        assert_eq!(
+            channel_cursor_message_id(&cursors, channel, next_generation).await,
+            0
+        );
+        clear_all_fast_channel_cursors().await;
     }
 }

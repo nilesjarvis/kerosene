@@ -14,8 +14,31 @@ fn text_frame_parser_classifies_connected_with_session_and_cursor() {
     .expect("connected frame");
 
     assert_eq!(frame.kind, HydromancerTextFrameKind::Connected);
-    assert_eq!(frame.session_id.as_deref(), Some("session-1"));
-    assert_eq!(frame.cursor.as_deref(), Some("cursor-1"));
+    assert_eq!(
+        frame.session_id.as_ref().map(|value| value.as_str()),
+        Some("session-1")
+    );
+    assert_eq!(
+        frame.cursor.as_ref().map(|value| value.as_str()),
+        Some("cursor-1")
+    );
+    assert!(frame.json.get("sessionId").is_none());
+    assert!(frame.json.get("cursor").is_none());
+}
+
+#[test]
+fn text_frame_debug_redacts_resume_material() {
+    let frame = parse_hydromancer_text_frame(
+        r#"{"type":"connected","sessionId":"session-secret","cursor":"cursor-secret"}"#,
+    )
+    .expect("connected frame");
+
+    let rendered = format!("{frame:?}");
+
+    assert!(rendered.contains("has_cursor: true"));
+    assert!(rendered.contains("has_session_id: true"));
+    assert!(!rendered.contains("session-secret"));
+    assert!(!rendered.contains("cursor-secret"));
 }
 
 #[test]

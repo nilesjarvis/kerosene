@@ -1,6 +1,7 @@
 use super::model::{
     ENCRYPTED_SECRETS_CIPHER, ENCRYPTED_SECRETS_VERSION, EncryptedSecretsConfig, SECRET_NONCE_LEN,
     SECRET_PAYLOAD_SCHEMA, SECRET_SALT_LEN, SecretKdfConfig, SecretPayload,
+    redacted_secret_payload_parse_error,
 };
 
 use chacha20poly1305::{
@@ -14,7 +15,10 @@ mod kdf;
 #[cfg(test)]
 mod tests;
 
-use kdf::{decode_secret_field, default_secret_kdf_config, derive_secret_key, encode_secret_bytes};
+use kdf::{
+    decode_secret_field, default_secret_kdf_config, derive_secret_key, encode_secret_bytes,
+    validate_secret_kdf_config,
+};
 
 fn encrypt_secrets_with_kdf(
     payload: &SecretPayload,
@@ -56,26 +60,8 @@ pub fn decrypt_secrets(
     encrypted: &EncryptedSecretsConfig,
     password: &str,
 ) -> Result<SecretPayload, String> {
-    if encrypted.version != ENCRYPTED_SECRETS_VERSION {
-        return Err(format!(
-            "unsupported encrypted secrets version {}",
-            encrypted.version
-        ));
-    }
-    if encrypted.cipher != ENCRYPTED_SECRETS_CIPHER {
-        return Err(format!(
-            "unsupported encrypted secrets cipher '{}'",
-            encrypted.cipher
-        ));
-    }
-
+    validate_encrypted_secrets_metadata(encrypted)?;
     let nonce = decode_secret_field("nonce", &encrypted.nonce)?;
-    if nonce.len() != SECRET_NONCE_LEN {
-        return Err(format!(
-            "encrypted secret nonce has invalid length {}",
-            nonce.len()
-        ));
-    }
     let ciphertext = decode_secret_field("ciphertext", &encrypted.ciphertext)?;
     let key = derive_secret_key(password, &encrypted.kdf)?;
     let cipher = XChaCha20Poly1305::new_from_slice(key.as_ref())
@@ -86,13 +72,38 @@ pub fn decrypt_secrets(
             .map_err(|_| "decrypt secrets failed; password may be incorrect".to_string())?,
     );
     let payload: SecretPayload = serde_json::from_slice(plaintext.as_ref())
-        .map_err(|e| format!("parse decrypted secrets failed: {e}"))?;
+        .map_err(|e| redacted_secret_payload_parse_error("parse decrypted secrets failed", e))?;
     if payload.schema != SECRET_PAYLOAD_SCHEMA {
-        return Err(format!(
-            "unsupported secret payload schema '{}'",
-            payload.schema
-        ));
+        return Err("unsupported secret payload schema".to_string());
     }
 
     Ok(payload)
+}
+
+pub(crate) fn validate_encrypted_secrets_metadata(
+    encrypted: &EncryptedSecretsConfig,
+) -> Result<(), String> {
+    if encrypted.version != ENCRYPTED_SECRETS_VERSION {
+        return Err("unsupported encrypted secrets version".to_string());
+    }
+    if encrypted.cipher != ENCRYPTED_SECRETS_CIPHER {
+        return Err("unsupported encrypted secrets cipher".to_string());
+    }
+
+    validate_secret_kdf_config(&encrypted.kdf)?;
+
+    let nonce = decode_secret_field("nonce", &encrypted.nonce)?;
+    if nonce.len() != SECRET_NONCE_LEN {
+        return Err(format!(
+            "encrypted secret nonce has invalid length {}",
+            nonce.len()
+        ));
+    }
+
+    let ciphertext = decode_secret_field("ciphertext", &encrypted.ciphertext)?;
+    if ciphertext.is_empty() {
+        return Err("encrypted secret ciphertext is empty".to_string());
+    }
+
+    Ok(())
 }

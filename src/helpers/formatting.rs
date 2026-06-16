@@ -10,7 +10,8 @@ pub use numbers::{
     positive_finite_value, trim_decimal_zeros, values_match_approx,
 };
 pub use text::{
-    ellipsized_text, fallback_initials, response_excerpt, response_snippet, text_excerpt,
+    ellipsized_text, fallback_initials, redact_sensitive_response_text, response_excerpt,
+    response_snippet, sensitive_response_excerpt, sensitive_response_snippet, text_excerpt,
 };
 pub use time::{
     format_duration, format_relative_time, format_seen_latency_label, format_timestamp,

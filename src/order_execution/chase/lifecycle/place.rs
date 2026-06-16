@@ -4,7 +4,9 @@ use crate::api::{MarketType, OrderBook};
 use crate::app_state::TradingTerminal;
 use crate::helpers::positive_finite_value;
 use crate::message::Message;
-use crate::order_execution::{OrderSurface, PreparedExchangeOrder, place_order_task};
+use crate::order_execution::{
+    OrderSurface, PreparedExchangeOrder, open_order_matches_chase_identity, place_order_task,
+};
 use crate::signing::{
     ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason, ExchangeOrderKind,
     chase_place_cloid, float_to_wire,
@@ -62,18 +64,69 @@ impl TradingTerminal {
         &mut self,
         chase_id: u64,
         coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: crate::read_data_provider::MarketDataSourceContext,
         book: OrderBook,
     ) -> Task<Message> {
+        if !self.market_stream_source_is_current(source_context) {
+            return Task::none();
+        }
         let Some(chase) = self.chase_orders.get(&chase_id) else {
             return Task::none();
         };
-        if chase.coin != coin || self.symbol_key_is_hidden(&coin) {
+        if chase.coin != coin
+            || self.symbol_key_is_hidden(&coin)
+            || sigfigs != self.canonical_l2_book_sigfigs(&coin)
+        {
             return Task::none();
         }
         let Some(best) = Self::best_chase_price_from_book(&book, chase.is_buy) else {
             return Task::none();
         };
         self.chase_reprice_to_best_price(chase_id, best)
+    }
+
+    pub(crate) fn handle_chase_book_lagged(
+        &mut self,
+        chase_id: u64,
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: crate::read_data_provider::MarketDataSourceContext,
+        skipped: u64,
+    ) -> Task<Message> {
+        if !self.market_stream_source_is_current(source_context) {
+            return Task::none();
+        }
+        if self.symbol_key_is_hidden(&coin) {
+            return Task::none();
+        }
+        if sigfigs != self.canonical_l2_book_sigfigs(&coin) {
+            return Task::none();
+        }
+
+        let oid = {
+            let Some(chase) = self.chase_orders.get_mut(&chase_id) else {
+                return Task::none();
+            };
+            if chase.coin != coin
+                || chase.lifecycle.is_stopping()
+                || chase.has_pending_op()
+                || !chase.lifecycle.is_book_repriceable()
+            {
+                return Task::none();
+            }
+            chase.desired_price = None;
+            chase.current_oid
+        };
+
+        let Some(oid) = oid else {
+            return Task::none();
+        };
+        self.check_chase_order_status(
+            chase_id,
+            oid,
+            format!("Chase paused: market data lagged ({skipped} L2 updates skipped)"),
+        )
     }
 
     /// Place a new chase limit order at the current best bid/ask.
@@ -124,7 +177,8 @@ impl TradingTerminal {
             return Task::none();
         };
         if !chase_snapshot.known_oids.is_empty() {
-            let Some(data) = self.account_data.as_ref() else {
+            let Some(data) = self.account_data_for_order_account(&chase_snapshot.account_address)
+            else {
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     chase.desired_price = Some(rounded_best);
                     chase.lifecycle = ChaseLifecycle::Verifying {
@@ -154,7 +208,7 @@ impl TradingTerminal {
             if let Some(oid) = data
                 .open_orders
                 .iter()
-                .find(|order| chase_snapshot.tracks_oid(order.oid))
+                .find(|order| open_order_matches_chase_identity(chase_snapshot, order))
                 .map(|order| order.oid)
             {
                 return self.cancel_known_chase_order_for_safety(
@@ -200,7 +254,7 @@ impl TradingTerminal {
             self.remove_chase_order(chase_id);
             return Task::none();
         };
-        let key = chase.agent_key.trim().to_string();
+        let key = chase.agent_key.clone_for_task();
         if key.is_empty() {
             if chase.has_exchange_identifier() {
                 chase.lifecycle = ChaseLifecycle::Verifying {
@@ -264,7 +318,7 @@ impl TradingTerminal {
         };
         let request = prepared.place_request_with_existing_cloid(cloid);
 
-        place_order_task(key.into(), request, move |r| Message::ChasePlaceResult {
+        place_order_task(key, request, move |r| Message::ChasePlaceResult {
             chase_id,
             result: Box::new(r),
         })

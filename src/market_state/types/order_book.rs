@@ -1,10 +1,11 @@
 use crate::account::AssetContext;
 use crate::api::OrderBook;
 use crate::helpers::{positive_finite_value, tick_sizes_match};
+use crate::market_state::MARKET_ASSET_CONTEXT_MAX_AGE_MS;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 mod aggregation;
 mod cache;
@@ -58,6 +59,7 @@ pub struct OrderBookInstance {
     pub mode: OrderBookSymbolMode,
     pub book: OrderBook,
     pub asset_ctx: Option<AssetContext>,
+    pub(crate) asset_ctx_updated_at: Option<Instant>,
     pub scroll_id: iced::widget::Id,
     pub tick_size: f64,
     pub settings_open: bool,
@@ -82,7 +84,8 @@ pub struct OrderBookInstance {
     /// aggregation does not flap) while the live mid hovers around a
     /// power-of-ten boundary.
     tick_options_basis: Option<f64>,
-    pending_book_sigfigs: Option<(Option<u8>, Option<u8>)>,
+    next_book_request_id: u64,
+    pending_book_request: Option<PendingOrderBookRequest>,
     pub(super) book_revision: u64,
     aggregated: RefCell<AggregatedDepth>,
     dom_ladder: RefCell<super::super::dom_ladder::DomLadderCache>,
@@ -95,6 +98,7 @@ impl OrderBookInstance {
             mode,
             book: OrderBook::empty(),
             asset_ctx: None,
+            asset_ctx_updated_at: None,
             scroll_id: iced::widget::Id::unique(),
             tick_size,
             settings_open: false,
@@ -115,7 +119,8 @@ impl OrderBookInstance {
             book_source_tick_size: None,
             book_source_mid: None,
             tick_options_basis: None,
-            pending_book_sigfigs: None,
+            next_book_request_id: 0,
+            pending_book_request: None,
             book_revision: 0,
             aggregated: RefCell::new(AggregatedDepth::default()),
             dom_ladder: RefCell::new(super::super::dom_ladder::DomLadderCache::default()),
@@ -150,6 +155,31 @@ impl OrderBookInstance {
         self.tick_options_basis = None;
     }
 
+    pub fn clear_asset_context(&mut self) {
+        self.asset_ctx = None;
+        self.asset_ctx_updated_at = None;
+        self.spread_history.clear();
+        self.clear_mid_price_history();
+    }
+
+    pub fn expire_asset_context_if_stale(&mut self, now: Instant) -> bool {
+        let Some(updated_at) = self.asset_ctx_updated_at else {
+            return false;
+        };
+        if self.asset_ctx.is_none() {
+            self.asset_ctx_updated_at = None;
+            return false;
+        }
+        if now
+            .checked_duration_since(updated_at)
+            .is_some_and(|age| age > Duration::from_millis(MARKET_ASSET_CONTEXT_MAX_AGE_MS))
+        {
+            self.clear_asset_context();
+            return true;
+        }
+        false
+    }
+
     fn update_tick_options_basis(&mut self, mid: f64) {
         match self.tick_options_basis {
             // Hold the basis while the mid stays within the band; the
@@ -168,21 +198,77 @@ impl OrderBookInstance {
     }
 
     pub fn pending_book_sigfigs(&self) -> Option<(Option<u8>, Option<u8>)> {
-        self.pending_book_sigfigs
+        self.pending_book_request
+            .as_ref()
+            .map(|request| request.sigfigs)
     }
 
-    pub fn mark_book_request(&mut self, sigfigs: (Option<u8>, Option<u8>)) {
-        self.pending_book_sigfigs = Some(sigfigs);
+    #[cfg(test)]
+    pub(crate) fn pending_book_request_id(&self) -> Option<u64> {
+        self.pending_book_request
+            .as_ref()
+            .map(|request| request.request_id)
     }
 
-    pub fn clear_matching_book_request(&mut self, sigfigs: (Option<u8>, Option<u8>)) {
-        if self.pending_book_sigfigs == Some(sigfigs) {
-            self.pending_book_sigfigs = None;
+    pub fn pending_book_request_matches(
+        &self,
+        symbol: &str,
+        tick_size: f64,
+        sigfigs: (Option<u8>, Option<u8>),
+    ) -> bool {
+        self.pending_book_request.as_ref().is_some_and(|request| {
+            request.symbol == symbol
+                && tick_sizes_match(request.tick_size, tick_size)
+                && request.sigfigs == sigfigs
+        })
+    }
+
+    pub fn pending_book_request_matches_id(
+        &self,
+        request_id: u64,
+        symbol: &str,
+        tick_size: f64,
+        sigfigs: (Option<u8>, Option<u8>),
+    ) -> bool {
+        self.pending_book_request.as_ref().is_some_and(|request| {
+            request.request_id == request_id
+                && request.symbol == symbol
+                && tick_sizes_match(request.tick_size, tick_size)
+                && request.sigfigs == sigfigs
+        })
+    }
+
+    pub fn mark_book_request(
+        &mut self,
+        symbol: String,
+        tick_size: f64,
+        sigfigs: (Option<u8>, Option<u8>),
+    ) -> u64 {
+        self.next_book_request_id = self.next_book_request_id.wrapping_add(1);
+        let request_id = self.next_book_request_id;
+        self.pending_book_request = Some(PendingOrderBookRequest {
+            request_id,
+            symbol,
+            tick_size,
+            sigfigs,
+        });
+        request_id
+    }
+
+    pub fn clear_matching_book_request(
+        &mut self,
+        request_id: u64,
+        symbol: &str,
+        tick_size: f64,
+        sigfigs: (Option<u8>, Option<u8>),
+    ) {
+        if self.pending_book_request_matches_id(request_id, symbol, tick_size, sigfigs) {
+            self.pending_book_request = None;
         }
     }
 
     pub fn clear_book_request(&mut self) {
-        self.pending_book_sigfigs = None;
+        self.pending_book_request = None;
     }
 
     pub fn apply_book_update_preserving_scope(
@@ -223,4 +309,11 @@ impl OrderBookInstance {
             && self.can_render_book_at_tick(self.tick_size)
             && (!self.book.bids.is_empty() || !self.book.asks.is_empty())
     }
+}
+
+struct PendingOrderBookRequest {
+    request_id: u64,
+    symbol: String,
+    tick_size: f64,
+    sigfigs: (Option<u8>, Option<u8>),
 }

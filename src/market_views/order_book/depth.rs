@@ -175,6 +175,7 @@ impl TradingTerminal {
         inst: &OrderBookInstance,
         tick: f64,
         user_order_levels: &UserOrderBookLevels,
+        whole_contracts: bool,
     ) -> Element<'static, Message> {
         let depth = inst.aggregated_depth(tick);
         // The aggregation cache hands out a RefCell guard, so the canvas gets
@@ -210,6 +211,7 @@ impl TradingTerminal {
             mid,
             tick,
             decimals: tick_decimals(tick),
+            whole_contracts,
             user_bid_prices,
             user_ask_prices,
         })

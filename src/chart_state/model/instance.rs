@@ -2,6 +2,7 @@ use super::{ChartId, ChartInstance};
 use crate::account::AssetContext;
 use crate::chart::CandlestickChart;
 use crate::config;
+use crate::market_state::MARKET_ASSET_CONTEXT_MAX_AGE_MS;
 use crate::timeframe::Timeframe;
 
 // ---------------------------------------------------------------------------
@@ -12,6 +13,7 @@ impl ChartInstance {
     pub(crate) fn new(id: ChartId, symbol: String, interval: Timeframe) -> Self {
         let display = symbol.split(':').nth(1).unwrap_or(&symbol).to_string();
         let mut chart = CandlestickChart::new(id);
+        chart.set_symbol_key(symbol.clone());
         chart.set_timeframe(interval);
         chart.set_symbol_label(display.clone());
         Self {
@@ -21,6 +23,9 @@ impl ChartInstance {
             interval,
             chart,
             asset_ctx: None,
+            asset_ctx_updated_at_ms: None,
+            asset_ctx_from_rest: false,
+            asset_ctx_rest_in_flight: false,
             editor_open: false,
             header_collapsed: false,
             editor_search_query: String::new(),
@@ -54,12 +59,22 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: None,
+            macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
             open_interest_as_notional: false,
             asset_volume_as_notional: true,
             outcome_volume_as_notional: false,
         }
+    }
+
+    pub(crate) fn set_symbol_identity(&mut self, symbol: String, display: String) -> bool {
+        let changed = self.symbol != symbol || self.symbol_display != display;
+        self.symbol = symbol.clone();
+        self.symbol_display = display.clone();
+        self.chart.set_symbol_key(symbol);
+        self.chart.set_symbol_label(display);
+        changed
     }
 
     pub(crate) fn clone_for_detached_window(&self, id: ChartId) -> Self {
@@ -70,6 +85,9 @@ impl ChartInstance {
             interval: self.interval,
             chart: self.chart.clone_for_chart_id(id),
             asset_ctx: self.asset_ctx.clone(),
+            asset_ctx_updated_at_ms: self.asset_ctx_updated_at_ms,
+            asset_ctx_from_rest: self.asset_ctx_from_rest,
+            asset_ctx_rest_in_flight: false,
             editor_open: false,
             header_collapsed: self.header_collapsed,
             editor_search_query: String::new(),
@@ -103,6 +121,7 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: self.funding_last_attempt_ms,
+            macro_candles_request_id: 0,
             macro_indicators: self.macro_indicators.clone(),
             macro_menu_open: false,
             open_interest_as_notional: self.open_interest_as_notional,
@@ -122,7 +141,69 @@ impl ChartInstance {
                 .set_current_spread_at(ctx.impact_spread(), now_ms),
             None => self.chart.clear_spread_history(),
         }
+        self.asset_ctx_updated_at_ms = asset_ctx.as_ref().map(|_| now_ms);
         self.asset_ctx = asset_ctx;
+        // This setter is the live `activeAssetCtx` WebSocket / clear path; any
+        // prior REST provenance no longer applies.
+        self.asset_ctx_from_rest = false;
+    }
+
+    /// Apply an `AssetContext` fetched from the REST `metaAndAssetCtxs`
+    /// fallback. Marks the context as REST-sourced so a later live WebSocket
+    /// push (via [`set_asset_context_at`]) can take over without being treated
+    /// as stale, and so the poller knows to refresh it on a timer.
+    pub(crate) fn fill_asset_context_from_rest(&mut self, ctx: AssetContext, now_ms: u64) {
+        self.chart
+            .set_current_spread_at(ctx.impact_spread(), now_ms);
+        self.asset_ctx_updated_at_ms = Some(now_ms);
+        self.asset_ctx = Some(ctx);
+        self.asset_ctx_from_rest = true;
+    }
+
+    /// Whether this chart should issue a REST asset-context fetch now.
+    ///
+    /// Fires when there is no context at all, or when the existing context is
+    /// REST-sourced and is approaching the staleness expiry (so it is refreshed
+    /// before [`expire_asset_context_if_stale`] would blank the header). Live
+    /// WebSocket-sourced context is left untouched. `refresh_ms` must be below
+    /// `MARKET_ASSET_CONTEXT_MAX_AGE_MS` to avoid a flicker between expiry and
+    /// the refreshed fetch landing.
+    pub(crate) fn needs_rest_asset_context(&self, now_ms: u64, refresh_ms: u64) -> bool {
+        if self.asset_ctx_rest_in_flight || self.symbol.is_empty() {
+            return false;
+        }
+        match self.asset_ctx {
+            None => true,
+            Some(_) => {
+                self.asset_ctx_from_rest
+                    && self.asset_ctx_updated_at_ms.is_some_and(|updated_at_ms| {
+                        now_ms.saturating_sub(updated_at_ms) >= refresh_ms
+                    })
+            }
+        }
+    }
+
+    pub(crate) fn expire_asset_context_if_stale(&mut self, now_ms: u64) -> bool {
+        let Some(updated_at_ms) = self.asset_ctx_updated_at_ms else {
+            return false;
+        };
+        if self.asset_ctx.is_none() {
+            self.asset_ctx_updated_at_ms = None;
+            return false;
+        }
+        if now_ms
+            .checked_sub(updated_at_ms)
+            .is_some_and(|age_ms| age_ms > MARKET_ASSET_CONTEXT_MAX_AGE_MS)
+        {
+            self.set_asset_context(None);
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn next_macro_candles_request_id(&mut self) -> u64 {
+        self.macro_candles_request_id = self.macro_candles_request_id.saturating_add(1);
+        self.macro_candles_request_id
     }
 
     /// Create a new chart with the editor open and no symbol selected.
@@ -134,6 +215,9 @@ impl ChartInstance {
             interval: Timeframe::H1,
             chart: CandlestickChart::new(id),
             asset_ctx: None,
+            asset_ctx_updated_at_ms: None,
+            asset_ctx_from_rest: false,
+            asset_ctx_rest_in_flight: false,
             editor_open: true,
             header_collapsed: false,
             editor_search_query: String::new(),
@@ -167,6 +251,7 @@ impl ChartInstance {
             earnings_pending_ticker: None,
             funding_fetch_request: None,
             funding_last_attempt_ms: None,
+            macro_candles_request_id: 0,
             macro_indicators: config::MacroIndicatorsConfig::default(),
             macro_menu_open: false,
             open_interest_as_notional: false,

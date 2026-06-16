@@ -6,6 +6,8 @@ use crate::order_execution::{
 };
 use crate::signing::ExchangeOrderKind;
 
+use super::reject_if_positions_incomplete_for_action;
+
 use iced::Task;
 
 mod planning;
@@ -40,8 +42,8 @@ impl TradingTerminal {
     /// rather than partially submitted.
     pub(crate) fn plan_nuke_positions(&self) -> Result<NukePlan, String> {
         let positions = self
-            .account_data
-            .as_ref()
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data)
             .map(|d| d.clearinghouse.asset_positions.clone())
             .unwrap_or_default();
 
@@ -74,15 +76,17 @@ impl TradingTerminal {
 
     pub(crate) fn execute_nuke_positions(&mut self) -> Task<Message> {
         let _theme = self.theme();
-        let key = self.wallet_key_input.trim().to_string();
-        if key.is_empty() || self.connected_address.is_none() {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return Task::none();
-        }
         if self.pending_nuke_execution.is_some() {
             self.order_status = Some(("NUKE already in progress".into(), true));
             return Task::none();
         }
+        if self.reject_if_pending_trading_request("NUKE") {
+            return Task::none();
+        }
+
+        let Some((key, account_address)) = self.order_signing_context() else {
+            return Task::none();
+        };
 
         if self.account_loading {
             self.order_status = Some((
@@ -91,7 +95,13 @@ impl TradingTerminal {
             ));
             return Task::none();
         }
-        let Some(account_data) = self.account_data.as_ref() else {
+        if self.reject_if_account_reconciliation_required("NUKE", "account data") {
+            return Task::none();
+        }
+        if let Some(task) = reject_if_positions_incomplete_for_action(self, "NUKE") {
+            return task;
+        }
+        let Some(account_data) = self.account_data_for_order_account(&account_address) else {
             self.order_status = Some((
                 "No account data available; refresh before NUKE".into(),
                 true,
@@ -154,7 +164,6 @@ impl TradingTerminal {
         let skip_summary = plan.format_skip_list();
         let NukePlan { ready, .. } = plan;
 
-        let account_address = self.connected_address.clone().unwrap_or_default();
         let execution_id = self.next_nuke_execution_id;
         self.next_nuke_execution_id = self.next_nuke_execution_id.saturating_add(1);
         self.pending_nuke_execution = Some(PendingNukeExecution::new(
@@ -167,12 +176,10 @@ impl TradingTerminal {
             let k = key.clone();
             let prepared = nuke_prepared_order(coin, order);
             let (request, context) = prepared.place_request_with_context(&account_address);
-            tasks.push(place_order_task(k.into(), request, move |r| {
-                Message::NukeResult {
-                    execution_id,
-                    context,
-                    result: Box::new(r),
-                }
+            tasks.push(place_order_task(k, request, move |r| Message::NukeResult {
+                execution_id,
+                context,
+                result: Box::new(r),
             }));
         }
 

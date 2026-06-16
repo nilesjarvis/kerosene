@@ -11,11 +11,38 @@ use crate::message::Message;
 use iced::Task;
 #[cfg(target_os = "linux")]
 use iced::window;
+use std::path::Path;
 
 mod fonts;
 mod hotkeys;
 mod muted_tickers;
 mod sounds;
+
+const IMPORT_MIB: u64 = 1024 * 1024;
+pub(super) const MAX_IMPORTED_FONT_BYTES: u64 = 64 * IMPORT_MIB;
+pub(super) const MAX_IMPORTED_HUD_SOUND_BYTES: u64 = 16 * IMPORT_MIB;
+
+pub(super) fn ensure_import_file_within_limit(
+    path: &Path,
+    kind: &str,
+    max_bytes: u64,
+) -> Result<(), String> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| format!("read {} metadata failed: {e}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("selected {kind} path is not a file"));
+    }
+
+    let len = metadata.len();
+    if len > max_bytes {
+        return Err(format!(
+            "selected {kind} file is too large: {len} bytes (max {} MiB)",
+            max_bytes / IMPORT_MIB
+        ));
+    }
+
+    Ok(())
+}
 
 impl TradingTerminal {
     pub(crate) fn update_preferences(&mut self, message: Message) -> Task<Message> {
@@ -146,8 +173,12 @@ impl TradingTerminal {
             }
             Message::ReadDataProviderChanged(provider) if self.read_data_provider != provider => {
                 self.read_data_provider = provider;
+                self.bump_read_data_provider_generation();
                 self.chart_backfill_source = provider.chart_backfill_source();
+                self.invalidate_portfolio_income_refreshes();
+                self.invalidate_wallet_read_data_requests();
                 self.journal.clear_snapshot_cache();
+                self.journal.snapshot_requests.clear();
                 self.journal.expanded_snapshot_trade_ids.clear();
                 self.persist_config();
                 if provider == crate::config::ReadDataProvider::Hydromancer
@@ -267,6 +298,7 @@ impl TradingTerminal {
                 };
 
                 self.market_universe = universe;
+                self.clear_percentage_order_quantity();
                 self.muted_ticker_status = Some((status.clone(), false));
                 self.push_toast(status, false);
                 let hidden_chase_ids: Vec<u64> = self

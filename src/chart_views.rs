@@ -164,7 +164,7 @@ impl TradingTerminal {
             let chart_base: Element<'_, Message> =
                 if quick_order_on_surface && let Some(form) = &instance.quick_order {
                     let cid = chart_id;
-                    self.view_quick_order_card(cid, form, chart_surface)
+                    self.view_quick_order_card(cid, form, surface_id, chart_surface)
                 } else if let Some(overlay) = status_overlay {
                     stack![chart_surface, overlay]
                         .width(Fill)

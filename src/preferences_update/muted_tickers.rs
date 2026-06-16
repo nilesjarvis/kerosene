@@ -67,6 +67,9 @@ impl TradingTerminal {
                     self.push_toast(format!("Unmuted {ticker}"), false);
                     self.refresh_symbol_search_results();
                     self.refresh_live_watchlist_row_caches();
+                    // Unmuting does not scrub hidden state, so explicitly re-resolve
+                    // Telegram mentions to bring the ticker's chips back.
+                    self.refresh_telegram_ticker_mentions();
                     self.persist_config();
                     return Task::batch([
                         self.request_symbol_search_context_refresh(true),

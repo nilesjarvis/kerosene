@@ -2,9 +2,7 @@ use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
 use crate::message::Message;
-use crate::session_data_state::{
-    SessionDataId, SessionDataInstance, SessionDataLookback, SessionWeekdaySummary,
-};
+use crate::session_data_state::{SessionDataId, SessionDataInstance, SessionDataLookback};
 
 use iced::mouse;
 use iced::widget::canvas::{self, Frame, Path, Stroke, Text};
@@ -260,13 +258,56 @@ impl TradingTerminal {
             .into();
         }
 
-        let chart = canvas_widget(SessionDataChart {
-            summaries: instance.weekday_summaries.clone(),
+        let weekday_chart = canvas_widget(SessionDataChart {
+            bars: instance
+                .weekday_summaries
+                .iter()
+                .map(|summary| SessionChartBar {
+                    label: summary.weekday.label(),
+                    sample_count: summary.sample_count,
+                    average_return_pct: summary.average_return_pct,
+                    win_rate_pct: summary.win_rate_pct,
+                })
+                .collect(),
         })
         .width(Fill)
         .height(Length::Fixed(CHART_HEIGHT));
 
-        let mut content = column![chart].spacing(8);
+        let mut content =
+            column![view_chart_caption("By weekday", theme), weekday_chart].spacing(8);
+
+        if instance
+            .session_summaries
+            .iter()
+            .any(|summary| summary.sample_count > 0)
+        {
+            let session_chart = canvas_widget(SessionDataChart {
+                bars: instance
+                    .session_summaries
+                    .iter()
+                    .map(|summary| SessionChartBar {
+                        label: summary.session.label(),
+                        sample_count: summary.sample_count,
+                        average_return_pct: summary.average_return_pct,
+                        win_rate_pct: summary.win_rate_pct,
+                    })
+                    .collect(),
+            })
+            .width(Fill)
+            .height(Length::Fixed(CHART_HEIGHT));
+            content = content
+                .push(view_chart_caption("By market session", theme))
+                .push(session_chart);
+        } else {
+            content = content
+                .push(view_chart_caption("By market session", theme))
+                .push(
+                    text("No completed market session history available")
+                        .size(11)
+                        .color(theme.extended_palette().background.weak.text),
+                );
+        }
+
         if let Some(error) = &instance.error {
             content = content.push(
                 text(helpers::ellipsized_text(error, BODY_ERROR_CHARS))
@@ -277,6 +318,13 @@ impl TradingTerminal {
 
         container(content).width(Fill).height(Fill).into()
     }
+}
+
+fn view_chart_caption(label: &'static str, theme: &Theme) -> Element<'static, Message> {
+    text(label)
+        .size(10)
+        .color(theme.extended_palette().background.weak.text)
+        .into()
 }
 
 fn lookback_button(
@@ -335,8 +383,16 @@ fn session_data_status(instance: &SessionDataInstance) -> String {
 }
 
 #[derive(Debug, Clone)]
+struct SessionChartBar {
+    label: &'static str,
+    sample_count: usize,
+    average_return_pct: f64,
+    win_rate_pct: f64,
+}
+
+#[derive(Debug, Clone)]
 struct SessionDataChart {
-    summaries: Vec<SessionWeekdaySummary>,
+    bars: Vec<SessionChartBar>,
 }
 
 #[derive(Default)]
@@ -379,19 +435,19 @@ impl canvas::Program<Message> for SessionDataChart {
         let mut frame = Frame::new(renderer, bounds.size());
         frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::TRANSPARENT);
 
-        if self.summaries.is_empty() || bounds.width <= 0.0 || bounds.height <= 0.0 {
+        if self.bars.is_empty() || bounds.width <= 0.0 || bounds.height <= 0.0 {
             return vec![frame.into_geometry()];
         }
 
-        let layout = ChartLayout::new(&self.summaries, bounds.size());
+        let layout = ChartLayout::new(&self.bars, bounds.size());
         draw_axes(&mut frame, theme, &layout);
-        draw_bars(&mut frame, theme, &layout, &self.summaries, state.hovered);
-        draw_weekday_labels(&mut frame, theme, &layout, &self.summaries);
+        draw_bars(&mut frame, theme, &layout, &self.bars, state.hovered);
+        draw_bar_labels(&mut frame, theme, &layout, &self.bars);
         if let Some(index) = state
             .hovered
-            .and_then(|idx| self.summaries.get(idx).map(|_| idx))
+            .and_then(|idx| self.bars.get(idx).map(|_| idx))
         {
-            draw_tooltip(&mut frame, theme, &layout, index, &self.summaries[index]);
+            draw_tooltip(&mut frame, theme, &layout, index, &self.bars[index]);
         }
 
         vec![frame.into_geometry()]
@@ -401,7 +457,7 @@ impl canvas::Program<Message> for SessionDataChart {
 impl SessionDataChart {
     fn bar_index_at(&self, bounds: Rectangle, cursor: mouse::Cursor) -> Option<usize> {
         let pos = cursor.position_in(bounds)?;
-        let layout = ChartLayout::new(&self.summaries, bounds.size());
+        let layout = ChartLayout::new(&self.bars, bounds.size());
         if pos.x < layout.plot_x
             || pos.x > layout.plot_x + layout.plot_w
             || pos.y < layout.plot_y
@@ -410,7 +466,7 @@ impl SessionDataChart {
             return None;
         }
         let idx = ((pos.x - layout.plot_x) / layout.step_w).floor() as usize;
-        self.summaries.get(idx).map(|_| idx)
+        self.bars.get(idx).map(|_| idx)
     }
 }
 
@@ -428,14 +484,14 @@ struct ChartLayout {
 }
 
 impl ChartLayout {
-    fn new(summaries: &[SessionWeekdaySummary], size: Size) -> Self {
+    fn new(bars: &[SessionChartBar], size: Size) -> Self {
         let plot_x = CHART_LEFT_PAD.min(size.width * 0.3);
         let plot_y = CHART_TOP_PAD;
         let plot_w = (size.width - plot_x - CHART_RIGHT_PAD).max(1.0);
         let plot_h = (size.height - CHART_TOP_PAD - CHART_BOTTOM_PAD).max(1.0);
-        let (min_return, max_return) = padded_return_range(summaries);
+        let (min_return, max_return) = padded_return_range(bars);
         let zero_y = value_to_y(0.0, min_return, max_return, plot_y, plot_h);
-        let count = summaries.len().max(1) as f32;
+        let count = bars.len().max(1) as f32;
         let step_w = (plot_w / count).max(1.0);
         let bar_w = (step_w * 0.58).clamp(6.0, 54.0);
         Self {
@@ -471,9 +527,9 @@ impl ChartLayout {
     }
 }
 
-fn padded_return_range(summaries: &[SessionWeekdaySummary]) -> (f64, f64) {
+fn padded_return_range(bars: &[SessionChartBar]) -> (f64, f64) {
     let (mut min_value, mut max_value) = (0.0_f64, 0.0_f64);
-    for value in summaries.iter().map(|summary| summary.average_return_pct) {
+    for value in bars.iter().map(|bar| bar.average_return_pct) {
         min_value = min_value.min(value);
         max_value = max_value.max(value);
     }
@@ -521,21 +577,21 @@ fn draw_bars(
     frame: &mut Frame,
     theme: &Theme,
     layout: &ChartLayout,
-    summaries: &[SessionWeekdaySummary],
+    bars: &[SessionChartBar],
     hovered: Option<usize>,
 ) {
-    for (idx, summary) in summaries.iter().enumerate() {
+    for (idx, bar) in bars.iter().enumerate() {
         let x = layout.bar_x(idx);
-        let value = summary.average_return_pct;
+        let value = bar.average_return_pct;
         let y = layout.value_to_y(value);
         let top = y.min(layout.zero_y);
         let height = (y - layout.zero_y).abs().max(1.0);
-        let mut color = if summary.sample_count > 0 {
+        let mut color = if bar.sample_count > 0 {
             helpers::signed_number_color(value, theme)
         } else {
             theme.extended_palette().background.weak.text
         };
-        color.a = match (hovered == Some(idx), summary.sample_count > 0) {
+        color.a = match (hovered == Some(idx), bar.sample_count > 0) {
             (true, true) => 0.95,
             (false, true) => 0.76,
             (true, false) => 0.45,
@@ -545,18 +601,18 @@ fn draw_bars(
     }
 }
 
-fn draw_weekday_labels(
+fn draw_bar_labels(
     frame: &mut Frame,
     theme: &Theme,
     layout: &ChartLayout,
-    summaries: &[SessionWeekdaySummary],
+    bars: &[SessionChartBar],
 ) {
     let label_y = layout.plot_y + layout.plot_h + 8.0;
     let value_y = label_y + 14.0;
-    for (idx, summary) in summaries.iter().enumerate() {
+    for (idx, bar) in bars.iter().enumerate() {
         let x = layout.bar_center_x(idx);
         frame.fill_text(Text {
-            content: summary.weekday.label().to_string(),
+            content: bar.label.to_string(),
             position: Point::new(x, label_y),
             color: theme.extended_palette().background.weak.text,
             size: iced::Pixels(10.0),
@@ -566,17 +622,17 @@ fn draw_weekday_labels(
             ..Default::default()
         });
 
-        let value = if summary.sample_count > 0 {
-            helpers::format_signed_percent_value(summary.average_return_pct)
+        let value = if bar.sample_count > 0 {
+            helpers::format_signed_percent_value(bar.average_return_pct)
         } else {
             "--".to_string()
         };
-        let mut color = if summary.sample_count > 0 {
-            helpers::signed_number_color(summary.average_return_pct, theme)
+        let mut color = if bar.sample_count > 0 {
+            helpers::signed_number_color(bar.average_return_pct, theme)
         } else {
             theme.extended_palette().background.weak.text
         };
-        color.a = if summary.sample_count > 0 { 0.9 } else { 0.45 };
+        color.a = if bar.sample_count > 0 { 0.9 } else { 0.45 };
         frame.fill_text(Text {
             content: value,
             position: Point::new(x, value_y),
@@ -595,11 +651,11 @@ fn draw_tooltip(
     theme: &Theme,
     layout: &ChartLayout,
     index: usize,
-    summary: &SessionWeekdaySummary,
+    bar: &SessionChartBar,
 ) {
     let point = Point::new(
         layout.bar_center_x(index),
-        layout.value_to_y(summary.average_return_pct),
+        layout.value_to_y(bar.average_return_pct),
     );
     let origin = tooltip_origin(point, layout.size);
     frame.fill_rectangle(
@@ -618,16 +674,16 @@ fn draw_tooltip(
             .with_width(1.0),
     );
 
-    let label = if summary.sample_count > 0 {
+    let label = if bar.sample_count > 0 {
         format!(
             "{}\nAvg return {}\n{} sessions  Win {:.0}%",
-            summary.weekday.label(),
-            helpers::format_signed_percent_value(summary.average_return_pct),
-            summary.sample_count,
-            summary.win_rate_pct,
+            bar.label,
+            helpers::format_signed_percent_value(bar.average_return_pct),
+            bar.sample_count,
+            bar.win_rate_pct,
         )
     } else {
-        format!("{}\nNo completed sessions", summary.weekday.label())
+        format!("{}\nNo completed sessions", bar.label)
     };
     frame.fill_text(Text {
         content: label,

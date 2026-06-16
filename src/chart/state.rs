@@ -63,6 +63,8 @@ pub struct ChartState {
     pub(super) drag_funding_panel_height: Option<f32>,
     pub(super) drag_start_session_panel_height: f32,
     pub(super) drag_session_panel_height: Option<f32>,
+    /// Symbol key for the order being dragged.
+    pub(super) drag_order_coin: Option<String>,
     /// Temporary price for an order being dragged (live preview).
     pub(super) drag_order_new_price: Option<f64>,
     /// OID of the order line the cursor is currently hovering near
@@ -113,6 +115,7 @@ impl Default for ChartState {
             drag_funding_panel_height: None,
             drag_start_session_panel_height: 0.0,
             drag_session_panel_height: None,
+            drag_order_coin: None,
             drag_order_new_price: None,
             hover_order_oid: None,
             pending_anchor: None,
@@ -158,6 +161,7 @@ impl ChartState {
         self.drag_funding_panel_height = None;
         self.drag_start_session_panel_height = 0.0;
         self.drag_session_panel_height = None;
+        self.drag_order_coin = None;
         self.drag_order_new_price = None;
         self.hover_order_oid = None;
         self.pending_anchor = None;

@@ -22,10 +22,16 @@ pub(crate) struct ScreenerState {
     pub(crate) window_id: Option<window::Id>,
     pub(crate) contexts: HashMap<String, WatchlistContext>,
     pub(crate) contexts_loading: bool,
+    pub(crate) contexts_request_id: u64,
+    pub(crate) contexts_request_symbols: Vec<String>,
+    pub(crate) contexts_refresh_pending: bool,
     pub(crate) contexts_last_fetch_ms: Option<u64>,
     pub(crate) history: HashMap<String, (f64, f64)>,
     pub(crate) history_loaded_at: HashMap<String, u64>,
     pub(crate) history_loading: bool,
+    pub(crate) history_request_id: u64,
+    pub(crate) history_request_symbols: Vec<String>,
+    pub(crate) history_refresh_pending: bool,
     pub(crate) history_last_fetch_ms: Option<u64>,
     pub(crate) status: Option<(String, bool)>,
     pub(crate) exchange_filter: ScreenerExchangeFilter,
@@ -40,10 +46,16 @@ impl Default for ScreenerState {
             window_id: None,
             contexts: HashMap::new(),
             contexts_loading: false,
+            contexts_request_id: 0,
+            contexts_request_symbols: Vec::new(),
+            contexts_refresh_pending: false,
             contexts_last_fetch_ms: None,
             history: HashMap::new(),
             history_loaded_at: HashMap::new(),
             history_loading: false,
+            history_request_id: 0,
+            history_request_symbols: Vec::new(),
+            history_refresh_pending: false,
             history_last_fetch_ms: None,
             status: None,
             exchange_filter: ScreenerExchangeFilter::default(),
@@ -120,6 +132,25 @@ pub(crate) struct ScreenerRow {
 }
 
 impl ScreenerState {
+    pub(crate) fn invalidate_refreshes(&mut self) {
+        self.invalidate_context_refresh();
+        self.invalidate_history_refresh();
+    }
+
+    pub(crate) fn invalidate_context_refresh(&mut self) {
+        self.contexts_request_id = self.contexts_request_id.saturating_add(1);
+        self.contexts_request_symbols.clear();
+        self.contexts_refresh_pending = false;
+        self.contexts_loading = false;
+    }
+
+    pub(crate) fn invalidate_history_refresh(&mut self) {
+        self.history_request_id = self.history_request_id.saturating_add(1);
+        self.history_request_symbols.clear();
+        self.history_refresh_pending = false;
+        self.history_loading = false;
+    }
+
     pub(crate) fn set_exchange_filter(&mut self, filter: ScreenerExchangeFilter) -> bool {
         let filter = filter.normalized();
         if self.exchange_filter == filter {
@@ -191,6 +222,22 @@ impl ScreenerState {
                 .and_then(|samples| sample_at_or_before(samples, target_ms))
         })
     }
+
+    /// Most recent recorded mid at or before `target_ms` across any of the
+    /// candidate mid keys. Used to anchor a Telegram ticker's price-impact
+    /// baseline to the message publication time rather than to whenever the app
+    /// first noticed the post.
+    pub(crate) fn mid_sample_at_or_before(
+        &self,
+        candidates: &[String],
+        target_ms: u64,
+    ) -> Option<f64> {
+        candidates.iter().find_map(|candidate| {
+            self.samples
+                .get(candidate)
+                .and_then(|samples| sample_at_or_before(samples, target_ms))
+        })
+    }
 }
 
 impl TradingTerminal {
@@ -239,13 +286,16 @@ impl TradingTerminal {
             .collect()
     }
 
-    pub(crate) fn screener_history_symbol_keys(&self, now_ms: u64) -> Vec<String> {
+    pub(crate) fn screener_history_symbol_keys(&self, now_ms: u64, force: bool) -> Vec<String> {
         let mut symbols = self
             .screener_symbols()
             .into_iter()
             .filter(|symbol| symbol.market_type == MarketType::Perp)
-            .filter(|symbol| !self.screener.history_loaded_at.contains_key(&symbol.key))
+            .filter(|symbol| force || !self.screener.history_loaded_at.contains_key(&symbol.key))
             .filter(|symbol| {
+                if force {
+                    return true;
+                }
                 let candidates = self.mid_candidates_for_symbol(&symbol.key);
                 self.screener
                     .baseline_for_candidates(&candidates, 60, now_ms)
@@ -320,10 +370,11 @@ impl TradingTerminal {
     }
 
     fn screener_context_for_symbol(&self, symbol: &ExchangeSymbol) -> Option<&WatchlistContext> {
-        self.screener
-            .contexts
-            .get(&symbol.key)
-            .or_else(|| self.screener.contexts.get(&symbol.ticker))
+        self.screener.contexts.get(&symbol.key).or_else(|| {
+            (symbol.key == symbol.ticker)
+                .then(|| self.screener.contexts.get(&symbol.ticker))
+                .flatten()
+        })
     }
 }
 
@@ -511,6 +562,30 @@ mod tests {
             &xyz,
             &ScreenerExchangeFilter::Hip3Dex("flx".to_string())
         ));
+    }
+
+    #[test]
+    fn screener_rows_do_not_borrow_native_context_for_prefixed_hip3_symbol() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![symbol("xyz:NVDA", MarketType::Perp)];
+        terminal.all_mids.insert("xyz:NVDA".to_string(), 110.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("xyz:NVDA".to_string(), crate::ws::now_ms());
+        terminal.screener.contexts.insert(
+            "NVDA".to_string(),
+            WatchlistContext {
+                funding: None,
+                prev_day_px: Some(100.0),
+                day_vlm: Some(1_000.0),
+            },
+        );
+
+        let rows = terminal.screener_rows();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pct_24h, None);
+        assert_eq!(rows[0].volume_24h, None);
     }
 
     fn row(

@@ -9,20 +9,101 @@ use crate::helpers::format_price;
 use crate::message::Message;
 use crate::order_pending_indicators::ProjectedPositionDelta;
 
+use iced::widget::text::Wrapping;
 use iced::widget::{Column, column, container, responsive, row, rule, text};
 use iced::{Color, Element, Fill, Theme};
 
 pub(super) const POSITION_ACTION_WIDTH: f32 = 152.0;
 
-const HIDE_TOTAL_PNL_BELOW: f32 = 1_080.0;
-const HIDE_LEVERAGE_BELOW: f32 = 990.0;
-const HIDE_FUNDING_BELOW: f32 = 900.0;
-const HIDE_LIQUIDATION_BELOW: f32 = 810.0;
+// Columns whose content is bounded (a side label, a price, a leverage string)
+// use fixed widths so they stay compact and aligned. The variable-content
+// columns — Symbol plus Size, Value, uPnL and Total PnL, which can hold large
+// values or an in-flight "projected size" label — are left as `Fill` in the
+// view code: they split the pane's leftover width *equally*, so they widen as
+// the pane grows (fitting larger values, with no hard 90px cap) and narrow as
+// it shrinks. The reveal thresholds below keep that shared slack at no less than
+// `MIN_FILL_WIDTH` whenever full-precision numbers are shown, so ordinary values
+// never clip; only unusually large values or long projected labels clip, and
+// only until the pane is widened.
+pub(super) const POSITION_SIDE_WIDTH: f32 = 65.0;
+pub(super) const POSITION_ENTRY_WIDTH: f32 = 90.0;
+pub(super) const POSITION_LIQ_WIDTH: f32 = 90.0;
+pub(super) const POSITION_MARK_WIDTH: f32 = 90.0;
+pub(super) const POSITION_FUNDING_WIDTH: f32 = 90.0;
+pub(super) const POSITION_LEVERAGE_WIDTH: f32 = 100.0;
+
+// The natural width of a full-precision number cell. The reveal thresholds are
+// derived so each `Fill` column keeps at least this much of the shared slack in
+// Full mode, so revealing an optional column never squeezes the numbers below
+// their natural width.
+const MIN_FILL_WIDTH: f32 = 90.0;
+
+// Row geometry, mirroring the layout built in `header.rs` / `position_row.rs`:
+// a `row!` with `.spacing(ROW_SPACING)` inside a container padded 8px on each
+// side. Shared with the layout tests.
+const ROW_SPACING: f32 = 4.0;
+const ROW_HORIZONTAL_PADDING: f32 = 16.0;
+
+// Optional columns are revealed only once the pane is wide enough that, with the
+// column shown, every `Fill` column still gets at least `MIN_FILL_WIDTH` of the
+// shared slack — so revealing a column never squeezes the numbers or clips the
+// close/NUKE action cell. Each threshold is therefore the sum of the visible
+// fixed-column widths, the inter-column spacing, the row padding, and one
+// `MIN_FILL_WIDTH` per `Fill` column. As the pane narrows the columns drop
+// widest-budget first; Entry then Mark are the last fixed columns to go before
+// only the essentials remain (Symbol, Side, Size, Value, uPnL, action), which
+// still fit down to ~260px (numbers are compact/abbreviated by then). See the
+// `fill_columns_stay_at_least_min_width_in_full_mode` and
+// `fixed_columns_never_overflow_at_realistic_pane_widths` tests.
+//
+// At reveal there are 4 `Fill` columns (Symbol, Size, Value, uPnL); Total PnL
+// adds a 5th. The `* ROW_SPACING` factor is (child count - 1) gaps.
+const HIDE_LIQUIDATION_BELOW: f32 = POSITION_SIDE_WIDTH
+    + POSITION_ENTRY_WIDTH
+    + POSITION_LIQ_WIDTH
+    + POSITION_MARK_WIDTH
+    + POSITION_ACTION_WIDTH
+    + 8.0 * ROW_SPACING // 9 children
+    + ROW_HORIZONTAL_PADDING
+    + 4.0 * MIN_FILL_WIDTH;
+const HIDE_FUNDING_BELOW: f32 = POSITION_SIDE_WIDTH
+    + POSITION_ENTRY_WIDTH
+    + POSITION_LIQ_WIDTH
+    + POSITION_MARK_WIDTH
+    + POSITION_FUNDING_WIDTH
+    + POSITION_ACTION_WIDTH
+    + 9.0 * ROW_SPACING // 10 children
+    + ROW_HORIZONTAL_PADDING
+    + 4.0 * MIN_FILL_WIDTH;
+const HIDE_LEVERAGE_BELOW: f32 = POSITION_SIDE_WIDTH
+    + POSITION_ENTRY_WIDTH
+    + POSITION_LIQ_WIDTH
+    + POSITION_MARK_WIDTH
+    + POSITION_FUNDING_WIDTH
+    + POSITION_LEVERAGE_WIDTH
+    + POSITION_ACTION_WIDTH
+    + 10.0 * ROW_SPACING // 11 children
+    + ROW_HORIZONTAL_PADDING
+    + 4.0 * MIN_FILL_WIDTH;
+const HIDE_TOTAL_PNL_BELOW: f32 = POSITION_SIDE_WIDTH
+    + POSITION_ENTRY_WIDTH
+    + POSITION_LIQ_WIDTH
+    + POSITION_MARK_WIDTH
+    + POSITION_FUNDING_WIDTH
+    + POSITION_LEVERAGE_WIDTH
+    + POSITION_ACTION_WIDTH
+    + 11.0 * ROW_SPACING // 12 children
+    + ROW_HORIZONTAL_PADDING
+    + 5.0 * MIN_FILL_WIDTH; // Total PnL is itself a Fill column
+const HIDE_ENTRY_BELOW: f32 = 560.0;
+const HIDE_MARK_BELOW: f32 = 470.0;
 const COMPACT_NUMBERS_BELOW: f32 = HIDE_LIQUIDATION_BELOW;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PositionColumnVisibility {
+    pub(super) entry: bool,
     pub(super) liquidation: bool,
+    pub(super) mark: bool,
     pub(super) funding: bool,
     pub(super) total_pnl: bool,
     pub(super) leverage: bool,
@@ -31,7 +112,9 @@ pub(super) struct PositionColumnVisibility {
 impl PositionColumnVisibility {
     fn for_width(width: f32) -> Self {
         Self {
+            entry: width >= HIDE_ENTRY_BELOW,
             liquidation: width >= HIDE_LIQUIDATION_BELOW,
+            mark: width >= HIDE_MARK_BELOW,
             funding: width >= HIDE_FUNDING_BELOW,
             total_pnl: width >= HIDE_TOTAL_PNL_BELOW,
             leverage: width >= HIDE_LEVERAGE_BELOW,
@@ -71,8 +154,7 @@ impl TradingTerminal {
         let theme = self.theme();
         let columns = PositionColumnVisibility::for_width(available_width);
         let number_mode = PositionNumberMode::for_width(available_width);
-        let can_close =
-            self.connected_address.is_some() && !self.wallet_key_input.trim().is_empty();
+        let can_close = self.connected_address.is_some() && self.has_active_committed_agent_key();
 
         let account_positions = self.account_positions_with_outcomes();
         let all_position_coins: Vec<String> = account_positions
@@ -101,10 +183,12 @@ impl TradingTerminal {
             .into_iter()
             .filter(|ap| self.show_hidden_positions || !self.position_is_hidden(&ap.position.coin))
             .collect();
-        let warning = self.account_data.as_ref().and_then(|data| {
-            data.completeness
-                .section_warning(AccountDataSection::Positions)
-        });
+        let warning = self
+            .connected_order_account_snapshot()
+            .and_then(|(_, data)| {
+                data.completeness
+                    .section_warning(AccountDataSection::Positions)
+            });
         let opening_deltas = self.optimistic_opening_position_deltas(&all_position_coins);
 
         let header = self.view_positions_header(
@@ -239,7 +323,8 @@ fn opening_position_row<'a>(
     container(
         text(opening_position_label(delta, &symbol_label, &size_label))
             .size(11)
-            .color(theme.palette().primary),
+            .color(theme.palette().primary)
+            .wrapping(Wrapping::None),
     )
     .padding([4, 8])
     .into()

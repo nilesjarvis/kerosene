@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::message::Message;
-use crate::order_execution::PendingOrderAction;
+use crate::order_execution::{AdvancedOrderStartSnapshot, PendingOrderAction};
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::widget::container as container_style;
 use iced::widget::{Column, button, container, row, text};
@@ -80,15 +80,18 @@ impl TradingTerminal {
         }
 
         if can_trade && self.active_advanced_order_count() < MAX_ACTIVE_ADVANCED_ORDERS {
+            let snapshot = self.advanced_order_start_snapshot();
             let chase_buy = chase_start_button(
                 format!("CHASE BUY {}", self.active_symbol_display.to_uppercase()),
                 true,
                 theme.palette().success,
+                snapshot.clone(),
             );
             let chase_sell = chase_start_button(
                 format!("CHASE SELL {}", self.active_symbol_display.to_uppercase()),
                 false,
                 theme.palette().danger,
+                snapshot,
             );
             form.push(row![chase_buy, chase_sell].spacing(8))
         } else if can_trade {
@@ -158,16 +161,27 @@ impl TradingTerminal {
     }
 }
 
-fn chase_start_button(label: String, is_buy: bool, accent: Color) -> Element<'static, Message> {
+fn chase_start_button(
+    label: String,
+    is_buy: bool,
+    accent: Color,
+    snapshot: AdvancedOrderStartSnapshot,
+) -> Element<'static, Message> {
     let (message, bg_hover, bg_default) = if is_buy {
         (
-            Message::StartChase(true),
+            Message::StartChase {
+                is_buy: true,
+                snapshot,
+            },
             color!(0x162c1d),
             color!(0x122017),
         )
     } else {
         (
-            Message::StartChase(false),
+            Message::StartChase {
+                is_buy: false,
+                snapshot,
+            },
             color!(0x2c1616),
             color!(0x201212),
         )

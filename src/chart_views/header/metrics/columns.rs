@@ -1,5 +1,6 @@
 use crate::account::AssetContext;
 use crate::api::OutcomeVolume24h;
+use crate::app_time::local_datetime_from_unix_ms;
 use crate::chart_state::ChartId;
 use crate::message::Message;
 
@@ -140,6 +141,7 @@ pub(super) fn push_perp_metric_columns<'a>(
     asset_volume_as_notional: bool,
     open_interest_as_notional: bool,
     visibility: ChartHeaderMetricVisibility,
+    now_ms: u64,
 ) -> Row<'a, Message> {
     let funding = parse_ctx_f64(ctx.funding.as_deref());
     let funding_color = match funding {
@@ -183,7 +185,7 @@ pub(super) fn push_perp_metric_columns<'a>(
 
     if visibility.show_funding {
         header_row = header_row.push(metric_column(
-            format!("Funding ({})", funding_countdown()),
+            format!("Funding ({})", funding_countdown(now_ms)),
             format_funding_pct(funding),
             funding_color,
             theme,
@@ -283,17 +285,19 @@ fn clickable_metric_column(
         .into()
 }
 
-fn funding_countdown() -> String {
-    let now = chrono::Local::now();
-    let next_hour = (now + chrono::Duration::hours(1))
-        .with_minute(0)
-        .and_then(|dt| dt.with_second(0))
-        .unwrap_or(now + chrono::Duration::hours(1));
-    let diff = next_hour.signed_duration_since(now);
+fn funding_countdown(now_ms: u64) -> String {
+    let now = local_datetime_from_unix_ms(now_ms);
+    funding_countdown_from_minute_second(now.minute(), now.second())
+}
+
+fn funding_countdown_from_minute_second(minute: u32, second: u32) -> String {
+    let seconds_until_next_hour = (60_u32.saturating_sub(minute))
+        .saturating_mul(60)
+        .saturating_sub(second);
     format!(
         "{:02}:{:02}",
-        diff.num_minutes().max(0),
-        (diff.num_seconds() % 60).max(0)
+        seconds_until_next_hour / 60,
+        seconds_until_next_hour % 60
     )
 }
 

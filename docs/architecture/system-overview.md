@@ -84,7 +84,7 @@ is returned as iced `Task<Message>` values.
 | Account and wallet | `account/`, `account_state/`, `account_update/`, `account_views/`, `wallet_state/`, `wallet_update/`, `wallet_views/` | Account profiles, account data fetch/merge, user stream application, wallet tracker/details. |
 | Portfolio and analytics | `portfolio_state/`, `portfolio_update/`, `account_analytics/`, `account_metrics/`, `pnl_card/` | Portfolio history, income data, PnL calculations, exportable PnL cards. |
 | Journal | `journal/`, `journal_update.rs`, `journal_views/` | Fill cache, trade aggregation, notes, summary charts, chart snapshots. |
-| Integrations and feeds | `feed_state/`, `feed_update/`, `feed_views/`, `hydromancer_api/`, `hyperdash_api/`, `hyperdash_update/`, `telegram_*`, `x_feed*`, `calendar_*`, `screener_*` | Optional external data sources, feed panes, alerts, external API keys. |
+| Integrations and feeds | `feed_state/`, `feed_update/`, `feed_views/`, `hydromancer_api/`, `hyperdash_api/`, `hyperdash_update/`, `telegram_*`, `calendar_*`, `screener_*` | Optional external data sources, feed panes, alerts, external API keys. |
 | Chrome and preferences | `settings_*`, `preferences_update/`, `app_theme/`, `status_bar/`, `toast_overlay/`, `hotkey_state/`, `sound/`, `window_chrome.rs` | Settings UI, themes, fonts, sounds, hotkeys, notifications, status bar, custom chrome. |
 | Layout and panes | `pane_state.rs`, `pane_update/`, `pane_interaction_update/`, `pane_management.rs`, `layout_update/`, `layout_preview/` | Pane definitions, add/remove/split, resize, layout import/export, layout compatibility. |
 

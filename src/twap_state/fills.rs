@@ -59,13 +59,21 @@ pub(super) struct FillSummary {
     pub(super) fee: f64,
 }
 
-pub(super) fn fill_summary_for_oid(fills: &[UserFill], oid: u64) -> Option<FillSummary> {
+pub(super) fn fill_summary_for_order(
+    fills: &[UserFill],
+    oid: u64,
+    expected_coin: &str,
+    expected_is_buy: bool,
+) -> Option<FillSummary> {
     let mut filled_size = 0.0;
     let mut notional = 0.0;
     let mut fee = 0.0;
     let mut seen = HashSet::new();
 
     for fill in fills.iter().filter(|fill| fill.oid == Some(oid)) {
+        if fill.coin != expected_coin || fill_side_is_buy(&fill.side) != Some(expected_is_buy) {
+            continue;
+        }
         if !seen.insert(fill.dedup_key()) {
             continue;
         }
@@ -98,4 +106,12 @@ pub(super) fn fill_summary_for_oid(fills: &[UserFill], oid: u64) -> Option<FillS
         avg_price: Some(notional / filled_size),
         fee,
     })
+}
+
+fn fill_side_is_buy(side: &str) -> Option<bool> {
+    match side {
+        "B" => Some(true),
+        "A" => Some(false),
+        _ => None,
+    }
 }

@@ -86,6 +86,8 @@ pub(crate) const PORTFOLIO_WINDOWS: &[PortfolioWindow] = &[
 #[derive(Debug, Clone)]
 pub(crate) struct PortfolioState {
     pub(crate) loading: bool,
+    pub(crate) refresh_request_id: u64,
+    pub(crate) refresh_followup_pending: bool,
     pub(crate) scope: PortfolioScope,
     pub(crate) window: PortfolioWindow,
     pub(crate) pnl_value_display_mode: PnlValueDisplayMode,
@@ -97,6 +99,8 @@ impl Default for PortfolioState {
     fn default() -> Self {
         Self {
             loading: false,
+            refresh_request_id: 0,
+            refresh_followup_pending: false,
             scope: PortfolioScope::All,
             window: PortfolioWindow::Week,
             pnl_value_display_mode: PnlValueDisplayMode::Usd,
@@ -109,8 +113,72 @@ impl Default for PortfolioState {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct IncomeState {
     pub(crate) loading: bool,
+    pub(crate) refresh_request_id: u64,
+    pub(crate) refresh_followup_pending: bool,
     pub(crate) data: Option<IncomeSnapshot>,
     pub(crate) last_error: Option<String>,
+}
+
+impl PortfolioState {
+    pub(crate) fn begin_refresh(&mut self) -> u64 {
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.loading = true;
+        self.refresh_request_id
+    }
+
+    pub(crate) fn finish_refresh(&mut self, request_id: u64) -> bool {
+        if self.refresh_request_id != request_id {
+            return false;
+        }
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.loading = false;
+        true
+    }
+
+    pub(crate) fn queue_refresh_followup(&mut self) {
+        self.refresh_followup_pending = true;
+    }
+
+    pub(crate) fn take_refresh_followup(&mut self) -> bool {
+        std::mem::take(&mut self.refresh_followup_pending)
+    }
+
+    pub(crate) fn invalidate_refresh(&mut self) {
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.loading = false;
+        self.refresh_followup_pending = false;
+    }
+}
+
+impl IncomeState {
+    pub(crate) fn begin_refresh(&mut self) -> u64 {
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.loading = true;
+        self.refresh_request_id
+    }
+
+    pub(crate) fn finish_refresh(&mut self, request_id: u64) -> bool {
+        if self.refresh_request_id != request_id {
+            return false;
+        }
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.loading = false;
+        true
+    }
+
+    pub(crate) fn queue_refresh_followup(&mut self) {
+        self.refresh_followup_pending = true;
+    }
+
+    pub(crate) fn take_refresh_followup(&mut self) -> bool {
+        std::mem::take(&mut self.refresh_followup_pending)
+    }
+
+    pub(crate) fn invalidate_refresh(&mut self) {
+        self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.loading = false;
+        self.refresh_followup_pending = false;
+    }
 }
 
 #[cfg(test)]

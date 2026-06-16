@@ -7,6 +7,7 @@ use crate::account::{
 };
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
+use crate::read_data_provider::ReadDataRequestContext;
 use crate::ws::WsUserData;
 
 use iced::{Size, Task, window};
@@ -17,9 +18,10 @@ impl TradingTerminal {
         window_id: window::Id,
         address: String,
         scope: AccountDataFetchScope,
+        read_context: ReadDataRequestContext,
     ) -> Task<Message> {
         let provider = self.read_data_provider;
-        let hydromancer_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_key = self.hydromancer_api_key_for_task();
         Task::perform(
             fetch_wallet_details_scoped_with_provider(
                 address.clone(),
@@ -27,7 +29,9 @@ impl TradingTerminal {
                 provider,
                 hydromancer_key,
             ),
-            move |r| Message::WalletDetailsLoaded(window_id, address.clone(), Box::new(r)),
+            move |r| {
+                Message::WalletDetailsLoaded(window_id, address.clone(), read_context, Box::new(r))
+            },
         )
     }
 
@@ -50,17 +54,20 @@ impl TradingTerminal {
             ..crate::window_chrome::settings(self.custom_window_chrome_active)
         };
         let (window_id, open_task) = window::open(settings);
-        self.wallet_detail_windows
-            .insert(window_id, WalletDetailsWindowState::new(address.clone()));
+        let read_context = self.read_data_request_context();
+        let mut state = WalletDetailsWindowState::new(address.clone());
+        state.loading_context = Some(read_context);
+        self.wallet_detail_windows.insert(window_id, state);
 
         let scope = self.account_data_fetch_scope();
         Task::batch([
             open_task.map(Message::WindowOpened),
-            self.wallet_details_fetch_task(window_id, address, scope),
+            self.wallet_details_fetch_task(window_id, address, scope, read_context),
         ])
     }
 
     pub(crate) fn refresh_wallet_details_window(&mut self, window_id: window::Id) -> Task<Message> {
+        let read_context = self.read_data_request_context();
         let Some(state) = self.wallet_detail_windows.get_mut(&window_id) else {
             return Task::none();
         };
@@ -68,10 +75,11 @@ impl TradingTerminal {
             return Task::none();
         }
         state.loading = true;
+        state.loading_context = Some(read_context);
         state.error = None;
         let address = state.address.clone();
         let scope = self.account_data_fetch_scope();
-        self.wallet_details_fetch_task(window_id, address, scope)
+        self.wallet_details_fetch_task(window_id, address, scope, read_context)
     }
 
     pub(crate) fn apply_wallet_details_ws_update(
@@ -183,11 +191,41 @@ impl TradingTerminal {
                 return self.handle_mids_update(mids);
             }
             WsUserData::Fills { .. } => {}
-            // Wallet-detail windows track other users' state for read-only
-            // viewing; broadcast lag is handled by the main account path
-            // in `apply_ws_user_data_update`. The downstream wallet-detail
-            // refresh ticks on its own cadence and will catch up.
-            WsUserData::Lagged { .. } => {}
+            WsUserData::Lagged { skipped } => {
+                let mut refreshes = Vec::new();
+                let read_context = self.read_data_request_context();
+                for (window_id, state) in self
+                    .wallet_detail_windows
+                    .iter_mut()
+                    .filter(|(_, state)| state.address == address)
+                {
+                    state.error = Some(format!(
+                        "Wallet detail stream lagged ({skipped} updates skipped); refreshing \
+                         snapshot"
+                    ));
+                    if !state.loading {
+                        state.loading = true;
+                        state.loading_context = Some(read_context);
+                        refreshes.push((*window_id, state.address.clone()));
+                    }
+                }
+
+                if !refreshes.is_empty() {
+                    let scope = self.account_data_fetch_scope();
+                    let tasks: Vec<_> = refreshes
+                        .into_iter()
+                        .map(|(window_id, address)| {
+                            self.wallet_details_fetch_task(
+                                window_id,
+                                address,
+                                scope.clone(),
+                                read_context,
+                            )
+                        })
+                        .collect();
+                    return Task::batch(tasks);
+                }
+            }
         }
         Task::none()
     }

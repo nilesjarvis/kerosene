@@ -10,7 +10,7 @@ impl TradingTerminal {
         match message {
             message @ (Message::OpenWalletDetailsWindow(_)
             | Message::RefreshWalletDetails(_)
-            | Message::WalletDetailsLoaded(_, _, _)
+            | Message::WalletDetailsLoaded(_, _, _, _)
             | Message::WalletDetailsWsUpdate(_, _)) => return self.update_wallet_details(message),
             message @ (Message::OpenWalletTrackerWindow
             | Message::WalletTrackerInputChanged(_)
@@ -25,8 +25,9 @@ impl TradingTerminal {
             | Message::WalletTrackerRefreshOne(_)
             | Message::WalletTrackerRefreshOrdersDue
             | Message::WalletTrackerRefreshOrders(_)
-            | Message::WalletTrackerLoaded(_, _)
-            | Message::WalletTrackerOrdersLoaded(_, _)) => {
+            | Message::WalletTrackerLoaded(_, _, _)
+            | Message::WalletTrackerBatchLoaded(_, _)
+            | Message::WalletTrackerOrdersLoaded(_, _, _)) => {
                 return self.update_wallet_tracker_list(message);
             }
             _ => {}

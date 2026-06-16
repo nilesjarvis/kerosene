@@ -23,7 +23,7 @@ impl TradingTerminal {
             .resolve_exchange_symbol_by_key_or_ticker(&self.active_symbol)
             .is_some_and(|symbol| self.exchange_symbol_is_orderable(symbol));
         let can_trade = self.connected_address.is_some()
-            && !self.wallet_key_input.trim().is_empty()
+            && self.has_active_committed_agent_key()
             && active_symbol_is_orderable;
 
         let (symbol_row, margin_used) = self.view_order_entry_symbol_row(&theme);

@@ -128,7 +128,10 @@ impl TradingTerminal {
                 self.request_positioning_info_refresh(id, true)
             }
             Message::RefreshPositioningInfo => self.request_positioning_info_refresh_all(false),
-            Message::PositioningInfoWsAssetCtxUpdate(symbol, ctx) => {
+            Message::PositioningInfoWsAssetCtxUpdate(symbol, source_context, ctx) => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
                 if self.symbol_key_is_hidden(&symbol) {
                     return Task::none();
                 }
@@ -143,11 +146,28 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
-            Message::PositioningInfoLoaded(request_key, result) => {
-                self.apply_positioning_info_loaded(request_key, *result)
+            Message::PositioningInfoWsAssetCtxLagged(symbol, source_context, _skipped) => {
+                if !self.market_stream_source_is_current(source_context) {
+                    return Task::none();
+                }
+                if self.symbol_key_is_hidden(&symbol) {
+                    return Task::none();
+                }
+                for instance in self
+                    .positioning_infos
+                    .values_mut()
+                    .filter(|instance| instance.symbol == symbol)
+                {
+                    instance.asset_ctx = None;
+                    instance.asset_ctx_updated_at_ms = None;
+                }
+                Task::none()
             }
-            Message::PositioningInfoChangeLoaded(request_key, result) => {
-                self.apply_positioning_info_change_loaded(request_key, *result)
+            Message::PositioningInfoLoaded(request_key, generation, result) => {
+                self.apply_positioning_info_loaded(request_key, generation, *result)
+            }
+            Message::PositioningInfoChangeLoaded(request_key, generation, result) => {
+                self.apply_positioning_info_change_loaded(request_key, generation, *result)
             }
             _ => Task::none(),
         }

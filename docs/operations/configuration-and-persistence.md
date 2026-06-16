@@ -71,8 +71,8 @@ Important snapshot behavior:
 - Hidden positions are scoped to persisted accounts.
 - Journal entries are scoped by account and omit ghost account data where
   appropriate.
-- Secret fields such as `agent_key`, `hydromancer_api_key`, `hyperdash_api_key`,
-  and `x_bearer_token` are written as empty values.
+- Secret fields such as `agent_key`, `hydromancer_api_key`, and
+  `hyperdash_api_key` are written as empty values.
 - Read-data provider controls the persisted chart backfill source.
 - Widget configs come from layout/widget snapshot helpers, not direct runtime
   maps.

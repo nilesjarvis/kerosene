@@ -63,6 +63,7 @@ pub(crate) struct HypeEtfState {
     pub(crate) loading: bool,
     pub(crate) error: Option<String>,
     pub(crate) last_fetch: Option<Instant>,
+    pub(crate) refresh_request_id: u64,
 }
 
 #[derive(Debug, Clone, Default)]

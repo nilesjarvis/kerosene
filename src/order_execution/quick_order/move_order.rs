@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::parse_positive_finite_number;
 use crate::message::Message;
 use crate::order_execution::{
-    ModifyIntent, OrderSurface, PendingMoveOrderContext, PreparedModifyOrderResult,
+    ModifyIntent, MoveOrderKey, OrderSurface, PendingMoveOrderContext, PreparedModifyOrderResult,
     modify_order_task,
 };
 
@@ -47,31 +47,77 @@ fn move_order_wire_is_supported(order: &crate::account::OpenOrder) -> Result<(),
 }
 
 impl TradingTerminal {
-    pub(crate) fn handle_move_order(&mut self, oid: u64, new_price: f64) -> Task<Message> {
+    pub(crate) fn handle_move_order(
+        &mut self,
+        coin: String,
+        oid: u64,
+        new_price: f64,
+    ) -> Task<Message> {
         let _theme = self.theme();
-        let key = self.wallet_key_input.trim().to_string();
-        if key.is_empty() || self.connected_address.is_none() {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
+        let move_key = MoveOrderKey::new(coin, oid);
+        if self.has_pending_cancel_indicator(oid) {
+            self.order_status = Some((
+                format!("Move failed: cancel already pending for order {oid}"),
+                true,
+            ));
             return Task::none();
         }
-        let Some(account_address) = self.connected_address.clone() else {
-            self.order_status = Some(("Connect wallet and enter agent key first".into(), true));
-            return Task::none();
-        };
-        if self.pending_move_order_contexts.contains_key(&oid) {
+        if self.pending_move_order_contexts.contains_key(&move_key) {
             self.order_status = Some(("Move already pending for this order".into(), true));
             return Task::none();
         }
+        if self.reject_if_pending_trading_request("moving orders") {
+            return Task::none();
+        }
 
-        let order = self
-            .account_data
-            .as_ref()
-            .and_then(|d| d.open_orders.iter().find(|o| o.oid == oid));
-        let Some(order) = order else {
+        let Some((key, account_address)) = self.order_signing_context() else {
+            return Task::none();
+        };
+        if self.account_loading {
+            self.order_status = Some((
+                "Account refresh in progress; wait for fresh open orders before moving".into(),
+                true,
+            ));
+            return Task::none();
+        }
+        if self.reject_if_account_reconciliation_required("moving", "open orders") {
+            return Task::none();
+        }
+        let Some(account_data) = self.account_data_for_order_account(&account_address) else {
+            self.order_status = Some((
+                "No account data available; refresh before moving".into(),
+                true,
+            ));
+            return Task::none();
+        };
+        let now_ms = Self::now_ms();
+        if !account_data.is_fresh_for_open_order_action(now_ms) {
+            let age_label = account_data
+                .open_order_action_snapshot_age_ms(now_ms)
+                .map(|age| format!("{}s old", age.div_ceil(1000)))
+                .unwrap_or_else(|| "from the future".to_string());
+            self.order_status = Some((
+                format!("Open orders are stale ({age_label}); refresh before moving orders"),
+                true,
+            ));
+            return self.refresh_account_data();
+        }
+        if !account_data.completeness.open_orders_complete {
+            self.order_status = Some((
+                "Open orders are incomplete; refresh before moving".into(),
+                true,
+            ));
+            return self.refresh_account_data();
+        }
+        let Some(order) = account_data
+            .open_orders
+            .iter()
+            .find(|order| order.oid == oid && order.coin == move_key.coin())
+            .cloned()
+        else {
             self.order_status = Some(("Order no longer exists".into(), true));
             return Task::none();
         };
-        let order = order.clone();
 
         let coin = order.coin.clone();
         if let Err(message) = move_order_wire_is_supported(&order) {
@@ -122,7 +168,7 @@ impl TradingTerminal {
             self.order_status = Some(("Move failed: no agent key".into(), true));
             return Task::none();
         };
-        let key = match context.replacement_agent_key(self.connected_address.as_deref()) {
+        let key = match context.replacement_agent_key(Some(account_address.as_str())) {
             Ok(key) => key,
             Err(error) => {
                 self.order_status = Some((error.status_text().into(), true));
@@ -134,11 +180,13 @@ impl TradingTerminal {
             &order,
             prepared.price.clone(),
         );
-        self.pending_move_order_contexts.insert(oid, context);
+        self.pending_move_order_contexts
+            .insert(move_key.clone(), context);
         self.sync_all_chart_orders();
 
         modify_order_task(key, prepared, move |r| Message::MoveOrderModifyResult {
             account_address: account_address.clone(),
+            coin: move_key.coin().to_string(),
             oid,
             pending_indicator_id,
             result: Box::new(r),

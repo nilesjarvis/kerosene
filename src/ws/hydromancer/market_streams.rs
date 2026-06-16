@@ -1,37 +1,42 @@
-use super::HYDROMANCER_RECONNECT_DELAY_SECS;
-use super::HydromancerWsMessage;
 use super::manager::{HydromancerCommand, HydromancerSubscriptionGuard, get_hydromancer_manager};
 use super::parsing::hydromancer_control_message;
+use super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, HydromancerWsMessage};
 use crate::account::AssetContext;
-use crate::api::{Candle, OrderBook, parse_ws_book};
-use crate::ws::WsStream;
+use crate::api::{Candle, parse_ws_book};
+use crate::ws::{
+    KeyedAssetContextStreamEvent, KeyedBookStreamEvent, KeyedCandleStreamEvent,
+    SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, WsStream, WsStreamEvent,
+    l2_book_payload_matches_sigfigs,
+};
 
 use futures::{SinkExt as _, StreamExt as _};
 use serde_json::Value;
 use tokio::sync::broadcast;
 
 type BookSigfigs = (Option<u8>, Option<u8>);
-type KeyedBookStream = WsStream<(u64, String, BookSigfigs, OrderBook)>;
-type KeyedAssetContextStream = WsStream<(u64, String, AssetContext)>;
-type SymbolAssetContextStream = WsStream<(String, AssetContext)>;
-type KeyedCandleStream = WsStream<(u64, String, String, Candle)>;
-type SpaghettiCandleStream = WsStream<(u64, String, Candle)>;
+type KeyedBookEventStream = WsStream<KeyedBookStreamEvent>;
+type KeyedAssetContextStream = WsStream<KeyedAssetContextStreamEvent>;
+type SymbolAssetContextStream = WsStream<SymbolAssetContextStreamEvent>;
+type KeyedCandleStream = WsStream<KeyedCandleStreamEvent>;
+type SpaghettiCandleStream = WsStream<SpaghettiCandleStreamEvent>;
 
 // ---------------------------------------------------------------------------
 // Hydromancer Market Streams
 // ---------------------------------------------------------------------------
 
-pub fn ws_hydromancer_book_stream_keyed(
-    params: &(String, u64, String, BookSigfigs),
-) -> KeyedBookStream {
-    let api_key = params.0.clone();
+pub fn ws_hydromancer_book_stream_keyed_events(
+    params: &(HydromancerStreamKey, u64, String, BookSigfigs),
+) -> KeyedBookEventStream {
+    let stream_key = params.0.clone();
+    let hydromancer_key_generation = params.0.generation();
     let id = params.1;
     let coin = params.2.clone();
     let sigfigs = params.3;
 
     Box::pin(iced::stream::channel(10, async move |mut output| {
-        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(api_key);
+        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(stream_key);
         let (topic, payload) = hydromancer_l2_book_subscription(&coin, sigfigs);
+        let subscription = (topic.clone(), payload.clone());
         if cmd_tx
             .send(HydromancerCommand::Subscribe {
                 topic: topic.clone(),
@@ -41,7 +46,8 @@ pub fn ws_hydromancer_book_stream_keyed(
         {
             return;
         }
-        let guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![topic]);
+        let reconnect_tx = cmd_tx.clone();
+        let guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![subscription]);
 
         loop {
             match msg_rx.recv().await {
@@ -51,10 +57,39 @@ pub fn ws_hydromancer_book_stream_keyed(
                     {
                         if hydromancer_market_control_should_fallback(&control) {
                             drop(guard);
-                            let mut fallback =
-                                crate::ws::ws_book_stream_keyed(&(id, coin.clone(), sigfigs));
-                            while let Some(item) = fallback.next().await {
-                                if output.send(item).await.is_err() {
+                            let mut fallback = crate::ws::ws_book_stream_keyed_events(&(
+                                id,
+                                coin.clone(),
+                                sigfigs,
+                            ));
+                            while let Some(event) = fallback.next().await {
+                                let scoped_event = match event {
+                                    KeyedBookStreamEvent::Item(id, coin, sigfigs, _, book) => {
+                                        KeyedBookStreamEvent::Item(
+                                            id,
+                                            coin,
+                                            sigfigs,
+                                            Some(hydromancer_key_generation),
+                                            book,
+                                        )
+                                    }
+                                    KeyedBookStreamEvent::Lagged {
+                                        id,
+                                        coin,
+                                        sigfigs,
+                                        skipped,
+                                        ..
+                                    } => KeyedBookStreamEvent::Lagged {
+                                        id,
+                                        coin,
+                                        sigfigs,
+                                        hydromancer_key_generation: Some(
+                                            hydromancer_key_generation,
+                                        ),
+                                        skipped,
+                                    },
+                                };
+                                if output.send(scoped_event).await.is_err() {
                                     return;
                                 }
                             }
@@ -69,9 +104,18 @@ pub fn ws_hydromancer_book_stream_keyed(
                         if item.get("coin").and_then(Value::as_str) != Some(coin.as_str()) {
                             continue;
                         }
+                        if !l2_book_payload_matches_sigfigs(item, sigfigs) {
+                            continue;
+                        }
                         if let Some(book) = parse_ws_book(item)
                             && output
-                                .send((id, coin.clone(), sigfigs, book))
+                                .send(KeyedBookStreamEvent::Item(
+                                    id,
+                                    coin.clone(),
+                                    sigfigs,
+                                    Some(hydromancer_key_generation),
+                                    book,
+                                ))
                                 .await
                                 .is_err()
                         {
@@ -79,8 +123,32 @@ pub fn ws_hydromancer_book_stream_keyed(
                         }
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(_) => {
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    if output
+                        .send(KeyedBookStreamEvent::Lagged {
+                            id,
+                            coin: coin.clone(),
+                            sigfigs,
+                            hydromancer_key_generation: Some(hydromancer_key_generation),
+                            skipped,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        HYDROMANCER_RECONNECT_DELAY_SECS,
+                    ))
+                    .await;
+                }
+                Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
+                    return;
+                }
+                Err(_error) => {
                     tokio::time::sleep(std::time::Duration::from_secs(
                         HYDROMANCER_RECONNECT_DELAY_SECS,
                     ))
@@ -92,53 +160,125 @@ pub fn ws_hydromancer_book_stream_keyed(
 }
 
 pub fn ws_hydromancer_asset_ctx_stream_keyed(
-    params: &(String, u64, String),
+    params: &(HydromancerStreamKey, u64, String),
 ) -> KeyedAssetContextStream {
-    let api_key = params.0.clone();
+    let stream_key = params.0.clone();
+    let hydromancer_key_generation = params.0.generation();
     let id = params.1;
     let coin = params.2.clone();
-    let inner = hydromancer_asset_ctx_stream(api_key, coin.clone());
-    Box::pin(futures::StreamExt::map(inner, move |(_coin, ctx)| {
-        (id, coin.clone(), ctx)
+    let inner = hydromancer_asset_ctx_stream(stream_key, coin.clone());
+    Box::pin(futures::StreamExt::map(inner, move |event| match event {
+        WsStreamEvent::Item((_coin, ctx)) => KeyedAssetContextStreamEvent::Item(
+            id,
+            coin.clone(),
+            Some(hydromancer_key_generation),
+            Box::new(ctx),
+        ),
+        WsStreamEvent::Lagged { skipped } => KeyedAssetContextStreamEvent::Lagged {
+            id,
+            symbol: coin.clone(),
+            hydromancer_key_generation: Some(hydromancer_key_generation),
+            skipped,
+        },
     }))
 }
 
 pub fn ws_hydromancer_asset_ctx_stream_symbol(
-    params: &(String, String),
+    params: &(HydromancerStreamKey, String),
 ) -> SymbolAssetContextStream {
-    hydromancer_asset_ctx_stream(params.0.clone(), params.1.clone())
+    let hydromancer_key_generation = params.0.generation();
+    let symbol = params.1.clone();
+    let inner = hydromancer_asset_ctx_stream(params.0.clone(), params.1.clone());
+    Box::pin(futures::StreamExt::map(inner, move |event| match event {
+        WsStreamEvent::Item((symbol, ctx)) => SymbolAssetContextStreamEvent::Item(
+            symbol,
+            Some(hydromancer_key_generation),
+            Box::new(ctx),
+        ),
+        WsStreamEvent::Lagged { skipped } => SymbolAssetContextStreamEvent::Lagged {
+            symbol: symbol.clone(),
+            hydromancer_key_generation: Some(hydromancer_key_generation),
+            skipped,
+        },
+    }))
 }
 
 pub fn ws_hydromancer_candle_stream_keyed(
-    params: &(String, u64, String, String),
+    params: &(HydromancerStreamKey, u64, String, String),
 ) -> KeyedCandleStream {
-    let api_key = params.0.clone();
+    let stream_key = params.0.clone();
+    let hydromancer_key_generation = params.0.generation();
     let id = params.1;
     let coin = params.2.clone();
     let interval = params.3.clone();
-    let inner = hydromancer_candle_stream(api_key, coin.clone(), interval.clone());
-    Box::pin(futures::StreamExt::map(inner, move |candle| {
-        (id, coin.clone(), interval.clone(), candle)
+    let inner = hydromancer_candle_stream(stream_key, coin.clone(), interval.clone());
+    Box::pin(futures::StreamExt::map(inner, move |event| match event {
+        WsStreamEvent::Item(candle) => KeyedCandleStreamEvent::Item(
+            id,
+            coin.clone(),
+            interval.clone(),
+            Some(hydromancer_key_generation),
+            candle,
+        ),
+        WsStreamEvent::Lagged { skipped } => KeyedCandleStreamEvent::Lagged {
+            id,
+            symbol: coin.clone(),
+            interval: interval.clone(),
+            hydromancer_key_generation: Some(hydromancer_key_generation),
+            skipped,
+        },
     }))
 }
 
 pub fn ws_hydromancer_spaghetti_candle_stream(
-    params: &(String, u64, String, String),
+    params: &(
+        HydromancerStreamKey,
+        u64,
+        String,
+        crate::timeframe::Timeframe,
+        Option<crate::spaghetti::Session>,
+        Option<crate::timeframe::Timeframe>,
+    ),
 ) -> SpaghettiCandleStream {
-    let api_key = params.0.clone();
+    let stream_key = params.0.clone();
+    let hydromancer_key_generation = params.0.generation();
     let id = params.1;
     let coin = params.2.clone();
-    let interval = params.3.clone();
-    let inner = hydromancer_candle_stream(api_key, coin.clone(), interval);
-    Box::pin(futures::StreamExt::map(inner, move |candle| {
-        (id, coin.clone(), candle)
+    let timeframe = params.3;
+    let session = params.4;
+    let session_granularity = params.5;
+    let interval = params.3.api_str().to_string();
+    let inner = hydromancer_candle_stream(stream_key, coin.clone(), interval);
+    Box::pin(futures::StreamExt::map(inner, move |event| match event {
+        WsStreamEvent::Item(candle) => SpaghettiCandleStreamEvent::Item {
+            id,
+            symbol: coin.clone(),
+            timeframe,
+            hydromancer_key_generation: Some(hydromancer_key_generation),
+            session,
+            session_granularity,
+            candle,
+        },
+        WsStreamEvent::Lagged { skipped } => SpaghettiCandleStreamEvent::Lagged {
+            id,
+            symbol: coin.clone(),
+            timeframe,
+            hydromancer_key_generation: Some(hydromancer_key_generation),
+            session,
+            session_granularity,
+            skipped,
+        },
     }))
 }
 
-fn hydromancer_asset_ctx_stream(api_key: String, coin: String) -> WsStream<(String, AssetContext)> {
+fn hydromancer_asset_ctx_stream(
+    stream_key: HydromancerStreamKey,
+    coin: String,
+) -> WsStream<WsStreamEvent<(String, AssetContext)>> {
     Box::pin(iced::stream::channel(10, async move |mut output| {
-        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(api_key);
+        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(stream_key);
         let (topic, payload) = hydromancer_asset_ctx_subscription(&coin);
+        let subscription = (topic.clone(), payload.clone());
         if cmd_tx
             .send(HydromancerCommand::Subscribe {
                 topic: topic.clone(),
@@ -148,7 +288,8 @@ fn hydromancer_asset_ctx_stream(api_key: String, coin: String) -> WsStream<(Stri
         {
             return;
         }
-        let guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![topic]);
+        let reconnect_tx = cmd_tx.clone();
+        let guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![subscription]);
 
         loop {
             match msg_rx.recv().await {
@@ -160,8 +301,16 @@ fn hydromancer_asset_ctx_stream(api_key: String, coin: String) -> WsStream<(Stri
                             drop(guard);
                             let mut fallback =
                                 crate::ws::ws_asset_ctx_stream_symbol(&(coin.clone(),));
-                            while let Some(item) = fallback.next().await {
-                                if output.send(item).await.is_err() {
+                            while let Some(event) = fallback.next().await {
+                                let event = match event {
+                                    SymbolAssetContextStreamEvent::Item(symbol, _, ctx) => {
+                                        WsStreamEvent::Item((symbol, *ctx))
+                                    }
+                                    SymbolAssetContextStreamEvent::Lagged { skipped, .. } => {
+                                        WsStreamEvent::Lagged { skipped }
+                                    }
+                                };
+                                if output.send(event).await.is_err() {
                                     return;
                                 }
                             }
@@ -180,14 +329,35 @@ fn hydromancer_asset_ctx_stream(api_key: String, coin: String) -> WsStream<(Stri
                             continue;
                         };
                         if let Ok(ctx) = serde_json::from_value::<AssetContext>(ctx_val.clone())
-                            && output.send((coin.clone(), ctx)).await.is_err()
+                            && output
+                                .send(WsStreamEvent::Item((coin.clone(), ctx)))
+                                .await
+                                .is_err()
                         {
                             return;
                         }
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(_) => {
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    if output
+                        .send(WsStreamEvent::Lagged { skipped })
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        HYDROMANCER_RECONNECT_DELAY_SECS,
+                    ))
+                    .await;
+                }
+                Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
+                    return;
+                }
+                Err(_error) => {
                     tokio::time::sleep(std::time::Duration::from_secs(
                         HYDROMANCER_RECONNECT_DELAY_SECS,
                     ))
@@ -198,10 +368,15 @@ fn hydromancer_asset_ctx_stream(api_key: String, coin: String) -> WsStream<(Stri
     }))
 }
 
-fn hydromancer_candle_stream(api_key: String, coin: String, interval: String) -> WsStream<Candle> {
+fn hydromancer_candle_stream(
+    stream_key: HydromancerStreamKey,
+    coin: String,
+    interval: String,
+) -> WsStream<WsStreamEvent<Candle>> {
     Box::pin(iced::stream::channel(10, async move |mut output| {
-        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(api_key);
+        let (cmd_tx, mut msg_rx) = get_hydromancer_manager(stream_key);
         let (topic, payload) = hydromancer_candle_subscription(&coin, &interval);
+        let subscription = (topic.clone(), payload.clone());
         if cmd_tx
             .send(HydromancerCommand::Subscribe {
                 topic: topic.clone(),
@@ -211,7 +386,8 @@ fn hydromancer_candle_stream(api_key: String, coin: String, interval: String) ->
         {
             return;
         }
-        let guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![topic]);
+        let reconnect_tx = cmd_tx.clone();
+        let guard = HydromancerSubscriptionGuard::new(cmd_tx, vec![subscription]);
 
         loop {
             match msg_rx.recv().await {
@@ -226,9 +402,22 @@ fn hydromancer_candle_stream(api_key: String, coin: String, interval: String) ->
                                 coin.clone(),
                                 interval.clone(),
                             ));
-                            while let Some((_, _, _, candle)) = fallback.next().await {
-                                if output.send(candle).await.is_err() {
-                                    return;
+                            while let Some(event) = fallback.next().await {
+                                match event {
+                                    KeyedCandleStreamEvent::Item(_, _, _, _, candle) => {
+                                        if output.send(WsStreamEvent::Item(candle)).await.is_err() {
+                                            return;
+                                        }
+                                    }
+                                    KeyedCandleStreamEvent::Lagged { skipped, .. } => {
+                                        if output
+                                            .send(WsStreamEvent::Lagged { skipped })
+                                            .await
+                                            .is_err()
+                                        {
+                                            return;
+                                        }
+                                    }
                                 }
                             }
                             return;
@@ -245,14 +434,32 @@ fn hydromancer_candle_stream(api_key: String, coin: String, interval: String) ->
                             continue;
                         }
                         if let Ok(candle) = serde_json::from_value::<Candle>(item.clone())
-                            && output.send(candle).await.is_err()
+                            && output.send(WsStreamEvent::Item(candle)).await.is_err()
                         {
                             return;
                         }
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(_) => {
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    if output
+                        .send(WsStreamEvent::Lagged { skipped })
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        HYDROMANCER_RECONNECT_DELAY_SECS,
+                    ))
+                    .await;
+                }
+                Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
+                    return;
+                }
+                Err(_error) => {
                     tokio::time::sleep(std::time::Duration::from_secs(
                         HYDROMANCER_RECONNECT_DELAY_SECS,
                     ))
@@ -320,10 +527,38 @@ fn hydromancer_candle_subscription(coin: &str, interval: &str) -> (String, Value
 }
 
 fn hydromancer_market_control_should_fallback(control: &HydromancerWsMessage) -> bool {
-    matches!(
-        control,
-        HydromancerWsMessage::Reconnecting { .. } | HydromancerWsMessage::Disconnected(_)
-    )
+    match control {
+        HydromancerWsMessage::Reconnecting { error, .. } => {
+            hydromancer_market_disconnect_should_fallback(error)
+        }
+        HydromancerWsMessage::Disconnected(error) => {
+            hydromancer_market_disconnect_should_fallback(error)
+        }
+        _ => false,
+    }
+}
+
+fn hydromancer_market_disconnect_should_fallback(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("authentication failed")
+        || lower.contains("check the api key")
+        || lower.contains("unauthorized")
+        || lower.contains("unauthenticated")
+        || lower.contains("forbidden")
+        || lower.contains("invalid api key")
+        || lower.contains("invalid token")
+        || lower.contains("http 401")
+        || lower.contains("http 403")
+        || ((lower.contains("subscription")
+            || lower.contains("subscribe")
+            || lower.contains("quota")
+            || lower.contains("too many"))
+            && (lower.contains("rejected")
+                || lower.contains("denied")
+                || lower.contains("unsupported")
+                || lower.contains("not supported")
+                || lower.contains("too many")
+                || lower.contains("quota")))
 }
 
 fn l2_book_items(value: &Value) -> Vec<&Value> {
@@ -474,5 +709,54 @@ mod tests {
         let candle = serde_json::from_value::<Candle>(items[0].clone()).expect("candle parses");
         assert_eq!(candle.open_time, 10);
         assert_eq!(candle.close, 1.5);
+    }
+
+    #[test]
+    fn market_stream_fallback_ignores_transient_reconnect_controls() {
+        assert!(!hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Connecting
+        ));
+        assert!(!hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Reconnected
+        ));
+        assert!(!hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Reconnecting {
+                error: "network timeout".to_string(),
+                retry_delay_secs: 2,
+            }
+        ));
+        assert!(hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Reconnecting {
+                error:
+                    "Hydromancer authentication failed. Check the API key in Settings > Integrations."
+                        .to_string(),
+                retry_delay_secs: 2,
+            }
+        ));
+        assert!(hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Reconnecting {
+                error: "subscription rejected: too many subscriptions".to_string(),
+                retry_delay_secs: 2,
+            }
+        ));
+        assert!(!hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Disconnected("stream disconnected".to_string())
+        ));
+        assert!(!hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Disconnected(
+                "Hydromancer network timeout: heartbeat timeout after 95s".to_string()
+            )
+        ));
+        assert!(hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Disconnected(
+                "Hydromancer authentication failed. Check the API key in Settings > Integrations."
+                    .to_string()
+            )
+        ));
+        assert!(hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Disconnected(
+                "subscription rejected: too many subscriptions".to_string()
+            )
+        ));
     }
 }

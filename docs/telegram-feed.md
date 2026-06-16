@@ -126,6 +126,12 @@ enter their phone number and Telegram login code. Otherwise, the widget also
 accepts a user-provided Telegram developer API ID and hash. The API hash is not
 persisted in `config.json`.
 
+Release builders should treat `KEROSENE_TELEGRAM_API_HASH` as embedded binary
+credential material. Do not set it for public distributable builds unless the
+bundled Telegram application credentials are explicitly intended to be public,
+non-user-specific, and rotation-safe. When omitted, users can still provide
+their own Telegram developer API ID and hash at login time.
+
 The MTProto session is stored separately in the Kerosene config directory as
 `telegram_fast.session` and is permission-tightened on Unix-like platforms.
 Signing out from the widget clears that session file family.
@@ -207,6 +213,11 @@ post has media fallback text such as `[photo]`.
 Post requests have a timeout of `TELEGRAM_FEED_REQUEST_TIMEOUT`, currently five
 seconds. Public page responses are capped at `TELEGRAM_FEED_MAX_BODY_BYTES`,
 currently 2 MiB.
+
+Public channel lists are capped at `TELEGRAM_FEED_MAX_PUBLIC_CHANNELS`, currently
+12 channels, to keep each refresh batch bounded. Existing configs with more
+public channels still load, but only the first 12 normalized public channels are
+used and the pane shows that extra saved channels were ignored.
 
 Visible refresh errors are shown in the pane. Background refresh errors do not
 replace a working feed with an error unless the feed has no posts yet. Removed

@@ -1,3 +1,5 @@
+use crate::account::{position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire};
+
 use super::numbers::parse_wallet_number;
 
 #[cfg(test)]
@@ -12,10 +14,7 @@ pub(in crate::wallet_views) fn wallet_position_value(
     wire_position_value: &str,
     mark_px: Option<f64>,
 ) -> Option<f64> {
-    match (szi, mark_px) {
-        (Some(szi), Some(mark_px)) => Some(szi.abs() * mark_px),
-        _ => parse_wallet_number(wire_position_value).map(f64::abs),
-    }
+    position_notional_from_mark_or_wire(szi, parse_wallet_number(wire_position_value), mark_px)
 }
 
 pub(in crate::wallet_views) fn wallet_position_upnl(
@@ -24,8 +23,5 @@ pub(in crate::wallet_views) fn wallet_position_upnl(
     wire_upnl: &str,
     mark_px: Option<f64>,
 ) -> Option<f64> {
-    match (szi, entry_px, mark_px) {
-        (Some(szi), Some(entry_px), Some(mark_px)) => Some(szi * (mark_px - entry_px)),
-        _ => parse_wallet_number(wire_upnl),
-    }
+    position_upnl_from_mark_or_wire(szi, entry_px, parse_wallet_number(wire_upnl), mark_px)
 }

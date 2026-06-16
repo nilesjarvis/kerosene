@@ -47,7 +47,7 @@ impl TradingTerminal {
             Some(symbol) if error.is_none() => {
                 if self.account_loading {
                     error = Some("Account refresh in progress".to_string());
-                } else if self.account_data.is_none() {
+                } else if self.connected_order_account_snapshot().is_none() {
                     error = Some("No account data available".to_string());
                 } else if let Some((coin, position)) = self.resolve_close_position(symbol) {
                     resolved_position = Some((coin, position.clone()));
@@ -93,7 +93,11 @@ impl TradingTerminal {
     }
 
     fn resolve_close_position(&self, raw_symbol: &str) -> Option<(String, &Position)> {
-        let positions = &self.account_data.as_ref()?.clearinghouse.asset_positions;
+        let positions = &self
+            .connected_order_account_snapshot()?
+            .1
+            .clearinghouse
+            .asset_positions;
         let normalized = normalize_close_symbol_input(raw_symbol);
         let resolved_key = self
             .resolve_exchange_symbol_by_key_or_ticker(raw_symbol)

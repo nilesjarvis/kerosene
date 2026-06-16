@@ -13,6 +13,17 @@ impl TradingTerminal {
         request: CandleFetchRequest,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
+        if request.source != self.chart_backfill_source {
+            return Task::none();
+        }
+        if request.read_data_provider_generation != self.read_data_provider_generation {
+            return Task::none();
+        }
+        if request.source == ChartBackfillSource::Hydromancer
+            && !self.hydromancer_key_generation_is_current(request.hydromancer_key_generation)
+        {
+            return Task::none();
+        }
         if self.symbol_key_is_hidden(&request.symbol) {
             return Task::none();
         }
@@ -93,7 +104,7 @@ impl TradingTerminal {
         }
 
         if let Some(request) = retry_request {
-            return Self::fetch_candles_task(request, self.hydromancer_api_key.trim().to_string());
+            return Self::fetch_candles_task(request, self.hydromancer_api_key_for_task());
         }
 
         if let Some((symbol, tf, new_cache)) = new_cache_data {
@@ -140,6 +151,8 @@ mod tests {
             symbol: "#950".to_string(),
             timeframe: Timeframe::H1,
             source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
             start_ms: 0,
             end_ms: 1_000,
             attempt: 0,
@@ -158,5 +171,92 @@ mod tests {
             }
             other => panic!("expected error status, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn stale_hydromancer_generation_does_not_update_chart_candles() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.hydromancer_key_generation = 2;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hydromancer,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: 1,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal
+            .apply_chart_candles_loaded(request.clone(), Ok(vec![Candle::test_flat(0, 100.0)]));
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        assert_eq!(instance.candle_fetch_request.as_ref(), Some(&request));
+        assert!(instance.chart.candles.is_empty());
+    }
+
+    #[test]
+    fn stale_backfill_source_does_not_update_chart_candles() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_backfill_source = ChartBackfillSource::Hyperliquid;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hydromancer,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let _task =
+            terminal.apply_chart_candles_loaded(request, Ok(vec![Candle::test_flat(0, 100.0)]));
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        assert!(instance.chart.candles.is_empty());
+    }
+
+    #[test]
+    fn stale_hyperliquid_provider_generation_does_not_update_chart_candles() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_backfill_source = ChartBackfillSource::Hyperliquid;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        terminal.bump_read_data_provider_generation();
+        let _task = terminal
+            .apply_chart_candles_loaded(request.clone(), Ok(vec![Candle::test_flat(0, 100.0)]));
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        assert_eq!(instance.candle_fetch_request.as_ref(), Some(&request));
+        assert!(instance.chart.candles.is_empty());
     }
 }

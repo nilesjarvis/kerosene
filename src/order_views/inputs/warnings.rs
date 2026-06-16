@@ -24,7 +24,7 @@ impl TradingTerminal {
             return form;
         };
 
-        let Some(data) = &self.account_data else {
+        let Some((_, data)) = self.connected_order_account_snapshot() else {
             return form;
         };
 

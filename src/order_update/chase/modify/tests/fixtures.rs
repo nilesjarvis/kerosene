@@ -40,18 +40,43 @@ pub(super) fn chase() -> ChaseOrder {
 }
 
 pub(super) fn exchange_response(status: serde_json::Value) -> ExchangeResponse {
-    match serde_json::from_value(serde_json::json!({
+    exchange_response_from_value(
+        serde_json::json!({
+            "status": "ok",
+            "response": {
+                "type": "order",
+                "data": {
+                    "statuses": [status]
+                }
+            }
+        }),
+        "test exchange response should deserialize",
+    )
+}
+
+pub(super) fn exchange_response_from_value(
+    value: serde_json::Value,
+    context: &str,
+) -> ExchangeResponse {
+    match serde_json::from_value(value) {
+        Ok(response) => response,
+        Err(error) => panic!("{context}: {error}"),
+    }
+}
+
+pub(super) fn empty_ok_exchange_response() -> ExchangeResponse {
+    exchange_response_from_value(
+        serde_json::json!({
         "status": "ok",
         "response": {
             "type": "order",
             "data": {
-                "statuses": [status]
+                "statuses": []
             }
         }
-    })) {
-        Ok(response) => response,
-        Err(error) => panic!("test exchange response should deserialize: {error}"),
-    }
+        }),
+        "empty ok exchange response should deserialize",
+    )
 }
 
 pub(super) fn chase_by_id(terminal: &TradingTerminal, chase_id: u64) -> &ChaseOrder {

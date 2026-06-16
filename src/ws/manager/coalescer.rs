@@ -1,4 +1,5 @@
 use super::WsRoutedMessage;
+use crate::ws::{L2BookSigfigs, l2_book_sigfigs_from_value};
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -36,8 +37,8 @@ fn is_coalesced_channel(channel: &str) -> bool {
 }
 
 /// Extract a per-stream discriminator from the frame body so that updates
-/// for different coins on the same channel don't smash each other's pending
-/// slots.
+/// for different coins and attributed book precisions on the same channel
+/// don't smash each other's pending slots.
 fn extract_coin(channel: &str, data: &Value) -> Option<String> {
     match channel {
         "l2Book" => data.get("coin").and_then(|v| v.as_str()).map(str::to_owned),
@@ -49,6 +50,7 @@ fn extract_coin(channel: &str, data: &Value) -> Option<String> {
 struct CoalesceKey {
     channel: String,
     coin: Option<String>,
+    sigfigs: L2BookSigfigs,
 }
 
 #[derive(Debug)]
@@ -93,8 +95,10 @@ impl CoalescedSender {
         let key = CoalesceKey {
             channel: channel.clone(),
             coin,
+            sigfigs: l2_book_sigfigs_from_value(&data),
         };
         let now = Instant::now();
+        self.prune_stale_last_emitted(now);
 
         match self.last_emitted.get(&key).copied() {
             Some(last) if now.duration_since(last) < self.interval => {
@@ -107,6 +111,13 @@ impl CoalescedSender {
                 self.last_emitted.insert(key, now);
             }
         }
+    }
+
+    fn prune_stale_last_emitted(&mut self, now: Instant) {
+        let interval = self.interval;
+        let pending = &self.pending;
+        self.last_emitted
+            .retain(|key, last| pending.contains_key(key) || now.duration_since(*last) < interval);
     }
 
     /// Time until the next pending entry is due to flush, or `None` when

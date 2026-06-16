@@ -38,7 +38,7 @@ fn wallet_tracker_snapshot_sums_valid_position_metrics() {
         Some(25.0),
         vec![
             asset_position("2", "50", "4"),
-            asset_position("-1", "30", "-2"),
+            asset_position("-1", "-30", "-2"),
             asset_position("0", "100", "100"),
         ],
     );

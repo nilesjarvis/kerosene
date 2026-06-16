@@ -1,5 +1,57 @@
 use super::*;
+use crate::annotations::DrawingTool;
+use crate::api::{ExchangeSymbol, MarketType};
+use crate::chart::ChartViewport;
 use std::collections::HashSet;
+
+fn exchange_symbol(key: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: key.to_string(),
+        category: "test".to_string(),
+        display_name: None,
+        keywords: Vec::new(),
+        asset_index: 0,
+        collateral_token: None,
+        sz_decimals: 2,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: MarketType::Perp,
+        outcome: None,
+    }
+}
+
+fn quick_order_form() -> QuickOrderForm {
+    QuickOrderForm {
+        price: 100.0,
+        quantity: "2.5".to_string(),
+        quantity_is_usd: false,
+        percentage: 25.0,
+        quantity_provenance: None,
+        is_limit: true,
+        click_x: 10.0,
+        click_y: 20.0,
+        chart_w: 300.0,
+        chart_h: 200.0,
+    }
+}
+
+fn chart_viewport() -> ChartViewport {
+    ChartViewport {
+        start_time_ms: 1,
+        end_time_ms: 2,
+        price_lo: 90.0,
+        price_hi: 110.0,
+        chart_width: 500.0,
+        candle_width: 10.0,
+        scroll_offset: 0.0,
+        y_auto: true,
+        y_scale: 1.0,
+        y_offset: 0.0,
+        funding_y_scale: 1.0,
+        funding_y_offset: 0.0,
+    }
+}
 
 #[test]
 fn open_detached_chart_window_clones_source_chart() {
@@ -69,4 +121,105 @@ fn closing_detached_chart_window_removes_only_detached_chart_clone() {
 
     assert!(terminal.charts.contains_key(&chart_id));
     assert!(!terminal.charts.contains_key(&detached_chart_id));
+}
+
+#[test]
+fn active_symbol_switch_retargets_focused_detached_clone_without_mutating_source_chart() {
+    let chart_id = 7;
+    let mut terminal = terminal_with_chart(chart_id);
+    terminal.exchange_symbols = vec![exchange_symbol("BTC"), exchange_symbol("ETH")];
+
+    let _task = terminal.open_detached_chart_window(chart_id);
+    let (window_id, detached_chart_id) = first_detached_window(&terminal);
+    let detached_surface_id = ChartSurfaceId::Detached(window_id);
+    terminal.primary_chart_id = Some(detached_chart_id);
+    chart_instance_mut(&mut terminal, detached_chart_id).set_quick_order(quick_order_form());
+    chart_instance_mut(&mut terminal, detached_chart_id)
+        .chart
+        .active_tool = Some(DrawingTool::TrendLine);
+    terminal
+        .chart_quick_order_surface
+        .insert(detached_chart_id, detached_surface_id);
+    terminal
+        .chart_surface_active_tools
+        .insert(detached_surface_id, DrawingTool::TrendLine);
+    terminal
+        .chart_surface_viewports
+        .insert(detached_surface_id, chart_viewport());
+    terminal.chart_screenshot_menu_open = Some(detached_surface_id);
+
+    let _task = terminal.switch_active_symbol_internal("ETH".to_string());
+
+    assert_eq!(chart_instance(&terminal, chart_id).symbol, "BTC");
+    assert_eq!(chart_instance(&terminal, detached_chart_id).symbol, "ETH");
+    assert_eq!(
+        chart_instance(&terminal, detached_chart_id)
+            .chart
+            .surface_id(),
+        detached_surface_id
+    );
+    assert!(
+        chart_instance(&terminal, detached_chart_id)
+            .quick_order
+            .is_none()
+    );
+    assert!(
+        chart_instance(&terminal, detached_chart_id)
+            .chart
+            .active_tool
+            .is_none()
+    );
+    assert!(
+        !terminal
+            .chart_quick_order_surface
+            .contains_key(&detached_chart_id)
+    );
+    assert!(
+        !terminal
+            .chart_surface_active_tools
+            .contains_key(&detached_surface_id)
+    );
+    assert!(
+        !terminal
+            .chart_surface_viewports
+            .contains_key(&detached_surface_id)
+    );
+    assert_eq!(terminal.chart_screenshot_menu_open, None);
+}
+
+#[test]
+fn closing_focused_detached_clone_repairs_primary_chart_before_next_active_symbol_switch() {
+    let chart_id = 7;
+    let mut terminal = terminal_with_chart(chart_id);
+    terminal.exchange_symbols = vec![exchange_symbol("BTC"), exchange_symbol("ETH")];
+
+    let _task = terminal.open_detached_chart_window(chart_id);
+    let (window_id, detached_chart_id) = first_detached_window(&terminal);
+    terminal.primary_chart_id = Some(detached_chart_id);
+
+    assert!(terminal.remove_detached_chart_window_state(window_id));
+
+    assert!(!terminal.charts.contains_key(&detached_chart_id));
+    assert_eq!(terminal.primary_chart_id, Some(chart_id));
+
+    let _task = terminal.switch_active_symbol_internal("ETH".to_string());
+
+    assert_eq!(terminal.primary_chart_id, Some(chart_id));
+    assert_eq!(chart_instance(&terminal, chart_id).symbol, "ETH");
+    assert_eq!(terminal.active_symbol, "ETH");
+}
+
+#[test]
+fn closing_detached_chart_window_prunes_pending_request_registries() {
+    let chart_id = 7;
+    let other_chart_id = 99;
+    let mut terminal = terminal_with_chart(chart_id);
+    let _task = terminal.open_detached_chart_window(chart_id);
+    let (window_id, detached_chart_id) = first_detached_window(&terminal);
+    seed_chart_pending_requests(&mut terminal, detached_chart_id, other_chart_id);
+
+    terminal.remove_detached_chart_window_state(window_id);
+
+    assert!(!terminal.charts.contains_key(&detached_chart_id));
+    assert_chart_pending_requests_pruned(&terminal, other_chart_id);
 }

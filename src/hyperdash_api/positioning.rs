@@ -1,5 +1,6 @@
 use crate::api::CLIENT;
 use reqwest::header::USER_AGENT;
+use zeroize::Zeroizing;
 
 use self::response::{
     parse_perp_deltas_response, parse_ticker_positions_response, read_perp_deltas_response_text,
@@ -22,8 +23,9 @@ pub async fn fetch_ticker_positions(
     side: String,
     sort_field: String,
     sort_order: String,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<TickerPositions, String> {
+    let api_key = Zeroizing::new(api_key.trim().to_string());
     let query = r#"query GetTickerPositions(
   $coin: String!,
   $limit: Int,
@@ -88,7 +90,7 @@ pub async fn fetch_ticker_positions(
         .clone()
         .post(HYPERDASH_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .header("Authorization", format!("Bearer {api_key}"))
+        .bearer_auth(api_key.as_str())
         .json(&body)
         .send()
         .await
@@ -111,8 +113,9 @@ pub async fn fetch_ticker_positions(
 pub async fn fetch_perp_deltas(
     market: String,
     timeframe: String,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<PerpDeltas, String> {
+    let api_key = Zeroizing::new(api_key.trim().to_string());
     let query = r#"query GetPerpDeltas($market: String!, $timeframe: DeltaTimeframe!) {
   perpDeltas(market: $market, timeframe: $timeframe) {
     market
@@ -138,7 +141,7 @@ pub async fn fetch_perp_deltas(
         .clone()
         .post(HYPERDASH_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .header("Authorization", format!("Bearer {api_key}"))
+        .bearer_auth(api_key.as_str())
         .json(&body)
         .send()
         .await

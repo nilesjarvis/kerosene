@@ -45,10 +45,16 @@ impl TradingTerminal {
             Message::SaveCredentials => self.save_active_account_credentials(),
             Message::ConnectWallet => self.connect_wallet(),
             Message::DisconnectWallet => self.disconnect_wallet(),
-            Message::AccountDataLoaded(address, result) => {
-                self.apply_account_data_loaded(address, *result)
+            Message::AccountDataLoaded(address, context, result) => {
+                self.apply_account_data_loaded(address, context, *result)
+            }
+            Message::RetryTwapReconciliationAccountData(address) => {
+                self.retry_twap_reconciliation_account_data(address)
             }
             Message::RefreshAccountData => self.refresh_account_data(),
+            Message::AccountRefreshBackoffElapsed(due_ms) => {
+                self.handle_account_refresh_backoff_elapsed(due_ms)
+            }
             Message::AllMidsBootstrapLoaded(_dex, Ok(mids)) => self.handle_mids_update(mids),
             Message::WsUserDataUpdate(source_address, ws_data) => {
                 self.apply_ws_user_data_update(source_address, *ws_data)

@@ -15,7 +15,7 @@ mod order_row;
 impl TradingTerminal {
     pub(crate) fn view_open_orders(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        let can_cancel = !self.wallet_key_input.trim().is_empty();
+        let can_cancel = self.has_active_committed_agent_key();
         let header_txt = |s: &'static str| {
             text(s)
                 .size(11)
@@ -31,9 +31,10 @@ impl TradingTerminal {
         ]
         .spacing(4);
 
-        let orders: Vec<_> = self
-            .account_data
-            .as_ref()
+        let snapshot = self
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data);
+        let orders: Vec<_> = snapshot
             .map(|d| {
                 d.open_orders
                     .iter()
@@ -46,7 +47,7 @@ impl TradingTerminal {
             .into_iter()
             .filter(|indicator| !self.symbol_key_is_hidden(&indicator.symbol))
             .collect();
-        let warning = self.account_data.as_ref().and_then(|data| {
+        let warning = snapshot.and_then(|data| {
             data.completeness
                 .section_warning(AccountDataSection::OpenOrders)
         });

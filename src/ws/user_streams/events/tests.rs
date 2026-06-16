@@ -1,5 +1,19 @@
 use super::*;
 
+fn user_fill(coin: &str, side: &str, oid: u64) -> serde_json::Value {
+    serde_json::json!({
+        "coin": coin,
+        "px": "100",
+        "sz": "0.1",
+        "side": side,
+        "time": 1_u64,
+        "oid": oid,
+        "dir": "Open Long",
+        "closedPnl": "0",
+        "fee": "0.01"
+    })
+}
+
 fn clearinghouse_with_position(coin: &str) -> serde_json::Value {
     serde_json::json!({
         "marginSummary": {
@@ -28,6 +42,38 @@ fn clearinghouse_with_position(coin: &str) -> serde_json::Value {
             "liquidationPx": null
         }]
     })
+}
+
+#[test]
+fn user_fills_parser_preserves_canonical_market_symbols_and_wire_sides() {
+    let target = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let payload = serde_json::json!({
+        "user": target,
+        "isSnapshot": true,
+        "fills": [
+            user_fill("BTC", "B", 1),
+            user_fill("flx:BTC", "B", 2),
+            user_fill("@107", "A", 3),
+            user_fill("#950", "A", 4)
+        ]
+    });
+
+    let Some((source_addr, WsUserData::Fills { fills, is_snapshot })) =
+        parse_user_stream_message("userFills", &payload, Some(target), None)
+    else {
+        panic!("expected user fills update");
+    };
+
+    assert_eq!(source_addr.as_deref(), Some(target));
+    assert!(is_snapshot);
+    let parsed: Vec<(&str, &str)> = fills
+        .iter()
+        .map(|fill| (fill.coin.as_str(), fill.side.as_str()))
+        .collect();
+    assert_eq!(
+        parsed,
+        vec![("BTC", "B"), ("flx:BTC", "B"), ("@107", "A"), ("#950", "A")]
+    );
 }
 
 #[test]

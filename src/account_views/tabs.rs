@@ -94,8 +94,8 @@ impl TradingTerminal {
     }
 
     fn open_order_tab_count(&self) -> usize {
-        self.account_data
-            .as_ref()
+        self.connected_order_account_snapshot()
+            .map(|(_, data)| data)
             .map(|data| {
                 data.open_orders
                     .iter()
@@ -259,6 +259,13 @@ mod tests {
     use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
     use crate::config::MarketUniverseConfig;
 
+    const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+
+    fn set_connected_account_data(terminal: &mut TradingTerminal, data: AccountData) {
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+    }
+
     fn account_data(positions: Vec<AssetPosition>, open_orders: Vec<OpenOrder>) -> AccountData {
         AccountData {
             fetch_scope: Default::default(),
@@ -385,10 +392,13 @@ mod tests {
     #[test]
     fn bottom_tab_counts_reflect_open_positions_and_orders() {
         let mut terminal = TradingTerminal::boot().0;
-        terminal.account_data = Some(account_data(
-            vec![position("BTC"), position("ETH")],
-            vec![open_order("BTC", 1), open_order("ETH", 2)],
-        ));
+        set_connected_account_data(
+            &mut terminal,
+            account_data(
+                vec![position("BTC"), position("ETH")],
+                vec![open_order("BTC", 1), open_order("ETH", 2)],
+            ),
+        );
 
         assert_eq!(terminal.open_position_tab_count(), 2);
         assert_eq!(terminal.open_order_tab_count(), 2);
@@ -398,10 +408,13 @@ mod tests {
     fn bottom_tab_counts_follow_market_universe_visibility() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.market_universe = MarketUniverseConfig::hip3_dex("xyz");
-        terminal.account_data = Some(account_data(
-            vec![position("xyz:NVDA"), position("flx:NVDA")],
-            vec![open_order("xyz:NVDA", 1), open_order("flx:NVDA", 2)],
-        ));
+        set_connected_account_data(
+            &mut terminal,
+            account_data(
+                vec![position("xyz:NVDA"), position("flx:NVDA")],
+                vec![open_order("xyz:NVDA", 1), open_order("flx:NVDA", 2)],
+            ),
+        );
 
         assert_eq!(terminal.open_position_tab_count(), 1);
         assert_eq!(terminal.open_order_tab_count(), 1);
@@ -413,7 +426,7 @@ mod tests {
         terminal.exchange_symbols = vec![outcome_symbol("#950")];
         let mut data = account_data(Vec::new(), Vec::new());
         data.spot.balances = vec![spot_balance("+950", "30")];
-        terminal.account_data = Some(data);
+        set_connected_account_data(&mut terminal, data);
 
         assert_eq!(terminal.open_position_tab_count(), 1);
     }

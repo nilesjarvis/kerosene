@@ -193,12 +193,9 @@ pub(crate) fn draw_crosshair_style(
             ChartCrosshairStyle::Target => {
                 draw_target_reticle(frame, theme, position, scale, fisheye);
             }
-            ChartCrosshairStyle::Rectangle => {
+            ChartCrosshairStyle::Rectangle | ChartCrosshairStyle::StackedRectangles => {
                 let size = scaled_size(scale, 58.0, 36.0);
                 draw_rectangle(frame, theme, position, size, scale, fisheye);
-            }
-            ChartCrosshairStyle::StackedRectangles => {
-                unreachable!("legacy crosshair style is normalized")
             }
         }
     });

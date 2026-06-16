@@ -41,7 +41,8 @@ impl TradingTerminal {
             instance.pending_key = Some(request_key.clone());
         }
 
-        let api_key = self.hyperdash_api_key.trim().to_string();
+        let hyperdash_generation = self.hyperdash_key_generation;
+        let api_key = self.hyperdash_api_key_for_task();
         Task::perform(
             fetch_ticker_positions(
                 coin,
@@ -52,7 +53,13 @@ impl TradingTerminal {
                 sort_order,
                 api_key,
             ),
-            move |result| Message::PositioningInfoLoaded(request_key.clone(), Box::new(result)),
+            move |result| {
+                Message::PositioningInfoLoaded(
+                    request_key.clone(),
+                    hyperdash_generation,
+                    Box::new(result),
+                )
+            },
         )
     }
 
@@ -83,11 +90,16 @@ impl TradingTerminal {
             instance.change_pending_key = Some(request_key.clone());
         }
 
-        let api_key = self.hyperdash_api_key.trim().to_string();
+        let hyperdash_generation = self.hyperdash_key_generation;
+        let api_key = self.hyperdash_api_key_for_task();
         Task::perform(
             fetch_perp_deltas(market, timeframe, api_key),
             move |result| {
-                Message::PositioningInfoChangeLoaded(request_key.clone(), Box::new(result))
+                Message::PositioningInfoChangeLoaded(
+                    request_key.clone(),
+                    hyperdash_generation,
+                    Box::new(result),
+                )
             },
         )
     }

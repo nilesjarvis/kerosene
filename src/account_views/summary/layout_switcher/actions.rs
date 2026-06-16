@@ -19,6 +19,18 @@ pub(super) fn layout_header_update_button(enabled: bool) -> Element<'static, Mes
     }
 }
 
+pub(super) fn layout_add_button(name: String) -> Element<'static, Message> {
+    let button = button(text("Add").size(10).center())
+        .padding([4, 8])
+        .style(layout_action_style);
+
+    if name.trim().is_empty() {
+        button.into()
+    } else {
+        button.on_press(Message::SaveLayout(name)).into()
+    }
+}
+
 pub(super) fn layout_action_button(
     label: &'static str,
     message: Message,
@@ -55,10 +67,18 @@ fn layout_action_style(theme: &Theme, status: button::Status) -> button::Style {
         button::Status::Hovered => theme.extended_palette().background.strong.color,
         _ => theme.extended_palette().background.weak.color,
     };
+    let text_color = if matches!(status, button::Status::Disabled) {
+        Color {
+            a: 0.45,
+            ..theme.extended_palette().background.weak.text
+        }
+    } else {
+        theme.palette().text
+    };
 
     button::Style {
         background: Some(bg.into()),
-        text_color: theme.palette().text,
+        text_color,
         border: iced::Border {
             radius: 4.0.into(),
             width: 1.0,

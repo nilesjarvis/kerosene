@@ -42,10 +42,23 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn pane_layout_config_snapshot(&self) -> Option<config::PaneLayoutConfig> {
+        let runtime_layout = self.collect_pane_layout();
+        let Some(preserved_layout) = &self.preserved_loaded_pane_layout else {
+            return runtime_layout;
+        };
+
+        if config::prune_unsupported_pane_layout(preserved_layout.clone()) == runtime_layout {
+            Some(preserved_layout.clone())
+        } else {
+            runtime_layout
+        }
+    }
+
     pub(crate) fn saved_layout_snapshot(&self, name: String) -> config::SavedLayout {
         config::SavedLayout {
             name,
-            pane_layout: self.collect_pane_layout(),
+            pane_layout: self.pane_layout_config_snapshot(),
             layout_ratios: self.collect_layout_ratios(),
             charts: self.docked_chart_configs_snapshot(),
             order_books: self.order_book_configs_snapshot(),
@@ -55,10 +68,13 @@ impl TradingTerminal {
             spaghetti_charts: self.spaghetti_chart_configs_snapshot(),
             widget_padding: self.widget_padding_config_snapshot(),
             active_symbol: self.active_symbol_config_value(),
+            liquidation_distribution_symbol: Some(
+                self.liquidation_distribution_symbol_config_value(),
+            ),
             active_timeframe: self.active_timeframe_config_value(),
             order_kind: self.order_kind_config_value(),
             reduce_only: self.order_reduce_only,
-            book_tick_size: 0.0,
+            book_tick_size: config::default_tick_size(),
             favourite_symbols: self.favourite_symbols_config_values(),
             ticker_tape_enabled: self.ticker_tape_enabled,
             active_theme: self.active_theme.clone(),

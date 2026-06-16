@@ -1,6 +1,7 @@
 use k256::ecdsa::{RecoveryId, Signature, SigningKey, signature::hazmat::PrehashSigner};
 use serde_json::Value;
 use sha3::{Digest, Keccak256};
+use zeroize::Zeroizing;
 
 /// Compute the action hash: keccak256(msgpack(action) ++ nonce_be_bytes ++ vault_flag
 /// [++ expires_after_marker ++ expires_after_be_bytes]).
@@ -98,10 +99,12 @@ pub(super) fn sign_l1_action(
     nonce: u64,
     expires_after: Option<u64>,
 ) -> Result<Value, String> {
-    let key_bytes = hex::decode(
+    let mut key_bytes = Zeroizing::new([0u8; 32]);
+    hex::decode_to_slice(
         private_key_hex
             .strip_prefix("0x")
             .unwrap_or(private_key_hex),
+        key_bytes.as_mut(),
     )
     .map_err(|e| format!("Invalid private key hex: {e}"))?;
     let signing_key = SigningKey::from_bytes(key_bytes.as_slice().into())

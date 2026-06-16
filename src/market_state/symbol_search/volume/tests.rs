@@ -29,7 +29,7 @@ fn context(day_vlm: Option<f64>) -> WatchlistContext {
 }
 
 #[test]
-fn volume_prefers_symbol_key_then_ticker_fallback() {
+fn volume_prefers_symbol_key_and_limits_ticker_fallback_to_native_keys() {
     let contexts = HashMap::from([
         ("xyz:NVDA".to_string(), context(Some(10.0))),
         ("NVDA".to_string(), context(Some(20.0))),
@@ -43,6 +43,10 @@ fn volume_prefers_symbol_key_then_ticker_fallback() {
     let contexts = HashMap::from([("NVDA".to_string(), context(Some(20.0)))]);
     assert_eq!(
         symbol_search_volume(&contexts, &symbol("xyz:NVDA", "NVDA")),
+        None
+    );
+    assert_eq!(
+        symbol_search_volume(&contexts, &symbol("NVDA", "NVDA")),
         Some(20.0)
     );
 }

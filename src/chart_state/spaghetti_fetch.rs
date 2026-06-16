@@ -34,6 +34,8 @@ impl TradingTerminal {
             symbol: coin_str.clone(),
             timeframe: api_tf,
             source: backfill.source,
+            read_data_provider_generation: backfill.read_data_provider_generation,
+            hydromancer_key_generation: backfill.hydromancer_key_generation,
             session,
             session_granularity,
         };

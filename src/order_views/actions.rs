@@ -32,15 +32,28 @@ impl TradingTerminal {
 
         let buy_label = format!("BUY {}", self.active_symbol_display.to_uppercase());
         let sell_label = format!("SELL {}", self.active_symbol_display.to_uppercase());
+        let snapshot = self.ticket_order_submission_snapshot();
         let mut buy_btn: Element<'_, Message> = if pending_buy {
             pending_order_button(self.view_spinner(18), color!(0x30a050))
         } else {
-            buy_button(buy_label, Message::PlaceBuy)
+            buy_button(
+                buy_label,
+                Message::PlaceOrder {
+                    is_buy: true,
+                    snapshot: snapshot.clone(),
+                },
+            )
         };
         let mut sell_btn: Element<'_, Message> = if pending_sell {
             pending_order_button(self.view_spinner(18), color!(0xdd3333))
         } else {
-            sell_button(sell_label, Message::PlaceSell)
+            sell_button(
+                sell_label,
+                Message::PlaceOrder {
+                    is_buy: false,
+                    snapshot,
+                },
+            )
         };
 
         if !can_trade || pending_standard {

@@ -1,4 +1,4 @@
-use crate::api::{OrderStatusResult, fetch_order_status_by_cloid};
+use crate::api::{OrderStatusResult, fetch_order_status_by_cloid, fetch_order_status_by_oid};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::order_execution::OneShotPlacementContext;
@@ -26,14 +26,37 @@ pub(crate) struct ExecutionOutcome {
     pub(crate) refresh_account: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingOneShotStatusRequest {
+    pub(crate) request_id: u64,
+    account_address: String,
+    cloid: String,
+}
+
+impl PendingOneShotStatusRequest {
+    pub(crate) fn new(request_id: u64, context: &OneShotPlacementContext) -> Self {
+        Self {
+            request_id,
+            account_address: context.account_address.clone(),
+            cloid: context.cloid.clone(),
+        }
+    }
+
+    fn matches(&self, request_id: u64, context: &OneShotPlacementContext) -> bool {
+        self.request_id == request_id
+            && self.account_address == context.account_address
+            && self.cloid == context.cloid
+    }
+}
+
 pub(crate) fn classify_execution_result(
     result: Result<ExchangeResponse, String>,
 ) -> ExecutionOutcome {
     match result {
         Ok(response) => {
             let status = response.summary();
-            let is_error = response.is_error();
-            let kind = if is_error {
+            let response_is_error = response.is_error();
+            let kind = if response_is_error {
                 ExecutionOutcomeKind::Rejected
             } else if status == "Cancelled" {
                 ExecutionOutcomeKind::Cancelled
@@ -44,11 +67,12 @@ pub(crate) fn classify_execution_result(
             } else {
                 ExecutionOutcomeKind::AcceptedResting
             };
+            let is_error = response_is_error || kind == ExecutionOutcomeKind::Ambiguous;
             ExecutionOutcome {
                 kind,
                 status,
                 is_error,
-                refresh_account: !is_error,
+                refresh_account: !response_is_error,
             }
         }
         Err(error) => ExecutionOutcome {
@@ -61,6 +85,62 @@ pub(crate) fn classify_execution_result(
 }
 
 impl TradingTerminal {
+    fn remove_local_open_order(&mut self, account_address: &str, oid: u64, symbol: &str) {
+        let Some(data) = self.account_data_for_order_account_mut(account_address) else {
+            return;
+        };
+        let before = data.open_orders.len();
+        data.open_orders
+            .retain(|order| order.oid != oid || order.coin != symbol);
+        if data.open_orders.len() != before {
+            self.sync_all_chart_orders();
+        }
+    }
+
+    fn cancel_order_status_task(
+        account_address: String,
+        oid: u64,
+        symbol: String,
+    ) -> Task<Message> {
+        Task::perform(
+            fetch_order_status_by_oid(account_address.clone(), oid),
+            move |result| Message::CancelOrderStatusLoaded {
+                account_address,
+                oid,
+                symbol,
+                result: Box::new(result),
+            },
+        )
+    }
+
+    fn set_unexpected_one_shot_resting_status(
+        &mut self,
+        context: &OneShotPlacementContext,
+        summary: &str,
+    ) {
+        let display = self.display_name_for_symbol(&context.symbol_key);
+        self.set_order_status(
+            format!(
+                "{} {} order unexpectedly rested for {}: {}; refreshing account data, cancel {} if it is still open",
+                context.placement_label(),
+                context.order_kind.label(),
+                display,
+                summary,
+                context.cloid
+            ),
+            true,
+        );
+    }
+
+    fn handle_unexpected_one_shot_resting_order(
+        &mut self,
+        context: &OneShotPlacementContext,
+        summary: &str,
+    ) -> Task<Message> {
+        self.set_unexpected_one_shot_resting_status(context, summary);
+        self.refresh_account_data()
+    }
+
     pub(crate) fn handle_order_result(
         &mut self,
         pending_indicator_id: Option<u64>,
@@ -79,26 +159,115 @@ impl TradingTerminal {
         pending_indicator_id: Option<u64>,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        let cancelled_oid = self.pending_cancel_indicator_oid(pending_indicator_id);
+        let cancelled_order = self.pending_cancel_indicator_order(pending_indicator_id);
         self.clear_pending_order_indicator(pending_indicator_id);
-        if self.connected_address.as_deref() != Some(account_address.as_str()) {
+        if !self.connected_order_account_matches(&account_address) {
             return Task::none();
         }
+        let cancelled_oid = cancelled_order.as_ref().map(|(oid, _)| *oid);
         let outcome = classify_execution_result(result);
+        if matches!(
+            outcome.kind,
+            ExecutionOutcomeKind::Ambiguous | ExecutionOutcomeKind::TransportUnknown
+        ) {
+            let status_task = cancelled_order
+                .clone()
+                .map_or_else(Task::none, |(oid, symbol)| {
+                    Self::cancel_order_status_task(account_address.clone(), oid, symbol)
+                });
+            let order_label = cancelled_oid
+                .map(|oid| format!(" for order {oid}"))
+                .unwrap_or_default();
+            self.set_order_status(
+                format!(
+                    "Cancel status unknown{order_label}: {}; checking orderStatus and refreshing account data",
+                    outcome.status
+                ),
+                true,
+            );
+            return Task::batch([self.refresh_account_data(), status_task]);
+        }
         // Drop the order from the local snapshot on a confirmed cancel so the
         // ack does not resurrect an interactive line for an order the exchange
         // has already removed; the next authoritative update wins regardless.
         if outcome.kind == ExecutionOutcomeKind::Cancelled
-            && let Some(oid) = cancelled_oid
-            && let Some(data) = self.account_data.as_mut()
+            && let Some((oid, symbol)) = cancelled_order
         {
-            let before = data.open_orders.len();
-            data.open_orders.retain(|order| order.oid != oid);
-            if data.open_orders.len() != before {
-                self.sync_all_chart_orders();
-            }
+            self.remove_local_open_order(&account_address, oid, &symbol);
         }
         self.apply_execution_outcome(outcome)
+    }
+
+    pub(crate) fn handle_cancel_order_status_result(
+        &mut self,
+        account_address: String,
+        oid: u64,
+        symbol: String,
+        result: Result<OrderStatusResult, String>,
+    ) -> Task<Message> {
+        if !self.connected_order_account_matches(&account_address) {
+            return Task::none();
+        }
+
+        match result {
+            Ok(status) if status.is_open() => {
+                self.set_order_status(
+                    format!(
+                        "Cancel status still uncertain for order {oid}: orderStatus reports open ({}); refreshing account data",
+                        status.raw_summary
+                    ),
+                    true,
+                );
+            }
+            Ok(status) if status.is_filled() => {
+                self.remove_local_open_order(&account_address, oid, &symbol);
+                self.set_order_status(
+                    format!(
+                        "Cancel did not prevent fill for order {oid}: {}; refreshing account data",
+                        status.raw_summary
+                    ),
+                    true,
+                );
+            }
+            Ok(status) if status.is_no_fill_terminal() => {
+                self.remove_local_open_order(&account_address, oid, &symbol);
+                self.set_order_status(
+                    format!(
+                        "Cancel resolved for order {oid}: orderStatus reports {}; refreshing account data",
+                        status.raw_summary
+                    ),
+                    false,
+                );
+            }
+            Ok(status) if status.is_missing() => {
+                self.set_order_status(
+                    format!(
+                        "Cancel status still uncertain for order {oid}: {}; refreshing account data",
+                        status.raw_summary
+                    ),
+                    true,
+                );
+            }
+            Ok(status) => {
+                self.set_order_status(
+                    format!(
+                        "Cancel status still uncertain for order {oid}: orderStatus returned {}; refreshing account data",
+                        status.raw_summary
+                    ),
+                    true,
+                );
+            }
+            Err(error) => {
+                self.set_order_status(
+                    format!(
+                        "Cancel status still uncertain for order {oid}: {error}; refreshing account data"
+                    ),
+                    true,
+                );
+            }
+        }
+
+        self.refresh_account_data()
     }
 
     pub(crate) fn handle_close_position_result(
@@ -148,6 +317,14 @@ impl TradingTerminal {
             );
         }
 
+        if outcome.kind == ExecutionOutcomeKind::AcceptedResting
+            && !context.order_kind.allows_resting_response()
+        {
+            let nuke_task = self.record_nuke_child_uncertain(execution_id);
+            self.set_unexpected_one_shot_resting_status(&context, &outcome.status);
+            return Task::batch([nuke_task, self.refresh_account_data()]);
+        }
+
         let confirmed = matches!(
             outcome.kind,
             ExecutionOutcomeKind::AcceptedResting | ExecutionOutcomeKind::Filled
@@ -185,7 +362,15 @@ impl TradingTerminal {
     }
 
     fn one_shot_context_matches_current_account(&self, context: &OneShotPlacementContext) -> bool {
-        self.connected_address.as_deref() == Some(context.account_address.as_str())
+        self.connected_order_account_matches(&context.account_address)
+    }
+
+    fn begin_one_shot_status_request(&mut self, context: &OneShotPlacementContext) -> u64 {
+        let request_id = self.next_one_shot_status_request_id;
+        self.next_one_shot_status_request_id = self.next_one_shot_status_request_id.wrapping_add(1);
+        self.pending_one_shot_status_request =
+            Some(PendingOneShotStatusRequest::new(request_id, context));
+        request_id
     }
 
     fn clear_nuke_execution_if_current(&mut self, execution_id: u64) {
@@ -206,6 +391,7 @@ impl TradingTerminal {
         if !self.one_shot_context_matches_current_account(&context) {
             return Task::none();
         }
+        self.pending_one_shot_status_request = None;
 
         if matches!(
             outcome.kind,
@@ -223,9 +409,11 @@ impl TradingTerminal {
                 true,
             );
             let request_context = context.clone();
+            let request_id = self.begin_one_shot_status_request(&context);
             let status_task = Task::perform(
                 fetch_order_status_by_cloid(context.account_address.clone(), context.cloid.clone()),
                 move |result| Message::OneShotPlacementStatusLoaded {
+                    request_id,
                     context: request_context,
                     result: Box::new(result),
                 },
@@ -237,21 +425,37 @@ impl TradingTerminal {
             };
         }
 
+        if outcome.kind == ExecutionOutcomeKind::AcceptedResting
+            && !context.order_kind.allows_resting_response()
+        {
+            return self.handle_unexpected_one_shot_resting_order(&context, &outcome.status);
+        }
+
         self.apply_execution_outcome(outcome)
     }
 
     pub(crate) fn handle_one_shot_placement_status_result(
         &mut self,
+        request_id: u64,
         context: OneShotPlacementContext,
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
+        let request_matches = self
+            .pending_one_shot_status_request
+            .as_ref()
+            .is_some_and(|pending| pending.matches(request_id, &context));
+        if !request_matches {
+            return Task::none();
+        }
+        self.pending_one_shot_status_request = None;
+
         if !self.one_shot_context_matches_current_account(&context) {
             return Task::none();
         }
 
         let display = self.display_name_for_symbol(&context.symbol_key);
         match result {
-            Ok(status) if status.is_open() => {
+            Ok(status) if status.is_open() && context.order_kind.allows_resting_response() => {
                 self.set_order_status(
                     format!(
                         "{} placement confirmed by orderStatus for {}: {}",
@@ -261,6 +465,10 @@ impl TradingTerminal {
                     ),
                     false,
                 );
+            }
+            Ok(status) if status.is_open() => {
+                return self
+                    .handle_unexpected_one_shot_resting_order(&context, &status.raw_summary);
             }
             Ok(status) if status.is_filled() => {
                 self.set_order_status(
@@ -348,6 +556,11 @@ impl TradingTerminal {
         }
 
         match result {
+            Ok(status) if status.is_open() && !context.order_kind.allows_resting_response() => {
+                let nuke_task = self.record_nuke_child_uncertain(execution_id);
+                self.set_unexpected_one_shot_resting_status(&context, &status.raw_summary);
+                Task::batch([nuke_task, self.refresh_account_data()])
+            }
             Ok(status) if status.is_open() || status.is_filled() => {
                 self.record_nuke_child_outcome(execution_id, true, true)
             }

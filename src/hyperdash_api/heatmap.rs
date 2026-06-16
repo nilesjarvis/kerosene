@@ -1,5 +1,6 @@
 use crate::api::CLIENT;
 use reqwest::header::USER_AGENT;
+use zeroize::Zeroizing;
 
 use self::parsing::parse_heatmap_response;
 #[cfg(test)]
@@ -63,8 +64,9 @@ pub async fn fetch_liquidation_heatmap(
     max_price: f64,
     start_time: u64,
     end_time: u64,
-    api_key: String,
+    api_key: Zeroizing<String>,
 ) -> Result<LiquidationHeatmap, String> {
+    let api_key = Zeroizing::new(api_key.trim().to_string());
     let query = r#"query GetLiquidationLevels($coin: String!, $minPrice: Float!, $maxPrice: Float!, $startTime: Float!, $endTime: Float) {
   analytics {
     liquidationLevels(
@@ -102,7 +104,7 @@ pub async fn fetch_liquidation_heatmap(
         .clone()
         .post(HYPERDASH_API_URL)
         .header(USER_AGENT, KEROSENE_USER_AGENT)
-        .header("Authorization", format!("Bearer {api_key}"))
+        .bearer_auth(api_key.as_str())
         .json(&body)
         .send()
         .await

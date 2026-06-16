@@ -8,18 +8,26 @@ impl TradingTerminal {
     pub(crate) fn reconcile_journal_current_positions_from_account(
         &mut self,
     ) -> journal::JournalPositionReconciliation {
-        if self.journal.loaded_address.as_deref() != self.connected_address.as_deref() {
+        let Some((connected_address, positions, fetched_at_ms)) = self
+            .connected_order_account_snapshot()
+            .map(|(address, data)| {
+                (
+                    address,
+                    data.clearinghouse.asset_positions.clone(),
+                    data.fetched_at_ms,
+                )
+            })
+        else {
+            return journal::JournalPositionReconciliation::default();
+        };
+        if self.journal.loaded_address.as_deref() != Some(connected_address.as_str()) {
             return journal::JournalPositionReconciliation::default();
         }
 
-        let Some(data) = self.account_data.as_ref() else {
-            return journal::JournalPositionReconciliation::default();
-        };
-
         let result = journal::reconcile_current_position_trades(
             &mut self.journal.trades,
-            &data.clearinghouse.asset_positions,
-            data.fetched_at_ms,
+            &positions,
+            fetched_at_ms,
         );
         if result.added_open_positions > 0 || result.removed_stale_positions > 0 {
             self.journal.clear_snapshot_cache();
@@ -43,11 +51,13 @@ impl TradingTerminal {
         match message {
             // ----- Trading Journal messages -----
             Message::JournalFillsLoaded {
+                request_id,
                 account_key,
                 address,
                 result,
             } => {
-                if self.journal.active_account_key != account_key
+                if self.journal.sync_request_id != request_id
+                    || self.journal.active_account_key != account_key
                     || self.connected_address.as_deref() != Some(address.as_str())
                 {
                     return Task::none();
@@ -125,6 +135,7 @@ impl TradingTerminal {
                             return Task::perform(
                                 api::fetch_user_fills(address, next_request),
                                 move |result| Message::JournalFillsLoaded {
+                                    request_id,
                                     account_key: request_account_key.clone(),
                                     address: request_address.clone(),
                                     result,
@@ -359,6 +370,8 @@ impl TradingTerminal {
             address,
             &trade,
             self.chart_backfill_source,
+            self.read_data_provider_generation,
+            self.hydromancer_key_generation,
             now_ms,
         ) {
             Ok(request) => request,
@@ -389,6 +402,9 @@ impl TradingTerminal {
         if self.journal.active_account_key != account_key
             || self.connected_address.as_deref() != Some(address.as_str())
             || request.source != self.chart_backfill_source
+            || request.read_data_provider_generation != self.read_data_provider_generation
+            || (request.source == crate::config::ChartBackfillSource::Hydromancer
+                && !self.hydromancer_key_generation_is_current(request.hydromancer_key_generation))
             || self.journal.snapshot_requests.get(&request.trade_id) != Some(&request)
         {
             return Task::none();
@@ -476,7 +492,7 @@ impl TradingTerminal {
 
         let account_key = request.account_key.clone();
         let address = request.address.clone();
-        let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+        let hydromancer_api_key = self.hydromancer_api_key_for_task();
         let fetch_request = request.clone();
 
         Task::perform(
@@ -495,5 +511,132 @@ impl TradingTerminal {
                 result,
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ChartBackfillSource, ReadDataProvider};
+    use crate::journal::JournalTradeSnapshotRequest;
+    use crate::timeframe::Timeframe;
+
+    fn snapshot_request(generation: u64) -> JournalTradeSnapshotRequest {
+        JournalTradeSnapshotRequest {
+            account_key: Some("acct".to_string()),
+            address: "0xabc".to_string(),
+            trade_id: "perp:BTC:test".to_string(),
+            coin: "BTC".to_string(),
+            source: ChartBackfillSource::Hydromancer,
+            read_data_provider_generation: 0,
+            hydromancer_key_generation: generation,
+            timeframe: Timeframe::M1,
+            ladder_index: 0,
+            trade_start_ms: 1_000,
+            trade_end_ms: 2_000,
+            is_open: false,
+            start_ms: 0,
+            end_ms: 3_000,
+        }
+    }
+
+    #[test]
+    fn stale_hydromancer_generation_does_not_apply_journal_snapshot() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.chart_backfill_source = ChartBackfillSource::Hydromancer;
+        terminal.hydromancer_key_generation = 2;
+        terminal.journal.active_account_key = Some("acct".to_string());
+        terminal.connected_address = Some("0xabc".to_string());
+
+        let request = snapshot_request(1);
+        terminal
+            .journal
+            .snapshot_requests
+            .insert(request.trade_id.clone(), request.clone());
+
+        let _task = terminal.update_journal(Message::JournalSnapshotLoaded {
+            account_key: Some("acct".to_string()),
+            address: "0xabc".to_string(),
+            request: request.clone(),
+            result: Ok(vec![api::Candle::test_flat(0, 100.0)]),
+        });
+
+        assert_eq!(
+            terminal.journal.snapshot_requests.get(&request.trade_id),
+            Some(&request)
+        );
+        assert!(!terminal.journal.snapshots.contains_key(&request.trade_id));
+    }
+
+    #[test]
+    fn provider_change_clears_pending_journal_snapshot_requests() {
+        let mut terminal = TradingTerminal::boot().0;
+        let request = snapshot_request(terminal.hydromancer_key_generation);
+        terminal
+            .journal
+            .snapshot_requests
+            .insert(request.trade_id.clone(), request);
+
+        let _task = terminal.update_preferences(Message::ReadDataProviderChanged(
+            ReadDataProvider::Hydromancer,
+        ));
+
+        assert!(terminal.journal.snapshot_requests.is_empty());
+    }
+
+    #[test]
+    fn stale_journal_fills_result_does_not_finish_newer_sync() {
+        let mut terminal = journal_terminal_with_account();
+        let stale_request_id = terminal.journal.next_sync_request_id();
+        terminal.journal.loading = true;
+        let current_request_id = terminal.journal.next_sync_request_id();
+
+        let _task = terminal.update_journal(Message::JournalFillsLoaded {
+            request_id: stale_request_id,
+            account_key: Some("acct".to_string()),
+            address: "0xabc".to_string(),
+            result: Err("old request failed".to_string()),
+        });
+
+        assert_eq!(terminal.journal.sync_request_id, current_request_id);
+        assert!(terminal.journal.loading);
+        assert!(terminal.journal.error.is_none());
+        assert!(terminal.journal.warning.is_none());
+        assert_eq!(terminal.journal.sync_status.pages_loaded, 0);
+    }
+
+    #[test]
+    fn matching_journal_fills_result_finishes_sync() {
+        let mut terminal = journal_terminal_with_account();
+        let request_id = terminal.journal.next_sync_request_id();
+        terminal.journal.loading = true;
+
+        let _task = terminal.update_journal(Message::JournalFillsLoaded {
+            request_id,
+            account_key: Some("acct".to_string()),
+            address: "0xabc".to_string(),
+            result: Ok(empty_journal_page(12_345)),
+        });
+
+        assert!(!terminal.journal.loading);
+        assert_eq!(terminal.journal.last_refresh_time, Some(12_345));
+        assert_eq!(terminal.journal.sync_status.pages_loaded, 1);
+        assert!(terminal.journal.sync_status.complete);
+    }
+
+    fn journal_terminal_with_account() -> TradingTerminal {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.journal.active_account_key = Some("acct".to_string());
+        terminal.connected_address = Some("0xabc".to_string());
+        terminal
+    }
+
+    fn empty_journal_page(requested_end_time: u64) -> api::UserFillsPage {
+        api::UserFillsPage {
+            fills: Vec::new(),
+            next_request: None,
+            requested_end_time,
+            progress_warning: None,
+        }
     }
 }

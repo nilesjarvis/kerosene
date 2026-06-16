@@ -12,7 +12,73 @@ use iced::Task;
 use zeroize::Zeroize;
 
 impl TradingTerminal {
+    fn stop_twaps_for_account_switch(&mut self) {
+        let stop_twap_ids: Vec<u64> = self
+            .twap_orders
+            .iter()
+            .filter_map(|(id, twap)| {
+                (!twap.status.is_terminal() && !twap.stop_requested).then_some(*id)
+            })
+            .collect();
+
+        for id in stop_twap_ids {
+            let _ = self.stop_twap_with_reason(id, "TWAP stopped: account switched", false);
+        }
+    }
+
+    fn clear_connected_account_state_for_switch(&mut self) {
+        self.invalidate_account_data_requests();
+        self.clear_percentage_order_quantity();
+        self.bump_account_data_revision();
+        self.connected_address = None;
+        self.account_data = None;
+        self.account_data_address = None;
+        self.pending_order_indicators.clear();
+        self.clear_pending_move_order_state();
+        self.pending_leverage_update = None;
+        self.order_leverage_dropdown_open = false;
+        self.account_loading = false;
+        self.account_refresh_followup_pending = false;
+        self.account_reconciliation_required = false;
+        self.account_error = None;
+        self.account_refresh_backoff_until_ms = None;
+        self.account_refresh_retry_due_ms = None;
+        self.clear_portfolio_income_account_state();
+        self.clear_account_scoped_chart_state();
+        if self.journal.window_id.is_some() {
+            self.journal.clear_active_account_data();
+        }
+        self.sync_all_chart_overlays();
+    }
+
+    pub(crate) fn clear_account_scoped_chart_state(&mut self) {
+        self.close_menu_coin = None;
+        self.nuke_confirmation = None;
+        self.pending_nuke_execution = None;
+        for instance in self.charts.values_mut() {
+            instance.reset_quick_order_for_account_reset();
+            instance.chart.clear_account_scoped_hud_state();
+            instance.chart.active_position = None;
+            instance.chart.active_orders.clear();
+            instance.chart.trade_markers.clear();
+        }
+        self.chart_quick_order_surface.clear();
+    }
+
     fn load_deferred_legacy_account_key(&mut self, index: usize) {
+        self.load_deferred_legacy_account_key_with(
+            index,
+            config::load_legacy_profile_secrets,
+            |terminal| terminal.persist_active_profile_secrets(),
+        );
+    }
+
+    fn load_deferred_legacy_account_key_with(
+        &mut self,
+        index: usize,
+        mut load_profile_secrets: impl FnMut(&mut AccountProfile) -> Result<(), String>,
+        mut persist_profile_secrets: impl FnMut(&mut Self) -> bool,
+    ) {
         if self.secret_storage_mode != config::CredentialStorageMode::OsKeychain
             || self.account_index_is_ghost(index)
         {
@@ -27,20 +93,33 @@ impl TradingTerminal {
         }
 
         let mut legacy_profile = profile.clone();
-        match config::load_legacy_profile_secrets(&mut legacy_profile) {
+        match load_profile_secrets(&mut legacy_profile) {
             Ok(()) if !legacy_profile.agent_key.trim().is_empty() => {
                 let agent_key = legacy_profile.agent_key.clone();
+                let migrated_hydromancer_key =
+                    match self.merge_deferred_legacy_profile_hydromancer_key(&legacy_profile) {
+                        Ok(migrated) => migrated,
+                        Err(error) => {
+                            self.secret_store_status = Some((
+                                format!("{error}; legacy account credentials were left unchanged"),
+                                true,
+                            ));
+                            return;
+                        }
+                    };
                 if let Some(profile) = self.accounts.get_mut(index) {
                     profile.agent_key.zeroize();
                     profile.agent_key = agent_key.clone();
                 }
                 self.wallet_key_input.zeroize();
-                self.wallet_key_input = agent_key;
-                if self.persist_active_profile_secrets() {
-                    self.secret_store_status = Some((
-                        "Legacy account key migrated to the OS keychain bundle".to_string(),
-                        false,
-                    ));
+                self.wallet_key_input = agent_key.into();
+                if persist_profile_secrets(self) {
+                    let message = if migrated_hydromancer_key {
+                        "Legacy account key and Hydromancer key migrated to the OS keychain bundle"
+                    } else {
+                        "Legacy account key migrated to the OS keychain bundle"
+                    };
+                    self.secret_store_status = Some((message.to_string(), false));
                 }
             }
             Ok(()) => {}
@@ -49,6 +128,37 @@ impl TradingTerminal {
                     Some((format!("Legacy account key read failed: {error}"), true));
             }
         }
+    }
+
+    fn merge_deferred_legacy_profile_hydromancer_key(
+        &mut self,
+        legacy_profile: &AccountProfile,
+    ) -> Result<bool, String> {
+        let profile_hydromancer_key = legacy_profile.hydromancer_api_key.trim();
+        if profile_hydromancer_key.is_empty() {
+            return Ok(false);
+        }
+
+        let current_hydromancer_key = self.hydromancer_api_key.trim();
+        if current_hydromancer_key == profile_hydromancer_key {
+            return Ok(false);
+        }
+        if !current_hydromancer_key.is_empty() {
+            return Err(
+                "Multiple legacy Hydromancer API keys were found; choose and save the intended key before switching accounts"
+                    .to_string(),
+            );
+        }
+
+        self.hydromancer_api_key.zeroize();
+        self.hydromancer_api_key = profile_hydromancer_key.to_string().into();
+        self.hydromancer_key_input.zeroize();
+        self.hydromancer_key_input = self.hydromancer_api_key.clone();
+        self.bump_hydromancer_key_generation();
+        self.journal.snapshot_requests.clear();
+        self.journal.clear_snapshot_cache();
+        self.journal.expanded_snapshot_trade_ids.clear();
+        Ok(true)
     }
 
     pub(crate) fn account_index_for_secret_id(&self, secret_id: &str) -> Option<usize> {
@@ -83,12 +193,79 @@ impl TradingTerminal {
     }
 
     pub(crate) fn account_change_blocked_by_active_chase(&mut self, action: &str) -> bool {
-        if self.chase_orders.is_empty() {
+        if !self.has_active_chase_orders() {
             return false;
         }
 
         self.push_toast(
             format!("Stop active chase orders and wait for cancellation to finish before {action}"),
+            true,
+        );
+        true
+    }
+
+    pub(crate) fn account_change_blocked_by_active_twap(&mut self, action: &str) -> bool {
+        if !self.has_active_twap_orders() {
+            return false;
+        }
+
+        self.push_toast(
+            format!("Stop active TWAP orders and wait for cancellation to finish before {action}"),
+            true,
+        );
+        true
+    }
+
+    pub(crate) fn account_change_blocked_by_uncertain_twap(&mut self, action: &str) -> bool {
+        if !self.has_uncertain_twap_exchange_state() {
+            return false;
+        }
+
+        self.push_toast(
+            format!("Wait for TWAP order status and fill reconciliation to finish before {action}"),
+            true,
+        );
+        true
+    }
+
+    pub(crate) fn account_change_blocked_by_active_automation(&mut self, action: &str) -> bool {
+        self.account_change_blocked_by_active_chase(action)
+            || self.account_change_blocked_by_active_twap(action)
+    }
+
+    pub(crate) fn has_active_order_automation(&self) -> bool {
+        self.has_active_chase_orders() || self.has_active_twap_orders()
+    }
+
+    fn has_active_chase_orders(&self) -> bool {
+        !self.chase_orders.is_empty()
+    }
+
+    fn has_active_twap_orders(&self) -> bool {
+        self.twap_orders
+            .values()
+            .any(|twap| !twap.status.is_terminal())
+    }
+
+    fn has_uncertain_twap_exchange_state(&self) -> bool {
+        self.twap_orders.values().any(|twap| {
+            !twap.status.is_terminal()
+                && (twap.pending_op.is_some()
+                    || twap.status_check_cloid.is_some()
+                    || twap.has_status_unknown_child())
+        })
+    }
+
+    pub(crate) fn account_change_blocked_by_pending_trading_request(
+        &mut self,
+        action: &str,
+    ) -> bool {
+        if !self.has_pending_trading_request() {
+            return false;
+        }
+
+        self.push_toast(
+            format!("Wait for pending trading requests to finish before {action}"),
             true,
         );
         true
@@ -103,17 +280,20 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        if self.pending_order_action.is_some() {
-            self.push_toast(
-                "Wait for the pending order request before switching accounts".to_string(),
-                true,
-            );
+        if self.account_change_blocked_by_pending_trading_request("switching accounts") {
             return Task::none();
         }
 
         if self.account_change_blocked_by_active_chase("switching accounts") {
             return Task::none();
         }
+
+        if self.account_change_blocked_by_uncertain_twap("switching accounts") {
+            return Task::none();
+        }
+
+        self.stop_twaps_for_account_switch();
+        self.clear_connected_account_state_for_switch();
 
         let is_ghost = self.ghost_account_secret_ids.contains(&profile.secret_id);
         self.active_account_index = index;
@@ -124,10 +304,6 @@ impl TradingTerminal {
         self.nuke_confirmation = None;
         self.pending_nuke_execution = None;
         self.show_hidden_positions = false;
-        for inst in self.charts.values_mut() {
-            inst.clear_quick_order();
-        }
-        self.chart_quick_order_surface.clear();
         if is_ghost {
             self.wallet_key_input.zeroize();
             if let Some(profile) = self.accounts.get_mut(index) {
@@ -136,7 +312,7 @@ impl TradingTerminal {
             self.secret_store_status = Some(("Ghost wallet loaded in memory only".into(), false));
         } else {
             self.wallet_key_input.zeroize();
-            self.wallet_key_input = profile.agent_key.clone();
+            self.wallet_key_input = profile.agent_key.clone().into();
             self.last_persisted_active_account_secret_id = Some(profile.secret_id.clone());
             if self.wallet_key_input.trim().is_empty() {
                 self.load_deferred_legacy_account_key(index);
@@ -147,8 +323,13 @@ impl TradingTerminal {
         self.persist_config();
 
         if !self.wallet_address_input.trim().is_empty() {
+            // Mark the connect as in-flight so the summary renders the connecting
+            // skeleton during the gap before ConnectWallet is processed, rather
+            // than flashing the disconnected add-account form.
+            self.account_connect_pending = true;
             Task::done(Message::ConnectWallet)
         } else {
+            self.account_connect_pending = false;
             Task::done(Message::DisconnectWallet)
         }
     }

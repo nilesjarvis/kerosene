@@ -4,6 +4,8 @@ mod mids;
 mod symbol_search;
 mod types;
 
+pub(crate) const MARKET_ASSET_CONTEXT_MAX_AGE_MS: u64 = 15_000;
+
 pub use dom_ladder::DomLadderRow;
 #[cfg(test)]
 pub(crate) use dom_ladder::build_dom_ladder_rows;

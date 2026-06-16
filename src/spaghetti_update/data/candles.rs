@@ -1,7 +1,8 @@
 use crate::api::Candle;
 use crate::app_state::TradingTerminal;
+use crate::config::ChartBackfillSource;
 use crate::message::Message;
-use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
+use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiWsCandleContext};
 
 use iced::Task;
 
@@ -11,6 +12,14 @@ impl TradingTerminal {
         request: SpaghettiCandleFetch,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
+        if request.source == ChartBackfillSource::Hydromancer
+            && !self.hydromancer_key_generation_is_current(request.hydromancer_key_generation)
+        {
+            return Task::none();
+        }
+        if request.read_data_provider_generation != self.read_data_provider_generation {
+            return Task::none();
+        }
         let symbol = request.symbol;
         if self.symbol_key_is_hidden(&symbol) {
             return Task::none();
@@ -81,17 +90,47 @@ impl TradingTerminal {
 
     pub(in crate::spaghetti_update) fn apply_spaghetti_ws_candle_update(
         &mut self,
-        id: SpaghettiChartId,
-        symbol: String,
+        context: SpaghettiWsCandleContext,
         candle: Candle,
     ) -> Task<Message> {
-        if self.symbol_key_is_hidden(&symbol) {
+        if !self.spaghetti_ws_candle_context_is_current(&context) {
             return Task::none();
         }
-        if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
-            inst.canvas.push_candle(&symbol, candle);
+        if let Some(inst) = self.spaghetti_charts.get_mut(&context.chart_id) {
+            inst.canvas.push_candle(&context.symbol, candle);
             Self::refresh_spaghetti_session_anchor(inst);
         }
         Task::none()
+    }
+
+    pub(in crate::spaghetti_update) fn spaghetti_ws_candle_context_is_current(
+        &self,
+        context: &SpaghettiWsCandleContext,
+    ) -> bool {
+        if !self.market_stream_source_is_current(context.source_context)
+            || self.symbol_key_is_hidden(&context.symbol)
+        {
+            return false;
+        }
+
+        let Some(inst) = self.spaghetti_charts.get(&context.chart_id) else {
+            return false;
+        };
+
+        let current_tf = Self::spaghetti_effective_timeframe_for(
+            inst.interval,
+            inst.canvas.active_session,
+            inst.session_granularity,
+            Self::now_ms(),
+        );
+
+        current_tf == context.timeframe
+            && inst.canvas.active_session == context.session
+            && inst.session_granularity == context.session_granularity
+            && inst
+                .canvas
+                .series
+                .iter()
+                .any(|series| series.loaded && series.symbol == context.symbol)
     }
 }

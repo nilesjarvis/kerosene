@@ -12,7 +12,7 @@ use iced::{Element, Fill};
 impl TradingTerminal {
     pub(crate) fn view_liquidations(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        let now_ms = Self::now_ms();
+        let now_ms = self.status_bar_now_ms;
 
         if self.hydromancer_api_key.trim().is_empty() {
             return super::feed_empty_state(

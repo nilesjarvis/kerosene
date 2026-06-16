@@ -1,6 +1,7 @@
 use crate::app_state::TradingTerminal;
-use crate::chart_state::ChartId;
+use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::message::Message;
+use crate::order_execution::QuickOrderForm;
 use iced::widget::{Row, button, row, text};
 use iced::{Fill, Theme, color};
 
@@ -8,8 +9,11 @@ impl TradingTerminal {
     pub(in crate::order_views::quick_order) fn quick_order_action_row<'a>(
         &self,
         chart_id: ChartId,
+        surface_id: ChartSurfaceId,
+        form: &QuickOrderForm,
     ) -> Row<'a, Message> {
         let theme = self.theme();
+        let snapshot = self.quick_order_submission_snapshot(chart_id, surface_id, form);
         let buy_btn = button(
             text("BUY")
                 .size(12)
@@ -17,7 +21,11 @@ impl TradingTerminal {
                 .center()
                 .width(Fill),
         )
-        .on_press(Message::SubmitQuickOrder(chart_id, true))
+        .on_press(Message::SubmitQuickOrder {
+            chart_id,
+            is_buy: true,
+            snapshot: snapshot.clone(),
+        })
         .padding([6, 12])
         .width(Fill)
         .style(|theme: &Theme, status| {
@@ -43,7 +51,11 @@ impl TradingTerminal {
                 .center()
                 .width(Fill),
         )
-        .on_press(Message::SubmitQuickOrder(chart_id, false))
+        .on_press(Message::SubmitQuickOrder {
+            chart_id,
+            is_buy: false,
+            snapshot,
+        })
         .padding([6, 12])
         .width(Fill)
         .style(|theme: &Theme, status| {

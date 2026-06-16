@@ -61,8 +61,8 @@ impl TradingTerminal {
     pub(crate) fn archive_chase_order(&mut self, chase: &ChaseOrder, summary: String) {
         let display_coin = self.display_name_for_symbol(&chase.coin);
         let fill_metrics = self
-            .account_data
-            .as_ref()
+            .account_data_for_order_account(&chase.account_address)
+            .filter(|_| self.connected_order_account_matches(&chase.account_address))
             .filter(|data| data.completeness.fills_complete)
             .and_then(|data| AdvancedOrderHistoryEntry::chase_fill_metrics(&data.fills, chase));
         let entry = AdvancedOrderHistoryEntry::from_chase_with_fill_metrics(

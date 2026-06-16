@@ -2,6 +2,7 @@ use super::*;
 use crate::api::{BookLevel, OrderBook};
 
 mod aggregation;
+mod asset_ctx;
 mod cache;
 mod mid_price;
 mod scope;

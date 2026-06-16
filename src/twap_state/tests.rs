@@ -32,11 +32,15 @@ fn book(bids: &[(f64, f64)], asks: &[(f64, f64)]) -> OrderBook {
 }
 
 fn user_fill(oid: u64, size: &str, price: &str) -> UserFill {
+    user_fill_for("BTC", "B", oid, size, price)
+}
+
+fn user_fill_for(coin: &str, side: &str, oid: u64, size: &str, price: &str) -> UserFill {
     UserFill {
-        coin: "BTC".to_string(),
+        coin: coin.to_string(),
         px: price.to_string(),
         sz: size.to_string(),
-        side: "B".to_string(),
+        side: side.to_string(),
         time: 1,
         hash: None,
         tid: None,
@@ -53,7 +57,7 @@ fn test_twap_order(now: Instant, target_size: f64, randomize: bool, slice_count:
         coin: "BTC".to_string(),
         display_coin: "BTC".to_string(),
         account_address: "0xabc".to_string(),
-        agent_key: "key".to_string().into(),
+        agent_key: "twap-agent-secret".to_string().into(),
         is_buy: true,
         target_size,
         asset: 0,
@@ -68,6 +72,16 @@ fn test_twap_order(now: Instant, target_size: f64, randomize: bool, slice_count:
         now,
         started_at_ms: 1_000,
     })
+}
+
+#[test]
+fn twap_order_debug_redacts_agent_key() {
+    let twap = test_twap_order(Instant::now(), 1.0, false, 2);
+
+    let rendered = format!("{twap:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains("twap-agent-secret"));
 }
 
 fn next_slice(twap: &mut TwapOrder, context: &str) -> f64 {

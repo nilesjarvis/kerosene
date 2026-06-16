@@ -95,6 +95,15 @@ impl CandlestickChart {
         self.hud_order_animation_active() || self.hud_armed || self.hud_weapon_selector.is_some()
     }
 
+    pub(crate) fn clear_account_scoped_hud_state(&mut self) {
+        self.clear_hud_armed();
+        self.hud_order_animation = None;
+        self.set_pending_market_order_loading([]);
+        self.hud_feed.clear();
+        self.hud_weapon_selector = None;
+        self.hud_max_notional = None;
+    }
+
     pub(crate) fn push_hud_feed(&mut self, label: String, is_buy: bool, now_ms: u64) {
         self.hud_feed
             .retain(|entry| now_ms.saturating_sub(entry.added_at_ms) < HUD_FEED_TTL_MS);
@@ -221,5 +230,36 @@ mod tests {
         // Feed rows carry no symbol, so switching instruments clears them.
         chart.set_symbol_label("ETH".to_string());
         assert!(chart.hud_feed.is_empty());
+    }
+
+    #[test]
+    fn account_scoped_hud_state_reset_clears_order_artifacts() {
+        use crate::chart::model::HudSelectorKind;
+        use iced::{Point, Size};
+
+        let mut chart = CandlestickChart::new(1);
+        chart.set_hud_armed_at(true, 1_000);
+        chart.start_hud_order_animation(
+            50_000.0,
+            Point::new(10.0, 20.0),
+            Size::new(300.0, 200.0),
+            true,
+            true,
+        );
+        chart.set_pending_market_order_loading([(77, true)]);
+        chart.push_hud_feed("MKT LONG 1 @ 50000".to_string(), true, 1_000);
+        chart.open_hud_weapon_selector(HudSelectorKind::Mode, true);
+        chart.hud_max_notional = Some(1_000.0);
+        assert!(chart.hud_animation_tick_needed());
+
+        chart.clear_account_scoped_hud_state();
+
+        assert!(!chart.hud_armed());
+        assert!(chart.hud_order_animation.is_none());
+        assert!(chart.pending_market_order_loading.is_empty());
+        assert!(chart.hud_feed.is_empty());
+        assert!(chart.hud_weapon_selector.is_none());
+        assert_eq!(chart.hud_max_notional, None);
+        assert!(!chart.hud_animation_tick_needed());
     }
 }

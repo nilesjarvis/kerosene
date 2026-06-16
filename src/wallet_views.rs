@@ -45,7 +45,7 @@ impl TradingTerminal {
             return self.view_main();
         };
 
-        let now_ms = Self::now_ms();
+        let now_ms = self.status_bar_now_ms;
         let mut content = Column::new()
             .spacing(10)
             .push(self.view_wallet_details_header(window_id, state, now_ms, &theme))

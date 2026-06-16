@@ -220,3 +220,32 @@ fn coinbase_light_theme_uses_clean_portfolio_surfaces_and_blue_actions() {
     assert_rgba(extended.success.base.color, [0x09, 0x85, 0x51, 255]);
     assert!(!extended.is_dark);
 }
+
+#[test]
+fn ubuntu_theme_uses_aubergine_panels_and_orange_actions() {
+    let source_palette = iced::theme::Palette {
+        background: Color::from_rgb8(0x1B, 0x0E, 0x18),
+        text: Color::from_rgb8(0xF3, 0xEA, 0xEF),
+        primary: Color::from_rgb8(0xF6, 0x6D, 0x2C),
+        success: Color::from_rgb8(0x33, 0xD1, 0x7A),
+        warning: Color::from_rgb8(0xFF, 0xD2, 0x4A),
+        danger: Color::from_rgb8(0xF5, 0x46, 0x5F),
+    };
+
+    assert!(TradingTerminal::palette_matches_ubuntu_source(
+        source_palette
+    ));
+
+    let extended = TradingTerminal::ubuntu_source_extended_palette();
+    // Aubergine ladder steps up monotonically from the base.
+    assert_rgba(extended.background.base.color, [0x1B, 0x0E, 0x18, 255]);
+    assert_rgba(extended.background.weak.color, [0x2C, 0x1B, 0x27, 255]);
+    assert_rgba(extended.background.strong.color, [0x41, 0x2B, 0x3D, 255]);
+    assert_rgba(extended.background.strongest.color, [0x62, 0x47, 0x5D, 255]);
+    // Ubuntu Orange hero plus the separated gold/green/rose semantics.
+    assert_rgba(extended.primary.base.color, [0xF6, 0x6D, 0x2C, 255]);
+    assert_rgba(extended.success.base.color, [0x33, 0xD1, 0x7A, 255]);
+    assert_rgba(extended.warning.base.color, [0xFF, 0xD2, 0x4A, 255]);
+    assert_rgba(extended.danger.base.color, [0xF5, 0x46, 0x5F, 255]);
+    assert!(extended.is_dark);
+}

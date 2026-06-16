@@ -18,6 +18,7 @@ impl TradingTerminal {
     pub(super) fn view_wallet_tracker_row<'a>(
         &'a self,
         address: &str,
+        now_ms: u64,
         theme: &Theme,
     ) -> Element<'a, Message> {
         let row_data = self
@@ -31,7 +32,8 @@ impl TradingTerminal {
         let denomination = self.display_denomination_context();
         let metrics = wallet_row_metrics(&row_data, &denomination, theme);
         let upnl_color = wallet_upnl_color(&metrics, theme);
-        let state_el: Element<'_, Message> = self.view_wallet_tracker_state(&row_data, theme);
+        let state_el: Element<'_, Message> =
+            self.view_wallet_tracker_state(&row_data, now_ms, theme);
 
         let address = address.to_string();
         let wallet_row = container(

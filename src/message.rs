@@ -23,7 +23,9 @@ use crate::market_state::{
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
 use crate::order_execution::{
-    HudOrderRequest, OneShotPlacementContext, PendingLeverageUpdateContext,
+    AdvancedOrderStartSnapshot, HudOrderRequest, OneShotPlacementContext,
+    OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, QuickOrderRecovery,
+    QuickOrderSubmissionSnapshot, TicketOrderSubmissionSnapshot, TwapOrderStartSnapshot,
 };
 use crate::pane_management::AddWidgetPlacement;
 use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
@@ -32,11 +34,17 @@ use crate::positioning_state::{
     PositioningInfoChangeTimeframe, PositioningInfoId, PositioningInfoPage, PositioningInfoSide,
     PositioningInfoSortField,
 };
+use crate::read_data_provider::{
+    AccountDataRequestContext, MarketDataSourceContext, ReadDataRequestContext,
+};
 use crate::screener_state::{ScreenerExchangeFilter, ScreenerSortColumn};
-use crate::session_data_state::{SessionDataId, SessionDataLookback, SessionDataRequest};
+use crate::session_data_state::{
+    SessionDataCandles, SessionDataId, SessionDataLookback, SessionDataRequest,
+};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::signing::{ExchangeResponse, OrderKind};
 use crate::spaghetti;
+use crate::spaghetti_state::SpaghettiWsCandleContext;
 use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
 use crate::telegram_feed::{
     TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage,
@@ -44,7 +52,6 @@ use crate::telegram_feed::{
 };
 use crate::timeframe::Timeframe;
 use crate::ws::WsUserData;
-use crate::x_feed::{XFeedPage, XFeedStreamEvent};
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
 use std::collections::HashMap;
@@ -79,6 +86,34 @@ impl fmt::Debug for SecretInput {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct TelegramFastAuthMessageResult(Box<Result<TelegramFastAuthOutcome, String>>);
+
+impl TelegramFastAuthMessageResult {
+    pub(crate) fn new(result: Result<TelegramFastAuthOutcome, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<TelegramFastAuthOutcome, String> {
+        *self.0
+    }
+}
+
+impl From<Result<TelegramFastAuthOutcome, String>> for TelegramFastAuthMessageResult {
+    fn from(result: Result<TelegramFastAuthOutcome, String>) -> Self {
+        Self::new(result)
+    }
+}
+
+impl fmt::Debug for TelegramFastAuthMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(outcome) => f.debug_tuple("Ok").field(outcome).finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
     SaveLayout(String),
@@ -100,9 +135,12 @@ pub(crate) enum Message {
     LiveWatchlistSearchChanged(LiveWatchlistId, String),
     LiveWatchlistContextsLoaded(
         u64,
+        Vec<String>,
+        u64,
         Result<HashMap<String, crate::api::WatchlistContext>, String>,
     ),
     LiveWatchlistHistoryLoaded(
+        u64,
         Vec<String>,
         u64,
         Result<HashMap<String, (f64, f64, f64)>, String>,
@@ -125,13 +163,16 @@ pub(crate) enum Message {
     ClearPositioningInfoFilters(PositioningInfoId),
     RefreshPositioningInfoPane(PositioningInfoId),
     RefreshPositioningInfo,
-    PositioningInfoWsAssetCtxUpdate(String, AssetContext),
+    PositioningInfoWsAssetCtxUpdate(String, MarketDataSourceContext, AssetContext),
+    PositioningInfoWsAssetCtxLagged(String, MarketDataSourceContext, u64),
     PositioningInfoLoaded(
         String,
+        u64,
         Box<Result<crate::hyperdash_api::TickerPositions, String>>,
     ),
     PositioningInfoChangeLoaded(
         String,
+        u64,
         Box<Result<crate::hyperdash_api::PerpDeltas, String>>,
     ),
     AddOrderBookPane,
@@ -166,7 +207,7 @@ pub(crate) enum Message {
     ToggleOrderLeverageDropdown,
     OrderLeverageInputChanged(String),
     SetOrderLeverageCross(bool),
-    SubmitOrderLeverage,
+    SubmitOrderLeverage(OrderLeverageSubmissionSnapshot),
     OrderLeverageResult {
         context: PendingLeverageUpdateContext,
         result: Box<Result<ExchangeResponse, String>>,
@@ -185,6 +226,8 @@ pub(crate) enum Message {
     TickerTapeRefreshTick,
     TickerTapeContextsLoaded(
         u64,
+        Vec<String>,
+        u64,
         Result<HashMap<String, crate::api::WatchlistContext>, String>,
     ),
     // Add widget menu
@@ -193,7 +236,7 @@ pub(crate) enum Message {
     ToggleMacroMenu(ChartId),
     ToggleMacroIndicator(ChartId, String),
     ToggleChartEarningsMarkers(ChartId),
-    ChartEarningsEventsLoaded(String, Box<Result<Vec<api::SecEarningsEvent>, String>>),
+    ChartEarningsEventsLoaded(String, u64, Box<Result<Vec<api::SecEarningsEvent>, String>>),
     CloseAllMenus,
     AddPortfolioPane,
     AddIncomePane,
@@ -202,14 +245,18 @@ pub(crate) enum Message {
     OpenSettingsWindow,
     OpenScreenerWindow,
     RefreshScreener,
+    ForceRefreshScreener,
     RefreshScreenerHistory,
     ScreenerExchangeFilterChanged(ScreenerExchangeFilter),
     ScreenerSortChanged(ScreenerSortColumn),
     ScreenerContextsLoaded(
         u64,
+        Vec<String>,
+        u64,
         Result<HashMap<String, crate::api::WatchlistContext>, String>,
     ),
     ScreenerHistoryLoaded(
+        u64,
         Vec<String>,
         u64,
         Result<HashMap<String, (f64, f64)>, String>,
@@ -231,7 +278,6 @@ pub(crate) enum Message {
     AddLiquidationsDistributionPane,
     AddTrackedTradesPane,
     AddTelegramFeedPane,
-    AddXFeedPane,
     AddOutcomesPane,
     AddHypeEtfsPane,
     AddHypeUnstakingQueuePane,
@@ -241,14 +287,14 @@ pub(crate) enum Message {
     SessionDataSymbolSelected(SessionDataId, String),
     SessionDataLookbackChanged(SessionDataId, SessionDataLookback),
     RefreshSessionData(SessionDataId),
-    SessionDataCandlesLoaded(SessionDataRequest, Result<Vec<Candle>, String>),
+    SessionDataCandlesLoaded(SessionDataRequest, Result<SessionDataCandles, String>),
     AddTradingJournal,
     RefreshCalendar,
-    CalendarLoaded(Result<Vec<api::CalendarEvent>, String>),
+    CalendarLoaded(u64, Result<Vec<api::CalendarEvent>, String>),
     RefreshHypeEtfs,
     HypeEtfsRefreshTick,
     HypeEtfsViewChanged(HypeEtfView),
-    HypeEtfsLoaded(Box<Result<HypeEtfData, String>>),
+    HypeEtfsLoaded(u64, Box<Result<HypeEtfData, String>>),
     RefreshHypeUnstakingQueue,
     HypeUnstakingQueueRefreshTick,
     HypeUnstakingWindowChanged(HypeUnstakingWindowFilter),
@@ -256,7 +302,7 @@ pub(crate) enum Message {
     HypeUnstakingSortChanged(HypeUnstakingSortField),
     ToggleHypeUnstakingMineOnly,
     ClearHypeUnstakingFilters,
-    HypeUnstakingQueueLoaded(Box<Result<HypeUnstakingQueueData, String>>),
+    HypeUnstakingQueueLoaded(u64, Box<Result<HypeUnstakingQueueData, String>>),
     CalendarImpactFilterChanged(CalendarImpactFilter),
     CalendarWindowFilterChanged(CalendarWindowFilter),
     Tick,
@@ -315,7 +361,12 @@ pub(crate) enum Message {
     OpenWalletTrackerWindow,
     OpenWalletDetailsWindow(String),
     RefreshWalletDetails(window::Id),
-    WalletDetailsLoaded(window::Id, String, Box<Result<WalletDetailsData, String>>),
+    WalletDetailsLoaded(
+        window::Id,
+        String,
+        ReadDataRequestContext,
+        Box<Result<WalletDetailsData, String>>,
+    ),
     WalletDetailsWsUpdate(Option<String>, Box<WsUserData>),
     WindowOpened(window::Id),
     WindowClosed(window::Id),
@@ -328,6 +379,7 @@ pub(crate) enum Message {
     WindowClose(window::Id),
     // Trading Journal
     JournalFillsLoaded {
+        request_id: u64,
         account_key: Option<String>,
         address: String,
         result: Result<api::UserFillsPage, String>,
@@ -356,7 +408,8 @@ pub(crate) enum Message {
     SpaghettiSwitchTimeframe(SpaghettiChartId, Timeframe),
     SpaghettiReload(SpaghettiChartId),
     SpaghettiCandlesLoaded(SpaghettiCandleFetch, Result<Vec<Candle>, String>),
-    SpaghettiWsCandleUpdate(SpaghettiChartId, String, Candle),
+    SpaghettiWsCandleUpdate(SpaghettiWsCandleContext, Candle),
+    SpaghettiWsCandleLagged(SpaghettiWsCandleContext, u64),
     SpaghettiOpenEditor(SpaghettiChartId),
     SpaghettiCloseEditor(SpaghettiChartId),
     SpaghettiEditorSearchChanged(SpaghettiChartId, String),
@@ -381,13 +434,20 @@ pub(crate) enum Message {
     WalletTrackerRefreshOne(String),
     WalletTrackerRefreshOrdersDue,
     WalletTrackerRefreshOrders(String),
-    WalletTrackerLoaded(String, Box<Result<WalletTrackerSnapshot, String>>),
-    WalletTrackerBatchLoaded(Vec<(String, Result<WalletTrackerSnapshot, String>)>),
-    WalletTrackerOrdersLoaded(String, Box<Result<usize, String>>),
+    WalletTrackerLoaded(
+        String,
+        ReadDataRequestContext,
+        Box<Result<WalletTrackerSnapshot, String>>,
+    ),
+    WalletTrackerBatchLoaded(
+        ReadDataRequestContext,
+        Vec<(String, Result<WalletTrackerSnapshot, String>)>,
+    ),
+    WalletTrackerOrdersLoaded(String, ReadDataRequestContext, Box<Result<usize, String>>),
     RefreshPortfolio,
-    PortfolioLoaded(String, Box<Result<PortfolioHistory, String>>),
+    PortfolioLoaded(String, u64, Box<Result<PortfolioHistory, String>>),
     RefreshIncome,
-    IncomeLoaded(String, Box<Result<IncomeSnapshot, String>>),
+    IncomeLoaded(String, u64, Box<Result<IncomeSnapshot, String>>),
     ToggleIncomeAlerts,
     ToggleLiquidationAlerts,
     ToggleTrackedTradeAlerts,
@@ -405,7 +465,7 @@ pub(crate) enum Message {
     SetPortfolioWindow(PortfolioWindow),
     RefreshTelegramFeed,
     TelegramFeedRefreshTick,
-    TelegramFeedLoaded(String, Box<Result<TelegramFeedPage, String>>),
+    TelegramFeedLoaded(String, u64, Box<Result<TelegramFeedPage, String>>),
     TelegramAvatarLoaded(String, String, u64, Box<Result<Vec<u8>, String>>),
     ToggleTelegramFastFeed,
     TelegramFastApiIdChanged(String),
@@ -417,29 +477,21 @@ pub(crate) enum Message {
     TelegramFastSubmitCode,
     TelegramFastSubmitPassword,
     TelegramFastSignOut,
-    TelegramFastAuthResult(Box<Result<TelegramFastAuthOutcome, String>>),
-    TelegramFastFeedEvent(TelegramFastFeedEvent),
+    TelegramFastAuthResult(u64, TelegramFastAuthMessageResult),
+    TelegramFastFeedEvent(u64, TelegramFastFeedEvent),
     TelegramFeedChannelInputChanged(String),
     TelegramFeedAddChannel,
     TelegramPrivateChannelsRefresh,
-    TelegramPrivateChannelsLoaded(Box<Result<Vec<TelegramPrivateChannelCandidate>, String>>),
+    TelegramPrivateChannelsLoaded(
+        u64,
+        Box<Result<Vec<TelegramPrivateChannelCandidate>, String>>,
+    ),
     TelegramFeedAddPrivateChannel(i64),
     ToggleTelegramPrivateChannelCandidatesExpanded,
     TelegramFeedRemoveChannel(String),
     ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
-    RefreshXFeed,
-    XFeedRefreshTick,
-    XFeedLoaded(Box<Result<XFeedPage, String>>),
-    XFeedStreamEvent(XFeedStreamEvent),
-    XFeedBearerTokenChanged(SecretInput),
-    SaveXFeedBearerToken,
-    XFeedSourceInputChanged(String),
-    XFeedAddSource,
-    XFeedRemoveSource(String),
-    ToggleXFeedStreaming,
-    ToggleXFeedNotifications,
-    ToggleXFeedSourcesExpanded,
+    ToggleTelegramFeedOutcomeMarkets,
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
@@ -461,8 +513,10 @@ pub(crate) enum Message {
     ToggleSound,
     ToggleDesktopNotifications,
     ToggleOptimisticAccountUpdates(bool),
-    PlaceBuy,
-    PlaceSell,
+    PlaceOrder {
+        is_buy: bool,
+        snapshot: TicketOrderSubmissionSnapshot,
+    },
     OrderResult {
         pending_indicator_id: Option<u64>,
         context: OneShotPlacementContext,
@@ -477,6 +531,12 @@ pub(crate) enum Message {
         account_address: String,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
+    },
+    CancelOrderStatusLoaded {
+        account_address: String,
+        oid: u64,
+        symbol: String,
+        result: Box<Result<api::OrderStatusResult, String>>,
     },
     ToggleCloseMenu(String),
     ToggleHiddenPosition(String),
@@ -512,10 +572,14 @@ pub(crate) enum Message {
         result: Box<Result<api::OrderStatusResult, String>>,
     },
     OneShotPlacementStatusLoaded {
+        request_id: u64,
         context: OneShotPlacementContext,
         result: Box<Result<api::OrderStatusResult, String>>,
     },
-    StartChase(bool), // true = buy, false = sell
+    StartChase {
+        is_buy: bool,
+        snapshot: AdvancedOrderStartSnapshot,
+    },
     StopChase,
     StopChaseById(u64),
     StopAllAdvancedOrders,
@@ -524,13 +588,25 @@ pub(crate) enum Message {
     TwapMinPriceChanged(String),
     TwapMaxPriceChanged(String),
     TwapRandomizeToggled(bool),
-    StartTwap(bool), // true = buy, false = sell
+    StartTwap {
+        is_buy: bool,
+        snapshot: TwapOrderStartSnapshot,
+    },
     StopTwap(u64),
     TwapTick,
     TwapBookUpdate {
         twap_id: u64,
         coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
         book: OrderBook,
+    },
+    TwapBookLagged {
+        twap_id: u64,
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
+        skipped: u64,
     },
     TwapSliceResult {
         twap_id: u64,
@@ -541,6 +617,12 @@ pub(crate) enum Message {
         oid: Option<u64>,
         cloid: Option<String>,
         result: Box<Result<ExchangeResponse, String>>,
+    },
+    TwapUnexpectedCancelRetryDue {
+        twap_id: u64,
+        oid: Option<u64>,
+        cloid: Option<String>,
+        attempt: u32,
     },
     TwapOrderStatusLoaded {
         twap_id: u64,
@@ -556,7 +638,16 @@ pub(crate) enum Message {
     ChaseBookUpdate {
         chase_id: u64,
         coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
         book: OrderBook,
+    },
+    ChaseBookLagged {
+        chase_id: u64,
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
+        skipped: u64,
     },
     ChaseRepriceTick,
     ChasePlaceResult {
@@ -586,10 +677,6 @@ pub(crate) enum Message {
     ChaseRestingOrder {
         coin: String,
         oid: u64,
-        is_buy: bool,
-        sz: f64,
-        limit_px: f64,
-        reduce_only: Option<bool>,
     },
     // Per-chart messages (keyed by ChartId)
     ChartFocused(ChartId),
@@ -601,8 +688,9 @@ pub(crate) enum Message {
         FundingFetchRequest,
         Box<Result<Vec<FundingRatePoint>, String>>,
     ),
-    MacroCandlesLoaded(ChartId, String, Timeframe, Result<Vec<Candle>, String>),
-    ChartWsCandleUpdate(ChartId, String, String, Candle),
+    MacroCandlesLoaded(ChartId, u64, String, Timeframe, Result<Vec<Candle>, String>),
+    ChartWsCandleUpdate(ChartId, String, String, MarketDataSourceContext, Candle),
+    ChartWsCandleLagged(ChartId, String, String, MarketDataSourceContext, u64),
     ChartPriceFlashTick,
     ChartHudOrderAnimationTick,
     ChartHudArmToggled(ChartId, ChartSurfaceId),
@@ -613,7 +701,11 @@ pub(crate) enum Message {
     ChartHoverStateChanged(ChartId, ChartSurfaceId, Option<u64>, bool, Option<u64>),
     ChartOrderCancelHoverAnimationTick,
     ChartEarningsMarkerHoverAnimationTick,
-    ChartWsAssetCtxUpdate(ChartId, String, AssetContext),
+    ChartWsAssetCtxUpdate(ChartId, String, MarketDataSourceContext, AssetContext),
+    ChartWsAssetCtxLagged(ChartId, String, MarketDataSourceContext, u64),
+    /// Result of the REST `metaAndAssetCtxs` fallback fetch for a chart symbol
+    /// (chart id, symbol the fetch was issued for, fetched context).
+    ChartAssetContextRestFetched(ChartId, String, Result<Option<AssetContext>, String>),
     ChartViewportChanged(ChartId, ChartSurfaceId, ChartViewport),
     ChartFundingPanelHeightChanged(ChartId, u16, bool),
     ChartSessionPanelHeightChanged(ChartId, u16, bool),
@@ -654,10 +746,15 @@ pub(crate) enum Message {
     QuickOrderToggleDenomination(ChartId),
     QuickOrderToggleType(ChartId),
     CloseQuickOrder(ChartId),
-    SubmitQuickOrder(ChartId, bool),
+    SubmitQuickOrder {
+        chart_id: ChartId,
+        is_buy: bool,
+        snapshot: QuickOrderSubmissionSnapshot,
+    },
     QuickOrderResult {
         pending_indicator_id: Option<u64>,
         context: OneShotPlacementContext,
+        recovery: Option<QuickOrderRecovery>,
         result: Box<Result<ExchangeResponse, String>>,
     },
     SubmitHudOrder(HudOrderRequest),
@@ -669,17 +766,26 @@ pub(crate) enum Message {
     EscapePressed(window::Id),
     // Order drag-to-move (from chart canvas)
     MoveOrderDragStarted {
+        coin: String,
         oid: u64,
     },
     MoveOrder {
+        coin: String,
         oid: u64,
         new_price: f64,
     },
     MoveOrderModifyResult {
         account_address: String,
+        coin: String,
         oid: u64,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
+    },
+    MoveOrderStatusLoaded {
+        account_address: String,
+        coin: String,
+        oid: u64,
+        result: Box<Result<api::OrderStatusResult, String>>,
     },
     // Global messages
     SymbolsLoaded(Result<api::ExchangeSymbolsPayload, String>),
@@ -690,13 +796,20 @@ pub(crate) enum Message {
     SymbolSearchHip3DexFilterChanged(String),
     SymbolSearchContextsLoaded(
         u64,
+        Vec<String>,
+        u64,
         Result<HashMap<String, crate::api::WatchlistContext>, String>,
     ),
     OutcomeSearchChanged(String),
     OutcomeMarketGroupToggled(String),
-    OutcomeVolumesLoaded(Result<HashMap<String, crate::api::OutcomeVolume24h>, String>),
+    OutcomeVolumesLoaded(
+        u64,
+        Vec<String>,
+        Result<HashMap<String, crate::api::OutcomeVolume24h>, String>,
+    ),
     SymbolSelected(String),
     BookLoaded {
+        request_id: u64,
         id: OrderBookId,
         coin: String,
         tick_size: f64,
@@ -707,9 +820,28 @@ pub(crate) enum Message {
         id: OrderBookId,
         coin: String,
         sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
         book: OrderBook,
     },
-    OrderBookWsAssetCtxUpdate(OrderBookId, AssetContext),
+    OrderBookWsBookLagged {
+        id: OrderBookId,
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
+        skipped: u64,
+    },
+    OrderBookWsAssetCtxUpdate {
+        id: OrderBookId,
+        coin: String,
+        source_context: MarketDataSourceContext,
+        ctx: AssetContext,
+    },
+    OrderBookWsAssetCtxLagged {
+        id: OrderBookId,
+        coin: String,
+        source_context: MarketDataSourceContext,
+        skipped: u64,
+    },
     SetBookTickSize(OrderBookId, f64),
     ToggleOrderBookCenterOnMid(OrderBookId),
     ToggleOrderBookReverseSide(OrderBookId),
@@ -725,24 +857,39 @@ pub(crate) enum Message {
     SaveHydromancerKey,
     ReconnectLiquidations,
     ReconnectTrackedTrades,
-    WsHydromancerLiquidation(crate::ws::HydromancerWsMessage),
-    WsHydromancerTrackedTrades(crate::ws::HydromancerWsMessage),
+    WsHydromancerLiquidation {
+        hydromancer_key_generation: u64,
+        reconnect_nonce: u64,
+        message: crate::ws::HydromancerWsMessage,
+    },
+    WsHydromancerTrackedTrades {
+        hydromancer_key_generation: u64,
+        reconnect_nonce: u64,
+        tracked_addresses: std::sync::Arc<[String]>,
+        message: crate::ws::HydromancerWsMessage,
+    },
     ClearLiquidations,
     LiquidationFeedScrolled(iced::widget::scrollable::Viewport),
     ClearTrackedTrades,
     ConnectWallet,
     DisconnectWallet,
-    AccountDataLoaded(String, Box<Result<AccountData, String>>),
+    AccountDataLoaded(
+        String,
+        AccountDataRequestContext,
+        Box<Result<AccountData, String>>,
+    ),
+    RetryTwapReconciliationAccountData(String),
     RefreshAccountData,
+    AccountRefreshBackoffElapsed(u64),
     AllMidsBootstrapLoaded(String, Result<HashMap<String, f64>, String>),
     WsUserDataUpdate(Option<String>, Box<WsUserData>),
     // HyperDash liquidation heatmap
     HyperdashKeyInputChanged(SecretInput),
     SaveHyperdashKey,
     ToggleLiquidationOverlay(ChartId),
-    ChartLiquidationLoaded(String, Box<Result<LiquidationLevel, String>>),
+    ChartLiquidationLoaded(String, u64, Box<Result<LiquidationLevel, String>>),
     RefreshLiquidations,
-    LiquidationsDistributionLoaded(String, Box<Result<LiquidationLevel, String>>),
+    LiquidationsDistributionLoaded(String, u64, Box<Result<LiquidationLevel, String>>),
     RefreshLiquidationsDistribution,
     LiquidationsDistributionSearchChanged(String),
     ToggleLiquidationsDistributionSymbolPicker,
@@ -754,13 +901,13 @@ pub(crate) enum Message {
     ResetLiquidationsDistributionZoom,
     // HyperDash historical liquidation heatmap
     ToggleHeatmapOverlay(ChartId),
-    ChartHeatmapLoaded(String, Box<Result<LiquidationHeatmap, String>>),
+    ChartHeatmapLoaded(String, u64, Box<Result<LiquidationHeatmap, String>>),
     RefreshHeatmap,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, SecretInput};
+    use super::{Message, SecretInput, TelegramFastAuthMessageResult};
 
     #[test]
     fn secret_input_debug_redacts_value() {
@@ -778,7 +925,10 @@ mod tests {
             Message::TelegramFastApiHashChanged("sentinel-secret".into()),
             Message::TelegramFastCodeChanged("sentinel-secret".into()),
             Message::TelegramFastPasswordChanged("sentinel-secret".into()),
-            Message::XFeedBearerTokenChanged("sentinel-secret".into()),
+            Message::TelegramFastAuthResult(
+                1,
+                TelegramFastAuthMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
             Message::WalletKeyInputChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),
             Message::HyperdashKeyInputChanged("sentinel-secret".into()),

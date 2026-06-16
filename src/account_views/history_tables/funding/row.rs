@@ -7,6 +7,7 @@ use crate::account_views::history_tables::style::history_signed_value_color;
 use crate::app_state::TradingTerminal;
 use crate::helpers::{self, optional_value_color};
 use crate::message::Message;
+use iced::widget::text::Wrapping;
 use iced::widget::{Space, row, text};
 use iced::{Element, Fill, Theme};
 
@@ -36,24 +37,27 @@ impl TradingTerminal {
             coin_content = coin_content.push(icon).push(Space::new().width(4.0));
         }
         coin_content = coin_content
-            .push(text(&d.coin).size(12))
+            .push(text(&d.coin).size(12).wrapping(Wrapping::None))
             .align_y(iced::Alignment::Center);
 
         row![
-            text(time_str).size(12).width(Fill),
+            text(time_str).size(12).width(Fill).wrapping(Wrapping::None),
             coin_content.width(Fill),
             text(funding_rate_display(rate))
                 .size(12)
                 .color(rate_color)
-                .width(Fill),
+                .width(Fill)
+                .wrapping(Wrapping::None),
             text(valid_history_wire_value(&d.szi))
                 .size(12)
                 .color(optional_value_color(szi, weak_color, invalid_color))
-                .width(Fill),
+                .width(Fill)
+                .wrapping(Wrapping::None),
             text(amount_display)
                 .size(12)
                 .color(amount_color)
-                .width(Fill),
+                .width(Fill)
+                .wrapping(Wrapping::None),
         ]
         .spacing(4)
         .into()

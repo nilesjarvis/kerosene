@@ -48,18 +48,17 @@ impl TradingTerminal {
                 self.refresh_symbol_search_results();
                 self.request_symbol_search_context_refresh(false)
             }
-            Message::SymbolSearchContextsLoaded(requested_at, result) => {
-                apply_contexts_loaded(
-                    &mut self.symbol_search_contexts_loading,
-                    &mut self.symbol_search_contexts_last_fetch_ms,
-                    &mut self.symbol_search_ctxs,
-                    &mut self.symbol_search_status,
-                    requested_at,
-                    result,
-                );
-                self.refresh_symbol_search_results();
-                Task::none()
-            }
+            Message::SymbolSearchContextsLoaded(
+                request_id,
+                requested_symbols,
+                requested_at,
+                result,
+            ) => self.apply_symbol_search_contexts_loaded(
+                request_id,
+                requested_symbols,
+                requested_at,
+                result,
+            ),
             Message::OutcomeSearchChanged(query) => {
                 self.outcome_search_query = query;
                 Task::none()
@@ -70,7 +69,9 @@ impl TradingTerminal {
                 }
                 Task::none()
             }
-            Message::OutcomeVolumesLoaded(result) => self.apply_outcome_volumes_loaded(result),
+            Message::OutcomeVolumesLoaded(request_id, requested_symbols, result) => {
+                self.apply_outcome_volumes_loaded(request_id, requested_symbols, result)
+            }
             Message::SymbolSelected(key) => self.select_market_symbol(key),
             _ => Task::none(),
         }
@@ -98,8 +99,9 @@ impl TradingTerminal {
     }
 
     /// A failed spotMeta/outcomeMeta request leaves that market type absent
-    /// from the payload; keep the previously loaded symbols of that type so
-    /// labels never regress to raw keys, and let the next refresh tick retry.
+    /// from the payload. Spot symbols can remain tradable, but retained outcome
+    /// symbols are label-only until fresh outcome metadata proves they are
+    /// orderable again.
     fn merge_symbols_payload(
         &self,
         payload: ExchangeSymbolsPayload,
@@ -123,7 +125,17 @@ impl TradingTerminal {
                 self.exchange_symbols
                     .iter()
                     .filter(|symbol| symbol.market_type == MarketType::Outcome)
-                    .cloned(),
+                    .cloned()
+                    .map(|mut symbol| {
+                        symbol.display_name = Some(
+                            self.outcome_display_labels
+                                .get(&symbol.key)
+                                .cloned()
+                                .unwrap_or_else(|| Self::exchange_symbol_display_name(&symbol)),
+                        );
+                        symbol.outcome = None;
+                        symbol
+                    }),
             );
         }
         if spot_meta_failed || outcome_meta_failed {
@@ -201,9 +213,9 @@ impl TradingTerminal {
                 let symbols = self.merge_symbols_payload(payload);
                 let symbols_changed = self.exchange_symbols != symbols;
                 if outcome_meta_failed
-                    && !symbols
-                        .iter()
-                        .any(|symbol| symbol.market_type == MarketType::Outcome)
+                    && !symbols.iter().any(|symbol| {
+                        symbol.market_type == MarketType::Outcome && symbol.outcome.is_some()
+                    })
                 {
                     self.symbol_search_status = Some((
                         "Outcome market metadata failed to load; retrying shortly".to_string(),
@@ -219,12 +231,12 @@ impl TradingTerminal {
                 self.telegram_feed
                     .rebuild_ticker_mention_resolver(&self.exchange_symbols);
                 self.refresh_telegram_ticker_mentions();
-                self.refresh_x_ticker_mentions();
                 let mut market_universe_changed = false;
                 let normalized_universe =
                     self.normalize_market_universe_selection(self.market_universe.clone());
                 if normalized_universe != self.market_universe {
                     self.market_universe = normalized_universe;
+                    self.clear_percentage_order_quantity();
                     market_universe_changed = true;
                     self.symbol_search_status = Some((
                         "Saved market universe was unavailable; showing all markets".to_string(),
@@ -273,33 +285,36 @@ impl TradingTerminal {
                     }
                 }
 
-                let chart_backfill_source = self.chart_backfill_source;
-                let hydromancer_api_key = self.hydromancer_api_key.trim().to_string();
+                let chart_backfill_request_context = self.chart_backfill_request_context();
+                let hydromancer_api_key = self.hydromancer_api_key_for_task();
+                let mut reset_quick_order_chart_ids = Vec::new();
                 for (id, inst) in self.charts.iter_mut() {
                     let key = inst.symbol.clone();
                     let symbol = resolve_exchange_symbol(&self.exchange_symbols, &key);
 
                     if let Some(valid) = symbol {
                         let display = Self::exchange_symbol_display_name(valid);
-                        if inst.symbol_display != display {
-                            inst.symbol_display = display.clone();
-                            inst.chart.set_symbol_label(display);
+                        let symbol_changed = valid.key != inst.symbol;
+
+                        if symbol_changed || inst.symbol_display != display {
+                            inst.set_symbol_identity(valid.key.clone(), display);
                         }
 
-                        if valid.key != inst.symbol {
-                            inst.symbol = valid.key.clone();
+                        if symbol_changed {
+                            inst.reset_quick_order_for_account_reset();
+                            reset_quick_order_chart_ids.push(*id);
                             inst.chart.status = ChartStatus::Loading;
                             inst.chart.candles.clear();
+                            inst.chart.clear_macro_candles();
                             inst.chart.candle_cache.clear();
                             inst.set_asset_context(None);
                             inst.candle_fetch_error = None;
-                            inst.last_price_flash = None;
-                            Self::clear_earnings_display(inst);
+                            Self::clear_chart_symbol_display_state(inst);
                             let request = Self::build_candle_fetch_request(
                                 *id,
                                 &valid.key,
                                 inst.interval,
-                                chart_backfill_source,
+                                chart_backfill_request_context,
                                 None,
                                 0,
                             );
@@ -308,10 +323,18 @@ impl TradingTerminal {
                                 request,
                                 hydromancer_api_key.clone(),
                             )];
-                            chart_tasks.extend(Self::fetch_macro_candles_tasks(*id, &valid.key));
+                            let macro_request_id = inst.next_macro_candles_request_id();
+                            chart_tasks.extend(Self::fetch_macro_candles_tasks(
+                                *id,
+                                macro_request_id,
+                                &valid.key,
+                            ));
                             tasks.push(Task::batch(chart_tasks));
                         }
                     }
+                }
+                for chart_id in reset_quick_order_chart_ids {
+                    self.chart_quick_order_surface.remove(&chart_id);
                 }
 
                 self.refresh_spaghetti_series_displays();
@@ -353,14 +376,80 @@ impl TradingTerminal {
 
         self.switch_active_symbol_internal(key)
     }
+
+    fn apply_symbol_search_contexts_loaded(
+        &mut self,
+        request_id: u64,
+        requested_symbols: Vec<String>,
+        requested_at: u64,
+        result: Result<std::collections::HashMap<String, crate::api::WatchlistContext>, String>,
+    ) -> Task<Message> {
+        if request_id != self.symbol_search_contexts_request_id {
+            return Task::none();
+        }
+
+        self.symbol_search_contexts_request_id =
+            self.symbol_search_contexts_request_id.saturating_add(1);
+        let refresh_pending = self.symbol_search_contexts_refresh_pending;
+        self.symbol_search_contexts_refresh_pending = false;
+        self.symbol_search_contexts_request_symbols.clear();
+
+        let result = result.map(|mut contexts| {
+            let requested_symbols: std::collections::HashSet<String> =
+                requested_symbols.into_iter().collect();
+            contexts.retain(|symbol, _| requested_symbols.contains(symbol));
+            contexts
+        });
+
+        apply_contexts_loaded(
+            &mut self.symbol_search_contexts_loading,
+            &mut self.symbol_search_contexts_last_fetch_ms,
+            &mut self.symbol_search_ctxs,
+            &mut self.symbol_search_status,
+            requested_at,
+            result,
+        );
+        self.refresh_symbol_search_results();
+
+        if refresh_pending {
+            return self.request_symbol_search_context_refresh(true);
+        }
+
+        Task::none()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
-    use crate::chart_state::ChartInstance;
+    use crate::api::{Candle, ExchangeSymbol, MarketType, OutcomeSymbolInfo, WatchlistContext};
+    use crate::chart_state::{ChartInstance, ChartSurfaceId};
+    use crate::hydromancer_api::FundingRatePoint;
+    use crate::hyperdash_api::{
+        HeatmapFetchParams, LiquidationBucket, LiquidationHeatmap, LiquidationLevel,
+    };
+    use crate::market_state::{SymbolSearchMarketFilter, SymbolSearchSortMode};
+    use crate::message::Message;
+    use crate::order_execution::QuickOrderForm;
     use crate::timeframe::Timeframe;
+    use std::collections::HashMap;
+
+    fn perp_symbol(key: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "crypto".to_string(),
+            display_name: None,
+            keywords: Vec::new(),
+            asset_index: 0,
+            collateral_token: Some(0),
+            sz_decimals: 0,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: MarketType::Perp,
+            outcome: None,
+        }
+    }
 
     fn outcome_symbol(key: &str) -> ExchangeSymbol {
         ExchangeSymbol {
@@ -406,12 +495,235 @@ mod tests {
         }
     }
 
+    fn context(day_vlm: f64) -> WatchlistContext {
+        WatchlistContext {
+            funding: None,
+            prev_day_px: None,
+            day_vlm: Some(day_vlm),
+        }
+    }
+
     fn payload(symbols: Vec<ExchangeSymbol>) -> ExchangeSymbolsPayload {
         ExchangeSymbolsPayload {
             symbols,
             spot_meta_failed: false,
             outcome_meta_failed: false,
         }
+    }
+
+    fn quick_order_form() -> QuickOrderForm {
+        QuickOrderForm {
+            price: 100.0,
+            quantity: "2.5".to_string(),
+            quantity_is_usd: false,
+            percentage: 25.0,
+            quantity_provenance: None,
+            is_limit: true,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 300.0,
+            chart_h: 200.0,
+        }
+    }
+
+    #[test]
+    fn symbol_search_context_filter_change_queues_current_scope_after_in_flight_result() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC"), perp_symbol("xyz:ETH")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+        terminal.symbol_search_market_filter = SymbolSearchMarketFilter::NativePerps;
+
+        let _task = terminal.request_symbol_search_context_refresh(true);
+        let stale_request_id = terminal.symbol_search_contexts_request_id;
+        assert!(terminal.symbol_search_contexts_loading);
+        assert_eq!(
+            terminal.symbol_search_contexts_request_symbols,
+            vec!["BTC".to_string()]
+        );
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchMarketFilterChanged(
+            SymbolSearchMarketFilter::Hip3,
+        ));
+        assert!(terminal.symbol_search_contexts_refresh_pending);
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            stale_request_id,
+            vec!["BTC".to_string()],
+            10,
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+        ));
+
+        assert!(
+            terminal.symbol_search_contexts_loading,
+            "queued refresh should start for the current HIP-3 scope"
+        );
+        assert!(!terminal.symbol_search_contexts_refresh_pending);
+        assert_eq!(
+            terminal.symbol_search_contexts_request_symbols,
+            vec!["xyz:ETH".to_string()]
+        );
+        let current_request_id = terminal.symbol_search_contexts_request_id;
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            current_request_id,
+            vec!["xyz:ETH".to_string()],
+            11,
+            Ok(HashMap::from([("xyz:ETH".to_string(), context(2.0))])),
+        ));
+
+        assert!(!terminal.symbol_search_contexts_loading);
+        assert!(!terminal.symbol_search_ctxs.contains_key("BTC"));
+        assert_eq!(
+            terminal
+                .symbol_search_ctxs
+                .get("xyz:ETH")
+                .map(|ctx| ctx.day_vlm),
+            Some(Some(2.0))
+        );
+    }
+
+    #[test]
+    fn stale_symbol_search_context_result_is_ignored_after_current_completion() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+
+        let _task = terminal.request_symbol_search_context_refresh(true);
+        let request_id = terminal.symbol_search_contexts_request_id;
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            request_id,
+            vec!["BTC".to_string()],
+            10,
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+        ));
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            request_id,
+            vec!["BTC".to_string()],
+            11,
+            Ok(HashMap::from([("BTC".to_string(), context(2.0))])),
+        ));
+
+        assert!(!terminal.symbol_search_contexts_loading);
+        assert_eq!(
+            terminal
+                .symbol_search_ctxs
+                .get("BTC")
+                .map(|ctx| ctx.day_vlm),
+            Some(Some(1.0))
+        );
+        assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, Some(10));
+    }
+
+    #[test]
+    fn symbol_search_context_result_keeps_only_requested_symbols() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC"), perp_symbol("ETH")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+
+        let _task = terminal.request_symbol_search_context_refresh(true);
+        let request_id = terminal.symbol_search_contexts_request_id;
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            request_id,
+            vec!["BTC".to_string()],
+            10,
+            Ok(HashMap::from([
+                ("BTC".to_string(), context(1.0)),
+                ("ETH".to_string(), context(2.0)),
+            ])),
+        ));
+
+        assert_eq!(terminal.symbol_search_ctxs.len(), 1);
+        assert!(terminal.symbol_search_ctxs.contains_key("BTC"));
+        assert!(!terminal.symbol_search_ctxs.contains_key("ETH"));
+    }
+
+    #[test]
+    fn symbol_search_context_success_clears_stale_omitted_requested_symbol() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+        terminal
+            .symbol_search_ctxs
+            .insert("BTC".to_string(), context(9.0));
+        terminal.symbol_search_contexts_loading = true;
+        terminal.symbol_search_contexts_request_id = 7;
+        terminal.symbol_search_contexts_request_symbols = vec!["BTC".to_string()];
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            7,
+            vec!["BTC".to_string()],
+            10,
+            Ok(HashMap::new()),
+        ));
+
+        assert!(!terminal.symbol_search_contexts_loading);
+        assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, Some(10));
+        assert!(!terminal.symbol_search_ctxs.contains_key("BTC"));
+    }
+
+    #[test]
+    fn symbol_search_context_error_keeps_existing_cache_without_marking_fresh() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+        terminal.symbol_search_contexts_last_fetch_ms = Some(10);
+        terminal
+            .symbol_search_ctxs
+            .insert("BTC".to_string(), context(9.0));
+        terminal.symbol_search_contexts_loading = true;
+        terminal.symbol_search_contexts_request_id = 7;
+        terminal.symbol_search_contexts_request_symbols = vec!["BTC".to_string()];
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            7,
+            vec!["BTC".to_string()],
+            20,
+            Err("network".to_string()),
+        ));
+
+        assert!(!terminal.symbol_search_contexts_loading);
+        assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, Some(10));
+        assert_eq!(
+            terminal
+                .symbol_search_ctxs
+                .get("BTC")
+                .map(|ctx| ctx.day_vlm),
+            Some(Some(9.0))
+        );
+        assert_eq!(
+            terminal
+                .symbol_search_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("24h volume refresh failed: network", true))
+        );
+    }
+
+    #[test]
+    fn empty_symbol_search_scope_invalidates_in_flight_context_result() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![perp_symbol("BTC")];
+        terminal.symbol_search_sort_mode = SymbolSearchSortMode::Volume24h;
+
+        let _task = terminal.request_symbol_search_context_refresh(true);
+        let stale_request_id = terminal.symbol_search_contexts_request_id;
+        terminal.exchange_symbols.clear();
+        let _task = terminal.request_symbol_search_context_refresh(true);
+
+        assert!(!terminal.symbol_search_contexts_loading);
+        assert!(terminal.symbol_search_contexts_request_symbols.is_empty());
+        assert!(terminal.symbol_search_ctxs.is_empty());
+        assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, None);
+
+        let _task = terminal.update_symbol_search_market(Message::SymbolSearchContextsLoaded(
+            stale_request_id,
+            vec!["BTC".to_string()],
+            10,
+            Ok(HashMap::from([("BTC".to_string(), context(1.0))])),
+        ));
+
+        assert!(terminal.symbol_search_ctxs.is_empty());
+        assert_eq!(terminal.symbol_search_contexts_last_fetch_ms, None);
     }
 
     #[test]
@@ -434,7 +746,128 @@ mod tests {
     }
 
     #[test]
-    fn symbols_loaded_keeps_outcome_symbols_when_outcome_meta_fails() {
+    fn symbols_loaded_clears_stale_macro_candles_when_chart_key_is_canonicalized() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let mut canonical = perp_symbol("xyz:BTC");
+        canonical.ticker = "BTC".to_string();
+
+        let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        chart.chart.daily_candles = vec![Candle::test_flat(1_000, 100.0)];
+        chart.chart.weekly_candles = vec![Candle::test_flat(2_000, 200.0)];
+        chart.chart.monthly_candles = vec![Candle::test_flat(3_000, 300.0)];
+        terminal.charts.insert(7, chart);
+
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![canonical])));
+
+        let chart = terminal.charts.get(&7).expect("chart");
+        assert_eq!(chart.symbol, "xyz:BTC");
+        assert!(chart.chart.daily_candles.is_empty());
+        assert!(chart.chart.weekly_candles.is_empty());
+        assert!(chart.chart.monthly_candles.is_empty());
+        assert_eq!(chart.macro_candles_request_id, 1);
+    }
+
+    #[test]
+    fn symbols_loaded_disarms_hud_when_chart_symbol_key_rewrites() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let mut canonical = perp_symbol("xyz:BTC");
+        canonical.ticker = "BTC".to_string();
+
+        let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        chart
+            .chart
+            .set_crosshair_style(crate::config::ChartCrosshairStyle::Hud);
+        chart.chart.set_hud_armed_at(true, 1_000);
+        assert!(chart.chart.hud_armed());
+        terminal.charts.insert(7, chart);
+
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![canonical])));
+
+        let chart = terminal.charts.get(&7).expect("chart");
+        assert_eq!(chart.symbol, "xyz:BTC");
+        assert_eq!(chart.chart.symbol_key, "xyz:BTC");
+        assert!(!chart.chart.hud_armed());
+    }
+
+    #[test]
+    fn symbols_loaded_resets_quick_order_when_chart_symbol_key_rewrites() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let mut canonical = perp_symbol("xyz:BTC");
+        canonical.ticker = "BTC".to_string();
+
+        let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        chart.set_quick_order(quick_order_form());
+        chart.track_last_price_update(Some(100.0), 101.0, 1_000);
+        chart.heatmap_last_fetch = Some(HeatmapFetchParams {
+            coin: "BTC".to_string(),
+            min_price: 90.0,
+            max_price: 110.0,
+            start_time: 1,
+            end_time: 2,
+        });
+        chart.heatmap_status = Some(("stale heatmap".to_string(), true));
+        chart.heatmap_fetching = true;
+        chart.heatmap_data = Some(LiquidationHeatmap {
+            rects: Vec::new(),
+            max_abs_usd: 1.0,
+        });
+        chart.liquidation_status = Some(("stale liquidations".to_string(), true));
+        chart.liquidation_fetching = true;
+        chart.liquidation_pending_key = Some("BTC".to_string());
+        chart.liquidation_data = Some(LiquidationLevel {
+            coin: "BTC".to_string(),
+            min: 90.0,
+            max: 110.0,
+            liquidations: Vec::new(),
+        });
+        chart.chart.liquidation_buckets = vec![LiquidationBucket {
+            price_center: 100.0,
+            long_coins: 1.0,
+            short_coins: 0.0,
+            long_usd: 100.0,
+            short_usd: 0.0,
+        }];
+        chart.chart.funding_rates = vec![FundingRatePoint {
+            time_ms: 1,
+            rate: 0.01,
+        }];
+        chart.chart.funding_status = Some(("stale funding".to_string(), false));
+        terminal.charts.insert(7, chart);
+        terminal
+            .chart_quick_order_surface
+            .insert(7, ChartSurfaceId::Docked(7));
+
+        let _task = terminal.apply_symbols_loaded(Ok(payload(vec![canonical])));
+
+        let chart = terminal.charts.get(&7).expect("chart");
+        assert_eq!(chart.symbol, "xyz:BTC");
+        assert_eq!(chart.chart.symbol_key, "xyz:BTC");
+        assert!(chart.quick_order.is_none());
+        assert!(!chart.chart.quick_order_open);
+        assert_eq!(chart.last_quick_order_symbol, "");
+        assert!(chart.last_price_flash.is_none());
+        assert!(chart.heatmap_last_fetch.is_none());
+        assert!(chart.heatmap_status.is_none());
+        assert!(!chart.heatmap_fetching);
+        assert!(chart.heatmap_data.is_none());
+        assert!(chart.liquidation_status.is_none());
+        assert!(!chart.liquidation_fetching);
+        assert!(chart.liquidation_pending_key.is_none());
+        assert!(chart.liquidation_data.is_none());
+        assert!(chart.chart.liquidation_buckets.is_empty());
+        assert!(chart.chart.funding_rates.is_empty());
+        assert!(chart.chart.funding_status.is_none());
+        assert!(!terminal.chart_quick_order_surface.contains_key(&7));
+    }
+
+    #[test]
+    fn symbols_loaded_keeps_outcome_labels_when_outcome_meta_fails_but_rejects_orderability() {
         let mut terminal = TradingTerminal::boot().0;
         let _task = terminal.apply_symbols_loaded(Ok(payload(vec![outcome_symbol("#950")])));
         assert_eq!(terminal.exchange_symbols.len(), 1);
@@ -451,6 +884,27 @@ mod tests {
             "previously loaded outcome symbols must survive a failed outcomeMeta refresh"
         );
         assert_eq!(terminal.exchange_symbols[0].key, "#950");
+        assert_eq!(
+            terminal.exchange_symbols[0].display_name.as_deref(),
+            Some("YES: Will BTC close green?")
+        );
+        assert!(terminal.exchange_symbols[0].outcome.is_none());
+        assert!(!terminal.exchange_symbols[0].is_user_selectable_market());
+        assert!(!terminal.exchange_symbol_is_orderable(&terminal.exchange_symbols[0]));
+        assert_eq!(
+            terminal.display_name_for_symbol("#950"),
+            "YES: Will BTC close green?"
+        );
+        assert_eq!(
+            terminal
+                .symbol_search_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some((
+                "Outcome market metadata failed to load; retrying shortly",
+                true
+            ))
+        );
     }
 
     #[test]

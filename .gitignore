@@ -14,6 +14,9 @@ Thumbs.db
 *.tmp
 *.temp
 
+# Long-running cleanup scratchpad (process log, not source-of-truth docs)
+/audit/codebase-cleanup-progress.md
+
 # Local scratch/transcript artifacts from pre-open-source cleanup
 /check_*
 /explore

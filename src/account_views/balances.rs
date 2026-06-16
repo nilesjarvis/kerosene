@@ -17,9 +17,10 @@ use iced::Element;
 impl TradingTerminal {
     pub(crate) fn view_balances(&self) -> Element<'_, Message> {
         let theme = self.theme();
-        let balances: Vec<_> = self
-            .account_data
-            .as_ref()
+        let snapshot = self
+            .connected_order_account_snapshot()
+            .map(|(_, data)| data);
+        let balances: Vec<_> = snapshot
             .map(|d| {
                 d.spot
                     .balances

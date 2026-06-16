@@ -122,3 +122,29 @@ fn completed_chase_with_in_flight_modify_defers_safety_cancel() {
     assert_eq!(chase.filled_size, 1.0);
     assert_eq!(chase.lifecycle, ChaseLifecycle::Modifying { oid: 42 });
 }
+
+#[test]
+fn account_refresh_fill_reconciliation_ignores_chase_for_other_connected_account() {
+    let mut chase = chase_order();
+    chase.account_address = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+    chase.lifecycle = ChaseLifecycle::Stopping {
+        phase: ChaseStopPhase::VerifyingCancel { oid: 42 },
+    };
+    chase.stop_reason = Some(("Chase stopped".to_string(), false));
+    let mut terminal =
+        terminal_with_chase_fills(chase, vec![fill_with_oid(1_001, 42, "100", "1.0")]);
+    terminal.connected_address = Some("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string());
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.filled_size, 0.0);
+    assert_eq!(chase.remaining_size, 1.0);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Stopping {
+            phase: ChaseStopPhase::VerifyingCancel { oid: 42 }
+        }
+    );
+    assert!(terminal.advanced_order_history.is_empty());
+}

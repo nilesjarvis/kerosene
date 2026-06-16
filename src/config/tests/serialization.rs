@@ -5,6 +5,7 @@ mod charts;
 mod credentials;
 mod feeds;
 mod history;
+mod live_watchlist;
 mod panes;
 mod preferences;
 

@@ -56,7 +56,11 @@ impl TradingTerminal {
                 .unwrap_or_else(|| self.display_name_for_symbol(sym_key));
             let mid_px = self.resolve_mid_for_symbol(sym_key);
             let ctx = self.live_watchlist_ctxs.get(sym_key).or_else(|| {
-                sym_meta.and_then(|symbol| self.live_watchlist_ctxs.get(&symbol.ticker))
+                sym_meta.and_then(|symbol| {
+                    (symbol.key == symbol.ticker)
+                        .then(|| self.live_watchlist_ctxs.get(&symbol.ticker))
+                        .flatten()
+                })
             });
             let prev_px = ctx.and_then(|ctx| ctx.prev_day_px);
             let funding = ctx.and_then(|ctx| ctx.funding);

@@ -8,6 +8,78 @@ use std::time::{Duration, Instant};
 
 pub(super) const NUKE_CONFIRMATION_WINDOW: Duration = Duration::from_secs(5);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NukeConfirmation {
+    armed_at: Instant,
+    fingerprint: NukePlanFingerprint,
+}
+
+impl NukeConfirmation {
+    pub(super) fn new(armed_at: Instant, account_address: Option<&str>, plan: &NukePlan) -> Self {
+        Self {
+            armed_at,
+            fingerprint: NukePlanFingerprint::new(account_address, plan),
+        }
+    }
+
+    pub(super) fn matches_plan(&self, account_address: Option<&str>, plan: &NukePlan) -> bool {
+        self.fingerprint == NukePlanFingerprint::new(account_address, plan)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NukePlanFingerprint {
+    account_address: Option<String>,
+    ready: Vec<NukeReadyFingerprint>,
+    skipped: Vec<(String, String)>,
+    hidden_skipped: Vec<(String, String)>,
+}
+
+impl NukePlanFingerprint {
+    fn new(account_address: Option<&str>, plan: &NukePlan) -> Self {
+        let mut ready = plan
+            .ready
+            .iter()
+            .map(|(coin, order)| NukeReadyFingerprint {
+                coin: coin.clone(),
+                asset: order.asset,
+                is_buy: order.is_buy,
+                size: order.size.clone(),
+            })
+            .collect::<Vec<_>>();
+        ready.sort();
+
+        let mut skipped = plan
+            .skipped
+            .iter()
+            .map(|(coin, reason)| (coin.clone(), format!("{reason:?}")))
+            .collect::<Vec<_>>();
+        skipped.sort();
+
+        let mut hidden_skipped = plan
+            .hidden_skipped
+            .iter()
+            .map(|(coin, reason)| (coin.clone(), format!("{reason:?}")))
+            .collect::<Vec<_>>();
+        hidden_skipped.sort();
+
+        Self {
+            account_address: account_address.map(str::to_string),
+            ready,
+            skipped,
+            hidden_skipped,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct NukeReadyFingerprint {
+    coin: String,
+    asset: u32,
+    is_buy: bool,
+    size: String,
+}
+
 pub(super) fn nuke_arm_status_for_plan(plan: &NukePlan) -> String {
     if plan.is_empty() {
         return "No positions to close".to_string();
@@ -49,6 +121,11 @@ pub(super) fn nuke_arm_status_for_plan(plan: &NukePlan) -> String {
     }
 }
 
-pub(crate) fn nuke_confirmation_is_armed(armed_at: Option<Instant>, now: Instant) -> bool {
-    armed_at.is_some_and(|armed_at| now.duration_since(armed_at) <= NUKE_CONFIRMATION_WINDOW)
+pub(crate) fn nuke_confirmation_is_armed(
+    confirmation: Option<&NukeConfirmation>,
+    now: Instant,
+) -> bool {
+    confirmation.is_some_and(|confirmation| {
+        now.duration_since(confirmation.armed_at) <= NUKE_CONFIRMATION_WINDOW
+    })
 }

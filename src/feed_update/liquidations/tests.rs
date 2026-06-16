@@ -1,7 +1,30 @@
 use crate::api::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
-use crate::ws::LiquidationEvent;
+use crate::ws::{HydromancerWsMessage, LiquidationEvent};
+
+fn scoped_liquidation_message(
+    terminal: &TradingTerminal,
+    message: HydromancerWsMessage,
+) -> Message {
+    Message::WsHydromancerLiquidation {
+        hydromancer_key_generation: terminal.hydromancer_key_generation,
+        reconnect_nonce: terminal.liquidations_reconnect_nonce,
+        message,
+    }
+}
+
+fn scoped_liquidation_message_with(
+    hydromancer_key_generation: u64,
+    reconnect_nonce: u64,
+    message: HydromancerWsMessage,
+) -> Message {
+    Message::WsHydromancerLiquidation {
+        hydromancer_key_generation,
+        reconnect_nonce,
+        message,
+    }
+}
 
 fn outcome_symbol(key: &str) -> ExchangeSymbol {
     ExchangeSymbol {
@@ -64,9 +87,8 @@ fn liquidation_alert_toast_resolves_outcome_coin_label() {
         tx_index: 1,
     };
 
-    let _ = terminal.update_liquidation_feed(Message::WsHydromancerLiquidation(
-        crate::ws::HydromancerWsMessage::Event(liquidation),
-    ));
+    let message = scoped_liquidation_message(&terminal, HydromancerWsMessage::Event(liquidation));
+    let _ = terminal.update_liquidation_feed(message);
 
     let toast = terminal.toasts.last().expect("liquidation alert toast");
     assert!(
@@ -91,15 +113,109 @@ fn clear_liquidations_resets_rows_summary_and_chart_buckets() {
         tx_index: 1,
     };
 
-    let _ = terminal.update_liquidation_feed(Message::WsHydromancerLiquidation(
-        crate::ws::HydromancerWsMessage::Event(liquidation),
-    ));
+    let message = scoped_liquidation_message(&terminal, HydromancerWsMessage::Event(liquidation));
+    let _ = terminal.update_liquidation_feed(message);
     assert!(!terminal.liquidations.is_empty());
     assert!(!terminal.liquidation_summary_buckets.is_empty());
     assert!(!terminal.liquidation_chart_buckets.is_empty());
 
     let _ = terminal.update_liquidation_feed(Message::ClearLiquidations);
 
+    assert!(terminal.liquidations.is_empty());
+    assert!(terminal.liquidation_summary_buckets.is_empty());
+    assert!(terminal.liquidation_chart_buckets.is_empty());
+}
+
+#[test]
+fn lagged_liquidation_stream_marks_stale_and_clears_derived_buckets() {
+    let mut terminal = TradingTerminal::boot().0;
+    let liquidation = LiquidationEvent {
+        coin: "HYPE".to_string(),
+        price: 25.0,
+        size: 4.0,
+        is_buy: false,
+        time_ms: TradingTerminal::now_ms(),
+        method: "market".to_string(),
+        liquidated_user: "0x0000000000000000000000000000000000000001".to_string(),
+        tx_index: 1,
+    };
+
+    let message = scoped_liquidation_message(&terminal, HydromancerWsMessage::Event(liquidation));
+    let _ = terminal.update_liquidation_feed(message);
+    assert!(terminal.liquidations_last_rx_ms.is_some());
+    assert!(!terminal.liquidations.is_empty());
+    assert!(!terminal.liquidation_summary_buckets.is_empty());
+    assert!(!terminal.liquidation_chart_buckets.is_empty());
+
+    let message =
+        scoped_liquidation_message(&terminal, HydromancerWsMessage::Lagged { skipped: 7 });
+    let _ = terminal.update_liquidation_feed(message);
+
+    assert!(terminal.liquidations_last_rx_ms.is_none());
+    assert_eq!(
+        terminal.liquidations_status,
+        "Stream lagged; reconnecting after skipping 7 messages"
+    );
+    assert!(!terminal.liquidations.is_empty());
+    assert!(terminal.liquidation_summary_buckets.is_empty());
+    assert!(terminal.liquidation_chart_buckets.is_empty());
+}
+
+#[test]
+fn liquidation_reconnect_status_redacts_sensitive_hydromancer_error_values() {
+    let mut terminal = TradingTerminal::boot().0;
+    let message = scoped_liquidation_message(
+        &terminal,
+        HydromancerWsMessage::Reconnecting {
+            error: "failed wss://api.hydromancer.xyz/ws?Token=hydro-secret&sessionId=session-secret&CURSOR=cursor-secret".to_string(),
+            retry_delay_secs: 7,
+        },
+    );
+
+    let _ = terminal.update_liquidation_feed(message);
+
+    assert!(terminal.liquidations_status.contains("<redacted>"));
+    for secret in ["hydro-secret", "session-secret", "cursor-secret"] {
+        assert!(
+            !terminal.liquidations_status.contains(secret),
+            "status leaked {secret}: {}",
+            terminal.liquidations_status
+        );
+    }
+}
+
+#[test]
+fn stale_liquidation_stream_scope_is_ignored() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.hydromancer_key_generation = 2;
+    terminal.liquidations_reconnect_nonce = 3;
+    terminal.liquidations_status = "Current".to_string();
+    let liquidation = LiquidationEvent {
+        coin: "HYPE".to_string(),
+        price: 25.0,
+        size: 4.0,
+        is_buy: false,
+        time_ms: TradingTerminal::now_ms(),
+        method: "market".to_string(),
+        liquidated_user: "0x0000000000000000000000000000000000000001".to_string(),
+        tx_index: 1,
+    };
+
+    let message = scoped_liquidation_message_with(
+        1,
+        terminal.liquidations_reconnect_nonce,
+        HydromancerWsMessage::Event(liquidation.clone()),
+    );
+    let _ = terminal.update_liquidation_feed(message);
+    let message = scoped_liquidation_message_with(
+        terminal.hydromancer_key_generation,
+        2,
+        HydromancerWsMessage::Connected,
+    );
+    let _ = terminal.update_liquidation_feed(message);
+
+    assert_eq!(terminal.liquidations_status, "Current");
+    assert!(terminal.liquidations_last_rx_ms.is_none());
     assert!(terminal.liquidations.is_empty());
     assert!(terminal.liquidation_summary_buckets.is_empty());
     assert!(terminal.liquidation_chart_buckets.is_empty());

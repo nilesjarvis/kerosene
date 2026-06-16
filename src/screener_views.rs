@@ -31,7 +31,7 @@ impl TradingTerminal {
             .width(Length::Fixed(150.0)),
             iced::widget::Space::new().width(Fill),
             button(text("Refresh").size(11))
-                .on_press(Message::RefreshScreener)
+                .on_press(Message::ForceRefreshScreener)
                 .padding([4, 10])
         ]
         .spacing(8)
@@ -56,7 +56,11 @@ impl TradingTerminal {
             }
         }
 
-        let content = column![top_bar, scrollable(table).height(Fill)].spacing(8);
+        let mut content = column![top_bar].spacing(8);
+        if let Some((message, is_error)) = &self.screener.status {
+            content = content.push(screener_status_row(message, *is_error, &theme));
+        }
+        let content = content.push(scrollable(table).height(Fill));
 
         container(content)
             .width(Fill)
@@ -284,6 +288,19 @@ fn screener_placeholder_row(label: &'static str, theme: &Theme) -> Element<'stat
     .width(Fill)
     .padding([10, 8])
     .into()
+}
+
+fn screener_status_row(message: &str, is_error: bool, theme: &Theme) -> Element<'static, Message> {
+    let color = if is_error {
+        theme.palette().danger
+    } else {
+        theme.extended_palette().background.weak.text
+    };
+
+    container(text(message.to_string()).size(11).color(color))
+        .width(Fill)
+        .padding([4, 8])
+        .into()
 }
 
 fn format_pct(pct: Option<f64>, theme: &Theme) -> (String, Color) {
