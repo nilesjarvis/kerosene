@@ -401,6 +401,215 @@ fn empty_market_session_summaries() -> Vec<MarketSessionSummary> {
     market_session_summaries(&[])
 }
 
+// ---------------------------------------------------------------------------
+// Summary statistics (verdict line + KPI strip)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionGroup {
+    Weekday,
+    Session,
+}
+
+/// One eligible bucket that can headline the verdict line.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct VerdictBucket {
+    pub(crate) group: SessionGroup,
+    pub(crate) label: String,
+    pub(crate) average_return_pct: f64,
+    pub(crate) win_rate_pct: f64,
+    pub(crate) sample_count: usize,
+}
+
+/// The plain-language headline for the widget: either the strongest/weakest
+/// eligible buckets, or an explicit "not enough data" state.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum SessionVerdict {
+    Insufficient {
+        total_samples: usize,
+        min_required: usize,
+    },
+    Edge {
+        strongest: VerdictBucket,
+        weakest: Option<VerdictBucket>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SessionStreak {
+    pub(crate) length: usize,
+    pub(crate) positive: bool,
+}
+
+/// Minimum completed-session count for a bucket to be eligible for the verdict.
+/// Scales gently with the sample size so a single fluke is never crowned.
+pub(crate) fn verdict_min_samples(total_samples: usize) -> usize {
+    (total_samples / 40).max(4)
+}
+
+/// Count-weighted overall win rate across the weekday buckets — equivalent to
+/// total green sessions / total sessions. `None` when there are no samples.
+pub(crate) fn overall_win_rate_pct(weekday_summaries: &[SessionWeekdaySummary]) -> Option<f64> {
+    let mut total = 0usize;
+    let mut weighted = 0.0f64;
+    for summary in weekday_summaries {
+        total += summary.sample_count;
+        weighted += summary.win_rate_pct * summary.sample_count as f64;
+    }
+    (total > 0).then(|| weighted / total as f64)
+}
+
+/// Mean absolute open-to-close move across completed sessions. `None` when empty.
+pub(crate) fn average_abs_move_pct(bars: &[SessionReturnBar]) -> Option<f64> {
+    if bars.is_empty() {
+        return None;
+    }
+    let sum: f64 = bars.iter().map(|bar| bar.return_pct.abs()).sum();
+    let avg = sum / bars.len() as f64;
+    avg.is_finite().then_some(avg)
+}
+
+/// Compounded total return across all completed sessions, in percent.
+pub(crate) fn total_return_pct(bars: &[SessionReturnBar]) -> Option<f64> {
+    if bars.is_empty() {
+        return None;
+    }
+    let growth = bars
+        .iter()
+        .fold(1.0f64, |acc, bar| acc * (1.0 + bar.return_pct / 100.0));
+    let total = (growth - 1.0) * 100.0;
+    total.is_finite().then_some(total)
+}
+
+/// Trailing run of same-signed sessions, counted from the most recent bar.
+/// `bars` is assumed sorted ascending by open time. A flat (0%) latest session
+/// yields `None`.
+pub(crate) fn current_streak(bars: &[SessionReturnBar]) -> Option<SessionStreak> {
+    let last = bars.last()?;
+    let positive = if last.return_pct > 0.0 {
+        true
+    } else if last.return_pct < 0.0 {
+        false
+    } else {
+        return None;
+    };
+    let length = bars
+        .iter()
+        .rev()
+        .take_while(|bar| {
+            if positive {
+                bar.return_pct > 0.0
+            } else {
+                bar.return_pct < 0.0
+            }
+        })
+        .count();
+    (length > 0).then_some(SessionStreak { length, positive })
+}
+
+/// Weekday with the greatest total traded volume over the lookback. `None` when
+/// there is no positive volume to compare.
+pub(crate) fn most_active_weekday(bars: &[SessionReturnBar]) -> Option<SessionWeekday> {
+    let mut totals = [0.0f64; 7];
+    for bar in bars {
+        if bar.volume.is_finite() && bar.volume > 0.0 {
+            totals[bar.weekday.index()] += bar.volume;
+        }
+    }
+    let mut best: Option<(usize, f64)> = None;
+    for (idx, &total) in totals.iter().enumerate() {
+        if total > 0.0 && best.is_none_or(|(_, current)| total > current) {
+            best = Some((idx, total));
+        }
+    }
+    best.map(|(idx, _)| SessionWeekday::ALL[idx])
+}
+
+/// Sample standard deviation of open-to-close returns per weekday, indexed by
+/// `SessionWeekday::index`. `None` for weekdays with fewer than two samples.
+pub(crate) fn weekday_dispersions(bars: &[SessionReturnBar]) -> [Option<f64>; 7] {
+    let mut sums = [0.0f64; 7];
+    let mut sum_sqs = [0.0f64; 7];
+    let mut counts = [0usize; 7];
+    for bar in bars {
+        let idx = bar.weekday.index();
+        sums[idx] += bar.return_pct;
+        sum_sqs[idx] += bar.return_pct * bar.return_pct;
+        counts[idx] += 1;
+    }
+    let mut out = [None; 7];
+    for (idx, &n) in counts.iter().enumerate() {
+        if n >= 2 {
+            let n_f = n as f64;
+            let sum = sums[idx];
+            let variance = (sum_sqs[idx] - sum * sum / n_f) / (n_f - 1.0);
+            let std = variance.max(0.0).sqrt();
+            if std.is_finite() {
+                out[idx] = Some(std);
+            }
+        }
+    }
+    out
+}
+
+/// The strongest, and when distinct the weakest, eligible bucket across both the
+/// weekday and market-session breakdowns. Eligibility is gated by
+/// [`verdict_min_samples`] so thin buckets never headline.
+pub(crate) fn session_verdict(
+    weekday_summaries: &[SessionWeekdaySummary],
+    session_summaries: &[MarketSessionSummary],
+    total_samples: usize,
+) -> SessionVerdict {
+    let min_required = verdict_min_samples(total_samples);
+    let mut buckets: Vec<VerdictBucket> = Vec::new();
+    for summary in weekday_summaries {
+        if summary.sample_count >= min_required {
+            buckets.push(VerdictBucket {
+                group: SessionGroup::Weekday,
+                label: summary.weekday.label().to_string(),
+                average_return_pct: summary.average_return_pct,
+                win_rate_pct: summary.win_rate_pct,
+                sample_count: summary.sample_count,
+            });
+        }
+    }
+    for summary in session_summaries {
+        if summary.sample_count >= min_required {
+            buckets.push(VerdictBucket {
+                group: SessionGroup::Session,
+                label: summary.session.short_label().to_string(),
+                average_return_pct: summary.average_return_pct,
+                win_rate_pct: summary.win_rate_pct,
+                sample_count: summary.sample_count,
+            });
+        }
+    }
+
+    if buckets.is_empty() {
+        return SessionVerdict::Insufficient {
+            total_samples,
+            min_required,
+        };
+    }
+
+    let strongest_idx = buckets
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.average_return_pct.total_cmp(&b.average_return_pct))
+        .map(|(idx, _)| idx)
+        .unwrap_or(0);
+    let weakest_idx = buckets
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.average_return_pct.total_cmp(&b.average_return_pct))
+        .map(|(idx, _)| idx)
+        .unwrap_or(0);
+
+    let strongest = buckets[strongest_idx].clone();
+    let weakest = (weakest_idx != strongest_idx).then(|| buckets[weakest_idx].clone());
+    SessionVerdict::Edge { strongest, weakest }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,5 +841,168 @@ mod tests {
         assert_eq!(new_york.sample_count, 0);
         crate::helpers::assert_close(new_york.average_return_pct, 0.0);
         crate::helpers::assert_close(new_york.win_rate_pct, 0.0);
+    }
+
+    fn sample_bar(
+        weekday: SessionWeekday,
+        return_pct: f64,
+        volume: f64,
+        open_time: u64,
+    ) -> SessionReturnBar {
+        SessionReturnBar {
+            open_time,
+            close_time: open_time + 1,
+            weekday,
+            open: 100.0,
+            close: 100.0 * (1.0 + return_pct / 100.0),
+            volume,
+            return_pct,
+        }
+    }
+
+    fn weekday_summary(
+        weekday: SessionWeekday,
+        sample_count: usize,
+        average_return_pct: f64,
+        win_rate_pct: f64,
+    ) -> SessionWeekdaySummary {
+        SessionWeekdaySummary {
+            weekday,
+            sample_count,
+            average_return_pct,
+            win_rate_pct,
+        }
+    }
+
+    #[test]
+    fn overall_win_rate_is_count_weighted() {
+        let summaries = vec![
+            weekday_summary(SessionWeekday::Mon, 2, 0.0, 50.0),
+            weekday_summary(SessionWeekday::Tue, 8, 0.0, 75.0),
+        ];
+        // (50*2 + 75*8) / 10 = 70
+        crate::helpers::assert_close(overall_win_rate_pct(&summaries).unwrap(), 70.0);
+        assert!(overall_win_rate_pct(&[]).is_none());
+        assert!(
+            overall_win_rate_pct(&[weekday_summary(SessionWeekday::Mon, 0, 0.0, 0.0)]).is_none()
+        );
+    }
+
+    #[test]
+    fn average_abs_move_uses_magnitude() {
+        let bars = vec![
+            sample_bar(SessionWeekday::Mon, 2.0, 1.0, 0),
+            sample_bar(SessionWeekday::Tue, -4.0, 1.0, 1),
+        ];
+        crate::helpers::assert_close(average_abs_move_pct(&bars).unwrap(), 3.0);
+        assert!(average_abs_move_pct(&[]).is_none());
+    }
+
+    #[test]
+    fn total_return_compounds_sessions() {
+        let bars = vec![
+            sample_bar(SessionWeekday::Mon, 10.0, 1.0, 0),
+            sample_bar(SessionWeekday::Tue, -10.0, 1.0, 1),
+        ];
+        // 1.10 * 0.90 - 1 = -0.01 -> -1%
+        crate::helpers::assert_close(total_return_pct(&bars).unwrap(), -1.0);
+        assert!(total_return_pct(&[]).is_none());
+    }
+
+    #[test]
+    fn current_streak_counts_trailing_same_sign() {
+        let bars = vec![
+            sample_bar(SessionWeekday::Mon, 1.0, 1.0, 0),
+            sample_bar(SessionWeekday::Tue, -2.0, 1.0, 1),
+            sample_bar(SessionWeekday::Wed, 3.0, 1.0, 2),
+            sample_bar(SessionWeekday::Thu, 4.0, 1.0, 3),
+        ];
+        let streak = current_streak(&bars).expect("trailing up streak");
+        assert_eq!(streak.length, 2);
+        assert!(streak.positive);
+    }
+
+    #[test]
+    fn current_streak_none_when_latest_flat() {
+        let bars = vec![
+            sample_bar(SessionWeekday::Mon, 3.0, 1.0, 0),
+            sample_bar(SessionWeekday::Tue, 0.0, 1.0, 1),
+        ];
+        assert!(current_streak(&bars).is_none());
+        assert!(current_streak(&[]).is_none());
+    }
+
+    #[test]
+    fn most_active_weekday_picks_max_volume() {
+        let bars = vec![
+            sample_bar(SessionWeekday::Mon, 1.0, 10.0, 0),
+            sample_bar(SessionWeekday::Tue, 1.0, 50.0, 1),
+            sample_bar(SessionWeekday::Mon, 1.0, 30.0, 2),
+        ];
+        // Mon totals 40, Tue 50 -> Tue
+        assert_eq!(most_active_weekday(&bars), Some(SessionWeekday::Tue));
+        assert!(most_active_weekday(&[]).is_none());
+    }
+
+    #[test]
+    fn weekday_dispersions_use_sample_std_dev() {
+        let bars = vec![
+            sample_bar(SessionWeekday::Mon, 1.0, 1.0, 0),
+            sample_bar(SessionWeekday::Mon, 3.0, 1.0, 1),
+            sample_bar(SessionWeekday::Tue, 5.0, 1.0, 2),
+        ];
+        let disp = weekday_dispersions(&bars);
+        // Mon mean 2, sample variance (1 + 1)/(2-1) = 2 -> std sqrt(2)
+        crate::helpers::assert_close(disp[SessionWeekday::Mon.index()].unwrap(), 2.0_f64.sqrt());
+        // Tue single sample -> None
+        assert!(disp[SessionWeekday::Tue.index()].is_none());
+    }
+
+    #[test]
+    fn session_verdict_picks_strongest_and_weakest_eligible() {
+        let weekdays = vec![
+            // Highest avg but below MIN_N -> must be ignored.
+            weekday_summary(SessionWeekday::Mon, 2, 5.0, 100.0),
+            weekday_summary(SessionWeekday::Tue, 10, 0.8, 62.0),
+            weekday_summary(SessionWeekday::Sun, 10, -0.6, 40.0),
+        ];
+        match session_verdict(&weekdays, &[], 24) {
+            SessionVerdict::Edge { strongest, weakest } => {
+                assert_eq!(strongest.label, "Tue");
+                crate::helpers::assert_close(strongest.average_return_pct, 0.8);
+                let weakest = weakest.expect("distinct weakest");
+                assert_eq!(weakest.label, "Sun");
+                crate::helpers::assert_close(weakest.average_return_pct, -0.6);
+            }
+            other => panic!("expected Edge, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn session_verdict_insufficient_when_no_bucket_clears_min() {
+        let weekdays = vec![
+            weekday_summary(SessionWeekday::Mon, 3, 5.0, 100.0),
+            weekday_summary(SessionWeekday::Tue, 2, -5.0, 0.0),
+        ];
+        // total_samples 5 -> min_required max(4, 0) = 4; nothing qualifies.
+        assert!(matches!(
+            session_verdict(&weekdays, &[], 5),
+            SessionVerdict::Insufficient {
+                min_required: 4,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn session_verdict_single_eligible_has_no_weakest() {
+        let weekdays = vec![weekday_summary(SessionWeekday::Tue, 10, 0.8, 62.0)];
+        match session_verdict(&weekdays, &[], 10) {
+            SessionVerdict::Edge { strongest, weakest } => {
+                assert_eq!(strongest.label, "Tue");
+                assert!(weakest.is_none());
+            }
+            other => panic!("expected Edge, got {other:?}"),
+        }
     }
 }
