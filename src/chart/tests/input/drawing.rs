@@ -1,6 +1,6 @@
 use super::{
-    CHART_H, CHART_W, SURFACE_H, SURFACE_W, action_or_panic, chart_with_input_candles,
-    message_or_panic,
+    CHART_H, CHART_W, SURFACE_H, SURFACE_W, action_or_panic, btc_buy_order,
+    chart_with_input_candles, message_or_panic,
 };
 use crate::annotations::{Annotation, AnnotationKind, AnnotationStyle, DrawingTool, FibKind};
 use crate::chart::state::DragKind;
@@ -281,6 +281,43 @@ fn locked_annotation_is_selectable_but_not_draggable() {
 }
 
 #[test]
+fn active_drawing_tool_takes_priority_over_order_drag() {
+    let mut chart = chart_with_input_candles();
+    chart.active_tool = Some(DrawingTool::HorizontalLevel);
+    chart.active_orders.push(btc_buy_order(42));
+    let mut state = ChartState::default();
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(&state, CHART_W, CHART_H)
+        .expect("visible price params");
+    let order_y = chart.price_to_y_with(105.0, price_hi, price_range, price_h);
+
+    let action = action_or_panic(
+        chart.handle_left_press(
+            &mut state,
+            Point::new(120.0, order_y),
+            CHART_W,
+            CHART_H,
+            SURFACE_H,
+        ),
+        "drawing tool click over order line",
+    );
+    let (message, _, status) = action.into_inner();
+
+    match message_or_panic(message, "drawing message") {
+        Message::AddAnnotation(chart_id, annotation) => {
+            assert_eq!(chart_id, chart.id);
+            assert!(matches!(
+                annotation.kind,
+                AnnotationKind::HorizontalLevel { .. }
+            ));
+        }
+        other => panic!("expected AddAnnotation, got {other:?}"),
+    }
+    assert_eq!(status, Status::Captured);
+    assert!(state.drag.is_none(), "must not start an order drag");
+}
+
+#[test]
 fn eraser_skips_locked_annotation() {
     let mut chart = chart_with_input_candles();
     chart.active_tool = Some(DrawingTool::Eraser);
@@ -323,6 +360,31 @@ fn delete_key_removes_selection_in_select_mode() {
     let message = delete_key(&chart, &mut state);
     assert!(matches!(message, Some(Message::RemoveAnnotation(_, 5))));
     assert_eq!(state.selected_annotation, None);
+}
+
+#[test]
+fn delete_key_ignores_locked_selection_in_select_mode() {
+    let mut chart = chart_with_input_candles();
+    chart.active_tool = Some(DrawingTool::Select);
+    chart.annotations.push(locked_level(5, 105.0));
+    let mut state = ChartState {
+        selected_annotation: Some(5),
+        ..ChartState::default()
+    };
+
+    let action = action_or_panic(
+        chart.handle_drawing_key_pressed(
+            &mut state,
+            keyboard::Key::Named(keyboard::key::Named::Delete),
+            keyboard::Modifiers::default(),
+        ),
+        "delete locked annotation",
+    );
+    let (message, _, status) = action.into_inner();
+
+    assert!(message.is_none(), "locked annotation must not be removed");
+    assert_eq!(status, Status::Captured);
+    assert_eq!(state.selected_annotation, Some(5));
 }
 
 #[test]

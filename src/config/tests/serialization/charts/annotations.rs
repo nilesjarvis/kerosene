@@ -102,3 +102,13 @@ fn default_style_level_omits_new_keys() {
     assert!(!json.contains("\"anchors\""), "{json}");
     assert!(!json.contains("\"locked\""), "{json}");
 }
+
+#[test]
+fn unknown_line_style_loads_as_solid() {
+    let json = r#"{"type":"level","color":[0.4,0.5,0.6],"price":100.0,"line_style":"scribble"}"#;
+    let cfg: AnnotationConfig = value_from_str(json, "unknown line style should deserialize");
+
+    assert_eq!(cfg.line_style, LineStyleConfig::Solid);
+    let annotation = Annotation::from_config(0, &cfg).expect("annotation should reconstruct");
+    assert!(annotation.is_valid());
+}

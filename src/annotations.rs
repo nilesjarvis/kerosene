@@ -1,5 +1,5 @@
 use iced::Color;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[cfg(test)]
 mod tests;
@@ -200,13 +200,30 @@ impl AnchorConfig {
 }
 
 /// Persisted line-style discriminant (lowercase for stable JSON).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum LineStyleConfig {
     #[default]
     Solid,
     Dashed,
     Dotted,
+}
+
+impl<'de> Deserialize<'de> for LineStyleConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let Some(value) = Option::<String>::deserialize(deserializer)? else {
+            return Ok(Self::Solid);
+        };
+        Ok(match value.as_str() {
+            "solid" => Self::Solid,
+            "dashed" => Self::Dashed,
+            "dotted" => Self::Dotted,
+            _ => Self::Solid,
+        })
+    }
 }
 
 impl LineStyleConfig {

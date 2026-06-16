@@ -97,6 +97,19 @@ impl CandlestickChart {
             }
         }
 
+        if let Some(tool) = self.active_tool
+            && visual_pos.x < chart_w
+            && visual_pos.y < chart_h
+        {
+            // Drawing tools own chart clicks before live-order hit testing.
+            // This prevents an edit/select click near an order line from
+            // accidentally moving or cancelling a real order.
+            if tool == crate::annotations::DrawingTool::Select {
+                return self.handle_select_press(state, pos, chart_w, chart_h);
+            }
+            return self.handle_drawing_tool_press(state, pos, chart_w, chart_h, tool);
+        }
+
         if let Some(hit) =
             self.hit_test_order_line_at(state, pos, visual_pos, chart_w, chart_h, fisheye)
         {
@@ -121,16 +134,6 @@ impl CandlestickChart {
                 })
                 .and_capture(),
             );
-        }
-
-        if let Some(tool) = self.active_tool
-            && visual_pos.x < chart_w
-            && visual_pos.y < chart_h
-        {
-            if tool == crate::annotations::DrawingTool::Select {
-                return self.handle_select_press(state, pos, chart_w, chart_h);
-            }
-            return self.handle_drawing_tool_press(state, pos, chart_w, chart_h, tool);
         }
 
         if self.hud_game_mode_enabled()
@@ -283,6 +286,13 @@ impl CandlestickChart {
             return Some(canvas::Action::request_redraw());
         }
 
+        if self.active_tool.is_some() && visual_pos.x < chart_w && visual_pos.y < chart_h {
+            return Some(
+                canvas::Action::publish(Message::ClearDrawingTool(self.id, self.surface_id))
+                    .and_capture(),
+            );
+        }
+
         if let Some(hit) =
             self.hit_test_order_line_at(state, pos, visual_pos, chart_w, chart_h, fisheye)
         {
@@ -292,13 +302,6 @@ impl CandlestickChart {
                     oid: hit.order.oid,
                 })
                 .and_capture(),
-            );
-        }
-
-        if self.active_tool.is_some() && visual_pos.x < chart_w && visual_pos.y < chart_h {
-            return Some(
-                canvas::Action::publish(Message::ClearDrawingTool(self.id, self.surface_id))
-                    .and_capture(),
             );
         }
 

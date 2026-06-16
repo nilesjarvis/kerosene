@@ -126,7 +126,15 @@ impl CandlestickChart {
                 if self.active_tool != Some(DrawingTool::Select) {
                     return None;
                 }
-                let id = state.selected_annotation.take()?;
+                let id = state.selected_annotation?;
+                let Some(annotation) = self.annotations.iter().find(|ann| ann.id == id) else {
+                    state.selected_annotation = None;
+                    return Some(canvas::Action::capture());
+                };
+                if annotation.style.locked {
+                    return Some(canvas::Action::capture());
+                }
+                state.selected_annotation = None;
                 Some(canvas::Action::publish(Message::RemoveAnnotation(self.id, id)).and_capture())
             }
             _ => None,

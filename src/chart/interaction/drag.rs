@@ -163,7 +163,8 @@ impl CandlestickChart {
 
         let old_hover = state.hover_order_oid;
         state.hover_order_oid = None;
-        if let Some(cursor) = cursor
+        if self.active_tool.is_none()
+            && let Some(cursor) = cursor
             && let Some(hit) = self.hit_test_order_line_at(
                 state,
                 cursor.source,
