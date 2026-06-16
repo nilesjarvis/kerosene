@@ -99,7 +99,9 @@ impl CandlestickChart {
         };
 
         for ann in self.annotations.iter().rev() {
-            if !ann.style.visible || ann.style.locked {
+            // Locked annotations stay hittable so they can be selected and
+            // unlocked; callers (select drag, eraser) gate edits on the lock.
+            if !ann.style.visible {
                 continue;
             }
 

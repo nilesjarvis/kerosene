@@ -362,11 +362,14 @@ impl CandlestickChart {
 
         if let Some(hit) = self.hit_test_annotation(state, pos, chart_w, chart_h) {
             state.selected_annotation = Some(hit.id);
+            // Locked drawings can be selected (to restyle / unlock) but not
+            // moved; only start a drag for unlocked annotations.
             if let Some(base) = self
                 .annotations
                 .iter()
                 .find(|ann| ann.id == hit.id)
                 .cloned()
+                .filter(|ann| !ann.style.locked)
             {
                 state.drag_annotation_base = Some(base.clone());
                 state.drag_annotation = Some(base);

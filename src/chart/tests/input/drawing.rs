@@ -3,9 +3,9 @@ use super::{
     message_or_panic,
 };
 use crate::annotations::{Annotation, AnnotationKind, AnnotationStyle, DrawingTool, FibKind};
-use crate::chart::ChartState;
 use crate::chart::state::DragKind;
 use crate::chart::tests::chart_bounds;
+use crate::chart::{CandlestickChart, ChartState};
 use crate::message::Message;
 use iced::event::Status;
 use iced::{Point, keyboard};
@@ -237,4 +237,109 @@ fn releasing_annotation_drag_publishes_translated_update() {
     assert!(state.drag.is_none());
     assert!(state.drag_annotation.is_none());
     assert!(state.drag_annotation_base.is_none());
+}
+
+fn locked_level(id: u64, price: f64) -> Annotation {
+    Annotation {
+        id,
+        kind: AnnotationKind::HorizontalLevel { price },
+        style: AnnotationStyle {
+            locked: true,
+            ..AnnotationStyle::default()
+        },
+    }
+}
+
+fn press_on_level(chart: &CandlestickChart, state: &mut ChartState, price: f64) -> Option<Message> {
+    let (price_hi, price_range, price_h) = chart
+        .visible_price_params(state, CHART_W, CHART_H)
+        .expect("visible price params");
+    let y = chart.price_to_y_with(price, price_hi, price_range, price_h);
+    let action = action_or_panic(
+        chart.handle_left_press(state, Point::new(120.0, y), CHART_W, CHART_H, SURFACE_H),
+        "press on level",
+    );
+    action.into_inner().0
+}
+
+#[test]
+fn locked_annotation_is_selectable_but_not_draggable() {
+    let mut chart = chart_with_input_candles();
+    chart.active_tool = Some(DrawingTool::Select);
+    chart.annotations.push(locked_level(5, 105.0));
+    let mut state = ChartState::default();
+
+    let message = press_on_level(&chart, &mut state, 105.0);
+    assert!(matches!(
+        message,
+        Some(Message::SelectAnnotation(_, Some(5)))
+    ));
+    assert_eq!(state.selected_annotation, Some(5));
+    // Locked: selected for unlock, but no move drag started.
+    assert!(state.drag.is_none());
+    assert!(state.drag_annotation_base.is_none());
+}
+
+#[test]
+fn eraser_skips_locked_annotation() {
+    let mut chart = chart_with_input_candles();
+    chart.active_tool = Some(DrawingTool::Eraser);
+    chart.annotations.push(locked_level(5, 105.0));
+    let mut state = ChartState::default();
+
+    let message = press_on_level(&chart, &mut state, 105.0);
+    assert!(
+        !matches!(message, Some(Message::RemoveAnnotation(_, _))),
+        "eraser must not delete a locked drawing, got {message:?}"
+    );
+
+    // An unlocked drawing in the same spot is still erasable.
+    chart.annotations.clear();
+    chart.annotations.push(level(7, 105.0));
+    let message = press_on_level(&chart, &mut state, 105.0);
+    assert!(matches!(message, Some(Message::RemoveAnnotation(_, 7))));
+}
+
+fn delete_key(chart: &CandlestickChart, state: &mut ChartState) -> Option<Message> {
+    chart
+        .handle_drawing_key_pressed(
+            state,
+            keyboard::Key::Named(keyboard::key::Named::Delete),
+            keyboard::Modifiers::default(),
+        )
+        .and_then(|action| action.into_inner().0)
+}
+
+#[test]
+fn delete_key_removes_selection_in_select_mode() {
+    let mut chart = chart_with_input_candles();
+    chart.active_tool = Some(DrawingTool::Select);
+    chart.annotations.push(level(5, 105.0));
+    let mut state = ChartState {
+        selected_annotation: Some(5),
+        ..ChartState::default()
+    };
+
+    let message = delete_key(&chart, &mut state);
+    assert!(matches!(message, Some(Message::RemoveAnnotation(_, 5))));
+    assert_eq!(state.selected_annotation, None);
+}
+
+#[test]
+fn delete_key_ignored_outside_select_mode() {
+    let mut chart = chart_with_input_candles();
+    // A stale selection lingers after switching away from the Select tool.
+    chart.active_tool = Some(DrawingTool::TrendLine);
+    chart.annotations.push(level(5, 105.0));
+    let mut state = ChartState {
+        selected_annotation: Some(5),
+        ..ChartState::default()
+    };
+
+    let message = delete_key(&chart, &mut state);
+    assert!(
+        message.is_none(),
+        "Delete must not fire on a stale selection outside Select mode, got {message:?}"
+    );
+    assert_eq!(state.selected_annotation, Some(5), "selection preserved");
 }

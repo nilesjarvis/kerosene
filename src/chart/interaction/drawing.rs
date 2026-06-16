@@ -21,13 +21,20 @@ impl CandlestickChart {
         chart_h: f32,
         tool: DrawingTool,
     ) -> Option<canvas::Action<Message>> {
-        // Eraser deletes the nearest annotation under the cursor.
+        // Eraser deletes the nearest annotation under the cursor, but leaves
+        // locked drawings alone (unlock them via the Select-tool style bar).
         if tool == DrawingTool::Eraser {
             if let Some(hit) = self.hit_test_annotation(state, pos, chart_w, chart_h) {
-                return Some(
-                    canvas::Action::publish(Message::RemoveAnnotation(self.id, hit.id))
-                        .and_capture(),
-                );
+                let locked = self
+                    .annotations
+                    .iter()
+                    .any(|ann| ann.id == hit.id && ann.style.locked);
+                if !locked {
+                    return Some(
+                        canvas::Action::publish(Message::RemoveAnnotation(self.id, hit.id))
+                            .and_capture(),
+                    );
+                }
             }
             return Some(canvas::Action::capture());
         }
@@ -114,6 +121,11 @@ impl CandlestickChart {
                 )
             }
             keyboard::Key::Named(key::Named::Delete | key::Named::Backspace) => {
+                // Only the Select tool owns Delete; a stale selection left over
+                // after switching tools must not silently delete a drawing.
+                if self.active_tool != Some(DrawingTool::Select) {
+                    return None;
+                }
                 let id = state.selected_annotation.take()?;
                 Some(canvas::Action::publish(Message::RemoveAnnotation(self.id, id)).and_capture())
             }
