@@ -1,5 +1,6 @@
 use super::super::state::DragKind;
 use super::super::{CandlestickChart, ChartState};
+use crate::annotations::DrawingTool;
 use iced::Rectangle;
 use iced::mouse;
 
@@ -49,11 +50,18 @@ impl CandlestickChart {
             Some(DragKind::ResizeFundingPanel) => mouse::Interaction::ResizingVertically,
             Some(DragKind::ResizeSessionPanel) => mouse::Interaction::ResizingVertically,
             Some(DragKind::MoveOrder { .. }) => mouse::Interaction::Grabbing,
+            Some(DragKind::MoveAnnotation { .. } | DragKind::MoveAnnotationAnchor { .. }) => {
+                mouse::Interaction::Grabbing
+            }
             None => {
-                if self.active_tool.is_some() && pos.x < chart_w && pos.y < chart_h {
+                let in_plot = pos.x < chart_w && pos.y < chart_h;
+                let select_mode = self.active_tool == Some(DrawingTool::Select);
+                let hover_grab = (select_mode && state.hover_annotation.is_some())
+                    || state.hover_order_oid.is_some();
+                if self.active_tool.is_some() && !select_mode && in_plot {
                     // Custom reticles are drawn on the canvas; hide the OS cursor over the plot.
                     mouse::Interaction::Hidden
-                } else if state.hover_order_oid.is_some() && pos.x < chart_w && pos.y < chart_h {
+                } else if hover_grab && in_plot {
                     mouse::Interaction::Grab
                 } else if on_funding_resize || on_session_resize || on_price_axis || on_funding_axis
                 {

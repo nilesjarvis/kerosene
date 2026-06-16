@@ -97,6 +97,19 @@ impl CandlestickChart {
             }
         }
 
+        if let Some(tool) = self.active_tool
+            && visual_pos.x < chart_w
+            && visual_pos.y < chart_h
+        {
+            // Drawing tools own chart clicks before live-order hit testing.
+            // This prevents an edit/select click near an order line from
+            // accidentally moving or cancelling a real order.
+            if tool == crate::annotations::DrawingTool::Select {
+                return self.handle_select_press(state, pos, chart_w, chart_h);
+            }
+            return self.handle_drawing_tool_press(state, pos, chart_w, chart_h, tool);
+        }
+
         if let Some(hit) =
             self.hit_test_order_line_at(state, pos, visual_pos, chart_w, chart_h, fisheye)
         {
@@ -121,13 +134,6 @@ impl CandlestickChart {
                 })
                 .and_capture(),
             );
-        }
-
-        if let Some(tool) = self.active_tool
-            && visual_pos.x < chart_w
-            && visual_pos.y < chart_h
-        {
-            return self.handle_drawing_tool_press(state, pos, chart_w, chart_h, tool);
         }
 
         if self.hud_game_mode_enabled()
@@ -280,6 +286,13 @@ impl CandlestickChart {
             return Some(canvas::Action::request_redraw());
         }
 
+        if self.active_tool.is_some() && visual_pos.x < chart_w && visual_pos.y < chart_h {
+            return Some(
+                canvas::Action::publish(Message::ClearDrawingTool(self.id, self.surface_id))
+                    .and_capture(),
+            );
+        }
+
         if let Some(hit) =
             self.hit_test_order_line_at(state, pos, visual_pos, chart_w, chart_h, fisheye)
         {
@@ -289,13 +302,6 @@ impl CandlestickChart {
                     oid: hit.order.oid,
                 })
                 .and_capture(),
-            );
-        }
-
-        if self.active_tool.is_some() && visual_pos.x < chart_w && visual_pos.y < chart_h {
-            return Some(
-                canvas::Action::publish(Message::ClearDrawingTool(self.id, self.surface_id))
-                    .and_capture(),
             );
         }
 
@@ -342,6 +348,55 @@ impl CandlestickChart {
             );
         }
         None
+    }
+}
+
+impl CandlestickChart {
+    /// Select-tool press: pick the annotation under the cursor and begin a
+    /// body/anchor drag, or clear the selection when clicking empty space.
+    pub(in crate::chart) fn handle_select_press(
+        &self,
+        state: &mut ChartState,
+        pos: iced::Point,
+        chart_w: f32,
+        chart_h: f32,
+    ) -> Option<canvas::Action<Message>> {
+        use super::super::viewport::annotations::AnnotationHitPart;
+
+        if let Some(hit) = self.hit_test_annotation(state, pos, chart_w, chart_h) {
+            state.selected_annotation = Some(hit.id);
+            // Locked drawings can be selected (to restyle / unlock) but not
+            // moved; only start a drag for unlocked annotations.
+            if let Some(base) = self
+                .annotations
+                .iter()
+                .find(|ann| ann.id == hit.id)
+                .cloned()
+                .filter(|ann| !ann.style.locked)
+            {
+                state.drag_annotation_base = Some(base.clone());
+                state.drag_annotation = Some(base);
+                state.drag_start = Some(pos);
+                state.drag = Some(match hit.part {
+                    AnnotationHitPart::Body => DragKind::MoveAnnotation { id: hit.id },
+                    AnnotationHitPart::Anchor(anchor_index) => DragKind::MoveAnnotationAnchor {
+                        id: hit.id,
+                        anchor_index,
+                    },
+                });
+            }
+            return Some(
+                canvas::Action::publish(Message::SelectAnnotation(self.id, Some(hit.id)))
+                    .and_capture(),
+            );
+        }
+
+        if state.selected_annotation.take().is_some() {
+            return Some(
+                canvas::Action::publish(Message::SelectAnnotation(self.id, None)).and_capture(),
+            );
+        }
+        Some(canvas::Action::capture())
     }
 }
 

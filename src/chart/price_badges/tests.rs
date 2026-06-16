@@ -1,5 +1,6 @@
 use super::layout::*;
 
+mod annotations;
 mod fixed;
 mod stacking;
 

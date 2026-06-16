@@ -73,6 +73,7 @@ impl TradingTerminal {
         }
 
         tf_row = sections::push_drawing_tool_buttons(tf_row, chart_id, surface_id, active_tool);
+        tf_row = sections::push_annotation_style_bar(tf_row, chart_id, instance, active_tool);
         tf_row = sections::push_chart_mode_buttons(tf_row, chart_id, instance);
 
         sections::chart_toolbar_strip(tf_row)

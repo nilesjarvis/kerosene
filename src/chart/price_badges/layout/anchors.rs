@@ -121,6 +121,9 @@ where
     }
 
     for (annotation_index, annotation) in chart.annotations.iter().enumerate() {
+        if !annotation.style.visible {
+            continue;
+        }
         if let AnnotationKind::HorizontalLevel { price } = &annotation.kind {
             push_visible_badge(
                 &mut anchors,

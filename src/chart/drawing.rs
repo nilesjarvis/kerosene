@@ -2,6 +2,7 @@ use iced::widget::canvas;
 use iced::{Color, Point, Size, alignment};
 
 use super::fisheye::ChartFisheye;
+use crate::annotations::LineStyle;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AxisBadgeStyle {
@@ -68,6 +69,99 @@ pub(super) fn stroke_projected_segmented_hline_with_offset(
         }
         x += stride;
     }
+}
+
+/// Stroke a line between two source points honoring a [`LineStyle`].
+/// Dashed/dotted variants are walked at a fixed pattern along the segment.
+pub(super) fn stroke_projected_styled_line(
+    frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
+    a: Point,
+    b: Point,
+    color: Color,
+    width: f32,
+    style: LineStyle,
+) {
+    match style {
+        LineStyle::Solid => {
+            fisheye.stroke_projected_line(
+                frame,
+                a,
+                b,
+                canvas::Stroke::default()
+                    .with_color(color)
+                    .with_width(width),
+            );
+        }
+        LineStyle::Dashed => {
+            stroke_projected_dash_pattern(frame, fisheye, a, b, color, width, (6.0, 4.0))
+        }
+        LineStyle::Dotted => {
+            stroke_projected_dash_pattern(frame, fisheye, a, b, color, width, (1.5, 3.0))
+        }
+    }
+}
+
+/// Stroke a dashed/dotted line along an arbitrary-angle segment. `pattern` is
+/// `(segment_len, gap_len)` in pixels.
+fn stroke_projected_dash_pattern(
+    frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
+    a: Point,
+    b: Point,
+    color: Color,
+    width: f32,
+    pattern: (f32, f32),
+) {
+    let (segment_len, gap_len) = pattern;
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-3 || segment_len <= 0.0 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+    let stride = (segment_len + gap_len).max(segment_len);
+    let stroke = canvas::Stroke::default()
+        .with_color(color)
+        .with_width(width);
+    let mut t = 0.0;
+    while t < len {
+        let start = t;
+        let end = (t + segment_len).min(len);
+        fisheye.stroke_projected_line(
+            frame,
+            Point::new(a.x + ux * start, a.y + uy * start),
+            Point::new(a.x + ux * end, a.y + uy * end),
+            stroke,
+        );
+        t += stride;
+    }
+}
+
+/// Stroke a vertical line at source `x` spanning `0..height`.
+pub(super) fn stroke_projected_vline(
+    frame: &mut canvas::Frame,
+    fisheye: ChartFisheye,
+    x: f32,
+    height: f32,
+    color: Color,
+    width: f32,
+    style: LineStyle,
+) {
+    if height <= 0.0 {
+        return;
+    }
+    stroke_projected_styled_line(
+        frame,
+        fisheye,
+        Point::new(x, 0.0),
+        Point::new(x, height),
+        color,
+        width,
+        style,
+    );
 }
 
 pub(super) fn fill_right_axis_badge(

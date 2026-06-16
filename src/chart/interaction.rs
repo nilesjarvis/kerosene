@@ -128,7 +128,11 @@ impl CandlestickChart {
                 modifiers,
                 text,
                 ..
-            }) => self.handle_hud_key_pressed(state, key.as_ref(), text.as_deref(), *modifiers),
+            }) => self
+                .handle_drawing_key_pressed(state, key.as_ref(), *modifiers)
+                .or_else(|| {
+                    self.handle_hud_key_pressed(state, key.as_ref(), text.as_deref(), *modifiers)
+                }),
             iced::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
                 let cursor = projected_cursor?;
                 self.handle_wheel_scroll(state, bounds, cursor.source, chart_w, chart_h, delta)

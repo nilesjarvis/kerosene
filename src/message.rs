@@ -2,7 +2,7 @@ use crate::account::{AccountData, AssetContext, WalletDetailsData, WalletTracker
 use crate::account_analytics::{IncomeSnapshot, PortfolioHistory};
 use crate::account_state::{BottomTab, PositionsSortColumn};
 use crate::alfred_state::{AlfredCommandId, AlfredSelectionStep};
-use crate::annotations::{Annotation, AnnotationId, DrawingTool};
+use crate::annotations::{Annotation, AnnotationId, AnnotationStyle, DrawingTool};
 use crate::api::{self, Candle, OrderBook};
 use crate::calendar_state::{CalendarImpactFilter, CalendarWindowFilter};
 use crate::chart::ChartViewport;
@@ -496,6 +496,9 @@ pub(crate) enum Message {
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
     RemoveAnnotation(ChartId, AnnotationId),
+    UpdateAnnotation(ChartId, Annotation),
+    SelectAnnotation(ChartId, Option<AnnotationId>),
+    RestyleAnnotation(ChartId, AnnotationId, AnnotationStyle),
     ClearDrawingTool(ChartId, ChartSurfaceId),
     // Notifications
     DismissToast(u64),
