@@ -20,6 +20,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
             show_trade_markers: true,
             show_earnings_markers: true,
             header_collapsed: true,
+            drawing_toolbar_collapsed: true,
             funding_panel_height: 56,
             session_panel_height: 72,
             macro_indicators,
@@ -36,6 +37,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     assert!(decoded.charts[0].show_trade_markers);
     assert!(decoded.charts[0].show_earnings_markers);
     assert!(decoded.charts[0].header_collapsed);
+    assert!(decoded.charts[0].drawing_toolbar_collapsed);
     assert_eq!(decoded.charts[0].session_panel_height, 72);
     assert!(decoded.charts[0].open_interest_as_notional);
     assert!(!decoded.charts[0].asset_volume_as_notional);
@@ -67,6 +69,13 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         value_from_json(legacy_chart, "legacy chart config should deserialize");
 
     assert!(!decoded_chart.header_collapsed);
+
+    let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
+    object_mut(&mut legacy_chart, "chart config is an object").remove("drawing_toolbar_collapsed");
+    let decoded_chart: ChartConfig =
+        value_from_json(legacy_chart, "legacy chart config should deserialize");
+
+    assert!(!decoded_chart.drawing_toolbar_collapsed);
 
     let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
     object_mut(&mut legacy_chart, "chart config is an object").remove("session_panel_height");

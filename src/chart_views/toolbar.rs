@@ -40,7 +40,9 @@ impl TradingTerminal {
             ChartSurfaceId::Docked(_) => None,
         };
 
-        let mut tf_row = if let Some(btn) = header_collapse_btn {
+        // Row 1: timeframe, indicators, reload, reset, header collapse, status,
+        // and the chart-mode toggles (invert / fills).
+        let mut controls_row = if let Some(btn) = header_collapse_btn {
             row![
                 tf_picker,
                 sections::chart_toolbar_separator(),
@@ -67,16 +69,17 @@ impl TradingTerminal {
         .align_y(iced::Alignment::Center);
 
         if let Some(status) = sections::chart_fetch_status_label(has_candles, instance, &theme) {
-            tf_row = tf_row
+            controls_row = controls_row
                 .push(sections::chart_toolbar_separator())
                 .push(status);
         }
+        controls_row = sections::push_chart_mode_buttons(controls_row, chart_id, instance);
 
-        tf_row = sections::push_drawing_tool_buttons(tf_row, chart_id, surface_id, active_tool);
-        tf_row = sections::push_annotation_style_bar(tf_row, chart_id, instance, active_tool);
-        tf_row = sections::push_chart_mode_buttons(tf_row, chart_id, instance);
+        // Row 2: collapsible drawing tools + selection style bar.
+        let tools_row =
+            sections::view_drawing_toolbar_row(chart_id, surface_id, instance, active_tool);
 
-        sections::chart_toolbar_strip(tf_row)
+        sections::chart_toolbar_strip(controls_row, tools_row)
     }
 }
 

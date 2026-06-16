@@ -62,6 +62,12 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ToggleChartDrawingToolbar(id) => {
+                if let Some(instance) = self.charts.get_mut(&id) {
+                    instance.drawing_toolbar_collapsed = !instance.drawing_toolbar_collapsed;
+                    self.persist_config();
+                }
+            }
             Message::ChartFocused(id) if self.charts.contains_key(&id) => {
                 self.primary_chart_id = Some(id);
                 self.focus = self

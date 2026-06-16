@@ -12,6 +12,7 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
         show_trade_markers: true,
         show_earnings_markers: true,
         header_collapsed: true,
+        drawing_toolbar_collapsed: false,
         funding_panel_height: 56,
         session_panel_height: 72,
         macro_indicators: MacroIndicatorsConfig::default(),

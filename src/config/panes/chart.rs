@@ -95,6 +95,9 @@ pub struct ChartConfig {
     /// Whether the chart header is collapsed to a ticker-only strip.
     #[serde(default)]
     pub header_collapsed: bool,
+    /// Whether the drawing-tools toolbar row is collapsed to just its toggle.
+    #[serde(default)]
+    pub drawing_toolbar_collapsed: bool,
     /// Desired funding-rate sub-panel height in pixels.
     #[serde(default = "default_funding_panel_height")]
     pub funding_panel_height: u16,
@@ -127,6 +130,7 @@ impl ChartConfig {
             show_trade_markers: false,
             show_earnings_markers: false,
             header_collapsed: false,
+            drawing_toolbar_collapsed: false,
             funding_panel_height: default_funding_panel_height(),
             session_panel_height: default_session_panel_height(),
             macro_indicators: MacroIndicatorsConfig::default(),

@@ -721,6 +721,7 @@ pub(crate) enum Message {
     ToggleChartInvert(ChartId),
     ToggleChartTradeMarkers(ChartId),
     ToggleChartHeaderCollapsed(ChartId),
+    ToggleChartDrawingToolbar(ChartId),
     OpenDetachedChart(ChartId),
     ChartOpenEditor(ChartId),
     ChartCloseEditor(ChartId),

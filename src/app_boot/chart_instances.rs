@@ -28,6 +28,7 @@ impl TradingTerminal {
             instance.chart.show_trade_markers = chart_cfg.show_trade_markers;
             instance.show_earnings_markers = chart_cfg.show_earnings_markers;
             instance.header_collapsed = chart_cfg.header_collapsed;
+            instance.drawing_toolbar_collapsed = chart_cfg.drawing_toolbar_collapsed;
             instance
                 .chart
                 .set_funding_panel_height(chart_cfg.funding_panel_height as f32);

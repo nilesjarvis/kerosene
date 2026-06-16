@@ -4,11 +4,22 @@ use crate::annotations::{
 };
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
-use iced::widget::{Row, button, container, rule, text, tooltip};
+use iced::widget::{Row, button, column, container, rule, text, tooltip};
 use iced::{Color, Element, Fill, Length, Theme};
 
-pub(super) fn chart_toolbar_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
-    container(content.width(Fill).wrap().vertical_spacing(0))
+pub(super) fn chart_toolbar_strip<'a>(
+    controls: Row<'a, Message>,
+    tools: Row<'a, Message>,
+) -> Element<'a, Message> {
+    let body = column![
+        controls.width(Fill).wrap().vertical_spacing(0),
+        drawing_toolbar_divider(),
+        tools.width(Fill).wrap().vertical_spacing(0),
+    ]
+    .spacing(2)
+    .width(Fill);
+
+    container(body)
         .width(Fill)
         .style(|theme: &Theme| {
             let background = Color {
@@ -21,6 +32,60 @@ pub(super) fn chart_toolbar_strip<'a>(content: Row<'a, Message>) -> Element<'a, 
             }
         })
         .into()
+}
+
+/// Faint divider separating the controls row from the drawing-tools row.
+fn drawing_toolbar_divider() -> Element<'static, Message> {
+    rule::horizontal(1)
+        .style(|theme: &Theme| rule::Style {
+            color: Color {
+                a: 0.08,
+                ..theme.extended_palette().background.weak.text
+            },
+            radius: 0.0.into(),
+            fill_mode: rule::FillMode::Full,
+            snap: true,
+        })
+        .into()
+}
+
+/// The second toolbar row: a collapse toggle followed by the drawing tools and
+/// (when something is selected) the style bar. Collapsed, only the toggle shows.
+pub(super) fn view_drawing_toolbar_row<'a>(
+    chart_id: ChartId,
+    surface_id: ChartSurfaceId,
+    instance: &ChartInstance,
+    active_tool: Option<DrawingTool>,
+) -> Row<'a, Message> {
+    let collapsed = instance.drawing_toolbar_collapsed;
+    let mut row = Row::new()
+        .spacing(0)
+        .align_y(iced::Alignment::Center)
+        .push(drawing_toolbar_toggle(chart_id, collapsed));
+
+    if !collapsed {
+        row = push_drawing_tool_buttons(row, chart_id, surface_id, active_tool);
+        row = push_annotation_style_bar(row, chart_id, instance, active_tool);
+    }
+    row
+}
+
+fn drawing_toolbar_toggle(chart_id: ChartId, collapsed: bool) -> Element<'static, Message> {
+    let (label, tip) = if collapsed {
+        ("\u{270E} \u{25B8} Draw", "Show drawing tools")
+    } else {
+        ("\u{270E} \u{25BE} Draw", "Hide drawing tools")
+    };
+    tooltip(
+        chart_toolbar_button(
+            label,
+            !collapsed,
+            Message::ToggleChartDrawingToolbar(chart_id),
+        ),
+        text(tip).size(10).font(crate::app_fonts::monospace_font()),
+        tooltip::Position::Top,
+    )
+    .into()
 }
 
 pub(super) fn chart_toolbar_button(

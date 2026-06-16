@@ -11,6 +11,7 @@ fn chart_with(annotations: Vec<AnnotationConfig>) -> ChartConfig {
         show_trade_markers: false,
         show_earnings_markers: false,
         header_collapsed: false,
+        drawing_toolbar_collapsed: false,
         funding_panel_height: 56,
         session_panel_height: 72,
         macro_indicators: MacroIndicatorsConfig::default(),
