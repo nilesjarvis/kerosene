@@ -3,6 +3,7 @@ use crate::pnl_card::{PnlCardDisplayMode, PnlCardPercentMode, PnlCardTarget};
 use crate::portfolio_state::PnlValueDisplayMode;
 
 mod account;
+mod annotations;
 mod chrome_layout;
 mod markets;
 

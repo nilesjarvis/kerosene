@@ -136,6 +136,9 @@ pub(crate) struct ChartInstance {
     /// User-drawn annotations (persisted).
     pub(crate) annotations: Vec<Annotation>,
     pub(crate) next_annotation_id: AnnotationId,
+    /// Annotation selected via the Select tool (mirrored from the canvas; used
+    /// by the toolbar style bar). Not persisted.
+    pub(crate) selected_annotation: Option<AnnotationId>,
     /// Whether the liquidation level overlay is enabled for this chart.
     pub(crate) show_liquidations: bool,
     /// Cached liquidation level data from HyperDash API.

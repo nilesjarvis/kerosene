@@ -1,4 +1,5 @@
 use super::DEFAULT_CANDLE_WIDTH;
+use crate::annotations::{Annotation, AnnotationId, DrawingTool};
 use iced::Point;
 
 mod export;
@@ -21,6 +22,13 @@ pub(super) enum DragKind {
     ResizeSessionPanel,
     /// Dragging an order line to a new price.
     MoveOrder { oid: u64 },
+    /// Dragging a whole annotation to a new (time, price) position.
+    MoveAnnotation { id: AnnotationId },
+    /// Dragging a single anchor handle of an annotation.
+    MoveAnnotationAnchor {
+        id: AnnotationId,
+        anchor_index: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,9 +78,21 @@ pub struct ChartState {
     /// OID of the order line the cursor is currently hovering near
     /// (used for grab cursor feedback).
     pub(super) hover_order_oid: Option<u64>,
-    /// First anchor for two-click drawing tools (trend line).
-    /// Stored as (timestamp_ms, price).
-    pub(super) pending_anchor: Option<(u64, f64)>,
+    /// Anchors committed so far for an in-progress multi-click shape, each as
+    /// (timestamp_ms, price). Empty when no shape is being drawn.
+    pub(super) draft_anchors: Vec<(u64, f64)>,
+    /// Tool the current draft belongs to; the draft resets when this differs
+    /// from the chart's active tool.
+    pub(super) draft_tool: Option<DrawingTool>,
+    /// Currently selected annotation (Select tool).
+    pub(super) selected_annotation: Option<AnnotationId>,
+    /// Annotation the cursor is hovering near (for grab-cursor feedback).
+    pub(super) hover_annotation: Option<AnnotationId>,
+    /// Immutable snapshot of an annotation captured at the start of a drag.
+    pub(super) drag_annotation_base: Option<Annotation>,
+    /// Live, continuously-updated copy of the annotation being dragged. Rendered
+    /// in place of the stored copy and committed on release.
+    pub(super) drag_annotation: Option<Annotation>,
     /// True while Shift is pressed.
     pub(super) shift_down: bool,
     /// True while Ctrl is pressed.
@@ -118,7 +138,12 @@ impl Default for ChartState {
             drag_order_coin: None,
             drag_order_new_price: None,
             hover_order_oid: None,
-            pending_anchor: None,
+            draft_anchors: Vec::new(),
+            draft_tool: None,
+            selected_annotation: None,
+            hover_annotation: None,
+            drag_annotation_base: None,
+            drag_annotation: None,
             shift_down: false,
             ctrl_down: false,
             hud_order_kind: HudOrderKind::Limit,
@@ -164,7 +189,12 @@ impl ChartState {
         self.drag_order_coin = None;
         self.drag_order_new_price = None;
         self.hover_order_oid = None;
-        self.pending_anchor = None;
+        self.draft_anchors = Vec::new();
+        self.draft_tool = None;
+        self.selected_annotation = None;
+        self.hover_annotation = None;
+        self.drag_annotation_base = None;
+        self.drag_annotation = None;
         self.hud_follow_price = false;
         self.range_anchor_price = None;
         self.reset_epoch_seen = reset_epoch;

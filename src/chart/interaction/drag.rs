@@ -6,6 +6,7 @@ use super::super::{
     },
 };
 use super::{InteractionLayout, ProjectedCursor};
+use crate::annotations::DrawingTool;
 use crate::chart::fisheye::ChartFisheye;
 use crate::message::Message;
 use iced::Rectangle;
@@ -75,6 +76,55 @@ impl CandlestickChart {
                         state.drag_order_new_price = Some(new_price);
                     }
                 }
+                DragKind::MoveAnnotation { .. } => {
+                    if let (Some(base), Some(drag_start), Some((price_hi, price_range, price_h))) = (
+                        state.drag_annotation_base.clone(),
+                        state.drag_start,
+                        self.visible_price_params(state, layout.chart_w, layout.chart_h),
+                    ) {
+                        let price_start = self.y_to_price_with(
+                            drag_start.y.clamp(0.0, price_h),
+                            price_hi,
+                            price_range,
+                            price_h,
+                        );
+                        let price_now = self.y_to_price_with(
+                            pos.y.clamp(0.0, price_h),
+                            price_hi,
+                            price_range,
+                            price_h,
+                        );
+                        let ts_start = self
+                            .x_to_timestamp(drag_start.x, state, layout.chart_w)
+                            .unwrap_or(0);
+                        let ts_now = self
+                            .x_to_timestamp(pos.x, state, layout.chart_w)
+                            .unwrap_or(0);
+                        let mut live = base;
+                        live.kind
+                            .translate(ts_now as i64 - ts_start as i64, price_now - price_start);
+                        state.drag_annotation = Some(live);
+                    }
+                }
+                DragKind::MoveAnnotationAnchor { anchor_index, .. } => {
+                    if let (Some(base), Some((price_hi, price_range, price_h))) = (
+                        state.drag_annotation_base.clone(),
+                        self.visible_price_params(state, layout.chart_w, layout.chart_h),
+                    ) {
+                        let price = self.y_to_price_with(
+                            pos.y.clamp(0.0, price_h),
+                            price_hi,
+                            price_range,
+                            price_h,
+                        );
+                        let ts = self
+                            .x_to_timestamp(pos.x, state, layout.chart_w)
+                            .unwrap_or(0);
+                        let mut live = base;
+                        live.kind.set_anchor(anchor_index, (ts, price));
+                        state.drag_annotation = Some(live);
+                    }
+                }
                 DragKind::ResizeFundingPanel => {
                     let dy = pos.y - start.y;
                     let height = CandlestickChart::clamp_funding_panel_height(
@@ -125,14 +175,29 @@ impl CandlestickChart {
         {
             state.hover_order_oid = Some(hit.order.oid);
         }
-        if needs_redraw_for_cursor || state.hover_order_oid != old_hover {
+
+        // Hover feedback for the Select tool (grab cursor over annotations).
+        let old_hover_ann = state.hover_annotation;
+        state.hover_annotation = None;
+        if self.active_tool == Some(DrawingTool::Select)
+            && let Some(cursor) = cursor
+            && let Some(hit) =
+                self.hit_test_annotation(state, cursor.source, layout.chart_w, layout.chart_h)
+        {
+            state.hover_annotation = Some(hit.id);
+        }
+
+        if needs_redraw_for_cursor
+            || state.hover_order_oid != old_hover
+            || state.hover_annotation != old_hover_ann
+        {
             Some(canvas::Action::request_redraw())
         } else {
             None
         }
     }
 
-    pub(super) fn handle_left_release(
+    pub(in crate::chart) fn handle_left_release(
         &self,
         state: &mut ChartState,
         bounds: Rectangle,
@@ -150,6 +215,24 @@ impl CandlestickChart {
                         new_price: price,
                     })
                     .and_capture(),
+                );
+            }
+            return Some(canvas::Action::request_redraw());
+        }
+        if matches!(
+            state.drag,
+            Some(DragKind::MoveAnnotation { .. } | DragKind::MoveAnnotationAnchor { .. })
+        ) {
+            let live = state.drag_annotation.take();
+            state.drag_annotation_base = None;
+            state.drag = None;
+            state.drag_start = None;
+            if let Some(annotation) = live
+                && annotation.is_valid()
+            {
+                return Some(
+                    canvas::Action::publish(Message::UpdateAnnotation(self.id, annotation))
+                        .and_capture(),
                 );
             }
             return Some(canvas::Action::request_redraw());

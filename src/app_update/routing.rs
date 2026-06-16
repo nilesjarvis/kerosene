@@ -432,6 +432,9 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         Message::SetDrawingTool(_, _, _)
         | Message::AddAnnotation(_, _)
         | Message::RemoveAnnotation(_, _)
+        | Message::UpdateAnnotation(_, _)
+        | Message::SelectAnnotation(_, _)
+        | Message::RestyleAnnotation(_, _, _)
         | Message::ClearDrawingTool(_, _) => UpdateRoute::Annotations,
 
         Message::ChartFocused(_)

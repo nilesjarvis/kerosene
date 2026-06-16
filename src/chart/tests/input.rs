@@ -3,6 +3,7 @@ use crate::chart::{CandlestickChart, OrderOverlay, OrderOverlayPendingState};
 use crate::message::Message;
 use iced::Point;
 
+mod drawing;
 mod left_click;
 mod right_click;
 

@@ -7,6 +7,7 @@ use crate::config::{
     MacroIndicatorsConfig,
 };
 
+mod annotations;
 mod detached;
 mod markers;
 mod screenshot;

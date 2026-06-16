@@ -1,8 +1,11 @@
-use crate::annotations::DrawingTool;
+use crate::annotations::{
+    AnnotationId, AnnotationStyle, DEFAULT_LEVEL_COLOR, DEFAULT_LINE_COLOR, DEFAULT_MEASURE_COLOR,
+    DrawingTool, LineStyle,
+};
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use iced::widget::{Row, button, container, rule, text, tooltip};
-use iced::{Color, Element, Fill, Theme};
+use iced::{Color, Element, Fill, Length, Theme};
 
 pub(super) fn chart_toolbar_strip<'a>(content: Row<'a, Message>) -> Element<'a, Message> {
     container(content.width(Fill).wrap().vertical_spacing(0))
@@ -68,37 +71,231 @@ pub(super) fn chart_fetch_status_label(
     }
 }
 
+/// (glyph, tooltip, tool) for each drawing tool button, in toolbar order.
+const DRAWING_TOOLS: &[(&str, &str, DrawingTool)] = &[
+    (
+        "\u{2196}",
+        "Select / move / edit drawings",
+        DrawingTool::Select,
+    ),
+    ("\u{2014}", "Horizontal level", DrawingTool::HorizontalLevel),
+    ("\u{2502}", "Vertical line", DrawingTool::VerticalLine),
+    ("\u{2571}", "Trend line", DrawingTool::TrendLine),
+    ("\u{2197}", "Ray (extends one way)", DrawingTool::Ray),
+    (
+        "\u{2194}",
+        "Extended line (extends both ways)",
+        DrawingTool::ExtendedLine,
+    ),
+    ("\u{25AD}", "Rectangle / zone", DrawingTool::Rectangle),
+    ("\u{0394}", "Measure price / time", DrawingTool::Measure),
+    (
+        "\u{2261}",
+        "Fibonacci retracement",
+        DrawingTool::FibRetracement,
+    ),
+    ("\u{2263}", "Fibonacci extension", DrawingTool::FibExtension),
+    (
+        "\u{2717}",
+        "Eraser (click a drawing to delete)",
+        DrawingTool::Eraser,
+    ),
+];
+
 pub(super) fn push_drawing_tool_buttons<'a>(
-    toolbar: Row<'a, Message>,
+    mut toolbar: Row<'a, Message>,
     chart_id: ChartId,
     surface_id: ChartSurfaceId,
     active_tool: Option<DrawingTool>,
 ) -> Row<'a, Message> {
+    for (glyph, tip, tool) in DRAWING_TOOLS {
+        toolbar = toolbar.push(chart_toolbar_separator()).push(tooltip(
+            drawing_tool_button(glyph, chart_id, surface_id, active_tool, *tool),
+            text(*tip).size(10).font(crate::app_fonts::monospace_font()),
+            tooltip::Position::Top,
+        ));
+    }
     toolbar
+}
+
+/// Preset colors offered in the annotation style bar.
+fn annotation_palette() -> [Color; 6] {
+    [
+        DEFAULT_LINE_COLOR,
+        DEFAULT_LEVEL_COLOR,
+        DEFAULT_MEASURE_COLOR,
+        Color::from_rgb(0.95, 0.45, 0.45),
+        Color::from_rgb(0.62, 0.55, 0.95),
+        Color::from_rgb(0.92, 0.92, 0.92),
+    ]
+}
+
+const ANNOTATION_WIDTH_STEPS: [f32; 4] = [1.0, 1.5, 2.5, 4.0];
+
+/// Append a compact style bar for the currently selected annotation when the
+/// Select tool is active. Recolor / restyle / lock / delete the selection.
+pub(super) fn push_annotation_style_bar<'a>(
+    toolbar: Row<'a, Message>,
+    chart_id: ChartId,
+    instance: &ChartInstance,
+    active_tool: Option<DrawingTool>,
+) -> Row<'a, Message> {
+    if active_tool != Some(DrawingTool::Select) {
+        return toolbar;
+    }
+    let Some(id) = instance.selected_annotation else {
+        return toolbar;
+    };
+    let Some(annotation) = instance.annotations.iter().find(|ann| ann.id == id) else {
+        return toolbar;
+    };
+    let style = annotation.style.clone();
+
+    let mut bar = toolbar.push(chart_toolbar_separator());
+    for color in annotation_palette() {
+        bar = bar.push(annotation_color_swatch(chart_id, id, &style, color));
+    }
+
+    bar = bar
         .push(chart_toolbar_separator())
-        .push(drawing_tool_button(
-            "\u{2014}",
-            chart_id,
-            surface_id,
-            active_tool,
-            DrawingTool::HorizontalLevel,
-        ))
+        .push(annotation_line_style_button(chart_id, id, &style))
         .push(chart_toolbar_separator())
-        .push(drawing_tool_button(
-            "\u{2571}",
-            chart_id,
-            surface_id,
-            active_tool,
-            DrawingTool::TrendLine,
-        ))
+        .push(annotation_width_button(chart_id, id, &style))
         .push(chart_toolbar_separator())
-        .push(drawing_tool_button(
-            "\u{2717}",
-            chart_id,
-            surface_id,
-            active_tool,
-            DrawingTool::Eraser,
-        ))
+        .push(annotation_lock_button(chart_id, id, &style))
+        .push(chart_toolbar_separator())
+        .push(annotation_delete_button(chart_id, id));
+    bar
+}
+
+fn restyle(style: &AnnotationStyle, mutate: impl FnOnce(&mut AnnotationStyle)) -> AnnotationStyle {
+    let mut next = style.clone();
+    mutate(&mut next);
+    next
+}
+
+fn annotation_color_swatch<'a>(
+    chart_id: ChartId,
+    id: AnnotationId,
+    style: &AnnotationStyle,
+    color: Color,
+) -> Element<'a, Message> {
+    let next = restyle(style, |s| {
+        s.color = Color {
+            a: s.color.a,
+            ..color
+        };
+    });
+    button(text(""))
+        .width(Length::Fixed(14.0))
+        .height(Length::Fixed(14.0))
+        .on_press(Message::RestyleAnnotation(chart_id, id, next))
+        .style(move |_theme: &Theme, status| {
+            let border_color = match status {
+                button::Status::Hovered => Color::WHITE,
+                _ => Color {
+                    a: 0.4,
+                    ..Color::WHITE
+                },
+            };
+            button::Style {
+                background: Some(color.into()),
+                border: iced::Border {
+                    radius: 2.0.into(),
+                    width: 1.0,
+                    color: border_color,
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
+fn annotation_line_style_button<'a>(
+    chart_id: ChartId,
+    id: AnnotationId,
+    style: &AnnotationStyle,
+) -> Element<'a, Message> {
+    let (glyph, next_style) = match style.line_style {
+        LineStyle::Solid => ("\u{2015}", LineStyle::Dashed),
+        LineStyle::Dashed => ("\u{254C}", LineStyle::Dotted),
+        LineStyle::Dotted => ("\u{22EF}", LineStyle::Solid),
+    };
+    let next = restyle(style, |s| s.line_style = next_style);
+    tooltip(
+        chart_toolbar_button(glyph, false, Message::RestyleAnnotation(chart_id, id, next)),
+        text("Cycle line style")
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
+        tooltip::Position::Top,
+    )
+    .into()
+}
+
+fn annotation_width_button<'a>(
+    chart_id: ChartId,
+    id: AnnotationId,
+    style: &AnnotationStyle,
+) -> Element<'a, Message> {
+    let next_width = ANNOTATION_WIDTH_STEPS
+        .iter()
+        .copied()
+        .find(|step| *step > style.width + 0.01)
+        .unwrap_or(ANNOTATION_WIDTH_STEPS[0]);
+    let next = restyle(style, |s| s.width = next_width);
+    let label: &'static str = if style.width <= 1.0 {
+        "1px"
+    } else if style.width <= 1.5 {
+        "2px"
+    } else if style.width <= 2.5 {
+        "3px"
+    } else {
+        "4px"
+    };
+    tooltip(
+        chart_toolbar_button(label, false, Message::RestyleAnnotation(chart_id, id, next)),
+        text("Cycle line width")
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
+        tooltip::Position::Top,
+    )
+    .into()
+}
+
+fn annotation_lock_button<'a>(
+    chart_id: ChartId,
+    id: AnnotationId,
+    style: &AnnotationStyle,
+) -> Element<'a, Message> {
+    let next = restyle(style, |s| s.locked = !s.locked);
+    let glyph = if style.locked {
+        "\u{1F512}"
+    } else {
+        "\u{1F513}"
+    };
+    tooltip(
+        chart_toolbar_button(
+            glyph,
+            style.locked,
+            Message::RestyleAnnotation(chart_id, id, next),
+        ),
+        text("Lock / unlock drawing")
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
+        tooltip::Position::Top,
+    )
+    .into()
+}
+
+fn annotation_delete_button<'a>(chart_id: ChartId, id: AnnotationId) -> Element<'a, Message> {
+    tooltip(
+        chart_toolbar_button("\u{2717}", false, Message::RemoveAnnotation(chart_id, id)),
+        text("Delete drawing")
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
+        tooltip::Position::Top,
+    )
+    .into()
 }
 
 pub(super) fn push_chart_mode_buttons<'a>(
