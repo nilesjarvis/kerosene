@@ -347,6 +347,15 @@ impl TradingTerminal {
             Message::ChaseRestingOrder { coin, oid } => {
                 return self.handle_chase_resting_order(coin, oid);
             }
+            // Every message routed to `UpdateRoute::Order` has an explicit arm
+            // above, so this is unreachable today. If a future order message is
+            // routed here without a handler, fail loudly in debug/test builds
+            // instead of silently dropping it; release stays a benign no-op.
+            #[cfg(debug_assertions)]
+            other => {
+                unreachable!("order message routed to update_order without a handler: {other:?}")
+            }
+            #[cfg(not(debug_assertions))]
             _ => {}
         }
 
