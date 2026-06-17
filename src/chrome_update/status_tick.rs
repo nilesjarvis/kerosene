@@ -163,7 +163,7 @@ mod tests {
         let stale_book = &terminal.order_books[&1];
         assert!(stale_book.asset_ctx.is_none());
         assert!(stale_book.asset_ctx_updated_at.is_none());
-        assert!(stale_book.spread_history.is_empty());
+        assert!(!stale_book.spread_history.is_empty());
         assert_eq!(stale_book.best_bid_ask(), (Some(99.0), Some(101.0)));
         assert_eq!(stale_book.book.bids.len(), 1);
         assert_eq!(stale_book.book.asks.len(), 1);

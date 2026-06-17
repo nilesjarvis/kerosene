@@ -155,10 +155,22 @@ impl OrderBookInstance {
         self.tick_options_basis = None;
     }
 
+    /// Drop the asset context (e.g. on stream lag or staleness). Book-derived
+    /// price history (spread, mid-price) is left intact: it is refreshed by
+    /// the live L2 book and trimmed by its own time window, so an
+    /// asset-context hiccup must not blank the spread chart or the
+    /// short-term price move.
     pub fn clear_asset_context(&mut self) {
         self.asset_ctx = None;
         self.asset_ctx_updated_at = None;
-        self.spread_history.clear();
+    }
+
+    /// Drop the asset context and all book-derived price history. Used when the
+    /// symbol changes or the book is reset, so samples from the previous symbol
+    /// never bleed into the new one.
+    pub fn clear_asset_context_and_price_history(&mut self) {
+        self.clear_asset_context();
+        self.clear_spread_history();
         self.clear_mid_price_history();
     }
 

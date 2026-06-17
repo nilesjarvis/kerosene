@@ -41,8 +41,11 @@ fn stale_asset_context_expiry_clears_derived_context_without_dropping_book_rows(
     ));
     assert!(inst.asset_ctx.is_none());
     assert!(inst.asset_ctx_updated_at.is_none());
-    assert!(inst.spread_history.is_empty());
-    assert!(inst.mid_price_history.is_empty());
+    // Asset-context expiry drops the impact context but leaves the
+    // book-derived spread/mid history intact — the live L2 book still owns
+    // those, and a stale asset context must not blank the spread chart.
+    assert!(!inst.spread_history.is_empty());
+    assert!(!inst.mid_price_history.is_empty());
     assert_eq!(inst.best_bid_ask(), (Some(99.5), Some(100.5)));
     assert_eq!(inst.book.bids.len(), 1);
     assert_eq!(inst.book.asks.len(), 1);

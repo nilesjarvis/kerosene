@@ -122,7 +122,7 @@ impl TradingTerminal {
                 let was_fixed = matches!(order_book.mode, OrderBookSymbolMode::Fixed(_));
                 order_book.mode = OrderBookSymbolMode::Active;
                 order_book.set_book(OrderBook::empty());
-                order_book.clear_asset_context();
+                order_book.clear_asset_context_and_price_history();
                 order_book.clear_book_request();
                 order_book.book_loading = false;
                 order_book.book_error = None;

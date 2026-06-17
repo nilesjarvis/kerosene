@@ -49,7 +49,7 @@ impl TradingTerminal {
         for inst in self.order_books.values_mut() {
             if inst.mode == OrderBookSymbolMode::Active {
                 inst.set_book(OrderBook::empty());
-                inst.clear_asset_context();
+                inst.clear_asset_context_and_price_history();
                 inst.reset_tick_options_basis();
                 inst.set_tick_size(default_tick);
                 inst.clear_book_request();
@@ -109,7 +109,9 @@ impl TradingTerminal {
                     let was_empty = inst.book.bids.is_empty() && inst.book.asks.is_empty();
                     let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
                     inst.set_book_with_source(book, source_tick);
-                    inst.record_mid_price_sample(std::time::Instant::now());
+                    let now = std::time::Instant::now();
+                    inst.record_mid_price_sample(now);
+                    inst.record_spread_sample(now);
                     inst.book_error = None;
                     inst.book_failure_toasted = false;
 

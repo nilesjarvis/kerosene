@@ -5,12 +5,10 @@ use crate::market_state::OrderBookSymbolMode;
 use crate::message::Message;
 use iced::Task;
 
-mod asset_ctx;
 mod book_data;
 mod panes;
 mod ws_updates;
 
-use asset_ctx::record_asset_context_spread;
 use ws_updates::order_book_tracks_coin;
 
 impl TradingTerminal {
@@ -46,7 +44,7 @@ impl TradingTerminal {
                     let now = std::time::Instant::now();
                     inst.asset_ctx = Some(ctx.clone());
                     inst.asset_ctx_updated_at = Some(now);
-                    record_asset_context_spread(&mut inst.spread_history, &ctx, now);
+                    inst.record_spread_sample(now);
                     inst.record_mid_price_sample(now);
                 }
                 Task::none()
@@ -98,6 +96,7 @@ impl TradingTerminal {
                     let now = std::time::Instant::now();
                     inst.apply_book_update_preserving_scope(book, source_tick);
                     inst.record_mid_price_sample(now);
+                    inst.record_spread_sample(now);
                     inst.book_loading = false;
                     inst.book_error = None;
                     newly_populated =
@@ -258,7 +257,7 @@ impl TradingTerminal {
                     inst.mode = mode.clone();
                     inst.settings_open = false;
                     inst.set_book(OrderBook::empty());
-                    inst.clear_asset_context();
+                    inst.clear_asset_context_and_price_history();
                     inst.reset_tick_options_basis();
                     // Drop any in-flight request marker so the fetch dedup
                     // guard cannot mistake the old symbol's request for ours.
@@ -581,7 +580,7 @@ mod tests {
 
         let inst = &terminal.order_books[&7];
         assert!(inst.asset_ctx.is_none());
-        assert!(inst.spread_history.is_empty());
+        assert!(!inst.spread_history.is_empty());
         assert_eq!(inst.best_bid_ask(), (Some(99.0), Some(101.0)));
         assert_eq!(inst.book.bids.len(), 1);
         assert_eq!(inst.book.asks.len(), 1);

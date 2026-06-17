@@ -11,6 +11,16 @@ const SHORT_TERM_PRICE_MOVE_WINDOW: Duration = Duration::from_secs(3);
 const SHORT_TERM_PRICE_HISTORY_WINDOW: Duration = Duration::from_secs(10);
 const SHORT_TERM_PRICE_HISTORY_LIMIT: usize = 2_048;
 
+/// How much spread-chart history is retained. Matches the spread chart's
+/// visible window so the line always spans the full chart rather than a tail.
+const SPREAD_HISTORY_WINDOW: Duration = Duration::from_secs(300);
+/// Cap on retained spread samples. With sampling throttled to one sample per
+/// second this is a safety backstop, not the primary bound.
+const SPREAD_HISTORY_LIMIT: usize = 4_096;
+/// Minimum spacing between spread samples. Bounds the per-frame point count
+/// rendered by the spread chart under high-frequency book updates.
+const SPREAD_SAMPLE_MIN_INTERVAL: Duration = Duration::from_secs(1);
+
 impl OrderBookInstance {
     pub fn best_bid_ask(&self) -> (Option<f64>, Option<f64>) {
         let mut true_best_bid = self.book.bids.first().map(|level| level.px);
@@ -90,6 +100,41 @@ impl OrderBookInstance {
         self.mid_price_history.clear();
     }
 
+    /// Record a spread sample derived from the visible top of book — the same
+    /// source the spread readout row above the chart displays. The live L2
+    /// book is the primary source; impact prices from the asset context fill
+    /// in only while the book is empty, so the chart populates as soon as any
+    /// book snapshot lands, independent of the `activeAssetCtx` stream.
+    ///
+    /// Sampling is throttled to one sample per second so a burst of book
+    /// updates cannot flood the chart's render path; the 300-second window
+    /// then bounds the retained history.
+    pub fn record_spread_sample(&mut self, now: Instant) {
+        if let Some((last_time, _)) = self.spread_history.front()
+            && now
+                .checked_duration_since(*last_time)
+                .is_some_and(|elapsed| elapsed < SPREAD_SAMPLE_MIN_INTERVAL)
+        {
+            return;
+        }
+
+        let (best_bid, best_ask) = self.visible_best_bid_ask();
+        let Some((best_bid, best_ask)) = best_bid.zip(best_ask) else {
+            return;
+        };
+        let spread = best_ask - best_bid;
+        if !spread.is_finite() || spread < 0.0 {
+            return;
+        }
+
+        self.spread_history.push_front((now, spread));
+        self.trim_spread_history(now);
+    }
+
+    pub fn clear_spread_history(&mut self) {
+        self.spread_history.clear();
+    }
+
     pub fn short_term_price_move(&self) -> Option<f64> {
         let (latest_time, latest_price) = self.mid_price_history.front().copied()?;
         let cutoff = latest_time
@@ -126,6 +171,21 @@ impl OrderBookInstance {
             .is_some_and(|(time, _)| *time < cutoff)
         {
             self.mid_price_history.pop_back();
+        }
+    }
+
+    fn trim_spread_history(&mut self, now: Instant) {
+        let cutoff = now.checked_sub(SPREAD_HISTORY_WINDOW).unwrap_or(now);
+
+        while self.spread_history.len() > SPREAD_HISTORY_LIMIT {
+            self.spread_history.pop_back();
+        }
+        while self
+            .spread_history
+            .back()
+            .is_some_and(|(time, _)| *time < cutoff)
+        {
+            self.spread_history.pop_back();
         }
     }
 }

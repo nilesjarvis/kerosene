@@ -6,6 +6,7 @@ mod asset_ctx;
 mod cache;
 mod mid_price;
 mod scope;
+mod spread;
 
 fn lvl(px: f64, sz: f64) -> BookLevel {
     BookLevel { px, sz }

@@ -1,6 +1,7 @@
 use super::{AccountAbstractionMode, OpenOrder, SpotBalance, UserFill};
 
 mod abstraction;
+mod asset_context;
 mod fills;
 mod orders;
 mod spot;
