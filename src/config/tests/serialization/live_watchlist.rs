@@ -1,7 +1,8 @@
+use super::super::config_warning_guard;
 use super::{default_config_value, json_string, object_mut, value_from_json, value_from_str};
 use crate::config::{
     KeroseneConfig, LiveWatchlistColumn, LiveWatchlistConfig, LiveWatchlistSortColumn, SavedLayout,
-    SortDirection, default_live_watchlist_columns,
+    SortDirection, default_live_watchlist_columns, take_config_warnings,
 };
 
 #[test]
@@ -95,5 +96,55 @@ fn live_watchlists_legacy_defaults_are_backwards_compatible() {
     assert_eq!(
         saved_watchlist.visible_columns,
         default_live_watchlist_columns()
+    );
+}
+
+#[test]
+fn live_watchlists_default_or_drop_unknown_persisted_enum_values() {
+    let _warning_guard = config_warning_guard();
+    let mut config = default_config_value();
+    object_mut(&mut config, "config should serialize to object").insert(
+        "live_watchlists".to_string(),
+        serde_json::json!([
+            {
+                "id": 11,
+                "symbols": ["BTC"],
+                "sort_column": "FutureSort",
+                "sort_direction": "FutureDirection",
+                "visible_columns": ["Price", "FutureColumn", "Funding"]
+            }
+        ]),
+    );
+
+    let decoded: KeroseneConfig =
+        value_from_json(config, "future live watchlist config should deserialize");
+    let watchlist = decoded
+        .live_watchlists
+        .first()
+        .expect("decoded live watchlist");
+
+    assert_eq!(watchlist.sort_column, LiveWatchlistSortColumn::Symbol);
+    assert_eq!(watchlist.sort_direction, SortDirection::Ascending);
+    assert_eq!(
+        watchlist.visible_columns,
+        vec![LiveWatchlistColumn::Price, LiveWatchlistColumn::Funding]
+    );
+
+    let warnings = take_config_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("Unknown live watchlist sort column \"FutureSort\""))
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("Unknown sort direction \"FutureDirection\""))
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning
+                .contains("Unknown live watchlist visible column \"FutureColumn\""))
     );
 }
