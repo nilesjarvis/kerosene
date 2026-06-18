@@ -129,7 +129,7 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
                 "#000000", "#F2F2E8", "#FF9F1A", "#00B050", "#FFD84A", "#B00024",
             ],
             chart: Some(ChartThemeSpec::candles_and_line(
-                "#00C853", "#D50032", "#0054A6",
+                "#00C853", "#D50032", "#9AD7FF",
             )),
         },
         ThemeSpec {

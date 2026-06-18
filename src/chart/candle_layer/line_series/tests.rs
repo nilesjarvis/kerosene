@@ -82,10 +82,10 @@ fn line_series_uses_theme_text_and_primary_without_override() {
 #[test]
 fn line_series_uses_chart_line_override_for_stroke_and_area() {
     let mut chart = CandlestickChart::new(1);
-    chart.chart_line_color = Some(Color::from_rgb8(0x00, 0x54, 0xA6));
+    chart.chart_line_color = Some(Color::from_rgb8(0x9A, 0xD7, 0xFF));
 
     let (line, accent) = line_series_colors(&chart, &Theme::Dark);
 
-    assert_eq!(line, Color::from_rgb8(0x00, 0x54, 0xA6));
-    assert_eq!(accent, Color::from_rgb8(0x00, 0x54, 0xA6));
+    assert_eq!(line, Color::from_rgb8(0x9A, 0xD7, 0xFF));
+    assert_eq!(accent, Color::from_rgb8(0x9A, 0xD7, 0xFF));
 }

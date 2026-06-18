@@ -39,7 +39,24 @@ fn normalizes_bloomberg_chart_line_override() {
         .iter()
         .find(|theme| theme.name == "Bloomberg")
         .expect("Bloomberg theme should be present");
-    assert_eq!(bloomberg.chart_line.as_deref(), Some("#0054A6"));
+    assert_eq!(bloomberg.chart_line.as_deref(), Some("#9AD7FF"));
+}
+
+#[test]
+fn normalizes_previous_bloomberg_chart_line_default() {
+    let mut config = KeroseneConfig {
+        custom_themes: vec![bloomberg_theme(Some("#0054A6"))],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let bloomberg = config
+        .custom_themes
+        .iter()
+        .find(|theme| theme.name == "Bloomberg")
+        .expect("Bloomberg theme should be present");
+    assert_eq!(bloomberg.chart_line.as_deref(), Some("#9AD7FF"));
 }
 
 #[test]

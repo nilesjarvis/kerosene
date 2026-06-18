@@ -211,7 +211,7 @@ mod tests {
         );
         assert_eq!(
             chart.chart_line_color,
-            Some(Color::from_rgb8(0x00, 0x54, 0xA6))
+            Some(Color::from_rgb8(0x9A, 0xD7, 0xFF))
         );
     }
 }

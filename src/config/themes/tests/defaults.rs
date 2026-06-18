@@ -77,7 +77,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#B00024",
             chart_bull: Some("#00C853"),
             chart_bear: Some("#D50032"),
-            chart_line: Some("#0054A6"),
+            chart_line: Some("#9AD7FF"),
         },
         ThemeExpectation {
             name: "FTX",

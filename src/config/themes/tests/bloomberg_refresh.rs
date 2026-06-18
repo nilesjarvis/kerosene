@@ -21,11 +21,14 @@ fn bloomberg_theme(
 
 #[test]
 fn known_bloomberg_defaults_are_refreshable() {
-    let current = bloomberg_theme(Some("#00C853"), Some("#D50032"), Some("#0054A6"));
+    let current = bloomberg_theme(Some("#00C853"), Some("#D50032"), Some("#9AD7FF"));
     assert!(is_known_default_bloomberg_theme(&current));
 
     let legacy_without_line = bloomberg_theme(Some("#00C853"), Some("#D50032"), None);
     assert!(is_known_default_bloomberg_theme(&legacy_without_line));
+
+    let previous_line_default = bloomberg_theme(Some("#00C853"), Some("#D50032"), Some("#0054A6"));
+    assert!(is_known_default_bloomberg_theme(&previous_line_default));
 
     let customized = CustomThemeConfig {
         primary: "#0080FF".to_string(),

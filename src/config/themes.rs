@@ -68,5 +68,6 @@ pub(crate) fn is_known_default_bloomberg_theme(theme: &CustomThemeConfig) -> boo
         && theme.danger.eq_ignore_ascii_case("#B00024")
         && optional_hex_eq(&theme.chart_bull, "#00C853")
         && optional_hex_eq(&theme.chart_bear, "#D50032")
-        && optional_hex_eq(&theme.chart_line, "#0054A6")
+        && (optional_hex_eq(&theme.chart_line, "#9AD7FF")
+            || optional_hex_eq(&theme.chart_line, "#0054A6"))
 }
