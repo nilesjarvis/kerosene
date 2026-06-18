@@ -33,8 +33,11 @@ impl TradingTerminal {
         total_closed: usize,
     ) -> Element<'_, Message> {
         let theme = self.theme();
-        let all_pnl_points =
+        let trade_pnl_points =
             journal_cumulative_pnl_points(filtered_trades, self.journal.include_fees_in_pnl);
+        let portfolio_pnl_points = self.journal_portfolio_margin_pnl_points();
+        let using_portfolio_pnl = portfolio_pnl_points.is_some();
+        let all_pnl_points = portfolio_pnl_points.unwrap_or(trade_pnl_points);
         let pnl_points = self.journal_portfolio_window_points(all_pnl_points);
         let selected_window_pnl = journal_window_total_pnl(&pnl_points).unwrap_or(total_pnl);
         let account_value_points = self.journal_account_value_chart_points(&pnl_points);
@@ -44,6 +47,13 @@ impl TradingTerminal {
         let value_color = signed_number_color(selected_window_pnl, &theme);
         let muted = theme.extended_palette().background.weak.text;
         let filter_label = journal_filter_label(self.journal.filter);
+        let pnl_label = if using_portfolio_pnl {
+            "PORTFOLIO PNL"
+        } else if self.journal.include_fees_in_pnl {
+            "NET PNL"
+        } else {
+            "GROSS PNL"
+        };
         let win_rate_color = if total_closed == 0 {
             muted
         } else if win_rate >= 50.0 {
@@ -107,14 +117,10 @@ impl TradingTerminal {
                 .on_press(Message::JournalToggleIncludeFeesInPnl)
                 .padding(0)
                 .style(button::text),
-                text(if self.journal.include_fees_in_pnl {
-                    "NET PNL"
-                } else {
-                    "GROSS PNL"
-                })
-                .size(13)
-                .font(crate::app_fonts::monospace_font())
-                .color(muted),
+                text(pnl_label)
+                    .size(13)
+                    .font(crate::app_fonts::monospace_font())
+                    .color(muted),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -183,6 +189,75 @@ impl TradingTerminal {
                 account_value_points_for_range(&bucket.account_value_history, start_ms, end_ms)
             })
             .unwrap_or_default()
+    }
+
+    fn journal_portfolio_margin_pnl_points(&self) -> Option<Vec<(u64, f64)>> {
+        let is_portfolio_margin = self
+            .connected_order_account_snapshot()
+            .is_some_and(|(_, data)| data.is_portfolio_margin());
+        if !is_portfolio_margin {
+            return None;
+        }
+
+        let kind = journal_portfolio_pnl_kind(self.journal.filter)?;
+        let points = match kind {
+            JournalPortfolioPnlKind::All | JournalPortfolioPnlKind::Perp => {
+                self.journal_portfolio_bucket_pnl_points(kind)?
+            }
+            JournalPortfolioPnlKind::NonPerp => {
+                let all_points =
+                    self.journal_portfolio_bucket_pnl_points(JournalPortfolioPnlKind::All)?;
+                let perp_points = self
+                    .journal_portfolio_bucket_pnl_points(JournalPortfolioPnlKind::Perp)
+                    .unwrap_or_default();
+                subtract_latest_pnl_series(&all_points, &perp_points)
+            }
+        };
+
+        (!points.is_empty()).then_some(points)
+    }
+
+    fn journal_portfolio_bucket_pnl_points(
+        &self,
+        kind: JournalPortfolioPnlKind,
+    ) -> Option<Vec<(u64, f64)>> {
+        if let Some(key) =
+            journal_direct_portfolio_pnl_bucket_key(kind, self.journal.portfolio_window)
+            && let Some(bucket) = self.portfolio_bucket_by_key(key)
+            && !bucket.pnl_history.is_empty()
+        {
+            return Some(bucket.pnl_history.clone());
+        }
+
+        let all_time_key = journal_all_time_portfolio_pnl_bucket_key(kind)?;
+        self.portfolio_bucket_by_key(all_time_key)
+            .map(|bucket| bucket.pnl_history.clone())
+            .filter(|points| !points.is_empty())
+    }
+}
+
+fn journal_direct_portfolio_pnl_bucket_key(
+    kind: JournalPortfolioPnlKind,
+    window: PortfolioWindow,
+) -> Option<&'static str> {
+    match (kind, window) {
+        (JournalPortfolioPnlKind::All, PortfolioWindow::Day) => Some("day"),
+        (JournalPortfolioPnlKind::All, PortfolioWindow::Week) => Some("week"),
+        (JournalPortfolioPnlKind::All, PortfolioWindow::Month) => Some("month"),
+        (JournalPortfolioPnlKind::Perp, PortfolioWindow::Day) => Some("perpDay"),
+        (JournalPortfolioPnlKind::Perp, PortfolioWindow::Week) => Some("perpWeek"),
+        (JournalPortfolioPnlKind::Perp, PortfolioWindow::Month) => Some("perpMonth"),
+        _ => None,
+    }
+}
+
+fn journal_all_time_portfolio_pnl_bucket_key(
+    kind: JournalPortfolioPnlKind,
+) -> Option<&'static str> {
+    match kind {
+        JournalPortfolioPnlKind::All => Some("allTime"),
+        JournalPortfolioPnlKind::Perp => Some("perpAllTime"),
+        JournalPortfolioPnlKind::NonPerp => None,
     }
 }
 

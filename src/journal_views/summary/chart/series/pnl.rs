@@ -1,12 +1,34 @@
-use crate::journal::AggregatedTrade;
+use super::finite_sorted_points;
+use crate::journal::{AggregatedTrade, JournalFilter};
 
 const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 const LEADING_ZERO_POINT_COUNT: usize = 4;
 const MAX_LEADING_ZERO_WINDOW_MS: u64 = 7 * DAY_MS;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::journal_views::summary::chart) enum JournalPortfolioPnlKind {
+    All,
+    Perp,
+    NonPerp,
+}
+
 // ---------------------------------------------------------------------------
 // PnL Series
 // ---------------------------------------------------------------------------
+
+pub(in crate::journal_views::summary::chart) fn journal_portfolio_pnl_kind(
+    filter: JournalFilter,
+) -> Option<JournalPortfolioPnlKind> {
+    match filter {
+        JournalFilter::All => Some(JournalPortfolioPnlKind::All),
+        JournalFilter::Perp => Some(JournalPortfolioPnlKind::Perp),
+        JournalFilter::Spot => Some(JournalPortfolioPnlKind::NonPerp),
+        // The portfolio endpoint exposes all-account and perp buckets. It does
+        // not split non-perp PnL into spot vs outcome, so keep outcome journal
+        // performance fill-based instead of attributing all non-perp PnL there.
+        JournalFilter::Outcome => None,
+    }
+}
 
 pub(in crate::journal_views::summary::chart) fn journal_cumulative_pnl_points(
     trades: &[&AggregatedTrade],
@@ -53,6 +75,34 @@ pub(in crate::journal_views::summary::chart) fn journal_cumulative_pnl_points(
     }
 
     points
+}
+
+pub(in crate::journal_views::summary::chart) fn subtract_latest_pnl_series(
+    total_points: &[(u64, f64)],
+    subtrahend_points: &[(u64, f64)],
+) -> Vec<(u64, f64)> {
+    let total_points = finite_sorted_points(total_points);
+    if total_points.is_empty() {
+        return Vec::new();
+    }
+
+    let subtrahend_points = finite_sorted_points(subtrahend_points);
+    let mut out = Vec::with_capacity(total_points.len());
+    let mut subtrahend_idx = 0;
+    let mut latest_subtrahend = 0.0;
+
+    for (timestamp_ms, total) in total_points {
+        while subtrahend_idx < subtrahend_points.len()
+            && subtrahend_points[subtrahend_idx].0 <= timestamp_ms
+        {
+            latest_subtrahend = subtrahend_points[subtrahend_idx].1;
+            subtrahend_idx += 1;
+        }
+
+        out.push((timestamp_ms, total - latest_subtrahend));
+    }
+
+    out
 }
 
 fn journal_leading_zero_points(first_timestamp: u64, last_timestamp: u64) -> Vec<(u64, f64)> {

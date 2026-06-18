@@ -1,7 +1,9 @@
 use super::{
-    JournalTradeOutcome, account_value_points_for_range, apply_journal_portfolio_window,
-    finite_sorted_points, format_signed_usd_full, journal_cumulative_pnl_points,
-    journal_filter_label, journal_recent_trade_outcome_tiles, journal_window_total_pnl,
+    JournalPortfolioPnlKind, JournalTradeOutcome, account_value_points_for_range,
+    apply_journal_portfolio_window, finite_sorted_points, format_signed_usd_full,
+    journal_all_time_portfolio_pnl_bucket_key, journal_cumulative_pnl_points,
+    journal_direct_portfolio_pnl_bucket_key, journal_filter_label, journal_portfolio_pnl_kind,
+    journal_recent_trade_outcome_tiles, journal_window_total_pnl, subtract_latest_pnl_series,
 };
 use crate::journal::{AggregatedTrade, JournalFilter};
 use crate::portfolio_state::PortfolioWindow;
@@ -54,6 +56,65 @@ fn cumulative_pnl_points_apply_fees_when_requested() {
     let points = journal_cumulative_pnl_points(&trades, true);
 
     assert!(points.ends_with(&[(1_000, 9.0), (2_000, 4.0)]));
+}
+
+#[test]
+fn portfolio_margin_journal_pnl_kind_maps_spot_to_non_perp() {
+    assert_eq!(
+        journal_portfolio_pnl_kind(JournalFilter::All),
+        Some(JournalPortfolioPnlKind::All)
+    );
+    assert_eq!(
+        journal_portfolio_pnl_kind(JournalFilter::Perp),
+        Some(JournalPortfolioPnlKind::Perp)
+    );
+    assert_eq!(
+        journal_portfolio_pnl_kind(JournalFilter::Spot),
+        Some(JournalPortfolioPnlKind::NonPerp)
+    );
+    assert_eq!(journal_portfolio_pnl_kind(JournalFilter::Outcome), None);
+}
+
+#[test]
+fn portfolio_margin_journal_bucket_keys_follow_selected_window() {
+    assert_eq!(
+        journal_direct_portfolio_pnl_bucket_key(JournalPortfolioPnlKind::All, PortfolioWindow::Day),
+        Some("day")
+    );
+    assert_eq!(
+        journal_direct_portfolio_pnl_bucket_key(
+            JournalPortfolioPnlKind::Perp,
+            PortfolioWindow::Week
+        ),
+        Some("perpWeek")
+    );
+    assert_eq!(
+        journal_direct_portfolio_pnl_bucket_key(JournalPortfolioPnlKind::All, PortfolioWindow::Mtd),
+        None
+    );
+    assert_eq!(
+        journal_all_time_portfolio_pnl_bucket_key(JournalPortfolioPnlKind::All),
+        Some("allTime")
+    );
+    assert_eq!(
+        journal_all_time_portfolio_pnl_bucket_key(JournalPortfolioPnlKind::Perp),
+        Some("perpAllTime")
+    );
+    assert_eq!(
+        journal_all_time_portfolio_pnl_bucket_key(JournalPortfolioPnlKind::NonPerp),
+        None
+    );
+}
+
+#[test]
+fn portfolio_margin_spot_pnl_uses_all_minus_perp_history() {
+    let all_points = vec![(3_000, 150.0), (1_000, 0.0), (2_000, 100.0)];
+    let perp_points = vec![(1_000, 0.0), (2_000, 25.0), (4_000, 50.0)];
+
+    let points = subtract_latest_pnl_series(&all_points, &perp_points);
+
+    assert_eq!(points, vec![(1_000, 0.0), (2_000, 75.0), (3_000, 125.0)]);
+    assert_eq!(journal_window_total_pnl(&points), Some(125.0));
 }
 
 #[test]

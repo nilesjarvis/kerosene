@@ -7,7 +7,10 @@ mod account_value;
 mod pnl;
 
 pub(super) use account_value::account_value_points_for_range;
-pub(super) use pnl::journal_cumulative_pnl_points;
+pub(super) use pnl::{
+    JournalPortfolioPnlKind, journal_cumulative_pnl_points, journal_portfolio_pnl_kind,
+    subtract_latest_pnl_series,
+};
 
 const FLAT_RANGE_EPSILON: f64 = 1e-9;
 const Y_PADDING_RATIO: f64 = 0.10;
