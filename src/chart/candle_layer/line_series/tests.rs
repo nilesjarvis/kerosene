@@ -1,6 +1,7 @@
-use super::{line_series_colors, visible_close_points};
+use super::{line_area_gradient, line_series_colors, visible_close_points};
 use crate::api::Candle;
 use crate::chart::CandlestickChart;
+use crate::helpers::assert_close_loose as assert_near;
 use iced::{Color, Theme};
 
 fn candles_with_closes(closes: &[f64]) -> Vec<Candle> {
@@ -100,4 +101,20 @@ fn line_series_uses_chart_gradient_override_for_area() {
 
     assert_eq!(line, Color::from_rgb8(0x9A, 0xD7, 0xFF));
     assert_eq!(accent, Color::from_rgb8(0x00, 0x54, 0xA6));
+}
+
+#[test]
+fn line_area_gradient_uses_stable_price_region_bounds() {
+    let gradient = line_area_gradient(Color::WHITE, 420.0, 64.0);
+
+    assert_near(gradient.start.y, 0.0);
+    assert_near(gradient.end.y, 420.0);
+}
+
+#[test]
+fn line_area_gradient_extends_to_projected_baseline_when_distorted() {
+    let gradient = line_area_gradient(Color::WHITE, 420.0, 448.0);
+
+    assert_near(gradient.start.y, 0.0);
+    assert_near(gradient.end.y, 448.0);
 }

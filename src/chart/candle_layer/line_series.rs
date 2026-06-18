@@ -16,9 +16,10 @@ mod tests;
 // separately by the candle layer so they remain visible in both modes.
 // ---------------------------------------------------------------------------
 
-/// Alpha applied to the area fill where it meets the line (it fades to fully
-/// transparent at the price-region baseline).
+/// Maximum alpha applied at the top of the price-region area fill.
 const AREA_FILL_TOP_ALPHA: f32 = 0.32;
+const AREA_FILL_MID_ALPHA: f32 = 0.14;
+const AREA_FILL_EDGE_ALPHA: f32 = 0.035;
 /// Stroke width of the close-price line.
 const LINE_WIDTH: f32 = 1.5;
 
@@ -75,23 +76,15 @@ impl CandlestickChart {
             builder.line_to(last_base);
             builder.close();
 
-            // Vertical gradient: accent at the line, fading to transparent at the
-            // baseline. Both stops are anchored in projected space so the fade
-            // brackets the actual polygon. NOTE: unlike the line stroke below,
-            // this gradient fill does not receive the chromatic-aberration /
+            // Vertical gradient: use stable price-region anchors instead of the
+            // current series extreme. Otherwise a new high/low rescales the
+            // gradient and can create a visible tone step, especially with dark
+            // accents on light themes. NOTE: unlike the line stroke below, this
+            // gradient fill does not receive the chromatic-aberration /
             // edge-blur passes (those helpers only accept a flat color, not a
             // gradient); the soft translucent fill makes the difference
             // negligible under those optional lenses.
-            let gradient =
-                canvas::gradient::Linear::new(Point::new(0.0, top_y), Point::new(0.0, bottom_y))
-                    .add_stop(
-                        0.0,
-                        Color {
-                            a: AREA_FILL_TOP_ALPHA,
-                            ..accent
-                        },
-                    )
-                    .add_stop(1.0, Color { a: 0.0, ..accent });
+            let gradient = line_area_gradient(accent, ctx.price_h, bottom_y);
             frame.fill(&builder.build(), gradient);
         }
 
@@ -126,6 +119,37 @@ fn line_series_colors(chart: &CandlestickChart, theme: &iced::Theme) -> (Color, 
             .or(chart.chart_line_color)
             .unwrap_or(theme.extended_palette().primary.base.color),
     )
+}
+
+fn line_area_gradient(
+    accent: Color,
+    price_h: f32,
+    projected_baseline_y: f32,
+) -> canvas::gradient::Linear {
+    let end_y = projected_baseline_y.max(price_h).max(1.0);
+    canvas::gradient::Linear::new(Point::new(0.0, 0.0), Point::new(0.0, end_y))
+        .add_stop(
+            0.0,
+            Color {
+                a: AREA_FILL_TOP_ALPHA,
+                ..accent
+            },
+        )
+        .add_stop(
+            0.58,
+            Color {
+                a: AREA_FILL_MID_ALPHA,
+                ..accent
+            },
+        )
+        .add_stop(
+            0.88,
+            Color {
+                a: AREA_FILL_EDGE_ALPHA,
+                ..accent
+            },
+        )
+        .add_stop(1.0, Color { a: 0.0, ..accent })
 }
 
 /// Build the visible close-price polyline points (chart-space, pre-projection),
