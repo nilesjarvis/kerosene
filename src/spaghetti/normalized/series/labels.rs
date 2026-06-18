@@ -138,9 +138,12 @@ fn draw_series_label(
             label_background,
         );
 
-        // Paint the asset logo in the existing left padding so the label box
-        // keeps its size with or without an icon.
+        // Paint a single-color asset logo next to the ticker text, inside the
+        // existing left padding so the label box keeps its size. The logo is
+        // tinted to the label text color so it stays legible against the
+        // colored label background regardless of the asset's original colors.
         if let Some(handle) = symbol_svg_handle(&label.symbol) {
+            let icon = iced::advanced::svg::Svg::new(handle).color(label_text_color);
             let icon_x = label_x + (SERIES_LABEL_PADDING_X - SERIES_LABEL_ICON_SIZE) * 0.5;
             let icon_y = label.label_y - SERIES_LABEL_ICON_SIZE * 0.5;
             frame.draw_svg(
@@ -148,7 +151,7 @@ fn draw_series_label(
                     Point::new(icon_x, icon_y),
                     Size::new(SERIES_LABEL_ICON_SIZE, SERIES_LABEL_ICON_SIZE),
                 ),
-                &handle,
+                icon,
             );
         }
     }
