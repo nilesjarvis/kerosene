@@ -17,9 +17,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 /// Maximum alpha applied at the top of the price-region area fill.
-const AREA_FILL_TOP_ALPHA: f32 = 0.32;
-const AREA_FILL_MID_ALPHA: f32 = 0.14;
-const AREA_FILL_EDGE_ALPHA: f32 = 0.035;
+const AREA_FILL_TOP_ALPHA: f32 = 0.24;
 /// Stroke width of the close-price line.
 const LINE_WIDTH: f32 = 1.5;
 
@@ -132,20 +130,6 @@ fn line_area_gradient(
             0.0,
             Color {
                 a: AREA_FILL_TOP_ALPHA,
-                ..accent
-            },
-        )
-        .add_stop(
-            0.58,
-            Color {
-                a: AREA_FILL_MID_ALPHA,
-                ..accent
-            },
-        )
-        .add_stop(
-            0.88,
-            Color {
-                a: AREA_FILL_EDGE_ALPHA,
                 ..accent
             },
         )

@@ -106,9 +106,15 @@ fn line_series_uses_chart_gradient_override_for_area() {
 #[test]
 fn line_area_gradient_uses_stable_price_region_bounds() {
     let gradient = line_area_gradient(Color::WHITE, 420.0, 64.0);
+    let stops = gradient.stops.iter().flatten().collect::<Vec<_>>();
 
     assert_near(gradient.start.y, 0.0);
     assert_near(gradient.end.y, 420.0);
+    assert_eq!(stops.len(), 2);
+    assert_near(stops[0].offset, 0.0);
+    assert_near(stops[0].color.a, 0.24);
+    assert_near(stops[1].offset, 1.0);
+    assert_near(stops[1].color.a, 0.0);
 }
 
 #[test]
