@@ -418,7 +418,11 @@ pub(super) fn push_chart_mode_buttons<'a>(
 
     if instance.secondary_symbol.is_some() {
         toolbar = toolbar.push(tooltip(
-            chart_toolbar_button("X", false, Message::ChartSecondarySymbolRemoved(chart_id)),
+            chart_toolbar_button(
+                "Clear CMP",
+                false,
+                Message::ChartSecondarySymbolRemoved(chart_id),
+            ),
             text("Remove comparison symbol")
                 .size(10)
                 .font(crate::app_fonts::monospace_font()),

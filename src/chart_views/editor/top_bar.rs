@@ -55,6 +55,21 @@ impl TradingTerminal {
             .size(12)
             .padding([5, 8]);
 
+        let remove_btn = (secondary && instance.secondary_symbol.is_some()).then(|| {
+            button(text("Remove").size(11).center())
+                .on_press(Message::ChartSecondarySymbolRemoved(chart_id))
+                .padding([3, 8])
+                .style(|theme: &Theme, _status| button::Style {
+                    background: Some(color!(0x3a3a3a).into()),
+                    text_color: theme.palette().danger,
+                    border: iced::Border {
+                        radius: 2.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+        });
+
         let close_btn = button(text("X").size(11).center())
             .on_press(if secondary {
                 Message::ChartSecondaryCloseEditor(chart_id)
@@ -72,7 +87,13 @@ impl TradingTerminal {
                 ..Default::default()
             });
 
-        row![search_bar, close_btn]
+        let mut controls = row![search_bar].spacing(4).align_y(iced::Alignment::Center);
+        if let Some(remove_btn) = remove_btn {
+            controls = controls.push(remove_btn);
+        }
+
+        controls
+            .push(close_btn)
             .spacing(4)
             .align_y(iced::Alignment::Center)
             .into()
