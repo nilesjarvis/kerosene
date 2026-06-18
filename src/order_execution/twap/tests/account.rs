@@ -4,7 +4,9 @@ use super::fixtures::{
 };
 use crate::account::AccountData;
 use crate::app_state::TradingTerminal;
-use crate::twap_state::{TWAP_RECONCILIATION_TIMEOUT, TwapChildStatus, TwapOrder, TwapStatus};
+use crate::twap_state::{
+    TWAP_MAX_RETRY_ATTEMPTS, TWAP_RECONCILIATION_TIMEOUT, TwapChildStatus, TwapOrder, TwapStatus,
+};
 
 use std::time::Instant;
 

@@ -18,6 +18,16 @@ mod tasks;
 // TWAP Status Reconciliation
 // ---------------------------------------------------------------------------
 
+fn unresolved_child_status_is_unknown(twap: &crate::twap_state::TwapOrder, cloid: &str) -> bool {
+    twap.child_orders.iter().any(|child| {
+        child.cloid.as_deref() == Some(cloid)
+            && matches!(
+                child.status,
+                TwapChildStatus::StatusUnknown | TwapChildStatus::AwaitingReconciliation
+            )
+    })
+}
+
 impl TradingTerminal {
     pub(crate) fn handle_twap_order_status_result(
         &mut self,
@@ -45,31 +55,52 @@ impl TradingTerminal {
                     twap.status_check_retries = retry.attempt();
                     match retry {
                         TwapStatusRetryDecision::Exhausted { .. } => {
+                            let fail_closed = !twap.stop_requested
+                                && unresolved_child_status_is_unknown(twap, &cloid);
                             twap.status_check_cloid = None;
                             twap.status_check_retries = 0;
                             twap.retry_slice = None;
-                            twap.update_child_orders_matching(
-                                |child| child.cloid.as_deref() == Some(cloid.as_str()),
-                                |child| {
-                                    child.oid = status.oid.or(child.oid);
-                                    child.status = TwapChildStatus::NoFill;
-                                    child.exchange_summary = status.raw_summary.clone();
-                                },
-                            );
-                            twap.clear_pause();
-                            twap.push_event(
-                                TwapEventKind::Reconciled,
-                                format!(
-                                    "Slice status remained missing after retries: {}",
+                            if fail_closed {
+                                twap.update_child_orders_matching(
+                                    |child| child.cloid.as_deref() == Some(cloid.as_str()),
+                                    |child| {
+                                        child.oid = status.oid.or(child.oid);
+                                        child.status = TwapChildStatus::StatusUnknown;
+                                        child.exchange_summary = status.raw_summary.clone();
+                                    },
+                                );
+                                twap.status = TwapStatus::Error;
+                                twap.paused_until = None;
+                                let message = format!(
+                                    "TWAP stopped: slice status remained missing after retries: {}; check the exchange before restarting",
                                     status.raw_summary
-                                ),
-                                false,
-                            );
-                            self.order_status = Some((
-                                format!("TWAP status reconciled: {}", status.raw_summary),
-                                false,
-                            ));
-                            finish_attempt = true;
+                                );
+                                twap.push_event(TwapEventKind::Error, message.clone(), true);
+                                self.order_status = Some((message, true));
+                            } else {
+                                twap.update_child_orders_matching(
+                                    |child| child.cloid.as_deref() == Some(cloid.as_str()),
+                                    |child| {
+                                        child.oid = status.oid.or(child.oid);
+                                        child.status = TwapChildStatus::NoFill;
+                                        child.exchange_summary = status.raw_summary.clone();
+                                    },
+                                );
+                                twap.clear_pause();
+                                twap.push_event(
+                                    TwapEventKind::Reconciled,
+                                    format!(
+                                        "Slice status remained missing after retries: {}",
+                                        status.raw_summary
+                                    ),
+                                    false,
+                                );
+                                self.order_status = Some((
+                                    format!("TWAP status reconciled: {}", status.raw_summary),
+                                    false,
+                                ));
+                                finish_attempt = true;
+                            }
                         }
                         TwapStatusRetryDecision::Retry { attempt, delay } => {
                             twap.update_child_orders_matching(
