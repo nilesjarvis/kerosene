@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -6,7 +6,7 @@ use std::fmt;
 // ---------------------------------------------------------------------------
 
 /// Display-only denomination for USD-valued readouts.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum DisplayDenominationConfig {
     #[default]
@@ -16,6 +16,41 @@ pub enum DisplayDenominationConfig {
         dex: String,
         symbol: String,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+enum DisplayDenominationConfigWire {
+    Usd,
+    Asset {
+        code: String,
+        dex: String,
+        symbol: String,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+impl<'de> Deserialize<'de> for DisplayDenominationConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(
+            match DisplayDenominationConfigWire::deserialize(deserializer)? {
+                DisplayDenominationConfigWire::Usd => Self::Usd,
+                DisplayDenominationConfigWire::Asset { code, dex, symbol } => {
+                    Self::Asset { code, dex, symbol }
+                }
+                DisplayDenominationConfigWire::Unknown => {
+                    crate::config::push_config_warning(
+                        "Unknown display denomination mode in config; using USD".to_string(),
+                    );
+                    Self::default()
+                }
+            },
+        )
+    }
 }
 
 impl DisplayDenominationConfig {

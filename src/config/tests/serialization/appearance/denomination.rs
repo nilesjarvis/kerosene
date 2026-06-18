@@ -1,7 +1,9 @@
+use super::super::super::config_warning_guard;
 use super::{
-    DisplayDenominationConfig, KeroseneConfig, default_config_value, json_string, remove_field,
-    value_from_json, value_from_str,
+    DisplayDenominationConfig, KeroseneConfig, default_config_value, json_string, object_mut,
+    remove_field, value_from_json, value_from_str,
 };
+use crate::config::take_config_warnings;
 
 #[test]
 fn display_denomination_round_trips_and_legacy_defaults_usd() {
@@ -50,5 +52,30 @@ fn display_denomination_round_trips_and_legacy_defaults_usd() {
     assert_eq!(
         decoded_legacy.display_denomination,
         DisplayDenominationConfig::Usd
+    );
+}
+
+#[test]
+fn display_denomination_unknown_mode_defaults_with_warning() {
+    let _warning_guard = config_warning_guard();
+    let mut config = default_config_value();
+    object_mut(&mut config, "config should serialize to object").insert(
+        "display_denomination".to_string(),
+        serde_json::json!({
+            "mode": "future_asset",
+            "code": "FUT",
+            "dex": "xyz",
+            "symbol": "FUT"
+        }),
+    );
+
+    let decoded: KeroseneConfig =
+        value_from_json(config, "future denomination config should deserialize");
+
+    assert_eq!(decoded.display_denomination, DisplayDenominationConfig::Usd);
+    assert!(
+        take_config_warnings()
+            .iter()
+            .any(|warning| warning.contains("Unknown display denomination mode"))
     );
 }

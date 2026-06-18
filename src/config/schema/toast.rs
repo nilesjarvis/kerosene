@@ -1,11 +1,11 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 // ---------------------------------------------------------------------------
 // Toast Notification Appearance
 // ---------------------------------------------------------------------------
 
 /// Screen corner where toast notifications stack.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum ToastPosition {
     TopLeft,
     #[default]
@@ -21,6 +21,25 @@ impl ToastPosition {
         Self::BottomLeft,
         Self::BottomRight,
     ];
+
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "TopLeft" => Some(Self::TopLeft),
+            "TopRight" => Some(Self::TopRight),
+            "BottomLeft" => Some(Self::BottomLeft),
+            "BottomRight" => Some(Self::BottomRight),
+            _ => None,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::TopLeft => "TopLeft",
+            Self::TopRight => "TopRight",
+            Self::BottomLeft => "BottomLeft",
+            Self::BottomRight => "BottomRight",
+        }
+    }
 
     pub fn label(self) -> &'static str {
         match self {
@@ -39,6 +58,23 @@ impl ToastPosition {
     /// Whether toasts anchor to the bottom edge of the window.
     pub fn is_bottom(self) -> bool {
         matches!(self, Self::BottomLeft | Self::BottomRight)
+    }
+}
+
+impl<'de> Deserialize<'de> for ToastPosition {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            crate::config::push_config_warning(format!(
+                "Unknown toast position {value:?} in config; using {}",
+                default.config_value()
+            ));
+            default
+        }))
     }
 }
 
