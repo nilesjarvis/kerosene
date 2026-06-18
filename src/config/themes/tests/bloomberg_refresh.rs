@@ -4,6 +4,7 @@ fn bloomberg_theme(
     chart_bull: Option<&str>,
     chart_bear: Option<&str>,
     chart_line: Option<&str>,
+    chart_line_gradient: Option<&str>,
 ) -> CustomThemeConfig {
     CustomThemeConfig {
         name: "Bloomberg".to_string(),
@@ -16,18 +17,25 @@ fn bloomberg_theme(
         chart_bull: chart_bull.map(str::to_string),
         chart_bear: chart_bear.map(str::to_string),
         chart_line: chart_line.map(str::to_string),
+        chart_line_gradient: chart_line_gradient.map(str::to_string),
     }
 }
 
 #[test]
 fn known_bloomberg_defaults_are_refreshable() {
-    let current = bloomberg_theme(Some("#00C853"), Some("#D50032"), Some("#9AD7FF"));
+    let current = bloomberg_theme(
+        Some("#00C853"),
+        Some("#D50032"),
+        Some("#9AD7FF"),
+        Some("#0054A6"),
+    );
     assert!(is_known_default_bloomberg_theme(&current));
 
-    let legacy_without_line = bloomberg_theme(Some("#00C853"), Some("#D50032"), None);
+    let legacy_without_line = bloomberg_theme(Some("#00C853"), Some("#D50032"), None, None);
     assert!(is_known_default_bloomberg_theme(&legacy_without_line));
 
-    let previous_line_default = bloomberg_theme(Some("#00C853"), Some("#D50032"), Some("#0054A6"));
+    let previous_line_default =
+        bloomberg_theme(Some("#00C853"), Some("#D50032"), Some("#0054A6"), None);
     assert!(is_known_default_bloomberg_theme(&previous_line_default));
 
     let customized = CustomThemeConfig {

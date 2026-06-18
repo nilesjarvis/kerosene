@@ -21,6 +21,8 @@ pub struct CustomThemeConfig {
     pub chart_bear: Option<String>,
     #[serde(default)]
     pub chart_line: Option<String>,
+    #[serde(default)]
+    pub chart_line_gradient: Option<String>,
 }
 
 pub fn default_theme() -> String {
@@ -44,7 +46,8 @@ pub(crate) fn is_known_default_hyperliquid_theme(theme: &CustomThemeConfig) -> b
         && theme.danger.eq_ignore_ascii_case("#FF6B6B")
         && optional_hex_eq(&theme.chart_bull, "#97FCE4")
         && optional_hex_eq(&theme.chart_bear, "#FF6B6B")
-        && theme.chart_line.is_none();
+        && theme.chart_line.is_none()
+        && theme.chart_line_gradient.is_none();
 
     let sampled_default = theme.background.eq_ignore_ascii_case("#0F1A1F")
         && theme.text.eq_ignore_ascii_case("#F6FEFD")
@@ -54,7 +57,8 @@ pub(crate) fn is_known_default_hyperliquid_theme(theme: &CustomThemeConfig) -> b
         && theme.danger.eq_ignore_ascii_case("#ED7088")
         && optional_hex_eq(&theme.chart_bull, "#26A69A")
         && optional_hex_eq(&theme.chart_bear, "#EF5350")
-        && theme.chart_line.is_none();
+        && theme.chart_line.is_none()
+        && theme.chart_line_gradient.is_none();
 
     original_default || sampled_default
 }
@@ -70,4 +74,5 @@ pub(crate) fn is_known_default_bloomberg_theme(theme: &CustomThemeConfig) -> boo
         && optional_hex_eq(&theme.chart_bear, "#D50032")
         && (optional_hex_eq(&theme.chart_line, "#9AD7FF")
             || optional_hex_eq(&theme.chart_line, "#0054A6"))
+        && optional_hex_eq(&theme.chart_line_gradient, "#0054A6")
 }

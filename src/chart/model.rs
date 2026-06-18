@@ -153,6 +153,8 @@ pub struct CandlestickChart {
     pub chart_bear_color: Option<Color>,
     /// Optional theme override for line-series visuals.
     pub chart_line_color: Option<Color>,
+    /// Optional theme override for line-series area fill visuals.
+    pub chart_line_gradient_color: Option<Color>,
     /// Whether the quick-order card is open over this chart. When true, left-clicks
     /// inside the chart canvas close the card while right-clicks still publish a
     /// replacement quick-order at the clicked price.

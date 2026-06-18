@@ -7,6 +7,7 @@ pub(crate) struct ChartThemeOverrides {
     pub(crate) bull: Option<Color>,
     pub(crate) bear: Option<Color>,
     pub(crate) line: Option<Color>,
+    pub(crate) line_gradient: Option<Color>,
 }
 
 impl TradingTerminal {
@@ -22,6 +23,10 @@ impl TradingTerminal {
             bull: theme.chart_bull.as_deref().and_then(parse_hex_color),
             bear: theme.chart_bear.as_deref().and_then(parse_hex_color),
             line: theme.chart_line.as_deref().and_then(parse_hex_color),
+            line_gradient: theme
+                .chart_line_gradient
+                .as_deref()
+                .and_then(parse_hex_color),
         }
     }
 

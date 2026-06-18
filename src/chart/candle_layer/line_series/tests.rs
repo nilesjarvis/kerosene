@@ -80,7 +80,7 @@ fn line_series_uses_theme_text_and_primary_without_override() {
 }
 
 #[test]
-fn line_series_uses_chart_line_override_for_stroke_and_area() {
+fn line_series_uses_chart_line_override_for_stroke_and_area_fallback() {
     let mut chart = CandlestickChart::new(1);
     chart.chart_line_color = Some(Color::from_rgb8(0x9A, 0xD7, 0xFF));
 
@@ -88,4 +88,16 @@ fn line_series_uses_chart_line_override_for_stroke_and_area() {
 
     assert_eq!(line, Color::from_rgb8(0x9A, 0xD7, 0xFF));
     assert_eq!(accent, Color::from_rgb8(0x9A, 0xD7, 0xFF));
+}
+
+#[test]
+fn line_series_uses_chart_gradient_override_for_area() {
+    let mut chart = CandlestickChart::new(1);
+    chart.chart_line_color = Some(Color::from_rgb8(0x9A, 0xD7, 0xFF));
+    chart.chart_line_gradient_color = Some(Color::from_rgb8(0x00, 0x54, 0xA6));
+
+    let (line, accent) = line_series_colors(&chart, &Theme::Dark);
+
+    assert_eq!(line, Color::from_rgb8(0x9A, 0xD7, 0xFF));
+    assert_eq!(accent, Color::from_rgb8(0x00, 0x54, 0xA6));
 }

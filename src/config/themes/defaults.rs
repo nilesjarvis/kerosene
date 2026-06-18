@@ -10,6 +10,7 @@ struct ChartThemeSpec {
     bull: &'static str,
     bear: &'static str,
     line: Option<&'static str>,
+    line_gradient: Option<&'static str>,
 }
 
 impl ChartThemeSpec {
@@ -18,14 +19,21 @@ impl ChartThemeSpec {
             bull,
             bear,
             line: None,
+            line_gradient: None,
         }
     }
 
-    fn candles_and_line(bull: &'static str, bear: &'static str, line: &'static str) -> Self {
+    fn candles_and_line_gradient(
+        bull: &'static str,
+        bear: &'static str,
+        line: &'static str,
+        line_gradient: &'static str,
+    ) -> Self {
         Self {
             bull,
             bear,
             line: Some(line),
+            line_gradient: Some(line_gradient),
         }
     }
 }
@@ -128,8 +136,8 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             colors: [
                 "#000000", "#F2F2E8", "#FF9F1A", "#00B050", "#FFD84A", "#B00024",
             ],
-            chart: Some(ChartThemeSpec::candles_and_line(
-                "#00C853", "#D50032", "#9AD7FF",
+            chart: Some(ChartThemeSpec::candles_and_line_gradient(
+                "#00C853", "#D50032", "#9AD7FF", "#0054A6",
             )),
         },
         ThemeSpec {
@@ -189,13 +197,14 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
 
 fn theme_from_spec(spec: ThemeSpec) -> CustomThemeConfig {
     let [background, text, primary, success, warning, danger] = spec.colors;
-    let (chart_bull, chart_bear, chart_line) = match spec.chart {
+    let (chart_bull, chart_bear, chart_line, chart_line_gradient) = match spec.chart {
         Some(chart) => (
             Some(chart.bull.to_owned()),
             Some(chart.bear.to_owned()),
             chart.line.map(str::to_owned),
+            chart.line_gradient.map(str::to_owned),
         ),
-        None => (None, None, None),
+        None => (None, None, None, None),
     };
 
     CustomThemeConfig {
@@ -209,5 +218,6 @@ fn theme_from_spec(spec: ThemeSpec) -> CustomThemeConfig {
         chart_bull,
         chart_bear,
         chart_line,
+        chart_line_gradient,
     }
 }

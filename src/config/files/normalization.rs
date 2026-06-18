@@ -124,6 +124,9 @@ fn merge_default_themes(config: &mut KeroseneConfig) {
             if existing.chart_line.is_none() {
                 existing.chart_line = default_theme.chart_line.clone();
             }
+            if existing.chart_line_gradient.is_none() {
+                existing.chart_line_gradient = default_theme.chart_line_gradient.clone();
+            }
             if existing.name == "Kerosene"
                 && existing.success.eq_ignore_ascii_case("#35D07F")
                 && existing.danger.eq_ignore_ascii_case("#FF4D4D")

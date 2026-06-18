@@ -39,6 +39,12 @@ fn assert_theme_matches(themes: &[CustomThemeConfig], expected: ThemeExpectation
     assert_eq!(theme.chart_bull.as_deref(), expected.chart_bull);
     assert_eq!(theme.chart_bear.as_deref(), expected.chart_bear);
     assert_eq!(theme.chart_line.as_deref(), expected.chart_line);
+    let expected_line_gradient = if expected.name == "Bloomberg" {
+        Some("#0054A6")
+    } else {
+        None
+    };
+    assert_eq!(theme.chart_line_gradient.as_deref(), expected_line_gradient);
 }
 
 fn hyperliquid_theme(
@@ -67,5 +73,6 @@ fn hyperliquid_theme(
         chart_bull: chart_bull.map(str::to_string),
         chart_bear: chart_bear.map(str::to_string),
         chart_line: None,
+        chart_line_gradient: None,
     }
 }

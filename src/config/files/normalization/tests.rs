@@ -10,7 +10,10 @@ fn profile(secret_id: &str) -> AccountProfile {
     }
 }
 
-fn bloomberg_theme(chart_line: Option<&str>) -> crate::config::CustomThemeConfig {
+fn bloomberg_theme(
+    chart_line: Option<&str>,
+    chart_line_gradient: Option<&str>,
+) -> crate::config::CustomThemeConfig {
     crate::config::CustomThemeConfig {
         name: "Bloomberg".to_string(),
         background: "#000000".to_string(),
@@ -22,13 +25,14 @@ fn bloomberg_theme(chart_line: Option<&str>) -> crate::config::CustomThemeConfig
         chart_bull: Some("#00C853".to_string()),
         chart_bear: Some("#D50032".to_string()),
         chart_line: chart_line.map(str::to_string),
+        chart_line_gradient: chart_line_gradient.map(str::to_string),
     }
 }
 
 #[test]
 fn normalizes_bloomberg_chart_line_override() {
     let mut config = KeroseneConfig {
-        custom_themes: vec![bloomberg_theme(None)],
+        custom_themes: vec![bloomberg_theme(None, None)],
         ..KeroseneConfig::default()
     };
 
@@ -40,12 +44,13 @@ fn normalizes_bloomberg_chart_line_override() {
         .find(|theme| theme.name == "Bloomberg")
         .expect("Bloomberg theme should be present");
     assert_eq!(bloomberg.chart_line.as_deref(), Some("#9AD7FF"));
+    assert_eq!(bloomberg.chart_line_gradient.as_deref(), Some("#0054A6"));
 }
 
 #[test]
 fn normalizes_previous_bloomberg_chart_line_default() {
     let mut config = KeroseneConfig {
-        custom_themes: vec![bloomberg_theme(Some("#0054A6"))],
+        custom_themes: vec![bloomberg_theme(Some("#0054A6"), None)],
         ..KeroseneConfig::default()
     };
 
@@ -57,12 +62,13 @@ fn normalizes_previous_bloomberg_chart_line_default() {
         .find(|theme| theme.name == "Bloomberg")
         .expect("Bloomberg theme should be present");
     assert_eq!(bloomberg.chart_line.as_deref(), Some("#9AD7FF"));
+    assert_eq!(bloomberg.chart_line_gradient.as_deref(), Some("#0054A6"));
 }
 
 #[test]
 fn normalizes_missing_chart_line_without_overwriting_custom_value() {
     let mut config = KeroseneConfig {
-        custom_themes: vec![bloomberg_theme(Some("#123456"))],
+        custom_themes: vec![bloomberg_theme(Some("#123456"), None)],
         ..KeroseneConfig::default()
     };
 
@@ -74,6 +80,7 @@ fn normalizes_missing_chart_line_without_overwriting_custom_value() {
         .find(|theme| theme.name == "Bloomberg")
         .expect("Bloomberg theme should be present");
     assert_eq!(bloomberg.chart_line.as_deref(), Some("#123456"));
+    assert_eq!(bloomberg.chart_line_gradient.as_deref(), Some("#0054A6"));
 }
 
 #[test]

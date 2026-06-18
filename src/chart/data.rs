@@ -79,6 +79,7 @@ impl CandlestickChart {
             chart_bull_color: None,
             chart_bear_color: None,
             chart_line_color: None,
+            chart_line_gradient_color: None,
             quick_order_open: false,
             quick_order_limit_price: None,
             quick_order_line_phase: 0.0,
@@ -156,6 +157,7 @@ impl CandlestickChart {
             chart_bull_color: self.chart_bull_color,
             chart_bear_color: self.chart_bear_color,
             chart_line_color: self.chart_line_color,
+            chart_line_gradient_color: self.chart_line_gradient_color,
             quick_order_open: false,
             quick_order_limit_price: None,
             quick_order_line_phase: 0.0,
@@ -297,10 +299,12 @@ impl CandlestickChart {
         if self.chart_bull_color != overrides.bull
             || self.chart_bear_color != overrides.bear
             || self.chart_line_color != overrides.line
+            || self.chart_line_gradient_color != overrides.line_gradient
         {
             self.chart_bull_color = overrides.bull;
             self.chart_bear_color = overrides.bear;
             self.chart_line_color = overrides.line;
+            self.chart_line_gradient_color = overrides.line_gradient;
             self.candle_cache.clear();
         }
     }
