@@ -8,7 +8,9 @@ use crate::signing::ChaseOrder;
 
 pub(super) fn preserve_open_order_reduce_only(order: &mut OpenOrder, existing: &[OpenOrder]) {
     if order.reduce_only.is_none()
-        && let Some(previous) = existing.iter().find(|previous| previous.oid == order.oid)
+        && let Some(previous) = existing
+            .iter()
+            .find(|previous| previous.oid == order.oid && previous.coin == order.coin)
     {
         order.reduce_only = previous.reduce_only;
     }
