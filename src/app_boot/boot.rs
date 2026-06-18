@@ -176,6 +176,7 @@ impl TradingTerminal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iced::Color;
 
     #[test]
     fn boot_schedules_config_save_after_secret_cleanup_state_changes() {
@@ -187,5 +188,30 @@ mod tests {
         let (terminal, _task) = TradingTerminal::boot_from_config(cfg);
 
         assert!(terminal.config_save_due_at.is_some());
+    }
+
+    #[test]
+    fn boot_applies_bloomberg_chart_theme_overrides() {
+        let cfg = config::KeroseneConfig {
+            active_theme: "Custom: Bloomberg".to_string(),
+            chart_series_style: config::ChartSeriesStyle::Line,
+            ..config::KeroseneConfig::default()
+        };
+
+        let (terminal, _task) = TradingTerminal::boot_from_config(cfg);
+        let chart = &terminal.charts.get(&0).expect("default chart").chart;
+
+        assert_eq!(
+            chart.chart_bull_color,
+            Some(Color::from_rgb8(0x00, 0xC8, 0x53))
+        );
+        assert_eq!(
+            chart.chart_bear_color,
+            Some(Color::from_rgb8(0xD5, 0x00, 0x32))
+        );
+        assert_eq!(
+            chart.chart_line_color,
+            Some(Color::from_rgb8(0x00, 0x54, 0xA6))
+        );
     }
 }

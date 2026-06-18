@@ -1,5 +1,7 @@
-use super::visible_close_points;
+use super::{line_series_colors, visible_close_points};
 use crate::api::Candle;
+use crate::chart::CandlestickChart;
+use iced::{Color, Theme};
 
 fn candles_with_closes(closes: &[f64]) -> Vec<Candle> {
     closes
@@ -64,4 +66,26 @@ fn clamps_last_visible_index_to_candle_bounds() {
 
     assert_eq!(points.len(), 2);
     assert_eq!(points[1].y, 11.0);
+}
+
+#[test]
+fn line_series_uses_theme_text_and_primary_without_override() {
+    let chart = CandlestickChart::new(1);
+    let theme = Theme::Dark;
+
+    let (line, accent) = line_series_colors(&chart, &theme);
+
+    assert_eq!(line, theme.palette().text);
+    assert_eq!(accent, theme.extended_palette().primary.base.color);
+}
+
+#[test]
+fn line_series_uses_chart_line_override_for_stroke_and_area() {
+    let mut chart = CandlestickChart::new(1);
+    chart.chart_line_color = Some(Color::from_rgb8(0x00, 0x54, 0xA6));
+
+    let (line, accent) = line_series_colors(&chart, &Theme::Dark);
+
+    assert_eq!(line, Color::from_rgb8(0x00, 0x54, 0xA6));
+    assert_eq!(accent, Color::from_rgb8(0x00, 0x54, 0xA6));
 }

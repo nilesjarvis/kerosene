@@ -1,7 +1,9 @@
 use super::{
-    CustomThemeConfig, default_custom_themes, default_theme, is_known_default_hyperliquid_theme,
+    CustomThemeConfig, default_custom_themes, default_theme, is_known_default_bloomberg_theme,
+    is_known_default_hyperliquid_theme,
 };
 
+mod bloomberg_refresh;
 mod defaults;
 mod hyperliquid_refresh;
 
@@ -15,6 +17,7 @@ struct ThemeExpectation<'a> {
     danger: &'a str,
     chart_bull: Option<&'a str>,
     chart_bear: Option<&'a str>,
+    chart_line: Option<&'a str>,
 }
 
 fn theme_named<'a>(themes: &'a [CustomThemeConfig], name: &str) -> &'a CustomThemeConfig {
@@ -35,6 +38,7 @@ fn assert_theme_matches(themes: &[CustomThemeConfig], expected: ThemeExpectation
     assert_eq!(theme.danger, expected.danger);
     assert_eq!(theme.chart_bull.as_deref(), expected.chart_bull);
     assert_eq!(theme.chart_bear.as_deref(), expected.chart_bear);
+    assert_eq!(theme.chart_line.as_deref(), expected.chart_line);
 }
 
 fn hyperliquid_theme(
@@ -62,5 +66,6 @@ fn hyperliquid_theme(
         },
         chart_bull: chart_bull.map(str::to_string),
         chart_bear: chart_bear.map(str::to_string),
+        chart_line: None,
     }
 }

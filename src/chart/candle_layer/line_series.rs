@@ -44,8 +44,7 @@ impl CandlestickChart {
             return;
         }
 
-        let line_color = ctx.theme.palette().text;
-        let accent = ctx.theme.extended_palette().primary.base.color;
+        let (line_color, accent) = line_series_colors(self, ctx.theme);
 
         // Area fill: a polygon bounded above by the close-price line and below
         // by the price-region baseline. Work entirely in projected (frame) space
@@ -110,6 +109,15 @@ impl CandlestickChart {
         ctx.fisheye
             .stroke_projected_path_points(frame, &projected, stroke);
     }
+}
+
+fn line_series_colors(chart: &CandlestickChart, theme: &iced::Theme) -> (Color, Color) {
+    (
+        chart.chart_line_color.unwrap_or(theme.palette().text),
+        chart
+            .chart_line_color
+            .unwrap_or(theme.extended_palette().primary.base.color),
+    )
 }
 
 /// Build the visible close-price polyline points (chart-space, pre-projection),

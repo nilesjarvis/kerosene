@@ -1,4 +1,6 @@
-use crate::config::themes::{default_custom_themes, is_known_default_hyperliquid_theme};
+use crate::config::themes::{
+    default_custom_themes, is_known_default_bloomberg_theme, is_known_default_hyperliquid_theme,
+};
 use crate::config::{
     AccountProfile, KeroseneConfig, default_layout_ratios, default_market_slippage_pct,
     new_secret_id, normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
@@ -109,11 +111,18 @@ fn merge_default_themes(config: &mut KeroseneConfig) {
                 *existing = default_theme.clone();
                 continue;
             }
+            if existing.name == "Bloomberg" && is_known_default_bloomberg_theme(existing) {
+                *existing = default_theme.clone();
+                continue;
+            }
             if existing.chart_bull.is_none() {
                 existing.chart_bull = default_theme.chart_bull.clone();
             }
             if existing.chart_bear.is_none() {
                 existing.chart_bear = default_theme.chart_bear.clone();
+            }
+            if existing.chart_line.is_none() {
+                existing.chart_line = default_theme.chart_line.clone();
             }
             if existing.name == "Kerosene"
                 && existing.success.eq_ignore_ascii_case("#35D07F")

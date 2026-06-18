@@ -116,8 +116,7 @@ impl TradingTerminal {
         &self,
         chart: &mut crate::chart::CandlestickChart,
     ) {
-        let (bull, bear) = self.active_chart_theme_colors();
-        chart.set_chart_colors(bull, bear);
+        chart.set_chart_theme_overrides(self.active_chart_theme_overrides());
         chart.set_dotted_background(
             self.chart_dotted_background,
             self.chart_dotted_background_opacity,

@@ -15,6 +15,8 @@ mod kraken;
 mod kwenta;
 mod ubuntu;
 
+pub(crate) use chart_colors::ChartThemeOverrides;
+
 use self::color_parse::parse_hex_color;
 
 pub(super) fn rgba8_eq(color: Color, rgb: [u8; 3]) -> bool {

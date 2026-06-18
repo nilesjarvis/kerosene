@@ -8,11 +8,11 @@ pub(in crate::chart) use candles::MAX_CHART_CANDLES;
 use super::{
     CandlestickChart, ChartStatus, DEFAULT_FUNDING_PANEL_HEIGHT, DEFAULT_SESSION_PANEL_HEIGHT,
 };
+use crate::app_theme::ChartThemeOverrides;
 use crate::app_time::now_ms;
 use crate::chart_state::ChartSurfaceId;
 use crate::denomination::DisplayDenominationContext;
 use crate::timeframe::Timeframe;
-use iced::Color;
 use iced::widget::canvas;
 use std::collections::VecDeque;
 
@@ -78,6 +78,7 @@ impl CandlestickChart {
             inverted: false,
             chart_bull_color: None,
             chart_bear_color: None,
+            chart_line_color: None,
             quick_order_open: false,
             quick_order_limit_price: None,
             quick_order_line_phase: 0.0,
@@ -154,6 +155,7 @@ impl CandlestickChart {
             inverted: self.inverted,
             chart_bull_color: self.chart_bull_color,
             chart_bear_color: self.chart_bear_color,
+            chart_line_color: self.chart_line_color,
             quick_order_open: false,
             quick_order_limit_price: None,
             quick_order_line_phase: 0.0,
@@ -291,10 +293,14 @@ impl CandlestickChart {
         self.hud_max_notional = max_notional.and_then(crate::helpers::positive_finite_value);
     }
 
-    pub fn set_chart_colors(&mut self, bull: Option<Color>, bear: Option<Color>) {
-        if self.chart_bull_color != bull || self.chart_bear_color != bear {
-            self.chart_bull_color = bull;
-            self.chart_bear_color = bear;
+    pub(crate) fn set_chart_theme_overrides(&mut self, overrides: ChartThemeOverrides) {
+        if self.chart_bull_color != overrides.bull
+            || self.chart_bear_color != overrides.bear
+            || self.chart_line_color != overrides.line
+        {
+            self.chart_bull_color = overrides.bull;
+            self.chart_bear_color = overrides.bear;
+            self.chart_line_color = overrides.line;
             self.candle_cache.clear();
         }
     }

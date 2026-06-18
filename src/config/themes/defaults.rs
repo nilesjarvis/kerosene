@@ -3,7 +3,31 @@ use super::CustomThemeConfig;
 struct ThemeSpec {
     name: &'static str,
     colors: [&'static str; 6],
-    chart: Option<(&'static str, &'static str)>,
+    chart: Option<ChartThemeSpec>,
+}
+
+struct ChartThemeSpec {
+    bull: &'static str,
+    bear: &'static str,
+    line: Option<&'static str>,
+}
+
+impl ChartThemeSpec {
+    fn candles(bull: &'static str, bear: &'static str) -> Self {
+        Self {
+            bull,
+            bear,
+            line: None,
+        }
+    }
+
+    fn candles_and_line(bull: &'static str, bear: &'static str, line: &'static str) -> Self {
+        Self {
+            bull,
+            bear,
+            line: Some(line),
+        }
+    }
 }
 
 pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
@@ -76,84 +100,86 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
             colors: [
                 "#080604", "#F4EEE3", "#FF7A1A", "#FF7A1A", "#FFB020", "#F8EFE2",
             ],
-            chart: Some(("#FF7A1A", "#F8EFE2")),
+            chart: Some(ChartThemeSpec::candles("#FF7A1A", "#F8EFE2")),
         },
         ThemeSpec {
             name: "Hyperliquid",
             colors: [
                 "#0F1A1E", "#F6FEFD", "#50D2C1", "#50D2C1", "#FFB648", "#ED7088",
             ],
-            chart: Some(("#26A69A", "#EF5350")),
+            chart: Some(ChartThemeSpec::candles("#26A69A", "#EF5350")),
         },
         ThemeSpec {
             name: "XYZ",
             colors: [
                 "#11151B", "#E8E8E8", "#FFC028", "#08A088", "#D8A828", "#FF3848",
             ],
-            chart: Some(("#08A088", "#FF3848")),
+            chart: Some(ChartThemeSpec::candles("#08A088", "#FF3848")),
         },
         ThemeSpec {
             name: "Kraken",
             colors: [
                 "#0B0711", "#E8E1F2", "#7132F5", "#2BB67B", "#ED9B35", "#B2425F",
             ],
-            chart: Some(("#2BB67B", "#E34A6F")),
+            chart: Some(ChartThemeSpec::candles("#2BB67B", "#E34A6F")),
         },
         ThemeSpec {
             name: "Bloomberg",
             colors: [
                 "#000000", "#F2F2E8", "#FF9F1A", "#00B050", "#FFD84A", "#B00024",
             ],
-            chart: Some(("#00C853", "#D50032")),
+            chart: Some(ChartThemeSpec::candles_and_line(
+                "#00C853", "#D50032", "#0054A6",
+            )),
         },
         ThemeSpec {
             name: "FTX",
             colors: [
                 "#101824", "#D8E2EE", "#00A8B8", "#08A67A", "#F0A040", "#F03060",
             ],
-            chart: Some(("#08A67A", "#F03060")),
+            chart: Some(ChartThemeSpec::candles("#08A67A", "#F03060")),
         },
         ThemeSpec {
             name: "IBKR Dark",
             colors: [
                 "#101018", "#D8DCE6", "#2878F0", "#2EBF7A", "#D0A818", "#F83048",
             ],
-            chart: Some(("#2EBF7A", "#F83048")),
+            chart: Some(ChartThemeSpec::candles("#2EBF7A", "#F83048")),
         },
         ThemeSpec {
             name: "bybit",
             colors: [
                 "#101014", "#F5F5F5", "#F4B444", "#55AF72", "#E8A838", "#DC5351",
             ],
-            chart: Some(("#55AF72", "#DC5351")),
+            chart: Some(ChartThemeSpec::candles("#55AF72", "#DC5351")),
         },
         ThemeSpec {
             name: "kwenta",
             colors: [
                 "#131212", "#F4F1E8", "#FEB700", "#71D27A", "#FEB700", "#F05050",
             ],
-            chart: Some(("#28A898", "#F05050")),
+            chart: Some(ChartThemeSpec::candles("#28A898", "#F05050")),
         },
         ThemeSpec {
             name: "coinbase-dark",
             colors: [
                 "#090B0C", "#F5F7F9", "#3474F4", "#44C48C", "#F4941C", "#EC6474",
             ],
-            chart: Some(("#44C48C", "#EC6474")),
+            chart: Some(ChartThemeSpec::candles("#44C48C", "#EC6474")),
         },
         ThemeSpec {
             name: "coinbase-light",
             colors: [
                 "#FFFFFF", "#0A0B0D", "#0052FF", "#098551", "#F7931A", "#CF202F",
             ],
-            chart: Some(("#098551", "#CF202F")),
+            chart: Some(ChartThemeSpec::candles("#098551", "#CF202F")),
         },
         ThemeSpec {
             name: "ubuntu",
             colors: [
                 "#1B0E18", "#F3EAEF", "#F66D2C", "#33D17A", "#FFD24A", "#F5465F",
             ],
-            chart: Some(("#3FD17D", "#E84C72")),
+            chart: Some(ChartThemeSpec::candles("#3FD17D", "#E84C72")),
         },
     ]
     .into_iter()
@@ -163,10 +189,14 @@ pub(crate) fn default_custom_themes() -> Vec<CustomThemeConfig> {
 
 fn theme_from_spec(spec: ThemeSpec) -> CustomThemeConfig {
     let [background, text, primary, success, warning, danger] = spec.colors;
-    let (chart_bull, chart_bear) = spec
-        .chart
-        .map(|(bull, bear)| (bull.to_owned(), bear.to_owned()))
-        .unzip();
+    let (chart_bull, chart_bear, chart_line) = match spec.chart {
+        Some(chart) => (
+            Some(chart.bull.to_owned()),
+            Some(chart.bear.to_owned()),
+            chart.line.map(str::to_owned),
+        ),
+        None => (None, None, None),
+    };
 
     CustomThemeConfig {
         name: spec.name.to_owned(),
@@ -178,5 +208,6 @@ fn theme_from_spec(spec: ThemeSpec) -> CustomThemeConfig {
         danger: danger.to_owned(),
         chart_bull,
         chart_bear,
+        chart_line,
     }
 }

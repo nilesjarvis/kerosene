@@ -17,6 +17,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#F8EFE2",
             chart_bull: Some("#FF7A1A"),
             chart_bear: Some("#F8EFE2"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "Inverse E-Ink",
@@ -28,6 +29,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#dddddd",
             chart_bull: None,
             chart_bear: None,
+            chart_line: None,
         },
         ThemeExpectation {
             name: "Hyperliquid",
@@ -39,6 +41,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#ED7088",
             chart_bull: Some("#26A69A"),
             chart_bear: Some("#EF5350"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "XYZ",
@@ -50,6 +53,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#FF3848",
             chart_bull: Some("#08A088"),
             chart_bear: Some("#FF3848"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "Kraken",
@@ -61,6 +65,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#B2425F",
             chart_bull: Some("#2BB67B"),
             chart_bear: Some("#E34A6F"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "Bloomberg",
@@ -72,6 +77,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#B00024",
             chart_bull: Some("#00C853"),
             chart_bear: Some("#D50032"),
+            chart_line: Some("#0054A6"),
         },
         ThemeExpectation {
             name: "FTX",
@@ -83,6 +89,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#F03060",
             chart_bull: Some("#08A67A"),
             chart_bear: Some("#F03060"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "IBKR Dark",
@@ -94,6 +101,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#F83048",
             chart_bull: Some("#2EBF7A"),
             chart_bear: Some("#F83048"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "bybit",
@@ -105,6 +113,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#DC5351",
             chart_bull: Some("#55AF72"),
             chart_bear: Some("#DC5351"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "kwenta",
@@ -116,6 +125,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#F05050",
             chart_bull: Some("#28A898"),
             chart_bear: Some("#F05050"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "coinbase-dark",
@@ -127,6 +137,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#EC6474",
             chart_bull: Some("#44C48C"),
             chart_bear: Some("#EC6474"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "coinbase-light",
@@ -138,6 +149,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#CF202F",
             chart_bull: Some("#098551"),
             chart_bear: Some("#CF202F"),
+            chart_line: None,
         },
         ThemeExpectation {
             name: "ubuntu",
@@ -149,6 +161,7 @@ fn default_theme_expectations() -> [ThemeExpectation<'static>; 13] {
             danger: "#F5465F",
             chart_bull: Some("#3FD17D"),
             chart_bear: Some("#E84C72"),
+            chart_line: None,
         },
     ]
 }

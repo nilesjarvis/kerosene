@@ -19,6 +19,8 @@ pub struct CustomThemeConfig {
     pub chart_bull: Option<String>,
     #[serde(default)]
     pub chart_bear: Option<String>,
+    #[serde(default)]
+    pub chart_line: Option<String>,
 }
 
 pub fn default_theme() -> String {
@@ -41,7 +43,8 @@ pub(crate) fn is_known_default_hyperliquid_theme(theme: &CustomThemeConfig) -> b
         && theme.warning.eq_ignore_ascii_case("#E8D46A")
         && theme.danger.eq_ignore_ascii_case("#FF6B6B")
         && optional_hex_eq(&theme.chart_bull, "#97FCE4")
-        && optional_hex_eq(&theme.chart_bear, "#FF6B6B");
+        && optional_hex_eq(&theme.chart_bear, "#FF6B6B")
+        && theme.chart_line.is_none();
 
     let sampled_default = theme.background.eq_ignore_ascii_case("#0F1A1F")
         && theme.text.eq_ignore_ascii_case("#F6FEFD")
@@ -50,7 +53,20 @@ pub(crate) fn is_known_default_hyperliquid_theme(theme: &CustomThemeConfig) -> b
         && theme.warning.eq_ignore_ascii_case("#FFB648")
         && theme.danger.eq_ignore_ascii_case("#ED7088")
         && optional_hex_eq(&theme.chart_bull, "#26A69A")
-        && optional_hex_eq(&theme.chart_bear, "#EF5350");
+        && optional_hex_eq(&theme.chart_bear, "#EF5350")
+        && theme.chart_line.is_none();
 
     original_default || sampled_default
+}
+
+pub(crate) fn is_known_default_bloomberg_theme(theme: &CustomThemeConfig) -> bool {
+    theme.background.eq_ignore_ascii_case("#000000")
+        && theme.text.eq_ignore_ascii_case("#F2F2E8")
+        && theme.primary.eq_ignore_ascii_case("#FF9F1A")
+        && theme.success.eq_ignore_ascii_case("#00B050")
+        && theme.warning.eq_ignore_ascii_case("#FFD84A")
+        && theme.danger.eq_ignore_ascii_case("#B00024")
+        && optional_hex_eq(&theme.chart_bull, "#00C853")
+        && optional_hex_eq(&theme.chart_bear, "#D50032")
+        && optional_hex_eq(&theme.chart_line, "#0054A6")
 }

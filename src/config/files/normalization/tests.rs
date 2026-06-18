@@ -10,6 +10,55 @@ fn profile(secret_id: &str) -> AccountProfile {
     }
 }
 
+fn bloomberg_theme(chart_line: Option<&str>) -> crate::config::CustomThemeConfig {
+    crate::config::CustomThemeConfig {
+        name: "Bloomberg".to_string(),
+        background: "#000000".to_string(),
+        text: "#F2F2E8".to_string(),
+        primary: "#FF9F1A".to_string(),
+        success: "#00B050".to_string(),
+        warning: "#FFD84A".to_string(),
+        danger: "#B00024".to_string(),
+        chart_bull: Some("#00C853".to_string()),
+        chart_bear: Some("#D50032".to_string()),
+        chart_line: chart_line.map(str::to_string),
+    }
+}
+
+#[test]
+fn normalizes_bloomberg_chart_line_override() {
+    let mut config = KeroseneConfig {
+        custom_themes: vec![bloomberg_theme(None)],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let bloomberg = config
+        .custom_themes
+        .iter()
+        .find(|theme| theme.name == "Bloomberg")
+        .expect("Bloomberg theme should be present");
+    assert_eq!(bloomberg.chart_line.as_deref(), Some("#0054A6"));
+}
+
+#[test]
+fn normalizes_missing_chart_line_without_overwriting_custom_value() {
+    let mut config = KeroseneConfig {
+        custom_themes: vec![bloomberg_theme(Some("#123456"))],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    let bloomberg = config
+        .custom_themes
+        .iter()
+        .find(|theme| theme.name == "Bloomberg")
+        .expect("Bloomberg theme should be present");
+    assert_eq!(bloomberg.chart_line.as_deref(), Some("#123456"));
+}
+
 #[test]
 fn normalizes_out_of_range_market_slippage() {
     let mut value =

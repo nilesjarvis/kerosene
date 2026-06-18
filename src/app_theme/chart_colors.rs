@@ -2,33 +2,38 @@ use super::color_parse::parse_hex_color;
 use crate::app_state::TradingTerminal;
 use iced::{Color, Theme};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct ChartThemeOverrides {
+    pub(crate) bull: Option<Color>,
+    pub(crate) bear: Option<Color>,
+    pub(crate) line: Option<Color>,
+}
+
 impl TradingTerminal {
-    pub(crate) fn chart_theme_colors_for(
-        &self,
-        theme_name: &str,
-    ) -> (Option<Color>, Option<Color>) {
+    pub(crate) fn chart_theme_overrides_for(&self, theme_name: &str) -> ChartThemeOverrides {
         let Some(name) = theme_name.strip_prefix("Custom: ") else {
-            return (None, None);
+            return ChartThemeOverrides::default();
         };
         let Some(theme) = self.custom_themes.iter().find(|t| t.name == name) else {
-            return (None, None);
+            return ChartThemeOverrides::default();
         };
 
-        (
-            theme.chart_bull.as_deref().and_then(parse_hex_color),
-            theme.chart_bear.as_deref().and_then(parse_hex_color),
-        )
+        ChartThemeOverrides {
+            bull: theme.chart_bull.as_deref().and_then(parse_hex_color),
+            bear: theme.chart_bear.as_deref().and_then(parse_hex_color),
+            line: theme.chart_line.as_deref().and_then(parse_hex_color),
+        }
     }
 
-    pub(crate) fn active_chart_theme_colors(&self) -> (Option<Color>, Option<Color>) {
-        self.chart_theme_colors_for(&self.active_theme)
+    pub(crate) fn active_chart_theme_overrides(&self) -> ChartThemeOverrides {
+        self.chart_theme_overrides_for(&self.active_theme)
     }
 
     pub(crate) fn direction_colors(&self, theme: &Theme) -> (Color, Color) {
-        let (up, down) = self.active_chart_theme_colors();
+        let overrides = self.active_chart_theme_overrides();
         (
-            up.unwrap_or(theme.palette().success),
-            down.unwrap_or(theme.palette().danger),
+            overrides.bull.unwrap_or(theme.palette().success),
+            overrides.bear.unwrap_or(theme.palette().danger),
         )
     }
 
@@ -39,9 +44,9 @@ impl TradingTerminal {
 
     pub(crate) fn apply_chart_theme_colors(&mut self) {
         let theme = self.theme();
-        let (bull, bear) = self.active_chart_theme_colors();
+        let overrides = self.active_chart_theme_overrides();
         for instance in self.charts.values_mut() {
-            instance.chart.set_chart_colors(bull, bear);
+            instance.chart.set_chart_theme_overrides(overrides);
             instance.chart.candle_cache.clear();
         }
         for instance in self.spaghetti_charts.values_mut() {
