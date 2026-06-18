@@ -346,6 +346,9 @@ impl TradingTerminal {
             instance.editor_open = false;
             instance.editor_search_query.clear();
             instance.editor_selected_index = None;
+            instance.secondary_editor_open = false;
+            instance.secondary_editor_search_query.clear();
+            instance.secondary_editor_selected_index = None;
             instance.chart.active_tool = None;
         }
         self.chart_quick_order_surface.clear();

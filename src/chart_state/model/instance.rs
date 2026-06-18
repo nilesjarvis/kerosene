@@ -20,6 +20,8 @@ impl ChartInstance {
             id,
             symbol,
             symbol_display: display,
+            secondary_symbol: None,
+            secondary_symbol_display: None,
             interval,
             chart,
             asset_ctx: None,
@@ -31,6 +33,9 @@ impl ChartInstance {
             drawing_toolbar_collapsed: false,
             editor_search_query: String::new(),
             editor_selected_index: None,
+            secondary_editor_open: false,
+            secondary_editor_search_query: String::new(),
+            secondary_editor_selected_index: None,
             quick_order: None,
             last_quick_order_is_limit: true,
             last_quick_order_symbol: String::new(),
@@ -53,6 +58,8 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            secondary_candle_fetch_request: None,
+            secondary_candle_fetch_error: None,
             last_price_flash: None,
             show_earnings_markers: false,
             earnings_events: None,
@@ -79,11 +86,37 @@ impl ChartInstance {
         changed
     }
 
+    pub(crate) fn set_secondary_symbol_identity(
+        &mut self,
+        symbol: String,
+        display: String,
+    ) -> bool {
+        let changed = self.secondary_symbol.as_deref() != Some(symbol.as_str())
+            || self.secondary_symbol_display.as_deref() != Some(display.as_str());
+        self.secondary_symbol = Some(symbol.clone());
+        self.secondary_symbol_display = Some(display.clone());
+        self.chart.set_secondary_series_identity(symbol, display);
+        changed
+    }
+
+    pub(crate) fn clear_secondary_symbol(&mut self) {
+        self.secondary_symbol = None;
+        self.secondary_symbol_display = None;
+        self.secondary_editor_open = false;
+        self.secondary_editor_search_query.clear();
+        self.secondary_editor_selected_index = None;
+        self.secondary_candle_fetch_request = None;
+        self.secondary_candle_fetch_error = None;
+        self.chart.clear_secondary_series();
+    }
+
     pub(crate) fn clone_for_detached_window(&self, id: ChartId) -> Self {
         Self {
             id,
             symbol: self.symbol.clone(),
             symbol_display: self.symbol_display.clone(),
+            secondary_symbol: self.secondary_symbol.clone(),
+            secondary_symbol_display: self.secondary_symbol_display.clone(),
             interval: self.interval,
             chart: self.chart.clone_for_chart_id(id),
             asset_ctx: self.asset_ctx.clone(),
@@ -95,6 +128,9 @@ impl ChartInstance {
             drawing_toolbar_collapsed: self.drawing_toolbar_collapsed,
             editor_search_query: String::new(),
             editor_selected_index: None,
+            secondary_editor_open: false,
+            secondary_editor_search_query: String::new(),
+            secondary_editor_selected_index: None,
             quick_order: None,
             last_quick_order_is_limit: self.last_quick_order_is_limit,
             last_quick_order_symbol: self.last_quick_order_symbol.clone(),
@@ -117,6 +153,8 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: self.candle_fetch_error.clone(),
+            secondary_candle_fetch_request: None,
+            secondary_candle_fetch_error: self.secondary_candle_fetch_error.clone(),
             last_price_flash: None,
             show_earnings_markers: self.show_earnings_markers,
             earnings_events: self.earnings_events.clone(),
@@ -216,6 +254,8 @@ impl ChartInstance {
             id,
             symbol: String::new(),
             symbol_display: String::new(),
+            secondary_symbol: None,
+            secondary_symbol_display: None,
             interval: Timeframe::H1,
             chart: CandlestickChart::new(id),
             asset_ctx: None,
@@ -227,6 +267,9 @@ impl ChartInstance {
             drawing_toolbar_collapsed: false,
             editor_search_query: String::new(),
             editor_selected_index: None,
+            secondary_editor_open: false,
+            secondary_editor_search_query: String::new(),
+            secondary_editor_selected_index: None,
             quick_order: None,
             last_quick_order_is_limit: true,
             last_quick_order_symbol: String::new(),
@@ -249,6 +292,8 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            secondary_candle_fetch_request: None,
+            secondary_candle_fetch_error: None,
             last_price_flash: None,
             show_earnings_markers: false,
             earnings_events: None,

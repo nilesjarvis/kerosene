@@ -77,6 +77,9 @@ pub struct ChartConfig {
     /// Symbol key (e.g. "HYPE", "BTC", "xyz:NVDA").
     #[serde(default = "default_symbol")]
     pub symbol: String,
+    /// Optional comparison symbol rendered over the primary chart.
+    #[serde(default)]
+    pub secondary_symbol: Option<String>,
     /// Chart timeframe config string (e.g. "H1", "M5").
     #[serde(default = "default_timeframe")]
     pub timeframe: String,
@@ -124,6 +127,7 @@ impl ChartConfig {
         Self {
             id,
             symbol: symbol.into(),
+            secondary_symbol: None,
             timeframe: timeframe.into(),
             annotations: Vec::new(),
             inverted: false,

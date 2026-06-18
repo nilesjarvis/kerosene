@@ -448,6 +448,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartEarningsEventsLoaded(_, _, _)
         | Message::MacroCandlesLoaded(_, _, _, _, _)
         | Message::ChartCandlesLoaded(_, _)
+        | Message::ChartSecondaryCandlesLoaded(_, _)
         | Message::ChartFundingHistoryLoaded(_, _)
         | Message::ChartWsCandleUpdate(_, _, _, _, _)
         | Message::ChartWsCandleLagged(_, _, _, _, _)
@@ -471,6 +472,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleAssetVolumeNotional(_)
         | Message::ToggleOutcomeVolumeNotional(_)
         | Message::ChartSymbolSelected(_, _)
+        | Message::ChartSecondarySymbolSelected(_, _)
+        | Message::ChartSecondarySymbolRemoved(_)
         | Message::ToggleChartInvert(_)
         | Message::ToggleChartTradeMarkers(_)
         | Message::ToggleChartHeaderCollapsed(_)
@@ -479,6 +482,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartCloseEditor(_)
         | Message::ChartEditorSearchChanged(_, _)
         | Message::ChartEditorSubmit(_)
+        | Message::ChartSecondaryOpenEditor(_)
+        | Message::ChartSecondaryCloseEditor(_)
+        | Message::ChartSecondaryEditorSearchChanged(_, _)
+        | Message::ChartSecondaryEditorSubmit(_)
         | Message::OpenDetachedChart(_)
         | Message::AddChart(_) => UpdateRoute::Chart,
 

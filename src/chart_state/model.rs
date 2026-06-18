@@ -101,6 +101,8 @@ pub(crate) struct ChartInstance {
     pub(crate) id: ChartId,
     pub(crate) symbol: String,
     pub(crate) symbol_display: String,
+    pub(crate) secondary_symbol: Option<String>,
+    pub(crate) secondary_symbol_display: Option<String>,
     pub(crate) interval: Timeframe,
     pub(crate) chart: CandlestickChart,
     pub(crate) asset_ctx: Option<AssetContext>,
@@ -123,6 +125,12 @@ pub(crate) struct ChartInstance {
     pub(crate) editor_search_query: String,
     /// Search result index currently highlighted for keyboard selection.
     pub(crate) editor_selected_index: Option<usize>,
+    /// Whether the secondary comparison symbol editor is open.
+    pub(crate) secondary_editor_open: bool,
+    /// Search query text for the secondary comparison symbol editor.
+    pub(crate) secondary_editor_search_query: String,
+    /// Search result index highlighted in the secondary comparison symbol editor.
+    pub(crate) secondary_editor_selected_index: Option<usize>,
     /// Right-click quick order form (if open).
     pub(crate) quick_order: Option<QuickOrderForm>,
     /// Remember the last quick order type (true=limit, false=market).
@@ -167,6 +175,10 @@ pub(crate) struct ChartInstance {
     pub(crate) candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking refresh error shown while previously loaded candles remain visible.
     pub(crate) candle_fetch_error: Option<String>,
+    /// Latest in-flight secondary comparison candle request for stale-response guards.
+    pub(crate) secondary_candle_fetch_request: Option<CandleFetchRequest>,
+    /// Non-blocking secondary comparison refresh error.
+    pub(crate) secondary_candle_fetch_error: Option<String>,
     /// Transient direction flash for price-derived header numbers after WS updates.
     pub(crate) last_price_flash: Option<PriceFlash>,
     /// Whether SEC earnings-release markers are enabled for this chart.

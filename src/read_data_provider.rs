@@ -77,6 +77,15 @@ impl TradingTerminal {
         }
     }
 
+    pub(crate) fn hydromancer_keyed_market_data_source_context(&self) -> MarketDataSourceContext {
+        MarketDataSourceContext {
+            provider: self.read_data_provider,
+            read_data_provider_generation: self.read_data_provider_generation,
+            hydromancer_key_generation: (!self.hydromancer_api_key.trim().is_empty())
+                .then_some(self.hydromancer_key_generation),
+        }
+    }
+
     pub(crate) fn current_account_data_request_context(&self) -> AccountDataRequestContext {
         AccountDataRequestContext::connected_snapshot(
             self.read_data_request_context(),
@@ -138,6 +147,24 @@ impl TradingTerminal {
             }
             None => !self.hydromancer_read_provider_enabled(),
         }
+    }
+
+    pub(crate) fn hydromancer_keyed_market_stream_source_is_current(
+        &self,
+        context: MarketDataSourceContext,
+    ) -> bool {
+        if self.read_data_provider != context.provider
+            || self.read_data_provider_generation != context.read_data_provider_generation
+        {
+            return false;
+        }
+
+        context
+            .hydromancer_key_generation
+            .is_some_and(|generation| {
+                !self.hydromancer_api_key.trim().is_empty()
+                    && self.hydromancer_key_generation_is_current(generation)
+            })
     }
 
     pub(crate) fn hydromancer_read_provider_enabled(&self) -> bool {
@@ -336,6 +363,27 @@ mod tests {
             })
         );
         assert!(terminal.market_stream_source_is_current(hydromancer_context));
+    }
+
+    #[test]
+    fn hydromancer_keyed_market_stream_context_allows_keyed_streams_without_provider_switch() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.read_data_provider = ReadDataProvider::Hyperliquid;
+        terminal.hydromancer_api_key = "hydro-secret".to_string().into();
+        terminal.hydromancer_key_generation = 2;
+
+        let context = terminal.hydromancer_keyed_market_data_source_context();
+
+        assert!(terminal.hydromancer_keyed_market_stream_source_is_current(context));
+        assert!(!terminal.hydromancer_keyed_market_stream_source_is_current(
+            MarketDataSourceContext {
+                hydromancer_key_generation: Some(1),
+                ..context
+            }
+        ));
+
+        terminal.hydromancer_api_key = String::new().into();
+        assert!(!terminal.hydromancer_keyed_market_stream_source_is_current(context));
     }
 
     #[test]

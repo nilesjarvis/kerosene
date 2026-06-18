@@ -131,6 +131,16 @@ pub(super) fn chart_fetch_status_label(
         ))
     } else if has_candles && instance.candle_fetch_error.is_some() {
         Some(chart_toolbar_status_label("Stale", theme.palette().danger))
+    } else if instance.secondary_candle_fetch_request.is_some() {
+        Some(chart_toolbar_status_label(
+            "CMP Refreshing",
+            theme.palette().warning,
+        ))
+    } else if instance.secondary_candle_fetch_error.is_some() {
+        Some(chart_toolbar_status_label(
+            "CMP Stale",
+            theme.palette().danger,
+        ))
     } else {
         None
     }
@@ -368,7 +378,7 @@ pub(super) fn push_chart_mode_buttons<'a>(
     chart_id: ChartId,
     instance: &ChartInstance,
 ) -> Row<'a, Message> {
-    toolbar
+    let mut toolbar = toolbar
         .push(chart_toolbar_separator())
         .push(tooltip(
             chart_toolbar_button(
@@ -392,7 +402,31 @@ pub(super) fn push_chart_mode_buttons<'a>(
                 .size(10)
                 .font(crate::app_fonts::monospace_font()),
             tooltip::Position::Top,
-        ))
+        ));
+
+    toolbar = toolbar.push(chart_toolbar_separator()).push(tooltip(
+        chart_toolbar_button(
+            "CMP",
+            instance.secondary_symbol.is_some() || instance.secondary_editor_open,
+            Message::ChartSecondaryOpenEditor(chart_id),
+        ),
+        text("Add comparison symbol")
+            .size(10)
+            .font(crate::app_fonts::monospace_font()),
+        tooltip::Position::Top,
+    ));
+
+    if instance.secondary_symbol.is_some() {
+        toolbar = toolbar.push(tooltip(
+            chart_toolbar_button("X", false, Message::ChartSecondarySymbolRemoved(chart_id)),
+            text("Remove comparison symbol")
+                .size(10)
+                .font(crate::app_fonts::monospace_font()),
+            tooltip::Position::Top,
+        ));
+    }
+
+    toolbar
 }
 
 pub(super) fn chart_toolbar_separator() -> Element<'static, Message> {

@@ -14,6 +14,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         charts: vec![ChartConfig {
             id: 7,
             symbol: "BTC".to_string(),
+            secondary_symbol: Some("ETH".to_string()),
             timeframe: "H1".to_string(),
             annotations: Vec::new(),
             inverted: false,
@@ -35,6 +36,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
 
     assert!(decoded.charts[0].show_trade_markers);
+    assert_eq!(decoded.charts[0].secondary_symbol.as_deref(), Some("ETH"));
     assert!(decoded.charts[0].show_earnings_markers);
     assert!(decoded.charts[0].header_collapsed);
     assert!(decoded.charts[0].drawing_toolbar_collapsed);
@@ -44,6 +46,13 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     assert!(decoded.charts[0].outcome_volume_as_notional);
     assert!(decoded.charts[0].macro_indicators.show_volume_profile);
     assert!(decoded.charts[0].macro_indicators.show_session_indicator);
+
+    let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
+    object_mut(&mut legacy_chart, "chart config is an object").remove("secondary_symbol");
+    let decoded_chart: ChartConfig =
+        value_from_json(legacy_chart, "legacy chart config should deserialize");
+
+    assert_eq!(decoded_chart.secondary_symbol, None);
 
     let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
     object_mut(&mut legacy_chart, "chart config is an object").remove("show_trade_markers");

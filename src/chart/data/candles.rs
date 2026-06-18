@@ -1,5 +1,6 @@
 use super::super::{CandlestickChart, ChartStatus};
 use crate::api::{Candle, is_valid_candle, normalize_candles};
+use crate::chart::model::SecondarySeries;
 
 // ---------------------------------------------------------------------------
 // Candle Data Lifecycle
@@ -55,6 +56,77 @@ impl CandlestickChart {
             }
         } else {
             self.candles.push(candle);
+        }
+        self.candle_cache.clear();
+    }
+
+    pub(crate) fn set_secondary_series_identity(
+        &mut self,
+        symbol_key: String,
+        symbol_label: String,
+    ) {
+        let changed = self.secondary_series.as_ref().is_none_or(|series| {
+            series.symbol_key != symbol_key || series.symbol_label != symbol_label
+        });
+        if changed {
+            self.secondary_series = Some(SecondarySeries {
+                symbol_key,
+                symbol_label,
+                candles: Vec::new(),
+            });
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn clear_secondary_series(&mut self) {
+        if self.secondary_series.is_some() {
+            self.secondary_series = None;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_secondary_candles(&mut self, candles: Vec<Candle>) {
+        let Some(series) = self.secondary_series.as_mut() else {
+            return;
+        };
+        series.candles = normalize_candles(candles);
+        trim_to_max_chart_candles(&mut series.candles);
+        self.candle_cache.clear();
+    }
+
+    pub(crate) fn merge_secondary_candles(&mut self, mut new_candles: Vec<Candle>) {
+        let Some(series) = self.secondary_series.as_mut() else {
+            return;
+        };
+        new_candles = normalize_candles(new_candles);
+        if series.candles.is_empty() {
+            series.candles = new_candles;
+        } else if !new_candles.is_empty() {
+            let first_new_time = new_candles.first().map(|c| c.open_time).unwrap_or_default();
+            series.candles.retain(|c| c.open_time < first_new_time);
+            series.candles.append(&mut new_candles);
+        }
+
+        trim_to_max_chart_candles(&mut series.candles);
+        self.candle_cache.clear();
+    }
+
+    pub(crate) fn push_secondary_candle(&mut self, candle: Candle) {
+        if !is_valid_candle(&candle) {
+            return;
+        }
+        let Some(series) = self.secondary_series.as_mut() else {
+            return;
+        };
+        if let Some(last) = series.candles.last_mut() {
+            if last.open_time == candle.open_time {
+                *last = candle;
+            } else {
+                series.candles.push(candle);
+                trim_to_max_chart_candles(&mut series.candles);
+            }
+        } else {
+            series.candles.push(candle);
         }
         self.candle_cache.clear();
     }

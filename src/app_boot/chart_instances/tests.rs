@@ -6,6 +6,7 @@ fn boot_chart_instances_restores_trade_marker_toggle() {
     let configs = vec![ChartConfig {
         id: 3,
         symbol: String::new(),
+        secondary_symbol: None,
         timeframe: "H1".to_string(),
         annotations: Vec::new(),
         inverted: false,

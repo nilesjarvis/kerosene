@@ -178,6 +178,9 @@ impl TradingTerminal {
             if instance.editor_open {
                 chart_area_layers.push(self.view_chart_editor(chart_id, instance));
             }
+            if instance.secondary_editor_open {
+                chart_area_layers.push(self.view_chart_secondary_editor(chart_id, instance));
+            }
 
             let chart_area: Element<'_, Message> =
                 stack(chart_area_layers).width(Fill).height(Fill).into();

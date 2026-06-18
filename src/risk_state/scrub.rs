@@ -29,6 +29,7 @@ impl TradingTerminal {
         instance.editor_open = false;
         instance.editor_search_query.clear();
         instance.editor_selected_index = None;
+        instance.clear_secondary_symbol();
         Self::clear_chart_symbol_display_state(instance);
     }
 
@@ -147,6 +148,16 @@ impl TradingTerminal {
             }
             self.clear_chart_pending_request_state(chart_id);
             self.chart_quick_order_surface.remove(&chart_id);
+        }
+
+        for instance in self.charts.values_mut() {
+            if instance
+                .secondary_symbol
+                .as_ref()
+                .is_some_and(|symbol| is_hidden(symbol))
+            {
+                instance.clear_secondary_symbol();
+            }
         }
 
         for inst in self.spaghetti_charts.values_mut() {

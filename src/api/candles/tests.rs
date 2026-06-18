@@ -1,4 +1,7 @@
-use super::{Candle, fill_zero_volume_candle_gaps, normalize_candles};
+use super::{
+    Candle, candle_interval_ms, fill_zero_volume_candle_gaps, interval_requires_hydromancer,
+    normalize_candles,
+};
 
 #[test]
 fn candle_normalization_sorts_and_keeps_latest_duplicate() {
@@ -54,4 +57,11 @@ fn zero_volume_gap_fill_preserves_chart_timeline() {
             (240_000, 13.0, 10.0),
         ]
     );
+}
+
+#[test]
+fn one_second_candles_are_hydromancer_only() {
+    assert_eq!(candle_interval_ms("1s"), Some(1_000));
+    assert!(interval_requires_hydromancer("1s"));
+    assert!(!interval_requires_hydromancer("1m"));
 }

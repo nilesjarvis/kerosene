@@ -40,6 +40,48 @@ impl TradingTerminal {
             instance.chart.candle_cache.clear();
         }
 
-        self.queue_candle_fetch_for(id, &symbol, tf, None)
+        let mut tasks = vec![self.queue_candle_fetch_for(id, &symbol, tf, None)];
+        let secondary_task = self.reload_chart_secondary_candles(id);
+        tasks.push(secondary_task);
+        Task::batch(tasks)
+    }
+
+    pub(in crate::chart_update) fn reload_chart_secondary_candles(
+        &mut self,
+        id: ChartId,
+    ) -> Task<Message> {
+        let Some((symbol, tf)) = self.charts.get(&id).and_then(|inst| {
+            inst.secondary_symbol
+                .clone()
+                .map(|symbol| (symbol, inst.interval))
+        }) else {
+            return Task::none();
+        };
+
+        if self.symbol_key_is_hidden(&symbol) {
+            return Task::none();
+        }
+
+        let key = (symbol.clone(), tf);
+        self.candle_data_cache.remove(&key);
+        self.candle_data_cache_order.retain(|k| k != &key);
+
+        if let Some(instance) = self.charts.get_mut(&id) {
+            instance.secondary_candle_fetch_error = None;
+            if instance.chart.secondary_series.is_none()
+                && let Some(symbol) = instance.secondary_symbol.clone()
+            {
+                let display = instance
+                    .secondary_symbol_display
+                    .clone()
+                    .unwrap_or_else(|| symbol.split(':').nth(1).unwrap_or(&symbol).to_string());
+                instance
+                    .chart
+                    .set_secondary_series_identity(symbol, display);
+            }
+            instance.chart.set_secondary_candles(Vec::new());
+        }
+
+        self.queue_secondary_candle_fetch_for(id, &symbol, tf, None)
     }
 }

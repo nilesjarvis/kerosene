@@ -40,6 +40,10 @@ pub async fn fetch_candles(
     start_time: u64,
     end_time: u64,
 ) -> Result<Vec<Candle>, String> {
+    if interval_requires_hydromancer(&interval) {
+        return Err("1s candles require Hydromancer chart backfill".to_string());
+    }
+
     fetch_candles_from_endpoint(API_URL, None, coin, interval, start_time, end_time).await
 }
 
@@ -52,12 +56,19 @@ pub async fn fetch_chart_backfill_candles(
     end_time: u64,
 ) -> Result<Vec<Candle>, String> {
     match source {
+        ChartBackfillSource::Hyperliquid if interval_requires_hydromancer(&interval) => {
+            Err("1s candles require Hydromancer chart backfill".to_string())
+        }
         ChartBackfillSource::Hyperliquid => {
             fetch_candles_from_endpoint(API_URL, None, coin, interval, start_time, end_time).await
         }
         ChartBackfillSource::Hydromancer => {
             let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
             if api_key.is_empty() {
+                if interval_requires_hydromancer(&interval) {
+                    return Err("Hydromancer API key required for 1s candles".to_string());
+                }
+
                 return fetch_candles_from_endpoint(
                     API_URL, None, coin, interval, start_time, end_time,
                 )
@@ -77,6 +88,12 @@ pub async fn fetch_chart_backfill_candles(
             let candles = match hydromancer_result {
                 Ok(candles) => candles,
                 Err(hydromancer_error) => {
+                    if interval_requires_hydromancer(&interval) {
+                        return Err(format!(
+                            "Hydromancer 1s chart backfill failed: {hydromancer_error}"
+                        ));
+                    }
+
                     return fetch_candles_from_endpoint(
                         API_URL,
                         None,
@@ -156,6 +173,7 @@ async fn fetch_candles_from_endpoint(
 
 fn candle_interval_ms(interval: &str) -> Option<u64> {
     Some(match interval {
+        "1s" => 1_000,
         "1m" => 60_000,
         "3m" => 3 * 60_000,
         "5m" => 5 * 60_000,
@@ -171,6 +189,10 @@ fn candle_interval_ms(interval: &str) -> Option<u64> {
         "1w" => 7 * 24 * 60 * 60_000,
         _ => return None,
     })
+}
+
+fn interval_requires_hydromancer(interval: &str) -> bool {
+    interval == "1s"
 }
 
 fn fill_zero_volume_candle_gaps(candles: Vec<Candle>, interval_ms: u64) -> Vec<Candle> {

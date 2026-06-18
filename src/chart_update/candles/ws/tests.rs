@@ -154,6 +154,30 @@ fn stale_hyperliquid_ws_candle_generation_does_not_update_chart() {
 }
 
 #[test]
+fn one_second_ws_candle_update_accepts_hydromancer_keyed_context() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.read_data_provider = ReadDataProvider::Hyperliquid;
+    terminal.hydromancer_api_key = "hydro-key".to_string().into();
+    terminal.hydromancer_key_generation = 2;
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::S1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(1_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1s".to_string(),
+        terminal.hydromancer_keyed_market_data_source_context(),
+        candle(2_000, 101.0),
+    );
+
+    assert_eq!(last_close(&terminal, 1), Some(101.0));
+}
+
+#[test]
 fn ws_candle_update_ignores_inactive_provider_source() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.charts.clear();

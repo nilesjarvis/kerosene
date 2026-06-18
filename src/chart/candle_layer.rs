@@ -4,6 +4,7 @@ mod earnings;
 mod funding;
 mod line_series;
 mod liquidity;
+mod secondary_series;
 mod sessions;
 
 pub(in crate::chart) use earnings::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
@@ -112,9 +113,11 @@ impl CandlestickChart {
                     };
                     self.draw_macro_moving_averages(&mut moving_average_layer);
 
+                    self.draw_secondary_series(ctx, frame);
                     self.draw_liquidation_bucket_bars(ctx, frame);
                 });
                 self.draw_price_axis_labels(ctx, frame);
+                self.draw_secondary_price_axis_labels(ctx, frame);
                 self.draw_funding_panel(ctx, frame);
                 self.draw_session_panel(ctx, frame);
                 self.draw_time_axis_labels(ctx, frame);

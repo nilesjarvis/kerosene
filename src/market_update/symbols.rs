@@ -332,6 +332,38 @@ impl TradingTerminal {
                             tasks.push(Task::batch(chart_tasks));
                         }
                     }
+                    if let Some(secondary_key) = inst.secondary_symbol.clone()
+                        && let Some(valid) =
+                            resolve_exchange_symbol(&self.exchange_symbols, &secondary_key)
+                    {
+                        let display = Self::exchange_symbol_display_name(valid);
+                        let symbol_changed =
+                            inst.secondary_symbol.as_deref() != Some(valid.key.as_str());
+
+                        if symbol_changed
+                            || inst.secondary_symbol_display.as_deref() != Some(display.as_str())
+                        {
+                            inst.set_secondary_symbol_identity(valid.key.clone(), display);
+                        }
+
+                        if symbol_changed {
+                            inst.chart.set_secondary_candles(Vec::new());
+                            inst.secondary_candle_fetch_error = None;
+                            let request = Self::build_candle_fetch_request(
+                                *id,
+                                &valid.key,
+                                inst.interval,
+                                chart_backfill_request_context,
+                                None,
+                                0,
+                            );
+                            inst.secondary_candle_fetch_request = Some(request.clone());
+                            tasks.push(Self::fetch_secondary_candles_task(
+                                request,
+                                hydromancer_api_key.clone(),
+                            ));
+                        }
+                    }
                 }
                 for chart_id in reset_quick_order_chart_ids {
                     self.chart_quick_order_surface.remove(&chart_id);

@@ -71,6 +71,8 @@ pub struct CandlestickChart {
     pub(in crate::chart) timeframe: Timeframe,
     pub(in crate::chart) clock_now_ms: u64,
     pub candles: Vec<Candle>,
+    /// Optional comparison series rendered against its own price scale.
+    pub(crate) secondary_series: Option<SecondarySeries>,
     pub status: ChartStatus,
     pub candle_cache: canvas::Cache,
     pub(super) reset_epoch: u64,
@@ -203,6 +205,13 @@ impl CandlestickChart {
     pub(crate) fn price_axis_width(&self) -> f32 {
         PRICE_AXIS_WIDTH
     }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SecondarySeries {
+    pub(crate) symbol_key: String,
+    pub(crate) symbol_label: String,
+    pub(crate) candles: Vec<Candle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

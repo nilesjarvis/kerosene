@@ -16,6 +16,47 @@ impl TradingTerminal {
         is_keyboard_selected: bool,
         theme: &Theme,
     ) -> Element<'a, Message> {
+        self.view_chart_editor_symbol_row_for(
+            chart_id,
+            sym,
+            is_fav,
+            is_selected,
+            is_keyboard_selected,
+            theme,
+            false,
+        )
+    }
+
+    pub(super) fn view_chart_secondary_editor_symbol_row<'a>(
+        &'a self,
+        chart_id: ChartId,
+        sym: &'a ExchangeSymbol,
+        is_fav: bool,
+        is_selected: bool,
+        is_keyboard_selected: bool,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        self.view_chart_editor_symbol_row_for(
+            chart_id,
+            sym,
+            is_fav,
+            is_selected,
+            is_keyboard_selected,
+            theme,
+            true,
+        )
+    }
+
+    fn view_chart_editor_symbol_row_for<'a>(
+        &'a self,
+        chart_id: ChartId,
+        sym: &'a ExchangeSymbol,
+        is_fav: bool,
+        is_selected: bool,
+        is_keyboard_selected: bool,
+        theme: &Theme,
+        secondary: bool,
+    ) -> Element<'a, Message> {
         let display = sym.display_name.as_deref().unwrap_or(&sym.ticker);
         let prefix = sym.key.split(':').next().unwrap_or("");
         let cat_badge = text(sym.category.to_uppercase())
@@ -55,7 +96,11 @@ impl TradingTerminal {
             .align_y(iced::Alignment::Center);
 
         let row_btn = button(coin_content)
-            .on_press(Message::ChartSymbolSelected(chart_id, key))
+            .on_press(if secondary {
+                Message::ChartSecondarySymbolSelected(chart_id, key)
+            } else {
+                Message::ChartSymbolSelected(chart_id, key)
+            })
             .padding([3, 6])
             .width(Fill)
             .style(move |theme: &Theme, status| {

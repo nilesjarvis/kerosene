@@ -46,12 +46,18 @@ impl TradingTerminal {
                 return self.update_chart_earnings(message);
             }
             message @ (Message::ChartSymbolSelected(_, _)
+            | Message::ChartSecondarySymbolSelected(_, _)
+            | Message::ChartSecondarySymbolRemoved(_)
             | Message::ToggleChartInvert(_)
             | Message::ToggleChartTradeMarkers(_)
             | Message::ChartOpenEditor(_)
             | Message::ChartCloseEditor(_)
             | Message::ChartEditorSearchChanged(_, _)
             | Message::ChartEditorSubmit(_)
+            | Message::ChartSecondaryOpenEditor(_)
+            | Message::ChartSecondaryCloseEditor(_)
+            | Message::ChartSecondaryEditorSearchChanged(_, _)
+            | Message::ChartSecondaryEditorSubmit(_)
             | Message::AddChart(_)) => {
                 return self.update_chart_editor(message);
             }
@@ -79,6 +85,7 @@ impl TradingTerminal {
             message @ (Message::ChartReload(_)
             | Message::ChartSwitchTimeframe(_, _)
             | Message::ChartCandlesLoaded(_, _)
+            | Message::ChartSecondaryCandlesLoaded(_, _)
             | Message::ChartFundingHistoryLoaded(_, _)
             | Message::ChartWsCandleUpdate(_, _, _, _, _)
             | Message::ChartWsCandleLagged(_, _, _, _, _)) => {

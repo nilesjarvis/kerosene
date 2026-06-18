@@ -1,5 +1,5 @@
 use super::metadata::{ALL_TIMEFRAMES, API_STRS, CONFIG_STRS, DURATIONS_MS, LABELS, LOOKBACKS_MS};
-use super::{TIMEFRAME_OPTIONS, Timeframe};
+use super::{HYDROMANCER_TIMEFRAME_OPTIONS, TIMEFRAME_OPTIONS, Timeframe, chart_timeframe_options};
 
 #[test]
 fn timeframe_arrays_round_trip_config_strings() {
@@ -28,4 +28,16 @@ fn toolbar_timeframe_options_are_supported_timeframes() {
     for option in TIMEFRAME_OPTIONS {
         assert!(ALL_TIMEFRAMES.contains(option));
     }
+}
+
+#[test]
+fn default_toolbar_timeframe_options_hide_one_second() {
+    assert!(!TIMEFRAME_OPTIONS.contains(&Timeframe::S1));
+    assert_eq!(chart_timeframe_options(false), TIMEFRAME_OPTIONS);
+}
+
+#[test]
+fn hydromancer_toolbar_timeframe_options_include_one_second() {
+    assert!(HYDROMANCER_TIMEFRAME_OPTIONS.contains(&Timeframe::S1));
+    assert_eq!(chart_timeframe_options(true), HYDROMANCER_TIMEFRAME_OPTIONS);
 }

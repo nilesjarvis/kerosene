@@ -3,7 +3,7 @@ mod sections;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
-use crate::timeframe::TIMEFRAME_OPTIONS;
+use crate::timeframe::chart_timeframe_options;
 use iced::widget::{pick_list, row};
 use iced::{Color, Element, Length, Theme};
 
@@ -18,7 +18,10 @@ impl TradingTerminal {
         let has_candles = !instance.chart.candles.is_empty();
         let active = instance.interval;
         let active_tool = self.active_chart_surface_tool(chart_id, surface_id);
-        let tf_picker = pick_list(TIMEFRAME_OPTIONS, Some(active), move |tf| {
+        let hydromancer_one_second_available = !self.hydromancer_api_key.trim().is_empty();
+        let timeframe_options = chart_timeframe_options(hydromancer_one_second_available);
+        let selected_timeframe = timeframe_options.contains(&active).then_some(active);
+        let tf_picker = pick_list(timeframe_options, selected_timeframe, move |tf| {
             Message::ChartSwitchTimeframe(chart_id, tf)
         })
         .width(Length::Shrink)

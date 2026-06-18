@@ -5,6 +5,7 @@ fn chart_with(annotations: Vec<AnnotationConfig>) -> ChartConfig {
     ChartConfig {
         id: 7,
         symbol: "BTC".to_string(),
+        secondary_symbol: None,
         timeframe: "H1".to_string(),
         annotations,
         inverted: false,

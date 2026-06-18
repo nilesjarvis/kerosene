@@ -53,6 +53,9 @@ impl TradingTerminal {
             self.clear_chart_heatmap_pending_request_state(id);
             self.clear_chart_liquidation_pending_request_state(id);
             if let Some(instance) = self.charts.get_mut(&id) {
+                if instance.secondary_symbol.as_deref() == Some(key.as_str()) {
+                    instance.clear_secondary_symbol();
+                }
                 instance.annotations.clear();
                 instance.next_annotation_id = 0;
                 instance.chart.annotations.clear();
@@ -99,6 +102,9 @@ impl TradingTerminal {
             let display = sym
                 .map(Self::exchange_symbol_display_name)
                 .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
+            if instance.secondary_symbol.as_deref() == Some(key.as_str()) {
+                instance.clear_secondary_symbol();
+            }
             instance.set_symbol_identity(key.clone(), display);
             instance.chart.whole_unit_volume = whole_unit_volume;
             instance.chart.request_view_reset();
@@ -137,6 +143,98 @@ impl TradingTerminal {
             tasks.push(self.maybe_fetch_chart_earnings(id));
         }
         Task::batch(tasks)
+    }
+
+    pub(super) fn select_chart_secondary_symbol(&mut self, message: Message) -> Task<Message> {
+        let Message::ChartSecondarySymbolSelected(id, key) = message else {
+            return Task::none();
+        };
+
+        if self.symbol_key_is_hidden(&key) {
+            let display = self.display_name_for_symbol(&key);
+            self.symbol_search_status =
+                Some((format!("{display} is hidden in Settings > Risk"), true));
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.secondary_editor_open = false;
+                instance.secondary_editor_search_query.clear();
+                instance.secondary_editor_selected_index = None;
+            }
+            return Task::none();
+        }
+
+        if self
+            .exchange_symbols
+            .iter()
+            .find(|symbol| symbol.key == key)
+            .is_some_and(|symbol| !symbol.is_user_selectable_market())
+        {
+            let display = self.display_name_for_symbol(&key);
+            self.symbol_search_status = Some((format!("{display} is not a tradable market"), true));
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.secondary_editor_open = false;
+                instance.secondary_editor_search_query.clear();
+                instance.secondary_editor_selected_index = None;
+            }
+            return Task::none();
+        }
+
+        if self.charts.get(&id).is_some_and(|inst| inst.symbol == key) {
+            let display = self.display_name_for_symbol(&key);
+            self.symbol_search_status = Some((
+                format!("{display} is already the primary chart symbol"),
+                true,
+            ));
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.secondary_editor_open = false;
+                instance.secondary_editor_search_query.clear();
+                instance.secondary_editor_selected_index = None;
+            }
+            return Task::none();
+        }
+
+        let already_same = self
+            .charts
+            .get(&id)
+            .is_some_and(|inst| inst.secondary_symbol.as_deref() == Some(key.as_str()));
+        if already_same {
+            if let Some(instance) = self.charts.get_mut(&id) {
+                instance.secondary_editor_open = false;
+                instance.secondary_editor_search_query.clear();
+                instance.secondary_editor_selected_index = None;
+            }
+            return Task::none();
+        }
+
+        let tf = self
+            .charts
+            .get(&id)
+            .map(|inst| inst.interval)
+            .unwrap_or(Timeframe::H1);
+        let cached_candles = self.get_cached_candles(&key, tf);
+        let cached_last_time = cached_candles
+            .as_ref()
+            .and_then(|candles| candles.last().map(|candle| candle.open_time));
+
+        if let Some(instance) = self.charts.get_mut(&id) {
+            let sym = self
+                .exchange_symbols
+                .iter()
+                .find(|symbol| symbol.key == key);
+            let display = sym
+                .map(Self::exchange_symbol_display_name)
+                .unwrap_or_else(|| key.split(':').nth(1).unwrap_or(&key).to_string());
+            instance.set_secondary_symbol_identity(key.clone(), display);
+            if let Some(candles) = cached_candles {
+                instance.chart.set_secondary_candles(candles);
+            }
+            instance.secondary_editor_open = false;
+            instance.secondary_editor_search_query.clear();
+            instance.secondary_editor_selected_index = None;
+            instance.secondary_candle_fetch_error = None;
+        }
+
+        self.persist_config();
+        self.queue_secondary_candle_fetch_for(id, &key, tf, cached_last_time)
     }
 }
 

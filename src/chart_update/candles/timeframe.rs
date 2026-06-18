@@ -22,6 +22,7 @@ impl TradingTerminal {
         }
 
         let mut old_cache_data = None;
+        let mut old_secondary_cache_data = None;
         if let Some(instance) = self.charts.get(&id) {
             // Only save to cache if we actually have a fully loaded chart.
             if !instance.chart.candles.is_empty()
@@ -33,8 +34,20 @@ impl TradingTerminal {
                     instance.chart.candles.clone(),
                 ));
             }
+            if let Some(series) = instance.chart.secondary_series.as_ref()
+                && !series.candles.is_empty()
+            {
+                old_secondary_cache_data = Some((
+                    instance.interval,
+                    series.symbol_key.clone(),
+                    series.candles.clone(),
+                ));
+            }
         }
         if let Some((old_tf, old_symbol, old_candles)) = old_cache_data {
+            self.cache_candles(&old_symbol, old_tf, old_candles);
+        }
+        if let Some((old_tf, old_symbol, old_candles)) = old_secondary_cache_data {
             self.cache_candles(&old_symbol, old_tf, old_candles);
         }
 
@@ -43,8 +56,16 @@ impl TradingTerminal {
             .get(&id)
             .map(|inst| inst.symbol.clone())
             .unwrap_or_default();
+        let secondary_symbol = self
+            .charts
+            .get(&id)
+            .and_then(|inst| inst.secondary_symbol.clone());
         let mut cached_last_time = None;
         let cached_candles = self.get_cached_candles(&symbol, tf);
+        let mut secondary_cached_last_time = None;
+        let secondary_cached_candles = secondary_symbol
+            .as_ref()
+            .and_then(|symbol| self.get_cached_candles(symbol, tf));
         self.clear_chart_heatmap_pending_request_state(id);
         self.clear_chart_liquidation_pending_request_state(id);
 
@@ -62,13 +83,35 @@ impl TradingTerminal {
                 instance.chart.candles.clear();
                 instance.chart.candle_cache.clear();
             }
+            if let Some(candles) = secondary_cached_candles {
+                secondary_cached_last_time = candles.last().map(|c| c.open_time);
+                instance.chart.set_secondary_candles(candles);
+            } else if instance.secondary_symbol.is_some() {
+                instance.chart.set_secondary_candles(Vec::new());
+            }
+            instance.secondary_candle_fetch_request = None;
+            instance.secondary_candle_fetch_error = None;
         }
 
         self.persist_config();
+        let mut tasks = Vec::new();
         if symbol.is_empty() {
-            return Task::none();
+            return if let Some(symbol) = secondary_symbol {
+                self.queue_secondary_candle_fetch_for(id, &symbol, tf, secondary_cached_last_time)
+            } else {
+                Task::none()
+            };
         }
-        self.queue_candle_fetch_for(id, &symbol, tf, cached_last_time)
+        tasks.push(self.queue_candle_fetch_for(id, &symbol, tf, cached_last_time));
+        if let Some(symbol) = secondary_symbol {
+            tasks.push(self.queue_secondary_candle_fetch_for(
+                id,
+                &symbol,
+                tf,
+                secondary_cached_last_time,
+            ));
+        }
+        Task::batch(tasks)
     }
 }
 

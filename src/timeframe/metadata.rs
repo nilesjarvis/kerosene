@@ -7,9 +7,11 @@ use super::Timeframe;
 const MINUTE_MS: u64 = 60 * 1000;
 const HOUR_MS: u64 = 60 * MINUTE_MS;
 const DAY_MS: u64 = 24 * HOUR_MS;
-const TIMEFRAME_COUNT: usize = 14;
+const SECOND_MS: u64 = 1000;
+const TIMEFRAME_COUNT: usize = 15;
 
 pub(super) const ALL_TIMEFRAMES: [Timeframe; TIMEFRAME_COUNT] = [
+    Timeframe::S1,
     Timeframe::M1,
     Timeframe::M3,
     Timeframe::M5,
@@ -27,18 +29,19 @@ pub(super) const ALL_TIMEFRAMES: [Timeframe; TIMEFRAME_COUNT] = [
 ];
 
 pub(super) const CONFIG_STRS: [&str; TIMEFRAME_COUNT] = [
-    "M1", "M3", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "H12", "D1", "D3", "W1", "Mo1",
+    "S1", "M1", "M3", "M5", "M15", "M30", "H1", "H2", "H4", "H8", "H12", "D1", "D3", "W1", "Mo1",
 ];
 
 pub(super) const API_STRS: [&str; TIMEFRAME_COUNT] = [
-    "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M",
+    "1s", "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M",
 ];
 
 pub(super) const LABELS: [&str; TIMEFRAME_COUNT] = [
-    "1m", "3m", "5m", "15m", "30m", "1H", "2H", "4H", "8H", "12H", "1D", "3D", "1W", "1M",
+    "1s", "1m", "3m", "5m", "15m", "30m", "1H", "2H", "4H", "8H", "12H", "1D", "3D", "1W", "1M",
 ];
 
 pub(super) const DURATIONS_MS: [u64; TIMEFRAME_COUNT] = [
+    SECOND_MS,
     MINUTE_MS,
     3 * MINUTE_MS,
     5 * MINUTE_MS,
@@ -56,6 +59,7 @@ pub(super) const DURATIONS_MS: [u64; TIMEFRAME_COUNT] = [
 ];
 
 pub(super) const LOOKBACKS_MS: [u64; TIMEFRAME_COUNT] = [
+    30 * MINUTE_MS,
     12 * HOUR_MS,
     DAY_MS,
     2 * DAY_MS,

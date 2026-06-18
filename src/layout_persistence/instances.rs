@@ -62,6 +62,14 @@ impl TradingTerminal {
             instance.open_interest_as_notional = chart_cfg.open_interest_as_notional;
             instance.asset_volume_as_notional = chart_cfg.asset_volume_as_notional;
             instance.outcome_volume_as_notional = chart_cfg.outcome_volume_as_notional;
+            if let Some(symbol) = chart_cfg
+                .secondary_symbol
+                .as_ref()
+                .filter(|symbol| !symbol.is_empty() && !self.symbol_key_is_hidden(symbol))
+            {
+                let display = self.display_name_for_symbol(symbol);
+                instance.set_secondary_symbol_identity(symbol.clone(), display);
+            }
             let mut ann_id: AnnotationId = 0;
             for acfg in &chart_cfg.annotations {
                 if let Some(ann) = Annotation::from_config(ann_id, acfg) {
@@ -93,6 +101,21 @@ impl TradingTerminal {
                 ));
             } else if !chart_cfg.symbol.is_empty() {
                 Self::clear_chart_for_muted_symbol(&mut instance);
+            }
+            if let Some(symbol) = instance.secondary_symbol.clone() {
+                let request = Self::build_candle_fetch_request(
+                    id,
+                    &symbol,
+                    tf,
+                    self.chart_backfill_request_context(),
+                    None,
+                    0,
+                );
+                instance.secondary_candle_fetch_request = Some(request.clone());
+                boot_tasks.push(Self::fetch_secondary_candles_task(
+                    request,
+                    self.hydromancer_api_key_for_task(),
+                ));
             }
             charts.insert(id, instance);
         }

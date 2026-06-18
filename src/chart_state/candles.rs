@@ -2,6 +2,7 @@ use super::{CandleFetchRequest, ChartBackfillFetchContext, ChartBackfillRequestC
 use crate::api::{self, Candle};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
+use crate::config::ChartBackfillSource;
 use crate::message::Message;
 use crate::timeframe::Timeframe;
 use iced::Task;
@@ -126,6 +127,28 @@ impl TradingTerminal {
         )
     }
 
+    pub(crate) fn chart_backfill_source_for_timeframe(
+        &self,
+        timeframe: Timeframe,
+    ) -> ChartBackfillSource {
+        if timeframe.requires_hydromancer_backfill() {
+            ChartBackfillSource::Hydromancer
+        } else {
+            self.chart_backfill_source
+        }
+    }
+
+    pub(crate) fn chart_backfill_request_context_for_timeframe(
+        &self,
+        timeframe: Timeframe,
+    ) -> ChartBackfillRequestContext {
+        ChartBackfillRequestContext::new(
+            self.chart_backfill_source_for_timeframe(timeframe),
+            self.read_data_provider_generation,
+            self.hydromancer_key_generation,
+        )
+    }
+
     pub(crate) fn fetch_candles_task(
         request: CandleFetchRequest,
         hydromancer_api_key: Zeroizing<String>,
@@ -151,6 +174,31 @@ impl TradingTerminal {
         )
     }
 
+    pub(crate) fn fetch_secondary_candles_task(
+        request: CandleFetchRequest,
+        hydromancer_api_key: Zeroizing<String>,
+    ) -> Task<Message> {
+        let delay_ms = Self::candle_fetch_retry_delay_ms(request.attempt);
+        let fetch_request = request.clone();
+        Task::perform(
+            async move {
+                if delay_ms > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                }
+                api::fetch_chart_backfill_candles(
+                    fetch_request.source,
+                    hydromancer_api_key,
+                    fetch_request.symbol,
+                    fetch_request.timeframe.api_str().to_string(),
+                    fetch_request.start_ms,
+                    fetch_request.end_ms,
+                )
+                .await
+            },
+            move |result| Message::ChartSecondaryCandlesLoaded(request.clone(), result),
+        )
+    }
+
     pub(crate) fn queue_candle_fetch(&mut self, request: CandleFetchRequest) -> Task<Message> {
         if let Some(instance) = self.charts.get_mut(&request.chart_id) {
             instance.candle_fetch_request = Some(request.clone());
@@ -173,11 +221,40 @@ impl TradingTerminal {
             chart_id,
             coin,
             tf,
-            self.chart_backfill_request_context(),
+            self.chart_backfill_request_context_for_timeframe(tf),
             cached_start_ms,
             0,
         );
         self.queue_candle_fetch(request)
+    }
+
+    pub(crate) fn queue_secondary_candle_fetch(
+        &mut self,
+        request: CandleFetchRequest,
+    ) -> Task<Message> {
+        if let Some(instance) = self.charts.get_mut(&request.chart_id) {
+            instance.secondary_candle_fetch_request = Some(request.clone());
+            instance.secondary_candle_fetch_error = None;
+        }
+        Self::fetch_secondary_candles_task(request, self.hydromancer_api_key_for_task())
+    }
+
+    pub(crate) fn queue_secondary_candle_fetch_for(
+        &mut self,
+        chart_id: ChartId,
+        coin: &str,
+        tf: Timeframe,
+        cached_start_ms: Option<u64>,
+    ) -> Task<Message> {
+        let request = Self::build_candle_fetch_request(
+            chart_id,
+            coin,
+            tf,
+            self.chart_backfill_request_context_for_timeframe(tf),
+            cached_start_ms,
+            0,
+        );
+        self.queue_secondary_candle_fetch(request)
     }
 
     pub(crate) fn reload_chart_backfills_for_source_change(&mut self) -> Task<Message> {
@@ -199,10 +276,27 @@ impl TradingTerminal {
                     *chart_id,
                     &instance.symbol,
                     instance.interval,
-                    backfill_context,
+                    self.chart_backfill_request_context_for_timeframe(instance.interval),
                     None,
                     0,
                 )
+            })
+            .collect();
+        let secondary_chart_requests: Vec<_> = self
+            .charts
+            .iter()
+            .filter_map(|(chart_id, instance)| {
+                let symbol = instance.secondary_symbol.as_ref()?;
+                (!self.symbol_key_is_hidden(symbol)).then(|| {
+                    Self::build_candle_fetch_request(
+                        *chart_id,
+                        symbol,
+                        instance.interval,
+                        self.chart_backfill_request_context_for_timeframe(instance.interval),
+                        None,
+                        0,
+                    )
+                })
             })
             .collect();
 
@@ -225,11 +319,23 @@ impl TradingTerminal {
                 Self::clear_funding_display(instance);
             }
         }
+        for request in &secondary_chart_requests {
+            if let Some(instance) = self.charts.get_mut(&request.chart_id) {
+                instance.chart.set_secondary_candles(Vec::new());
+                instance.secondary_candle_fetch_request = Some(request.clone());
+                instance.secondary_candle_fetch_error = None;
+            }
+        }
 
         let mut tasks: Vec<Task<Message>> = chart_requests
             .into_iter()
             .map(|request| Self::fetch_candles_task(request, hydromancer_key.clone()))
             .collect();
+        tasks.extend(
+            secondary_chart_requests.into_iter().map(|request| {
+                Self::fetch_secondary_candles_task(request, hydromancer_key.clone())
+            }),
+        );
 
         let spaghetti_requests: Vec<_> = self
             .spaghetti_charts

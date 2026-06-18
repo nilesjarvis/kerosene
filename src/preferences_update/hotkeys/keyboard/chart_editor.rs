@@ -18,33 +18,56 @@ impl TradingTerminal {
         key: iced::keyboard::Key<&str>,
         modifiers: iced::keyboard::Modifiers,
     ) -> Option<Task<Message>> {
-        let editor_id = self.active_chart_editor_id()?;
+        let secondary_editor_id = self.active_chart_secondary_editor_id();
+        let editor_id = secondary_editor_id.or_else(|| self.active_chart_editor_id())?;
+        let secondary = secondary_editor_id == Some(editor_id);
         if modifiers.control() || modifiers.alt() || modifiers.logo() {
             return None;
         }
 
         match key {
             iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown) => {
-                Some(self.move_chart_editor_selection(editor_id, ChartEditorSelectionStep::Next))
+                Some(self.move_chart_editor_selection(
+                    editor_id,
+                    ChartEditorSelectionStep::Next,
+                    secondary,
+                ))
             }
             iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab) if !modifiers.shift() => {
-                Some(self.move_chart_editor_selection(editor_id, ChartEditorSelectionStep::Next))
+                Some(self.move_chart_editor_selection(
+                    editor_id,
+                    ChartEditorSelectionStep::Next,
+                    secondary,
+                ))
             }
-            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => Some(
-                self.move_chart_editor_selection(editor_id, ChartEditorSelectionStep::Previous),
-            ),
+            iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowUp) => {
+                Some(self.move_chart_editor_selection(
+                    editor_id,
+                    ChartEditorSelectionStep::Previous,
+                    secondary,
+                ))
+            }
             iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab) if modifiers.shift() => {
-                Some(
-                    self.move_chart_editor_selection(editor_id, ChartEditorSelectionStep::Previous),
-                )
+                Some(self.move_chart_editor_selection(
+                    editor_id,
+                    ChartEditorSelectionStep::Previous,
+                    secondary,
+                ))
             }
             iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter) => {
-                if self
-                    .charts
-                    .get(&editor_id)
-                    .is_some_and(|instance| instance.editor_selected_index.is_some())
-                {
-                    return Some(self.update(Message::ChartEditorSubmit(editor_id)));
+                let selected = self.charts.get(&editor_id).is_some_and(|instance| {
+                    if secondary {
+                        instance.secondary_editor_selected_index.is_some()
+                    } else {
+                        instance.editor_selected_index.is_some()
+                    }
+                });
+                if selected {
+                    return Some(self.update(if secondary {
+                        Message::ChartSecondaryEditorSubmit(editor_id)
+                    } else {
+                        Message::ChartEditorSubmit(editor_id)
+                    }));
                 }
                 None
             }
@@ -56,12 +79,20 @@ impl TradingTerminal {
         &mut self,
         editor_id: crate::chart_state::ChartId,
         step: ChartEditorSelectionStep,
+        secondary: bool,
     ) -> Task<Message> {
         let Some((query, current_index)) = self.charts.get(&editor_id).map(|instance| {
-            (
-                instance.editor_search_query.trim().to_string(),
-                instance.editor_selected_index,
-            )
+            if secondary {
+                (
+                    instance.secondary_editor_search_query.trim().to_string(),
+                    instance.secondary_editor_selected_index,
+                )
+            } else {
+                (
+                    instance.editor_search_query.trim().to_string(),
+                    instance.editor_selected_index,
+                )
+            }
         }) else {
             return Task::none();
         };
@@ -69,7 +100,11 @@ impl TradingTerminal {
         let result_count = self.chart_editor_filtered_symbols(&query).len();
         let next_index = next_chart_editor_selection(current_index, result_count, step);
         if let Some(instance) = self.charts.get_mut(&editor_id) {
-            instance.editor_selected_index = next_index;
+            if secondary {
+                instance.secondary_editor_selected_index = next_index;
+            } else {
+                instance.editor_selected_index = next_index;
+            }
         }
 
         let Some(index) = next_index else {
@@ -80,10 +115,17 @@ impl TradingTerminal {
             - CHART_EDITOR_RESULT_SCROLL_PADDING)
             .max(0.0);
 
-        Task::batch([
-            Self::scroll_chart_symbol_search_results_to(editor_id, offset_y),
-            Self::focus_chart_symbol_search_input(editor_id),
-        ])
+        if secondary {
+            Task::batch([
+                Self::scroll_chart_secondary_symbol_search_results_to(editor_id, offset_y),
+                Self::focus_chart_secondary_symbol_search_input(editor_id),
+            ])
+        } else {
+            Task::batch([
+                Self::scroll_chart_symbol_search_results_to(editor_id, offset_y),
+                Self::focus_chart_symbol_search_input(editor_id),
+            ])
+        }
     }
 }
 

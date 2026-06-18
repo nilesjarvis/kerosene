@@ -33,6 +33,11 @@ impl TradingTerminal {
             } else {
                 inst.symbol.clone()
             },
+            secondary_symbol: inst
+                .secondary_symbol
+                .as_ref()
+                .filter(|symbol| !self.symbol_key_is_hidden(symbol))
+                .cloned(),
             timeframe: inst.interval.config_str().to_string(),
             annotations: inst
                 .annotations

@@ -9,10 +9,11 @@ mod tests;
 
 use metadata::{ALL_TIMEFRAMES, API_STRS, CONFIG_STRS, DURATIONS_MS, LABELS, LOOKBACKS_MS};
 
-/// Supported candlestick intervals from the Hyperliquid API.
+/// Supported candlestick intervals from the chart data providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(usize)]
 pub(crate) enum Timeframe {
+    S1,
     M1,
     M3,
     M5,
@@ -48,6 +49,10 @@ impl Timeframe {
     /// The interval string expected by the API.
     pub(crate) fn api_str(self) -> &'static str {
         API_STRS[self.index()]
+    }
+
+    pub(crate) fn requires_hydromancer_backfill(self) -> bool {
+        matches!(self, Self::S1)
     }
 
     pub(crate) fn duration_ms(self) -> u64 {
@@ -86,3 +91,24 @@ pub(crate) const TIMEFRAME_OPTIONS: &[Timeframe] = &[
     Timeframe::D1,
     Timeframe::W1,
 ];
+
+pub(crate) const HYDROMANCER_TIMEFRAME_OPTIONS: &[Timeframe] = &[
+    Timeframe::S1,
+    Timeframe::M1,
+    Timeframe::M5,
+    Timeframe::M15,
+    Timeframe::H1,
+    Timeframe::H4,
+    Timeframe::D1,
+    Timeframe::W1,
+];
+
+pub(crate) fn chart_timeframe_options(
+    hydromancer_one_second_available: bool,
+) -> &'static [Timeframe] {
+    if hydromancer_one_second_available {
+        HYDROMANCER_TIMEFRAME_OPTIONS
+    } else {
+        TIMEFRAME_OPTIONS
+    }
+}

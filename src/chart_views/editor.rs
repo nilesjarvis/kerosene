@@ -16,7 +16,18 @@ impl TradingTerminal {
         instance: &'a ChartInstance,
     ) -> Element<'a, Message> {
         responsive(move |size| {
-            self.view_chart_editor_sized(chart_id, instance, size.width, size.height)
+            self.view_chart_editor_sized(chart_id, instance, size.width, size.height, false)
+        })
+        .into()
+    }
+
+    pub(crate) fn view_chart_secondary_editor<'a>(
+        &'a self,
+        chart_id: ChartId,
+        instance: &'a ChartInstance,
+    ) -> Element<'a, Message> {
+        responsive(move |size| {
+            self.view_chart_editor_sized(chart_id, instance, size.width, size.height, true)
         })
         .into()
     }
@@ -27,9 +38,14 @@ impl TradingTerminal {
         instance: &'a ChartInstance,
         available_width: f32,
         available_height: f32,
+        secondary: bool,
     ) -> Element<'a, Message> {
         let theme = self.theme();
-        let top_bar = self.view_chart_editor_top_bar(chart_id, instance);
+        let top_bar = if secondary {
+            self.view_chart_secondary_editor_top_bar(chart_id, instance)
+        } else {
+            self.view_chart_editor_top_bar(chart_id, instance)
+        };
         let menu_width = (available_width - 24.0).clamp(1.0, 360.0);
         let menu_height = (available_height - 24.0).clamp(1.0, 320.0);
 
@@ -45,14 +61,23 @@ impl TradingTerminal {
             ]
             .spacing(4)
         } else {
-            let filtered = self.chart_editor_filtered_symbols(&instance.editor_search_query);
+            let query = if secondary {
+                &instance.secondary_editor_search_query
+            } else {
+                &instance.editor_search_query
+            };
+            let filtered = self.chart_editor_filtered_symbols(query);
             let favs = &self.favourite_symbols;
 
             let count_label = text(format!("{} symbols", filtered.len()))
                 .size(11)
                 .color(theme.extended_palette().background.weak.text);
 
-            let current_sym = &instance.symbol;
+            let current_sym = if secondary {
+                instance.secondary_symbol.as_deref().unwrap_or("")
+            } else {
+                instance.symbol.as_str()
+            };
             let id = chart_id;
             let mut rows = Column::new().spacing(2);
             let mut past_favs = false;
@@ -65,25 +90,44 @@ impl TradingTerminal {
                     rows = rows.push(rule::horizontal(1));
                 }
 
-                let is_selected = sym.key == *current_sym;
-                let is_keyboard_selected = instance.editor_selected_index == Some(i);
-                rows = rows.push(self.view_chart_editor_symbol_row(
-                    id,
-                    sym,
-                    is_fav,
-                    is_selected,
-                    is_keyboard_selected,
-                    &theme,
-                ));
+                let is_selected = sym.key == current_sym;
+                let is_keyboard_selected = if secondary {
+                    instance.secondary_editor_selected_index == Some(i)
+                } else {
+                    instance.editor_selected_index == Some(i)
+                };
+                rows = if secondary {
+                    rows.push(self.view_chart_secondary_editor_symbol_row(
+                        id,
+                        sym,
+                        is_fav,
+                        is_selected,
+                        is_keyboard_selected,
+                        &theme,
+                    ))
+                } else {
+                    rows.push(self.view_chart_editor_symbol_row(
+                        id,
+                        sym,
+                        is_fav,
+                        is_selected,
+                        is_keyboard_selected,
+                        &theme,
+                    ))
+                };
             }
+
+            let scroll_id = if secondary {
+                Self::chart_secondary_symbol_search_results_scroll_id(chart_id)
+            } else {
+                Self::chart_symbol_search_results_scroll_id(chart_id)
+            };
 
             column![
                 top_bar,
                 count_label,
                 rule::horizontal(1),
-                scrollable(rows)
-                    .id(Self::chart_symbol_search_results_scroll_id(chart_id))
-                    .height(Fill)
+                scrollable(rows).id(scroll_id).height(Fill)
             ]
             .spacing(4)
         };
@@ -105,7 +149,11 @@ impl TradingTerminal {
         let bg_overlay = button("")
             .width(Fill)
             .height(Fill)
-            .on_press(Message::ChartCloseEditor(chart_id))
+            .on_press(if secondary {
+                Message::ChartSecondaryCloseEditor(chart_id)
+            } else {
+                Message::ChartCloseEditor(chart_id)
+            })
             .style(|_theme: &Theme, _status| button::Style {
                 background: Some(Color::TRANSPARENT.into()),
                 ..Default::default()
