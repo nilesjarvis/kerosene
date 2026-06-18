@@ -1,4 +1,7 @@
-use super::{line_area_gradient, line_series_colors, visible_close_points};
+use super::{
+    AREA_FILL_LAYERS, AREA_FILL_TOP_ALPHA, clip_polygon_to_max_y, line_area_fade_bounds,
+    line_area_layer_alpha, line_series_colors, visible_close_points,
+};
 use crate::api::Candle;
 use crate::chart::CandlestickChart;
 use crate::helpers::assert_close_loose as assert_near;
@@ -104,31 +107,67 @@ fn line_series_uses_chart_gradient_override_for_area() {
 }
 
 #[test]
-fn line_area_gradient_anchors_to_series_area_when_tall_enough() {
-    let gradient = line_area_gradient(Color::WHITE, 64.0, 420.0, 420.0);
-    let stops = gradient.stops.iter().flatten().collect::<Vec<_>>();
+fn line_area_fade_anchors_to_series_area_when_tall_enough() {
+    let (start_y, end_y) = line_area_fade_bounds(64.0, 420.0, 420.0).unwrap();
 
-    assert_near(gradient.start.y, 64.0);
-    assert_near(gradient.end.y, 420.0);
-    assert_eq!(stops.len(), 2);
-    assert_near(stops[0].offset, 0.0);
-    assert_near(stops[0].color.a, 0.24);
-    assert_near(stops[1].offset, 1.0);
-    assert_near(stops[1].color.a, 0.0);
+    assert_near(start_y, 64.0);
+    assert_near(end_y, 420.0);
 }
 
 #[test]
-fn line_area_gradient_extends_short_extreme_areas_for_smooth_fade() {
-    let gradient = line_area_gradient(Color::WHITE, 340.0, 420.0, 420.0);
+fn line_area_fade_extends_short_extreme_areas_for_smooth_fade() {
+    let (start_y, end_y) = line_area_fade_bounds(340.0, 420.0, 420.0).unwrap();
 
-    assert_near(gradient.start.y, 189.0);
-    assert_near(gradient.end.y, 420.0);
+    assert_near(start_y, 189.0);
+    assert_near(end_y, 420.0);
 }
 
 #[test]
-fn line_area_gradient_extends_to_projected_baseline_when_distorted() {
-    let gradient = line_area_gradient(Color::WHITE, 120.0, 448.0, 420.0);
+fn line_area_fade_extends_to_projected_baseline_when_distorted() {
+    let (start_y, end_y) = line_area_fade_bounds(120.0, 448.0, 420.0).unwrap();
 
-    assert_near(gradient.start.y, 120.0);
-    assert_near(gradient.end.y, 448.0);
+    assert_near(start_y, 120.0);
+    assert_near(end_y, 448.0);
+}
+
+#[test]
+fn line_area_layer_alpha_composes_to_top_alpha() {
+    let layer_alpha = line_area_layer_alpha();
+    let composed = 1.0 - (1.0 - layer_alpha).powf(AREA_FILL_LAYERS as f32);
+
+    assert_near(composed, AREA_FILL_TOP_ALPHA);
+}
+
+#[test]
+fn clips_area_polygon_to_horizontal_fade_layer() {
+    let polygon = vec![
+        iced::Point::new(0.0, 100.0),
+        iced::Point::new(0.0, 0.0),
+        iced::Point::new(10.0, 0.0),
+        iced::Point::new(10.0, 100.0),
+    ];
+
+    let clipped = clip_polygon_to_max_y(&polygon, 50.0);
+
+    assert_eq!(clipped.len(), 4);
+    assert_near(clipped[0].x, 0.0);
+    assert_near(clipped[0].y, 50.0);
+    assert_near(clipped[1].x, 0.0);
+    assert_near(clipped[1].y, 0.0);
+    assert_near(clipped[2].x, 10.0);
+    assert_near(clipped[2].y, 0.0);
+    assert_near(clipped[3].x, 10.0);
+    assert_near(clipped[3].y, 50.0);
+}
+
+#[test]
+fn clipping_returns_empty_when_polygon_is_below_layer() {
+    let polygon = vec![
+        iced::Point::new(0.0, 100.0),
+        iced::Point::new(0.0, 80.0),
+        iced::Point::new(10.0, 80.0),
+        iced::Point::new(10.0, 100.0),
+    ];
+
+    assert!(clip_polygon_to_max_y(&polygon, 50.0).is_empty());
 }

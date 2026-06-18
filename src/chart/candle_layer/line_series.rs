@@ -11,13 +11,15 @@ mod tests;
 // ---------------------------------------------------------------------------
 // Line Series Rendering
 //
-// Renders the main price series as a single close-price line with a gradient
-// area fill beneath it, in place of candlesticks. Volume bars are drawn
+// Renders the main price series as a single close-price line with a layered
+// area fade beneath it, in place of candlesticks. Volume bars are drawn
 // separately by the candle layer so they remain visible in both modes.
 // ---------------------------------------------------------------------------
 
 /// Maximum alpha applied at the top of the price-region area fill.
 const AREA_FILL_TOP_ALPHA: f32 = 0.24;
+/// Number of solid masks used to approximate the area-fill fade.
+const AREA_FILL_LAYERS: usize = 64;
 /// Minimum fraction of the price region used for the area-fill fade.
 const AREA_FILL_MIN_FADE_RATIO: f32 = 0.55;
 /// Minimum pixel height used for the area-fill fade when space permits.
@@ -69,25 +71,18 @@ impl CandlestickChart {
             .fold(f32::INFINITY, f32::min);
         let bottom_y = first_base.y.max(last_base.y);
         if bottom_y > top_y {
-            let mut builder = canvas::path::Builder::new();
-            builder.move_to(first_base);
-            builder.line_to(projected_line[0]);
-            for point in &projected_line[1..] {
-                builder.line_to(*point);
-            }
-            builder.line_to(last_base);
-            builder.close();
+            let mut area_points = Vec::with_capacity(projected_line.len() + 2);
+            area_points.push(first_base);
+            area_points.extend(projected_line.iter().copied());
+            area_points.push(last_base);
 
-            // Vertical gradient: anchor to the painted series area so the
-            // strongest tint follows the line instead of a fixed band at the
-            // top of the pane. Keep a minimum fade height so extreme moves do
-            // not compress the gradient into a hard edge. NOTE: unlike the
-            // line stroke below, this gradient fill does not receive the
-            // chromatic-aberration / edge-blur passes (those helpers only
-            // accept a flat color, not a gradient); the soft translucent fill
-            // makes the difference negligible under those optional lenses.
-            let gradient = line_area_gradient(accent, top_y, bottom_y, ctx.price_h);
-            frame.fill(&builder.build(), gradient);
+            // Area fade: approximate the vertical gradient with nested solid
+            // masks. iced's canvas gradient shader dithers after
+            // premultiplication; with dark accents fading to transparent on
+            // light themes, that can read as a color shelf instead of a clean
+            // fade. Solid masks avoid that shader path while preserving the
+            // smooth translucent area under the line.
+            draw_line_area_fade(frame, &area_points, accent, top_y, bottom_y, ctx.price_h);
         }
 
         let projected: Vec<ProjectedPathPoint> = points
@@ -123,26 +118,105 @@ fn line_series_colors(chart: &CandlestickChart, theme: &iced::Theme) -> (Color, 
     )
 }
 
-fn line_area_gradient(
+fn draw_line_area_fade(
+    frame: &mut canvas::Frame,
+    area_points: &[Point],
     accent: Color,
     top_y: f32,
     bottom_y: f32,
     price_h: f32,
-) -> canvas::gradient::Linear {
+) {
+    let Some((start_y, end_y)) = line_area_fade_bounds(top_y, bottom_y, price_h) else {
+        return;
+    };
+    let fade_h = end_y - start_y;
+    if fade_h <= f32::EPSILON {
+        return;
+    }
+
+    let color = Color {
+        a: line_area_layer_alpha(),
+        ..accent
+    };
+
+    for layer in 0..AREA_FILL_LAYERS {
+        let t = (layer + 1) as f32 / (AREA_FILL_LAYERS + 1) as f32;
+        let clip_y = start_y + fade_h * t;
+        let clipped = clip_polygon_to_max_y(area_points, clip_y);
+        fill_polygon(frame, &clipped, color);
+    }
+}
+
+fn line_area_fade_bounds(top_y: f32, bottom_y: f32, price_h: f32) -> Option<(f32, f32)> {
+    if !top_y.is_finite()
+        || !bottom_y.is_finite()
+        || !price_h.is_finite()
+        || bottom_y <= top_y
+        || price_h <= 0.0
+    {
+        return None;
+    }
+
     let min_fade_h =
         (price_h * AREA_FILL_MIN_FADE_RATIO).max(AREA_FILL_MIN_FADE_PX.min(price_h.max(1.0)));
     let start_y = top_y.min(bottom_y - min_fade_h).min(bottom_y - 1.0);
     let end_y = bottom_y.max(start_y + 1.0);
 
-    canvas::gradient::Linear::new(Point::new(0.0, start_y), Point::new(0.0, end_y))
-        .add_stop(
-            0.0,
-            Color {
-                a: AREA_FILL_TOP_ALPHA,
-                ..accent
-            },
-        )
-        .add_stop(1.0, Color { a: 0.0, ..accent })
+    Some((start_y, end_y))
+}
+
+fn line_area_layer_alpha() -> f32 {
+    1.0 - (1.0 - AREA_FILL_TOP_ALPHA).powf(1.0 / AREA_FILL_LAYERS as f32)
+}
+
+fn clip_polygon_to_max_y(points: &[Point], max_y: f32) -> Vec<Point> {
+    if points.len() < 3 || !max_y.is_finite() {
+        return Vec::new();
+    }
+
+    let mut clipped = Vec::with_capacity(points.len() + 2);
+    let mut previous = *points.last().unwrap_or(&Point::ORIGIN);
+    let mut previous_inside = previous.y <= max_y;
+
+    for current in points.iter().copied() {
+        let current_inside = current.y <= max_y;
+        if current_inside != previous_inside {
+            clipped.push(segment_y_intersection(previous, current, max_y));
+        }
+        if current_inside {
+            clipped.push(current);
+        }
+
+        previous = current;
+        previous_inside = current_inside;
+    }
+
+    clipped
+}
+
+fn segment_y_intersection(start: Point, end: Point, y: f32) -> Point {
+    let dy = end.y - start.y;
+    if dy.abs() <= f32::EPSILON {
+        return Point::new(start.x, y);
+    }
+
+    let t = ((y - start.y) / dy).clamp(0.0, 1.0);
+    Point::new(start.x + (end.x - start.x) * t, y)
+}
+
+fn fill_polygon(frame: &mut canvas::Frame, points: &[Point], color: Color) {
+    if points.len() < 3 {
+        return;
+    }
+
+    let path = canvas::Path::new(|path| {
+        path.move_to(points[0]);
+        for point in &points[1..] {
+            path.line_to(*point);
+        }
+        path.close();
+    });
+    frame.fill(&path, color);
 }
 
 /// Build the visible close-price polyline points (chart-space, pre-projection),
