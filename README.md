@@ -8,6 +8,18 @@ Kerosene is a GPU-accelerated desktop trading terminal for [Hyperliquid](https:/
 
 > **Risk notice:** Kerosene is trading software. Use it at your own risk, test with small order sizes first, and verify behavior before relying on it with real funds. Nothing in this project is financial advice.
 
+## Download
+
+Prebuilt binaries for Linux (`.deb`, `.rpm`, `.AppImage`), macOS (`.dmg`), and Windows (`.zip`, `.msi`) are published on the GitHub Releases page:
+
+[**Download the latest release →**](https://github.com/nilesjarvis/kerosene/releases)
+
+<a href="https://github.com/nilesjarvis/kerosene/releases">
+  <img alt="Download" src="https://img.shields.io/badge/Download-Latest%20Release-blue?logo=github&style=for-the-badge">
+</a>
+
+Choose the artifact for your platform and follow the platform-specific install notes below. To build from source instead, see [Build](#build).
+
 ## Preview
 
 <p align="center">
