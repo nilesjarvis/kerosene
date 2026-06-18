@@ -82,7 +82,7 @@ impl std::fmt::Display for ChartBackfillSource {
 // Chart Candle Appearance
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum ChartHollowCandleMode {
     #[default]
     Off,
@@ -93,6 +93,25 @@ pub enum ChartHollowCandleMode {
 
 impl ChartHollowCandleMode {
     pub const ALL: [Self; 4] = [Self::Off, Self::Up, Self::Down, Self::Both];
+
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "Off" => Some(Self::Off),
+            "Up" => Some(Self::Up),
+            "Down" => Some(Self::Down),
+            "Both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Up => "Up",
+            Self::Down => "Down",
+            Self::Both => "Both",
+        }
+    }
 
     pub fn applies_to(self, bullish: bool) -> bool {
         match self {
@@ -113,6 +132,24 @@ impl ChartHollowCandleMode {
     }
 }
 
+impl<'de> Deserialize<'de> for ChartHollowCandleMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            push_unknown_chart_appearance_warning(
+                "hollow candle mode",
+                &value,
+                default.config_value(),
+            );
+            default
+        }))
+    }
+}
+
 impl std::fmt::Display for ChartHollowCandleMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
@@ -121,7 +158,7 @@ impl std::fmt::Display for ChartHollowCandleMode {
 
 /// How the main price series renders: traditional candlesticks, or a single
 /// close-price line with a gradient area fill beneath it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum ChartSeriesStyle {
     #[default]
     Candles,
@@ -130,6 +167,21 @@ pub enum ChartSeriesStyle {
 
 impl ChartSeriesStyle {
     pub const ALL: [Self; 2] = [Self::Candles, Self::Line];
+
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "Candles" => Some(Self::Candles),
+            "Line" => Some(Self::Line),
+            _ => None,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::Candles => "Candles",
+            Self::Line => "Line",
+        }
+    }
 
     pub fn is_line(self) -> bool {
         matches!(self, Self::Line)
@@ -143,10 +195,30 @@ impl ChartSeriesStyle {
     }
 }
 
+impl<'de> Deserialize<'de> for ChartSeriesStyle {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            push_unknown_chart_appearance_warning("series style", &value, default.config_value());
+            default
+        }))
+    }
+}
+
 impl std::fmt::Display for ChartSeriesStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
     }
+}
+
+fn push_unknown_chart_appearance_warning(field: &str, value: &str, fallback: &str) {
+    crate::config::push_config_warning(format!(
+        "Unknown chart {field} {value:?} in config; using {fallback}"
+    ));
 }
 
 #[cfg(test)]

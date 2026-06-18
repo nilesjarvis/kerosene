@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::defaults::default_true;
 
@@ -6,7 +6,7 @@ use super::defaults::default_true;
 // Chart Crosshair Appearance
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum ChartCrosshairStyle {
     #[default]
     Classic,
@@ -32,6 +32,35 @@ impl ChartCrosshairStyle {
     ];
 
     pub const GAME_HUDS: [Self; 2] = [Self::Hud, Self::RacingHud];
+
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "Classic" => Some(Self::Classic),
+            "Circle" => Some(Self::Circle),
+            "Scope" => Some(Self::Scope),
+            "Rangefinder" => Some(Self::Rangefinder),
+            "Hud" => Some(Self::Hud),
+            "RacingHud" => Some(Self::RacingHud),
+            "Target" => Some(Self::Target),
+            "Rectangle" => Some(Self::Rectangle),
+            "StackedRectangles" => Some(Self::StackedRectangles),
+            _ => None,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::Classic => "Classic",
+            Self::Circle => "Circle",
+            Self::Scope => "Scope",
+            Self::Rangefinder => "Rangefinder",
+            Self::Hud => "Hud",
+            Self::RacingHud => "RacingHud",
+            Self::Target => "Target",
+            Self::Rectangle => "Rectangle",
+            Self::StackedRectangles => "StackedRectangles",
+        }
+    }
 
     pub fn normalized(self) -> Self {
         match self {
@@ -59,13 +88,27 @@ impl ChartCrosshairStyle {
     }
 }
 
+impl<'de> Deserialize<'de> for ChartCrosshairStyle {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            push_unknown_chart_crosshair_warning("style", &value, default.config_value());
+            default
+        }))
+    }
+}
+
 impl std::fmt::Display for ChartCrosshairStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum ChartHudOrderSound {
     Off,
     FillTone,
@@ -82,6 +125,25 @@ impl ChartHudOrderSound {
         Self::Off,
     ];
 
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "Off" => Some(Self::Off),
+            "FillTone" => Some(Self::FillTone),
+            "GunShot8Bit" => Some(Self::GunShot8Bit),
+            "CustomWav" => Some(Self::CustomWav),
+            _ => None,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::FillTone => "FillTone",
+            Self::GunShot8Bit => "GunShot8Bit",
+            Self::CustomWav => "CustomWav",
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Off => "Off",
@@ -92,10 +154,30 @@ impl ChartHudOrderSound {
     }
 }
 
+impl<'de> Deserialize<'de> for ChartHudOrderSound {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            push_unknown_chart_crosshair_warning("HUD order sound", &value, default.config_value());
+            default
+        }))
+    }
+}
+
 impl std::fmt::Display for ChartHudOrderSound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.label())
     }
+}
+
+fn push_unknown_chart_crosshair_warning(field: &str, value: &str, fallback: &str) {
+    crate::config::push_config_warning(format!(
+        "Unknown chart {field} {value:?} in config; using {fallback}"
+    ));
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

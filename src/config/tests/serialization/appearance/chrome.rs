@@ -1,14 +1,15 @@
+use super::super::super::config_warning_guard;
 use super::{
-    ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, ChartHudReadoutConfig,
-    ChartSeriesStyle, KeroseneConfig, WidgetPaddingConfig, WidgetPaddingOverrideConfig,
-    WidgetPaddingTargetConfig, default_alfred_popup_scale,
+    ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, ChartHudOrderSound,
+    ChartHudReadoutConfig, ChartSeriesStyle, KeroseneConfig, WidgetPaddingConfig,
+    WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig, default_alfred_popup_scale,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
     default_chart_fisheye_strength, default_config_value, default_pane_border_thickness,
     default_pane_corner_radius, default_ui_scale, default_widget_padding, json_string, object_mut,
     value_from_json, value_from_str,
 };
-use crate::config::ReadDataProvider;
+use crate::config::{ReadDataProvider, take_config_warnings};
 
 #[test]
 fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
@@ -193,6 +194,62 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     );
     assert!(decoded_legacy.widget_padding.overrides.is_empty());
     assert!(decoded_legacy.custom_window_chrome_enabled);
+}
+
+#[test]
+fn chart_appearance_unknown_enum_values_default_with_warnings() {
+    let _warning_guard = config_warning_guard();
+    let mut config = default_config_value();
+    let object = object_mut(&mut config, "config should serialize to object");
+    object.insert(
+        "chart_hollow_candle_mode".to_string(),
+        serde_json::json!("FutureHollowMode"),
+    );
+    object.insert(
+        "chart_series_style".to_string(),
+        serde_json::json!("FutureSeriesStyle"),
+    );
+    object.insert(
+        "chart_crosshair_style".to_string(),
+        serde_json::json!("FutureCrosshair"),
+    );
+    object.insert(
+        "chart_hud_order_sound".to_string(),
+        serde_json::json!("FutureOrderSound"),
+    );
+
+    let decoded: KeroseneConfig =
+        value_from_json(config, "future chart appearance config should deserialize");
+
+    assert_eq!(decoded.chart_hollow_candle_mode, ChartHollowCandleMode::Off);
+    assert_eq!(decoded.chart_series_style, ChartSeriesStyle::Candles);
+    assert_eq!(decoded.chart_crosshair_style, ChartCrosshairStyle::Classic);
+    assert_eq!(
+        decoded.chart_hud_order_sound,
+        ChartHudOrderSound::GunShot8Bit
+    );
+
+    let warnings = take_config_warnings();
+    assert!(
+        warnings.iter().any(
+            |warning| warning.contains("Unknown chart hollow candle mode \"FutureHollowMode\"")
+        )
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("Unknown chart series style \"FutureSeriesStyle\""))
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("Unknown chart style \"FutureCrosshair\""))
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("Unknown chart HUD order sound \"FutureOrderSound\""))
+    );
 }
 
 #[test]
