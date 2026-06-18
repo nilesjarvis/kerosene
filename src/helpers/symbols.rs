@@ -27,8 +27,35 @@ pub fn symbol_icon<'a>(
     size: u16,
     color: iced::Color,
 ) -> Option<iced::widget::Svg<'a, iced::Theme>> {
-    // Some symbols are like "xyz:AAPL" or "HYPE/USDC". Resolve the displayed
-    // asset ticker before looking up the embedded SVG.
+    let embedded_file = embedded_asset_svg(symbol)?;
+
+    let svg_widget = iced::widget::svg(iced::widget::svg::Handle::from_memory(embedded_file.data))
+        .width(iced::Length::Fixed(size as f32))
+        .height(iced::Length::Fixed(size as f32))
+        .style(
+            move |_theme: &iced::Theme, _status| iced::widget::svg::Style { color: Some(color) },
+        );
+    Some(svg_widget)
+}
+
+/// A canvas-drawable SVG handle for an asset logo.
+///
+/// `symbol_icon` returns a widget, which cannot be placed inside a `canvas`
+/// overlay. This returns the same embedded logo data as an
+/// [`iced::widget::svg::Handle`] so it can be painted with
+/// [`canvas::Frame::draw_svg`]. No color filter is applied, so the original
+/// logo colors are preserved.
+pub fn symbol_svg_handle(symbol: &str) -> Option<iced::widget::svg::Handle> {
+    let embedded_file = embedded_asset_svg(symbol)?;
+    Some(iced::widget::svg::Handle::from_memory(embedded_file.data))
+}
+
+/// Resolves the embedded SVG logo for a symbol, trying the displayed asset
+/// ticker in lower, upper, then original case. For qualified symbols like
+/// `xyz:AAPL` the dex prefix is stripped (last `:` segment); for pairs like
+/// `HYPE/USDC` or hyphenated like `kPEPE-USDC` the base asset is the first
+/// segment.
+fn embedded_asset_svg(symbol: &str) -> Option<rust_embed::EmbeddedFile> {
     let base_name = symbol
         .split(':')
         .next_back()?
@@ -40,23 +67,9 @@ pub fn symbol_icon<'a>(
     let path_upper = format!("{}.svg", base_name.to_uppercase());
     let path_orig = format!("{base_name}.svg");
 
-    let file = Assets::get(&path_lower)
+    Assets::get(&path_lower)
         .or_else(|| Assets::get(&path_upper))
-        .or_else(|| Assets::get(&path_orig));
-
-    if let Some(embedded_file) = file {
-        let svg_widget = iced::widget::svg(iced::widget::svg::Handle::from_memory(
-            embedded_file.data.into_owned(),
-        ))
-        .width(iced::Length::Fixed(size as f32))
-        .height(iced::Length::Fixed(size as f32))
-        .style(
-            move |_theme: &iced::Theme, _status| iced::widget::svg::Style { color: Some(color) },
-        );
-        Some(svg_widget)
-    } else {
-        None
-    }
+        .or_else(|| Assets::get(&path_orig))
 }
 
 pub fn hip3_dex(symbol: &str) -> Option<&str> {

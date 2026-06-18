@@ -21,7 +21,9 @@ pub use order_book::{
     nearest_tick_option, nice_step_ceil, placeholder_book_row, sigfig_server_tick, tick_decimals,
     tick_sizes_match, user_order_price_marker, valid_book_tick_size,
 };
-pub use symbols::{category_color, compare_symbol_keys_for_same_ticker, hip3_dex, symbol_icon};
+pub use symbols::{
+    category_color, compare_symbol_keys_for_same_ticker, hip3_dex, symbol_icon, symbol_svg_handle,
+};
 pub use ui::{
     buy_button, ease_out_cubic, label_value, label_value_colored, optional_value_color,
     order_type_button, pane_title, sell_button, signed_number_color, text_color_for_bg,

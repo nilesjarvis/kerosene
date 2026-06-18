@@ -1,11 +1,11 @@
 use super::super::NormalizedRenderContext;
 use super::series_render_color;
-use crate::helpers::{ellipsized_text, text_color_for_bg};
+use crate::helpers::{ellipsized_text, symbol_svg_handle, text_color_for_bg};
 use crate::spaghetti::{ComparisonColorMode, Series};
 
 use iced::alignment;
 use iced::widget::canvas;
-use iced::{Color, Point, Size};
+use iced::{Color, Point, Rectangle, Size};
 
 mod connector;
 mod layout;
@@ -21,16 +21,20 @@ pub(in crate::spaghetti::normalized) use layout::{
 const SERIES_LABEL_HEIGHT: f32 = 34.0;
 const SERIES_LABEL_GAP: f32 = 4.0;
 const SERIES_LABEL_MARGIN: f32 = 2.0;
-const SERIES_LABEL_X_OFFSET: f32 = 12.0;
 const SERIES_LABEL_PADDING_X: f32 = 10.0;
 const SERIES_LABEL_DISPLAY_Y_OFFSET: f32 = -2.0;
 const SERIES_LABEL_VALUE_Y_OFFSET: f32 = 1.0;
 const SERIES_LABEL_CONNECTOR_SPAN: f32 = 22.0;
 const SERIES_LABEL_DISPLAY_CHAR_W: f32 = 6.0;
 const SERIES_LABEL_VALUE_CHAR_W: f32 = 5.4;
+/// Side length of the asset logo drawn in the label's left padding, when an
+/// SVG is available for the series' symbol. Sized to fit within
+/// [`SERIES_LABEL_PADDING_X`] so the label box is unchanged with or without it.
+const SERIES_LABEL_ICON_SIZE: f32 = 8.0;
 
 struct SeriesLabel {
     index: usize,
+    symbol: String,
     display: String,
     pct: f64,
     y: f32,
@@ -57,6 +61,7 @@ pub(in crate::spaghetti::normalized) fn draw_series_labels(
 
         labels.push(SeriesLabel {
             index,
+            symbol: series.symbol.clone(),
             display: series.display.clone(),
             pct: *pct,
             y,
@@ -94,6 +99,7 @@ fn draw_series_label(
     let shifted = (label.label_y - label.y).abs() >= 1.0;
     let label_x = ctx.chart_w + 2.0;
     let max_label_width = (ctx.bounds.width - label_x - 2.0).max(0.0);
+    let text_x = label_x + SERIES_LABEL_PADDING_X;
     let display = axis_display_label(
         &label.display,
         max_label_width - SERIES_LABEL_PADDING_X * 2.0,
@@ -131,14 +137,25 @@ fn draw_series_label(
             Size::new(label_width, SERIES_LABEL_HEIGHT),
             label_background,
         );
+
+        // Paint the asset logo in the existing left padding so the label box
+        // keeps its size with or without an icon.
+        if let Some(handle) = symbol_svg_handle(&label.symbol) {
+            let icon_x = label_x + (SERIES_LABEL_PADDING_X - SERIES_LABEL_ICON_SIZE) * 0.5;
+            let icon_y = label.label_y - SERIES_LABEL_ICON_SIZE * 0.5;
+            frame.draw_svg(
+                Rectangle::new(
+                    Point::new(icon_x, icon_y),
+                    Size::new(SERIES_LABEL_ICON_SIZE, SERIES_LABEL_ICON_SIZE),
+                ),
+                &handle,
+            );
+        }
     }
 
     frame.fill_text(canvas::Text {
         content: display,
-        position: Point::new(
-            ctx.chart_w + SERIES_LABEL_X_OFFSET,
-            label.label_y + SERIES_LABEL_DISPLAY_Y_OFFSET,
-        ),
+        position: Point::new(text_x, label.label_y + SERIES_LABEL_DISPLAY_Y_OFFSET),
         color: label_text_color,
         size: iced::Pixels(10.0),
         align_x: alignment::Horizontal::Left.into(),
@@ -149,10 +166,7 @@ fn draw_series_label(
 
     frame.fill_text(canvas::Text {
         content: performance,
-        position: Point::new(
-            ctx.chart_w + SERIES_LABEL_X_OFFSET,
-            label.label_y + SERIES_LABEL_VALUE_Y_OFFSET,
-        ),
+        position: Point::new(text_x, label.label_y + SERIES_LABEL_VALUE_Y_OFFSET),
         color: Color {
             a: 0.82,
             ..label_text_color
