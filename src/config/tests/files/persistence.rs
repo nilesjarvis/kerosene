@@ -144,13 +144,17 @@ fn config_load_uses_backup_for_missing_primary_when_interrupted_sidecar_is_inval
 }
 
 #[test]
-fn config_save_after_missing_primary_removes_stale_backup() {
+fn config_save_after_missing_primary_removes_stale_recovery_artifacts() {
     let _ = take_config_warnings();
-    let path = test_path("missing-primary-save-removes-stale-backup");
+    let path = test_path("missing-primary-save-removes-stale-artifacts");
     let backup_path = backup_config_path(&path);
+    let primary_rollback_path = interrupted_replace_sidecar_path(&path, "primary");
+    let backup_rollback_path = interrupted_replace_sidecar_path(&backup_path, "backup");
+    let primary_temp_path = interrupted_temp_sidecar_path(&path, "primary");
+    let backup_temp_path = interrupted_temp_sidecar_path(&backup_path, "backup");
     let stale_config = address_book_config(
         "0xbabababababababababababababababababababa",
-        "Stale Backup",
+        "Stale Recovery",
         None,
         &[],
     );
@@ -163,17 +167,33 @@ fn config_save_after_missing_primary_removes_stale_backup() {
 
     create_parent_dir(&path);
     write_file(&backup_path, config_json(&stale_config));
+    write_file(&primary_rollback_path, config_json(&stale_config));
+    write_file(&backup_rollback_path, config_json(&stale_config));
+    write_file(&primary_temp_path, "{stale primary temp");
+    write_file(&backup_temp_path, "{stale backup temp");
 
     save_config_fixture(&path, &new_config);
-    assert!(!backup_path.exists());
+    for artifact in [
+        &backup_path,
+        &primary_rollback_path,
+        &backup_rollback_path,
+        &primary_temp_path,
+        &backup_temp_path,
+    ] {
+        assert!(
+            !artifact.exists(),
+            "stale recovery artifact should be removed: {}",
+            artifact.display()
+        );
+    }
 
-    write_file(&path, "{not json");
-    let load_error = match load_config_from_path(&path) {
-        Ok(Some(_)) => panic!("stale backup should not resurrect"),
-        Ok(None) => panic!("corrupt primary should not load as missing config"),
-        Err(error) => error,
-    };
-    assert!(load_error.contains("parse"));
+    std::fs::remove_file(&path).expect("remove saved primary to test stale resurrection");
+    let loaded = load_config_from_path(&path).expect("missing primary should not fail");
+    assert!(
+        loaded.is_none(),
+        "stale recovery artifacts should not resurrect"
+    );
+    assert!(take_config_warnings().is_empty());
 
     cleanup_path(&path);
 }
@@ -184,6 +204,17 @@ fn interrupted_replace_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
         .expect("test config path should have a file name")
         .to_os_string();
     file_name.push(format!(".replace-old-{suffix}"));
+    path.parent()
+        .expect("test config path should have a parent")
+        .join(file_name)
+}
+
+fn interrupted_temp_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut file_name = path
+        .file_name()
+        .expect("test config path should have a file name")
+        .to_os_string();
+    file_name.push(format!(".tmp-{suffix}"));
     path.parent()
         .expect("test config path should have a parent")
         .join(file_name)

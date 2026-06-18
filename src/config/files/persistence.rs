@@ -108,6 +108,78 @@ fn remove_file_if_present(path: &Path) -> Result<(), String> {
     }
 }
 
+fn remove_missing_primary_save_sidecars(path: &Path) -> Result<(), String> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    let backup_path = backup_config_path(path);
+    let prefixes: Vec<String> = [path, backup_path.as_path()]
+        .into_iter()
+        .flat_map(|candidate| {
+            ["tmp", "replace-old"]
+                .into_iter()
+                .filter_map(move |marker| config_sidecar_prefix(candidate, marker))
+        })
+        .collect();
+    if prefixes.is_empty() {
+        return Ok(());
+    }
+
+    let entries = match std::fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "scan stale config sidecars in {} failed: {error}",
+                parent.display()
+            ));
+        }
+    };
+
+    let mut errors = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                errors.push(format!(
+                    "read stale config sidecar entry in {} failed: {error}",
+                    parent.display()
+                ));
+                continue;
+            }
+        };
+        let sidecar_path = entry.path();
+        let is_stale_sidecar = sidecar_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| prefixes.iter().any(|prefix| name.starts_with(prefix)));
+        if !is_stale_sidecar {
+            continue;
+        }
+        if let Err(error) = remove_file_if_present(&sidecar_path) {
+            errors.push(format!("remove {} failed: {error}", sidecar_path.display()));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn remove_missing_primary_save_artifacts(path: &Path) -> Result<(), String> {
+    let backup_path = backup_config_path(path);
+    remove_file_if_present(&backup_path).map_err(|e| {
+        format!(
+            "remove stale backup config {} failed: {e}",
+            backup_path.display()
+        )
+    })?;
+    remove_missing_primary_save_sidecars(path)?;
+    sync_parent_directory(path)
+}
+
 trait ReplaceFileOps {
     fn rename(&mut self, from: &Path, to: &Path) -> Result<(), String>;
     fn exists(&mut self, path: &Path) -> bool;
@@ -528,14 +600,7 @@ pub(in crate::config) fn save_config_to_path(
     }
 
     if remove_stale_backup_after_save {
-        let backup_path = backup_config_path(path);
-        remove_file_if_present(&backup_path).map_err(|e| {
-            installed_snapshot_error(format!(
-                "remove stale backup config {} failed: {e}",
-                backup_path.display()
-            ))
-        })?;
-        sync_parent_directory(&backup_path).map_err(installed_snapshot_error)?;
+        remove_missing_primary_save_artifacts(path).map_err(installed_snapshot_error)?;
     }
 
     // The rename above carries the temp file's 0o600 onto `path`, so this
