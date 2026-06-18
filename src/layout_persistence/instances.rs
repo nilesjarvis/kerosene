@@ -106,22 +106,22 @@ impl TradingTerminal {
             } else if !chart_cfg.symbol.is_empty() {
                 Self::clear_chart_for_muted_symbol(&mut instance);
             }
-            if let Some(symbol) = instance.secondary_symbol.clone() {
-                if tf.uses_candle_backfill() {
-                    let request = Self::build_candle_fetch_request(
-                        id,
-                        &symbol,
-                        tf,
-                        self.chart_backfill_request_context_for_timeframe(tf),
-                        None,
-                        0,
-                    );
-                    instance.secondary_candle_fetch_request = Some(request.clone());
-                    boot_tasks.push(Self::fetch_secondary_candles_task(
-                        request,
-                        self.hydromancer_api_key_for_task(),
-                    ));
-                }
+            if let Some(symbol) = instance.secondary_symbol.clone()
+                && tf.uses_candle_backfill()
+            {
+                let request = Self::build_candle_fetch_request(
+                    id,
+                    &symbol,
+                    tf,
+                    self.chart_backfill_request_context_for_timeframe(tf),
+                    None,
+                    0,
+                );
+                instance.secondary_candle_fetch_request = Some(request.clone());
+                boot_tasks.push(Self::fetch_secondary_candles_task(
+                    request,
+                    self.hydromancer_api_key_for_task(),
+                ));
             }
             charts.insert(id, instance);
         }

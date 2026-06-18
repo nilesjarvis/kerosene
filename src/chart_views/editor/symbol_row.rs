@@ -6,6 +6,14 @@ use crate::message::Message;
 use iced::widget::{Space, button, row, text};
 use iced::{Color, Element, Fill, Theme, color};
 
+#[derive(Debug, Clone, Copy)]
+struct ChartEditorSymbolRowState {
+    is_fav: bool,
+    is_selected: bool,
+    is_keyboard_selected: bool,
+    secondary: bool,
+}
+
 impl TradingTerminal {
     pub(super) fn view_chart_editor_symbol_row<'a>(
         &'a self,
@@ -19,11 +27,13 @@ impl TradingTerminal {
         self.view_chart_editor_symbol_row_for(
             chart_id,
             sym,
-            is_fav,
-            is_selected,
-            is_keyboard_selected,
+            ChartEditorSymbolRowState {
+                is_fav,
+                is_selected,
+                is_keyboard_selected,
+                secondary: false,
+            },
             theme,
-            false,
         )
     }
 
@@ -39,11 +49,13 @@ impl TradingTerminal {
         self.view_chart_editor_symbol_row_for(
             chart_id,
             sym,
-            is_fav,
-            is_selected,
-            is_keyboard_selected,
+            ChartEditorSymbolRowState {
+                is_fav,
+                is_selected,
+                is_keyboard_selected,
+                secondary: true,
+            },
             theme,
-            true,
         )
     }
 
@@ -51,12 +63,15 @@ impl TradingTerminal {
         &'a self,
         chart_id: ChartId,
         sym: &'a ExchangeSymbol,
-        is_fav: bool,
-        is_selected: bool,
-        is_keyboard_selected: bool,
+        row_state: ChartEditorSymbolRowState,
         theme: &Theme,
-        secondary: bool,
     ) -> Element<'a, Message> {
+        let ChartEditorSymbolRowState {
+            is_fav,
+            is_selected,
+            is_keyboard_selected,
+            secondary,
+        } = row_state;
         let display = sym.display_name.as_deref().unwrap_or(&sym.ticker);
         let prefix = sym.key.split(':').next().unwrap_or("");
         let cat_badge = text(sym.category.to_uppercase())

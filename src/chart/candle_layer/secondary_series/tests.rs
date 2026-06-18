@@ -28,8 +28,10 @@ fn secondary_visible_price_stats_use_visible_time_range_only() {
 
 #[test]
 fn secondary_points_map_by_timestamp_and_clip_to_chart_width() {
-    let mut state = ChartState::default();
-    state.candle_width = 10.0;
+    let state = ChartState {
+        candle_width: 10.0,
+        ..Default::default()
+    };
     let candles = vec![
         candle(0, 100.0),
         candle(60_000, 110.0),
