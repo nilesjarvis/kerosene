@@ -111,9 +111,16 @@ impl CandlestickChart {
     }
 }
 
+pub(in crate::chart) fn line_series_stroke_color(
+    chart: &CandlestickChart,
+    theme: &iced::Theme,
+) -> Color {
+    chart.chart_line_color.unwrap_or(theme.palette().text)
+}
+
 fn line_series_colors(chart: &CandlestickChart, theme: &iced::Theme) -> (Color, Color) {
     (
-        chart.chart_line_color.unwrap_or(theme.palette().text),
+        line_series_stroke_color(chart, theme),
         chart
             .chart_line_gradient_color
             .or(chart.chart_line_color)

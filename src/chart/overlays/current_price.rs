@@ -1,4 +1,5 @@
 use super::TradingOverlayContext;
+use crate::chart::candle_layer::line_series_stroke_color;
 use crate::chart::drawing::{
     AxisBadgeStyle, SegmentedHLineStyle, stroke_projected_segmented_hline_with_offset,
 };
@@ -7,8 +8,8 @@ use crate::chart::price_badges::{
     RIGHT_AXIS_PRIMARY_BADGE_HEIGHT, RightAxisBadgeConnectorStyle, RightAxisBadgeKind,
     draw_stacked_right_axis_badge, right_axis_line_end_x,
 };
-use crate::helpers::format_price;
-use iced::Color;
+use crate::helpers::{format_price, text_color_for_bg};
+use iced::{Color, Theme};
 
 // ---------------------------------------------------------------------------
 // Current Price Overlay
@@ -30,21 +31,16 @@ impl CandlestickChart {
 
             if last_y >= -10.0 && last_y <= ctx.price_h + 10.0 {
                 let is_bullish = last_candle.close >= last_candle.open;
-                let price_color = if is_bullish {
-                    ctx.candle_bull_color
-                } else {
-                    ctx.candle_bear_color
-                };
-                let price_color_dim = if is_bullish {
-                    Color {
-                        a: 0.35,
-                        ..ctx.candle_bull_color
-                    }
-                } else {
-                    Color {
-                        a: 0.35,
-                        ..ctx.candle_bear_color
-                    }
+                let (price_color, text_color) = current_price_badge_colors(
+                    self,
+                    is_bullish,
+                    ctx.theme,
+                    ctx.candle_bull_color,
+                    ctx.candle_bear_color,
+                );
+                let price_color_dim = Color {
+                    a: 0.35,
+                    ..price_color
                 };
 
                 let badge_kind = RightAxisBadgeKind::CurrentPrice;
@@ -76,7 +72,7 @@ impl CandlestickChart {
                         padding_width: 8.0,
                         height: RIGHT_AXIS_PRIMARY_BADGE_HEIGHT,
                         text_size: 10.0,
-                        text_color: Color::BLACK,
+                        text_color,
                     },
                     RightAxisBadgeConnectorStyle::Segmented {
                         style: SegmentedHLineStyle {
@@ -91,5 +87,22 @@ impl CandlestickChart {
                 );
             }
         }
+    }
+}
+
+pub(super) fn current_price_badge_colors(
+    chart: &CandlestickChart,
+    is_bullish: bool,
+    theme: &Theme,
+    candle_bull_color: Color,
+    candle_bear_color: Color,
+) -> (Color, Color) {
+    if chart.series_style.is_line() {
+        let color = line_series_stroke_color(chart, theme);
+        (color, text_color_for_bg(color))
+    } else if is_bullish {
+        (candle_bull_color, Color::BLACK)
+    } else {
+        (candle_bear_color, Color::BLACK)
     }
 }

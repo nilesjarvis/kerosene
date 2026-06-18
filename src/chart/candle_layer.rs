@@ -8,6 +8,7 @@ mod sessions;
 
 pub(in crate::chart) use earnings::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
 pub(in crate::chart) use funding::format_funding_rate_percent;
+pub(in crate::chart) use line_series::line_series_stroke_color;
 
 use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
