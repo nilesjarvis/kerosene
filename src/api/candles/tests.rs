@@ -1,6 +1,6 @@
 use super::{
     Candle, candle_interval_ms, fill_zero_volume_candle_gaps, interval_requires_hydromancer,
-    normalize_candles,
+    interval_uses_orderbook_ticks, normalize_candles,
 };
 
 #[test]
@@ -64,4 +64,11 @@ fn one_second_candles_are_hydromancer_only() {
     assert_eq!(candle_interval_ms("1s"), Some(1_000));
     assert!(interval_requires_hydromancer("1s"));
     assert!(!interval_requires_hydromancer("1m"));
+}
+
+#[test]
+fn tick_candles_are_realtime_only() {
+    assert_eq!(candle_interval_ms("tick"), None);
+    assert!(interval_uses_orderbook_ticks("tick"));
+    assert!(!interval_uses_orderbook_ticks("1s"));
 }

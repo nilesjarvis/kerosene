@@ -26,6 +26,7 @@ impl TradingTerminal {
         for instance in self.charts.values() {
             if matches!(instance.chart.status, ChartStatus::Loaded)
                 && !instance.symbol.is_empty()
+                && instance.interval.uses_candle_backfill()
                 && !self.symbol_key_is_hidden(&instance.symbol)
             {
                 let key = (
@@ -39,6 +40,7 @@ impl TradingTerminal {
             }
             if matches!(instance.chart.status, ChartStatus::Loaded)
                 && let Some(symbol) = instance.secondary_symbol.as_ref()
+                && instance.interval.uses_candle_backfill()
                 && !self.symbol_key_is_hidden(symbol)
                 && instance
                     .chart

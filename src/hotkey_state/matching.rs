@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
-use crate::timeframe::{TIMEFRAME_OPTIONS, Timeframe};
+use crate::timeframe::{TIMEFRAME_HOTKEY_OPTIONS, Timeframe};
 
 impl TradingTerminal {
     pub(crate) fn hotkey_key_string(key: &iced::keyboard::Key) -> Option<String> {
@@ -121,7 +121,7 @@ impl TradingTerminal {
 
     pub(crate) fn chart_timeframe_for_hotkey_key(key_str: &str) -> Option<Timeframe> {
         let index = key_str.parse::<usize>().ok()?.checked_sub(1)?;
-        TIMEFRAME_OPTIONS.get(index).copied()
+        TIMEFRAME_HOTKEY_OPTIONS.get(index).copied()
     }
 
     pub(crate) fn hotkey_key_is_modifier(key_str: &str) -> bool {

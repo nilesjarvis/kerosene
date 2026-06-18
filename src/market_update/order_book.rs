@@ -88,7 +88,9 @@ impl TradingTerminal {
                     return Task::none();
                 }
                 let source_tick = helpers::sigfig_server_tick(sigfigs, book.mid_price());
+                let now_ms = Self::now_ms();
                 let mut newly_populated = false;
+                let mut tick_mid = None;
                 if let Some(inst) = self.order_books.get_mut(&id)
                     && order_book_tracks_coin(&inst.mode, &self.active_symbol, &coin)
                 {
@@ -97,10 +99,14 @@ impl TradingTerminal {
                     inst.apply_book_update_preserving_scope(book, source_tick);
                     inst.record_mid_price_sample(now);
                     inst.record_spread_sample(now);
+                    tick_mid = inst.current_mid_price();
                     inst.book_loading = false;
                     inst.book_error = None;
                     newly_populated =
                         was_empty && !(inst.book.bids.is_empty() && inst.book.asks.is_empty());
+                }
+                if let Some(mid) = tick_mid {
+                    self.apply_orderbook_tick_price_to_charts(&coin, mid, now_ms);
                 }
 
                 // A book that first fills in over the websocket (REST blip,
@@ -294,8 +300,11 @@ mod tests {
     use super::*;
     use crate::account::AssetContext;
     use crate::api::BookLevel;
+    use crate::chart::ChartStatus;
+    use crate::chart_state::ChartInstance;
     use crate::config::ReadDataProvider;
     use crate::market_state::{OrderBookInstance, OrderBookSymbolMode};
+    use crate::timeframe::Timeframe;
 
     fn book() -> OrderBook {
         OrderBook {
@@ -407,6 +416,27 @@ mod tests {
 
         assert_eq!(terminal.order_books[&7].book.bids.len(), 1);
         assert_eq!(terminal.order_books[&7].book.asks.len(), 1);
+    }
+
+    #[test]
+    fn order_book_snapshot_updates_matching_tick_chart() {
+        let mut terminal = terminal_with_order_book();
+        terminal.charts.clear();
+        let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::Tick);
+        chart.chart.status = ChartStatus::Loaded;
+        terminal.charts.insert(1, chart);
+
+        let _task = terminal.update_order_book_market(Message::WsBookUpdate {
+            id: 7,
+            coin: "BTC".to_string(),
+            sigfigs: terminal.canonical_l2_book_sigfigs("BTC"),
+            source_context: source_context(&terminal, None),
+            book: book(),
+        });
+
+        let candles = &terminal.charts[&1].chart.candles;
+        assert_eq!(candles.len(), 1);
+        assert_eq!(candles[0].close, 100.0);
     }
 
     #[test]

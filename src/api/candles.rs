@@ -40,6 +40,9 @@ pub async fn fetch_candles(
     start_time: u64,
     end_time: u64,
 ) -> Result<Vec<Candle>, String> {
+    if interval_uses_orderbook_ticks(&interval) {
+        return Err("Tick candles are realtime-only from order book data".to_string());
+    }
     if interval_requires_hydromancer(&interval) {
         return Err("1s candles require Hydromancer chart backfill".to_string());
     }
@@ -56,6 +59,9 @@ pub async fn fetch_chart_backfill_candles(
     end_time: u64,
 ) -> Result<Vec<Candle>, String> {
     match source {
+        _ if interval_uses_orderbook_ticks(&interval) => {
+            Err("Tick candles are realtime-only from order book data".to_string())
+        }
         ChartBackfillSource::Hyperliquid if interval_requires_hydromancer(&interval) => {
             Err("1s candles require Hydromancer chart backfill".to_string())
         }
@@ -193,6 +199,10 @@ fn candle_interval_ms(interval: &str) -> Option<u64> {
 
 fn interval_requires_hydromancer(interval: &str) -> bool {
     interval == "1s"
+}
+
+fn interval_uses_orderbook_ticks(interval: &str) -> bool {
+    interval == "tick"
 }
 
 fn fill_zero_volume_candle_gaps(candles: Vec<Candle>, interval_ms: u64) -> Vec<Candle> {

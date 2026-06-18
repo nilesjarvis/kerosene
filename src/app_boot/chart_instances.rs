@@ -60,23 +60,28 @@ impl TradingTerminal {
             if !chart_cfg.symbol.is_empty()
                 && !Self::key_matches_muted_tickers(&[], muted_tickers, &chart_cfg.symbol)
             {
-                let request = Self::build_candle_fetch_request(
-                    id,
-                    &chart_cfg.symbol,
-                    tf,
-                    crate::chart_state::ChartBackfillRequestContext::new(
-                        chart_backfill_source,
+                if tf.uses_candle_backfill() {
+                    let source = if tf.requires_hydromancer_backfill() {
+                        ChartBackfillSource::Hydromancer
+                    } else {
+                        chart_backfill_source
+                    };
+                    let request = Self::build_candle_fetch_request(
+                        id,
+                        &chart_cfg.symbol,
+                        tf,
+                        crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0),
+                        None,
                         0,
-                        0,
-                    ),
-                    None,
-                    0,
-                );
-                instance.candle_fetch_request = Some(request.clone());
-                boot_tasks.push(Self::fetch_candles_task(
-                    request,
-                    hydromancer_api_key.clone(),
-                ));
+                    );
+                    instance.candle_fetch_request = Some(request.clone());
+                    boot_tasks.push(Self::fetch_candles_task(
+                        request,
+                        hydromancer_api_key.clone(),
+                    ));
+                } else {
+                    instance.chart.status = crate::chart::ChartStatus::Loaded;
+                }
                 let macro_request_id = instance.next_macro_candles_request_id();
                 boot_tasks.extend(Self::fetch_macro_candles_tasks(
                     id,
@@ -87,23 +92,26 @@ impl TradingTerminal {
                 Self::clear_chart_for_muted_symbol(&mut instance);
             }
             if let Some(symbol) = instance.secondary_symbol.clone() {
-                let request = Self::build_candle_fetch_request(
-                    id,
-                    &symbol,
-                    tf,
-                    crate::chart_state::ChartBackfillRequestContext::new(
-                        chart_backfill_source,
+                if tf.uses_candle_backfill() {
+                    let source = if tf.requires_hydromancer_backfill() {
+                        ChartBackfillSource::Hydromancer
+                    } else {
+                        chart_backfill_source
+                    };
+                    let request = Self::build_candle_fetch_request(
+                        id,
+                        &symbol,
+                        tf,
+                        crate::chart_state::ChartBackfillRequestContext::new(source, 0, 0),
+                        None,
                         0,
-                        0,
-                    ),
-                    None,
-                    0,
-                );
-                instance.secondary_candle_fetch_request = Some(request.clone());
-                boot_tasks.push(Self::fetch_secondary_candles_task(
-                    request,
-                    hydromancer_api_key.clone(),
-                ));
+                    );
+                    instance.secondary_candle_fetch_request = Some(request.clone());
+                    boot_tasks.push(Self::fetch_secondary_candles_task(
+                        request,
+                        hydromancer_api_key.clone(),
+                    ));
+                }
             }
 
             charts.insert(id, instance);

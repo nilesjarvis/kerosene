@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
-use crate::timeframe::TIMEFRAME_OPTIONS;
+use crate::timeframe::TIMEFRAME_HOTKEY_OPTIONS;
 
 impl TradingTerminal {
     pub(crate) fn hotkey_display(hotkey: &config::HotkeyConfig) -> String {
@@ -35,7 +35,7 @@ impl TradingTerminal {
         if prefix.logo {
             parts.push("Win/Cmd".to_string());
         }
-        parts.push(format!("1..{}", TIMEFRAME_OPTIONS.len()));
+        parts.push(format!("1..{}", TIMEFRAME_HOTKEY_OPTIONS.len()));
         parts.join(" + ")
     }
 

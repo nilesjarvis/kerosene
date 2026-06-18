@@ -200,6 +200,18 @@ impl TradingTerminal {
     }
 
     pub(crate) fn queue_candle_fetch(&mut self, request: CandleFetchRequest) -> Task<Message> {
+        if request.timeframe.uses_orderbook_tick_candles() {
+            if let Some(instance) = self.charts.get_mut(&request.chart_id) {
+                instance.candle_fetch_request = None;
+                instance.candle_fetch_error = None;
+                if instance.chart.candles.is_empty() {
+                    instance.chart.status = ChartStatus::Loaded;
+                }
+                instance.chart.candle_cache.clear();
+            }
+            return Task::none();
+        }
+
         if let Some(instance) = self.charts.get_mut(&request.chart_id) {
             instance.candle_fetch_request = Some(request.clone());
             instance.candle_fetch_error = None;
@@ -232,6 +244,17 @@ impl TradingTerminal {
         &mut self,
         request: CandleFetchRequest,
     ) -> Task<Message> {
+        if request.timeframe.uses_orderbook_tick_candles() {
+            if let Some(instance) = self.charts.get_mut(&request.chart_id) {
+                instance.secondary_candle_fetch_request = None;
+                instance.secondary_candle_fetch_error = None;
+                if instance.secondary_symbol.is_some() {
+                    instance.chart.set_secondary_candles(Vec::new());
+                }
+            }
+            return Task::none();
+        }
+
         if let Some(instance) = self.charts.get_mut(&request.chart_id) {
             instance.secondary_candle_fetch_request = Some(request.clone());
             instance.secondary_candle_fetch_error = None;
@@ -269,7 +292,9 @@ impl TradingTerminal {
             .charts
             .iter()
             .filter(|(_, instance)| {
-                !instance.symbol.is_empty() && !self.symbol_key_is_hidden(&instance.symbol)
+                instance.interval.uses_candle_backfill()
+                    && !instance.symbol.is_empty()
+                    && !self.symbol_key_is_hidden(&instance.symbol)
             })
             .map(|(chart_id, instance)| {
                 Self::build_candle_fetch_request(
@@ -287,16 +312,17 @@ impl TradingTerminal {
             .iter()
             .filter_map(|(chart_id, instance)| {
                 let symbol = instance.secondary_symbol.as_ref()?;
-                (!self.symbol_key_is_hidden(symbol)).then(|| {
-                    Self::build_candle_fetch_request(
-                        *chart_id,
-                        symbol,
-                        instance.interval,
-                        self.chart_backfill_request_context_for_timeframe(instance.interval),
-                        None,
-                        0,
-                    )
-                })
+                (instance.interval.uses_candle_backfill() && !self.symbol_key_is_hidden(symbol))
+                    .then(|| {
+                        Self::build_candle_fetch_request(
+                            *chart_id,
+                            symbol,
+                            instance.interval,
+                            self.chart_backfill_request_context_for_timeframe(instance.interval),
+                            None,
+                            0,
+                        )
+                    })
             })
             .collect();
 

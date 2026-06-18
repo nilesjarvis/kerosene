@@ -8,6 +8,48 @@ use crate::timeframe::Timeframe;
 use iced::Task;
 
 impl TradingTerminal {
+    pub(crate) fn apply_orderbook_tick_price_to_charts(
+        &mut self,
+        symbol: &str,
+        price: f64,
+        now_ms: u64,
+    ) {
+        if !price.is_finite() || price <= 0.0 {
+            return;
+        }
+
+        let mut secondary_updated = false;
+        for instance in self.charts.values_mut() {
+            if !instance.interval.uses_orderbook_tick_candles() {
+                continue;
+            }
+
+            if instance.symbol == symbol {
+                let candle = orderbook_tick_candle(&instance.chart.candles, price, now_ms);
+                let previous_close = instance.chart.candles.last().map(|candle| candle.close);
+                instance.chart.push_candle(candle);
+                instance.chart.status = ChartStatus::Loaded;
+                instance.track_last_price_update(previous_close, price, now_ms);
+            }
+
+            if instance.secondary_symbol.as_deref() == Some(symbol) {
+                let prior = instance
+                    .chart
+                    .secondary_series
+                    .as_ref()
+                    .map(|series| series.candles.as_slice())
+                    .unwrap_or(&[]);
+                let candle = orderbook_tick_candle(prior, price, now_ms);
+                instance.chart.push_secondary_candle(candle);
+                secondary_updated = true;
+            }
+        }
+
+        if secondary_updated {
+            self.cache_secondary_candles_for(symbol, Timeframe::Tick.api_str());
+        }
+    }
+
     pub(in crate::chart_update) fn apply_chart_ws_candle_update(
         &mut self,
         _id: ChartId,
@@ -142,6 +184,27 @@ impl TradingTerminal {
         } else {
             self.market_stream_source_is_current(source_context)
         }
+    }
+}
+
+fn orderbook_tick_candle(prior: &[Candle], price: f64, now_ms: u64) -> Candle {
+    let open_time = prior
+        .last()
+        .map(|candle| {
+            candle
+                .open_time
+                .saturating_add(Timeframe::Tick.duration_ms())
+        })
+        .unwrap_or(1)
+        .max(now_ms.max(1));
+    Candle {
+        open_time,
+        close_time: open_time,
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+        volume: 0.0,
     }
 }
 

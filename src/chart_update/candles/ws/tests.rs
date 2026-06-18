@@ -178,6 +178,31 @@ fn one_second_ws_candle_update_accepts_hydromancer_keyed_context() {
 }
 
 #[test]
+fn orderbook_tick_price_updates_matching_tick_chart() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut tick_chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::Tick);
+    tick_chart.chart.status = ChartStatus::Loaded;
+    let mut minute_chart = ChartInstance::new(2, "BTC".to_string(), Timeframe::M1);
+    minute_chart.chart.status = ChartStatus::Loaded;
+    minute_chart.chart.set_candles(vec![candle(1_000, 50.0)]);
+    terminal.charts.insert(1, tick_chart);
+    terminal.charts.insert(2, minute_chart);
+
+    terminal.apply_orderbook_tick_price_to_charts("BTC", 100.0, 10_000);
+    terminal.apply_orderbook_tick_price_to_charts("BTC", 101.0, 10_000);
+
+    let tick = &terminal.charts[&1].chart.candles;
+    assert_eq!(tick.len(), 2);
+    assert_eq!(tick[0].open_time, 10_000);
+    assert_eq!(tick[0].close, 100.0);
+    assert_eq!(tick[1].open_time, 10_001);
+    assert_eq!(tick[1].close, 101.0);
+    assert_eq!(last_close(&terminal, 2), Some(50.0));
+}
+
+#[test]
 fn ws_candle_update_ignores_inactive_provider_source() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.charts.clear();

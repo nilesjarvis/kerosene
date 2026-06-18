@@ -80,19 +80,23 @@ impl TradingTerminal {
             instance.next_annotation_id = ann_id;
             instance.chart.annotations = instance.annotations.clone();
             if !chart_cfg.symbol.is_empty() && !self.symbol_key_is_hidden(&chart_cfg.symbol) {
-                let request = Self::build_candle_fetch_request(
-                    id,
-                    &chart_cfg.symbol,
-                    tf,
-                    self.chart_backfill_request_context(),
-                    None,
-                    0,
-                );
-                instance.candle_fetch_request = Some(request.clone());
-                boot_tasks.push(Self::fetch_candles_task(
-                    request,
-                    self.hydromancer_api_key_for_task(),
-                ));
+                if tf.uses_candle_backfill() {
+                    let request = Self::build_candle_fetch_request(
+                        id,
+                        &chart_cfg.symbol,
+                        tf,
+                        self.chart_backfill_request_context_for_timeframe(tf),
+                        None,
+                        0,
+                    );
+                    instance.candle_fetch_request = Some(request.clone());
+                    boot_tasks.push(Self::fetch_candles_task(
+                        request,
+                        self.hydromancer_api_key_for_task(),
+                    ));
+                } else {
+                    instance.chart.status = crate::chart::ChartStatus::Loaded;
+                }
                 let macro_request_id = instance.next_macro_candles_request_id();
                 boot_tasks.extend(Self::fetch_macro_candles_tasks(
                     id,
@@ -103,19 +107,21 @@ impl TradingTerminal {
                 Self::clear_chart_for_muted_symbol(&mut instance);
             }
             if let Some(symbol) = instance.secondary_symbol.clone() {
-                let request = Self::build_candle_fetch_request(
-                    id,
-                    &symbol,
-                    tf,
-                    self.chart_backfill_request_context(),
-                    None,
-                    0,
-                );
-                instance.secondary_candle_fetch_request = Some(request.clone());
-                boot_tasks.push(Self::fetch_secondary_candles_task(
-                    request,
-                    self.hydromancer_api_key_for_task(),
-                ));
+                if tf.uses_candle_backfill() {
+                    let request = Self::build_candle_fetch_request(
+                        id,
+                        &symbol,
+                        tf,
+                        self.chart_backfill_request_context_for_timeframe(tf),
+                        None,
+                        0,
+                    );
+                    instance.secondary_candle_fetch_request = Some(request.clone());
+                    boot_tasks.push(Self::fetch_secondary_candles_task(
+                        request,
+                        self.hydromancer_api_key_for_task(),
+                    ));
+                }
             }
             charts.insert(id, instance);
         }

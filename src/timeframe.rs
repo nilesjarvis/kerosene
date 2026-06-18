@@ -13,6 +13,7 @@ use metadata::{ALL_TIMEFRAMES, API_STRS, CONFIG_STRS, DURATIONS_MS, LABELS, LOOK
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(usize)]
 pub(crate) enum Timeframe {
+    Tick,
     S1,
     M1,
     M3,
@@ -55,6 +56,14 @@ impl Timeframe {
         matches!(self, Self::S1)
     }
 
+    pub(crate) fn uses_orderbook_tick_candles(self) -> bool {
+        matches!(self, Self::Tick)
+    }
+
+    pub(crate) fn uses_candle_backfill(self) -> bool {
+        !self.uses_orderbook_tick_candles()
+    }
+
     pub(crate) fn duration_ms(self) -> u64 {
         DURATIONS_MS[self.index()]
     }
@@ -83,6 +92,7 @@ impl std::fmt::Display for Timeframe {
 
 /// Timeframes shown in the chart toolbar.
 pub(crate) const TIMEFRAME_OPTIONS: &[Timeframe] = &[
+    Timeframe::Tick,
     Timeframe::M1,
     Timeframe::M5,
     Timeframe::M15,
@@ -93,7 +103,19 @@ pub(crate) const TIMEFRAME_OPTIONS: &[Timeframe] = &[
 ];
 
 pub(crate) const HYDROMANCER_TIMEFRAME_OPTIONS: &[Timeframe] = &[
+    Timeframe::Tick,
     Timeframe::S1,
+    Timeframe::M1,
+    Timeframe::M5,
+    Timeframe::M15,
+    Timeframe::H1,
+    Timeframe::H4,
+    Timeframe::D1,
+    Timeframe::W1,
+];
+
+/// Timeframes addressable by the chart timeframe prefix hotkey.
+pub(crate) const TIMEFRAME_HOTKEY_OPTIONS: &[Timeframe] = &[
     Timeframe::M1,
     Timeframe::M5,
     Timeframe::M15,

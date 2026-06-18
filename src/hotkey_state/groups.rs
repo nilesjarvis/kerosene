@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
-use crate::timeframe::TIMEFRAME_OPTIONS;
+use crate::timeframe::TIMEFRAME_HOTKEY_OPTIONS;
 
 pub(crate) struct HotkeyActionGroup {
     pub(crate) title: &'static str,
@@ -18,7 +18,7 @@ impl TradingTerminal {
                 ),
                 (
                     config::HotkeyAction::ChartTimeframePrefix,
-                    format!("Chart Timeframes 1..{}", TIMEFRAME_OPTIONS.len()),
+                    format!("Chart Timeframes 1..{}", TIMEFRAME_HOTKEY_OPTIONS.len()),
                 ),
                 (config::HotkeyAction::OpenAlfred, "alfred".to_string()),
                 (

@@ -1,5 +1,8 @@
 use super::metadata::{ALL_TIMEFRAMES, API_STRS, CONFIG_STRS, DURATIONS_MS, LABELS, LOOKBACKS_MS};
-use super::{HYDROMANCER_TIMEFRAME_OPTIONS, TIMEFRAME_OPTIONS, Timeframe, chart_timeframe_options};
+use super::{
+    HYDROMANCER_TIMEFRAME_OPTIONS, TIMEFRAME_HOTKEY_OPTIONS, TIMEFRAME_OPTIONS, Timeframe,
+    chart_timeframe_options,
+};
 
 #[test]
 fn timeframe_arrays_round_trip_config_strings() {
@@ -32,12 +35,30 @@ fn toolbar_timeframe_options_are_supported_timeframes() {
 
 #[test]
 fn default_toolbar_timeframe_options_hide_one_second() {
+    assert!(TIMEFRAME_OPTIONS.contains(&Timeframe::Tick));
     assert!(!TIMEFRAME_OPTIONS.contains(&Timeframe::S1));
     assert_eq!(chart_timeframe_options(false), TIMEFRAME_OPTIONS);
 }
 
 #[test]
 fn hydromancer_toolbar_timeframe_options_include_one_second() {
+    assert!(HYDROMANCER_TIMEFRAME_OPTIONS.contains(&Timeframe::Tick));
     assert!(HYDROMANCER_TIMEFRAME_OPTIONS.contains(&Timeframe::S1));
     assert_eq!(chart_timeframe_options(true), HYDROMANCER_TIMEFRAME_OPTIONS);
+}
+
+#[test]
+fn tick_timeframe_is_realtime_only() {
+    assert!(Timeframe::Tick.uses_orderbook_tick_candles());
+    assert!(!Timeframe::Tick.uses_candle_backfill());
+    assert!(!Timeframe::M1.uses_orderbook_tick_candles());
+    assert!(Timeframe::M1.uses_candle_backfill());
+}
+
+#[test]
+fn timeframe_hotkey_options_preserve_existing_number_row_mapping() {
+    assert_eq!(TIMEFRAME_HOTKEY_OPTIONS.first(), Some(&Timeframe::M1));
+    assert_eq!(TIMEFRAME_HOTKEY_OPTIONS.last(), Some(&Timeframe::W1));
+    assert!(!TIMEFRAME_HOTKEY_OPTIONS.contains(&Timeframe::Tick));
+    assert!(!TIMEFRAME_HOTKEY_OPTIONS.contains(&Timeframe::S1));
 }
