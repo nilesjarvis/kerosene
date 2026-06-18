@@ -25,7 +25,10 @@ pub use session::{SESSION_OPTIONS, Session};
 // Spaghetti (Comparison) Chart — Canvas-based
 // ---------------------------------------------------------------------------
 
-const PRICE_AXIS_WIDTH: f32 = 60.0;
+/// Right-side gutter reserved for the price axis and the series-label pills.
+/// Wide enough to hold a logo plus a ~6-character ticker without truncation
+/// (the label inset its text past the logo, eating into this budget).
+const PRICE_AXIS_WIDTH: f32 = 72.0;
 const TIME_AXIS_HEIGHT: f32 = 24.0;
 const PRICE_PADDING_PCT: f64 = 0.08;
 
