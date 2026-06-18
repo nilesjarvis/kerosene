@@ -288,7 +288,13 @@ impl TradingTerminal {
                 account_provider,
                 hydromancer_key,
             ),
-            move |r| Message::AccountDataLoaded(account_addr.clone(), account_context, Box::new(r)),
+            move |r| {
+                Message::AccountDataLoaded(
+                    account_addr.clone().into(),
+                    account_context,
+                    Box::new(r),
+                )
+            },
         );
         let mut tasks = vec![account_task];
         tasks.push(stop_chase_task);

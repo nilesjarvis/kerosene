@@ -56,6 +56,8 @@ impl TradingTerminal {
                 address,
                 result,
             } => {
+                let account_key = account_key.into_option();
+                let address = address.into_string();
                 if self.journal.sync_request_id != request_id
                     || self.journal.active_account_key != account_key
                     || self.connected_address.as_deref() != Some(address.as_str())
@@ -136,8 +138,8 @@ impl TradingTerminal {
                                 api::fetch_user_fills(address, next_request),
                                 move |result| Message::JournalFillsLoaded {
                                     request_id,
-                                    account_key: request_account_key.clone(),
-                                    address: request_address.clone(),
+                                    account_key: request_account_key.clone().into(),
+                                    address: request_address.clone().into(),
                                     result,
                                 },
                             );
@@ -239,7 +241,12 @@ impl TradingTerminal {
                 request,
                 result,
             } => {
-                return self.apply_journal_snapshot_loaded(account_key, address, request, result);
+                return self.apply_journal_snapshot_loaded(
+                    account_key.into_option(),
+                    address.into_string(),
+                    request.into_request(),
+                    result,
+                );
             }
             Message::JournalRefresh => {
                 self.journal.clear_snapshot_cache();
@@ -505,9 +512,9 @@ impl TradingTerminal {
                 fetch_request.end_ms,
             ),
             move |result| Message::JournalSnapshotLoaded {
-                account_key: account_key.clone(),
-                address: address.clone(),
-                request: request.clone(),
+                account_key: account_key.clone().into(),
+                address: address.clone().into(),
+                request: request.clone().into(),
                 result,
             },
         )
@@ -555,9 +562,9 @@ mod tests {
             .insert(request.trade_id.clone(), request.clone());
 
         let _task = terminal.update_journal(Message::JournalSnapshotLoaded {
-            account_key: Some("acct".to_string()),
-            address: "0xabc".to_string(),
-            request: request.clone(),
+            account_key: Some("acct".to_string()).into(),
+            address: "0xabc".to_string().into(),
+            request: request.clone().into(),
             result: Ok(vec![api::Candle::test_flat(0, 100.0)]),
         });
 
@@ -593,8 +600,8 @@ mod tests {
 
         let _task = terminal.update_journal(Message::JournalFillsLoaded {
             request_id: stale_request_id,
-            account_key: Some("acct".to_string()),
-            address: "0xabc".to_string(),
+            account_key: Some("acct".to_string()).into(),
+            address: "0xabc".to_string().into(),
             result: Err("old request failed".to_string()),
         });
 
@@ -613,8 +620,8 @@ mod tests {
 
         let _task = terminal.update_journal(Message::JournalFillsLoaded {
             request_id,
-            account_key: Some("acct".to_string()),
-            address: "0xabc".to_string(),
+            account_key: Some("acct".to_string()).into(),
+            address: "0xabc".to_string().into(),
             result: Ok(empty_journal_page(12_345)),
         });
 

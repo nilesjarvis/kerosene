@@ -185,7 +185,7 @@ impl TradingTerminal {
         self.sync_all_chart_orders();
 
         modify_order_task(key, prepared, move |r| Message::MoveOrderModifyResult {
-            account_address: account_address.clone(),
+            account_address: account_address.clone().into(),
             coin: move_key.coin().to_string(),
             oid,
             pending_indicator_id,

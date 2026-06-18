@@ -116,9 +116,10 @@ mod tests {
         Message::WsHydromancerTrackedTrades {
             hydromancer_key_generation: terminal.hydromancer_key_generation,
             reconnect_nonce: terminal.tracked_trades_reconnect_nonce,
-            tracked_addresses: std::sync::Arc::from(
+            tracked_addresses: std::sync::Arc::<[String]>::from(
                 terminal.tracked_trade_subscription_addresses(),
-            ),
+            )
+            .into(),
             message,
         }
     }
@@ -132,7 +133,7 @@ mod tests {
         Message::WsHydromancerTrackedTrades {
             hydromancer_key_generation,
             reconnect_nonce,
-            tracked_addresses: std::sync::Arc::from(tracked_addresses),
+            tracked_addresses: std::sync::Arc::<[String]>::from(tracked_addresses).into(),
             message,
         }
     }

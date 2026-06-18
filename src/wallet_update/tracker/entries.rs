@@ -7,7 +7,7 @@ impl TradingTerminal {
     pub(super) fn update_wallet_tracker_entries(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::WalletTrackerInputChanged(value) => {
-                self.wallet_tracker.add_input = value;
+                self.wallet_tracker.add_input = value.into_string();
             }
             Message::WalletTrackerLabelInputChanged(value) => {
                 self.wallet_tracker.add_label_input = value;
@@ -58,8 +58,9 @@ impl TradingTerminal {
                 return self.refresh_next_wallet_tracker_core();
             }
             Message::WalletTrackerMute(address) => {
+                let address = address.into_string();
                 let normalized_address =
-                    Self::normalize_wallet_address(&address).unwrap_or_else(|| address.clone());
+                    Self::normalize_wallet_address(&address).unwrap_or(address);
                 if !self
                     .wallet_tracker
                     .tracked_addresses
@@ -73,16 +74,18 @@ impl TradingTerminal {
                 }
             }
             Message::WalletTrackerUnmute(address) => {
+                let address = address.into_string();
                 let normalized_address =
-                    Self::normalize_wallet_address(&address).unwrap_or_else(|| address.clone());
+                    Self::normalize_wallet_address(&address).unwrap_or(address);
                 if self.wallet_tracker.unmute_address(&normalized_address) {
                     self.refresh_tracked_trades_subscription();
                     self.persist_config();
                 }
             }
             Message::WalletTrackerRemove(address) => {
+                let address = address.into_string();
                 let normalized_address =
-                    Self::normalize_wallet_address(&address).unwrap_or_else(|| address.clone());
+                    Self::normalize_wallet_address(&address).unwrap_or(address);
                 let was_labeled = self.wallet_label(&normalized_address).is_some();
                 self.wallet_tracker
                     .tracked_addresses
@@ -102,7 +105,7 @@ impl TradingTerminal {
                 self.persist_config();
             }
             Message::WalletTrackerLabelChanged(address, label) => {
-                let Some(address) = Self::normalize_wallet_address(&address) else {
+                let Some(address) = Self::normalize_wallet_address(address.as_str()) else {
                     return Task::none();
                 };
                 let was_labeled = self.wallet_label(&address).is_some();

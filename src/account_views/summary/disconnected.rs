@@ -31,7 +31,7 @@ impl TradingTerminal {
 
         let addr_input = text_input("Master account address (0x...)", &self.wallet_address_input)
             .style(helpers::text_input_style)
-            .on_input(Message::WalletAddressInputChanged)
+            .on_input(|value| Message::WalletAddressInputChanged(value.into()))
             .size(11)
             .padding([4, 6])
             .width(Fill);

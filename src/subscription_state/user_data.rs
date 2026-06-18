@@ -40,14 +40,16 @@ impl TradingTerminal {
         let (base_sub_id, wallet_detail_sub_ids) = self.user_data_subscription_params();
         subs.push(
             Subscription::run_with(base_sub_id, ws_user_data_stream).map(
-                |(source_address, data)| Message::WsUserDataUpdate(source_address, Box::new(data)),
+                |(source_address, data)| {
+                    Message::WsUserDataUpdate(source_address.map(Into::into), Box::new(data))
+                },
             ),
         );
 
         for sub_id in wallet_detail_sub_ids {
             subs.push(Subscription::run_with(sub_id, ws_user_data_stream).map(
                 |(source_address, data)| {
-                    Message::WalletDetailsWsUpdate(source_address, Box::new(data))
+                    Message::WalletDetailsWsUpdate(source_address.map(Into::into), Box::new(data))
                 },
             ));
         }

@@ -12,7 +12,7 @@ impl TradingTerminal {
         Task::perform(
             fetch_order_status_by_oid(account_address.clone(), oid),
             move |result| Message::MoveOrderStatusLoaded {
-                account_address,
+                account_address: account_address.into(),
                 coin,
                 oid,
                 result: Box::new(result),

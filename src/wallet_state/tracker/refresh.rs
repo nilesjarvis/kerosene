@@ -29,7 +29,9 @@ impl TradingTerminal {
                 provider,
                 hydromancer_key,
             ),
-            move |r| Message::WalletTrackerLoaded(address.clone(), read_context, Box::new(r)),
+            move |r| {
+                Message::WalletTrackerLoaded(address.clone().into(), read_context, Box::new(r))
+            },
         )
     }
 
@@ -56,7 +58,7 @@ impl TradingTerminal {
                 provider,
                 hydromancer_key,
             ),
-            move |r| Message::WalletTrackerBatchLoaded(read_context, r),
+            move |r| Message::WalletTrackerBatchLoaded(read_context, r.into()),
         )
     }
 
@@ -75,7 +77,13 @@ impl TradingTerminal {
                 provider,
                 hydromancer_key,
             ),
-            move |r| Message::WalletTrackerOrdersLoaded(address.clone(), read_context, Box::new(r)),
+            move |r| {
+                Message::WalletTrackerOrdersLoaded(
+                    address.clone().into(),
+                    read_context,
+                    Box::new(r),
+                )
+            },
         )
     }
 

@@ -31,7 +31,9 @@ impl TradingTerminal {
             Message::SavePnlCard(window_id) => self.save_pnl_card_image(window_id),
             Message::PnlCardSaved(result) => self.handle_pnl_card_saved(result),
             Message::WalletKeyInputChanged(value) => self.update_wallet_key_input(value),
-            Message::WalletAddressInputChanged(value) => self.update_wallet_address_input(value),
+            Message::WalletAddressInputChanged(value) => {
+                self.update_wallet_address_input(value.into_string())
+            }
             Message::ToggleAccountPicker => self.toggle_account_picker(),
             Message::AccountPickerSelected(index) => self.select_account_from_picker(index),
             Message::AccountPickerRenameToggled(index) => self.toggle_account_picker_rename(index),
@@ -39,26 +41,29 @@ impl TradingTerminal {
                 self.update_account_picker_label(index, value)
             }
             Message::AddAccount => self.add_account_from_picker(),
-            Message::GhostWallet(address) => self.add_ghost_wallet_from_picker(address),
+            Message::GhostWallet(address) => {
+                self.add_ghost_wallet_from_picker(address.into_string())
+            }
             Message::ForgetGhostAccount(index) => self.forget_ghost_account_from_picker(index),
             Message::DeleteSavedAccount(index) => self.delete_saved_account_task(index),
             Message::SaveCredentials => self.save_active_account_credentials(),
             Message::ConnectWallet => self.connect_wallet(),
             Message::DisconnectWallet => self.disconnect_wallet(),
             Message::AccountDataLoaded(address, context, result) => {
-                self.apply_account_data_loaded(address, context, *result)
+                self.apply_account_data_loaded(address.into_string(), context, *result)
             }
             Message::RetryTwapReconciliationAccountData(address) => {
-                self.retry_twap_reconciliation_account_data(address)
+                self.retry_twap_reconciliation_account_data(address.into_string())
             }
             Message::RefreshAccountData => self.refresh_account_data(),
             Message::AccountRefreshBackoffElapsed(due_ms) => {
                 self.handle_account_refresh_backoff_elapsed(due_ms)
             }
             Message::AllMidsBootstrapLoaded(_dex, Ok(mids)) => self.handle_mids_update(mids),
-            Message::WsUserDataUpdate(source_address, ws_data) => {
-                self.apply_ws_user_data_update(source_address, *ws_data)
-            }
+            Message::WsUserDataUpdate(source_address, ws_data) => self.apply_ws_user_data_update(
+                source_address.map(|address| address.into_string()),
+                *ws_data,
+            ),
             _ => Task::none(),
         }
     }

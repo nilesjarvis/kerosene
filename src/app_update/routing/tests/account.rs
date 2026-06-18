@@ -43,7 +43,7 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
         UpdateRoute::Account,
     );
     assert_route(
-        Message::RetryTwapReconciliationAccountData("0xabc".to_string()),
+        Message::RetryTwapReconciliationAccountData("0xabc".to_string().into()),
         UpdateRoute::Account,
     );
     assert_route(Message::DismissOrderStatus, UpdateRoute::Order);

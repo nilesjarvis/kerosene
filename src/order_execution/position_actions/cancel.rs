@@ -84,7 +84,7 @@ impl TradingTerminal {
         self.order_status = Some(("Cancelling order...".into(), false));
         cancel_order_task(key, prepared.asset, prepared.oid, move |result| {
             Message::CancelResult {
-                account_address,
+                account_address: account_address.into(),
                 pending_indicator_id,
                 result: Box::new(result),
             }

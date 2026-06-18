@@ -11,7 +11,7 @@ impl TradingTerminal {
         row![
             text_input("0x wallet address", &self.wallet_tracker.add_input)
                 .style(helpers::text_input_style)
-                .on_input(Message::WalletTrackerInputChanged)
+                .on_input(|value| Message::WalletTrackerInputChanged(value.into()))
                 .on_submit(Message::WalletTrackerAdd)
                 .size(12)
                 .padding([6, 8]),

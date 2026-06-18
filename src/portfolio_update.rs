@@ -13,7 +13,7 @@ impl TradingTerminal {
         let requested_addr = address.clone();
         let request_id = self.portfolio.begin_refresh();
         Task::perform(fetch_portfolio_history(address), move |r| {
-            Message::PortfolioLoaded(requested_addr.clone(), request_id, Box::new(r))
+            Message::PortfolioLoaded(requested_addr.clone().into(), request_id, Box::new(r))
         })
     }
 
@@ -25,7 +25,7 @@ impl TradingTerminal {
         let requested_addr = address.clone();
         let request_id = self.income.begin_refresh();
         Task::perform(fetch_income_data(address), move |r| {
-            Message::IncomeLoaded(requested_addr.clone(), request_id, Box::new(r))
+            Message::IncomeLoaded(requested_addr.clone().into(), request_id, Box::new(r))
         })
     }
 
@@ -48,6 +48,7 @@ impl TradingTerminal {
                 }
             }
             Message::PortfolioLoaded(address, request_id, result) => {
+                let address = address.into_string();
                 if !self.portfolio.finish_refresh(request_id) {
                     return Task::none();
                 }
@@ -80,6 +81,7 @@ impl TradingTerminal {
                 }
             }
             Message::IncomeLoaded(address, request_id, result) => {
+                let address = address.into_string();
                 if !self.income.finish_refresh(request_id) {
                     return Task::none();
                 }

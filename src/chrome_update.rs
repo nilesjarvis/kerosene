@@ -91,7 +91,7 @@ impl TradingTerminal {
                 return clipboard::write(text).map(|()| Message::NoOp);
             }
             Message::WalletAddressActionsHovered(key) => {
-                self.hovered_wallet_address_actions = Some(key);
+                self.hovered_wallet_address_actions = Some(key.into_string());
             }
             Message::WalletAddressActionsExited(key)
                 if self.hovered_wallet_address_actions.as_deref() == Some(key.as_str()) =>

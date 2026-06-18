@@ -78,7 +78,7 @@ impl TradingTerminal {
                 .on_press(Message::CopyToClipboard(state.address.clone()))
                 .padding([3, 8]),
             button(text("Ghost").size(10))
-                .on_press(Message::GhostWallet(state.address.clone()))
+                .on_press(Message::GhostWallet(state.address.clone().into()))
                 .padding([3, 8]),
             refresh_button,
         ]

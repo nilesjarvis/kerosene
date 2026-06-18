@@ -30,7 +30,12 @@ impl TradingTerminal {
                 hydromancer_key,
             ),
             move |r| {
-                Message::WalletDetailsLoaded(window_id, address.clone(), read_context, Box::new(r))
+                Message::WalletDetailsLoaded(
+                    window_id,
+                    address.clone().into(),
+                    read_context,
+                    Box::new(r),
+                )
             },
         )
     }

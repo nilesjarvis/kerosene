@@ -9,6 +9,7 @@ impl TradingTerminal {
     pub(super) fn apply_wallet_tracker_results(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::WalletTrackerLoaded(address, context, result) => {
+                let address = address.into_string();
                 if !self.read_data_request_context_is_current(context) {
                     self.clear_stale_wallet_tracker_core_loading(&address, context);
                     return Task::none();
@@ -16,6 +17,7 @@ impl TradingTerminal {
                 self.apply_wallet_tracker_snapshot_result(address, *result);
             }
             Message::WalletTrackerBatchLoaded(context, results) => {
+                let results = results.into_vec();
                 if !self.read_data_request_context_is_current(context) {
                     for (address, _) in results {
                         self.clear_stale_wallet_tracker_core_loading(&address, context);
@@ -27,6 +29,7 @@ impl TradingTerminal {
                 }
             }
             Message::WalletTrackerOrdersLoaded(address, context, result) => {
+                let address = address.into_string();
                 if !self.read_data_request_context_is_current(context) {
                     self.clear_stale_wallet_tracker_order_loading(&address, context);
                     return Task::none();
@@ -194,7 +197,7 @@ mod tests {
             .loading_context = Some(stale_context);
 
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerLoaded(
-            TEST_ADDRESS.to_string(),
+            TEST_ADDRESS.to_string().into(),
             stale_context,
             Box::new(Ok(snapshot())),
         ));
@@ -234,10 +237,10 @@ mod tests {
 
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerBatchLoaded(
             stale_context,
-            vec![(TEST_ADDRESS.to_string(), Ok(snapshot()))],
+            vec![(TEST_ADDRESS.to_string(), Ok(snapshot()))].into(),
         ));
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerOrdersLoaded(
-            TEST_ADDRESS.to_string(),
+            TEST_ADDRESS.to_string().into(),
             stale_context,
             Box::new(Ok(7)),
         ));
@@ -291,12 +294,12 @@ mod tests {
         row.order_loading_context = Some(current_context);
 
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerLoaded(
-            TEST_ADDRESS.to_string(),
+            TEST_ADDRESS.to_string().into(),
             stale_context,
             Box::new(Ok(snapshot())),
         ));
         let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerOrdersLoaded(
-            TEST_ADDRESS.to_string(),
+            TEST_ADDRESS.to_string().into(),
             stale_context,
             Box::new(Ok(7)),
         ));

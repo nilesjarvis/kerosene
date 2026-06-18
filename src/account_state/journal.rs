@@ -66,8 +66,8 @@ impl TradingTerminal {
         Task::perform(api::fetch_user_fills(address, request), move |result| {
             Message::JournalFillsLoaded {
                 request_id,
-                account_key: request_account_key.clone(),
-                address: request_address.clone(),
+                account_key: request_account_key.clone().into(),
+                address: request_address.clone().into(),
                 result,
             }
         })

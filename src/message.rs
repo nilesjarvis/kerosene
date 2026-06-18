@@ -56,6 +56,7 @@ use iced::widget::pane_grid;
 use iced::{Point, Size, window};
 use std::collections::HashMap;
 use std::fmt;
+use std::ops::Deref;
 use std::path::PathBuf;
 use zeroize::Zeroizing;
 
@@ -83,6 +84,185 @@ impl From<&str> for SecretInput {
 impl fmt::Debug for SecretInput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("SecretInput(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
+pub(crate) struct RedactedAddress(String);
+
+impl RedactedAddress {
+    pub(crate) fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedAddress {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedAddress {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl AsRef<str> for RedactedAddress {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Deref for RedactedAddress {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl fmt::Debug for RedactedAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Address(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedAccountKey(Option<String>);
+
+impl RedactedAccountKey {
+    pub(crate) fn into_option(self) -> Option<String> {
+        self.0
+    }
+}
+
+impl From<Option<String>> for RedactedAccountKey {
+    fn from(value: Option<String>) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Debug for RedactedAccountKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(_) => f.write_str("Some(<redacted>)"),
+            None => f.write_str("None"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct RedactedAddressList(std::sync::Arc<[String]>);
+
+impl RedactedAddressList {
+    pub(crate) fn as_slice(&self) -> &[String] {
+        self.0.as_ref()
+    }
+}
+
+impl From<std::sync::Arc<[String]>> for RedactedAddressList {
+    fn from(value: std::sync::Arc<[String]>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Vec<String>> for RedactedAddressList {
+    fn from(value: Vec<String>) -> Self {
+        Self(std::sync::Arc::from(value))
+    }
+}
+
+impl AsRef<[String]> for RedactedAddressList {
+    fn as_ref(&self) -> &[String] {
+        self.as_slice()
+    }
+}
+
+impl fmt::Debug for RedactedAddressList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AddressList")
+            .field(
+                "addresses",
+                &format_args!("<redacted>; len={}", self.0.len()),
+            )
+            .finish()
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct RedactedWalletTrackerBatch(Vec<(String, Result<WalletTrackerSnapshot, String>)>);
+
+impl RedactedWalletTrackerBatch {
+    pub(crate) fn into_vec(self) -> Vec<(String, Result<WalletTrackerSnapshot, String>)> {
+        self.0
+    }
+}
+
+impl From<Vec<(String, Result<WalletTrackerSnapshot, String>)>> for RedactedWalletTrackerBatch {
+    fn from(value: Vec<(String, Result<WalletTrackerSnapshot, String>)>) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Debug for RedactedWalletTrackerBatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletTrackerBatch")
+            .field(
+                "addresses",
+                &format_args!("<redacted>; len={}", self.0.len()),
+            )
+            .finish()
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct RedactedJournalSnapshotRequest(journal::JournalTradeSnapshotRequest);
+
+impl RedactedJournalSnapshotRequest {
+    pub(crate) fn into_request(self) -> journal::JournalTradeSnapshotRequest {
+        self.0
+    }
+}
+
+impl From<journal::JournalTradeSnapshotRequest> for RedactedJournalSnapshotRequest {
+    fn from(value: journal::JournalTradeSnapshotRequest) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Debug for RedactedJournalSnapshotRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let request = &self.0;
+        f.debug_struct("JournalTradeSnapshotRequest")
+            .field(
+                "account_key",
+                &request.account_key.as_ref().map(|_| "<redacted>"),
+            )
+            .field("address", &format_args!("<redacted>"))
+            .field("trade_id", &request.trade_id)
+            .field("coin", &request.coin)
+            .field("source", &request.source)
+            .field(
+                "read_data_provider_generation",
+                &request.read_data_provider_generation,
+            )
+            .field(
+                "hydromancer_key_generation",
+                &request.hydromancer_key_generation,
+            )
+            .field("timeframe", &request.timeframe)
+            .field("ladder_index", &request.ladder_index)
+            .field("trade_start_ms", &request.trade_start_ms)
+            .field("trade_end_ms", &request.trade_end_ms)
+            .field("is_open", &request.is_open)
+            .field("start_ms", &request.start_ms)
+            .field("end_ms", &request.end_ms)
+            .finish()
     }
 }
 
@@ -184,7 +364,7 @@ pub(crate) enum Message {
     AccountPickerRenameToggled(usize),
     AccountPickerLabelChanged(usize, String),
     AddAccount,
-    GhostWallet(String),
+    GhostWallet(RedactedAddress),
     ForgetGhostAccount(usize),
     DeleteSavedAccount(usize),
     SaveCredentials,
@@ -360,15 +540,15 @@ pub(crate) enum Message {
     AlfredSubmit,
     AlfredCommandSelected(AlfredCommandId),
     OpenWalletTrackerWindow,
-    OpenWalletDetailsWindow(String),
+    OpenWalletDetailsWindow(RedactedAddress),
     RefreshWalletDetails(window::Id),
     WalletDetailsLoaded(
         window::Id,
-        String,
+        RedactedAddress,
         ReadDataRequestContext,
         Box<Result<WalletDetailsData, String>>,
     ),
-    WalletDetailsWsUpdate(Option<String>, Box<WsUserData>),
+    WalletDetailsWsUpdate(Option<RedactedAddress>, Box<WsUserData>),
     WindowOpened(window::Id),
     WindowClosed(window::Id),
     WindowResized(window::Id, Size),
@@ -381,8 +561,8 @@ pub(crate) enum Message {
     // Trading Journal
     JournalFillsLoaded {
         request_id: u64,
-        account_key: Option<String>,
-        address: String,
+        account_key: RedactedAccountKey,
+        address: RedactedAddress,
         result: Result<api::UserFillsPage, String>,
     },
     JournalRefresh,
@@ -400,9 +580,9 @@ pub(crate) enum Message {
     JournalToggleIncludeFeesInPnl,
     JournalSnapshotToggle(String),
     JournalSnapshotLoaded {
-        account_key: Option<String>,
-        address: String,
-        request: journal::JournalTradeSnapshotRequest,
+        account_key: RedactedAccountKey,
+        address: RedactedAddress,
+        request: RedactedJournalSnapshotRequest,
         result: Result<Vec<Candle>, String>,
     },
     // Spaghetti chart
@@ -423,32 +603,33 @@ pub(crate) enum Message {
     ToggleSpaghettiLabels(SpaghettiChartId),
     SpaghettiSetColorMode(SpaghettiChartId, spaghetti::ComparisonColorMode),
     PairSetCandleMode(SpaghettiChartId, bool),
-    WalletTrackerInputChanged(String),
+    WalletTrackerInputChanged(RedactedAddress),
     WalletTrackerLabelInputChanged(String),
     WalletTrackerAdd,
-    WalletTrackerMute(String),
-    WalletTrackerUnmute(String),
-    WalletTrackerRemove(String),
-    WalletTrackerLabelChanged(String, String),
+    WalletTrackerMute(RedactedAddress),
+    WalletTrackerUnmute(RedactedAddress),
+    WalletTrackerRemove(RedactedAddress),
+    WalletTrackerLabelChanged(RedactedAddress, String),
     WalletTrackerRefresh,
     WalletTrackerRefreshDue,
-    WalletTrackerRefreshOne(String),
+    WalletTrackerRefreshOne(RedactedAddress),
     WalletTrackerRefreshOrdersDue,
-    WalletTrackerRefreshOrders(String),
+    WalletTrackerRefreshOrders(RedactedAddress),
     WalletTrackerLoaded(
-        String,
+        RedactedAddress,
         ReadDataRequestContext,
         Box<Result<WalletTrackerSnapshot, String>>,
     ),
-    WalletTrackerBatchLoaded(
+    WalletTrackerBatchLoaded(ReadDataRequestContext, RedactedWalletTrackerBatch),
+    WalletTrackerOrdersLoaded(
+        RedactedAddress,
         ReadDataRequestContext,
-        Vec<(String, Result<WalletTrackerSnapshot, String>)>,
+        Box<Result<usize, String>>,
     ),
-    WalletTrackerOrdersLoaded(String, ReadDataRequestContext, Box<Result<usize, String>>),
     RefreshPortfolio,
-    PortfolioLoaded(String, u64, Box<Result<PortfolioHistory, String>>),
+    PortfolioLoaded(RedactedAddress, u64, Box<Result<PortfolioHistory, String>>),
     RefreshIncome,
-    IncomeLoaded(String, u64, Box<Result<IncomeSnapshot, String>>),
+    IncomeLoaded(RedactedAddress, u64, Box<Result<IncomeSnapshot, String>>),
     ToggleIncomeAlerts,
     ToggleLiquidationAlerts,
     ToggleTrackedTradeAlerts,
@@ -507,8 +688,8 @@ pub(crate) enum Message {
     ToggleToastAnimations(bool),
     ToastAnimationTick,
     CopyToClipboard(String),
-    WalletAddressActionsHovered(String),
-    WalletAddressActionsExited(String),
+    WalletAddressActionsHovered(RedactedAddress),
+    WalletAddressActionsExited(RedactedAddress),
     TickToastCleanup,
     NoOp,
     SpinnerTick,
@@ -532,12 +713,12 @@ pub(crate) enum Message {
         oid: u64,
     },
     CancelResult {
-        account_address: String,
+        account_address: RedactedAddress,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
     },
     CancelOrderStatusLoaded {
-        account_address: String,
+        account_address: RedactedAddress,
         oid: u64,
         symbol: String,
         result: Box<Result<api::OrderStatusResult, String>>,
@@ -787,14 +968,14 @@ pub(crate) enum Message {
         new_price: f64,
     },
     MoveOrderModifyResult {
-        account_address: String,
+        account_address: RedactedAddress,
         coin: String,
         oid: u64,
         pending_indicator_id: Option<u64>,
         result: Box<Result<ExchangeResponse, String>>,
     },
     MoveOrderStatusLoaded {
-        account_address: String,
+        account_address: RedactedAddress,
         coin: String,
         oid: u64,
         result: Box<Result<api::OrderStatusResult, String>>,
@@ -864,7 +1045,7 @@ pub(crate) enum Message {
     OrderBookSetMode(OrderBookId, OrderBookSymbolMode),
     SetOrderBookDisplayMode(OrderBookId, OrderBookDisplayMode),
     WalletKeyInputChanged(SecretInput),
-    WalletAddressInputChanged(String),
+    WalletAddressInputChanged(RedactedAddress),
     HydromancerKeyInputChanged(SecretInput),
     SaveHydromancerKey,
     ReconnectLiquidations,
@@ -877,7 +1058,7 @@ pub(crate) enum Message {
     WsHydromancerTrackedTrades {
         hydromancer_key_generation: u64,
         reconnect_nonce: u64,
-        tracked_addresses: std::sync::Arc<[String]>,
+        tracked_addresses: RedactedAddressList,
         message: crate::ws::HydromancerWsMessage,
     },
     ClearLiquidations,
@@ -886,15 +1067,15 @@ pub(crate) enum Message {
     ConnectWallet,
     DisconnectWallet,
     AccountDataLoaded(
-        String,
+        RedactedAddress,
         AccountDataRequestContext,
         Box<Result<AccountData, String>>,
     ),
-    RetryTwapReconciliationAccountData(String),
+    RetryTwapReconciliationAccountData(RedactedAddress),
     RefreshAccountData,
     AccountRefreshBackoffElapsed(u64),
     AllMidsBootstrapLoaded(String, Result<HashMap<String, f64>, String>),
-    WsUserDataUpdate(Option<String>, Box<WsUserData>),
+    WsUserDataUpdate(Option<RedactedAddress>, Box<WsUserData>),
     // HyperDash liquidation heatmap
     HyperdashKeyInputChanged(SecretInput),
     SaveHyperdashKey,
@@ -920,6 +1101,10 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{Message, SecretInput, TelegramFastAuthMessageResult};
+    use crate::config::{ChartBackfillSource, ReadDataProvider};
+    use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
+    use crate::timeframe::Timeframe;
+    use crate::ws::{HydromancerWsMessage, WsUserData};
 
     #[test]
     fn secret_input_debug_redacts_value() {
@@ -950,6 +1135,144 @@ mod tests {
             let rendered = format!("{message:?}");
             assert!(rendered.contains("<redacted>"));
             assert!(!rendered.contains("sentinel-secret"));
+        }
+    }
+
+    #[test]
+    fn address_bearing_message_debug_redacts_values() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        const ACCOUNT_KEY: &str = "account-key-sentinel";
+
+        let read_context = ReadDataRequestContext {
+            provider: ReadDataProvider::Hyperliquid,
+            read_data_provider_generation: 1,
+            hydromancer_key_generation: 2,
+        };
+        let account_context = AccountDataRequestContext::connected_snapshot(read_context, 3);
+        let snapshot_request = crate::journal::JournalTradeSnapshotRequest {
+            account_key: Some(ACCOUNT_KEY.to_string()),
+            address: ADDRESS.to_string(),
+            trade_id: "trade-1".to_string(),
+            coin: "HYPE".to_string(),
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: 1,
+            hydromancer_key_generation: 2,
+            timeframe: Timeframe::M1,
+            ladder_index: 0,
+            trade_start_ms: 100,
+            trade_end_ms: 200,
+            is_open: false,
+            start_ms: 50,
+            end_ms: 250,
+        };
+
+        let messages = vec![
+            Message::GhostWallet(ADDRESS.into()),
+            Message::OpenWalletDetailsWindow(ADDRESS.into()),
+            Message::WalletDetailsLoaded(
+                iced::window::Id::unique(),
+                ADDRESS.into(),
+                read_context,
+                Box::new(Err("details failed".to_string())),
+            ),
+            Message::WalletDetailsWsUpdate(
+                Some(ADDRESS.into()),
+                Box::new(WsUserData::Lagged { skipped: 1 }),
+            ),
+            Message::JournalFillsLoaded {
+                request_id: 1,
+                account_key: Some(ACCOUNT_KEY.to_string()).into(),
+                address: ADDRESS.into(),
+                result: Err("fills failed".to_string()),
+            },
+            Message::JournalSnapshotLoaded {
+                account_key: Some(ACCOUNT_KEY.to_string()).into(),
+                address: ADDRESS.into(),
+                request: snapshot_request.into(),
+                result: Err("snapshot failed".to_string()),
+            },
+            Message::WalletTrackerInputChanged(ADDRESS.into()),
+            Message::WalletTrackerMute(ADDRESS.into()),
+            Message::WalletTrackerUnmute(ADDRESS.into()),
+            Message::WalletTrackerRemove(ADDRESS.into()),
+            Message::WalletTrackerLabelChanged(ADDRESS.into(), "desk".to_string()),
+            Message::WalletTrackerRefreshOne(ADDRESS.into()),
+            Message::WalletTrackerRefreshOrders(ADDRESS.into()),
+            Message::WalletTrackerLoaded(
+                ADDRESS.into(),
+                read_context,
+                Box::new(Err("tracker failed".to_string())),
+            ),
+            Message::WalletTrackerBatchLoaded(
+                read_context,
+                vec![(ADDRESS.to_string(), Err("batch failed".to_string()))].into(),
+            ),
+            Message::WalletTrackerOrdersLoaded(
+                ADDRESS.into(),
+                read_context,
+                Box::new(Err("orders failed".to_string())),
+            ),
+            Message::PortfolioLoaded(
+                ADDRESS.into(),
+                1,
+                Box::new(Err("portfolio failed".to_string())),
+            ),
+            Message::IncomeLoaded(
+                ADDRESS.into(),
+                1,
+                Box::new(Err("income failed".to_string())),
+            ),
+            Message::WalletAddressActionsHovered(ADDRESS.into()),
+            Message::WalletAddressActionsExited(ADDRESS.into()),
+            Message::CancelResult {
+                account_address: ADDRESS.into(),
+                pending_indicator_id: None,
+                result: Box::new(Err("cancel failed".to_string())),
+            },
+            Message::CancelOrderStatusLoaded {
+                account_address: ADDRESS.into(),
+                oid: 42,
+                symbol: "HYPE".to_string(),
+                result: Box::new(Err("status failed".to_string())),
+            },
+            Message::MoveOrderModifyResult {
+                account_address: ADDRESS.into(),
+                coin: "HYPE".to_string(),
+                oid: 42,
+                pending_indicator_id: None,
+                result: Box::new(Err("modify failed".to_string())),
+            },
+            Message::MoveOrderStatusLoaded {
+                account_address: ADDRESS.into(),
+                coin: "HYPE".to_string(),
+                oid: 42,
+                result: Box::new(Err("move status failed".to_string())),
+            },
+            Message::WalletAddressInputChanged(ADDRESS.into()),
+            Message::WsHydromancerTrackedTrades {
+                hydromancer_key_generation: 1,
+                reconnect_nonce: 2,
+                tracked_addresses: std::sync::Arc::<[String]>::from(vec![ADDRESS.to_string()])
+                    .into(),
+                message: HydromancerWsMessage::Connecting,
+            },
+            Message::AccountDataLoaded(
+                ADDRESS.into(),
+                account_context,
+                Box::new(Err("account failed".to_string())),
+            ),
+            Message::RetryTwapReconciliationAccountData(ADDRESS.into()),
+            Message::WsUserDataUpdate(
+                Some(ADDRESS.into()),
+                Box::new(WsUserData::Lagged { skipped: 1 }),
+            ),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"), "{rendered}");
+            assert!(!rendered.contains(ADDRESS), "{rendered}");
+            assert!(!rendered.contains(ACCOUNT_KEY), "{rendered}");
         }
     }
 }

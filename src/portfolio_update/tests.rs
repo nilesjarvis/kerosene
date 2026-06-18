@@ -41,7 +41,7 @@ fn stale_portfolio_result_after_newer_same_address_request_is_ignored() {
     let current_request_id = terminal.portfolio.begin_refresh();
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
-        address.to_string(),
+        address.to_string().into(),
         stale_request_id,
         Box::new(Ok(portfolio_history(1.0))),
     ));
@@ -50,7 +50,7 @@ fn stale_portfolio_result_after_newer_same_address_request_is_ignored() {
     assert!(terminal.portfolio.data.is_none());
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
-        address.to_string(),
+        address.to_string().into(),
         current_request_id,
         Box::new(Ok(portfolio_history(2.0))),
     ));
@@ -81,7 +81,7 @@ fn refresh_portfolio_is_coalesced_while_request_is_in_flight() {
     assert!(terminal.portfolio.refresh_followup_pending);
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
-        address.to_string(),
+        address.to_string().into(),
         request_id,
         Box::new(Ok(portfolio_history(2.0))),
     ));
@@ -114,7 +114,7 @@ fn current_portfolio_result_for_previous_address_finishes_without_applying() {
     let request_id = terminal.portfolio.begin_refresh();
 
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
-        previous_address.to_string(),
+        previous_address.to_string().into(),
         request_id,
         Box::new(Ok(portfolio_history(1.0))),
     ));
@@ -142,7 +142,7 @@ fn stale_income_result_after_newer_same_address_request_is_ignored() {
     let current_request_id = terminal.income.begin_refresh();
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
-        address.to_string(),
+        address.to_string().into(),
         stale_request_id,
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));
@@ -151,7 +151,7 @@ fn stale_income_result_after_newer_same_address_request_is_ignored() {
     assert!(terminal.income.data.is_none());
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
-        address.to_string(),
+        address.to_string().into(),
         current_request_id,
         Box::new(Ok(income_snapshot(2, 2.0))),
     ));
@@ -184,7 +184,7 @@ fn refresh_income_is_coalesced_while_request_is_in_flight() {
     assert!(terminal.income.refresh_followup_pending);
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
-        address.to_string(),
+        address.to_string().into(),
         request_id,
         Box::new(Ok(income_snapshot(2, 2.0))),
     ));
@@ -215,7 +215,7 @@ fn current_income_result_for_previous_address_finishes_without_applying() {
     let request_id = terminal.income.begin_refresh();
 
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
-        previous_address.to_string(),
+        previous_address.to_string().into(),
         request_id,
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));
@@ -247,12 +247,12 @@ fn provider_change_invalidates_in_flight_portfolio_and_income_results() {
         ReadDataProvider::Hydromancer,
     ));
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
-        address.to_string(),
+        address.to_string().into(),
         portfolio_request_id,
         Box::new(Ok(portfolio_history(1.0))),
     ));
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
-        address.to_string(),
+        address.to_string().into(),
         income_request_id,
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));
@@ -293,12 +293,12 @@ fn hydromancer_key_generation_change_invalidates_in_flight_portfolio_and_income_
 
     terminal.bump_hydromancer_key_generation();
     let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
-        address.to_string(),
+        address.to_string().into(),
         portfolio_request_id,
         Box::new(Ok(portfolio_history(1.0))),
     ));
     let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
-        address.to_string(),
+        address.to_string().into(),
         income_request_id,
         Box::new(Ok(income_snapshot(1, 1.0))),
     ));

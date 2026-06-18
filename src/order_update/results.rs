@@ -105,7 +105,7 @@ impl TradingTerminal {
         Task::perform(
             fetch_order_status_by_oid(account_address.clone(), oid),
             move |result| Message::CancelOrderStatusLoaded {
-                account_address,
+                account_address: account_address.into(),
                 oid,
                 symbol,
                 result: Box::new(result),

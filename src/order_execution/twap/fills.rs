@@ -77,7 +77,7 @@ impl TradingTerminal {
                 tokio::time::sleep(delay).await;
                 address
             },
-            Message::RetryTwapReconciliationAccountData,
+            |address| Message::RetryTwapReconciliationAccountData(address.into()),
         )
     }
 

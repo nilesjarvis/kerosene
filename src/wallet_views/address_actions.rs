@@ -70,8 +70,10 @@ pub(crate) fn wallet_address_action_cell(
             .width(Length::Fixed(width))
             .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT)),
     )
-    .on_enter(Message::WalletAddressActionsHovered(hover_key.clone()))
-    .on_exit(Message::WalletAddressActionsExited(hover_key))
+    .on_enter(Message::WalletAddressActionsHovered(
+        hover_key.clone().into(),
+    ))
+    .on_exit(Message::WalletAddressActionsExited(hover_key.into()))
     .interaction(mouse::Interaction::Pointer)
     .into()
 }
@@ -114,12 +116,12 @@ fn wallet_address_segments(address: String) -> Element<'static, Message> {
         .push(wallet_action_separator())
         .push(wallet_action_segment(
             DETACH_ICON_SVG,
-            Message::OpenWalletDetailsWindow(address.clone()),
+            Message::OpenWalletDetailsWindow(address.clone().into()),
         ))
         .push(wallet_action_separator())
         .push(wallet_action_segment(
             GHOST_ICON_SVG,
-            Message::GhostWallet(address),
+            Message::GhostWallet(address.into()),
         ))
         .width(Fill)
         .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))

@@ -73,7 +73,7 @@ impl TradingTerminal {
                             Message::WsHydromancerTrackedTrades {
                                 hydromancer_key_generation,
                                 reconnect_nonce,
-                                tracked_addresses,
+                                tracked_addresses: tracked_addresses.into(),
                                 message,
                             }
                         },

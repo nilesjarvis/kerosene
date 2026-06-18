@@ -76,7 +76,11 @@ impl TradingTerminal {
                 pending_indicator_id,
                 result,
             } => {
-                return self.handle_cancel_result(account_address, pending_indicator_id, *result);
+                return self.handle_cancel_result(
+                    account_address.into_string(),
+                    pending_indicator_id,
+                    *result,
+                );
             }
             Message::CancelOrderStatusLoaded {
                 account_address,
@@ -85,7 +89,7 @@ impl TradingTerminal {
                 result,
             } => {
                 return self.handle_cancel_order_status_result(
-                    account_address,
+                    account_address.into_string(),
                     oid,
                     symbol,
                     *result,
@@ -331,7 +335,7 @@ impl TradingTerminal {
                 result,
             } => {
                 return self.handle_move_order_modify_result(
-                    account_address,
+                    account_address.into_string(),
                     coin,
                     oid,
                     pending_indicator_id,
@@ -343,7 +347,14 @@ impl TradingTerminal {
                 coin,
                 oid,
                 result,
-            } => return self.handle_move_order_status_result(account_address, coin, oid, *result),
+            } => {
+                return self.handle_move_order_status_result(
+                    account_address.into_string(),
+                    coin,
+                    oid,
+                    *result,
+                );
+            }
             Message::ChaseRestingOrder { coin, oid } => {
                 return self.handle_chase_resting_order(coin, oid);
             }

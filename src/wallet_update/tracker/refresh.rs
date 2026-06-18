@@ -11,6 +11,7 @@ impl TradingTerminal {
             }
             Message::WalletTrackerRefreshDue => self.refresh_next_wallet_tracker_core(),
             Message::WalletTrackerRefreshOne(address) => {
+                let address = address.into_string();
                 if self.wallet_tracker.tracked_addresses.contains(&address) {
                     self.queue_wallet_tracker_core_refresh(address);
                     return self.refresh_next_wallet_tracker_core();
@@ -19,6 +20,7 @@ impl TradingTerminal {
             }
             Message::WalletTrackerRefreshOrdersDue => self.refresh_next_wallet_tracker_orders(),
             Message::WalletTrackerRefreshOrders(address) => {
+                let address = address.into_string();
                 if self.wallet_tracker.tracked_addresses.contains(&address) {
                     self.queue_wallet_tracker_order_refresh(address);
                     return self.refresh_next_wallet_tracker_orders();

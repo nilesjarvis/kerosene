@@ -6,12 +6,13 @@ impl TradingTerminal {
     pub(super) fn update_wallet_details(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenWalletDetailsWindow(address) => {
-                return self.open_wallet_details_window(address);
+                return self.open_wallet_details_window(address.into_string());
             }
             Message::RefreshWalletDetails(window_id) => {
                 return self.refresh_wallet_details_window(window_id);
             }
             Message::WalletDetailsLoaded(window_id, address, context, result) => {
+                let address = address.into_string();
                 let context_is_current = self.read_data_request_context_is_current(context);
                 let exchange_symbols = self.exchange_symbols.clone();
                 let muted_tickers = self.muted_tickers.clone();
@@ -49,7 +50,10 @@ impl TradingTerminal {
                 }
             }
             Message::WalletDetailsWsUpdate(source_address, data) => {
-                return self.apply_wallet_details_ws_update(source_address, *data);
+                return self.apply_wallet_details_ws_update(
+                    source_address.map(|address| address.into_string()),
+                    *data,
+                );
             }
             _ => {}
         }
@@ -86,7 +90,7 @@ mod tests {
 
         let _task = terminal.update_wallet_details(Message::WalletDetailsLoaded(
             window_id,
-            TEST_ADDRESS.to_string(),
+            TEST_ADDRESS.to_string().into(),
             stale_context,
             Box::new(Err("new error".to_string())),
         ));
@@ -122,7 +126,7 @@ mod tests {
 
         let _task = terminal.update_wallet_details(Message::WalletDetailsLoaded(
             window_id,
-            TEST_ADDRESS.to_string(),
+            TEST_ADDRESS.to_string().into(),
             stale_context,
             Box::new(Err("old request failed".to_string())),
         ));
@@ -146,7 +150,7 @@ mod tests {
         terminal.wallet_detail_windows.insert(window_id, state);
 
         let _task = terminal.update_wallet_details(Message::WalletDetailsWsUpdate(
-            Some(TEST_ADDRESS.to_string()),
+            Some(TEST_ADDRESS.to_string().into()),
             Box::new(WsUserData::Lagged { skipped: 7 }),
         ));
 
@@ -174,7 +178,7 @@ mod tests {
         terminal.wallet_detail_windows.insert(window_id, state);
 
         let _task = terminal.update_wallet_details(Message::WalletDetailsWsUpdate(
-            Some(TEST_ADDRESS.to_string()),
+            Some(TEST_ADDRESS.to_string().into()),
             Box::new(WsUserData::Lagged { skipped: 7 }),
         ));
 
