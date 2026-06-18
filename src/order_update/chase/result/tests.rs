@@ -152,6 +152,39 @@ fn replacement_place_result_preserves_unrelated_pending_order_action() {
 }
 
 #[test]
+fn malformed_filled_place_result_checks_status_without_crediting_remaining_size() {
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Placing;
+    chase.current_cloid = Some(TEST_CLOID.to_string());
+    let mut terminal = connected_terminal_with_chase(chase);
+    terminal.account_loading = false;
+
+    let response = exchange_response(vec![serde_json::json!({
+        "filled": {
+            "oid": 9001_u64,
+            "avgPx": "100"
+        }
+    })]);
+    let _task = terminal.handle_chase_place_result(1, Ok(response));
+
+    let chase = chase_from_terminal(&terminal, 1);
+    assert_eq!(chase.filled_size, 0.0);
+    assert_eq!(chase.remaining_size, 1.0);
+    assert_eq!(chase.current_oid, None);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
+    assert!(terminal.account_loading);
+    assert!(order_status_is_error_containing(
+        &terminal,
+        "response was not confirmed"
+    ));
+}
+
+#[test]
 fn late_place_result_without_chase_does_not_refresh_current_account() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.connected_address = Some("0xdef0000000000000000000000000000000000000".to_string());

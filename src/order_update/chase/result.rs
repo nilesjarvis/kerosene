@@ -159,12 +159,16 @@ impl TradingTerminal {
                         chase_id,
                         format!("Chase place failed: {}", resp.summary()),
                     );
+                } else if resp.is_ambiguous_order_result() {
+                    return self.check_chase_place_status_by_cloid(chase_id, resp.summary());
                 } else if resp.is_fully_filled() {
+                    let Some(filled_size) = resp.filled_total_size() else {
+                        return self.check_chase_place_status_by_cloid(chase_id, resp.summary());
+                    };
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         if let Some(oid) = resp.order_oid() {
                             chase.record_oid(oid);
                         }
-                        let filled_size = resp.filled_total_size().unwrap_or(chase.remaining_size);
                         chase.add_filled_size(filled_size);
                         chase.lifecycle = ChaseLifecycle::Verifying {
                             reason: ChaseVerificationReason::MissingOrder,
