@@ -1,6 +1,6 @@
 use super::super::NormalizedRenderContext;
 use super::series_render_color;
-use crate::helpers::{ellipsized_text, symbol_svg_handle, text_color_for_bg};
+use crate::helpers::{ellipsized_text, symbol_svg_logo, text_color_for_bg};
 use crate::spaghetti::{ComparisonColorMode, Series};
 
 use iced::alignment;
@@ -22,15 +22,24 @@ const SERIES_LABEL_HEIGHT: f32 = 34.0;
 const SERIES_LABEL_GAP: f32 = 4.0;
 const SERIES_LABEL_MARGIN: f32 = 2.0;
 const SERIES_LABEL_PADDING_X: f32 = 10.0;
+const SERIES_LABEL_DISPLAY_SIZE: f32 = 10.0;
 const SERIES_LABEL_DISPLAY_Y_OFFSET: f32 = -2.0;
 const SERIES_LABEL_VALUE_Y_OFFSET: f32 = 1.0;
 const SERIES_LABEL_CONNECTOR_SPAN: f32 = 22.0;
 const SERIES_LABEL_DISPLAY_CHAR_W: f32 = 6.0;
 const SERIES_LABEL_VALUE_CHAR_W: f32 = 5.4;
-/// Side length of the asset logo drawn in the label's left padding, when an
-/// SVG is available for the series' symbol. Sized to fit within
-/// [`SERIES_LABEL_PADDING_X`] so the label box is unchanged with or without it.
-const SERIES_LABEL_ICON_SIZE: f32 = 8.0;
+/// Height of the asset logo painted immediately left of the ticker text, when
+/// an SVG is available for the series' symbol. The drawn width follows the
+/// logo's intrinsic aspect ratio (capped at [`SERIES_LABEL_ICON_MAX_W`]) so
+/// non-square logos are neither stretched nor clipped.
+const SERIES_LABEL_ICON_H: f32 = 9.0;
+/// Upper bound on the logo's drawn width; wide wordmark logos are scaled down
+/// preserving aspect rather than overrunning the label.
+const SERIES_LABEL_ICON_MAX_W: f32 = 14.0;
+/// Padding between the label's left edge and the logo.
+const SERIES_LABEL_ICON_LEFT_PAD: f32 = 5.0;
+/// Gap between the logo and the ticker text.
+const SERIES_LABEL_ICON_GAP: f32 = 4.0;
 
 struct SeriesLabel {
     index: usize,
@@ -99,13 +108,32 @@ fn draw_series_label(
     let shifted = (label.label_y - label.y).abs() >= 1.0;
     let label_x = ctx.chart_w + 2.0;
     let max_label_width = (ctx.bounds.width - label_x - 2.0).max(0.0);
-    let text_x = label_x + SERIES_LABEL_PADDING_X;
+
+    // Resolve the asset logo and size it to a fixed height with an
+    // aspect-correct width so non-square logos render without distortion or
+    // clipping. The text is inset past the logo so the logo sits directly to
+    // the left of the ticker rather than floating in the label's padding.
+    let logo = symbol_svg_logo(&label.symbol).map(|(handle, aspect)| {
+        let mut size = Size::new(SERIES_LABEL_ICON_H * aspect, SERIES_LABEL_ICON_H);
+        if size.width > SERIES_LABEL_ICON_MAX_W {
+            size = Size::new(SERIES_LABEL_ICON_MAX_W, SERIES_LABEL_ICON_MAX_W / aspect);
+        }
+        (handle, size)
+    });
+    let left_inset = match &logo {
+        Some((_, size)) => SERIES_LABEL_ICON_LEFT_PAD + size.width + SERIES_LABEL_ICON_GAP,
+        None => SERIES_LABEL_PADDING_X,
+    };
+    let text_x = label_x + left_inset;
+
     let display = axis_display_label(
         &label.display,
-        max_label_width - SERIES_LABEL_PADDING_X * 2.0,
+        max_label_width - left_inset - SERIES_LABEL_PADDING_X,
     );
     let performance = performance_label(label.pct);
-    let label_width = series_label_width(&display, &performance).min(max_label_width);
+    let label_width =
+        (series_text_width(&display, &performance) + left_inset + SERIES_LABEL_PADDING_X)
+            .min(max_label_width);
     let label_top = label.label_y - SERIES_LABEL_HEIGHT * 0.5;
     let mut label_background = label.color;
     label_background.a = 0.92;
@@ -138,21 +166,23 @@ fn draw_series_label(
             label_background,
         );
 
-        // Paint a single-color asset logo next to the ticker text, inside the
-        // existing left padding so the label box keeps its size. The logo is
+        // Paint a single-color asset logo centered on the ticker text line (the
+        // upper of the two stacked lines) so it reads as part of the ticker
+        // rather than floating at the label's vertical center. The logo is
         // tinted to the label text color so it stays legible against the
         // colored label background regardless of the asset's original colors.
-        if let Some(handle) = symbol_svg_handle(&label.symbol) {
+        if let Some((handle, size)) = logo {
             let icon = iced::advanced::svg::Svg::new(handle).color(label_text_color);
-            let icon_x = label_x + (SERIES_LABEL_PADDING_X - SERIES_LABEL_ICON_SIZE) * 0.5;
-            let icon_y = label.label_y - SERIES_LABEL_ICON_SIZE * 0.5;
-            frame.draw_svg(
-                Rectangle::new(
-                    Point::new(icon_x, icon_y),
-                    Size::new(SERIES_LABEL_ICON_SIZE, SERIES_LABEL_ICON_SIZE),
-                ),
-                icon,
+            // The ticker is bottom-anchored at `label_y + DISPLAY_Y_OFFSET`; its
+            // glyphs rise above that, so center the logo half a line-height up to
+            // align it with the ticker line rather than the label's center.
+            let ticker_center_y =
+                label.label_y + SERIES_LABEL_DISPLAY_Y_OFFSET - SERIES_LABEL_DISPLAY_SIZE * 0.5;
+            let position = Point::new(
+                label_x + SERIES_LABEL_ICON_LEFT_PAD,
+                ticker_center_y - size.height * 0.5,
             );
+            frame.draw_svg(Rectangle::new(position, size), icon);
         }
     }
 
@@ -160,7 +190,7 @@ fn draw_series_label(
         content: display,
         position: Point::new(text_x, label.label_y + SERIES_LABEL_DISPLAY_Y_OFFSET),
         color: label_text_color,
-        size: iced::Pixels(10.0),
+        size: iced::Pixels(SERIES_LABEL_DISPLAY_SIZE),
         align_x: alignment::Horizontal::Left.into(),
         align_y: alignment::Vertical::Bottom,
         font: crate::app_fonts::monospace_font(),
@@ -182,10 +212,12 @@ fn draw_series_label(
     });
 }
 
-fn series_label_width(display: &str, performance: &str) -> f32 {
+/// Width of the widest text line in a label, before left inset and right
+/// padding are added by the caller.
+fn series_text_width(display: &str, performance: &str) -> f32 {
     let display_w = display.chars().count() as f32 * SERIES_LABEL_DISPLAY_CHAR_W;
-    let performance_w = performance.len() as f32 * SERIES_LABEL_VALUE_CHAR_W;
-    display_w.max(performance_w) + SERIES_LABEL_PADDING_X * 2.0
+    let performance_w = performance.chars().count() as f32 * SERIES_LABEL_VALUE_CHAR_W;
+    display_w.max(performance_w)
 }
 
 /// Long display names (canonical outcome labels run 50-80 chars) are

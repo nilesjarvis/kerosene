@@ -38,16 +38,89 @@ pub fn symbol_icon<'a>(
     Some(svg_widget)
 }
 
-/// A canvas-drawable SVG handle for an asset logo.
+/// A canvas-drawable asset logo: its SVG [`Handle`](iced::widget::svg::Handle)
+/// paired with the logo's intrinsic aspect ratio (`width / height`).
 ///
 /// `symbol_icon` returns a widget, which cannot be placed inside a `canvas`
-/// overlay. This returns the same embedded logo data as an
-/// [`iced::widget::svg::Handle`] so it can be painted with
-/// [`canvas::Frame::draw_svg`]. No color filter is applied, so the original
-/// logo colors are preserved.
-pub fn symbol_svg_handle(symbol: &str) -> Option<iced::widget::svg::Handle> {
+/// overlay. This returns the embedded logo data as a handle for
+/// [`canvas::Frame::draw_svg`], plus the aspect ratio so the caller can size
+/// the draw rectangle to the logo and avoid distorting or clipping non-square
+/// logos (the rasterizer scales to fit while preserving aspect, so a square
+/// target letterboxes tall logos and clips wide ones). Falls back to a square
+/// (`1.0`) aspect when the SVG declares no parseable `viewBox` or size.
+pub fn symbol_svg_logo(symbol: &str) -> Option<(iced::widget::svg::Handle, f32)> {
     let embedded_file = embedded_asset_svg(symbol)?;
-    Some(iced::widget::svg::Handle::from_memory(embedded_file.data))
+    let aspect = svg_aspect_ratio(&embedded_file.data).unwrap_or(1.0);
+    Some((
+        iced::widget::svg::Handle::from_memory(embedded_file.data),
+        aspect,
+    ))
+}
+
+/// Intrinsic aspect ratio (`width / height`) of an SVG document, read from the
+/// opening `<svg>` tag. Prefers the `viewBox` (`min-x min-y width height`) and
+/// falls back to the `width`/`height` attributes. Returns `None` if neither
+/// yields two positive dimensions.
+fn svg_aspect_ratio(bytes: &[u8]) -> Option<f32> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let start = text.find("<svg")?;
+    let tag_end = text[start..].find('>')? + start;
+    let tag = &text[start..tag_end];
+
+    if let Some(view_box) = tag_attr(tag, "viewBox") {
+        let nums: Vec<f32> = view_box
+            .split([' ', ',', '\t', '\n', '\r'])
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse::<f32>().ok())
+            .collect();
+        if let [_, _, w, h] = nums.as_slice()
+            && *w > 0.0
+            && *h > 0.0
+        {
+            return Some(w / h);
+        }
+    }
+
+    match (
+        tag_attr(tag, "width").and_then(parse_svg_len),
+        tag_attr(tag, "height").and_then(parse_svg_len),
+    ) {
+        (Some(w), Some(h)) if w > 0.0 && h > 0.0 => Some(w / h),
+        _ => None,
+    }
+}
+
+/// Reads the value of attribute `attr` from an opening tag, requiring the name
+/// to begin at a whitespace boundary so `width` does not match `stroke-width`.
+fn tag_attr<'a>(tag: &'a str, attr: &str) -> Option<&'a str> {
+    let bytes = tag.as_bytes();
+    let mut from = 0;
+    while let Some(rel) = tag[from..].find(attr) {
+        let start = from + rel;
+        let after = start + attr.len();
+        let at_boundary = start == 0 || bytes[start - 1].is_ascii_whitespace();
+        if at_boundary && let Some(rest) = tag[after..].trim_start().strip_prefix('=') {
+            let mut chars = rest.trim_start().chars();
+            if let Some(quote @ ('"' | '\'')) = chars.next() {
+                let inner = chars.as_str();
+                if let Some(end) = inner.find(quote) {
+                    return Some(&inner[..end]);
+                }
+            }
+        }
+        from = after;
+    }
+    None
+}
+
+/// Parses the leading number of an SVG length, ignoring any unit suffix
+/// (`px`, `%`, `em`, …).
+fn parse_svg_len(value: &str) -> Option<f32> {
+    let trimmed = value.trim();
+    let end = trimmed
+        .find(|c: char| !c.is_ascii_digit() && !matches!(c, '.' | '-' | '+'))
+        .unwrap_or(trimmed.len());
+    trimmed[..end].parse::<f32>().ok()
 }
 
 /// Resolves the embedded SVG logo for a symbol, trying the displayed asset
