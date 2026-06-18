@@ -957,14 +957,10 @@ fn telegram_ticker_impact_card(
     danger_text: Color,
 ) -> Element<'static, Message> {
     let symbol = impact.symbol.clone();
-    // A fuzzy association (keyword / display-name guess) must not read as an
-    // explicit ticker mention; mark it with a leading "~" and a muted label.
+    // A fuzzy association (keyword / display-name guess) keeps a muted label
+    // while the tooltip explains the match source.
     let fuzzy = telegram_source_is_fuzzy(impact.source);
-    let ticker_label = if fuzzy {
-        format!("~{}", impact.ticker)
-    } else {
-        impact.ticker.clone()
-    };
+    let ticker_label = impact.ticker.clone();
     let ticker_color = if fuzzy { muted_text } else { primary_text };
     let impact_label = telegram_impact_label(impact.impact_pct);
     let impact_color =
