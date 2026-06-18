@@ -222,7 +222,33 @@ fn resting_chase_refuses_stale_snapshot_and_refreshes() {
     assert!(terminal.account_loading);
     let (message, is_error) = terminal.order_status.as_ref().expect("order status");
     assert!(*is_error);
-    assert!(message.contains("Account data is stale"));
+    assert!(message.contains("Open orders are stale"));
+    assert!(message.contains("refresh before starting chase"));
+}
+
+#[test]
+fn resting_chase_does_not_treat_positions_refresh_as_open_orders_fresh() {
+    let mut terminal = terminal_with_open_order(open_order(42));
+    let now_ms = TradingTerminal::now_ms();
+    let stale_ms = now_ms.saturating_sub(AccountData::POSITION_ACTION_MAX_AGE_MS + 1_000);
+    terminal
+        .account_data
+        .as_mut()
+        .expect("account data")
+        .fetched_at_ms = stale_ms;
+    terminal
+        .account_data
+        .as_mut()
+        .expect("account data")
+        .mark_positions_fetched_at(now_ms);
+
+    let _task = terminal.handle_chase_resting_order("BTC".to_string(), 42);
+
+    assert!(terminal.chase_orders.is_empty());
+    assert!(terminal.account_loading);
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(*is_error);
+    assert!(message.contains("Open orders are stale"));
     assert!(message.contains("refresh before starting chase"));
 }
 
