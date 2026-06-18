@@ -4,6 +4,7 @@ use super::super::files::{backup_config_path, load_config_from_path, save_config
 use super::super::{AddressBookEntryConfig, KeroseneConfig, take_config_warnings};
 use super::unique_test_config_path;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 mod persistence;
 #[cfg(unix)]
@@ -43,6 +44,16 @@ fn create_parent_dir(path: &Path) {
     if let Err(e) = std::fs::create_dir_all(parent) {
         panic!("create test directory {} failed: {e}", parent.display());
     }
+}
+
+fn config_warning_guard() -> MutexGuard<'static, ()> {
+    static WARNING_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let guard = match WARNING_TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let _ = take_config_warnings();
+    guard
 }
 
 fn write_file(path: &Path, contents: impl AsRef<[u8]>) {

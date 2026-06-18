@@ -1,11 +1,13 @@
 use super::*;
 
 use crate::config::{
-    AccountProfile, CredentialStorageMode, SecretPayload, decrypt_secrets, encrypt_secrets,
+    AccountProfile, CredentialStorageMode, ReadDataProvider, SecretPayload, decrypt_secrets,
+    encrypt_secrets,
 };
 
 #[test]
 fn config_save_round_trips_wallet_labels_and_keeps_backup() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("round-trip");
     let mut config = address_book_config(
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -32,7 +34,7 @@ fn config_save_round_trips_wallet_labels_and_keeps_backup() {
 
 #[test]
 fn config_load_falls_back_to_backup_when_primary_is_corrupt() {
-    let _ = take_config_warnings();
+    let _warning_guard = config_warning_guard();
     let path = test_path("backup");
     let config = address_book_config(
         "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -59,7 +61,7 @@ fn config_load_falls_back_to_backup_when_primary_is_corrupt() {
 
 #[test]
 fn config_load_ignores_backup_when_primary_is_missing() {
-    let _ = take_config_warnings();
+    let _warning_guard = config_warning_guard();
     let path = test_path("missing-primary-backup");
     let backup_path = backup_config_path(&path);
     let config = address_book_config(
@@ -80,8 +82,40 @@ fn config_load_ignores_backup_when_primary_is_missing() {
 }
 
 #[test]
+fn config_load_defaults_unknown_read_data_provider() {
+    let _warning_guard = config_warning_guard();
+    let path = test_path("unknown-read-provider");
+    let mut value =
+        serde_json::to_value(KeroseneConfig::default()).expect("default config should serialize");
+    value
+        .as_object_mut()
+        .expect("default config should serialize as object")
+        .insert(
+            "read_data_provider".to_string(),
+            serde_json::json!("FutureProvider"),
+        );
+
+    create_parent_dir(&path);
+    write_file(
+        &path,
+        serde_json::to_string_pretty(&value).expect("test config should encode"),
+    );
+
+    let loaded = load_existing_config(&path);
+
+    assert_eq!(loaded.read_data_provider, ReadDataProvider::Hyperliquid);
+    assert!(
+        take_config_warnings()
+            .iter()
+            .any(|warning| warning.contains("Unknown read data provider \"FutureProvider\""))
+    );
+
+    cleanup_path(&path);
+}
+
+#[test]
 fn config_load_recovers_missing_primary_from_interrupted_replace_sidecar() {
-    let _ = take_config_warnings();
+    let _warning_guard = config_warning_guard();
     let path = test_path("missing-primary-rollback");
     let rollback_path = interrupted_replace_sidecar_path(&path, "newer");
     let backup_path = backup_config_path(&path);
@@ -116,7 +150,7 @@ fn config_load_recovers_missing_primary_from_interrupted_replace_sidecar() {
 
 #[test]
 fn config_load_uses_backup_for_missing_primary_when_interrupted_sidecar_is_invalid() {
-    let _ = take_config_warnings();
+    let _warning_guard = config_warning_guard();
     let path = test_path("missing-primary-invalid-rollback");
     let rollback_path = interrupted_replace_sidecar_path(&path, "invalid");
     let backup_path = backup_config_path(&path);
@@ -145,7 +179,7 @@ fn config_load_uses_backup_for_missing_primary_when_interrupted_sidecar_is_inval
 
 #[test]
 fn config_save_after_missing_primary_removes_stale_recovery_artifacts() {
-    let _ = take_config_warnings();
+    let _warning_guard = config_warning_guard();
     let path = test_path("missing-primary-save-removes-stale-artifacts");
     let backup_path = backup_config_path(&path);
     let primary_rollback_path = interrupted_replace_sidecar_path(&path, "primary");
@@ -222,6 +256,7 @@ fn interrupted_temp_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
 
 #[test]
 fn config_save_does_not_replace_valid_backup_with_corrupt_primary() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("preserve-backup");
     let backup_path = backup_config_path(&path);
     let backup_config = address_book_config(
@@ -254,6 +289,7 @@ fn config_save_does_not_replace_valid_backup_with_corrupt_primary() {
 
 #[test]
 fn config_save_sanitizes_legacy_plaintext_secrets_before_backup() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("backup-secret-scrub");
     create_parent_dir(&path);
     let mut legacy = serde_json::to_value(KeroseneConfig::default())
@@ -311,6 +347,7 @@ fn config_save_sanitizes_legacy_plaintext_secrets_before_backup() {
 
 #[test]
 fn config_save_updates_backup_encrypted_secret_blob_when_secrets_change() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("backup-encrypted-secret-refresh");
     let password = "correct horse";
     let mut first_config = encrypted_config_fixture(
@@ -387,6 +424,7 @@ fn config_save_updates_backup_encrypted_secret_blob_when_secrets_change() {
 
 #[test]
 fn config_save_updates_backup_secret_storage_fields_when_switching_to_encrypted_config() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("backup-storage-mode-switch");
     let password = "correct horse";
     let previous_config = address_book_config(
@@ -433,6 +471,7 @@ fn config_save_updates_backup_secret_storage_fields_when_switching_to_encrypted_
 
 #[test]
 fn backup_config_for_pending_keychain_delete_does_not_resurrect_deleted_account() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("backup-pending-keychain-delete");
     let previous_config = KeroseneConfig {
         accounts: vec![
@@ -498,6 +537,7 @@ fn backup_config_for_pending_keychain_delete_does_not_resurrect_deleted_account(
 
 #[test]
 fn backup_config_clears_pending_keychain_delete_after_cleanup_state_save() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("backup-pending-keychain-delete-cleared");
     let account_a = AccountProfile {
         secret_id: "acct-a".to_string(),
@@ -527,6 +567,7 @@ fn backup_config_clears_pending_keychain_delete_after_cleanup_state_save() {
 
 #[test]
 fn backup_config_clears_pending_full_keychain_cleanup_after_cleanup_state_save() {
+    let _warning_guard = config_warning_guard();
     let path = test_path("backup-full-keychain-cleanup-cleared");
     let previous_config = KeroseneConfig {
         pending_keychain_cleanup_all: true,

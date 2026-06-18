@@ -1,14 +1,35 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 // ---------------------------------------------------------------------------
 // Chart Candle Data
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
 pub enum ReadDataProvider {
     #[default]
     Hyperliquid,
     Hydromancer,
+}
+
+impl<'de> Deserialize<'de> for ReadDataProvider {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "Hyperliquid" => Ok(Self::Hyperliquid),
+            "Hydromancer" => Ok(Self::Hydromancer),
+            unknown => {
+                let default = Self::default();
+                crate::config::push_config_warning(format!(
+                    "Unknown read data provider {unknown:?} in config; using {}",
+                    default.label()
+                ));
+                Ok(default)
+            }
+        }
+    }
 }
 
 impl ReadDataProvider {
