@@ -18,6 +18,10 @@ mod tests;
 
 /// Maximum alpha applied at the top of the price-region area fill.
 const AREA_FILL_TOP_ALPHA: f32 = 0.24;
+/// Minimum fraction of the price region used for the area-fill fade.
+const AREA_FILL_MIN_FADE_RATIO: f32 = 0.55;
+/// Minimum pixel height used for the area-fill fade when space permits.
+const AREA_FILL_MIN_FADE_PX: f32 = 120.0;
 /// Stroke width of the close-price line.
 const LINE_WIDTH: f32 = 1.5;
 
@@ -74,15 +78,15 @@ impl CandlestickChart {
             builder.line_to(last_base);
             builder.close();
 
-            // Vertical gradient: use stable price-region anchors instead of the
-            // current series extreme. Otherwise a new high/low rescales the
-            // gradient and can create a visible tone step, especially with dark
-            // accents on light themes. NOTE: unlike the line stroke below, this
-            // gradient fill does not receive the chromatic-aberration /
-            // edge-blur passes (those helpers only accept a flat color, not a
-            // gradient); the soft translucent fill makes the difference
-            // negligible under those optional lenses.
-            let gradient = line_area_gradient(accent, ctx.price_h, bottom_y);
+            // Vertical gradient: anchor to the painted series area so the
+            // strongest tint follows the line instead of a fixed band at the
+            // top of the pane. Keep a minimum fade height so extreme moves do
+            // not compress the gradient into a hard edge. NOTE: unlike the
+            // line stroke below, this gradient fill does not receive the
+            // chromatic-aberration / edge-blur passes (those helpers only
+            // accept a flat color, not a gradient); the soft translucent fill
+            // makes the difference negligible under those optional lenses.
+            let gradient = line_area_gradient(accent, top_y, bottom_y, ctx.price_h);
             frame.fill(&builder.build(), gradient);
         }
 
@@ -121,11 +125,16 @@ fn line_series_colors(chart: &CandlestickChart, theme: &iced::Theme) -> (Color, 
 
 fn line_area_gradient(
     accent: Color,
+    top_y: f32,
+    bottom_y: f32,
     price_h: f32,
-    projected_baseline_y: f32,
 ) -> canvas::gradient::Linear {
-    let end_y = projected_baseline_y.max(price_h).max(1.0);
-    canvas::gradient::Linear::new(Point::new(0.0, 0.0), Point::new(0.0, end_y))
+    let min_fade_h =
+        (price_h * AREA_FILL_MIN_FADE_RATIO).max(AREA_FILL_MIN_FADE_PX.min(price_h.max(1.0)));
+    let start_y = top_y.min(bottom_y - min_fade_h).min(bottom_y - 1.0);
+    let end_y = bottom_y.max(start_y + 1.0);
+
+    canvas::gradient::Linear::new(Point::new(0.0, start_y), Point::new(0.0, end_y))
         .add_stop(
             0.0,
             Color {

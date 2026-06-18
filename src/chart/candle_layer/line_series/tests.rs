@@ -104,11 +104,11 @@ fn line_series_uses_chart_gradient_override_for_area() {
 }
 
 #[test]
-fn line_area_gradient_uses_stable_price_region_bounds() {
-    let gradient = line_area_gradient(Color::WHITE, 420.0, 64.0);
+fn line_area_gradient_anchors_to_series_area_when_tall_enough() {
+    let gradient = line_area_gradient(Color::WHITE, 64.0, 420.0, 420.0);
     let stops = gradient.stops.iter().flatten().collect::<Vec<_>>();
 
-    assert_near(gradient.start.y, 0.0);
+    assert_near(gradient.start.y, 64.0);
     assert_near(gradient.end.y, 420.0);
     assert_eq!(stops.len(), 2);
     assert_near(stops[0].offset, 0.0);
@@ -118,9 +118,17 @@ fn line_area_gradient_uses_stable_price_region_bounds() {
 }
 
 #[test]
-fn line_area_gradient_extends_to_projected_baseline_when_distorted() {
-    let gradient = line_area_gradient(Color::WHITE, 420.0, 448.0);
+fn line_area_gradient_extends_short_extreme_areas_for_smooth_fade() {
+    let gradient = line_area_gradient(Color::WHITE, 340.0, 420.0, 420.0);
 
-    assert_near(gradient.start.y, 0.0);
+    assert_near(gradient.start.y, 189.0);
+    assert_near(gradient.end.y, 420.0);
+}
+
+#[test]
+fn line_area_gradient_extends_to_projected_baseline_when_distorted() {
+    let gradient = line_area_gradient(Color::WHITE, 120.0, 448.0, 420.0);
+
+    assert_near(gradient.start.y, 120.0);
     assert_near(gradient.end.y, 448.0);
 }
