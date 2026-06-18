@@ -8,7 +8,7 @@ use iced::{Color, Point, Size};
 // ---------------------------------------------------------------------------
 
 impl CandlestickChart {
-    pub(super) fn draw_candles_and_volume<IdxToCx, PriceToY>(
+    pub(super) fn draw_candles<IdxToCx, PriceToY>(
         &self,
         ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
         frame: &mut canvas::Frame,
@@ -73,7 +73,26 @@ impl CandlestickChart {
                     color,
                 );
             }
+        }
+    }
 
+    pub(super) fn draw_volume_bars<IdxToCx, PriceToY>(
+        &self,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+        frame: &mut canvas::Frame,
+    ) where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        for i in ctx.first_vis..=ctx.last_vis {
+            let candle = &self.candles[i];
+            let cx = (ctx.idx_to_cx)(i);
+
+            if cx + ctx.candle_w * 0.5 < 0.0 || cx - ctx.candle_w * 0.5 > ctx.chart_w {
+                continue;
+            }
+
+            let is_bullish = candle.close >= candle.open;
             let vol_frac = if ctx.vol_max > 0.0 {
                 (candle.volume / ctx.vol_max) as f32
             } else {

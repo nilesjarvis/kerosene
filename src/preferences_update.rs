@@ -79,6 +79,11 @@ impl TradingTerminal {
                 self.sync_chart_hollow_candles();
                 self.persist_config();
             }
+            Message::ChartSeriesStyleChanged(style) if self.chart_series_style != style => {
+                self.chart_series_style = style;
+                self.sync_chart_series_style();
+                self.persist_config();
+            }
             Message::ToggleChartFisheye(enabled) if self.chart_fisheye_enabled != enabled => {
                 self.chart_fisheye_enabled = enabled;
                 self.sync_chart_fisheye();

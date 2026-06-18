@@ -97,3 +97,50 @@ impl std::fmt::Display for ChartHollowCandleMode {
         f.write_str(self.label())
     }
 }
+
+/// How the main price series renders: traditional candlesticks, or a single
+/// close-price line with a gradient area fill beneath it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ChartSeriesStyle {
+    #[default]
+    Candles,
+    Line,
+}
+
+impl ChartSeriesStyle {
+    pub const ALL: [Self; 2] = [Self::Candles, Self::Line];
+
+    pub fn is_line(self) -> bool {
+        matches!(self, Self::Line)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Candles => "Candlesticks",
+            Self::Line => "Line",
+        }
+    }
+}
+
+impl std::fmt::Display for ChartSeriesStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+#[cfg(test)]
+mod series_style_tests {
+    use super::ChartSeriesStyle;
+
+    #[test]
+    fn series_style_defaults_to_candles_and_reports_line() {
+        assert_eq!(ChartSeriesStyle::default(), ChartSeriesStyle::Candles);
+        assert!(!ChartSeriesStyle::Candles.is_line());
+        assert!(ChartSeriesStyle::Line.is_line());
+        assert_eq!(
+            ChartSeriesStyle::ALL,
+            [ChartSeriesStyle::Candles, ChartSeriesStyle::Line]
+        );
+        assert_eq!(ChartSeriesStyle::Line.label(), "Line");
+    }
+}

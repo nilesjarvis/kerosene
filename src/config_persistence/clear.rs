@@ -323,6 +323,7 @@ impl TradingTerminal {
         self.chart_dotted_background = defaults.chart_dotted_background;
         self.chart_dotted_background_opacity = defaults.chart_dotted_background_opacity;
         self.chart_hollow_candle_mode = defaults.chart_hollow_candle_mode;
+        self.chart_series_style = defaults.chart_series_style;
         self.chart_fisheye_enabled = defaults.chart_fisheye_enabled;
         self.chart_fisheye_strength = defaults.chart_fisheye_strength;
         self.chart_chromatic_aberration_enabled = defaults.chart_chromatic_aberration_enabled;
@@ -393,6 +394,7 @@ impl TradingTerminal {
         self.apply_chart_theme_colors();
         self.sync_chart_dotted_background();
         self.sync_chart_hollow_candles();
+        self.sync_chart_series_style();
         self.sync_chart_fisheye();
         self.sync_chart_chromatic_aberration();
         self.sync_chart_edge_blur();

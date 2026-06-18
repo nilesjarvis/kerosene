@@ -1,11 +1,12 @@
 use super::{
     ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, ChartHudReadoutConfig,
-    KeroseneConfig, WidgetPaddingConfig, WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig,
-    default_alfred_popup_scale, default_chart_chromatic_aberration_strength,
-    default_chart_crosshair_scale, default_chart_dotted_background_opacity,
-    default_chart_edge_blur_strength, default_chart_fisheye_strength, default_config_value,
-    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
-    default_widget_padding, json_string, object_mut, value_from_json, value_from_str,
+    ChartSeriesStyle, KeroseneConfig, WidgetPaddingConfig, WidgetPaddingOverrideConfig,
+    WidgetPaddingTargetConfig, default_alfred_popup_scale,
+    default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
+    default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
+    default_chart_fisheye_strength, default_config_value, default_pane_border_thickness,
+    default_pane_corner_radius, default_ui_scale, default_widget_padding, json_string, object_mut,
+    value_from_json, value_from_str,
 };
 use crate::config::ReadDataProvider;
 
@@ -16,6 +17,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         chart_dotted_background: true,
         chart_dotted_background_opacity: 0.27,
         chart_hollow_candle_mode: ChartHollowCandleMode::Both,
+        chart_series_style: ChartSeriesStyle::Line,
         chart_fisheye_enabled: true,
         chart_fisheye_strength: 0.72,
         chart_chromatic_aberration_enabled: true,
@@ -56,6 +58,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         decoded.chart_hollow_candle_mode,
         ChartHollowCandleMode::Both
     );
+    assert_eq!(decoded.chart_series_style, ChartSeriesStyle::Line);
     assert!(decoded.chart_fisheye_enabled);
     assert_eq!(decoded.chart_fisheye_strength, 0.72);
     assert!(decoded.chart_chromatic_aberration_enabled);
@@ -99,6 +102,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("chart_dotted_background");
     object.remove("chart_dotted_background_opacity");
     object.remove("chart_hollow_candle_mode");
+    object.remove("chart_series_style");
     object.remove("chart_fisheye_enabled");
     object.remove("chart_fisheye_strength");
     object.remove("chart_chromatic_aberration_enabled");
@@ -132,6 +136,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         decoded_legacy.chart_hollow_candle_mode,
         ChartHollowCandleMode::Off
     );
+    assert_eq!(decoded_legacy.chart_series_style, ChartSeriesStyle::Candles);
     assert!(!decoded_legacy.chart_fisheye_enabled);
     assert_eq!(
         decoded_legacy.chart_fisheye_strength,

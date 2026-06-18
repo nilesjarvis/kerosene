@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart::crosshair_style::{CrosshairStyleRender, RacingHudMetrics, draw_crosshair_style};
 use crate::config::{
     ChartCrosshairStyle, ChartHollowCandleMode, ChartHudOrderSound, ChartHudReadoutConfig,
-    ChartHudReadoutElement, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
+    ChartHudReadoutElement, ChartSeriesStyle, DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH,
     DEFAULT_CHART_CROSSHAIR_SCALE, DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY,
     DEFAULT_CHART_EDGE_BLUR_STRENGTH, DEFAULT_CHART_FISHEYE_STRENGTH,
     DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
@@ -80,6 +80,19 @@ impl TradingTerminal {
                 .spacing(8)
                 .text_size(12)
                 .font(crate::app_fonts::monospace_font()),
+            row![
+                text("Chart style").size(12).color(theme.palette().text),
+                pick_list(
+                    ChartSeriesStyle::ALL.to_vec(),
+                    Some(self.chart_series_style),
+                    Message::ChartSeriesStyleChanged,
+                )
+                .padding([4, 8])
+                .text_size(12)
+                .width(Length::Fixed(170.0)),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
             row![
                 text("Hollow candles").size(12).color(theme.palette().text),
                 pick_list(

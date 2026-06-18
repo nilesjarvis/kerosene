@@ -160,6 +160,7 @@ impl TradingTerminal {
         state.apply_chart_theme_colors();
         state.sync_chart_dotted_background();
         state.sync_chart_hollow_candles();
+        state.sync_chart_series_style();
         state.sync_chart_fisheye();
         state.sync_chart_chromatic_aberration();
         state.sync_chart_edge_blur();

@@ -71,8 +71,9 @@ impl TradingTerminal {
         } else {
             "OS bar native"
         };
+        let series_style = self.chart_series_style.label().to_lowercase();
         let chrome_summary = format!(
-            "{:.0}% scale, {:.0}px divider, {dots}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}, {os_bar}",
+            "{:.0}% scale, {:.0}px divider, {series_style}, {dots}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}, {os_bar}",
             self.ui_scale * 100.0,
             self.pane_border_thickness
         );

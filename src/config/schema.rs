@@ -27,7 +27,7 @@ mod market_universe;
 mod toast;
 
 pub use accounts::{AccountProfile, CredentialStorageMode};
-pub use candles::{ChartBackfillSource, ChartHollowCandleMode, ReadDataProvider};
+pub use candles::{ChartBackfillSource, ChartHollowCandleMode, ChartSeriesStyle, ReadDataProvider};
 pub use crosshair::{
     ChartCrosshairStyle, ChartHudOrderSound, ChartHudReadoutConfig, ChartHudReadoutElement,
 };
@@ -145,6 +145,9 @@ pub struct KeroseneConfig {
     /// Which candle directions should render hollow instead of solid fills.
     #[serde(default)]
     pub chart_hollow_candle_mode: ChartHollowCandleMode,
+    /// Whether the main price series renders as candlesticks or a line + area fill.
+    #[serde(default)]
+    pub chart_series_style: ChartSeriesStyle,
     /// Apply a subtle barrel lens projection to candlestick chart canvases.
     #[serde(default)]
     pub chart_fisheye_enabled: bool,

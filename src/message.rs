@@ -311,6 +311,7 @@ pub(crate) enum Message {
     ToggleChartDottedBackground(bool),
     ChartDottedBackgroundOpacityChanged(f32),
     ChartHollowCandleModeChanged(config::ChartHollowCandleMode),
+    ChartSeriesStyleChanged(config::ChartSeriesStyle),
     ToggleChartFisheye(bool),
     ChartFisheyeStrengthChanged(f32),
     ToggleChartChromaticAberration(bool),

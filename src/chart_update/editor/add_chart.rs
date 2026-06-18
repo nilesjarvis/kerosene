@@ -13,35 +13,7 @@ impl TradingTerminal {
         self.add_widget_menu_open = false;
         let id = self.alloc_chart_id();
         let mut instance = ChartInstance::new_empty(id);
-        let (bull, bear) = self.active_chart_theme_colors();
-        instance.chart.set_chart_colors(bull, bear);
-        instance.chart.set_dotted_background(
-            self.chart_dotted_background,
-            self.chart_dotted_background_opacity,
-        );
-        instance
-            .chart
-            .set_hollow_candle_mode(self.chart_hollow_candle_mode);
-        instance
-            .chart
-            .set_fisheye(self.chart_fisheye_enabled, self.chart_fisheye_strength);
-        instance.chart.set_chromatic_aberration(
-            self.chart_chromatic_aberration_enabled,
-            self.chart_chromatic_aberration_strength,
-        );
-        instance
-            .chart
-            .set_edge_blur(self.chart_edge_blur_enabled, self.chart_edge_blur_strength);
-        instance
-            .chart
-            .set_crosshair_style(self.chart_crosshair_style);
-        instance
-            .chart
-            .set_crosshair_guides_enabled(self.chart_crosshair_guides_enabled);
-        instance
-            .chart
-            .set_crosshair_scale(self.chart_crosshair_scale);
-        instance.chart.set_hud_readout(self.chart_hud_readout);
+        self.apply_chart_appearance_settings(&mut instance.chart);
         self.charts.insert(id, instance);
         if self
             .add_pane_to_target(
@@ -58,5 +30,27 @@ impl TradingTerminal {
         self.charts.remove(&id);
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app_state::TradingTerminal;
+    use crate::chart::CandlestickChart;
+    use crate::config::{ChartHollowCandleMode, ChartSeriesStyle, KeroseneConfig};
+
+    #[test]
+    fn new_charts_inherit_global_appearance_settings() {
+        let (terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig {
+            chart_series_style: ChartSeriesStyle::Line,
+            chart_hollow_candle_mode: ChartHollowCandleMode::Both,
+            ..KeroseneConfig::default()
+        });
+
+        let mut chart = CandlestickChart::new(999);
+        terminal.apply_chart_appearance_settings(&mut chart);
+
+        assert_eq!(chart.series_style, ChartSeriesStyle::Line);
+        assert_eq!(chart.hollow_candle_mode, ChartHollowCandleMode::Both);
     }
 }

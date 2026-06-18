@@ -57,6 +57,7 @@ impl TradingTerminal {
             chart_dotted_background_opacity: self.chart_dotted_background_opacity,
             chart_hollow_candles: false,
             chart_hollow_candle_mode: self.chart_hollow_candle_mode,
+            chart_series_style: self.chart_series_style,
             chart_fisheye_enabled: self.chart_fisheye_enabled,
             chart_fisheye_strength: config::normalize_chart_fisheye_strength(
                 self.chart_fisheye_strength,

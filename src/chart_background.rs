@@ -109,6 +109,33 @@ fn dotted_background_dot_count(width: f32, height: f32) -> usize {
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    /// Apply the current global chart appearance settings to a freshly created
+    /// chart instance. Both the add-widget menu and the add-chart hotkey route
+    /// new charts through here so they pick up the same look as existing charts.
+    pub(crate) fn apply_chart_appearance_settings(
+        &self,
+        chart: &mut crate::chart::CandlestickChart,
+    ) {
+        let (bull, bear) = self.active_chart_theme_colors();
+        chart.set_chart_colors(bull, bear);
+        chart.set_dotted_background(
+            self.chart_dotted_background,
+            self.chart_dotted_background_opacity,
+        );
+        chart.set_hollow_candle_mode(self.chart_hollow_candle_mode);
+        chart.set_series_style(self.chart_series_style);
+        chart.set_fisheye(self.chart_fisheye_enabled, self.chart_fisheye_strength);
+        chart.set_chromatic_aberration(
+            self.chart_chromatic_aberration_enabled,
+            self.chart_chromatic_aberration_strength,
+        );
+        chart.set_edge_blur(self.chart_edge_blur_enabled, self.chart_edge_blur_strength);
+        chart.set_crosshair_style(self.chart_crosshair_style);
+        chart.set_crosshair_guides_enabled(self.chart_crosshair_guides_enabled);
+        chart.set_crosshair_scale(self.chart_crosshair_scale);
+        chart.set_hud_readout(self.chart_hud_readout);
+    }
+
     pub(crate) fn sync_chart_dotted_background(&mut self) {
         let enabled = self.chart_dotted_background;
         let opacity = self.chart_dotted_background_opacity;
@@ -127,6 +154,13 @@ impl TradingTerminal {
         }
         for instance in self.spaghetti_charts.values_mut() {
             instance.canvas.set_hollow_candle_mode(mode);
+        }
+    }
+
+    pub(crate) fn sync_chart_series_style(&mut self) {
+        let style = self.chart_series_style;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_series_style(style);
         }
     }
 

@@ -278,6 +278,7 @@ impl Default for KeroseneConfig {
             chart_dotted_background_opacity: default_chart_dotted_background_opacity(),
             chart_hollow_candles: false,
             chart_hollow_candle_mode: Default::default(),
+            chart_series_style: Default::default(),
             chart_fisheye_enabled: false,
             chart_fisheye_strength: default_chart_fisheye_strength(),
             chart_chromatic_aberration_enabled: false,

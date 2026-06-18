@@ -2,6 +2,7 @@ mod axes;
 mod candles;
 mod earnings;
 mod funding;
+mod line_series;
 mod liquidity;
 mod sessions;
 
@@ -88,7 +89,12 @@ impl CandlestickChart {
                     }
                     self.draw_price_volume_separator(ctx, frame);
                     self.draw_historical_heatmap(ctx, frame);
-                    self.draw_candles_and_volume(ctx, frame);
+                    if self.series_style.is_line() {
+                        self.draw_line_series(ctx, frame);
+                    } else {
+                        self.draw_candles(ctx, frame);
+                    }
+                    self.draw_volume_bars(ctx, frame);
                     self.draw_earnings_markers(ctx, frame);
                     self.draw_volume_profile(ctx, frame);
 

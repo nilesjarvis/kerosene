@@ -53,8 +53,7 @@ impl TradingTerminal {
         };
         let id = self.alloc_chart_id();
         let mut instance = ChartInstance::new_empty(id);
-        let (bull, bear) = self.active_chart_theme_colors();
-        instance.chart.set_chart_colors(bull, bear);
+        self.apply_chart_appearance_settings(&mut instance.chart);
         self.charts.insert(id, instance);
         if self
             .add_pane_to_target(
