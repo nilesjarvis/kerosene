@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::hyperdash_api::fetch_liquidation_levels_at;
 use crate::liquidations_distribution_state::{
     LiquidationDistributionData, LiquidationDistributionRequest,
@@ -222,7 +223,10 @@ impl TradingTerminal {
                 self.liquidation_distribution.data = Some(data);
             }
             Err(error) => {
-                let message = format!("Liquidation distribution fetch failed: {error}");
+                let message = format!(
+                    "Liquidation distribution fetch failed: {}",
+                    redact_sensitive_response_text(&error)
+                );
                 return self.apply_liquidation_distribution_error(request, message);
             }
         }
@@ -338,6 +342,37 @@ mod tests {
             .as_ref()
             .expect("current-generation result should apply");
         assert_eq!(data.request, request);
+    }
+
+    #[test]
+    fn current_hyperdash_generation_error_redacts_state_and_toast() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let request = request();
+        terminal.hyperdash_key_generation = 2;
+        terminal.liquidation_distribution.loading = true;
+        terminal.liquidation_distribution.pending_request = Some(request.clone());
+
+        let _task = terminal.apply_liquidation_distribution_loaded(
+            request.key.clone(),
+            2,
+            Err("distribution rejected: api_key=key-secret signature=sig-secret".to_string()),
+        );
+
+        assert!(!terminal.liquidation_distribution.loading);
+        assert!(terminal.liquidation_distribution.pending_request.is_none());
+        let error = terminal
+            .liquidation_distribution
+            .error
+            .as_ref()
+            .expect("distribution error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(error.contains("signature=<redacted>"));
+        assert!(!error.contains("key-secret"));
+        assert!(!error.contains("sig-secret"));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert_eq!(toast.message, *error);
     }
 
     #[test]
