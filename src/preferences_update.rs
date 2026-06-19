@@ -28,7 +28,7 @@ pub(super) fn ensure_import_file_within_limit(
     max_bytes: u64,
 ) -> Result<(), String> {
     let metadata = std::fs::metadata(path)
-        .map_err(|e| format!("read {} metadata failed: {e}", path.display()))?;
+        .map_err(|e| import_io_failure(&format!("read selected {kind} file metadata"), &e))?;
     if !metadata.is_file() {
         return Err(format!("selected {kind} path is not a file"));
     }
@@ -42,6 +42,29 @@ pub(super) fn ensure_import_file_within_limit(
     }
 
     Ok(())
+}
+
+pub(super) fn import_io_failure(action: &str, error: &std::io::Error) -> String {
+    format!("{action} failed: {}", import_io_error_detail(error))
+}
+
+fn import_io_error_detail(error: &std::io::Error) -> String {
+    let kind = match error.kind() {
+        std::io::ErrorKind::NotFound => "not found",
+        std::io::ErrorKind::PermissionDenied => "permission denied",
+        std::io::ErrorKind::AlreadyExists => "already exists",
+        std::io::ErrorKind::InvalidInput => "invalid input",
+        std::io::ErrorKind::InvalidData => "invalid data",
+        std::io::ErrorKind::Interrupted => "interrupted",
+        std::io::ErrorKind::UnexpectedEof => "unexpected EOF",
+        std::io::ErrorKind::WriteZero => "write failed",
+        _ => "I/O error",
+    };
+
+    match error.raw_os_error() {
+        Some(code) => format!("{kind} (os error {code})"),
+        None => kind.to_string(),
+    }
 }
 
 impl TradingTerminal {
@@ -437,5 +460,41 @@ impl TradingTerminal {
         ids.extend(self.detached_chart_windows.keys().copied());
 
         ids
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn missing_import_file_metadata_error_redacts_source_path() {
+        let path = std::env::temp_dir().join("kerosene-secret-source-font.ttf");
+
+        let error = ensure_import_file_within_limit(&path, "font", MAX_IMPORTED_FONT_BYTES)
+            .expect_err("missing import source should fail metadata read");
+
+        assert!(error.contains("read selected font file metadata failed"));
+        assert!(error.contains("not found"));
+        assert!(!error.contains(&path.display().to_string()));
+        assert!(!error.contains("secret-source-font"));
+    }
+
+    #[test]
+    fn import_io_failure_uses_kind_without_custom_error_payload() {
+        let error = Error::new(
+            ErrorKind::PermissionDenied,
+            "denied /home/alice/secret-font.ttf api_key=font-secret",
+        );
+
+        let rendered = import_io_failure("read selected font file", &error);
+
+        assert_eq!(
+            rendered,
+            "read selected font file failed: permission denied"
+        );
+        assert!(!rendered.contains("/home/alice"));
+        assert!(!rendered.contains("font-secret"));
     }
 }

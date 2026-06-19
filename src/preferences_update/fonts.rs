@@ -149,17 +149,17 @@ async fn import_font() -> Result<config::CustomFontConfig, String> {
     let source_path = file.path().to_path_buf();
     super::ensure_import_file_within_limit(&source_path, "font", super::MAX_IMPORTED_FONT_BYTES)?;
     let bytes = std::fs::read(&source_path)
-        .map_err(|e| format!("read {} failed: {e}", source_path.display()))?;
+        .map_err(|e| super::import_io_failure("read selected font file", &e))?;
     let family = font_family_from_bytes(&bytes)?;
     let extension = font_extension(&source_path);
     let file_name = unique_font_file_name(&family, extension);
     let font_dir = config::font_storage_dir()
         .ok_or_else(|| "platform config directory is unavailable".to_string())?;
     std::fs::create_dir_all(&font_dir)
-        .map_err(|e| format!("create font directory {} failed: {e}", font_dir.display()))?;
+        .map_err(|e| super::import_io_failure("create font storage directory", &e))?;
     let destination = font_dir.join(&file_name);
     std::fs::write(&destination, bytes)
-        .map_err(|e| format!("write {} failed: {e}", destination.display()))?;
+        .map_err(|e| super::import_io_failure("write imported font file", &e))?;
 
     Ok(config::CustomFontConfig { family, file_name })
 }

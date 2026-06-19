@@ -108,17 +108,17 @@ async fn import_hud_order_sound() -> Result<Option<String>, String> {
         super::MAX_IMPORTED_HUD_SOUND_BYTES,
     )?;
     let bytes = std::fs::read(&source_path)
-        .map_err(|e| format!("read {} failed: {e}", source_path.display()))?;
+        .map_err(|e| super::import_io_failure("read selected HUD order sound file", &e))?;
     validate_wav(&bytes)?;
 
     let file_name = unique_sound_file_name(&source_path);
     let sound_dir = config::sound_storage_dir()
         .ok_or_else(|| "platform config directory is unavailable".to_string())?;
     std::fs::create_dir_all(&sound_dir)
-        .map_err(|e| format!("create sound directory {} failed: {e}", sound_dir.display()))?;
+        .map_err(|e| super::import_io_failure("create HUD order sound storage directory", &e))?;
     let destination = sound_dir.join(&file_name);
     std::fs::write(&destination, bytes)
-        .map_err(|e| format!("write {} failed: {e}", destination.display()))?;
+        .map_err(|e| super::import_io_failure("write imported HUD order sound file", &e))?;
 
     Ok(Some(file_name))
 }
