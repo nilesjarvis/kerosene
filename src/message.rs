@@ -658,6 +658,7 @@ pub(crate) enum Message {
     JournalEditCancel(String),
     JournalEditSave(String),
     JournalBufferChanged(String, bool, String),
+    JournalCauseOfErrorChanged(String, String),
     JournalTagsChanged(String, String),
     JournalSelectTrade(String),
     JournalDeselectTrade,

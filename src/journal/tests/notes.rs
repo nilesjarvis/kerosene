@@ -34,6 +34,7 @@ fn legacy_string_note_deserializes_without_tags() {
     let note: JournalNote = serde_json::from_str("\"just text\"").expect("legacy note");
     assert_eq!(note.open, "just text");
     assert!(note.close.is_empty());
+    assert!(note.cause_of_error.is_empty());
     assert!(note.tags.is_empty());
 }
 
@@ -43,24 +44,39 @@ fn structured_note_without_tags_field_defaults_to_empty() {
         serde_json::from_str(r#"{"open":"thesis","close":"reflection"}"#).expect("structured note");
     assert_eq!(note.open, "thesis");
     assert_eq!(note.close, "reflection");
+    assert!(note.cause_of_error.is_empty());
     assert!(note.tags.is_empty());
 }
 
 #[test]
-fn note_with_tags_round_trips_and_omits_empty_tags() {
+fn note_with_tags_and_cause_round_trips_and_omits_empty_fields() {
     let note = JournalNote {
         open: "thesis".to_string(),
         close: String::new(),
+        cause_of_error: "chased late entry".to_string(),
         tags: vec!["breakout".to_string(), "momentum".to_string()],
     };
     let encoded = serde_json::to_string(&note).expect("encode note");
+    assert!(encoded.contains("\"cause_of_error\""));
     assert!(encoded.contains("\"tags\""));
     let decoded: JournalNote = serde_json::from_str(&encoded).expect("decode note");
+    assert_eq!(decoded.cause_of_error, note.cause_of_error);
     assert_eq!(decoded.tags, note.tags);
 
     let empty = JournalNote::default();
     let encoded_empty = serde_json::to_string(&empty).expect("encode empty note");
+    assert!(!encoded_empty.contains("cause_of_error"));
     assert!(!encoded_empty.contains("tags"));
+}
+
+#[test]
+fn cause_of_error_counts_as_note_content() {
+    let note = JournalNote {
+        cause_of_error: "ignored invalidation".to_string(),
+        ..Default::default()
+    };
+
+    assert!(!note.is_empty());
 }
 
 #[test]

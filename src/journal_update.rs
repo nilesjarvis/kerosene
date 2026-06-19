@@ -246,6 +246,13 @@ impl TradingTerminal {
                     entry.close = text;
                 }
             }
+            Message::JournalCauseOfErrorChanged(id, text) => {
+                self.journal
+                    .edit_buffers
+                    .entry(id)
+                    .or_default()
+                    .cause_of_error = text;
+            }
             Message::JournalTagsChanged(id, raw) => {
                 let tags = journal::parse_journal_tags(&raw);
                 self.journal
@@ -805,6 +812,25 @@ mod tests {
         assert!(terminal.journal.edit_buffers.is_empty());
         assert!(terminal.journal.edit_source_keys.is_empty());
         assert!(terminal.journal.edit_tag_raw.is_empty());
+    }
+
+    #[test]
+    fn journal_cause_of_error_updates_edit_buffer() {
+        let mut terminal = TradingTerminal::boot().0;
+
+        let _task = terminal.update_journal(Message::JournalCauseOfErrorChanged(
+            "trade-a".to_string(),
+            "late chase".to_string(),
+        ));
+
+        assert_eq!(
+            terminal
+                .journal
+                .edit_buffers
+                .get("trade-a")
+                .map(|note| note.cause_of_error.as_str()),
+            Some("late chase")
+        );
     }
 
     #[test]

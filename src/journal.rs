@@ -32,14 +32,19 @@ pub use state::{JournalFilter, JournalSort, JournalState, JournalSyncStatus};
 pub struct JournalNote {
     pub open: String,
     pub close: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cause_of_error: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
 }
 
 impl JournalNote {
-    /// True when the reflection carries no thesis, no reflection, and no tags.
+    /// True when the reflection carries no thesis, reflection, error cause, or tags.
     pub fn is_empty(&self) -> bool {
-        self.open.trim().is_empty() && self.close.trim().is_empty() && self.tags.is_empty()
+        self.open.trim().is_empty()
+            && self.close.trim().is_empty()
+            && self.cause_of_error.trim().is_empty()
+            && self.tags.is_empty()
     }
 }
 
@@ -48,6 +53,10 @@ impl fmt::Debug for JournalNote {
         f.debug_struct("JournalNote")
             .field("open", &format_args!("len={}", self.open.len()))
             .field("close", &format_args!("len={}", self.close.len()))
+            .field(
+                "cause_of_error",
+                &format_args!("len={}", self.cause_of_error.len()),
+            )
             .field("tags", &format_args!("len={}", self.tags.len()))
             .finish()
     }
@@ -67,16 +76,29 @@ impl<'de> Deserialize<'de> for JournalNote {
                 #[serde(default)]
                 close: String,
                 #[serde(default)]
+                cause_of_error: String,
+                #[serde(default)]
                 tags: Vec<String>,
             },
             Legacy(String),
         }
 
         match NoteWrapper::deserialize(deserializer)? {
-            NoteWrapper::Structured { open, close, tags } => Ok(JournalNote { open, close, tags }),
+            NoteWrapper::Structured {
+                open,
+                close,
+                cause_of_error,
+                tags,
+            } => Ok(JournalNote {
+                open,
+                close,
+                cause_of_error,
+                tags,
+            }),
             NoteWrapper::Legacy(s) => Ok(JournalNote {
                 open: s,
                 close: String::new(),
+                cause_of_error: String::new(),
                 tags: Vec::new(),
             }),
         }

@@ -55,6 +55,10 @@ fn journal_spaghetti_and_wallet_tracker_routes_stay_on_feature_modules() {
         Message::JournalPortfolioWindowChanged(crate::portfolio_state::PortfolioWindow::Month),
         UpdateRoute::Journal,
     );
+    assert_route(
+        Message::JournalCauseOfErrorChanged("trade".to_string(), "late chase".to_string()),
+        UpdateRoute::Journal,
+    );
 
     assert_route(Message::AddComparisonChart, UpdateRoute::Spaghetti);
     assert_route(Message::ToggleSpaghettiStyleMenu(7), UpdateRoute::Spaghetti);

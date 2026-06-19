@@ -103,6 +103,7 @@ fn journal_note_debug_summarizes_private_text() {
     let note = JournalNote {
         open: "private open note sentinel".to_string(),
         close: "private close note sentinel".to_string(),
+        cause_of_error: "private cause note sentinel".to_string(),
         ..Default::default()
     };
 
@@ -110,6 +111,8 @@ fn journal_note_debug_summarizes_private_text() {
 
     assert!(rendered.contains("open: len=26"));
     assert!(rendered.contains("close: len=27"));
+    assert!(rendered.contains("cause_of_error: len=27"));
     assert!(!rendered.contains("private open note sentinel"));
     assert!(!rendered.contains("private close note sentinel"));
+    assert!(!rendered.contains("private cause note sentinel"));
 }

@@ -24,7 +24,7 @@ Each card shows:
 - Fill count.
 - Realized PnL.
 - Fees.
-- Optional open/close notes.
+- Optional reflections: entry thesis, exit reflection, cause of error, and tags.
 
 The summary header aggregates the currently visible cards:
 

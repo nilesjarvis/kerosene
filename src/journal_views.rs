@@ -230,6 +230,7 @@ mod tests {
             JournalNote {
                 open: "Breakout thesis".to_string(),
                 close: String::new(),
+                cause_of_error: "late chase".to_string(),
                 tags: vec!["breakout".to_string(), "momentum".to_string()],
             },
         );

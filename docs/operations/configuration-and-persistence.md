@@ -51,7 +51,7 @@ Related storage:
 - favourites, muted tickers, market universe, denomination
 - feed and notification preferences
 - Telegram/X channel/source lists
-- journal entries and per-account journal entries
+- journal entries and per-account journal entries, including reflection fields
 - order presets and advanced-order history
 - hotkeys
 - credential storage mode and encrypted secret blob

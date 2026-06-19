@@ -75,6 +75,16 @@ impl TradingTerminal {
             .padding(8)
             .font(crate::app_fonts::sans_font());
 
+        let cause_of_error_input = text_input("What caused the error?", &note.cause_of_error)
+            .style(journal_text_input_style)
+            .on_input({
+                let id = trade.id.clone();
+                move |text| Message::JournalCauseOfErrorChanged(id.clone(), text)
+            })
+            .size(13)
+            .padding(8)
+            .font(crate::app_fonts::sans_font());
+
         let tag_input = text_input("breakout momentum trend ...", &tag_raw)
             .style(journal_text_input_style)
             .on_input({
@@ -109,6 +119,8 @@ impl TradingTerminal {
             open_input,
             reflection_label("EXIT REFLECTION", theme),
             close_input,
+            reflection_label("CAUSE OF ERROR", theme),
+            cause_of_error_input,
             reflection_label("TAGS", theme),
             tag_input,
         ]
@@ -133,6 +145,11 @@ impl TradingTerminal {
         if let Some(note) = note.filter(|note| !note.is_empty()) {
             content = content.push(journal_note_block("ENTRY THESIS", &note.open, theme));
             content = content.push(journal_note_block("EXIT REFLECTION", &note.close, theme));
+            content = content.push(journal_note_block(
+                "CAUSE OF ERROR",
+                &note.cause_of_error,
+                theme,
+            ));
             content = push_opt(content, journal_tag_chips(&note.tags, theme));
         } else {
             content = content.push(

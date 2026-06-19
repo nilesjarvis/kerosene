@@ -370,6 +370,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalEditCancel(_)
         | Message::JournalEditSave(_)
         | Message::JournalBufferChanged(_, _, _)
+        | Message::JournalCauseOfErrorChanged(_, _)
         | Message::JournalTagsChanged(_, _)
         | Message::JournalSelectTrade(_)
         | Message::JournalDeselectTrade
