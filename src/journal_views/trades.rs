@@ -269,27 +269,20 @@ fn journal_trade_table_header(
         table_sort_header(JournalTradeTableColumn::Fills, theme, sort),
         table_sort_header(JournalTradeTableColumn::Fees, theme, sort),
         table_sort_header(JournalTradeTableColumn::Pnl, theme, sort),
-        table_header_cell("Actions", ACTIONS_COL, theme, false),
+        table_header_cell("Actions", ACTIONS_COL, theme),
     ]))
     .width(Fill)
     .height(Length::Fixed(TABLE_HEADER_HEIGHT))
     .into()
 }
 
-fn table_header_cell(
-    label: &'static str,
-    width: f32,
-    theme: &Theme,
-    align_right: bool,
-) -> Element<'static, Message> {
-    let mut label = text(label)
+fn table_header_cell(label: &'static str, width: f32, theme: &Theme) -> Element<'static, Message> {
+    let label = text(label)
         .size(10)
         .font(crate::app_fonts::monospace_font())
         .color(theme.extended_palette().background.weak.text)
-        .width(Fill);
-    if align_right {
-        label = label.align_x(alignment::Horizontal::Right);
-    }
+        .width(Fill)
+        .align_x(alignment::Horizontal::Center);
 
     container(label)
         .width(Length::Fixed(width))
@@ -303,7 +296,7 @@ fn table_sort_header(
     active_sort: journal::JournalSort,
 ) -> Element<'static, Message> {
     let is_active = column.is_active(active_sort);
-    let mut label = text(column.header_label(active_sort))
+    let label = text(column.header_label(active_sort))
         .size(10)
         .font(crate::app_fonts::monospace_font())
         .color(if is_active {
@@ -311,10 +304,8 @@ fn table_sort_header(
         } else {
             theme.extended_palette().background.weak.text
         })
-        .width(Fill);
-    if column.align_right() {
-        label = label.align_x(alignment::Horizontal::Right);
-    }
+        .width(Fill)
+        .align_x(alignment::Horizontal::Center);
 
     container(
         button(label)
@@ -394,10 +385,6 @@ impl JournalTradeTableColumn {
             Self::Fees => FEES_COL,
             Self::Pnl => PNL_COL,
         }
-    }
-
-    fn align_right(self) -> bool {
-        matches!(self, Self::Fills | Self::Fees | Self::Pnl)
     }
 
     fn descending_sort(self) -> journal::JournalSort {
