@@ -187,35 +187,40 @@ impl ChaseOrder {
 
 impl std::fmt::Debug for ChaseOrder {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let has_current_cloid = self.current_cloid.is_some();
+        let has_current_oid = self.current_oid.is_some();
+        let has_desired_price = self.desired_price.is_some();
+        let stop_reason_is_error = self.stop_reason.as_ref().map(|(_, is_error)| *is_error);
+
         formatter
             .debug_struct("ChaseOrder")
             .field("id", &self.id)
-            .field("coin", &self.coin)
+            .field("coin", &"<redacted>")
             .field("account_address", &"<redacted>")
             .field("agent_key", &"<redacted>")
             .field("is_buy", &self.is_buy)
-            .field("target_size", &self.target_size)
-            .field("filled_size", &self.filled_size)
-            .field("remaining_size", &self.remaining_size)
-            .field("known_oids", &self.known_oids)
-            .field("current_cloid", &self.current_cloid)
+            .field("target_size", &"<redacted>")
+            .field("filled_size", &"<redacted>")
+            .field("remaining_size", &"<redacted>")
+            .field("known_oids_count", &self.known_oids.len())
+            .field("has_current_cloid", &has_current_cloid)
             .field("place_attempt_count", &self.place_attempt_count)
             .field("asset", &self.asset)
             .field("sz_decimals", &self.sz_decimals)
             .field("is_spot", &self.is_spot)
             .field("reduce_only", &self.reduce_only)
-            .field("current_oid", &self.current_oid)
-            .field("current_price", &self.current_price)
-            .field("current_price_wire", &self.current_price_wire)
-            .field("initial_price", &self.initial_price)
+            .field("has_current_oid", &has_current_oid)
+            .field("current_price", &"<redacted>")
+            .field("current_price_wire", &"<redacted>")
+            .field("initial_price", &"<redacted>")
             .field("started_at", &self.started_at)
             .field("started_at_ms", &self.started_at_ms)
-            .field("fill_cutoff_ms_by_oid", &self.fill_cutoff_ms_by_oid)
+            .field("fill_cutoff_count", &self.fill_cutoff_ms_by_oid.len())
             .field("reprice_count", &self.reprice_count)
-            .field("lifecycle", &self.lifecycle)
+            .field("lifecycle", &self.lifecycle.label())
             .field("last_reprice_at", &self.last_reprice_at)
-            .field("desired_price", &self.desired_price)
-            .field("stop_reason", &self.stop_reason)
+            .field("has_desired_price", &has_desired_price)
+            .field("stop_reason_is_error", &stop_reason_is_error)
             .field("cancel_retries", &self.cancel_retries)
             .finish()
     }
