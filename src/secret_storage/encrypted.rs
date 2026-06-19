@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use iced::Task;
 use zeroize::{Zeroize, Zeroizing};
@@ -67,8 +68,13 @@ impl TradingTerminal {
         match config::encrypt_secrets(payload, &self.encrypted_secret_password) {
             Ok(encrypted) => Some(encrypted),
             Err(error) => {
-                self.secret_store_status =
-                    Some((format!("Encrypted credential save failed: {error}"), true));
+                self.secret_store_status = Some((
+                    format!(
+                        "Encrypted credential save failed: {}",
+                        redact_sensitive_response_text(&error)
+                    ),
+                    true,
+                ));
                 None
             }
         }
@@ -136,7 +142,8 @@ impl TradingTerminal {
                 self.secret_migration_save_blocked = true;
                 self.secret_store_status = Some((
                     format!(
-                        "Encrypted credential config save failed: {error}; credential change was not committed"
+                        "Encrypted credential config save failed: {}; credential change was not committed",
+                        redact_sensitive_response_text(&error)
                     ),
                     true,
                 ));
@@ -296,7 +303,8 @@ impl TradingTerminal {
                                         self.encrypted_secrets = previous_encrypted_secrets;
                                         self.secret_migration_save_blocked = true;
                                         Some(format!(
-                                            "legacy wallet binding migration failed: config save failed: {error}; config saves are paused until credentials are saved to a working store"
+                                            "legacy wallet binding migration failed: config save failed: {}; config saves are paused until credentials are saved to a working store",
+                                            redact_sensitive_response_text(&error)
                                         ))
                                     }
                                 }
@@ -305,7 +313,8 @@ impl TradingTerminal {
                         Err(error) => {
                             self.secret_migration_save_blocked = true;
                             Some(format!(
-                                "legacy wallet binding migration failed: {error}; config saves are paused until credentials are saved to a working store"
+                                "legacy wallet binding migration failed: {}; config saves are paused until credentials are saved to a working store",
+                                redact_sensitive_response_text(&error)
                             ))
                         }
                     }
@@ -350,8 +359,13 @@ impl TradingTerminal {
             }
             Err(error) => {
                 self.encrypted_secrets_unlocked = false;
-                self.secret_store_status =
-                    Some((format!("Encrypted credential unlock failed: {error}"), true));
+                self.secret_store_status = Some((
+                    format!(
+                        "Encrypted credential unlock failed: {}",
+                        redact_sensitive_response_text(&error)
+                    ),
+                    true,
+                ));
             }
         }
         Task::none()
@@ -551,7 +565,7 @@ mod tests {
         let persisted = terminal.persist_encrypted_secret_payload_with(
             candidate,
             "Credentials saved to encrypted config",
-            |_| Err("disk full".to_string()),
+            |_| Err("disk full api_key=encrypted-secret".to_string()),
         );
 
         assert!(!persisted);
@@ -573,6 +587,8 @@ mod tests {
         assert!(message.contains("Encrypted credential config save failed"));
         assert!(message.contains("credential change was not committed"));
         assert!(message.contains("disk full"));
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("encrypted-secret"));
     }
 
     #[test]
@@ -806,7 +822,9 @@ mod tests {
             Some(config::encrypt_secrets(&payload, password).expect("encrypt fixture"));
         let original_encrypted = terminal.encrypted_secrets.clone();
 
-        let _task = terminal.unlock_encrypted_credentials_with(|_| Err("disk full".to_string()));
+        let _task = terminal.unlock_encrypted_credentials_with(|_| {
+            Err("disk full signature=migration-secret".to_string())
+        });
 
         assert_eq!(terminal.accounts[0].agent_key.as_str(), "agent-key");
         assert_eq!(terminal.wallet_key_input.as_str(), "agent-key");
@@ -821,6 +839,8 @@ mod tests {
         assert!(message.contains("Encrypted credentials unlocked"));
         assert!(message.contains("legacy wallet binding migration failed"));
         assert!(message.contains("disk full"));
+        assert!(message.contains("signature=<redacted>"));
+        assert!(!message.contains("migration-secret"));
         let rolled_back_payload = config::decrypt_secrets(
             terminal
                 .encrypted_secrets
