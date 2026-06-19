@@ -107,6 +107,22 @@ fn failed_exit_save_leaves_immediate_retry_pending() {
 }
 
 #[test]
+fn config_save_failure_status_redacts_sensitive_text() {
+    let mut terminal = TradingTerminal::boot().0;
+
+    let _task =
+        terminal.handle_config_save_result(Err("write failed: api_key=config-secret".to_string()));
+
+    let (status, is_error) = terminal
+        .secret_store_status
+        .as_ref()
+        .expect("config save failure status");
+    assert!(*is_error);
+    assert!(status.contains("api_key=<redacted>"));
+    assert!(!status.contains("config-secret"));
+}
+
+#[test]
 fn config_save_completion_does_nothing_when_exit_was_not_requested() {
     assert_eq!(
         config_save_completion_action(false, true, true),

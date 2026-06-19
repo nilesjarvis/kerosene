@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{self, save_config};
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use iced::Task;
 use std::time::{Duration, Instant};
@@ -206,7 +207,8 @@ impl TradingTerminal {
                 }
             }
             Err(e) => {
-                let message = format!("Config save failed: {e}");
+                let error = redact_sensitive_response_text(&e);
+                let message = format!("Config save failed: {error}");
                 self.secret_store_status = Some((message, true));
             }
         }

@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::{self, AccountProfile, KeroseneConfig};
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::pane_management::AddWidgetPlacement;
 use crate::telegram_fast_feed::{
@@ -98,7 +99,12 @@ impl TradingTerminal {
             }
             Ok(summary) if summary.file_cleanup_failed => {
                 self.config_clear_requested = false;
-                let details = summary.warnings.join("; ");
+                let details = summary
+                    .warnings
+                    .iter()
+                    .map(|warning| redact_sensitive_response_text(warning))
+                    .collect::<Vec<_>>()
+                    .join("; ");
                 if summary.files_removed > 0 {
                     self.config_cleared_this_session = true;
                     self.config_save_due_at = None;
@@ -142,7 +148,8 @@ impl TradingTerminal {
             Ok(summary) => self.apply_config_clear_to_runtime(summary),
             Err(e) => {
                 self.config_clear_requested = false;
-                let message = format!("Config clear failed: {e}");
+                let error = redact_sensitive_response_text(&e);
+                let message = format!("Config clear failed: {error}");
                 self.secret_store_status = Some((message.clone(), true));
                 self.push_toast(message, true);
                 Task::none()
@@ -1160,6 +1167,50 @@ mod tests {
         assert!(*is_error);
         assert!(status.contains("runtime was not reset"));
         assert!(status.contains("on-disk config remains"));
+    }
+
+    #[test]
+    fn config_file_cleanup_failure_status_redacts_warning_details() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+
+        let _task = terminal.handle_config_clear_result(Ok(ClearConfigSummary {
+            files_removed: 0,
+            file_cleanup_failed: true,
+            keychain_entries_cleared: 0,
+            warnings: vec!["config file cleanup failed: api_key=cleanup-secret".to_string()],
+        }));
+
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("clear failure status");
+        assert!(*is_error);
+        assert!(status.contains("api_key=<redacted>"));
+        assert!(!status.contains("cleanup-secret"));
+        let toast = terminal.toasts.last().expect("clear failure toast");
+        assert!(toast.message.contains("api_key=<redacted>"));
+        assert!(!toast.message.contains("cleanup-secret"));
+    }
+
+    #[test]
+    fn config_clear_error_status_redacts_sensitive_text() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.config_clear_requested = true;
+
+        let _task = terminal
+            .handle_config_clear_result(Err("clear failed: auth_token=clear-secret".to_string()));
+
+        let (status, is_error) = terminal
+            .secret_store_status
+            .as_ref()
+            .expect("clear failure status");
+        assert!(*is_error);
+        assert!(status.contains("auth_token=<redacted>"));
+        assert!(!status.contains("clear-secret"));
+        let toast = terminal.toasts.last().expect("clear failure toast");
+        assert!(toast.message.contains("auth_token=<redacted>"));
+        assert!(!toast.message.contains("clear-secret"));
     }
 
     #[test]
