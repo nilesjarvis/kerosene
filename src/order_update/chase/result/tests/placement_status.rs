@@ -71,7 +71,7 @@ fn chase_place_status_error_keeps_chase_uncertain_for_retry() {
     let _task = terminal.handle_chase_order_status_result(
         1,
         TEST_CLOID.to_string(),
-        Err("status endpoint down".to_string()),
+        Err("status endpoint down: api_key=super-secret".to_string()),
     );
 
     let chase = chase_from_terminal(&terminal, 1);
@@ -85,6 +85,10 @@ fn chase_place_status_error_keeps_chase_uncertain_for_retry() {
         &terminal,
         "placement status still uncertain"
     ));
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(*is_error);
+    assert!(message.contains("api_key=<redacted>"));
+    assert!(!message.contains("super-secret"));
 }
 
 #[test]

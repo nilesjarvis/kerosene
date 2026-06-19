@@ -9,8 +9,11 @@ fn chase_oid_status_error_keeps_chase_uncertain_for_reconciliation() {
     };
     let mut terminal = terminal_with_chase(chase);
 
-    let _task =
-        terminal.handle_chase_order_oid_status_result(1, 9001, Err("status endpoint down".into()));
+    let _task = terminal.handle_chase_order_oid_status_result(
+        1,
+        9001,
+        Err("status endpoint down: token=super-secret".into()),
+    );
 
     let chase = chase_from_terminal(&terminal, 1);
     assert_eq!(
@@ -23,6 +26,10 @@ fn chase_oid_status_error_keeps_chase_uncertain_for_reconciliation() {
         &terminal,
         "order status still uncertain"
     ));
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(*is_error);
+    assert!(message.contains("token=<redacted>"));
+    assert!(!message.contains("super-secret"));
 }
 
 #[test]

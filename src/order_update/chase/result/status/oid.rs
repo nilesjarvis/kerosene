@@ -1,5 +1,6 @@
 use crate::api::OrderStatusResult;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::signing::{ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason};
 
@@ -259,6 +260,7 @@ impl TradingTerminal {
                 self.refresh_account_data_for_order_account(&chase_account_address)
             }
             Err(error) => {
+                let error = redact_sensitive_response_text(&error);
                 if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                     if chase.lifecycle.is_stopping() {
                         chase.lifecycle = ChaseLifecycle::Stopping {
