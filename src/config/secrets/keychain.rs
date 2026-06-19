@@ -1,5 +1,6 @@
 use super::super::{AccountProfile, new_secret_id};
 use super::model::{SECRET_PAYLOAD_SCHEMA, SecretPayload, redacted_secret_payload_parse_error};
+use crate::helpers::redact_sensitive_response_text;
 use zeroize::Zeroizing;
 
 const KEYCHAIN_SERVICE: &str = "kerosene";
@@ -22,8 +23,9 @@ fn keychain_error_message(
 
 fn redacted_keychain_error(secret_id: &str, field: &str, error: &str) -> String {
     let account = keychain_account(secret_id, field);
+    let error = redact_sensitive_response_text(error);
     let mut redacted = if account.trim().is_empty() {
-        error.to_string()
+        error
     } else {
         error.replace(&account, "<keychain-entry>")
     };
@@ -373,11 +375,12 @@ fn profile_read_error(secret_id: &str, error: &str) -> String {
 
 fn redacted_cleanup_error(secret_id: &str, error: &str) -> String {
     let secret_id = secret_id.trim();
-    if secret_id.is_empty() {
+    let redacted = if secret_id.is_empty() {
         error.to_string()
     } else {
         error.replace(secret_id, "<redacted-profile>")
-    }
+    };
+    redact_sensitive_response_text(&redacted)
 }
 
 fn clear_legacy_profile_secret_entries(profile: &AccountProfile) -> Result<(), String> {
@@ -594,6 +597,36 @@ mod tests {
         assert!(rendered.contains("global keychain"));
         assert!(rendered.contains("<keychain-entry>"));
         assert!(!rendered.contains("global:secrets_v1"));
+    }
+
+    #[test]
+    fn keychain_error_message_redacts_secret_like_backend_payload() {
+        let rendered = keychain_error_message(
+            "read",
+            "profile-secret-id",
+            "agent_key",
+            "backend denied profile-secret-id:agent_key token=backend-secret",
+        );
+
+        assert!(rendered.contains("keychain read failed"));
+        assert!(rendered.contains("<keychain-entry>"));
+        assert!(rendered.contains("token=<redacted>"));
+        assert!(!rendered.contains("profile-secret-id"));
+        assert!(!rendered.contains("backend-secret"));
+    }
+
+    #[test]
+    fn profile_cleanup_error_redacts_secret_like_payload() {
+        let rendered = profile_cleanup_error(
+            "profile-secret-id",
+            "delete profile-secret-id failed api_key=cleanup-secret",
+        );
+
+        assert!(rendered.contains("profile credential cleanup failed"));
+        assert!(rendered.contains("<redacted-profile>"));
+        assert!(rendered.contains("api_key=<redacted>"));
+        assert!(!rendered.contains("profile-secret-id"));
+        assert!(!rendered.contains("cleanup-secret"));
     }
 
     #[test]
