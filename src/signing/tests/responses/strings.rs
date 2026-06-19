@@ -125,3 +125,43 @@ fn exchange_response_error_string_body_redacts_sensitive_values() {
         assert!(!summary.contains(secret), "summary leaked {secret}");
     }
 }
+
+#[test]
+fn exchange_response_debug_redacts_raw_sensitive_values() {
+    let response = exchange_response_from_value(
+        serde_json::json!({
+            "status": "err",
+            "response": {
+                "message": "upstream echoed api_key=\"exchange-secret\" Authorization: Bearer bearer-secret",
+                "sig": "0x0123456789abcdef0123456789abcdef01234567"
+            }
+        }),
+        "error response object should deserialize",
+    );
+
+    let debug = format!("{response:?}");
+
+    assert!(debug.contains("<redacted>"));
+    assert!(debug.contains("<redacted-hex>"));
+    for secret in [
+        "exchange-secret",
+        "bearer-secret",
+        "0123456789abcdef0123456789abcdef01234567",
+    ] {
+        assert!(!debug.contains(secret), "debug leaked {secret}");
+    }
+}
+
+#[test]
+fn exchange_response_debug_redacts_parsed_status_errors() {
+    let response = exchange_response(serde_json::json!({
+        "error": "upstream echoed api_key=\"parsed-secret\" Authorization: Bearer parsed-bearer"
+    }));
+
+    let debug = format!("{response:?}");
+
+    assert!(debug.contains("<redacted>"));
+    for secret in ["parsed-secret", "parsed-bearer"] {
+        assert!(!debug.contains(secret), "debug leaked {secret}");
+    }
+}

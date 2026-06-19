@@ -2,6 +2,7 @@ use crate::helpers::{positive_finite_value, redact_sensitive_response_text};
 
 use super::ExchangeResponse;
 use serde_json::Value;
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Exchange Response Analysis
@@ -195,6 +196,31 @@ impl ExchangeResponse {
             }));
         }
         messages
+    }
+}
+
+impl fmt::Debug for ExchangeResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let response_type = self
+            .response
+            .as_ref()
+            .map(|response| response.response_type.as_str());
+        let status_count = self
+            .response
+            .as_ref()
+            .and_then(|response| response.data.as_ref())
+            .map(|data| data.statuses.len());
+
+        f.debug_struct("ExchangeResponse")
+            .field(
+                "status",
+                &redact_sensitive_response_text(self.status.as_str()),
+            )
+            .field("summary", &self.summary())
+            .field("response_type", &response_type)
+            .field("status_count", &status_count)
+            .field("has_raw_response", &self.raw_response.is_some())
+            .finish()
     }
 }
 

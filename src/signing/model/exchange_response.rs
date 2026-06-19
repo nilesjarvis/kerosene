@@ -8,7 +8,7 @@ mod analysis;
 // ---------------------------------------------------------------------------
 
 /// Response from the exchange API.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExchangeResponse {
     pub status: String,
     pub response: Option<ExchangeResponseInner>,

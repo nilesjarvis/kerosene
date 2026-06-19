@@ -1079,11 +1079,12 @@ mod tests {
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
     use crate::order_execution::{
-        OneShotPlacementContext, QuickOrderForm, QuickOrderQuantityProvenance, QuickOrderRecovery,
+        OneShotPlacementContext, PendingLeverageUpdateContext, QuickOrderForm,
+        QuickOrderQuantityProvenance, QuickOrderRecovery,
     };
     use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
     use crate::timeframe::Timeframe;
-    use crate::ws::{HydromancerWsMessage, WsUserData};
+    use crate::ws::{HydromancerWsMessage, TrackedTradeEvent, WsUserData};
 
     #[test]
     fn secret_input_debug_redacts_value() {
@@ -1240,6 +1241,18 @@ mod tests {
                 }),
                 result: Box::new(Err("quick failed".to_string())),
             },
+            Message::OrderLeverageResult {
+                context: PendingLeverageUpdateContext {
+                    address: ADDRESS.to_string(),
+                    symbol_key: "HYPE".to_string(),
+                    display: "HYPE".to_string(),
+                    asset: 42,
+                    dex: None,
+                    is_cross: true,
+                    leverage: 3,
+                },
+                result: Box::new(Err("leverage failed".to_string())),
+            },
             Message::CancelResult {
                 account_address: ADDRESS.into(),
                 pending_indicator_id: None,
@@ -1270,7 +1283,23 @@ mod tests {
                 reconnect_nonce: 2,
                 tracked_addresses: std::sync::Arc::<[String]>::from(vec![ADDRESS.to_string()])
                     .into(),
-                message: HydromancerWsMessage::Connecting,
+                message: HydromancerWsMessage::TrackedTrade(TrackedTradeEvent {
+                    address: ADDRESS.to_string(),
+                    coin: "HYPE".to_string(),
+                    price: 10.0,
+                    size: 1.0,
+                    is_buy: true,
+                    time_ms: 100,
+                    dir: "Open Long".to_string(),
+                    start_position: Some(0.0),
+                    closed_pnl: 0.0,
+                    fee: 0.01,
+                    fee_token: "USDC".to_string(),
+                    tid: Some(123),
+                    hash: "0xabc".to_string(),
+                    oid: Some(456),
+                    tx_index: 7,
+                }),
             },
             Message::AccountDataLoaded(
                 ADDRESS.into(),

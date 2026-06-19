@@ -125,7 +125,16 @@ fn redact_sensitive_key_values(text: &str) -> String {
         };
 
         redacted.push_str(&text[index..value_start]);
-        if text.as_bytes().get(value_start) == Some(&b'"') {
+        if text.as_bytes().get(value_start) == Some(&b'\\')
+            && text.as_bytes().get(value_start + 1) == Some(&b'"')
+        {
+            redacted.push_str("\\\"<redacted>");
+            if text.as_bytes().get(value_end.saturating_sub(2)) == Some(&b'\\')
+                && text.as_bytes().get(value_end.saturating_sub(1)) == Some(&b'"')
+            {
+                redacted.push_str("\\\"");
+            }
+        } else if text.as_bytes().get(value_start) == Some(&b'"') {
             redacted.push('"');
             redacted.push_str("<redacted>");
             if text.as_bytes().get(value_end.saturating_sub(1)) == Some(&b'"') {
@@ -179,6 +188,20 @@ fn sensitive_value_bounds(text: &str, key_start: usize, key_end: usize) -> Optio
     }
 
     let value_start = cursor;
+    if bytes.get(cursor) == Some(&b'\\')
+        && matches!(bytes.get(cursor + 1), Some(b'"') | Some(b'\''))
+    {
+        let quote = bytes[cursor + 1];
+        cursor += 2;
+        while cursor + 1 < bytes.len() {
+            if bytes[cursor] == b'\\' && bytes[cursor + 1] == quote {
+                return Some((value_start, cursor + 2));
+            }
+            cursor += 1;
+        }
+        return Some((value_start, bytes.len()));
+    }
+
     if matches!(bytes.get(cursor), Some(b'"') | Some(b'\'')) {
         let quote = bytes[cursor];
         cursor += 1;
@@ -335,6 +358,15 @@ mod tests {
         ] {
             assert!(!rendered.contains(secret), "excerpt leaked {secret}");
         }
+    }
+
+    #[test]
+    fn sensitive_response_excerpt_redacts_escaped_quoted_key_values() {
+        let text = r#"{"error":"upstream echoed api_key=\"escaped-secret\""}"#;
+        let rendered = sensitive_response_excerpt(text, 240);
+
+        assert!(rendered.contains(r#"api_key=\"<redacted>\""#));
+        assert!(!rendered.contains("escaped-secret"));
     }
 
     #[test]

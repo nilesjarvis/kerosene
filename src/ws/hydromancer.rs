@@ -107,7 +107,7 @@ where
     true
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LiquidationEvent {
     pub coin: String,
     pub price: f64,
@@ -119,7 +119,22 @@ pub struct LiquidationEvent {
     pub tx_index: u64,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for LiquidationEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LiquidationEvent")
+            .field("coin", &self.coin)
+            .field("price", &self.price)
+            .field("size", &self.size)
+            .field("is_buy", &self.is_buy)
+            .field("time_ms", &self.time_ms)
+            .field("method", &self.method)
+            .field("liquidated_user", &"<redacted>")
+            .field("tx_index", &self.tx_index)
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub struct TrackedTradeEvent {
     pub address: String,
     pub coin: String,
@@ -136,6 +151,28 @@ pub struct TrackedTradeEvent {
     pub hash: String,
     pub oid: Option<u64>,
     pub tx_index: u64,
+}
+
+impl fmt::Debug for TrackedTradeEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrackedTradeEvent")
+            .field("address", &"<redacted>")
+            .field("coin", &self.coin)
+            .field("price", &self.price)
+            .field("size", &self.size)
+            .field("is_buy", &self.is_buy)
+            .field("time_ms", &self.time_ms)
+            .field("dir", &self.dir)
+            .field("start_position", &self.start_position)
+            .field("closed_pnl", &self.closed_pnl)
+            .field("fee", &self.fee)
+            .field("fee_token", &self.fee_token)
+            .field("tid", &self.tid)
+            .field("hash", &self.hash)
+            .field("oid", &self.oid)
+            .field("tx_index", &self.tx_index)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -222,5 +259,54 @@ mod tests {
 
         assert_ne!(hash_value(&first), hash_value(&rotated_same_generation));
         assert_ne!(hash_value(&first), hash_value(&next_generation));
+    }
+
+    #[test]
+    fn hydromancer_tracked_trade_debug_redacts_address() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+        let message = HydromancerWsMessage::TrackedTrade(TrackedTradeEvent {
+            address: ADDRESS.to_string(),
+            coin: "HYPE".to_string(),
+            price: 10.0,
+            size: 1.0,
+            is_buy: true,
+            time_ms: 100,
+            dir: "Open Long".to_string(),
+            start_position: Some(0.0),
+            closed_pnl: 0.0,
+            fee: 0.01,
+            fee_token: "USDC".to_string(),
+            tid: Some(123),
+            hash: "0xabc".to_string(),
+            oid: Some(456),
+            tx_index: 7,
+        });
+
+        let debug = format!("{message:?}");
+
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains(ADDRESS));
+    }
+
+    #[test]
+    fn hydromancer_liquidation_debug_redacts_user_address() {
+        const ADDRESS: &str = "0xdef0000000000000000000000000000000000000";
+
+        let message = HydromancerWsMessage::Event(LiquidationEvent {
+            coin: "HYPE".to_string(),
+            price: 10.0,
+            size: 1.0,
+            is_buy: false,
+            time_ms: 100,
+            method: "market".to_string(),
+            liquidated_user: ADDRESS.to_string(),
+            tx_index: 7,
+        });
+
+        let debug = format!("{message:?}");
+
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains(ADDRESS));
     }
 }

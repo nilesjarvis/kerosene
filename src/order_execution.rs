@@ -344,7 +344,7 @@ impl TradingTerminal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PendingLeverageUpdateContext {
     pub(crate) address: String,
     pub(crate) symbol_key: String,
@@ -353,6 +353,20 @@ pub(crate) struct PendingLeverageUpdateContext {
     pub(crate) dex: Option<String>,
     pub(crate) is_cross: bool,
     pub(crate) leverage: u32,
+}
+
+impl fmt::Debug for PendingLeverageUpdateContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingLeverageUpdateContext")
+            .field("address", &"<redacted>")
+            .field("symbol_key", &self.symbol_key)
+            .field("display", &self.display)
+            .field("asset", &self.asset)
+            .field("dex", &self.dex)
+            .field("is_cross", &self.is_cross)
+            .field("leverage", &self.leverage)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
