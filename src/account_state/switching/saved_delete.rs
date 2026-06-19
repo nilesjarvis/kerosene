@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use crate::journal::JournalAccountState;
 use crate::message::Message;
 
@@ -256,6 +257,7 @@ impl TradingTerminal {
         if durable_config_delete
             && let Err(error) = self.persist_config_immediately_with(&mut save_config)
         {
+            let error = redact_sensitive_response_text(&error);
             if let Some(rollback) = rollback.take() {
                 rollback.restore(self);
             }
@@ -272,6 +274,7 @@ impl TradingTerminal {
                 Ok(()) => {
                     self.clear_pending_keychain_profile_deletion(&secret_id);
                     if let Err(error) = self.persist_config_immediately_with(&mut save_config) {
+                        let error = redact_sensitive_response_text(&error);
                         self.secret_store_status = Some((
                             "Deleted account, but credential cleanup state could not be saved; cleanup may retry on next startup".to_string(),
                             true,

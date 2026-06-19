@@ -237,7 +237,7 @@ fn encrypted_account_delete_save_failure_restores_account_and_original_blob() {
             )
             .expect("post-delete encrypted payload should decrypt");
             assert_eq!(payload.profile_agent_key("account-b"), None);
-            Err("disk full".to_string())
+            Err("disk full: api_key=delete-secret".to_string())
         },
         |_profile| {
             keychain_called.set(true);
@@ -279,7 +279,12 @@ fn encrypted_account_delete_save_failure_restores_account_and_original_blob() {
     );
     let toast = last_toast_or_panic(&terminal);
     assert!(toast.is_error);
-    assert!(toast.message.contains("config save failed: disk full"));
+    assert!(
+        toast
+            .message
+            .contains("config save failed: disk full: api_key=<redacted>")
+    );
+    assert!(!toast.message.contains("delete-secret"));
 }
 
 #[test]
@@ -529,7 +534,7 @@ fn os_keychain_account_delete_save_failure_does_not_clear_keychain() {
                 config.pending_keychain_profile_deletions.as_slice(),
                 ["account-b"]
             );
-            Err("disk full".to_string())
+            Err("disk full: auth_token=delete-secret".to_string())
         },
         |_profile| {
             order.borrow_mut().push("clear-keychain".to_string());
@@ -549,7 +554,12 @@ fn os_keychain_account_delete_save_failure_does_not_clear_keychain() {
     assert!(terminal.journal.account_states.contains_key("account-b"));
     let toast = last_toast_or_panic(&terminal);
     assert!(toast.is_error);
-    assert!(toast.message.contains("config save failed: disk full"));
+    assert!(
+        toast
+            .message
+            .contains("config save failed: disk full: auth_token=<redacted>")
+    );
+    assert!(!toast.message.contains("delete-secret"));
 }
 
 #[test]
@@ -633,6 +643,73 @@ fn os_keychain_account_delete_saves_pending_intent_before_keychain_cleanup() {
     let toast = last_toast_or_panic(&terminal);
     assert!(!toast.is_error);
     assert!(toast.message.contains("Deleted account: Account B"));
+}
+
+#[test]
+fn os_keychain_account_delete_cleanup_state_save_failure_redacts_toast() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.desktop_notifications = false;
+    terminal.accounts = vec![
+        account(
+            "account-a",
+            "Account A",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        account(
+            "account-b",
+            "Account B",
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+    ];
+    terminal.active_account_index = 0;
+    terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+    terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+    let order = RefCell::new(Vec::new());
+
+    let _task = terminal.delete_saved_account_task_with_hooks(
+        1,
+        |_terminal, _payload| None,
+        |config| {
+            let events = order.borrow().clone();
+            match events.as_slice() {
+                [] => {
+                    order.borrow_mut().push("save-with-intent".to_string());
+                    assert_eq!(
+                        config.pending_keychain_profile_deletions.as_slice(),
+                        ["account-b"]
+                    );
+                    Ok(())
+                }
+                [first, second] if first == "save-with-intent" && second == "clear-keychain" => {
+                    order.borrow_mut().push("save-without-intent".to_string());
+                    assert!(config.pending_keychain_profile_deletions.is_empty());
+                    Err("cleanup state failed: signature=cleanup-secret".to_string())
+                }
+                other => panic!("unexpected save order: {other:?}"),
+            }
+        },
+        |profile| {
+            assert_eq!(order.borrow().as_slice(), ["save-with-intent"]);
+            order.borrow_mut().push("clear-keychain".to_string());
+            assert_eq!(profile.secret_id, "account-b");
+            Ok(())
+        },
+    );
+
+    assert_eq!(
+        order.borrow().as_slice(),
+        ["save-with-intent", "clear-keychain", "save-without-intent"]
+    );
+    assert_eq!(terminal.accounts.len(), 1);
+    assert_eq!(terminal.accounts[0].secret_id, "account-a");
+    let toast = last_toast_or_panic(&terminal);
+    assert!(toast.is_error);
+    assert!(
+        toast
+            .message
+            .contains("cleanup state save failed: cleanup state failed: signature=<redacted>")
+    );
+    assert!(!toast.message.contains("cleanup-secret"));
 }
 
 #[test]
