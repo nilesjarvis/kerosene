@@ -1,6 +1,7 @@
 use crate::{api::CLIENT, helpers::sensitive_response_snippet};
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
@@ -15,10 +16,19 @@ const MAX_ABS_FUNDING_RATE: f64 = 1.0;
 
 pub const HYDROMANCER_API_URL: &str = "https://api.hydromancer.xyz/info";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct FundingRatePoint {
     pub(crate) time_ms: u64,
     pub(crate) rate: f64,
+}
+
+impl fmt::Debug for FundingRatePoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FundingRatePoint")
+            .field("time_ms", &self.time_ms)
+            .field("rate", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -33,7 +43,7 @@ struct FundingHistoryRequest<'a> {
     limit: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct RawFundingRatePoint {
     #[serde(rename = "fundingRate")]
     funding_rate: String,

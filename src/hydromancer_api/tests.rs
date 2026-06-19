@@ -1,4 +1,4 @@
-use super::parse_funding_history_response;
+use super::{FundingRatePoint, parse_funding_history_response};
 
 #[test]
 fn parses_and_sorts_funding_history() {
@@ -14,6 +14,20 @@ fn parses_and_sorts_funding_history() {
     assert_eq!(points[0].time_ms, 1778198400069);
     assert_eq!(points[0].rate, -0.000003);
     assert_eq!(points[1].rate, 0.0000125);
+}
+
+#[test]
+fn funding_rate_point_debug_redacts_rate() {
+    let point = FundingRatePoint {
+        time_ms: 1778198400069,
+        rate: 0.0000125,
+    };
+
+    let rendered = format!("{point:?}");
+
+    assert!(rendered.contains("time_ms: 1778198400069"));
+    assert!(rendered.contains("rate: \"<redacted>\""));
+    assert!(!rendered.contains("0.0000125"));
 }
 
 #[test]
