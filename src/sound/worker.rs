@@ -1,6 +1,7 @@
 use super::spec::{SAMPLE_RATE, sound_spec};
 use super::synthesis::generate_samples;
 use super::{SoundKind, SoundRequest, SoundSource, report_sound_status};
+use crate::helpers::path_neutral_io_error_detail;
 
 use rodio::Decoder;
 use rodio::Source;
@@ -86,26 +87,10 @@ fn play_request(handle: &rodio::OutputStreamHandle, request: SoundRequest) -> Re
 }
 
 pub(super) fn custom_wav_read_failure(error: &std::io::Error) -> String {
-    format!("read custom WAV file failed: {}", io_error_detail(error))
-}
-
-fn io_error_detail(error: &std::io::Error) -> String {
-    let kind = match error.kind() {
-        std::io::ErrorKind::NotFound => "not found",
-        std::io::ErrorKind::PermissionDenied => "permission denied",
-        std::io::ErrorKind::AlreadyExists => "already exists",
-        std::io::ErrorKind::InvalidInput => "invalid input",
-        std::io::ErrorKind::InvalidData => "invalid data",
-        std::io::ErrorKind::Interrupted => "interrupted",
-        std::io::ErrorKind::UnexpectedEof => "unexpected EOF",
-        std::io::ErrorKind::WriteZero => "write failed",
-        _ => "I/O error",
-    };
-
-    match error.raw_os_error() {
-        Some(code) => format!("{kind} (os error {code})"),
-        None => kind.to_string(),
-    }
+    format!(
+        "read custom WAV file failed: {}",
+        path_neutral_io_error_detail(error)
+    )
 }
 
 fn play_wav_bytes(

@@ -81,6 +81,25 @@ pub fn redact_wallet_address_debug_value(value: &str) -> &str {
     }
 }
 
+pub fn path_neutral_io_error_detail(error: &std::io::Error) -> String {
+    let kind = match error.kind() {
+        std::io::ErrorKind::NotFound => "not found",
+        std::io::ErrorKind::PermissionDenied => "permission denied",
+        std::io::ErrorKind::AlreadyExists => "already exists",
+        std::io::ErrorKind::InvalidInput => "invalid input",
+        std::io::ErrorKind::InvalidData => "invalid data",
+        std::io::ErrorKind::Interrupted => "interrupted",
+        std::io::ErrorKind::UnexpectedEof => "unexpected EOF",
+        std::io::ErrorKind::WriteZero => "write failed",
+        _ => "I/O error",
+    };
+
+    match error.raw_os_error() {
+        Some(code) => format!("{kind} (os error {code})"),
+        None => kind.to_string(),
+    }
+}
+
 fn redact_sensitive_key_values(text: &str) -> String {
     const KEYS: &[&str] = &[
         "authorization",
@@ -513,6 +532,20 @@ mod tests {
             redact_wallet_address_debug_value("0xabc0...0000"),
             "0xabc0...0000"
         );
+    }
+
+    #[test]
+    fn path_neutral_io_error_detail_omits_custom_payload() {
+        let error = std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "denied /home/alice/secret-path api_key=io-secret",
+        );
+
+        let rendered = path_neutral_io_error_detail(&error);
+
+        assert_eq!(rendered, "permission denied");
+        assert!(!rendered.contains("/home/alice"));
+        assert!(!rendered.contains("io-secret"));
     }
 
     #[test]

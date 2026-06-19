@@ -6,6 +6,7 @@ use crate::config::{
     normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
     normalize_ui_scale,
 };
+use crate::helpers::path_neutral_io_error_detail;
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
 use iced::Task;
@@ -45,26 +46,7 @@ pub(super) fn ensure_import_file_within_limit(
 }
 
 pub(super) fn import_io_failure(action: &str, error: &std::io::Error) -> String {
-    format!("{action} failed: {}", import_io_error_detail(error))
-}
-
-fn import_io_error_detail(error: &std::io::Error) -> String {
-    let kind = match error.kind() {
-        std::io::ErrorKind::NotFound => "not found",
-        std::io::ErrorKind::PermissionDenied => "permission denied",
-        std::io::ErrorKind::AlreadyExists => "already exists",
-        std::io::ErrorKind::InvalidInput => "invalid input",
-        std::io::ErrorKind::InvalidData => "invalid data",
-        std::io::ErrorKind::Interrupted => "interrupted",
-        std::io::ErrorKind::UnexpectedEof => "unexpected EOF",
-        std::io::ErrorKind::WriteZero => "write failed",
-        _ => "I/O error",
-    };
-
-    match error.raw_os_error() {
-        Some(code) => format!("{kind} (os error {code})"),
-        None => kind.to_string(),
-    }
+    format!("{action} failed: {}", path_neutral_io_error_detail(error))
 }
 
 impl TradingTerminal {
