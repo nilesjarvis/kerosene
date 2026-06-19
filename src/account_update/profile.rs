@@ -1,6 +1,7 @@
 use crate::account_state::PositionsSortColumn;
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
@@ -172,6 +173,7 @@ impl TradingTerminal {
                             )
                         }
                         Err(error) => {
+                            let error = redact_sensitive_response_text(&error);
                             self.secret_store_status = Some((
                                 format!(
                                     "Config save failed: {error}. Wallet address was not changed; retry after config persistence is available."
@@ -196,6 +198,7 @@ impl TradingTerminal {
                     .as_ref()
                     .map(|(message, _)| message.clone())
                     .unwrap_or_else(|| "Credential storage update failed".to_string());
+                let detail = redact_sensitive_response_text(&detail);
                 self.wallet_address_input = previous_wallet_address_input;
                 self.wallet_key_input = previous_wallet_key_input;
                 self.accounts[self.active_account_index] = previous_profile;
@@ -206,6 +209,7 @@ impl TradingTerminal {
                             &mut save_config,
                         )
                 {
+                    let error = redact_sensitive_response_text(&error);
                     self.secret_store_status = Some((
                         format!(
                             "{detail}. Wallet address was not changed, but saving the rollback failed: {error}. Retry after config persistence is available."
@@ -624,6 +628,32 @@ mod tests {
     }
 
     #[test]
+    fn wallet_address_edit_config_save_failure_redacts_status() {
+        let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        let keychain_called = Cell::new(false);
+
+        let _task = terminal.update_wallet_address_input_with_hooks(
+            ADDRESS_B.to_string(),
+            |_cfg| Err("write failed: api_key=profile-secret".to_string()),
+            |_terminal, _accounts, _removed_profile_secret_id| {
+                keychain_called.set(true);
+                true
+            },
+        );
+
+        assert!(!keychain_called.get());
+        assert_eq!(terminal.wallet_address_input, ADDRESS_A);
+        assert_eq!(terminal.accounts[0].wallet_address, ADDRESS_A);
+        let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("profile-secret"));
+        assert!(message.contains("Wallet address was not changed"));
+    }
+
+    #[test]
     fn wallet_address_edit_os_keychain_failure_rolls_back_saved_metadata() {
         let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
         terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
@@ -667,6 +697,45 @@ mod tests {
         assert!(message.contains("Keychain update failed: denied"));
         assert!(message.contains("Wallet address was not changed"));
         assert!(!message.contains("rollback failed"));
+    }
+
+    #[test]
+    fn wallet_address_edit_rollback_save_failure_redacts_status() {
+        let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        let save_count = Cell::new(0);
+
+        let _task = terminal.update_wallet_address_input_with_hooks(
+            ADDRESS_B.to_string(),
+            |_cfg| {
+                let count = save_count.get();
+                save_count.set(count + 1);
+                if count == 0 {
+                    Ok(())
+                } else {
+                    Err("rollback failed: signature=rollback-secret".to_string())
+                }
+            },
+            |terminal, _accounts, _removed_profile_secret_id| {
+                terminal.secret_store_status = Some((
+                    "Keychain update failed: auth_token=keychain-secret".to_string(),
+                    true,
+                ));
+                false
+            },
+        );
+
+        assert_eq!(save_count.get(), 2);
+        assert_eq!(terminal.wallet_address_input, ADDRESS_A);
+        assert_eq!(terminal.accounts[0].wallet_address, ADDRESS_A);
+        let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(message.contains("auth_token=<redacted>"));
+        assert!(message.contains("signature=<redacted>"));
+        assert!(!message.contains("keychain-secret"));
+        assert!(!message.contains("rollback-secret"));
+        assert!(message.contains("Wallet address was not changed"));
     }
 
     #[test]

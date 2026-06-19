@@ -3,6 +3,7 @@ mod refresh;
 use crate::account::fetch_account_data_scoped_with_provider;
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
@@ -153,6 +154,7 @@ impl TradingTerminal {
                                 )
                             }
                             Err(error) => {
+                                let error = redact_sensitive_response_text(&error);
                                 self.secret_store_status = Some((
                                     format!(
                                         "Config save failed: {error}. Wallet was not connected; retry after config persistence is available."
@@ -177,6 +179,7 @@ impl TradingTerminal {
                         .as_ref()
                         .map(|(message, _)| message.clone())
                         .unwrap_or_else(|| "Credential storage update failed".to_string());
+                    let detail = redact_sensitive_response_text(&detail);
                     self.accounts[self.active_account_index] = previous_profile;
                     self.wallet_key_input = previous_wallet_key_input;
                     if self.secret_storage_mode == config::CredentialStorageMode::OsKeychain
@@ -186,6 +189,7 @@ impl TradingTerminal {
                                 &mut save_config,
                             )
                     {
+                        let error = redact_sensitive_response_text(&error);
                         self.secret_store_status = Some((
                             format!(
                                 "{detail}. Wallet was not connected, but saving the rollback failed: {error}. Retry after config persistence is available."
@@ -959,6 +963,34 @@ mod tests {
     }
 
     #[test]
+    fn connect_wallet_config_save_failure_redacts_status() {
+        let mut terminal =
+            terminal_with_encrypted_account(TEST_ACCOUNT, "old-account-agent-key", true);
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = OTHER_ACCOUNT.to_string();
+        let keychain_called = Cell::new(false);
+
+        let _task = terminal.connect_wallet_with_hooks(
+            |_cfg| Err("write failed: api_key=connect-secret".to_string()),
+            |_terminal, _accounts, _removed_profile_secret_id| {
+                keychain_called.set(true);
+                true
+            },
+        );
+
+        assert!(!keychain_called.get());
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert_eq!(terminal.wallet_address_input, TEST_ACCOUNT);
+        let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("connect-secret"));
+        assert!(message.contains("Wallet was not connected"));
+    }
+
+    #[test]
     fn connect_wallet_os_keychain_failure_rolls_back_saved_metadata_and_does_not_connect() {
         let mut terminal =
             terminal_with_encrypted_account(TEST_ACCOUNT, "old-account-agent-key", true);
@@ -1010,6 +1042,47 @@ mod tests {
         assert!(message.contains("Keychain update failed: denied"));
         assert!(message.contains("Wallet was not connected"));
         assert!(!message.contains("rollback failed"));
+    }
+
+    #[test]
+    fn connect_wallet_rollback_save_failure_redacts_status() {
+        let mut terminal =
+            terminal_with_encrypted_account(TEST_ACCOUNT, "old-account-agent-key", true);
+        terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+        terminal.secret_storage_selection = config::CredentialStorageMode::OsKeychain;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = OTHER_ACCOUNT.to_string();
+        let save_count = Cell::new(0);
+
+        let _task = terminal.connect_wallet_with_hooks(
+            |_cfg| {
+                let count = save_count.get();
+                save_count.set(count + 1);
+                if count == 0 {
+                    Ok(())
+                } else {
+                    Err("rollback failed: signature=rollback-secret".to_string())
+                }
+            },
+            |terminal, _accounts, _removed_profile_secret_id| {
+                terminal.secret_store_status = Some((
+                    "Keychain update failed: auth_token=keychain-secret".to_string(),
+                    true,
+                ));
+                false
+            },
+        );
+
+        assert_eq!(save_count.get(), 2);
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert_eq!(terminal.wallet_address_input, TEST_ACCOUNT);
+        let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(message.contains("auth_token=<redacted>"));
+        assert!(message.contains("signature=<redacted>"));
+        assert!(!message.contains("keychain-secret"));
+        assert!(!message.contains("rollback-secret"));
+        assert!(message.contains("Wallet was not connected"));
     }
 
     #[test]
