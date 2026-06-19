@@ -1,6 +1,6 @@
 use crate::helpers::{finite_value, positive_finite_value};
 
-use std::{collections::BTreeMap, time::Instant};
+use std::{collections::BTreeMap, fmt, time::Instant};
 
 // ---------------------------------------------------------------------------
 // HYPE ETF State
@@ -56,7 +56,7 @@ impl HypeEtfTicker {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct HypeEtfState {
     pub(crate) view: HypeEtfView,
     pub(crate) data: Option<HypeEtfData>,
@@ -66,10 +66,41 @@ pub(crate) struct HypeEtfState {
     pub(crate) refresh_request_id: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+impl fmt::Debug for HypeEtfState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeEtfState")
+            .field("view", &self.view)
+            .field(
+                "data_funds_len",
+                &self.data.as_ref().map(|data| data.funds.len()),
+            )
+            .field("loading", &self.loading)
+            .field("error", &self.error.as_ref().map(|_| "<redacted>"))
+            .field("last_fetch", &self.last_fetch)
+            .field("refresh_request_id", &self.refresh_request_id)
+            .finish()
+    }
+}
+
+#[derive(Clone, Default)]
 pub(crate) struct HypeEtfData {
     pub(crate) funds: Vec<HypeEtfFund>,
     pub(crate) warnings: Vec<String>,
+}
+
+impl fmt::Debug for HypeEtfData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let tickers = self
+            .funds
+            .iter()
+            .map(|fund| fund.ticker)
+            .collect::<Vec<_>>();
+        f.debug_struct("HypeEtfData")
+            .field("funds_len", &self.funds.len())
+            .field("fund_tickers", &tickers)
+            .field("warnings_len", &self.warnings.len())
+            .finish()
+    }
 }
 
 impl HypeEtfData {
@@ -102,7 +133,7 @@ impl HypeEtfData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct HypeEtfFund {
     pub(crate) ticker: HypeEtfTicker,
     pub(crate) as_of_date: Option<String>,
@@ -124,13 +155,62 @@ pub(crate) struct HypeEtfFund {
     pub(crate) daily_flows: Vec<HypeEtfDailyFlow>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl fmt::Debug for HypeEtfFund {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeEtfFund")
+            .field("ticker", &self.ticker)
+            .field("has_as_of_date", &self.as_of_date.is_some())
+            .field("has_updated_at", &self.updated_at.is_some())
+            .field("has_net_assets_usd", &self.net_assets_usd.is_some())
+            .field("has_hype_exposure", &self.hype_exposure.is_some())
+            .field("has_shares_outstanding", &self.shares_outstanding.is_some())
+            .field("has_nav_per_share", &self.nav_per_share.is_some())
+            .field("has_market_price", &self.market_price.is_some())
+            .field("has_nav_change_pct", &self.nav_change_pct.is_some())
+            .field(
+                "has_market_price_change_pct",
+                &self.market_price_change_pct.is_some(),
+            )
+            .field(
+                "has_premium_discount_pct",
+                &self.premium_discount_pct.is_some(),
+            )
+            .field("has_median_spread_pct", &self.median_spread_pct.is_some())
+            .field("has_daily_volume", &self.daily_volume.is_some())
+            .field("has_thirty_day_volume", &self.thirty_day_volume.is_some())
+            .field(
+                "has_hype_reference_price",
+                &self.hype_reference_price.is_some(),
+            )
+            .field(
+                "has_staking_net_rate_pct",
+                &self.staking_net_rate_pct.is_some(),
+            )
+            .field(
+                "has_staking_current_pct",
+                &self.staking_current_pct.is_some(),
+            )
+            .field("daily_flows_len", &self.daily_flows.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub(crate) struct HypeEtfDailyFlow {
     pub(crate) date: String,
     pub(crate) amount_usd: f64,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+impl fmt::Debug for HypeEtfDailyFlow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeEtfDailyFlow")
+            .field("date", &self.date)
+            .field("amount_usd", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub(crate) struct HypeEtfTotals {
     pub(crate) net_assets_usd: Option<f64>,
     pub(crate) hype_exposure: Option<f64>,
@@ -138,6 +218,25 @@ pub(crate) struct HypeEtfTotals {
     pub(crate) daily_volume: Option<f64>,
     pub(crate) weighted_premium_discount_pct: Option<f64>,
     pub(crate) weighted_median_spread_pct: Option<f64>,
+}
+
+impl fmt::Debug for HypeEtfTotals {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeEtfTotals")
+            .field("has_net_assets_usd", &self.net_assets_usd.is_some())
+            .field("has_hype_exposure", &self.hype_exposure.is_some())
+            .field("has_shares_outstanding", &self.shares_outstanding.is_some())
+            .field("has_daily_volume", &self.daily_volume.is_some())
+            .field(
+                "has_weighted_premium_discount_pct",
+                &self.weighted_premium_discount_pct.is_some(),
+            )
+            .field(
+                "has_weighted_median_spread_pct",
+                &self.weighted_median_spread_pct.is_some(),
+            )
+            .finish()
+    }
 }
 
 impl HypeEtfTotals {
