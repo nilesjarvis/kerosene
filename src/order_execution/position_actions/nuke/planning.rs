@@ -3,16 +3,29 @@ use crate::api::MarketType;
 use crate::helpers::{finite_value, positive_finite_value};
 use crate::signing::float_to_wire;
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // NUKE Position Planning
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct NukePositionOrder {
     pub(crate) asset: u32,
     pub(crate) is_buy: bool,
     pub(crate) price: String,
     pub(crate) size: String,
+}
+
+impl fmt::Debug for NukePositionOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NukePositionOrder")
+            .field("asset", &self.asset)
+            .field("is_buy", &self.is_buy)
+            .field("price", &"<redacted>")
+            .field("size", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Reason an active visible position could not be turned into a closing
@@ -50,13 +63,25 @@ pub(in crate::order_execution::position_actions::nuke) struct NukeSymbolInfo {
     pub(in crate::order_execution::position_actions::nuke) market_type: MarketType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(in crate::order_execution::position_actions::nuke) struct NukePositionInput {
     pub(in crate::order_execution::position_actions::nuke) coin: String,
     pub(in crate::order_execution::position_actions::nuke) raw_size: String,
     pub(in crate::order_execution::position_actions::nuke) is_hidden: bool,
     pub(in crate::order_execution::position_actions::nuke) sym: Option<NukeSymbolInfo>,
     pub(in crate::order_execution::position_actions::nuke) mid: Option<f64>,
+}
+
+impl fmt::Debug for NukePositionInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NukePositionInput")
+            .field("coin", &"<redacted>")
+            .field("raw_size", &"<redacted>")
+            .field("is_hidden", &self.is_hidden)
+            .field("sym", &self.sym)
+            .field("mid", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,11 +113,21 @@ pub(in crate::order_execution::position_actions::nuke) fn classify_nuke_position
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct NukePlan {
     pub(crate) ready: Vec<(String, NukePositionOrder)>,
     pub(crate) skipped: Vec<(String, NukeSkipReason)>,
     pub(crate) hidden_skipped: Vec<(String, NukeSkipReason)>,
+}
+
+impl fmt::Debug for NukePlan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NukePlan")
+            .field("ready_count", &self.ready.len())
+            .field("skipped_count", &self.skipped.len())
+            .field("hidden_skipped_count", &self.hidden_skipped.len())
+            .finish()
+    }
 }
 
 impl NukePlan {
