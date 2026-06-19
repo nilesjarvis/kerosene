@@ -120,6 +120,26 @@ fn chase_place_assigns_unique_cloid_per_place_attempt() {
 }
 
 #[test]
+fn initial_book_load_failure_redacts_provider_error() {
+    let mut terminal = terminal_ready_for_chase_place();
+    terminal.chase_orders.insert(1, chase());
+    terminal.pending_order_action = Some(PendingOrderAction::ChaseBuy);
+
+    let _task = terminal.handle_chase_initial_book_loaded(
+        1,
+        Err("l2Book request failed: api_key=super-secret".to_string()),
+    );
+
+    assert!(terminal.chase_orders.is_empty());
+    assert_eq!(terminal.pending_order_action, None);
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(*is_error);
+    assert!(message.contains("Chase stopped: book load failed"));
+    assert!(message.contains("api_key=<redacted>"));
+    assert!(!message.contains("super-secret"));
+}
+
+#[test]
 fn startup_chase_removal_before_exchange_request_clears_pending_action() {
     let mut terminal = terminal_ready_for_chase_place();
     let mut chase = chase();

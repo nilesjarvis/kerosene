@@ -2,7 +2,7 @@ use super::{chase_account_matches, chase_reprice_limit_reason};
 
 use crate::api::{MarketType, OrderBook};
 use crate::app_state::TradingTerminal;
-use crate::helpers::positive_finite_value;
+use crate::helpers::{positive_finite_value, redact_sensitive_response_text};
 use crate::message::Message;
 use crate::order_execution::{
     OrderSurface, PreparedExchangeOrder, open_order_matches_chase_identity, place_order_task,
@@ -51,6 +51,7 @@ impl TradingTerminal {
                 self.chase_place_at_best(chase_id, best)
             }
             Err(error) => {
+                let error = redact_sensitive_response_text(&error);
                 self.order_status =
                     Some((format!("Chase stopped: book load failed: {error}"), true));
                 self.pending_order_action = None;
