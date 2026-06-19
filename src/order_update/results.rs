@@ -58,6 +58,10 @@ impl PendingOneShotStatusRequest {
             && self.account_address == context.account_address
             && self.cloid == context.cloid
     }
+
+    pub(crate) fn is_for_account(&self, account_address: &str) -> bool {
+        self.account_address == account_address
+    }
 }
 
 pub(crate) fn classify_execution_result(
@@ -387,6 +391,19 @@ impl TradingTerminal {
         request_id
     }
 
+    pub(crate) fn clear_pending_one_shot_status_request_for_account(
+        &mut self,
+        account_address: &str,
+    ) {
+        if self
+            .pending_one_shot_status_request
+            .as_ref()
+            .is_some_and(|pending| pending.is_for_account(account_address))
+        {
+            self.pending_one_shot_status_request = None;
+        }
+    }
+
     fn clear_nuke_execution_if_current(&mut self, execution_id: u64) {
         if self
             .pending_nuke_execution
@@ -461,15 +478,16 @@ impl TradingTerminal {
         if !request_matches {
             return Task::none();
         }
-        self.pending_one_shot_status_request = None;
 
         if !self.one_shot_context_matches_current_account(&context) {
+            self.pending_one_shot_status_request = None;
             return Task::none();
         }
 
         let display = self.display_name_for_symbol(&context.symbol_key);
         match result {
             Ok(status) if status.is_open() && context.order_kind.allows_resting_response() => {
+                self.pending_one_shot_status_request = None;
                 self.set_order_status(
                     format!(
                         "{} placement confirmed by orderStatus for {}: {}",
@@ -481,10 +499,12 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_open() => {
+                self.pending_one_shot_status_request = None;
                 return self
                     .handle_unexpected_one_shot_resting_order(&context, &status.raw_summary);
             }
             Ok(status) if status.is_filled() => {
+                self.pending_one_shot_status_request = None;
                 self.set_order_status(
                     format!(
                         "{} placement filled according to orderStatus for {}: {}",
@@ -496,6 +516,7 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_definitive_no_fill_terminal() => {
+                self.pending_one_shot_status_request = None;
                 self.set_order_status(
                     format!(
                         "{} placement rejected according to orderStatus for {}: {}",
@@ -509,12 +530,13 @@ impl TradingTerminal {
             Ok(status) if status.is_no_fill_terminal() => {
                 self.set_order_status(
                     format!(
-                        "{} placement resolved without fill for {}: {}",
+                        "{} placement status still uncertain for {} ({}): {}; refreshing account data",
                         context.placement_label(),
                         display,
+                        context.cloid,
                         status.raw_summary
                     ),
-                    false,
+                    true,
                 );
             }
             Ok(status) if status.is_missing() => {

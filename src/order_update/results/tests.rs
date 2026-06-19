@@ -163,6 +163,15 @@ fn begin_one_shot_status_request(
     terminal.begin_one_shot_status_request(context)
 }
 
+fn finish_current_account_refresh(terminal: &mut TradingTerminal) {
+    let context = terminal.current_account_data_request_context();
+    let _task = terminal.apply_account_data_loaded(
+        TEST_ACCOUNT.to_string(),
+        context,
+        Ok(account_data_with_open_orders(Vec::new())),
+    );
+}
+
 #[test]
 fn pending_one_shot_status_request_debug_redacts_account_address() {
     let request = PendingOneShotStatusRequest::new(7, &one_shot_context());
@@ -459,6 +468,86 @@ fn one_shot_order_status_result_normalizes_terminal_statuses() {
     assert!(is_error);
     assert!(message.contains("Ticket placement rejected according to orderStatus for BTC"));
     assert!(terminal.pending_one_shot_status_request.is_none());
+}
+
+#[test]
+fn one_shot_missing_status_stays_pending_until_account_refresh() {
+    let mut terminal = terminal_with_connected_account();
+    let context = one_shot_context();
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
+
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id,
+        context,
+        Ok(order_status("unknownOid")),
+    );
+
+    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("placement status still uncertain"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
+}
+
+#[test]
+fn one_shot_canceled_status_stays_pending_until_account_refresh() {
+    let mut terminal = terminal_with_connected_account();
+    let context = one_shot_context();
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
+
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id,
+        context,
+        Ok(order_status("canceled")),
+    );
+
+    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("placement status still uncertain"));
+    assert!(message.contains("refreshing account data"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
+}
+
+#[test]
+fn one_shot_status_error_stays_pending_until_account_refresh() {
+    let mut terminal = terminal_with_connected_account();
+    let context = one_shot_context();
+    let request_id = begin_one_shot_status_request(&mut terminal, &context);
+
+    let _task = terminal.handle_one_shot_placement_status_result(
+        request_id,
+        context,
+        Err("orderStatus request failed".to_string()),
+    );
+
+    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("placement status still uncertain"));
+    assert!(message.contains("orderStatus request failed"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
 }
 
 #[test]

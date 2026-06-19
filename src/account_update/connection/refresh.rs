@@ -181,6 +181,7 @@ impl TradingTerminal {
                     }
                     return followup_task;
                 }
+                self.clear_pending_one_shot_status_request_for_account(&address);
                 let chase_task = self.reconcile_chase_after_account_refresh();
                 let twap_task = if let Some(warning) = fills_incomplete {
                     self.handle_twap_reconciliation_account_data_failure(&address, warning)
