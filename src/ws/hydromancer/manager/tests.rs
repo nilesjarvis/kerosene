@@ -146,3 +146,26 @@ fn routed_message_debug_redacts_json_payload() {
     assert!(!rendered.contains("session-secret"));
     assert!(!rendered.contains("cursor-secret"));
 }
+
+#[test]
+fn command_debug_redacts_tracked_trade_addresses_and_payload() {
+    let address = "0xabc0000000000000000000000000000000000000";
+    let command = HydromancerCommand::Subscribe {
+        topic: format!("userFills:{address}"),
+        payload: serde_json::json!({
+            "type": "subscribe",
+            "subscription": {
+                "type": "userFills",
+                "addresses": [address],
+                "token": "payload-token"
+            }
+        }),
+    };
+
+    let rendered = format!("{command:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(rendered.contains("subscription_type: Some(\"userFills\")"));
+    assert!(!rendered.contains(address));
+    assert!(!rendered.contains("payload-token"));
+}

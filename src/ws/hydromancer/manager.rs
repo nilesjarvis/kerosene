@@ -43,7 +43,6 @@ impl fmt::Debug for HydromancerRoutedMessage {
     }
 }
 
-#[derive(Debug)]
 pub(super) enum HydromancerCommand {
     Subscribe {
         topic: String,
@@ -58,6 +57,58 @@ pub(super) enum HydromancerCommand {
     /// so the previous key's task exits, dropping its owned `api_key`
     /// String instead of waiting indefinitely on `cmd_rx.recv()`.
     Shutdown,
+}
+
+impl fmt::Debug for HydromancerCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Subscribe { topic, payload } => f
+                .debug_struct("Subscribe")
+                .field("topic", &redacted_hydromancer_topic_debug_value(topic))
+                .field("payload", &redacted_hydromancer_value(payload))
+                .finish(),
+            Self::Unsubscribe { topic, payload } => f
+                .debug_struct("Unsubscribe")
+                .field("topic", &redacted_hydromancer_topic_debug_value(topic))
+                .field("payload", &redacted_hydromancer_value(payload))
+                .finish(),
+            Self::Reconnect => f.write_str("Reconnect"),
+            Self::Shutdown => f.write_str("Shutdown"),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RedactedHydromancerValue<'a>(&'a Value);
+
+impl fmt::Debug for RedactedHydromancerValue<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message_type = self.0.get("type").and_then(Value::as_str);
+        let subscription_type = self
+            .0
+            .pointer("/subscription/type")
+            .and_then(Value::as_str)
+            .or(message_type);
+
+        f.debug_struct("HydromancerJson")
+            .field("type", &message_type)
+            .field("subscription_type", &subscription_type)
+            .field("payload", &"<redacted>")
+            .finish()
+    }
+}
+
+pub(super) fn redacted_hydromancer_value(value: &Value) -> RedactedHydromancerValue<'_> {
+    RedactedHydromancerValue(value)
+}
+
+pub(super) fn redacted_hydromancer_topic_debug_value(topic: &str) -> &str {
+    let lower = topic.to_ascii_lowercase();
+    if lower.starts_with("0x") || lower.contains(":0x") {
+        "<redacted>"
+    } else {
+        topic
+    }
 }
 
 struct HydromancerManager {

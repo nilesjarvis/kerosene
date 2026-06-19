@@ -92,3 +92,27 @@ fn unsubscribe_missing_topic_is_noop() {
         HydromancerUnsubscribeResult::Missing
     );
 }
+
+#[test]
+fn subscription_debug_redacts_tracked_trade_addresses_and_payloads() {
+    let address = "0xabc0000000000000000000000000000000000000";
+    let payload = json!({
+        "type": "subscribe",
+        "subscription": {
+            "type": "userFills",
+            "addresses": [address]
+        }
+    });
+    let mut subscriptions = ActiveHydromancerSubscriptions::default();
+    subscriptions.subscribe(format!("userFills:{address}"), payload.clone());
+
+    let active_rendered = format!("{subscriptions:?}");
+    assert!(active_rendered.contains("<redacted>"));
+    assert!(active_rendered.contains("subscription_type: Some(\"userFills\")"));
+    assert!(!active_rendered.contains(address));
+
+    let removed = subscriptions.unsubscribe(format!("userFills:{address}"), payload);
+    let removed_rendered = format!("{removed:?}");
+    assert!(removed_rendered.contains("<redacted>"));
+    assert!(!removed_rendered.contains(address));
+}

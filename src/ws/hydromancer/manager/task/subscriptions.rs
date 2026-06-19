@@ -1,4 +1,7 @@
+use super::super::{redacted_hydromancer_topic_debug_value, redacted_hydromancer_value};
+
 use serde_json::Value;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
@@ -7,23 +10,60 @@ mod tests;
 // Active Subscription Reference Counts
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) enum HydromancerUnsubscribeResult {
     Missing,
     StillActive,
     Removed { payload: Value, became_empty: bool },
 }
 
-#[derive(Debug, Default)]
+impl fmt::Debug for HydromancerUnsubscribeResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Missing => f.write_str("Missing"),
+            Self::StillActive => f.write_str("StillActive"),
+            Self::Removed {
+                payload,
+                became_empty,
+            } => f
+                .debug_struct("Removed")
+                .field("payload", &redacted_hydromancer_value(payload))
+                .field("became_empty", became_empty)
+                .finish(),
+        }
+    }
+}
+
+#[derive(Default)]
 pub(super) struct ActiveHydromancerSubscriptions {
     entries: Vec<ActiveHydromancerSubscription>,
 }
 
-#[derive(Debug)]
 struct ActiveHydromancerSubscription {
     topic: String,
     count: usize,
     payload: Value,
+}
+
+impl fmt::Debug for ActiveHydromancerSubscriptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActiveHydromancerSubscriptions")
+            .field("entries", &self.entries)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ActiveHydromancerSubscription {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActiveHydromancerSubscription")
+            .field(
+                "topic",
+                &redacted_hydromancer_topic_debug_value(&self.topic),
+            )
+            .field("count", &self.count)
+            .field("payload", &redacted_hydromancer_value(&self.payload))
+            .finish()
+    }
 }
 
 impl ActiveHydromancerSubscriptions {
