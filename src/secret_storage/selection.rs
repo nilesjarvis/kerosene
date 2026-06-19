@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use zeroize::{Zeroize, Zeroizing};
 
 // ---------------------------------------------------------------------------
@@ -15,7 +16,8 @@ impl TradingTerminal {
         if let Err(error) = clear_keychain_secrets(&accounts) {
             self.secret_store_status = Some((
                 format!(
-                    "Encrypted credentials saved; OS keychain cleanup failed and will retry on next startup: {error}"
+                    "Encrypted credentials saved; OS keychain cleanup failed and will retry on next startup: {}",
+                    redact_sensitive_response_text(&error)
                 ),
                 true,
             ));
@@ -110,7 +112,8 @@ impl TradingTerminal {
                 self.secret_storage_selection = self.secret_storage_mode;
                 self.secret_store_status = Some((
                     format!(
-                        "OS keychain credential save failed: {error}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage."
+                        "OS keychain credential save failed: {}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage.",
+                        redact_sensitive_response_text(&error)
                     ),
                     true,
                 ));
@@ -146,7 +149,8 @@ impl TradingTerminal {
                     Some(Ok(payload)) => payload,
                     Some(Err(error)) => {
                         rollback_warnings.push(format!(
-                            "prior OS keychain payload snapshot failed: {error}"
+                            "prior OS keychain payload snapshot failed: {}",
+                            redact_sensitive_response_text(&error)
                         ));
                         None
                     }
@@ -154,7 +158,8 @@ impl TradingTerminal {
                 };
                 if let Err(error) = rollback_keychain_secret_payload(restore_payload.as_ref()) {
                     rollback_warnings.push(format!(
-                        "stale OS keychain rollback cleanup failed: {error}"
+                        "stale OS keychain rollback cleanup failed: {}",
+                        redact_sensitive_response_text(&error)
                     ));
                 }
             }
@@ -169,7 +174,8 @@ impl TradingTerminal {
                 config::CredentialStorageMode::OsKeychain => "OS keychain",
             };
             let mut status = format!(
-                "OS keychain credential config save failed: {error}; {active_storage} credentials remain active"
+                "OS keychain credential config save failed: {}; {active_storage} credentials remain active",
+                redact_sensitive_response_text(&error)
             );
             for warning in rollback_warnings {
                 status.push_str("; ");
@@ -184,7 +190,8 @@ impl TradingTerminal {
         self.secret_store_status = if let Some(cleanup_warning) = cleanup_warning {
             Some((
                 format!(
-                    "Credentials saved to OS keychain; legacy cleanup skipped: {cleanup_warning}"
+                    "Credentials saved to OS keychain; legacy cleanup skipped: {}",
+                    redact_sensitive_response_text(&cleanup_warning)
                 ),
                 true,
             ))
@@ -234,7 +241,8 @@ impl TradingTerminal {
                 self.secret_storage_selection = self.secret_storage_mode;
                 self.secret_store_status = Some((
                     format!(
-                        "Encrypted credential migration failed: {error}; OS keychain credentials were left unchanged"
+                        "Encrypted credential migration failed: {}; OS keychain credentials were left unchanged",
+                        redact_sensitive_response_text(&error)
                     ),
                     true,
                 ));
@@ -273,7 +281,8 @@ impl TradingTerminal {
                 self.pending_keychain_cleanup_all = previous_pending_cleanup_all;
                 self.secret_store_status = Some((
                     format!(
-                        "Encrypted credential config save failed: {error}; OS keychain credentials were left unchanged"
+                        "Encrypted credential config save failed: {}; OS keychain credentials were left unchanged",
+                        redact_sensitive_response_text(&error)
                     ),
                     true,
                 ));
@@ -289,7 +298,8 @@ impl TradingTerminal {
                 if let Err(error) = self.persist_config_immediately_with(&mut save_config) {
                     self.secret_store_status = Some((
                         format!(
-                            "Encrypted credentials saved, but keychain cleanup state save failed: {error}"
+                            "Encrypted credentials saved, but keychain cleanup state save failed: {}",
+                            redact_sensitive_response_text(&error)
                         ),
                         true,
                     ));
@@ -619,7 +629,11 @@ mod tests {
         let rollback_called = Cell::new(false);
 
         terminal.apply_os_keychain_storage_selection_with(
-            |_| Err(config::installed_config_save_error_for_test("sync denied")),
+            |_| {
+                Err(config::installed_config_save_error_for_test(
+                    "sync denied signature=os-post-secret",
+                ))
+            },
             |_, _, _| {
                 keychain_called.set(true);
                 Ok(None)
@@ -650,6 +664,8 @@ mod tests {
         assert!(*is_error);
         assert!(status.contains("Credentials saved to OS keychain"));
         assert!(status.contains("config durability could not be fully verified"));
+        assert!(status.contains("signature=<redacted>"));
+        assert!(!status.contains("os-post-secret"));
         assert!(!status.contains("remain active"));
     }
 
@@ -739,10 +755,10 @@ mod tests {
         let mut terminal = terminal_ready_to_switch_to_os_keychain();
 
         terminal.apply_os_keychain_storage_selection_with(
-            |_| Err("disk full".to_string()),
+            |_| Err("disk full api_key=save-secret".to_string()),
             |_, _, _| Ok(None),
             || Ok(None),
-            |_| Err("access denied".to_string()),
+            |_| Err("access denied auth_token=rollback-secret".to_string()),
         );
 
         assert_eq!(
@@ -755,8 +771,12 @@ mod tests {
             .expect("failure status should be set");
         assert!(*is_error);
         assert!(status.contains("disk full"));
+        assert!(status.contains("api_key=<redacted>"));
+        assert!(!status.contains("save-secret"));
         assert!(status.contains("encrypted config credentials remain active"));
         assert!(status.contains("stale OS keychain rollback cleanup failed: access denied"));
+        assert!(status.contains("auth_token=<redacted>"));
+        assert!(!status.contains("rollback-secret"));
     }
 
     #[test]
@@ -767,7 +787,7 @@ mod tests {
         terminal.apply_os_keychain_storage_selection_with(
             |_| Err("disk full".to_string()),
             |_, _, _| Ok(None),
-            || Err("keychain read failed".to_string()),
+            || Err("keychain read failed client_secret=read-secret".to_string()),
             |payload| {
                 cleanup_called.set(true);
                 assert!(payload.is_none());
@@ -787,6 +807,8 @@ mod tests {
         assert!(*is_error);
         assert!(status.contains("disk full"));
         assert!(status.contains("prior OS keychain payload snapshot failed: keychain read failed"));
+        assert!(status.contains("client_secret=<redacted>"));
+        assert!(!status.contains("read-secret"));
         assert!(!status.contains("rollback cleanup failed"));
     }
 
@@ -800,7 +822,7 @@ mod tests {
         let cleanup_called = Cell::new(false);
 
         terminal.apply_os_keychain_storage_selection_with(
-            |_| Err("disk full".to_string()),
+            |_| Err("disk full signature=active-secret".to_string()),
             |_, _, _| Ok(None),
             || panic!("snapshot should not run while OS keychain is already active"),
             |_| {
@@ -820,6 +842,8 @@ mod tests {
             .expect("failure status should be set");
         assert!(*is_error);
         assert!(status.contains("disk full"));
+        assert!(status.contains("signature=<redacted>"));
+        assert!(!status.contains("active-secret"));
         assert!(status.contains("OS keychain credentials remain active"));
         assert!(!status.contains("encrypted config credentials remain active"));
         assert!(!status.contains("rollback cleanup failed"));
@@ -831,7 +855,7 @@ mod tests {
         let cleanup_called = Cell::new(false);
 
         terminal.apply_encrypted_config_storage_selection_with(
-            |_| Err("disk full".to_string()),
+            |_| Err("disk full api_key=encrypted-switch-secret".to_string()),
             |_| {
                 cleanup_called.set(true);
                 Ok(())
@@ -858,6 +882,8 @@ mod tests {
             .expect("failure status should be set");
         assert!(*is_error);
         assert!(status.contains("disk full"));
+        assert!(status.contains("api_key=<redacted>"));
+        assert!(!status.contains("encrypted-switch-secret"));
         assert!(status.contains("left unchanged"));
     }
 
@@ -867,7 +893,11 @@ mod tests {
         let cleanup_called = Cell::new(false);
 
         terminal.apply_encrypted_config_storage_selection_with(
-            |_| Err(config::installed_config_save_error_for_test("sync denied")),
+            |_| {
+                Err(config::installed_config_save_error_for_test(
+                    "sync denied client_secret=deferred-secret",
+                ))
+            },
             |_| {
                 cleanup_called.set(true);
                 Ok(())
@@ -896,6 +926,8 @@ mod tests {
         assert!(status.contains("Credentials saved to encrypted config"));
         assert!(status.contains("OS keychain cleanup was deferred"));
         assert!(status.contains("config durability could not be fully verified"));
+        assert!(status.contains("client_secret=<redacted>"));
+        assert!(!status.contains("deferred-secret"));
         assert!(!status.contains("left unchanged"));
     }
 
@@ -972,7 +1004,7 @@ mod tests {
                 saved_snapshots.borrow_mut().push(snapshot.clone());
                 Ok(())
             },
-            |_| Err("keychain denied".to_string()),
+            |_| Err("keychain denied auth_token=cleanup-secret".to_string()),
             no_keychain_payload,
             no_legacy_global_secret,
             no_legacy_profile_secret,
@@ -988,6 +1020,8 @@ mod tests {
             .expect("cleanup failure should set status");
         assert!(*is_error);
         assert!(status.contains("will retry on next startup"));
+        assert!(status.contains("auth_token=<redacted>"));
+        assert!(!status.contains("cleanup-secret"));
     }
 
     #[test]

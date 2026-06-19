@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
@@ -15,7 +16,10 @@ struct SecretPersistenceValues<'a> {
 
 impl TradingTerminal {
     pub(crate) fn committed_config_save_warning(action: &str, error: &str) -> String {
-        format!("{action}, but config durability could not be fully verified: {error}")
+        format!(
+            "{action}, but config durability could not be fully verified: {}",
+            redact_sensitive_response_text(error)
+        )
     }
 
     fn persist_keychain_credentials_from_values(
@@ -35,7 +39,8 @@ impl TradingTerminal {
                 if let Some(cleanup_warning) = cleanup_warning {
                     self.secret_store_status = Some((
                         format!(
-                            "{success_message}; legacy OS keychain cleanup skipped: {cleanup_warning}"
+                            "{success_message}; legacy OS keychain cleanup skipped: {}",
+                            redact_sensitive_response_text(&cleanup_warning)
                         ),
                         true,
                     ));
@@ -48,7 +53,8 @@ impl TradingTerminal {
                 self.secret_migration_save_blocked = true;
                 self.secret_store_status = Some((
                     format!(
-                        "{failure_prefix}: {error}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage."
+                        "{failure_prefix}: {}. If OS keychain storage keeps failing, switch to encrypted config in Settings > Storage.",
+                        redact_sensitive_response_text(&error)
                     ),
                     true,
                 ));

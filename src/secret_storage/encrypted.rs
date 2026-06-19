@@ -601,7 +601,11 @@ mod tests {
         let persisted = terminal.persist_encrypted_secret_payload_with(
             candidate,
             "Credentials saved to encrypted config",
-            |_| Err(config::installed_config_save_error_for_test("sync denied")),
+            |_| {
+                Err(config::installed_config_save_error_for_test(
+                    "sync denied api_key=post-commit-secret",
+                ))
+            },
         );
 
         assert!(persisted);
@@ -620,6 +624,8 @@ mod tests {
         assert!(*is_error);
         assert!(message.contains("Credentials saved to encrypted config"));
         assert!(message.contains("config durability could not be fully verified"));
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("post-commit-secret"));
         assert!(!message.contains("not committed"));
     }
 
