@@ -2,6 +2,8 @@ use crate::account::{OpenOrder, UserFill};
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_positive_finite_number, values_match_approx};
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Chart-Only Pending Order Indicators
 // ---------------------------------------------------------------------------
@@ -16,7 +18,7 @@ pub(crate) enum PendingOrderIndicatorKind {
     Modifying,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct PendingOrderIndicator {
     pub(crate) account_address: String,
     pub(crate) symbol: String,
@@ -26,6 +28,21 @@ pub(crate) struct PendingOrderIndicator {
     pub(crate) price: String,
     pub(crate) kind: PendingOrderIndicatorKind,
     created_at_ms: u64,
+}
+
+impl fmt::Debug for PendingOrderIndicator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingOrderIndicator")
+            .field("account_address", &"<redacted>")
+            .field("symbol", &self.symbol)
+            .field("oid", &self.oid)
+            .field("is_buy", &self.is_buy)
+            .field("size", &self.size)
+            .field("price", &self.price)
+            .field("kind", &self.kind)
+            .field("created_at_ms", &self.created_at_ms)
+            .finish()
+    }
 }
 
 struct PendingOrderIndicatorInput {
@@ -555,6 +572,31 @@ mod tests {
             tif: None,
             trigger_px: None,
         }
+    }
+
+    #[test]
+    fn pending_order_indicator_debug_redacts_account_address() {
+        let mut terminal = terminal_with_chart();
+        let pending_id = terminal
+            .add_pending_order_placement_indicator(
+                TEST_ACCOUNT.to_string(),
+                "BTC".to_string(),
+                true,
+                "1".to_string(),
+                "100".to_string(),
+            )
+            .expect("indicator should be created");
+        let indicator = terminal
+            .pending_order_indicators
+            .get(&pending_id)
+            .expect("indicator should be stored");
+
+        let rendered = format!("{indicator:?}");
+
+        assert!(rendered.contains("PendingOrderIndicator"));
+        assert!(rendered.contains("BTC"));
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(TEST_ACCOUNT));
     }
 
     #[test]
