@@ -1,6 +1,7 @@
 use serde::{Deserialize, de};
+use std::fmt;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Candle {
     #[serde(rename = "t")]
     pub open_time: u64,
@@ -16,6 +17,20 @@ pub struct Candle {
     pub close: f64,
     #[serde(rename = "v", deserialize_with = "de_string_or_number_to_f64")]
     pub volume: f64,
+}
+
+impl fmt::Debug for Candle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Candle")
+            .field("open_time", &self.open_time)
+            .field("close_time", &self.close_time)
+            .field("open", &"<redacted>")
+            .field("high", &"<redacted>")
+            .field("low", &"<redacted>")
+            .field("close", &"<redacted>")
+            .field("volume", &"<redacted>")
+            .finish()
+    }
 }
 
 #[cfg(test)]
@@ -94,4 +109,29 @@ where
     }
 
     deserializer.deserialize_any(StringOrNumber)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Candle;
+
+    #[test]
+    fn candle_debug_redacts_ohlcv_payload() {
+        let candle = Candle::test_ohlcv(
+            1_700_000_000_000,
+            1_700_000_059_999,
+            [12345.67, 12355.89, 12340.12, 12350.34],
+            98765.43,
+        );
+
+        let rendered = format!("{candle:?}");
+
+        assert!(rendered.contains("open_time: 1700000000000"));
+        assert!(rendered.contains("close_time: 1700000059999"));
+        assert!(rendered.contains("open: \"<redacted>\""));
+        assert!(rendered.contains("volume: \"<redacted>\""));
+        for secret in ["12345.67", "12355.89", "12340.12", "12350.34", "98765.43"] {
+            assert!(!rendered.contains(secret), "candle Debug leaked {secret}");
+        }
+    }
 }
