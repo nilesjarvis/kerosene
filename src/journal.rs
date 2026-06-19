@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 mod aggregation;
 mod cache;
@@ -28,10 +28,19 @@ pub(crate) use state::{
 };
 pub use state::{JournalFilter, JournalSort, JournalState, JournalSyncStatus};
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Clone, Default, Serialize)]
 pub struct JournalNote {
     pub open: String,
     pub close: String,
+}
+
+impl fmt::Debug for JournalNote {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalNote")
+            .field("open", &format_args!("len={}", self.open.len()))
+            .field("close", &format_args!("len={}", self.close.len()))
+            .finish()
+    }
 }
 
 impl<'de> Deserialize<'de> for JournalNote {

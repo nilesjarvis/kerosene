@@ -96,3 +96,18 @@ fn note(open: &str) -> JournalNote {
         close: String::new(),
     }
 }
+
+#[test]
+fn journal_note_debug_summarizes_private_text() {
+    let note = JournalNote {
+        open: "private open note sentinel".to_string(),
+        close: "private close note sentinel".to_string(),
+    };
+
+    let rendered = format!("{note:?}");
+
+    assert!(rendered.contains("open: len=26"));
+    assert!(rendered.contains("close: len=27"));
+    assert!(!rendered.contains("private open note sentinel"));
+    assert!(!rendered.contains("private close note sentinel"));
+}
