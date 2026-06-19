@@ -3,8 +3,9 @@ use super::{
     parse_account_number,
 };
 use crate::account::types::{
-    AccountAbstractionMode, AssetPosition, ClearinghouseState, MarginSummary, Position,
-    PositionLeverage, SpotBalance, SpotClearinghouseState,
+    AccountAbstractionMode, AssetPosition, ClearinghouseState, FundingDelta, FundingEntry,
+    MarginSummary, OpenOrder, Position, PositionLeverage, SpotBalance, SpotClearinghouseState,
+    UserFill,
 };
 use crate::api::{ExchangeSymbol, MarketType};
 
@@ -98,6 +99,84 @@ fn account_data_snapshot(fetched_at_ms: u64) -> AccountData {
         funding_history: Vec::new(),
         fee_rates: Default::default(),
         completeness: Default::default(),
+    }
+}
+
+#[test]
+fn account_data_debug_summarizes_account_payloads() {
+    let mut data = account_data_snapshot(123);
+    data.clearinghouse.margin_summary.account_value = "account-secret-equity".to_string();
+    data.spot.balances.push(SpotBalance {
+        coin: "SECRETCOIN".to_string(),
+        token: Some(1),
+        total: "balance-secret-total".to_string(),
+        hold: "balance-secret-hold".to_string(),
+        entry_ntl: "0".to_string(),
+        supplied: None,
+    });
+    data.open_orders.push(OpenOrder {
+        coin: "SECRETORDER".to_string(),
+        side: "B".to_string(),
+        limit_px: "order-secret-price".to_string(),
+        sz: "1".to_string(),
+        oid: 42,
+        timestamp: 7,
+        reduce_only: None,
+        is_trigger: None,
+        order_type: None,
+        tif: None,
+        trigger_px: None,
+    });
+    data.fills.push(UserFill {
+        coin: "SECRETFILL".to_string(),
+        px: "fill-secret-price".to_string(),
+        sz: "1".to_string(),
+        side: "B".to_string(),
+        time: 8,
+        hash: Some("fill-secret-hash".to_string()),
+        tid: Some(9),
+        oid: Some(10),
+        dir: "Open Long".to_string(),
+        closed_pnl: "fill-secret-pnl".to_string(),
+        fee: "fill-secret-fee".to_string(),
+    });
+    data.funding_history.push(FundingEntry {
+        delta: FundingDelta {
+            coin: "SECRETFUND".to_string(),
+            funding_rate: "funding-secret-rate".to_string(),
+            szi: "1".to_string(),
+            usdc: "funding-secret-usdc".to_string(),
+        },
+        time: 11,
+    });
+    data.fee_rates.user_cross_rate = "fee-secret-rate".to_string();
+    data.completeness
+        .mark_incomplete(AccountDataSection::Positions, "warning-secret");
+
+    let rendered = format!("{data:?}");
+
+    assert!(rendered.contains("clearinghouse: positions_len=0"));
+    assert!(rendered.contains("spot: balances_len=1"));
+    assert!(rendered.contains("open_orders: len=1"));
+    assert!(rendered.contains("fills: len=1"));
+    assert!(rendered.contains("funding_history: len=1"));
+    assert!(rendered.contains("fee_rates: <redacted>"));
+    assert!(rendered.contains("positions_complete: false"));
+    for secret in [
+        "account-secret-equity",
+        "SECRETCOIN",
+        "balance-secret-total",
+        "SECRETORDER",
+        "order-secret-price",
+        "SECRETFILL",
+        "fill-secret-hash",
+        "fill-secret-pnl",
+        "SECRETFUND",
+        "funding-secret-rate",
+        "fee-secret-rate",
+        "warning-secret",
+    ] {
+        assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
     }
 }
 

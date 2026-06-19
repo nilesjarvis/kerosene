@@ -4,7 +4,7 @@ use super::{
 };
 use crate::helpers::parse_finite_number;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 mod completeness;
 mod fetch_scope;
@@ -20,7 +20,7 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 /// All account data fetched in one batch.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AccountData {
     pub fetch_scope: AccountDataFetchScope,
     pub request_weight_estimate: u32,
@@ -37,6 +37,74 @@ pub struct AccountData {
     pub completeness: AccountDataCompleteness,
     /// Wall-clock time (milliseconds since UNIX epoch) when this snapshot was fetched.
     pub fetched_at_ms: u64,
+}
+
+impl fmt::Debug for AccountData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AccountData")
+            .field("fetch_scope", &self.fetch_scope)
+            .field("request_weight_estimate", &self.request_weight_estimate)
+            .field("account_abstraction", &self.account_abstraction)
+            .field(
+                "clearinghouse",
+                &format_args!("positions_len={}", self.clearinghouse.asset_positions.len()),
+            )
+            .field(
+                "clearinghouses_by_dex",
+                &format_args!("len={}", self.clearinghouses_by_dex.len()),
+            )
+            .field(
+                "spot",
+                &format_args!("balances_len={}", self.spot.balances.len()),
+            )
+            .field(
+                "open_orders",
+                &format_args!("len={}", self.open_orders.len()),
+            )
+            .field("fills", &format_args!("len={}", self.fills.len()))
+            .field(
+                "funding_history",
+                &format_args!("len={}", self.funding_history.len()),
+            )
+            .field("fee_rates", &format_args!("<redacted>"))
+            .field(
+                "completeness",
+                &AccountDataCompletenessDebug(&self.completeness),
+            )
+            .field("fetched_at_ms", &self.fetched_at_ms)
+            .finish()
+    }
+}
+
+struct AccountDataCompletenessDebug<'a>(&'a AccountDataCompleteness);
+
+impl fmt::Debug for AccountDataCompletenessDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let completeness = self.0;
+        f.debug_struct("AccountDataCompleteness")
+            .field("positions_complete", &completeness.positions_complete)
+            .field("positions_actionable", &completeness.positions_actionable)
+            .field("open_orders_complete", &completeness.open_orders_complete)
+            .field("fills_complete", &completeness.fills_complete)
+            .field("funding_complete", &completeness.funding_complete)
+            .field("fees_complete", &completeness.fees_complete)
+            .field(
+                "positions_fetched_at_ms",
+                &completeness.positions_fetched_at_ms,
+            )
+            .field(
+                "open_orders_fetched_at_ms",
+                &completeness.open_orders_fetched_at_ms,
+            )
+            .field(
+                "open_orders_fetched_at_ms_by_dex",
+                &format_args!(
+                    "len={}",
+                    completeness.open_orders_fetched_at_ms_by_dex.len()
+                ),
+            )
+            .finish()
+    }
 }
 
 impl AccountData {
