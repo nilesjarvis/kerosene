@@ -1000,7 +1000,7 @@ fn cancel_result_success_clears_indicator_and_removes_order_locally() {
 }
 
 #[test]
-fn cancel_result_error_keeps_local_order() {
+fn cancel_result_terminal_error_checks_status_and_keeps_local_order_until_refresh() {
     let (mut terminal, pending_id) = terminal_with_pending_cancel();
 
     let _task = terminal.handle_cancel_result(
@@ -1014,8 +1014,13 @@ fn cancel_result_error_keeps_local_order() {
     assert!(terminal.pending_order_indicators.is_empty());
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
-    let (_, is_error) = terminal.order_status.expect("status should be set");
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    let (message, is_error) = terminal.order_status.expect("status should be set");
     assert!(is_error);
+    assert!(message.contains("Cancel may have already resolved"));
+    assert!(message.contains("checking orderStatus"));
+    assert!(message.contains("refreshing account data"));
 }
 
 #[test]

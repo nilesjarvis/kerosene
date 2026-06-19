@@ -6,6 +6,8 @@ use crate::signing::ExchangeResponse;
 use iced::Task;
 use std::fmt;
 
+use super::chase::chase_terminal_cancel_error;
+
 #[cfg(test)]
 mod tests;
 
@@ -196,6 +198,26 @@ impl TradingTerminal {
             self.set_order_status(
                 format!(
                     "Cancel status unknown{order_label}: {}; checking orderStatus and refreshing account data",
+                    outcome.status
+                ),
+                true,
+            );
+            return Task::batch([self.refresh_account_data(), status_task]);
+        }
+        if outcome.kind == ExecutionOutcomeKind::Rejected
+            && chase_terminal_cancel_error(&outcome.status)
+        {
+            let status_task = cancelled_order
+                .clone()
+                .map_or_else(Task::none, |(oid, symbol)| {
+                    Self::cancel_order_status_task(account_address.clone(), oid, symbol)
+                });
+            let order_label = cancelled_oid
+                .map(|oid| format!(" for order {oid}"))
+                .unwrap_or_default();
+            self.set_order_status(
+                format!(
+                    "Cancel may have already resolved{order_label}: {}; checking orderStatus and refreshing account data",
                     outcome.status
                 ),
                 true,

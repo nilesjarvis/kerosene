@@ -10,7 +10,7 @@ use super::super::results::result_requires_account_refresh;
 #[cfg(test)]
 mod tests;
 
-pub(super) fn chase_terminal_cancel_error(summary: &str) -> bool {
+pub(in crate::order_update) fn chase_terminal_cancel_error(summary: &str) -> bool {
     let summary = summary.to_ascii_lowercase();
     summary.contains("filled")
         || summary.contains("canceled")
