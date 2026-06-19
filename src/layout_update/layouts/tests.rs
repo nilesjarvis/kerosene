@@ -369,6 +369,34 @@ fn layout_import_start_is_blocked_after_config_clear() {
 }
 
 #[test]
+fn layout_export_error_redacts_toast_detail() {
+    let (mut terminal, _) = TradingTerminal::boot();
+
+    let _task = terminal.update_saved_layouts(Message::LayoutExported(Err(
+        "write failed: api_key=layout-secret".to_string(),
+    )));
+
+    let toast = terminal.toasts.last().expect("toast");
+    assert!(toast.is_error);
+    assert!(toast.message.contains("api_key=<redacted>"));
+    assert!(!toast.message.contains("layout-secret"));
+}
+
+#[test]
+fn layout_import_error_redacts_toast_detail() {
+    let (mut terminal, _) = TradingTerminal::boot();
+
+    let _task = terminal.update_saved_layouts(Message::LayoutImported(Err(
+        "parse failed: signature=sig-secret".to_string(),
+    )));
+
+    let toast = terminal.toasts.last().expect("toast");
+    assert!(toast.is_error);
+    assert!(toast.message.contains("signature=<redacted>"));
+    assert!(!toast.message.contains("sig-secret"));
+}
+
+#[test]
 fn applying_layout_clears_pending_requests_for_replaced_charts() {
     let (mut terminal, _) = TradingTerminal::boot();
     let old_chart_id = terminal.charts.keys().copied().next().expect("chart");

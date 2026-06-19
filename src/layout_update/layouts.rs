@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use iced::Task;
 use io::{export_layout_task, import_layout_task};
@@ -100,7 +101,10 @@ impl TradingTerminal {
                 Ok(_) => self.push_toast("Layout exported successfully".to_string(), false),
                 Err(e) => {
                     if e != "Export cancelled" {
-                        self.push_toast(format!("Export failed: {}", e), true)
+                        self.push_toast(
+                            format!("Export failed: {}", redact_sensitive_response_text(&e)),
+                            true,
+                        )
                     }
                 }
             },
@@ -137,7 +141,10 @@ impl TradingTerminal {
                 }
                 Err(e) => {
                     if e != "Import cancelled" {
-                        self.push_toast(format!("Import failed: {}", e), true)
+                        self.push_toast(
+                            format!("Import failed: {}", redact_sensitive_response_text(&e)),
+                            true,
+                        )
                     }
                 }
             },

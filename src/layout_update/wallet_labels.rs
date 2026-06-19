@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use iced::Task;
 
@@ -62,7 +63,13 @@ impl TradingTerminal {
                 Ok(_) => self.push_toast("Wallet labels exported successfully".to_string(), false),
                 Err(e) => {
                     if e != "Export cancelled" {
-                        self.push_toast(format!("Wallet label export failed: {}", e), true)
+                        self.push_toast(
+                            format!(
+                                "Wallet label export failed: {}",
+                                redact_sensitive_response_text(&e)
+                            ),
+                            true,
+                        )
                     }
                 }
             },
@@ -95,14 +102,24 @@ impl TradingTerminal {
                             }
                             self.push_toast(summary.toast_text(), false);
                         }
-                        Err(e) => {
-                            self.push_toast(format!("Wallet label import failed: {}", e), true)
-                        }
+                        Err(e) => self.push_toast(
+                            format!(
+                                "Wallet label import failed: {}",
+                                redact_sensitive_response_text(&e)
+                            ),
+                            true,
+                        ),
                     }
                 }
                 Err(e) => {
                     if e != "Import cancelled" {
-                        self.push_toast(format!("Wallet label import failed: {}", e), true)
+                        self.push_toast(
+                            format!(
+                                "Wallet label import failed: {}",
+                                redact_sensitive_response_text(&e)
+                            ),
+                            true,
+                        )
                     }
                 }
             },
@@ -189,5 +206,33 @@ mod tests {
                 .is_some_and(|toast| toast.is_error
                     && toast.message.contains("import is disabled"))
         );
+    }
+
+    #[test]
+    fn wallet_label_export_error_redacts_toast_detail() {
+        let (mut terminal, _) = TradingTerminal::boot();
+
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsExported(Err(
+            "write failed: auth_token=token-secret".to_string(),
+        )));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("auth_token=<redacted>"));
+        assert!(!toast.message.contains("token-secret"));
+    }
+
+    #[test]
+    fn wallet_label_import_error_redacts_toast_detail() {
+        let (mut terminal, _) = TradingTerminal::boot();
+
+        let _task = terminal.update_wallet_label_io(Message::WalletLabelsImported(Err(
+            "parse failed: client_secret=secret-value".to_string(),
+        )));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("client_secret=<redacted>"));
+        assert!(!toast.message.contains("secret-value"));
     }
 }
