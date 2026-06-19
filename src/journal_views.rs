@@ -242,6 +242,26 @@ mod tests {
     }
 
     #[test]
+    fn journal_view_renders_open_position_with_live_caption() {
+        // A still-open position (no end time, no fills) must render the OPEN
+        // chip in the list and the live-position detail layout without panicking.
+        let mut terminal = terminal_with_trades();
+        let mut open = sample_trade("SOL", 0.0, true, 1_700_000_600_000);
+        open.id = "position:SOL".to_string();
+        open.end_time = None;
+        open.status = "OPEN".to_string();
+        open.fill_count = 0;
+        open.basis_complete = false;
+        let id = open.id.clone();
+        terminal.journal.trades.push(open);
+
+        let _ = terminal.view_journal();
+
+        terminal.journal.selected_trade_id = Some(id);
+        let _ = terminal.view_journal();
+    }
+
+    #[test]
     fn journal_view_handles_empty_and_filtered_states() {
         let empty = TradingTerminal::boot().0;
         // No trades.

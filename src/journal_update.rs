@@ -405,41 +405,14 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let Some(details) = self.journal.trade_details.get(&trade.id) else {
-            self.journal.snapshots.insert(
-                trade_id,
-                journal::unavailable_snapshot(
-                    &trade,
-                    self.chart_backfill_source,
-                    now_ms,
-                    "Snapshot unavailable because fill attribution is missing.".to_string(),
-                ),
-            );
-            return Task::none();
-        };
-        if details.attributed_fills.is_empty() {
-            self.journal.snapshots.insert(
-                trade_id,
-                journal::unavailable_snapshot(
-                    &trade,
-                    self.chart_backfill_source,
-                    now_ms,
-                    "Snapshot unavailable because this trade has no attributed fills.".to_string(),
-                ),
-            );
-            return Task::none();
-        }
+        let has_fills = self
+            .journal
+            .trade_details
+            .get(&trade.id)
+            .is_some_and(|details| !details.attributed_fills.is_empty());
 
-        let request = match journal::initial_snapshot_request(
-            self.active_journal_account_key(),
-            address,
-            &trade,
-            self.chart_backfill_source,
-            self.read_data_provider_generation,
-            self.hydromancer_key_generation,
-            now_ms,
-        ) {
-            Ok(request) => request,
+        match self.journal_snapshot_request_for(&trade, address, has_fills, now_ms, None) {
+            Ok(request) => self.queue_journal_snapshot_request(request),
             Err(reason) => {
                 self.journal.snapshots.insert(
                     trade_id,
@@ -450,11 +423,86 @@ impl TradingTerminal {
                         reason,
                     ),
                 );
-                return Task::none();
+                Task::none()
             }
+        }
+    }
+
+    /// Resolve the snapshot request for a trade, choosing between a fill-based
+    /// entry → exit chart and a live-position chart (recent window with the
+    /// entry level marked) for open positions whose opening fills are not in
+    /// the loaded history. `timeframe` pins the rung for the detail selector.
+    fn journal_snapshot_request_for(
+        &self,
+        trade: &journal::AggregatedTrade,
+        address: String,
+        has_fills: bool,
+        now_ms: u64,
+        timeframe: Option<crate::timeframe::Timeframe>,
+    ) -> Result<journal::JournalTradeSnapshotRequest, String> {
+        let account_key = self.active_journal_account_key();
+        let source = self.chart_backfill_source;
+        let rdg = self.read_data_provider_generation;
+        let hkg = self.hydromancer_key_generation;
+
+        let fill_based = |addr: String| match timeframe {
+            Some(tf) => journal::snapshot_request_for_timeframe(
+                account_key.clone(),
+                addr,
+                trade,
+                source,
+                rdg,
+                hkg,
+                now_ms,
+                tf,
+            ),
+            None => journal::initial_snapshot_request(
+                account_key.clone(),
+                addr,
+                trade,
+                source,
+                rdg,
+                hkg,
+                now_ms,
+            ),
+        };
+        let live = |addr: String| match timeframe {
+            Some(tf) => journal::live_position_snapshot_request_for_timeframe(
+                account_key.clone(),
+                addr,
+                trade,
+                source,
+                rdg,
+                hkg,
+                now_ms,
+                tf,
+            ),
+            None => journal::live_position_snapshot_request(
+                account_key.clone(),
+                addr,
+                trade,
+                source,
+                rdg,
+                hkg,
+                now_ms,
+            ),
         };
 
-        self.queue_journal_snapshot_request(request)
+        if has_fills {
+            // Prefer the fill-based chart; if its basis is incomplete, an open
+            // position can still chart against its known entry.
+            fill_based(address.clone()).or_else(|reason| live(address).map_err(|_| reason))
+        } else {
+            live(address).map_err(|reason| {
+                // A closed trade with no fills can never be a live position;
+                // keep the historical attribution-missing message.
+                if trade.end_time.is_some() {
+                    "Snapshot unavailable because fill attribution is missing.".to_string()
+                } else {
+                    reason
+                }
+            })
+        }
     }
 
     /// Re-request a trade's snapshot pinned to a specific timeframe (detail-view
@@ -497,31 +545,14 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        if self
+        let has_fills = self
             .journal
             .trade_details
             .get(&trade.id)
-            .is_none_or(|details| details.attributed_fills.is_empty())
-        {
-            let snapshot = self.journal_unavailable_snapshot(
-                &trade,
-                timeframe,
-                "Snapshot unavailable because fill attribution is missing.".to_string(),
-            );
-            self.journal.snapshots.insert(trade_id, snapshot);
-            return Task::none();
-        }
+            .is_some_and(|details| !details.attributed_fills.is_empty());
 
-        match journal::snapshot_request_for_timeframe(
-            self.active_journal_account_key(),
-            address,
-            &trade,
-            self.chart_backfill_source,
-            self.read_data_provider_generation,
-            self.hydromancer_key_generation,
-            now_ms,
-            timeframe,
-        ) {
+        match self.journal_snapshot_request_for(&trade, address, has_fills, now_ms, Some(timeframe))
+        {
             Ok(request) => self.queue_journal_snapshot_request(request),
             Err(reason) => {
                 let snapshot = self.journal_unavailable_snapshot(&trade, timeframe, reason);
@@ -577,20 +608,14 @@ impl TradingTerminal {
             }
             Ok(candles) => {
                 self.journal.snapshot_requests.remove(&request.trade_id);
-                match self
-                    .journal
-                    .trade_details
-                    .get(&request.trade_id)
-                    .and_then(|details| {
-                        journal::build_journal_trade_snapshot(&request, &trade, details, candles)
-                            .ok()
-                    }) {
-                    Some(snapshot) => {
+                let details = self.journal.trade_details.get(&request.trade_id);
+                match journal::build_journal_trade_snapshot(&request, &trade, details, candles) {
+                    Ok(snapshot) => {
                         self.journal
                             .snapshots
                             .insert(request.trade_id.clone(), snapshot);
                     }
-                    None => {
+                    Err(_) => {
                         let snapshot = self.journal_unavailable_snapshot(
                             &trade,
                             request.timeframe,
@@ -972,6 +997,61 @@ mod tests {
             total_entry_size: 1.0,
             is_long: true,
             basis_complete: true,
+        }
+    }
+
+    fn open_position_trade(id: &str) -> journal::AggregatedTrade {
+        let mut trade = snapshot_trade(id);
+        trade.end_time = None;
+        trade.status = "OPEN".to_string();
+        trade.fill_count = 0;
+        trade.basis_complete = false;
+        trade
+    }
+
+    #[test]
+    fn synthetic_open_position_without_fills_queues_live_snapshot() {
+        // A carried-in / current-position trade has no attributed fills but a
+        // known entry price: selecting it must queue a live-position snapshot
+        // rather than report missing fill attribution.
+        let mut terminal = journal_terminal_with_account();
+        let trade = open_position_trade("position:BTC");
+        terminal.journal.trades.push(trade.clone());
+
+        let _task = terminal.update_journal(Message::JournalSelectTrade(trade.id.clone()));
+
+        let request = terminal
+            .journal
+            .snapshot_requests
+            .get(&trade.id)
+            .expect("live-position snapshot request queued");
+        assert!(request.is_open);
+        assert!(request.trade_start_ms < request.trade_end_ms);
+        assert!(!terminal.journal.snapshots.contains_key(&trade.id));
+    }
+
+    #[test]
+    fn closed_trade_without_fills_reports_missing_attribution() {
+        // A closed trade can never be a live position, so the historical
+        // attribution-missing placeholder is preserved.
+        let mut terminal = journal_terminal_with_account();
+        let trade = snapshot_trade("perp:BTC:closed");
+        terminal.journal.trades.push(trade.clone());
+
+        let _task = terminal.update_journal(Message::JournalSelectTrade(trade.id.clone()));
+
+        assert!(!terminal.journal.snapshot_requests.contains_key(&trade.id));
+        match &terminal
+            .journal
+            .snapshots
+            .get(&trade.id)
+            .expect("unavailable placeholder")
+            .status
+        {
+            journal::JournalTradeSnapshotStatus::Unavailable(reason) => {
+                assert!(reason.contains("fill attribution is missing"), "{reason}");
+            }
+            other => panic!("expected unavailable snapshot, got {other:?}"),
         }
     }
 

@@ -7,6 +7,11 @@ use std::fmt;
 
 const SNAPSHOT_MAX_CANDLES: u64 = 260;
 const MIN_PADDING_MS: u64 = 60 * 60 * 1000;
+/// Recent-history window shown for an open position whose opening fills are not
+/// in the loaded history (carried-in positions and synthetic current-position
+/// trades). The true open time is unknown, so the chart shows recent price
+/// action with the entry level marked rather than an entry → exit window.
+const LIVE_POSITION_LOOKBACK_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 const SNAPSHOT_LADDER: &[Timeframe] = &[
     Timeframe::M1,
     Timeframe::M3,
@@ -81,6 +86,10 @@ pub struct JournalTradeSnapshot {
     pub trade_start_ms: u64,
     pub trade_end_ms: u64,
     pub is_open: bool,
+    /// An open position charted against its entry level over a recent window
+    /// because its opening fills are unavailable (no fill markers, no open
+    /// boundary; a horizontal entry guide is drawn instead).
+    pub live_position: bool,
     pub start_ms: u64,
     pub end_ms: u64,
     pub candles: Vec<Candle>,
@@ -117,7 +126,7 @@ pub fn initial_snapshot_request(
     hydromancer_key_generation: u64,
     now_ms: u64,
 ) -> Result<JournalTradeSnapshotRequest, String> {
-    if trade.coin.starts_with('@') || trade.coin.starts_with('#') || trade.coin.contains('/') {
+    if is_spot_symbol(&trade.coin) {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
     }
     if !trade.basis_complete {
@@ -135,8 +144,99 @@ pub fn initial_snapshot_request(
             source,
             read_data_provider_generation,
             hydromancer_key_generation,
+            trade_start_ms: trade.start_time,
             trade_end_ms,
             is_open: trade.end_time.is_none(),
+        },
+        trade,
+        ladder_index,
+    )
+}
+
+fn is_spot_symbol(coin: &str) -> bool {
+    coin.starts_with('@') || coin.starts_with('#') || coin.contains('/')
+}
+
+/// Validate that a trade can be charted as a live position: an open perp with a
+/// known entry price but no usable opening fills.
+fn validate_live_position(trade: &AggregatedTrade) -> Result<(), String> {
+    if is_spot_symbol(&trade.coin) {
+        return Err("Chart snapshots are currently available for perp trades only.".to_string());
+    }
+    if trade.end_time.is_some() {
+        return Err(
+            "Live-position snapshots are only available while a position is open.".to_string(),
+        );
+    }
+    if !(trade.avg_entry_price.is_finite() && trade.avg_entry_price > 0.0) {
+        return Err(
+            "Snapshot unavailable because no entry price is available for this position."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Build a recent-history snapshot request for an open position whose opening
+/// fills are unavailable (carried in from before the loaded history, or a
+/// synthetic current-position trade). The true open time is unknown, so a fixed
+/// recent window is charted with the entry level marked.
+pub fn live_position_snapshot_request(
+    account_key: Option<String>,
+    address: String,
+    trade: &AggregatedTrade,
+    source: ChartBackfillSource,
+    read_data_provider_generation: u64,
+    hydromancer_key_generation: u64,
+    now_ms: u64,
+) -> Result<JournalTradeSnapshotRequest, String> {
+    validate_live_position(trade)?;
+    let trade_start_ms = now_ms.saturating_sub(LIVE_POSITION_LOOKBACK_MS);
+    let ladder_index = initial_ladder_index(trade_start_ms, now_ms);
+    snapshot_request_for_ladder_index(
+        SnapshotRequestContext {
+            account_key,
+            address,
+            source,
+            read_data_provider_generation,
+            hydromancer_key_generation,
+            trade_start_ms,
+            trade_end_ms: now_ms,
+            is_open: true,
+        },
+        trade,
+        ladder_index,
+    )
+}
+
+/// Live-position variant pinned to a specific timeframe (detail-view selector).
+#[allow(clippy::too_many_arguments)]
+pub fn live_position_snapshot_request_for_timeframe(
+    account_key: Option<String>,
+    address: String,
+    trade: &AggregatedTrade,
+    source: ChartBackfillSource,
+    read_data_provider_generation: u64,
+    hydromancer_key_generation: u64,
+    now_ms: u64,
+    timeframe: Timeframe,
+) -> Result<JournalTradeSnapshotRequest, String> {
+    validate_live_position(trade)?;
+    let ladder_index = SNAPSHOT_LADDER
+        .iter()
+        .position(|candidate| *candidate == timeframe)
+        .ok_or_else(|| "Unsupported snapshot timeframe.".to_string())?;
+    let trade_start_ms = now_ms.saturating_sub(LIVE_POSITION_LOOKBACK_MS);
+    snapshot_request_for_ladder_index(
+        SnapshotRequestContext {
+            account_key,
+            address,
+            source,
+            read_data_provider_generation,
+            hydromancer_key_generation,
+            trade_start_ms,
+            trade_end_ms: now_ms,
+            is_open: true,
         },
         trade,
         ladder_index,
@@ -156,7 +256,7 @@ pub fn snapshot_request_for_timeframe(
     now_ms: u64,
     timeframe: Timeframe,
 ) -> Result<JournalTradeSnapshotRequest, String> {
-    if trade.coin.starts_with('@') || trade.coin.starts_with('#') || trade.coin.contains('/') {
+    if is_spot_symbol(&trade.coin) {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
     }
     if !trade.basis_complete {
@@ -177,6 +277,7 @@ pub fn snapshot_request_for_timeframe(
             source,
             read_data_provider_generation,
             hydromancer_key_generation,
+            trade_start_ms: trade.start_time,
             trade_end_ms,
             is_open: trade.end_time.is_none(),
         },
@@ -191,6 +292,7 @@ struct SnapshotRequestContext {
     source: ChartBackfillSource,
     read_data_provider_generation: u64,
     hydromancer_key_generation: u64,
+    trade_start_ms: u64,
     trade_end_ms: u64,
     is_open: bool,
 }
@@ -203,7 +305,7 @@ fn snapshot_request_for_ladder_index(
     let timeframe = *SNAPSHOT_LADDER
         .get(ladder_index)
         .ok_or_else(|| "No candle timeframe available for snapshot.".to_string())?;
-    let duration = context.trade_end_ms.saturating_sub(trade.start_time);
+    let duration = context.trade_end_ms.saturating_sub(context.trade_start_ms);
     let padding = snapshot_padding_ms(duration, timeframe);
 
     Ok(JournalTradeSnapshotRequest {
@@ -216,10 +318,10 @@ fn snapshot_request_for_ladder_index(
         hydromancer_key_generation: context.hydromancer_key_generation,
         timeframe,
         ladder_index,
-        trade_start_ms: trade.start_time,
+        trade_start_ms: context.trade_start_ms,
         trade_end_ms: context.trade_end_ms,
         is_open: context.is_open,
-        start_ms: trade.start_time.saturating_sub(padding),
+        start_ms: context.trade_start_ms.saturating_sub(padding),
         end_ms: if context.is_open {
             context.trade_end_ms
         } else {
@@ -261,11 +363,17 @@ pub fn next_snapshot_request(
 pub fn build_journal_trade_snapshot(
     request: &JournalTradeSnapshotRequest,
     trade: &AggregatedTrade,
-    details: &JournalTradeDetails,
+    details: Option<&JournalTradeDetails>,
     candles: Vec<Candle>,
 ) -> Result<JournalTradeSnapshot, String> {
     let metrics = journal_snapshot_metrics(request, trade, details, &candles)?;
-    let markers = snapshot_markers_for_details(details);
+    let markers = details
+        .map(snapshot_markers_for_details)
+        .unwrap_or_default();
+    // An open position with no usable opening fills is charted against its
+    // entry level over a recent window rather than as an entry → exit span.
+    let live_position = trade.end_time.is_none()
+        && details.is_none_or(|details| details.attributed_fills.is_empty());
 
     Ok(JournalTradeSnapshot {
         trade_id: request.trade_id.clone(),
@@ -275,6 +383,7 @@ pub fn build_journal_trade_snapshot(
         trade_start_ms: request.trade_start_ms,
         trade_end_ms: request.trade_end_ms,
         is_open: request.is_open,
+        live_position,
         start_ms: request.start_ms,
         end_ms: request.end_ms,
         candles,
@@ -299,6 +408,7 @@ pub fn unavailable_snapshot(
         trade_start_ms: trade.start_time,
         trade_end_ms,
         is_open: trade.end_time.is_none(),
+        live_position: false,
         start_ms: trade.start_time,
         end_ms: trade_end_ms,
         candles: Vec::new(),
@@ -364,7 +474,7 @@ fn snapshot_padding_ms(duration_ms: u64, timeframe: Timeframe) -> u64 {
 fn journal_snapshot_metrics(
     request: &JournalTradeSnapshotRequest,
     trade: &AggregatedTrade,
-    details: &JournalTradeDetails,
+    details: Option<&JournalTradeDetails>,
     candles: &[Candle],
 ) -> Result<JournalTradeSnapshotMetrics, String> {
     let overlapping: Vec<&Candle> = candles
@@ -380,25 +490,31 @@ fn journal_snapshot_metrics(
     let entry_price = if trade.avg_entry_price.is_finite() && trade.avg_entry_price > 0.0 {
         trade.avg_entry_price
     } else {
-        fill_vwap(
-            details,
-            &[
-                JournalAttributedFillRole::Increase,
-                JournalAttributedFillRole::FlipOpen,
-            ],
-        )
-        .ok_or_else(|| "Could not derive entry price from fills.".to_string())?
+        details
+            .and_then(|details| {
+                fill_vwap(
+                    details,
+                    &[
+                        JournalAttributedFillRole::Increase,
+                        JournalAttributedFillRole::FlipOpen,
+                    ],
+                )
+            })
+            .ok_or_else(|| "Could not derive entry price from fills.".to_string())?
     };
 
     let exit_price = if trade.end_time.is_some() {
-        fill_vwap(
-            details,
-            &[
-                JournalAttributedFillRole::Reduce,
-                JournalAttributedFillRole::FlipClose,
-            ],
-        )
-        .or_else(|| overlapping.last().map(|candle| candle.close))
+        details
+            .and_then(|details| {
+                fill_vwap(
+                    details,
+                    &[
+                        JournalAttributedFillRole::Reduce,
+                        JournalAttributedFillRole::FlipClose,
+                    ],
+                )
+            })
+            .or_else(|| overlapping.last().map(|candle| candle.close))
     } else {
         overlapping.last().map(|candle| candle.close)
     }
@@ -573,7 +689,7 @@ mod tests {
         let metrics = journal_snapshot_metrics(
             &request(),
             &trade(true),
-            &details(),
+            Some(&details()),
             &[candle(0, 60_000, 95.0, 115.0, 110.0)],
         )
         .expect("metrics");
@@ -587,7 +703,7 @@ mod tests {
         let metrics = journal_snapshot_metrics(
             &request(),
             &trade(false),
-            &details(),
+            Some(&details()),
             &[candle(0, 60_000, 95.0, 115.0, 110.0)],
         )
         .expect("metrics");
@@ -608,5 +724,91 @@ mod tests {
         let next = next_snapshot_request(&request()).expect("next request");
         assert_eq!(next.timeframe, Timeframe::M3);
         assert_eq!(next.ladder_index, 1);
+    }
+
+    fn live_trade() -> AggregatedTrade {
+        let mut trade = trade(true);
+        trade.id = "position:BTC".to_string();
+        trade.end_time = None;
+        trade.status = "OPEN".to_string();
+        trade.fill_count = 0;
+        trade
+    }
+
+    #[test]
+    fn live_position_request_charts_recent_window_for_open_position() {
+        let now = 1_000_000_000_000;
+        let request = live_position_snapshot_request(
+            Some("acct".to_string()),
+            "0xabc".to_string(),
+            &live_trade(),
+            ChartBackfillSource::Hyperliquid,
+            0,
+            0,
+            now,
+        )
+        .expect("live request");
+
+        assert!(request.is_open);
+        assert_eq!(request.trade_end_ms, now);
+        assert_eq!(request.trade_start_ms, now - LIVE_POSITION_LOOKBACK_MS);
+        // Open requests fetch up to "now" with no forward padding.
+        assert_eq!(request.end_ms, request.trade_end_ms);
+    }
+
+    #[test]
+    fn live_position_request_rejects_closed_spot_and_missing_entry() {
+        let now = 1_000_000_000_000;
+        let source = ChartBackfillSource::Hyperliquid;
+
+        // A closed trade is not a live position.
+        assert!(
+            live_position_snapshot_request(None, "a".to_string(), &trade(true), source, 0, 0, now)
+                .is_err()
+        );
+
+        let mut spot = live_trade();
+        spot.coin = "PURR/USDC".to_string();
+        assert!(
+            live_position_snapshot_request(None, "a".to_string(), &spot, source, 0, 0, now)
+                .is_err()
+        );
+
+        let mut no_entry = live_trade();
+        no_entry.avg_entry_price = 0.0;
+        assert!(
+            live_position_snapshot_request(None, "a".to_string(), &no_entry, source, 0, 0, now)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn metrics_derive_from_entry_without_fills_for_live_position() {
+        let metrics = journal_snapshot_metrics(
+            &request(),
+            &live_trade(),
+            None,
+            &[candle(0, 60_000, 95.0, 115.0, 110.0)],
+        )
+        .expect("metrics");
+
+        assert!((metrics.entry_price - 100.0).abs() <= 1e-9);
+        // Open position: the reference/exit price is the latest candle close.
+        assert!((metrics.exit_price - 110.0).abs() <= 1e-9);
+        assert!((metrics.raw_asset_move - 0.10).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn build_marks_open_position_without_fills_as_live() {
+        let snapshot = build_journal_trade_snapshot(
+            &request(),
+            &live_trade(),
+            None,
+            vec![candle(0, 60_000, 95.0, 115.0, 110.0)],
+        )
+        .expect("snapshot");
+
+        assert!(snapshot.live_position);
+        assert!(snapshot.markers.is_empty());
     }
 }

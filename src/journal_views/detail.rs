@@ -46,6 +46,13 @@ impl TradingTerminal {
             ("SHORT", theme.palette().danger)
         };
 
+        // Still-open positions wear the accent so they read as live.
+        let status_tint = if trade.status == "OPEN" {
+            theme.palette().primary
+        } else {
+            journal_muted(&theme)
+        };
+
         let back = button(
             text("← Overview")
                 .size(11)
@@ -63,7 +70,7 @@ impl TradingTerminal {
                 .font(crate::app_fonts::serif_font())
                 .color(theme.palette().text),
             journal_chip(side.0, side.1),
-            journal_chip(trade.status.clone(), journal_muted(&theme)),
+            journal_chip(trade.status.clone(), status_tint),
             Space::new().width(Fill),
             text(denomination.format_signed_value(net_pnl, 2))
                 .size(24)
@@ -140,8 +147,13 @@ impl TradingTerminal {
                     .map(|request| request.timeframe)
             });
 
+        let caption = if trade.end_time.is_none() {
+            "CHART SNAPSHOT · LIVE POSITION"
+        } else {
+            "CHART SNAPSHOT · ENTRY → EXIT"
+        };
         let mut header = row![
-            text("CHART SNAPSHOT · ENTRY → EXIT")
+            text(caption)
                 .size(10)
                 .font(crate::app_fonts::monospace_font())
                 .color(journal_accent_soft(theme)),

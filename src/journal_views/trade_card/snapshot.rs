@@ -310,19 +310,28 @@ fn draw_snapshot_chart(
     } else {
         visible_candles.as_slice()
     };
-    let plot = SnapshotPlot::new(size, view_start_ms, view_end_ms, scale_candles);
+    // A live position has no opening fills, so keep its entry level inside the
+    // price range — the chart's whole purpose is to show price relative to it.
+    let extra_price = snapshot
+        .live_position
+        .then_some(snapshot.metrics.entry_price);
+    let plot = SnapshotPlot::new(size, view_start_ms, view_end_ms, scale_candles, extra_price);
     draw_grid(frame, theme, plot);
     if !visible_candles.is_empty() {
         draw_candles(frame, theme, plot, &visible_candles);
     }
-    draw_guides(
-        frame,
-        theme,
-        plot,
-        snapshot.trade_start_ms,
-        snapshot.trade_end_ms,
-        snapshot.is_open,
-    );
+    if snapshot.live_position {
+        draw_entry_line(frame, theme, plot, snapshot.metrics.entry_price);
+    } else {
+        draw_guides(
+            frame,
+            theme,
+            plot,
+            snapshot.trade_start_ms,
+            snapshot.trade_end_ms,
+            snapshot.is_open,
+        );
+    }
     draw_markers(frame, theme, plot, &visible_markers);
 }
 
@@ -339,12 +348,18 @@ struct SnapshotPlot {
 }
 
 impl SnapshotPlot {
-    fn new(size: Size, start_ms: u64, end_ms: u64, candles: &[Candle]) -> Self {
+    fn new(
+        size: Size,
+        start_ms: u64,
+        end_ms: u64,
+        candles: &[Candle],
+        extra_price: Option<f64>,
+    ) -> Self {
         let left = SNAPSHOT_LEFT_PAD;
         let top = SNAPSHOT_TOP_PAD;
         let width = (size.width - SNAPSHOT_LEFT_PAD - SNAPSHOT_RIGHT_PAD).max(1.0);
         let height = (size.height - SNAPSHOT_TOP_PAD - SNAPSHOT_BOTTOM_PAD).max(1.0);
-        let (min_price, max_price) = price_range(candles);
+        let (min_price, max_price) = price_range(candles, extra_price);
         Self {
             left,
             top,
@@ -677,11 +692,16 @@ fn point_in_snapshot_plot(size: Size, pos: Point) -> bool {
         && pos.y <= size.height - SNAPSHOT_BOTTOM_PAD
 }
 
-fn price_range(candles: &[Candle]) -> (f64, f64) {
-    let (min_price, max_price) = candles.iter().fold(
+fn price_range(candles: &[Candle], extra_price: Option<f64>) -> (f64, f64) {
+    let (mut min_price, mut max_price) = candles.iter().fold(
         (f64::INFINITY, f64::NEG_INFINITY),
         |(min_price, max_price), candle| (min_price.min(candle.low), max_price.max(candle.high)),
     );
+
+    if let Some(extra) = extra_price.filter(|price| price.is_finite() && *price > 0.0) {
+        min_price = min_price.min(extra);
+        max_price = max_price.max(extra);
+    }
 
     if !min_price.is_finite() || !max_price.is_finite() || min_price <= 0.0 {
         return (0.0, 1.0);
@@ -709,6 +729,51 @@ fn draw_grid(frame: &mut canvas::Frame, theme: &Theme, plot: SnapshotPlot) {
                 .with_width(1.0),
         );
     }
+}
+
+/// Horizontal entry-level guide for a live position (no opening fills, so the
+/// vertical OPEN/CLOSE boundaries don't apply).
+fn draw_entry_line(frame: &mut canvas::Frame, theme: &Theme, plot: SnapshotPlot, entry_price: f64) {
+    if !entry_price.is_finite() || entry_price <= 0.0 {
+        return;
+    }
+
+    let color = theme.palette().primary;
+    let y = plot.y_for_price(entry_price);
+    let path = canvas::Path::line(
+        Point::new(plot.left, y),
+        Point::new(plot.left + plot.width, y),
+    );
+    let mut stroke = canvas::Stroke::default()
+        .with_color(Color { a: 0.7, ..color })
+        .with_width(1.2);
+    stroke.line_dash = canvas::stroke::LineDash {
+        segments: &[5.0, 3.0],
+        offset: 0,
+    };
+    frame.stroke(&path, stroke);
+
+    let label = format!("ENTRY {}", format_price(entry_price));
+    let label_width = (label.len() as f32 * 5.6 + 8.0).min(plot.width);
+    let label_top = (y - 13.0).max(plot.top);
+    frame.fill_rectangle(
+        Point::new(plot.left, label_top),
+        Size::new(label_width, 12.0),
+        Color {
+            a: 0.88,
+            ..theme.extended_palette().background.strong.color
+        },
+    );
+    frame.fill_text(canvas::Text {
+        content: label,
+        position: Point::new(plot.left + 4.0, label_top + 1.0),
+        color,
+        size: iced::Pixels(9.0),
+        align_x: alignment::Horizontal::Left.into(),
+        align_y: alignment::Vertical::Top,
+        font: crate::app_fonts::monospace_font(),
+        ..canvas::Text::default()
+    });
 }
 
 fn draw_guides(

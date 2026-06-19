@@ -84,7 +84,7 @@ impl TradingTerminal {
         let monogram = journal_asset_badge(&display_coin, MONOGRAM_SIZE, 18, theme);
 
         let side_chip = journal_chip(side_label(trade), side_tint(trade, theme));
-        let ticker = row![
+        let mut ticker = row![
             text(display_coin)
                 .size(13)
                 .font(crate::app_fonts::monospace_font())
@@ -93,6 +93,10 @@ impl TradingTerminal {
         ]
         .spacing(6)
         .align_y(Alignment::Center);
+        // Flag positions that are still open with an accent chip.
+        if trade.status == "OPEN" {
+            ticker = ticker.push(journal_chip("OPEN", theme.palette().primary));
+        }
 
         let subline = text(format!(
             "{} · {}",
