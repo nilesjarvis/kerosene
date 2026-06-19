@@ -3,6 +3,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::{CANDLE_FETCH_MAX_ATTEMPTS, CandleFetchRequest};
 use crate::config::ChartBackfillSource;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
@@ -91,6 +92,7 @@ impl TradingTerminal {
                         retry_request = Some(next_request);
                     } else {
                         instance.candle_fetch_request = None;
+                        let error = redact_sensitive_response_text(&error);
                         if instance.chart.candles.is_empty() {
                             instance.chart.set_error(error);
                             remove_cache_data = Some((request.symbol.clone(), request.timeframe));
@@ -198,6 +200,7 @@ impl TradingTerminal {
                         retry_request = Some(next_request);
                     } else {
                         instance.secondary_candle_fetch_request = None;
+                        let error = redact_sensitive_response_text(&error);
                         instance.secondary_candle_fetch_error = Some(error);
                     }
                 }
@@ -353,6 +356,42 @@ mod tests {
     }
 
     #[test]
+    fn current_primary_candle_error_redacts_chart_error() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_backfill_source = ChartBackfillSource::Hyperliquid;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: CANDLE_FETCH_MAX_ATTEMPTS - 1,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal.apply_chart_candles_loaded(
+            request,
+            Err("candle fetch failed: api_key=chart-secret".to_string()),
+        );
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        match &instance.chart.status {
+            ChartStatus::Error(message) => {
+                assert!(message.contains("api_key=<redacted>"));
+                assert!(!message.contains("chart-secret"));
+            }
+            other => panic!("expected error status, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn stale_hyperliquid_provider_generation_does_not_update_chart_candles() {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.charts.clear();
@@ -422,6 +461,42 @@ mod tests {
         assert_eq!(secondary.candles[0].close, 200.0);
         assert!(instance.secondary_candle_fetch_request.is_none());
         assert!(instance.secondary_candle_fetch_error.is_none());
+    }
+
+    #[test]
+    fn current_secondary_candle_error_redacts_comparison_error() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_backfill_source = ChartBackfillSource::Hyperliquid;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance.set_secondary_symbol_identity("ETH".to_string(), "ETH".to_string());
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "ETH".to_string(),
+            timeframe: Timeframe::H1,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 1_000,
+            attempt: CANDLE_FETCH_MAX_ATTEMPTS - 1,
+        };
+        instance.secondary_candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal.apply_chart_secondary_candles_loaded(
+            request,
+            Err("comparison fetch failed: signature=chart-secret".to_string()),
+        );
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        let error = instance
+            .secondary_candle_fetch_error
+            .as_deref()
+            .expect("secondary candle error");
+        assert!(error.contains("signature=<redacted>"));
+        assert!(!error.contains("chart-secret"));
     }
 
     #[test]
