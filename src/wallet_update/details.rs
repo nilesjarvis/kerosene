@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use iced::Task;
 
@@ -45,7 +46,7 @@ impl TradingTerminal {
                         state.error = None;
                     }
                     Err(e) => {
-                        state.error = Some(e);
+                        state.error = Some(redact_sensitive_response_text(&e));
                     }
                 }
             }
@@ -71,6 +72,35 @@ mod tests {
     use crate::ws::WsUserData;
 
     const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn current_wallet_details_error_redacts_state_error() {
+        let mut terminal = TradingTerminal::boot().0;
+        let window_id = iced::window::Id::unique();
+        let context = terminal.read_data_request_context();
+        let mut state = WalletDetailsWindowState::new(TEST_ADDRESS.to_string());
+        state.loading_context = Some(context);
+        terminal.wallet_detail_windows.insert(window_id, state);
+
+        let _task = terminal.update_wallet_details(Message::WalletDetailsLoaded(
+            window_id,
+            TEST_ADDRESS.to_string().into(),
+            context,
+            Box::new(Err(
+                "details failed: api_key=wallet-secret signature=sig-secret".to_string(),
+            )),
+        ));
+
+        let state = terminal
+            .wallet_detail_windows
+            .get(&window_id)
+            .expect("details window");
+        let error = state.error.as_deref().expect("state error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(error.contains("signature=<redacted>"));
+        assert!(!error.contains("wallet-secret"));
+        assert!(!error.contains("sig-secret"));
+    }
 
     #[test]
     fn stale_hydromancer_context_clears_matching_wallet_details_loading() {

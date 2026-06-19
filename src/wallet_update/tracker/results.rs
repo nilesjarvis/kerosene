@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::wallet_state::{
     WALLET_TRACKER_CORE_ERROR_BACKOFF_MS, WALLET_TRACKER_ORDER_ERROR_BACKOFF_MS,
@@ -51,7 +52,7 @@ impl TradingTerminal {
                         }
                     }
                     Err(e) => {
-                        row.order_error = Some(e);
+                        row.order_error = Some(redact_sensitive_response_text(&e));
                         row.next_order_retry_ms =
                             Some(Self::now_ms() + WALLET_TRACKER_ORDER_ERROR_BACKOFF_MS);
                     }
@@ -86,7 +87,7 @@ impl TradingTerminal {
                 row.snapshot = Some(data);
             }
             Err(e) => {
-                row.error = Some(e);
+                row.error = Some(redact_sensitive_response_text(&e));
                 row.next_core_retry_ms =
                     Some(Self::now_ms() + WALLET_TRACKER_CORE_ERROR_BACKOFF_MS);
             }
@@ -177,6 +178,56 @@ mod tests {
             .tracked_addresses
             .push(TEST_ADDRESS.to_string());
         terminal
+    }
+
+    #[test]
+    fn wallet_tracker_snapshot_error_redacts_row_error() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal
+            .wallet_tracker
+            .tracked_addresses
+            .push(TEST_ADDRESS.to_string());
+        let context = terminal.read_data_request_context();
+
+        let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerLoaded(
+            TEST_ADDRESS.to_string().into(),
+            context,
+            Box::new(Err("snapshot failed: api_key=tracker-secret".to_string())),
+        ));
+
+        let row = terminal
+            .wallet_tracker
+            .rows
+            .get(TEST_ADDRESS)
+            .expect("tracker row");
+        let error = row.error.as_deref().expect("row error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(!error.contains("tracker-secret"));
+    }
+
+    #[test]
+    fn wallet_tracker_order_error_redacts_row_error() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal
+            .wallet_tracker
+            .tracked_addresses
+            .push(TEST_ADDRESS.to_string());
+        let context = terminal.read_data_request_context();
+
+        let _task = terminal.apply_wallet_tracker_results(Message::WalletTrackerOrdersLoaded(
+            TEST_ADDRESS.to_string().into(),
+            context,
+            Box::new(Err("orders failed: auth_token=order-secret".to_string())),
+        ));
+
+        let row = terminal
+            .wallet_tracker
+            .rows
+            .get(TEST_ADDRESS)
+            .expect("tracker row");
+        let error = row.order_error.as_deref().expect("row order error");
+        assert!(error.contains("auth_token=<redacted>"));
+        assert!(!error.contains("order-secret"));
     }
 
     #[test]
