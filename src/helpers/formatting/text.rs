@@ -93,6 +93,9 @@ fn redact_sensitive_key_values(text: &str) -> String {
         "api_hash",
         "apihash",
         "api-hash",
+        "client_secret",
+        "clientsecret",
+        "client-secret",
         "private_key",
         "privatekey",
         "secret_key",
@@ -106,6 +109,7 @@ fn redact_sensitive_key_values(text: &str) -> String {
         "cursor",
         "password",
         "passcode",
+        "signature",
         "phone_code_hash",
         "phonecodehash",
         "phone-code-hash",
@@ -115,13 +119,20 @@ fn redact_sensitive_key_values(text: &str) -> String {
         "code_hash",
         "codehash",
         "code-hash",
+        "auth_token",
+        "authtoken",
+        "auth-token",
         "access_token",
         "accesstoken",
         "refresh_token",
         "refreshtoken",
+        "id_token",
+        "idtoken",
+        "id-token",
         "bearer_token",
         "bearertoken",
         "token",
+        "sig",
     ];
 
     let lower = text.to_ascii_lowercase();
@@ -445,11 +456,36 @@ mod tests {
 
     #[test]
     fn sensitive_response_excerpt_redacts_camel_case_token_aliases() {
-        let text = r#"{"accessToken":"access-secret","refreshToken":"refresh-secret","bearerToken":"bearer-secret"}"#;
+        let text = r#"{"authToken":"auth-secret","accessToken":"access-secret","refreshToken":"refresh-secret","idToken":"id-secret","bearerToken":"bearer-secret"}"#;
         let rendered = sensitive_response_excerpt(text, 240);
 
-        assert_eq!(rendered.matches("<redacted>").count(), 3);
-        for secret in ["access-secret", "refresh-secret", "bearer-secret"] {
+        assert_eq!(rendered.matches("<redacted>").count(), 5);
+        for secret in [
+            "auth-secret",
+            "access-secret",
+            "refresh-secret",
+            "id-secret",
+            "bearer-secret",
+        ] {
+            assert!(!rendered.contains(secret), "excerpt leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn sensitive_response_excerpt_redacts_client_secret_and_signatures() {
+        let text = concat!(
+            r#"{"client_secret":"client-secret","clientSecret":"camel-client-secret"}"#,
+            " signature=signature-secret sig=sig-secret"
+        );
+        let rendered = sensitive_response_excerpt(text, 360);
+
+        assert_eq!(rendered.matches("<redacted>").count(), 4);
+        for secret in [
+            "client-secret",
+            "camel-client-secret",
+            "signature-secret",
+            "sig-secret",
+        ] {
             assert!(!rendered.contains(secret), "excerpt leaked {secret}");
         }
     }
