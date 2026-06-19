@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_wallet_address_debug_value;
 use std::fmt;
 
 mod display;
@@ -27,24 +28,13 @@ pub(crate) struct WalletDisplay {
 impl fmt::Debug for WalletDisplay {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WalletDisplay")
-            .field(
-                "primary",
-                &redacted_wallet_display_debug_value(&self.primary),
-            )
+            .field("primary", &redact_wallet_address_debug_value(&self.primary))
             .field(
                 "secondary",
-                &redacted_wallet_display_debug_value(&self.secondary),
+                &redact_wallet_address_debug_value(&self.secondary),
             )
             .field("has_label", &self.has_label)
             .finish()
-    }
-}
-
-fn redacted_wallet_display_debug_value(value: &str) -> &str {
-    if normalize_wallet_address_value(value).is_some() {
-        "<redacted>"
-    } else {
-        value
     }
 }
 

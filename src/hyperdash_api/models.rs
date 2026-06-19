@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::helpers::redact_sensitive_response_text;
+use crate::helpers::{redact_sensitive_response_text, redact_wallet_address_debug_value};
 use serde::{Deserialize, Serialize};
 
 use super::HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS;
@@ -237,22 +237,10 @@ impl fmt::Debug for GqlError {
 }
 
 fn redacted_optional_wallet_debug_value(value: &Option<String>) -> Option<&str> {
-    value.as_deref().map(redacted_wallet_debug_value)
-}
-
-fn redacted_wallet_debug_value(value: &str) -> &str {
-    let value = value.trim();
-    let Some(hex) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-    else {
-        return value;
-    };
-    if hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        "<redacted>"
-    } else {
-        value
-    }
+    value
+        .as_deref()
+        .map(str::trim)
+        .map(redact_wallet_address_debug_value)
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+use crate::helpers::redact_wallet_address_debug_value;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -15,7 +16,10 @@ impl fmt::Debug for TrackedWalletConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TrackedWalletConfig")
             .field("address", &"<redacted>")
-            .field("label", &redacted_wallet_debug_value(&self.label))
+            .field(
+                "label",
+                &redact_wallet_address_debug_value(self.label.trim()),
+            )
             .finish()
     }
 }
@@ -40,7 +44,10 @@ impl fmt::Debug for AddressBookEntryConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AddressBookEntryConfig")
             .field("address", &"<redacted>")
-            .field("label", &redacted_wallet_debug_value(&self.label))
+            .field(
+                "label",
+                &redact_wallet_address_debug_value(self.label.trim()),
+            )
             .field("color", &self.color)
             .field("tags", &RedactedWalletTags(self.tags.len()))
             .finish()
@@ -152,21 +159,6 @@ struct RedactedWalletTags(usize);
 impl fmt::Debug for RedactedWalletTags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "<{} redacted>", self.0)
-    }
-}
-
-fn redacted_wallet_debug_value(value: &str) -> &str {
-    let value = value.trim();
-    let Some(hex) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-    else {
-        return value;
-    };
-    if hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        "<redacted>"
-    } else {
-        value
     }
 }
 

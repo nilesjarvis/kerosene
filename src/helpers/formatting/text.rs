@@ -66,6 +66,21 @@ pub fn redact_sensitive_response_text(text: &str) -> String {
     redact_long_hex_tokens(&redact_bearer_phrases(&redact_sensitive_key_values(text)))
 }
 
+pub fn redact_wallet_address_debug_value(value: &str) -> &str {
+    let trimmed = value.trim();
+    let Some(hex) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    else {
+        return value;
+    };
+    if hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        "<redacted>"
+    } else {
+        value
+    }
+}
+
 fn redact_sensitive_key_values(text: &str) -> String {
     const KEYS: &[&str] = &[
         "authorization",
@@ -446,6 +461,22 @@ mod tests {
 
         assert!(rendered.starts_with("é€ 0x<redacted-hex>"));
         assert!(!rendered.contains("0123456789abcdef0123456789abcdef01234567"));
+    }
+
+    #[test]
+    fn wallet_address_debug_value_redacts_full_hex_addresses() {
+        let address = "  0xAbC0000000000000000000000000000000000000  ";
+
+        assert_eq!(redact_wallet_address_debug_value(address), "<redacted>");
+    }
+
+    #[test]
+    fn wallet_address_debug_value_preserves_non_addresses() {
+        assert_eq!(redact_wallet_address_debug_value("Whale"), "Whale");
+        assert_eq!(
+            redact_wallet_address_debug_value("0xabc0...0000"),
+            "0xabc0...0000"
+        );
     }
 
     #[test]
