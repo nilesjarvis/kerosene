@@ -2,6 +2,7 @@ use crate::api::{ExchangeSymbol, MarketType, SecEarningsEvent, fetch_sec_earning
 use crate::app_state::TradingTerminal;
 use crate::chart::EarningsMarker;
 use crate::chart_state::{ChartId, ChartInstance};
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
@@ -224,7 +225,10 @@ impl TradingTerminal {
                     }
                 }
                 self.push_toast(
-                    format!("SEC earnings fetch failed for {ticker}: {error}"),
+                    format!(
+                        "SEC earnings fetch failed for {ticker}: {}",
+                        redact_sensitive_response_text(&error)
+                    ),
                     true,
                 );
             }
@@ -528,6 +532,47 @@ mod tests {
         assert!(instance.earnings_fetching);
         assert_eq!(instance.earnings_pending_ticker.as_deref(), Some("NVDA"));
         assert!(terminal.toasts.is_empty());
+    }
+
+    #[test]
+    fn current_earnings_error_redacts_toast_detail() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(1, "xyz:NVDA".to_string(), Timeframe::H1);
+        instance.show_earnings_markers = true;
+        instance.earnings_fetching = true;
+        instance.earnings_pending_ticker = Some("NVDA".to_string());
+        terminal.charts.insert(1, instance);
+        terminal
+            .sec_earnings_pending_request_ids
+            .insert("NVDA".to_string(), 7);
+        terminal
+            .sec_earnings_pending_charts
+            .insert("NVDA".to_string(), vec![1]);
+
+        terminal.apply_sec_earnings_loaded(
+            "NVDA".to_string(),
+            7,
+            Err("SEC failed: api_key=key-secret signature=sig-secret".to_string()),
+        );
+
+        let instance = terminal.charts.get(&1).expect("chart");
+        assert!(!instance.earnings_fetching);
+        assert!(instance.earnings_pending_ticker.is_none());
+        assert_eq!(
+            instance
+                .earnings_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("EARN fetch failed", true))
+        );
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("api_key=<redacted>"));
+        assert!(toast.message.contains("signature=<redacted>"));
+        assert!(!toast.message.contains("key-secret"));
+        assert!(!toast.message.contains("sig-secret"));
     }
 
     #[test]
