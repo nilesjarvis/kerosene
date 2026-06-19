@@ -101,8 +101,11 @@ fn redact_sensitive_key_values(text: &str) -> String {
         "codehash",
         "code-hash",
         "access_token",
+        "accesstoken",
         "refresh_token",
+        "refreshtoken",
         "bearer_token",
+        "bearertoken",
         "token",
     ];
 
@@ -182,9 +185,8 @@ fn sensitive_value_bounds(text: &str, key_start: usize, key_end: usize) -> Optio
         cursor += 1;
     }
 
-    let is_authorization = text[key_start..key_end].eq_ignore_ascii_case("authorization");
-    if is_authorization && text[cursor..].to_ascii_lowercase().starts_with("bearer ") {
-        cursor += "bearer ".len();
+    if text[key_start..key_end].eq_ignore_ascii_case("authorization") {
+        cursor = authorization_credential_start(bytes, cursor);
     }
 
     let value_start = cursor;
@@ -221,6 +223,43 @@ fn sensitive_value_bounds(text: &str, key_start: usize, key_end: usize) -> Optio
         cursor += 1;
     }
     Some((value_start, cursor))
+}
+
+fn authorization_credential_start(bytes: &[u8], mut cursor: usize) -> usize {
+    if matches!(bytes.get(cursor), Some(b'"') | Some(b'\'')) {
+        return cursor;
+    }
+    if bytes.get(cursor) == Some(&b'\\')
+        && matches!(bytes.get(cursor + 1), Some(b'"') | Some(b'\''))
+    {
+        return cursor;
+    }
+
+    let scheme_start = cursor;
+    while bytes
+        .get(cursor)
+        .is_some_and(|byte| !byte.is_ascii_whitespace() && !matches!(byte, b',' | b';'))
+    {
+        cursor += 1;
+    }
+
+    if cursor == scheme_start {
+        return scheme_start;
+    }
+
+    let mut value_start = cursor;
+    while bytes
+        .get(value_start)
+        .is_some_and(|byte| byte.is_ascii_whitespace())
+    {
+        value_start += 1;
+    }
+
+    if value_start == cursor {
+        scheme_start
+    } else {
+        value_start
+    }
 }
 
 fn redact_bearer_phrases(text: &str) -> String {
@@ -356,6 +395,34 @@ mod tests {
             "abc123",
             "0123456789abcdef0123456789abcdef01234567",
         ] {
+            assert!(!rendered.contains(secret), "excerpt leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn sensitive_response_excerpt_redacts_non_bearer_authorization_credentials() {
+        let text = concat!(
+            "Authorization: Basic base64-secret\n",
+            "Proxy-Authorization: Token proxy-secret\n",
+            "api_key=\"later-secret\""
+        );
+        let rendered = sensitive_response_excerpt(text, 240);
+
+        assert!(rendered.contains("Authorization: Basic <redacted>"));
+        assert!(rendered.contains("Proxy-Authorization: Token <redacted>"));
+        assert!(rendered.contains("api_key=\"<redacted>\""));
+        for secret in ["base64-secret", "proxy-secret", "later-secret"] {
+            assert!(!rendered.contains(secret), "excerpt leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn sensitive_response_excerpt_redacts_camel_case_token_aliases() {
+        let text = r#"{"accessToken":"access-secret","refreshToken":"refresh-secret","bearerToken":"bearer-secret"}"#;
+        let rendered = sensitive_response_excerpt(text, 240);
+
+        assert_eq!(rendered.matches("<redacted>").count(), 3);
+        for secret in ["access-secret", "refresh-secret", "bearer-secret"] {
             assert!(!rendered.contains(secret), "excerpt leaked {secret}");
         }
     }
