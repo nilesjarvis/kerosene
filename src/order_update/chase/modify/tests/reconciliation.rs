@@ -11,8 +11,11 @@ fn chase_modify_unknown_response_preserves_target_for_reconciliation() {
     terminal.connected_address = Some(TEST_ACCOUNT.to_string());
     terminal.chase_orders.insert(1, chase());
 
-    let _task =
-        terminal.handle_chase_modify_result(1, 42, Err("response body timeout".to_string()));
+    let _task = terminal.handle_chase_modify_result(
+        1,
+        42,
+        Err("response body timeout: token=super-secret".to_string()),
+    );
 
     let chase = chase_by_id(&terminal, 1);
     assert_eq!(
@@ -23,6 +26,10 @@ fn chase_modify_unknown_response_preserves_target_for_reconciliation() {
     );
     assert_eq!(chase.desired_price, Some(101.0));
     assert!(terminal.account_loading);
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(!*is_error);
+    assert!(message.contains("token=<redacted>"));
+    assert!(!message.contains("super-secret"));
 }
 
 #[test]

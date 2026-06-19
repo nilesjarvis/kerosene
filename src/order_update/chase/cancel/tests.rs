@@ -78,7 +78,11 @@ fn max_cancel_retry_keeps_chase_for_manual_check() {
     terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
     terminal.chase_orders.insert(1, chase());
 
-    let _task = terminal.handle_chase_cancel_result(1, 42, Err("network timeout".to_string()));
+    let _task = terminal.handle_chase_cancel_result(
+        1,
+        42,
+        Err("network timeout: private_key=super-secret".to_string()),
+    );
 
     let chase = terminal.chase_orders.get(&1).expect("chase should remain");
     assert_eq!(chase.cancel_retries, MAX_CHASE_CANCEL_RETRIES);
@@ -96,6 +100,10 @@ fn max_cancel_retry_keeps_chase_for_manual_check() {
                 *is_error && message.contains("requires manual check")
             })
     );
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(*is_error);
+    assert!(message.contains("private_key=<redacted>"));
+    assert!(!message.contains("super-secret"));
 }
 
 #[test]

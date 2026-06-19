@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::signing::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseQueuedAction, ChaseVerificationReason,
@@ -114,6 +115,7 @@ impl TradingTerminal {
         oid: u64,
         summary: String,
     ) -> Task<Message> {
+        let summary = redact_sensitive_response_text(&summary);
         if chase_terminal_cancel_error(&summary) {
             return self.check_chase_order_status(
                 chase_id,

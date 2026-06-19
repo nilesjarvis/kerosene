@@ -7,6 +7,7 @@ pub(super) use cancel::chase_terminal_cancel_error;
 
 use crate::api::fetch_order_status_by_oid;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::signing::{ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason};
 use iced::Task;
@@ -45,7 +46,7 @@ impl TradingTerminal {
         oid: u64,
         status: impl Into<String>,
     ) -> Task<Message> {
-        let status = status.into();
+        let status = redact_sensitive_response_text(&status.into());
         let can_refresh_chase_account = self
             .chase_orders
             .get(&chase_id)

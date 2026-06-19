@@ -3,6 +3,7 @@ mod stop_cancel;
 
 use crate::api::fetch_order_status_by_cloid;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::order_execution::cancel_order_task;
 use crate::signing::{ChaseLifecycle, ChaseStopPhase, ChaseVerificationReason, ExchangeResponse};
@@ -63,6 +64,7 @@ impl TradingTerminal {
         chase_id: u64,
         reason: String,
     ) -> Task<Message> {
+        let reason = redact_sensitive_response_text(&reason);
         let chase_account_address = self
             .chase_orders
             .get(&chase_id)

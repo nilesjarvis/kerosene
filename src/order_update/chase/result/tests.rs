@@ -185,6 +185,34 @@ fn malformed_filled_place_result_checks_status_without_crediting_remaining_size(
 }
 
 #[test]
+fn place_transport_error_checks_status_with_redacted_reason() {
+    let mut chase = chase();
+    chase.lifecycle = ChaseLifecycle::Placing;
+    chase.current_cloid = Some(TEST_CLOID.to_string());
+    let mut terminal = connected_terminal_with_chase(chase);
+    terminal.account_loading = false;
+
+    let _task = terminal.handle_chase_place_result(
+        1,
+        Err("place request failed: api_key=super-secret".to_string()),
+    );
+
+    let chase = chase_from_terminal(&terminal, 1);
+    assert_eq!(
+        chase.lifecycle,
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Placement
+        }
+    );
+    assert!(terminal.account_loading);
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(*is_error);
+    assert!(message.contains("response was not confirmed"));
+    assert!(message.contains("api_key=<redacted>"));
+    assert!(!message.contains("super-secret"));
+}
+
+#[test]
 fn late_place_result_without_chase_does_not_refresh_current_account() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.connected_address = Some("0xdef0000000000000000000000000000000000000".to_string());

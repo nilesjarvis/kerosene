@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::signing::{self, ChaseLifecycle, ChaseStopPhase, ExchangeResponse};
 
@@ -117,6 +118,7 @@ impl TradingTerminal {
         oid: u64,
         message: String,
     ) -> Task<Message> {
+        let message = redact_sensitive_response_text(&message);
         let mut retry_count = 0;
         let chase_account_address = self
             .chase_orders
@@ -182,6 +184,7 @@ impl TradingTerminal {
         message: String,
         include_last_on_stop: bool,
     ) {
+        let message = redact_sensitive_response_text(&message);
         if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
             chase.cancel_retries += 1;
             chase.lifecycle = ChaseLifecycle::Stopping {
