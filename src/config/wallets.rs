@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Persisted tracked-wallet entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TrackedWalletConfig {
     /// Wallet address (0x...)
     pub address: String,
@@ -10,8 +11,17 @@ pub struct TrackedWalletConfig {
     pub label: String,
 }
 
+impl fmt::Debug for TrackedWalletConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrackedWalletConfig")
+            .field("address", &"<redacted>")
+            .field("label", &redacted_wallet_debug_value(&self.label))
+            .finish()
+    }
+}
+
 /// Shared wallet identity metadata used by tracker and address displays.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct AddressBookEntryConfig {
     /// Wallet address (0x...).
     pub address: String,
@@ -26,17 +36,38 @@ pub struct AddressBookEntryConfig {
     pub tags: Vec<String>,
 }
 
+impl fmt::Debug for AddressBookEntryConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AddressBookEntryConfig")
+            .field("address", &"<redacted>")
+            .field("label", &redacted_wallet_debug_value(&self.label))
+            .field("color", &self.color)
+            .field("tags", &self.tags)
+            .finish()
+    }
+}
+
 pub const WALLET_LABELS_EXPORT_SCHEMA: &str = "kerosene.wallet_labels.v1";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct WalletLabelsExport {
     pub schema: String,
     pub exported_at_ms: u64,
     pub labels: Vec<AddressBookEntryConfig>,
 }
 
+impl fmt::Debug for WalletLabelsExport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletLabelsExport")
+            .field("schema", &self.schema)
+            .field("exported_at_ms", &self.exported_at_ms)
+            .field("labels", &self.labels)
+            .finish()
+    }
+}
+
 /// Persisted wallet tracker window settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WalletTrackerConfig {
     /// Tracked wallet addresses. Labels live in `KeroseneConfig::address_book`.
     #[serde(default)]
@@ -64,6 +95,27 @@ pub struct WalletTrackerConfig {
     pub y: Option<f32>,
 }
 
+impl fmt::Debug for WalletTrackerConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletTrackerConfig")
+            .field(
+                "tracked_addresses",
+                &RedactedWalletAddressList(self.tracked_addresses.len()),
+            )
+            .field(
+                "muted_addresses",
+                &RedactedWalletAddressList(self.muted_addresses.len()),
+            )
+            .field("wallets", &self.wallets)
+            .field("open", &self.open)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .finish()
+    }
+}
+
 impl Default for WalletTrackerConfig {
     fn default() -> Self {
         Self {
@@ -85,4 +137,88 @@ pub fn default_wallet_tracker_width() -> f32 {
 
 pub fn default_wallet_tracker_height() -> f32 {
     680.0
+}
+
+struct RedactedWalletAddressList(usize);
+
+impl fmt::Debug for RedactedWalletAddressList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{} redacted>", self.0)
+    }
+}
+
+fn redacted_wallet_debug_value(value: &str) -> &str {
+    let value = value.trim();
+    let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    else {
+        return value;
+    };
+    if hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        "<redacted>"
+    } else {
+        value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AddressBookEntryConfig, TrackedWalletConfig, WALLET_LABELS_EXPORT_SCHEMA,
+        WalletLabelsExport, WalletTrackerConfig,
+    };
+
+    const ADDRESS_A: &str = "0x1111111111111111111111111111111111111111";
+    const ADDRESS_B: &str = "0x2222222222222222222222222222222222222222";
+    const ADDRESS_C: &str = "0x3333333333333333333333333333333333333333";
+
+    #[test]
+    fn wallet_config_debug_redacts_addresses() {
+        let cfg = WalletTrackerConfig {
+            tracked_addresses: vec![ADDRESS_A.to_string(), ADDRESS_B.to_string()],
+            muted_addresses: vec![ADDRESS_C.to_string()],
+            wallets: vec![TrackedWalletConfig {
+                address: ADDRESS_A.to_string(),
+                label: "Whale".to_string(),
+            }],
+            open: true,
+            width: 900.0,
+            height: 700.0,
+            x: Some(12.0),
+            y: Some(34.0),
+        };
+
+        let rendered = format!("{cfg:?}");
+
+        for address in [ADDRESS_A, ADDRESS_B, ADDRESS_C] {
+            assert!(!rendered.contains(address));
+        }
+        assert!(rendered.contains("tracked_addresses: <2 redacted>"));
+        assert!(rendered.contains("muted_addresses: <1 redacted>"));
+        assert!(rendered.contains("Whale"));
+        assert!(rendered.contains("open: true"));
+    }
+
+    #[test]
+    fn wallet_labels_export_debug_redacts_entry_addresses() {
+        let export = WalletLabelsExport {
+            schema: WALLET_LABELS_EXPORT_SCHEMA.to_string(),
+            exported_at_ms: 42,
+            labels: vec![AddressBookEntryConfig {
+                address: ADDRESS_A.to_string(),
+                label: ADDRESS_B.to_string(),
+                color: Some("#ff00ff".to_string()),
+                tags: vec!["desk".to_string()],
+            }],
+        };
+
+        let rendered = format!("{export:?}");
+
+        assert!(!rendered.contains(ADDRESS_A));
+        assert!(!rendered.contains(ADDRESS_B));
+        assert!(rendered.contains("<redacted>"));
+        assert!(rendered.contains("#ff00ff"));
+        assert!(rendered.contains("desk"));
+    }
 }
