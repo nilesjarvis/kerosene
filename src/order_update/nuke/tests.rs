@@ -98,3 +98,23 @@ fn nuke_confirmation_is_only_armed_inside_window() {
         now
     ));
 }
+
+#[test]
+fn nuke_confirmation_debug_redacts_account_address() {
+    let account_address = "0xabc0000000000000000000000000000000000000";
+    let confirmation = NukeConfirmation::new(
+        Instant::now(),
+        Some(account_address),
+        &NukePlan {
+            ready: vec![("BTC".to_string(), order())],
+            skipped: vec![],
+            hidden_skipped: vec![],
+        },
+    );
+
+    let rendered = format!("{confirmation:?}");
+
+    assert!(!rendered.contains(account_address));
+    assert!(rendered.contains("<redacted>"));
+    assert!(rendered.contains("BTC"));
+}

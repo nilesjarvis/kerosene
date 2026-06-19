@@ -1,6 +1,9 @@
 use crate::order_execution::NukePlan;
 
-use std::time::{Duration, Instant};
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
 
 // ---------------------------------------------------------------------------
 // NUKE Confirmation
@@ -27,12 +30,26 @@ impl NukeConfirmation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct NukePlanFingerprint {
     account_address: Option<String>,
     ready: Vec<NukeReadyFingerprint>,
     skipped: Vec<(String, String)>,
     hidden_skipped: Vec<(String, String)>,
+}
+
+impl fmt::Debug for NukePlanFingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NukePlanFingerprint")
+            .field(
+                "account_address",
+                &self.account_address.as_ref().map(|_| "<redacted>"),
+            )
+            .field("ready", &self.ready)
+            .field("skipped", &self.skipped)
+            .field("hidden_skipped", &self.hidden_skipped)
+            .finish()
+    }
 }
 
 impl NukePlanFingerprint {
