@@ -563,7 +563,7 @@ mod tests {
     }
 
     #[test]
-    fn chart_asset_context_ignores_inactive_provider_source() {
+    fn chart_asset_context_gates_provider_source() {
         let mut terminal = terminal_with_chart();
         terminal.hydromancer_key_generation = 2;
 
@@ -585,7 +585,13 @@ mod tests {
             asset_ctx("101"),
         ));
 
-        assert!(terminal.charts[&7].asset_ctx.is_none());
+        assert_eq!(
+            terminal.charts[&7]
+                .asset_ctx
+                .as_ref()
+                .and_then(|ctx| ctx.mid_px.as_deref()),
+            Some("101")
+        );
     }
 
     fn asset_ctx_with_metrics(open_interest: &str, day_ntl_vlm: &str) -> AssetContext {

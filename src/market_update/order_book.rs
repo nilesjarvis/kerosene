@@ -641,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn order_book_snapshot_ignores_inactive_provider_source() {
+    fn order_book_snapshot_gates_provider_source() {
         let mut terminal = terminal_with_order_book();
         terminal.hydromancer_key_generation = 2;
 
@@ -666,12 +666,12 @@ mod tests {
             book: book(),
         });
 
-        assert!(terminal.order_books[&7].book.bids.is_empty());
-        assert!(terminal.order_books[&7].book.asks.is_empty());
+        assert_eq!(terminal.order_books[&7].book.bids.len(), 1);
+        assert_eq!(terminal.order_books[&7].book.asks.len(), 1);
     }
 
     #[test]
-    fn order_book_asset_context_ignores_inactive_provider_source() {
+    fn order_book_asset_context_gates_provider_source() {
         let mut terminal = terminal_with_order_book();
         terminal.hydromancer_key_generation = 2;
 
@@ -693,6 +693,12 @@ mod tests {
             ctx: asset_ctx("101"),
         });
 
-        assert!(terminal.order_books[&7].asset_ctx.is_none());
+        assert_eq!(
+            terminal.order_books[&7]
+                .asset_ctx
+                .as_ref()
+                .and_then(|ctx| ctx.mid_px.as_deref()),
+            Some("101")
+        );
     }
 }

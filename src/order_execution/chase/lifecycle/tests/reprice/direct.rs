@@ -204,7 +204,7 @@ fn chase_book_lag_ignores_stale_hydromancer_generation() {
 }
 
 #[test]
-fn chase_book_lag_ignores_inactive_provider_source() {
+fn chase_book_lag_gates_provider_source() {
     let mut terminal = exchange_ready_terminal();
     terminal.hydromancer_key_generation = 2;
     let mut chase = chase();
@@ -244,14 +244,14 @@ fn chase_book_lag_ignores_inactive_provider_source() {
     );
 
     let chase = chase_by_id(&terminal, 1);
+    assert_eq!(chase.desired_price, None);
     assert_eq!(
         chase.lifecycle,
-        ChaseLifecycle::Queued {
-            action: ChaseQueuedAction::Reprice
+        ChaseLifecycle::Verifying {
+            reason: ChaseVerificationReason::Modify
         }
     );
-    assert_eq!(chase.desired_price, Some(101.0));
-    assert!(!terminal.account_loading);
+    assert!(terminal.account_loading);
 }
 
 #[test]

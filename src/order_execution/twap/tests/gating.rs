@@ -213,7 +213,7 @@ fn twap_book_update_ignores_stale_hyperliquid_generation() {
 }
 
 #[test]
-fn twap_book_update_ignores_inactive_provider_source() {
+fn twap_book_update_gates_provider_source() {
     let now = Instant::now();
     let mut terminal = TradingTerminal::boot().0;
     terminal.hydromancer_key_generation = 2;
@@ -245,8 +245,8 @@ fn twap_book_update_ignores_inactive_provider_source() {
     );
 
     let twap = twap_by_id(&terminal, 1);
-    assert!(twap.latest_book.is_none());
-    assert_eq!(twap.status, TwapStatus::WaitingForMarket);
+    assert!(twap.latest_book.is_some());
+    assert_eq!(twap.status, TwapStatus::Running);
 }
 
 #[test]

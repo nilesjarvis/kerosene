@@ -203,7 +203,7 @@ fn orderbook_tick_price_updates_matching_tick_chart() {
 }
 
 #[test]
-fn ws_candle_update_ignores_inactive_provider_source() {
+fn ws_candle_update_gates_provider_source() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.charts.clear();
     terminal.hydromancer_key_generation = 2;
@@ -231,7 +231,7 @@ fn ws_candle_update_ignores_inactive_provider_source() {
         source_context(&terminal, None),
         candle(3_000, 102.0),
     );
-    assert_eq!(last_close(&terminal, 1), Some(100.0));
+    assert_eq!(last_close(&terminal, 1), Some(102.0));
 }
 
 #[test]
@@ -259,7 +259,7 @@ fn stale_hydromancer_ws_candle_lag_does_not_reload_chart() {
 }
 
 #[test]
-fn ws_candle_lag_ignores_inactive_provider_source() {
+fn ws_candle_lag_gates_provider_source() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.charts.clear();
     terminal.hydromancer_key_generation = 2;
@@ -287,5 +287,5 @@ fn ws_candle_lag_ignores_inactive_provider_source() {
         source_context(&terminal, None),
         3,
     );
-    assert!(terminal.charts[&1].candle_fetch_request.is_none());
+    assert!(terminal.charts[&1].candle_fetch_request.is_some());
 }

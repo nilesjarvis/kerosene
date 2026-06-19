@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn spaghetti_ws_update_ignores_inactive_provider_source() {
+    fn spaghetti_ws_update_gates_provider_source() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.spaghetti_charts.clear();
         terminal.hydromancer_key_generation = 2;
@@ -327,12 +327,12 @@ mod tests {
         ));
 
         let series = &terminal.spaghetti_charts[&7].canvas.series[0];
-        assert_eq!(series.candles.len(), 1);
-        assert_eq!(series.candles[0].close, 100.0);
+        assert_eq!(series.candles.len(), 2);
+        assert_eq!(series.candles[1].close, 120.0);
     }
 
     #[test]
-    fn spaghetti_ws_lag_ignores_inactive_provider_source() {
+    fn spaghetti_ws_lag_gates_provider_source() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.spaghetti_charts.clear();
         terminal.hydromancer_key_generation = 2;
@@ -358,10 +358,10 @@ mod tests {
             2,
         ));
 
-        assert_eq!(task.units(), 0);
+        assert_eq!(task.units(), 1);
         let series = &terminal.spaghetti_charts[&7].canvas.series[0];
-        assert!(series.loaded);
-        assert!(!series.candles.is_empty());
+        assert!(!series.loaded);
+        assert!(series.candles.is_empty());
     }
 
     #[test]
