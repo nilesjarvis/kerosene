@@ -1,5 +1,6 @@
 use crate::api::{OrderStatusResult, fetch_order_status_by_oid};
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::order_execution::MoveOrderKey;
 use crate::signing::ExchangeResponse;
@@ -175,6 +176,7 @@ impl TradingTerminal {
                 );
             }
             Err(error) => {
+                let error = redact_sensitive_response_text(&error);
                 self.set_order_status(
                     format!(
                         "Move modify status still uncertain for order {oid}: {error}; refreshing account data"
@@ -468,7 +470,7 @@ mod tests {
             "BTC".to_string(),
             42,
             pending_id,
-            Err("exchange request failed".to_string()),
+            Err("exchange request failed: token=super-secret".to_string()),
         );
 
         assert!(terminal.pending_order_indicators.is_empty());
@@ -478,6 +480,8 @@ mod tests {
         let (message, is_error) = terminal.order_status.expect("status should be set");
         assert!(is_error);
         assert!(message.starts_with("Move modify status unknown"));
+        assert!(message.contains("token=<redacted>"));
+        assert!(!message.contains("super-secret"));
     }
 
     #[test]
@@ -523,6 +527,26 @@ mod tests {
         assert!(is_error);
         assert!(message.contains("still uncertain"));
         assert!(message.contains("reports open"));
+    }
+
+    #[test]
+    fn move_order_status_error_redacts_sensitive_text() {
+        let (mut terminal, _pending_id) = terminal_with_pending_move();
+
+        let _task = terminal.handle_move_order_status_result(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            42,
+            Err("orderStatus request failed: api_key=super-secret".to_string()),
+        );
+
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
+        let (message, is_error) = terminal.order_status.expect("status should be set");
+        assert!(is_error);
+        assert!(message.contains("Move modify status still uncertain"));
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("super-secret"));
     }
 
     #[test]
