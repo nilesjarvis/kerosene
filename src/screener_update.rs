@@ -1,5 +1,6 @@
 use crate::api;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::screener_state::{SCREENER_CONTEXT_REFRESH_MS, SCREENER_HISTORY_REFRESH_MS};
 
@@ -260,7 +261,10 @@ impl TradingTerminal {
                 self.screener
                     .contexts
                     .retain(|symbol, _| current_symbols.contains(symbol));
-                self.screener.status = Some((format!("Screener refresh failed: {error}"), true));
+                self.screener.status = Some(screener_failure_status(
+                    SCREENER_CONTEXT_FAILURE_PREFIX,
+                    &error,
+                ));
             }
             Err(_) => {
                 self.screener.contexts = preserved_contexts;
@@ -333,8 +337,10 @@ impl TradingTerminal {
                 });
             }
             Err(error) if !scoped_requested_symbol_set.is_empty() => {
-                self.screener.status =
-                    Some((format!("Screener history refresh failed: {error}"), true));
+                self.screener.status = Some(screener_failure_status(
+                    SCREENER_HISTORY_FAILURE_PREFIX,
+                    &error,
+                ));
             }
             Err(_) => {}
         }
@@ -357,6 +363,13 @@ fn clear_screener_status_if(
     {
         *status = None;
     }
+}
+
+fn screener_failure_status(prefix: &str, error: &str) -> (String, bool) {
+    (
+        format!("{prefix} {}", redact_sensitive_response_text(error)),
+        true,
+    )
 }
 
 #[cfg(test)]
@@ -567,6 +580,28 @@ mod tests {
                 .map(|(message, is_error)| (message.as_str(), *is_error)),
             Some(("Screener refresh failed: network", true))
         );
+    }
+
+    #[test]
+    fn screener_context_error_status_redacts_sensitive_details() {
+        let mut terminal = terminal_with_screener(&["BTC"]);
+        terminal.screener.contexts_loading = true;
+        terminal.screener.contexts_request_id = 7;
+        terminal.screener.contexts_request_symbols = vec!["BTC".to_string()];
+
+        let _task = terminal.update_screener(Message::ScreenerContextsLoaded(
+            7,
+            vec!["BTC".to_string()],
+            20,
+            Err("provider error: api_key=key-secret cursor=cursor-secret".to_string()),
+        ));
+
+        let status = terminal.screener.status.as_ref().expect("status");
+        assert!(status.1);
+        assert!(status.0.contains("api_key=<redacted>"));
+        assert!(status.0.contains("cursor=<redacted>"));
+        assert!(!status.0.contains("key-secret"));
+        assert!(!status.0.contains("cursor-secret"));
     }
 
     #[test]
@@ -802,6 +837,28 @@ mod tests {
                 .map(|(message, is_error)| (message.as_str(), *is_error)),
             Some(("Screener history refresh failed: network", true))
         );
+    }
+
+    #[test]
+    fn screener_history_error_status_redacts_sensitive_details() {
+        let mut terminal = terminal_with_screener(&["BTC"]);
+        terminal.screener.history_loading = true;
+        terminal.screener.history_request_id = 7;
+        terminal.screener.history_request_symbols = vec!["BTC".to_string()];
+
+        let _task = terminal.update_screener(Message::ScreenerHistoryLoaded(
+            7,
+            vec!["BTC".to_string()],
+            10,
+            Err("history failed: auth_token=token-secret signature=sig-secret".to_string()),
+        ));
+
+        let status = terminal.screener.status.as_ref().expect("status");
+        assert!(status.1);
+        assert!(status.0.contains("auth_token=<redacted>"));
+        assert!(status.0.contains("signature=<redacted>"));
+        assert!(!status.0.contains("token-secret"));
+        assert!(!status.0.contains("sig-secret"));
     }
 
     #[test]
