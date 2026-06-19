@@ -55,6 +55,27 @@ fn build_order_action_can_include_client_order_id() {
 }
 
 #[test]
+fn order_action_debug_redacts_order_values_and_cloid() {
+    let action = build_order_action_with_cloid(
+        7,
+        true,
+        "price-secret".to_string(),
+        "size-secret".to_string(),
+        ExchangeOrderKind::LimitIoc,
+        false,
+        Some(CLIENT_ORDER_ID.to_string()),
+    );
+
+    let rendered = format!("{action:?}");
+
+    assert!(rendered.contains("OrderAction"));
+    assert!(rendered.contains("orders_count: 1"));
+    assert!(!rendered.contains("price-secret"));
+    assert!(!rendered.contains("size-secret"));
+    assert!(!rendered.contains(CLIENT_ORDER_ID));
+}
+
+#[test]
 fn build_order_action_uses_ioc_for_market_and_limit_ioc_and_gtc_for_limit() {
     let market = build_order_action(
         1,

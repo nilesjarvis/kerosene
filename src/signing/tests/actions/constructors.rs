@@ -84,3 +84,39 @@ fn action_enum_update_leverage_constructor_matches_direct_builder() {
         msgpack_named(&via_enum, "enum leverage should encode as msgpack"),
     );
 }
+
+#[test]
+fn action_enum_debug_uses_redacted_inner_actions() {
+    let cloid = "0x1234567890abcdef1234567890abcdef".to_string();
+    let actions = [
+        HyperliquidL1Action::order_with_cloid(
+            7,
+            true,
+            "price-secret".to_string(),
+            "size-secret".to_string(),
+            ExchangeOrderKind::Limit,
+            false,
+            Some(cloid.clone()),
+        ),
+        HyperliquidL1Action::cancel(7, 9001),
+        HyperliquidL1Action::cancel_by_cloid(7, cloid.clone()),
+        HyperliquidL1Action::modify(
+            9001,
+            7,
+            true,
+            "price-secret".to_string(),
+            "size-secret".to_string(),
+            false,
+        ),
+    ];
+
+    for action in actions {
+        let rendered = format!("{action:?}");
+
+        assert!(rendered.contains("Action"));
+        assert!(!rendered.contains("price-secret"));
+        assert!(!rendered.contains("size-secret"));
+        assert!(!rendered.contains("9001"));
+        assert!(!rendered.contains(&cloid));
+    }
+}

@@ -71,3 +71,35 @@ fn build_modify_action_serializes_exchange_payload() {
         })
     );
 }
+
+#[test]
+fn cancel_and_modify_action_debug_redacts_exchange_identifiers_and_order_values() {
+    let cancel = build_cancel_action(3, 9001);
+    let cancel_by_cloid = build_cancel_by_cloid_action(3, CLIENT_ORDER_ID.to_string());
+    let modify = build_modify_action(
+        9001,
+        3,
+        true,
+        "price-secret".to_string(),
+        "size-secret".to_string(),
+        false,
+    );
+
+    let cancel_debug = format!("{cancel:?}");
+    let cancel_by_cloid_debug = format!("{cancel_by_cloid:?}");
+    let modify_debug = format!("{modify:?}");
+
+    assert!(cancel_debug.contains("CancelAction"));
+    assert!(cancel_debug.contains("cancels_count: 1"));
+    assert!(!cancel_debug.contains("9001"));
+
+    assert!(cancel_by_cloid_debug.contains("CancelByCloidAction"));
+    assert!(cancel_by_cloid_debug.contains("cancels_count: 1"));
+    assert!(!cancel_by_cloid_debug.contains(CLIENT_ORDER_ID));
+
+    assert!(modify_debug.contains("ModifyAction"));
+    assert!(modify_debug.contains("modifies_count: 1"));
+    assert!(!modify_debug.contains("9001"));
+    assert!(!modify_debug.contains("price-secret"));
+    assert!(!modify_debug.contains("size-secret"));
+}
