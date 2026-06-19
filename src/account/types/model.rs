@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 #[cfg(test)]
 mod tests;
@@ -150,7 +150,7 @@ impl AssetContext {
 }
 
 /// A user's open order.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenOrder {
     pub coin: String,
@@ -171,8 +171,29 @@ pub struct OpenOrder {
     pub trigger_px: Option<String>,
 }
 
+impl fmt::Debug for OpenOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OpenOrder")
+            .field("coin", &"<redacted>")
+            .field("side", &self.side)
+            .field("limit_px", &"<redacted>")
+            .field("sz", &"<redacted>")
+            .field("oid", &"<redacted>")
+            .field("timestamp", &self.timestamp)
+            .field("reduce_only", &self.reduce_only)
+            .field("is_trigger", &self.is_trigger)
+            .field("order_type", &self.order_type)
+            .field("tif", &self.tif)
+            .field(
+                "trigger_px",
+                &self.trigger_px.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
+}
+
 /// A user's fill (trade).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserFill {
     pub coin: String,
@@ -189,6 +210,24 @@ pub struct UserFill {
     pub dir: String, // "Open Long", "Close Short", etc.
     pub closed_pnl: String,
     pub fee: String,
+}
+
+impl fmt::Debug for UserFill {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserFill")
+            .field("coin", &"<redacted>")
+            .field("px", &"<redacted>")
+            .field("sz", &"<redacted>")
+            .field("side", &self.side)
+            .field("time", &self.time)
+            .field("has_hash", &self.hash.is_some())
+            .field("has_tid", &self.tid.is_some())
+            .field("has_oid", &self.oid.is_some())
+            .field("dir", &self.dir)
+            .field("closed_pnl", &"<redacted>")
+            .field("fee", &"<redacted>")
+            .finish()
+    }
 }
 
 impl UserFill {
