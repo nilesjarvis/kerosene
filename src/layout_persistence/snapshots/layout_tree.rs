@@ -30,7 +30,7 @@ impl TradingTerminal {
                             AxisConfig::Horizontal => pane_grid::Axis::Horizontal,
                             AxisConfig::Vertical => pane_grid::Axis::Vertical,
                         },
-                        ratio: *ratio,
+                        ratio: crate::config::normalize_pane_split_ratio(*ratio),
                         a: Box::new(a),
                         b: Box::new(b),
                     }),

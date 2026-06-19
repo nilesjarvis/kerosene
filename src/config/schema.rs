@@ -58,7 +58,7 @@ pub use defaults::{
     normalize_chart_dotted_background_opacity, normalize_chart_edge_blur_strength,
     normalize_chart_fisheye_strength, normalize_chart_hud_order_sound_volume,
     normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
-    normalize_ui_scale, normalize_widget_padding,
+    normalize_pane_split_ratio, normalize_ui_scale, normalize_widget_padding,
 };
 pub use denomination::DisplayDenominationConfig;
 pub use market_universe::MarketUniverseConfig;

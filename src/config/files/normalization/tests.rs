@@ -571,6 +571,81 @@ fn prunes_unsupported_panes_from_loaded_layouts() {
 }
 
 #[test]
+fn normalizes_persisted_split_ratios() {
+    let mut config = KeroseneConfig {
+        layout_ratios: vec![f32::NAN, -0.25, 0.25, 1.25],
+        pane_layout: Some(crate::config::PaneLayoutConfig::Split {
+            axis: crate::config::AxisConfig::Vertical,
+            ratio: f32::NAN,
+            a: Box::new(crate::config::PaneLayoutConfig::Leaf(
+                crate::config::PaneKindConfig::Chart { chart_id: 7 },
+            )),
+            b: Box::new(crate::config::PaneLayoutConfig::Split {
+                axis: crate::config::AxisConfig::Horizontal,
+                ratio: 2.0,
+                a: Box::new(crate::config::PaneLayoutConfig::Leaf(
+                    crate::config::PaneKindConfig::OrderBook { id: 1 },
+                )),
+                b: Box::new(crate::config::PaneLayoutConfig::Leaf(
+                    crate::config::PaneKindConfig::Watchlist,
+                )),
+            }),
+        }),
+        saved_layouts: vec![
+            serde_json::from_value(serde_json::json!({
+                "name": "bad-ratios",
+                "layout_ratios": [-1.0, 0.4, 2.0],
+                "pane_layout": {
+                    "Split": {
+                        "axis": "Vertical",
+                        "ratio": 2.0,
+                        "a": { "Leaf": { "Chart": { "chart_id": 7 } } },
+                        "b": { "Leaf": "Watchlist" }
+                    }
+                }
+            }))
+            .expect("saved layout should deserialize"),
+        ],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    assert_eq!(config.layout_ratios, vec![0.5, 0.0, 0.25, 1.0]);
+    assert_eq!(
+        split_ratios(config.pane_layout.as_ref().expect("pane layout")),
+        vec![0.5, 1.0]
+    );
+    assert_eq!(config.saved_layouts[0].layout_ratios, vec![0.0, 0.4, 1.0]);
+    assert_eq!(
+        split_ratios(
+            config.saved_layouts[0]
+                .pane_layout
+                .as_ref()
+                .expect("saved pane layout")
+        ),
+        vec![1.0]
+    );
+}
+
+fn split_ratios(layout: &crate::config::PaneLayoutConfig) -> Vec<f32> {
+    fn walk(layout: &crate::config::PaneLayoutConfig, ratios: &mut Vec<f32>) {
+        match layout {
+            crate::config::PaneLayoutConfig::Leaf(_) => {}
+            crate::config::PaneLayoutConfig::Split { ratio, a, b, .. } => {
+                ratios.push(*ratio);
+                walk(a, ratios);
+                walk(b, ratios);
+            }
+        }
+    }
+
+    let mut ratios = Vec::new();
+    walk(layout, &mut ratios);
+    ratios
+}
+
+#[test]
 fn preserves_unknown_future_panes_in_loaded_layouts() {
     let raw_future_pane = serde_json::json!({
         "FuturePane": {

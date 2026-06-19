@@ -40,6 +40,14 @@ pub fn default_layout_ratios() -> Vec<f32> {
     vec![0.70, 0.50, 0.55, 0.65]
 }
 
+pub fn normalize_pane_split_ratio(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        0.5
+    }
+}
+
 pub fn new_secret_id() -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

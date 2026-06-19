@@ -2,7 +2,7 @@ use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
 use crate::config::default_tick_size;
-use crate::config::{KeroseneConfig, SavedLayout};
+use crate::config::{KeroseneConfig, SavedLayout, normalize_pane_split_ratio};
 use crate::helpers::valid_book_tick_size;
 use crate::pane_state::PaneKind;
 use iced::widget::pane_grid;
@@ -130,12 +130,20 @@ impl TradingTerminal {
     pub(super) fn boot_layout_ratios(cfg: &KeroseneConfig) -> [f32; 4] {
         let ratios = movable_pane_layout_ratios(&cfg.layout_ratios);
         [
-            ratios.first().copied().unwrap_or(0.70),
-            ratios.get(1).copied().unwrap_or(0.50),
-            ratios.get(2).copied().unwrap_or(0.55),
-            ratios.get(3).copied().unwrap_or(0.65),
+            layout_ratio_or_default(ratios, 0, 0.70),
+            layout_ratio_or_default(ratios, 1, 0.50),
+            layout_ratio_or_default(ratios, 2, 0.55),
+            layout_ratio_or_default(ratios, 3, 0.65),
         ]
     }
+}
+
+fn layout_ratio_or_default(ratios: &[f32], index: usize, default: f32) -> f32 {
+    ratios
+        .get(index)
+        .copied()
+        .map(normalize_pane_split_ratio)
+        .unwrap_or(default)
 }
 
 fn movable_pane_layout_ratios(ratios: &[f32]) -> &[f32] {
@@ -143,5 +151,23 @@ fn movable_pane_layout_ratios(ratios: &[f32]) -> &[f32] {
         &ratios[1..]
     } else {
         ratios
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boot_layout_ratios_normalize_invalid_values() {
+        let cfg = KeroseneConfig {
+            layout_ratios: vec![f32::NAN, -0.25, 0.25, 1.25],
+            ..KeroseneConfig::default()
+        };
+
+        assert_eq!(
+            TradingTerminal::boot_layout_ratios(&cfg),
+            [0.5, 0.0, 0.25, 1.0]
+        );
     }
 }

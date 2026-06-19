@@ -67,3 +67,24 @@ fn pane_layout_conversion_prunes_legacy_account_summary_sibling() {
         pane_grid::Configuration::Pane(PaneKind::Chart(7))
     ));
 }
+
+#[test]
+fn pane_layout_conversion_normalizes_split_ratio() {
+    let layout = PaneLayoutConfig::Split {
+        axis: AxisConfig::Vertical,
+        ratio: f32::NAN,
+        a: Box::new(PaneLayoutConfig::Leaf(PaneKindConfig::Chart {
+            chart_id: 42,
+        })),
+        b: Box::new(PaneLayoutConfig::Leaf(PaneKindConfig::Watchlist)),
+    };
+
+    let config = TradingTerminal::pane_layout_to_configuration(&layout).expect("valid layout");
+
+    match config {
+        pane_grid::Configuration::Split { ratio, .. } => {
+            assert_eq!(ratio, 0.5);
+        }
+        other => panic!("expected split configuration, got {other:?}"),
+    }
+}

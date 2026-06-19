@@ -7,7 +7,8 @@ use crate::config::{
     normalize_chart_dotted_background_opacity, normalize_chart_edge_blur_strength,
     normalize_chart_fisheye_strength, normalize_chart_hud_order_sound_volume,
     normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
-    normalize_ui_scale, prune_legacy_unsupported_pane_layout, push_config_warning,
+    normalize_pane_split_ratio, normalize_ui_scale, prune_legacy_unsupported_pane_layout,
+    push_config_warning,
 };
 use std::collections::HashSet;
 use zeroize::Zeroize;
@@ -147,6 +148,24 @@ fn merge_default_themes(config: &mut KeroseneConfig) {
 fn ensure_layout_ratios(config: &mut KeroseneConfig) {
     if config.layout_ratios.is_empty() {
         config.layout_ratios = default_layout_ratios();
+    }
+    normalize_layout_ratio_values(&mut config.layout_ratios);
+
+    if let Some(layout) = &mut config.pane_layout {
+        layout.normalize_split_ratios();
+    }
+
+    for layout in &mut config.saved_layouts {
+        normalize_layout_ratio_values(&mut layout.layout_ratios);
+        if let Some(pane_layout) = &mut layout.pane_layout {
+            pane_layout.normalize_split_ratios();
+        }
+    }
+}
+
+fn normalize_layout_ratio_values(ratios: &mut [f32]) {
+    for ratio in ratios {
+        *ratio = normalize_pane_split_ratio(*ratio);
     }
 }
 

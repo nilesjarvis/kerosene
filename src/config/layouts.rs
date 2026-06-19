@@ -7,7 +7,7 @@ use super::{
     ChartConfig, CustomThemeConfig, LiveWatchlistConfig, OrderBookConfig, OrderPresetsConfig,
     PositioningInfoConfig, SpaghettiChartConfig, default_custom_themes, default_order_kind,
     default_symbol, default_timeframe, default_true, default_widget_padding,
-    normalize_widget_padding,
+    normalize_pane_split_ratio, normalize_widget_padding,
 };
 use std::collections::BTreeMap;
 
@@ -158,6 +158,19 @@ pub enum PaneLayoutConfig {
         a: Box<PaneLayoutConfig>,
         b: Box<PaneLayoutConfig>,
     },
+}
+
+impl PaneLayoutConfig {
+    pub fn normalize_split_ratios(&mut self) {
+        match self {
+            PaneLayoutConfig::Leaf(_) => {}
+            PaneLayoutConfig::Split { ratio, a, b, .. } => {
+                *ratio = normalize_pane_split_ratio(*ratio);
+                a.normalize_split_ratios();
+                b.normalize_split_ratios();
+            }
+        }
+    }
 }
 
 /// Drop panes this version cannot instantiate when building a live runtime layout.

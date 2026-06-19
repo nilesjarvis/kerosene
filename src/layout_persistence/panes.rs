@@ -96,10 +96,10 @@ fn default_pane_configuration(
 
     let ratios = &layout.layout_ratios;
     let ratios = movable_pane_layout_ratios(ratios);
-    let r0 = ratios.first().copied().unwrap_or(0.70);
-    let r1 = ratios.get(1).copied().unwrap_or(0.50);
-    let r2 = ratios.get(2).copied().unwrap_or(0.55);
-    let r3 = ratios.get(3).copied().unwrap_or(0.65);
+    let r0 = layout_ratio_or_default(ratios, 0, 0.70);
+    let r1 = layout_ratio_or_default(ratios, 1, 0.50);
+    let r2 = layout_ratio_or_default(ratios, 2, 0.55);
+    let r3 = layout_ratio_or_default(ratios, 3, 0.65);
 
     PaneCfg::Split {
         axis: Axis::Horizontal,
@@ -124,6 +124,14 @@ fn default_pane_configuration(
             b: Box::new(PaneCfg::Pane(PaneKind::OrderEntry)),
         }),
     }
+}
+
+fn layout_ratio_or_default(ratios: &[f32], index: usize, default: f32) -> f32 {
+    ratios
+        .get(index)
+        .copied()
+        .map(config::normalize_pane_split_ratio)
+        .unwrap_or(default)
 }
 
 fn movable_pane_layout_ratios(ratios: &[f32]) -> &[f32] {
