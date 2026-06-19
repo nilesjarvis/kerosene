@@ -40,7 +40,7 @@ impl TradingTerminal {
             Message::ToggleTelegramFastFeed => self.toggle_telegram_fast_feed(),
             Message::TelegramFastApiIdChanged(input) => {
                 self.clear_abandoned_telegram_fast_auth_challenge();
-                self.telegram_feed.fast_api_id_input = input;
+                self.telegram_feed.fast_api_id_input = input.into_zeroizing().to_string();
                 Task::none()
             }
             Message::TelegramFastApiHashChanged(input) => {

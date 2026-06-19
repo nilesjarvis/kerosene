@@ -679,7 +679,7 @@ pub(crate) enum Message {
     TelegramFeedLoaded(String, u64, Box<Result<TelegramFeedPage, String>>),
     TelegramAvatarLoaded(String, String, u64, Box<Result<Vec<u8>, String>>),
     ToggleTelegramFastFeed,
-    TelegramFastApiIdChanged(String),
+    TelegramFastApiIdChanged(SecretInput),
     TelegramFastApiHashChanged(SecretInput),
     TelegramFastPhoneChanged(RedactedPhoneInput),
     TelegramFastCodeChanged(SecretInput),
@@ -1153,6 +1153,7 @@ mod tests {
         let messages = [
             Message::EncryptedSecretPasswordChanged("sentinel-secret".into()),
             Message::EncryptedSecretConfirmChanged("sentinel-secret".into()),
+            Message::TelegramFastApiIdChanged("sentinel-secret".into()),
             Message::TelegramFastApiHashChanged("sentinel-secret".into()),
             Message::TelegramFastCodeChanged("sentinel-secret".into()),
             Message::TelegramFastPasswordChanged("sentinel-secret".into()),

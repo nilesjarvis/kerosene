@@ -383,8 +383,8 @@ impl fmt::Debug for TelegramFeedState {
             .field("notifications_enabled", &self.notifications_enabled)
             .field("include_outcome_markets", &self.include_outcome_markets)
             .field("fast_mode_enabled", &self.fast_mode_enabled)
-            .field("fast_api_id", &self.fast_api_id)
-            .field("fast_api_id_input", &self.fast_api_id_input)
+            .field("fast_api_id", &"<redacted>")
+            .field("fast_api_id_input", &"<redacted>")
             .field("fast_api_hash_input", &"<redacted>")
             .field("fast_phone_input", &"<redacted>")
             .field("fast_code_input", &"<redacted>")
@@ -1325,6 +1325,7 @@ mod tests {
 
         assert!(rendered.contains("<redacted>"));
         for secret in [
+            "12345",
             "hash-secret",
             "+15555550123",
             "code-secret",

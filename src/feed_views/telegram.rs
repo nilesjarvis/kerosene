@@ -291,7 +291,7 @@ impl TradingTerminal {
 
         let api_id = text_input("API ID", &self.telegram_feed.fast_api_id_input)
             .style(helpers::text_input_style)
-            .on_input(Message::TelegramFastApiIdChanged)
+            .on_input(|value| Message::TelegramFastApiIdChanged(value.into()))
             .size(11)
             .padding([4, 7])
             .width(Fill);
