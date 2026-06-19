@@ -489,9 +489,12 @@ impl TradingTerminal {
         };
 
         if has_fills {
-            // Prefer the fill-based chart; if its basis is incomplete, an open
-            // position can still chart against its known entry.
-            fill_based(address.clone()).or_else(|reason| live(address).map_err(|_| reason))
+            // A trade with attributed fills is charted against those fills. If
+            // its basis is incomplete we report that honestly rather than
+            // falling back to a live-position window — the live render path
+            // keys on "no fills", so falling back here would build a recent
+            // window but render it with fabricated entry/exit boundaries.
+            fill_based(address)
         } else {
             live(address).map_err(|reason| {
                 // A closed trade with no fills can never be a live position;
@@ -970,6 +973,66 @@ mod tests {
         };
         assert!(reason.contains("auth_token=<redacted>"));
         assert!(!reason.contains("snapshot-secret"));
+    }
+
+    #[test]
+    fn open_trade_with_fills_but_incomplete_basis_does_not_fall_back_to_live() {
+        // Regression: an OPEN trade WITH attributed fills but an incomplete
+        // basis must report "unavailable" rather than silently producing a
+        // live-position window — the build/canvas keys "live" on the absence of
+        // fills, so a fallback here would draw a fabricated open boundary.
+        let terminal = journal_terminal_with_account();
+        let mut trade = snapshot_trade("perp:BTC:open_partial");
+        trade.end_time = None;
+        trade.status = "OPEN".to_string();
+        trade.basis_complete = false;
+
+        let with_fills = terminal.journal_snapshot_request_for(
+            &trade,
+            "0xabc".to_string(),
+            true,
+            1_700_000_000_000,
+            None,
+        );
+        assert!(
+            with_fills.is_err(),
+            "fills + incomplete basis must not fall back to a live window: {with_fills:?}"
+        );
+
+        // The same open trade with no fills DOES chart as a live position.
+        let without_fills = terminal
+            .journal_snapshot_request_for(
+                &trade,
+                "0xabc".to_string(),
+                false,
+                1_700_000_000_000,
+                None,
+            )
+            .expect("fill-less open position charts live");
+        assert!(without_fills.is_open);
+    }
+
+    #[test]
+    fn live_position_pinned_fine_timeframe_bounds_the_window() {
+        // A 1m timeframe over the fixed live lookback must not request the full
+        // multi-day window (tens of thousands of candles).
+        let terminal = journal_terminal_with_account();
+        let trade = open_position_trade("position:BTC");
+
+        let request = terminal
+            .journal_snapshot_request_for(
+                &trade,
+                "0xabc".to_string(),
+                false,
+                1_700_000_000_000,
+                Some(Timeframe::M1),
+            )
+            .expect("live 1m request");
+        let window_ms = 1_700_000_000_000_u64 - request.trade_start_ms;
+        assert!(
+            window_ms < 24 * 60 * 60 * 1000,
+            "1m live window should be bounded to hours, got {window_ms} ms"
+        );
     }
 
     fn journal_terminal_with_account() -> TradingTerminal {

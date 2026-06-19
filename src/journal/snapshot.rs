@@ -226,7 +226,13 @@ pub fn live_position_snapshot_request_for_timeframe(
         .iter()
         .position(|candidate| *candidate == timeframe)
         .ok_or_else(|| "Unsupported snapshot timeframe.".to_string())?;
-    let trade_start_ms = now_ms.saturating_sub(LIVE_POSITION_LOOKBACK_MS);
+    // Cap the window so a fine timeframe (1m/5m) over the fixed lookback can't
+    // request tens of thousands of candles; coarse timeframes still span the
+    // full lookback. (The auto-ladder request is already bounded by
+    // initial_ladder_index, but an explicitly pinned timeframe is not.)
+    let lookback =
+        LIVE_POSITION_LOOKBACK_MS.min(timeframe.duration_ms().saturating_mul(SNAPSHOT_MAX_CANDLES));
+    let trade_start_ms = now_ms.saturating_sub(lookback);
     snapshot_request_for_ladder_index(
         SnapshotRequestContext {
             account_key,

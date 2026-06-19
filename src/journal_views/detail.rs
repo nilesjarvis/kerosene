@@ -147,7 +147,17 @@ impl TradingTerminal {
                     .map(|request| request.timeframe)
             });
 
-        let caption = if trade.end_time.is_none() {
+        // Match the caption to how the chart actually renders: a live-position
+        // chart (entry guide, no fill markers) only when the loaded snapshot is
+        // flagged live. Before the snapshot loads, fill-less open positions
+        // (fill_count 0) are the live case.
+        let is_live_chart = self
+            .journal
+            .snapshots
+            .get(&trade.id)
+            .map(|snapshot| snapshot.live_position)
+            .unwrap_or_else(|| trade.end_time.is_none() && trade.fill_count == 0);
+        let caption = if is_live_chart {
             "CHART SNAPSHOT · LIVE POSITION"
         } else {
             "CHART SNAPSHOT · ENTRY → EXIT"
