@@ -102,6 +102,49 @@ fn websocket_open_order_disappearance_ignores_chase_from_other_account() {
 }
 
 #[test]
+fn main_open_order_update_does_not_verify_hip3_chase_disappearance() {
+    let mut terminal = connected_terminal();
+    set_account_data_for_connected_account(&mut terminal, account_data_with_timestamp(1_000));
+    let mut chase = chase_order();
+    chase.coin = "flx:BTC".to_string();
+    chase.lifecycle = ChaseLifecycle::Resting;
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(super::CONNECTED_ADDRESS.to_string()),
+        WsUserData::OpenOrders {
+            dex: String::new(),
+            orders: Vec::new(),
+        },
+    );
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Resting);
+    assert_eq!(terminal.order_status, None);
+}
+
+#[test]
+fn hip3_open_order_update_does_not_verify_main_chase_disappearance() {
+    let mut terminal = connected_terminal();
+    set_account_data_for_connected_account(&mut terminal, account_data_with_timestamp(1_000));
+    let mut chase = chase_order();
+    chase.lifecycle = ChaseLifecycle::Resting;
+    terminal.chase_orders.insert(1, chase);
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(super::CONNECTED_ADDRESS.to_string()),
+        WsUserData::OpenOrders {
+            dex: "flx".to_string(),
+            orders: Vec::new(),
+        },
+    );
+
+    let chase = chase_order_by_id(&terminal, 1);
+    assert_eq!(chase.lifecycle, ChaseLifecycle::Resting);
+    assert_eq!(terminal.order_status, None);
+}
+
+#[test]
 fn websocket_open_order_disappearance_verifies_matching_account_chase() {
     let mut terminal = connected_terminal();
     set_account_data_for_connected_account(&mut terminal, account_data_with_timestamp(1_000));

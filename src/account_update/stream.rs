@@ -68,6 +68,7 @@ impl TradingTerminal {
 
         let mut account_data_changed = false;
         let mut orders_changed = false;
+        let mut orders_updated_dex = None;
         let mut fills_changed = false;
         let mut positions_changed = false;
         let mut mids_task = Task::none();
@@ -120,6 +121,7 @@ impl TradingTerminal {
                     positions_changed = true;
                 }
                 WsUserData::OpenOrders { dex, orders } => {
+                    orders_updated_dex = Some(dex.clone());
                     let mut orders = orders;
                     normalize_dex_open_order_coins(&dex, &mut orders);
                     for order in &mut orders {
@@ -214,7 +216,10 @@ impl TradingTerminal {
             Task::none()
         };
         let chase_task = if orders_changed {
-            self.handle_chase_order_disappearance()
+            orders_updated_dex
+                .as_deref()
+                .map(|dex| self.handle_chase_order_disappearance(dex))
+                .unwrap_or_else(Task::none)
         } else {
             Task::none()
         };

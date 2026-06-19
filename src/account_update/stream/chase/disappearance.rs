@@ -10,9 +10,17 @@ use iced::Task;
 // Chase Open-Order Disappearance
 // ---------------------------------------------------------------------------
 
+fn symbol_key_matches_open_orders_dex(symbol_key: &str, dex: &str) -> bool {
+    match symbol_key.split_once(':') {
+        Some((symbol_dex, _)) => !dex.is_empty() && symbol_dex.eq_ignore_ascii_case(dex),
+        None => dex.is_empty(),
+    }
+}
+
 impl TradingTerminal {
     pub(in crate::account_update::stream) fn handle_chase_order_disappearance(
         &mut self,
+        updated_dex: &str,
     ) -> Task<Message> {
         let mut needs_refresh = false;
         let Some((_, data)) = self.connected_order_account_snapshot() else {
@@ -23,12 +31,13 @@ impl TradingTerminal {
         let mut cancel_ids = Vec::new();
 
         for chase_id in chase_ids {
-            let Some((oid, lifecycle, has_pending, account_matches)) =
+            let Some((oid, lifecycle, has_pending, coin, account_matches)) =
                 self.chase_orders.get(&chase_id).map(|chase| {
                     (
                         chase.current_oid,
                         chase.lifecycle,
                         chase.has_pending_op(),
+                        chase.coin.clone(),
                         self.connected_order_account_matches(&chase.account_address),
                     )
                 })
@@ -36,6 +45,9 @@ impl TradingTerminal {
                 continue;
             };
             if !account_matches {
+                continue;
+            }
+            if !symbol_key_matches_open_orders_dex(&coin, updated_dex) {
                 continue;
             }
             let Some(oid) = oid else {
