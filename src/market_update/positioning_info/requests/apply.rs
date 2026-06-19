@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::hyperdash_api::{PerpDeltas, TickerPositions};
 use crate::message::Message;
 
@@ -39,7 +40,7 @@ impl TradingTerminal {
                     instance.last_fetch_ms = Some(Self::now_ms());
                 }
                 Err(error) => {
-                    instance.error = Some(error.clone());
+                    instance.error = Some(redact_sensitive_response_text(error));
                 }
             }
         }
@@ -76,7 +77,7 @@ impl TradingTerminal {
                     instance.change_last_fetch_ms = Some(Self::now_ms());
                 }
                 Err(error) => {
-                    instance.change_error = Some(error.clone());
+                    instance.change_error = Some(redact_sensitive_response_text(error));
                 }
             }
         }

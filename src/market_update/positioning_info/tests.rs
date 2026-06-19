@@ -91,6 +91,40 @@ fn stale_hyperdash_generation_positioning_result_does_not_remove_current_pending
 }
 
 #[test]
+fn current_positioning_error_redacts_widget_error() {
+    let mut terminal = TradingTerminal::boot().0;
+    let id = 1;
+    let request_key = positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc");
+    terminal.hyperdash_key_generation = 2;
+    terminal
+        .positioning_infos
+        .insert(id, PositioningInfoInstance::new(id, "HYPE".to_string()));
+    terminal
+        .positioning_info_pending
+        .insert(request_key.clone(), vec![id]);
+    if let Some(instance) = terminal.positioning_infos.get_mut(&id) {
+        instance.loading = true;
+        instance.pending_key = Some(request_key.clone());
+    }
+
+    let _ = terminal.apply_positioning_info_loaded(
+        request_key.clone(),
+        2,
+        Err("positioning rejected: api_key=key-secret signature=sig-secret".to_string()),
+    );
+
+    let instance = terminal.positioning_infos.get(&id).expect("instance");
+    assert!(!instance.loading);
+    assert!(instance.pending_key.is_none());
+    assert!(!terminal.positioning_info_pending.contains_key(&request_key));
+    let error = instance.error.as_ref().expect("error");
+    assert!(error.contains("api_key=<redacted>"));
+    assert!(error.contains("signature=<redacted>"));
+    assert!(!error.contains("key-secret"));
+    assert!(!error.contains("sig-secret"));
+}
+
+#[test]
 fn stale_hyperdash_generation_change_result_does_not_remove_current_pending_request() {
     let mut terminal = TradingTerminal::boot().0;
     let id = 1;
@@ -142,6 +176,40 @@ fn stale_hyperdash_generation_change_result_does_not_remove_current_pending_requ
         Some("HYPE")
     );
     assert!(!terminal.positioning_info_pending.contains_key(&request_key));
+}
+
+#[test]
+fn current_positioning_change_error_redacts_widget_error() {
+    let mut terminal = TradingTerminal::boot().0;
+    let id = 1;
+    let request_key = positioning_info_change_request_key("HYPE", "FIFTEEN_MINUTES");
+    terminal.hyperdash_key_generation = 2;
+    terminal
+        .positioning_infos
+        .insert(id, PositioningInfoInstance::new(id, "HYPE".to_string()));
+    terminal
+        .positioning_info_pending
+        .insert(request_key.clone(), vec![id]);
+    if let Some(instance) = terminal.positioning_infos.get_mut(&id) {
+        instance.change_loading = true;
+        instance.change_pending_key = Some(request_key.clone());
+    }
+
+    let _ = terminal.apply_positioning_info_change_loaded(
+        request_key.clone(),
+        2,
+        Err("perp deltas rejected: auth_token=token-secret signature=sig-secret".to_string()),
+    );
+
+    let instance = terminal.positioning_infos.get(&id).expect("instance");
+    assert!(!instance.change_loading);
+    assert!(instance.change_pending_key.is_none());
+    assert!(!terminal.positioning_info_pending.contains_key(&request_key));
+    let error = instance.change_error.as_ref().expect("change error");
+    assert!(error.contains("auth_token=<redacted>"));
+    assert!(error.contains("signature=<redacted>"));
+    assert!(!error.contains("token-secret"));
+    assert!(!error.contains("sig-secret"));
 }
 
 #[test]
