@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::chart_state::ChartId;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use iced::Task;
 
@@ -112,7 +113,13 @@ impl TradingTerminal {
                     }
                 }
                 if failed_visible_chart {
-                    self.push_toast(format!("Heatmap fetch failed: {e}"), true);
+                    self.push_toast(
+                        format!(
+                            "Heatmap fetch failed: {}",
+                            redact_sensitive_response_text(&e)
+                        ),
+                        true,
+                    );
                 }
             }
         }
@@ -283,5 +290,54 @@ mod tests {
                 .map(|(message, is_error)| { (message.as_str(), *is_error) }),
             Some(("HEAT refreshing current data", false))
         );
+    }
+
+    #[test]
+    fn current_heatmap_error_redacts_toast_detail() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let chart_id = 1;
+        let request = HeatmapFetchParams {
+            coin: "BTC".to_string(),
+            min_price: 1.0,
+            max_price: 2.0,
+            start_time: 10,
+            end_time: 20,
+        };
+        let cache_key = request.cache_key();
+        let generation = terminal.hyperdash_key_generation;
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+        instance.show_heatmap = true;
+        instance.heatmap_fetching = true;
+        instance.heatmap_last_fetch = Some(request);
+        instance.heatmap_status = Some(("HEAT refreshing current data".to_string(), false));
+        terminal.charts.insert(chart_id, instance);
+        terminal
+            .heatmap_pending_charts
+            .insert(cache_key.clone(), vec![chart_id]);
+
+        terminal.apply_chart_heatmap_loaded(
+            cache_key,
+            generation,
+            Err("heatmap rejected: api_key=key-secret signature=sig-secret".to_string()),
+        );
+
+        let instance = terminal.charts.get(&chart_id).expect("chart");
+        assert!(!instance.heatmap_fetching);
+        assert!(instance.heatmap_last_fetch.is_none());
+        assert_eq!(
+            instance
+                .heatmap_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("HEAT fetch failed", true))
+        );
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("api_key=<redacted>"));
+        assert!(toast.message.contains("signature=<redacted>"));
+        assert!(!toast.message.contains("key-secret"));
+        assert!(!toast.message.contains("sig-secret"));
     }
 }

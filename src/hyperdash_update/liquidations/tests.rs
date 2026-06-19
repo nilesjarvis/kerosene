@@ -179,3 +179,44 @@ fn disabling_liquidation_overlay_removes_pending_waiter() {
     assert!(!instance.liquidation_fetching);
     assert!(instance.liquidation_pending_key.is_none());
 }
+
+#[test]
+fn current_liquidation_error_redacts_toast_detail() {
+    let (mut terminal, _) = crate::app_state::TradingTerminal::boot();
+    let chart_id = 1;
+    let request_key = liquidation_request_key("BTC", 0.0, 200_000.0, 1_778_357_590);
+    let generation = terminal.hyperdash_key_generation;
+    terminal.charts.clear();
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance.show_liquidations = true;
+    instance.liquidation_fetching = true;
+    instance.liquidation_pending_key = Some(request_key.clone());
+    terminal.charts.insert(chart_id, instance);
+    terminal
+        .liquidation_pending_charts
+        .insert(request_key.clone(), vec![chart_id]);
+
+    let _task = terminal.apply_chart_liquidation_loaded(
+        request_key,
+        generation,
+        Err("liquidations rejected: api_key=key-secret signature=sig-secret".to_string()),
+    );
+
+    let instance = terminal.charts.get(&chart_id).expect("chart");
+    assert!(!instance.liquidation_fetching);
+    assert!(instance.liquidation_pending_key.is_none());
+    assert_eq!(
+        instance
+            .liquidation_status
+            .as_ref()
+            .map(|(message, is_error)| (message.as_str(), *is_error)),
+        Some(("LIQ fetch failed", true))
+    );
+
+    let toast = terminal.toasts.last().expect("toast");
+    assert!(toast.is_error);
+    assert!(toast.message.contains("api_key=<redacted>"));
+    assert!(toast.message.contains("signature=<redacted>"));
+    assert!(!toast.message.contains("key-secret"));
+    assert!(!toast.message.contains("sig-secret"));
+}

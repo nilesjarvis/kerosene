@@ -2,6 +2,7 @@ use super::LIQUIDATION_BUCKET_COUNT;
 use super::display::reset_liquidation_fetch_state;
 use super::planning::liquidation_request_coin;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::hyperdash_api::{LiquidationLevel, bucket_liquidations};
 use crate::message::Message;
 use iced::Task;
@@ -92,7 +93,10 @@ impl TradingTerminal {
                     }
                 }
                 if failed_visible_chart {
-                    toast = Some(format!("LIQ fetch failed: {error}"));
+                    toast = Some(format!(
+                        "LIQ fetch failed: {}",
+                        redact_sensitive_response_text(&error)
+                    ));
                 }
             }
         }
