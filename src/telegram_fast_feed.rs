@@ -301,10 +301,10 @@ pub(crate) async fn request_telegram_fast_login_code(
     api_id: i32,
     request_id: u64,
     api_hash: Zeroizing<String>,
-    phone: String,
+    phone: Zeroizing<String>,
 ) -> Result<TelegramFastAuthOutcome, String> {
     let api_hash = Zeroizing::new(api_hash.trim().to_string());
-    let phone = phone.trim().to_string();
+    let phone = Zeroizing::new(phone.trim().to_string());
     if api_hash.is_empty() {
         return Err("Enter a Telegram API hash".to_string());
     }

@@ -51,7 +51,8 @@ impl TradingTerminal {
             }
             Message::TelegramFastPhoneChanged(input) => {
                 self.clear_abandoned_telegram_fast_auth_challenge();
-                self.telegram_feed.fast_phone_input = input;
+                self.telegram_feed.fast_phone_input.zeroize();
+                self.telegram_feed.fast_phone_input = input.into_string();
                 Task::none()
             }
             Message::TelegramFastCodeChanged(input) => {
@@ -468,7 +469,7 @@ impl TradingTerminal {
         } else {
             api_hash
         };
-        let phone = self.telegram_feed.fast_phone_input.trim().to_string();
+        let phone = Zeroizing::new(self.telegram_feed.fast_phone_input.trim().to_string());
         let request_id = self.telegram_feed.next_fast_auth_request_id();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status =
@@ -1680,9 +1681,8 @@ mod tests {
         terminal.telegram_feed.fast_code_input = "12345".to_string().into();
         terminal.telegram_feed.fast_password_hint = Some("hint".to_string());
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFastPhoneChanged(
-            "+15555550123".to_string(),
-        ));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFastPhoneChanged("+15555550123".into()));
 
         assert_eq!(
             terminal.telegram_feed.fast_auth_stage,
@@ -1700,9 +1700,8 @@ mod tests {
         terminal.telegram_feed.fast_auth_in_flight = true;
         let stale_request_id = terminal.telegram_feed.next_fast_auth_request_id();
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFastPhoneChanged(
-            "+15555550123".to_string(),
-        ));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFastPhoneChanged("+15555550123".into()));
         let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
             stale_request_id,
             TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedIn {
@@ -1725,9 +1724,8 @@ mod tests {
         terminal.telegram_feed.fast_auth_in_flight = true;
         let stale_request_id = terminal.telegram_feed.next_fast_auth_request_id();
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFastPhoneChanged(
-            "+15555550123".to_string(),
-        ));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFastPhoneChanged("+15555550123".into()));
 
         let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
             stale_request_id,

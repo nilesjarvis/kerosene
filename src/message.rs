@@ -87,6 +87,33 @@ impl fmt::Debug for SecretInput {
     }
 }
 
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedPhoneInput(Zeroizing<String>);
+
+impl RedactedPhoneInput {
+    pub(crate) fn into_string(self) -> String {
+        self.0.to_string()
+    }
+}
+
+impl From<String> for RedactedPhoneInput {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for RedactedPhoneInput {
+    fn from(value: &str) -> Self {
+        Self(value.to_string().into())
+    }
+}
+
+impl fmt::Debug for RedactedPhoneInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Phone(<redacted>)")
+    }
+}
+
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub(crate) struct RedactedAddress(String);
 
@@ -627,7 +654,7 @@ pub(crate) enum Message {
     ToggleTelegramFastFeed,
     TelegramFastApiIdChanged(String),
     TelegramFastApiHashChanged(SecretInput),
-    TelegramFastPhoneChanged(String),
+    TelegramFastPhoneChanged(RedactedPhoneInput),
     TelegramFastCodeChanged(SecretInput),
     TelegramFastPasswordChanged(SecretInput),
     TelegramFastRequestCode,
@@ -1075,7 +1102,7 @@ pub(crate) enum Message {
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, SecretInput, TelegramFastAuthMessageResult};
+    use super::{Message, RedactedPhoneInput, SecretInput, TelegramFastAuthMessageResult};
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
     use crate::order_execution::{
@@ -1116,6 +1143,17 @@ mod tests {
             assert!(rendered.contains("<redacted>"));
             assert!(!rendered.contains("sentinel-secret"));
         }
+    }
+
+    #[test]
+    fn pii_bearing_message_debug_redacts_value() {
+        let rendered = format!(
+            "{:?}",
+            Message::TelegramFastPhoneChanged(RedactedPhoneInput::from("+15555550123"))
+        );
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("+15555550123"));
     }
 
     #[test]

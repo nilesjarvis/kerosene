@@ -304,7 +304,7 @@ impl TradingTerminal {
             .width(Fill);
         let phone = text_input("+ phone", &self.telegram_feed.fast_phone_input)
             .style(helpers::text_input_style)
-            .on_input(Message::TelegramFastPhoneChanged)
+            .on_input(|value| Message::TelegramFastPhoneChanged(value.into()))
             .on_submit(Message::TelegramFastRequestCode)
             .size(11)
             .padding([4, 7])
