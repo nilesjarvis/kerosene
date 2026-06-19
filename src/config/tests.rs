@@ -15,6 +15,26 @@ fn config_warning_guard() -> MutexGuard<'static, ()> {
     guard
 }
 
+#[test]
+fn config_warnings_are_isolated_by_test_thread() {
+    let _warning_guard = config_warning_guard();
+
+    super::push_config_warning("main warning".to_string());
+    let worker_warnings = std::thread::spawn(|| {
+        super::push_config_warning("worker warning".to_string());
+        super::take_config_warnings()
+    })
+    .join()
+    .expect("config warning worker should finish");
+
+    assert_eq!(worker_warnings, vec!["worker warning".to_string()]);
+    assert_eq!(
+        super::take_config_warnings(),
+        vec!["main warning".to_string()]
+    );
+    assert!(super::take_config_warnings().is_empty());
+}
+
 fn unique_test_config_path(name: &str) -> PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

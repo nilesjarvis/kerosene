@@ -1,3 +1,6 @@
+#[cfg(test)]
+use std::cell::RefCell;
+#[cfg(not(test))]
 use std::sync::{Mutex, OnceLock};
 
 mod clear;
@@ -102,22 +105,40 @@ pub use wallets::{
 
 use files::{backup_config_path, config_path, config_sidecar_prefix};
 
+#[cfg(not(test))]
 fn config_warnings() -> &'static Mutex<Vec<String>> {
     static WARNINGS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
     WARNINGS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+#[cfg(test)]
+thread_local! {
+    static CONFIG_WARNINGS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+#[cfg(not(test))]
 pub(super) fn push_config_warning(message: String) {
     if let Ok(mut warnings) = config_warnings().lock() {
         warnings.push(message);
     }
 }
 
+#[cfg(test)]
+pub(super) fn push_config_warning(message: String) {
+    CONFIG_WARNINGS.with(|warnings| warnings.borrow_mut().push(message));
+}
+
+#[cfg(not(test))]
 pub fn take_config_warnings() -> Vec<String> {
     config_warnings()
         .lock()
         .map(|mut warnings| std::mem::take(&mut *warnings))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+pub fn take_config_warnings() -> Vec<String> {
+    CONFIG_WARNINGS.with(|warnings| std::mem::take(&mut *warnings.borrow_mut()))
 }
 
 #[cfg(test)]
