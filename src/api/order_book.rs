@@ -2,12 +2,13 @@ use super::{API_URL, CLIENT};
 use crate::helpers::response_snippet;
 use serde::Deserialize;
 use serde_json::Value;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
 
 /// A single price level in the order book.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct BookLevel {
     #[serde(deserialize_with = "super::candles::de_string_or_number_to_f64")]
     pub px: f64,
@@ -15,11 +16,31 @@ pub struct BookLevel {
     pub sz: f64,
 }
 
+impl fmt::Debug for BookLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BookLevel")
+            .field("px", &"<redacted>")
+            .field("sz", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Full L2 order book snapshot (bids + asks).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OrderBook {
     pub bids: Vec<BookLevel>, // sorted best (highest) first
     pub asks: Vec<BookLevel>, // sorted best (lowest) first
+}
+
+impl fmt::Debug for OrderBook {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderBook")
+            .field("bids_len", &self.bids.len())
+            .field("asks_len", &self.asks.len())
+            .field("has_best_bid", &!self.bids.is_empty())
+            .field("has_best_ask", &!self.asks.is_empty())
+            .finish()
+    }
 }
 
 impl OrderBook {

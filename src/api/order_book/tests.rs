@@ -29,6 +29,48 @@ fn ws_book_parser_filters_nonfinite_nonpositive_levels() {
 }
 
 #[test]
+fn book_level_debug_redacts_price_and_size() {
+    let level = BookLevel {
+        px: 12345.67,
+        sz: 89.01,
+    };
+
+    let rendered = format!("{level:?}");
+
+    assert!(rendered.contains("px: \"<redacted>\""));
+    assert!(rendered.contains("sz: \"<redacted>\""));
+    assert!(!rendered.contains("12345.67"));
+    assert!(!rendered.contains("89.01"));
+}
+
+#[test]
+fn order_book_debug_redacts_level_payloads() {
+    let book = OrderBook {
+        bids: vec![BookLevel {
+            px: 12345.67,
+            sz: 89.01,
+        }],
+        asks: vec![BookLevel {
+            px: 12346.78,
+            sz: 90.12,
+        }],
+    };
+
+    let rendered = format!("{book:?}");
+
+    assert!(rendered.contains("bids_len: 1"));
+    assert!(rendered.contains("asks_len: 1"));
+    assert!(rendered.contains("has_best_bid: true"));
+    assert!(rendered.contains("has_best_ask: true"));
+    for secret in ["12345.67", "89.01", "12346.78", "90.12"] {
+        assert!(
+            !rendered.contains(secret),
+            "order book Debug leaked {secret}"
+        );
+    }
+}
+
+#[test]
 fn ws_book_parser_rejects_missing_two_sided_levels() {
     assert!(parse_ws_book(&serde_json::json!({ "levels": [] })).is_none());
     assert!(parse_ws_book(&serde_json::json!({ "levels": [[]] })).is_none());
