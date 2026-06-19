@@ -1,5 +1,6 @@
 use crate::api::{self, MarketType};
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use iced::Task;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -60,7 +61,7 @@ impl TradingTerminal {
                 self.outcome_volumes_error = None;
             }
             Err(error) => {
-                self.outcome_volumes_error = Some(error);
+                self.outcome_volumes_error = Some(redact_sensitive_response_text(&error));
             }
         }
         Task::none()
@@ -151,6 +152,25 @@ mod tests {
                 .map(|volume| volume.contract),
             Some(1.0)
         );
+    }
+
+    #[test]
+    fn outcome_volume_error_redacts_sensitive_text() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![outcome_symbol("#1")];
+        let _ = terminal.request_outcome_volume_refresh();
+        let request_id = terminal.outcome_volumes_request_id;
+
+        let _ = terminal.apply_outcome_volumes_loaded(
+            request_id,
+            vec!["#1".to_string()],
+            Err("outcome volume fetch failed: api_key=super-secret".to_string()),
+        );
+
+        assert!(!terminal.outcome_volumes_loading);
+        let error = terminal.outcome_volumes_error.as_ref().expect("error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(!error.contains("super-secret"));
     }
 
     fn outcome_symbol(key: &str) -> ExchangeSymbol {
