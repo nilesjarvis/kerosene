@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use self::bounds::FindWidgetBounds;
@@ -129,6 +130,7 @@ impl TradingTerminal {
                         return self.open_or_focus_chart_screenshot_window(Task::none());
                     }
                     Err(err) => {
+                        let err = redact_sensitive_response_text(&err);
                         self.chart_screenshot_error = Some(err.clone());
                         self.push_toast(format!("Chart screenshot failed: {err}"), true);
                     }
@@ -150,7 +152,13 @@ impl TradingTerminal {
             }
             Message::ChartScreenshotCopied(result) => match result {
                 Ok(()) => self.push_toast("Chart image copied to clipboard".to_string(), false),
-                Err(err) => self.push_toast(format!("Chart image copy failed: {err}"), true),
+                Err(err) => self.push_toast(
+                    format!(
+                        "Chart image copy failed: {}",
+                        redact_sensitive_response_text(&err)
+                    ),
+                    true,
+                ),
             },
             Message::SaveChartScreenshot => {
                 let Some(state) = self.chart_screenshot.clone() else {
@@ -168,7 +176,13 @@ impl TradingTerminal {
                     self.push_toast(format!("Chart image saved to {}", path.display()), false)
                 }
                 Ok(None) => {}
-                Err(err) => self.push_toast(format!("Chart image save failed: {err}"), true),
+                Err(err) => self.push_toast(
+                    format!(
+                        "Chart image save failed: {}",
+                        redact_sensitive_response_text(&err)
+                    ),
+                    true,
+                ),
             },
             Message::CloseChartScreenshotWindow => {
                 if let Some(id) = self.chart_screenshot_window_id {
@@ -179,5 +193,68 @@ impl TradingTerminal {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::KeroseneConfig;
+
+    #[test]
+    fn chart_screenshot_capture_error_redacts_window_error_and_toast() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.chart_screenshot_pending_request_id = Some(7);
+        terminal.chart_screenshot_capture_in_progress = true;
+
+        let _task = terminal.update_chart_screenshot(Message::ChartScreenshotCaptured(
+            7,
+            1,
+            Err("render failed: api_key=key-secret signature=sig-secret".to_string()),
+        ));
+
+        let error = terminal
+            .chart_screenshot_error
+            .as_ref()
+            .expect("screenshot error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(error.contains("signature=<redacted>"));
+        assert!(!error.contains("key-secret"));
+        assert!(!error.contains("sig-secret"));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("api_key=<redacted>"));
+        assert!(toast.message.contains("signature=<redacted>"));
+        assert!(!toast.message.contains("key-secret"));
+        assert!(!toast.message.contains("sig-secret"));
+    }
+
+    #[test]
+    fn chart_screenshot_copy_error_redacts_toast() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        let _task = terminal.update_chart_screenshot(Message::ChartScreenshotCopied(Err(
+            "copy failed: auth_token=token-secret".to_string(),
+        )));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("auth_token=<redacted>"));
+        assert!(!toast.message.contains("token-secret"));
+    }
+
+    #[test]
+    fn chart_screenshot_save_error_redacts_toast() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        let _task = terminal.update_chart_screenshot(Message::ChartScreenshotSaved(Err(
+            "save failed: client_secret=secret-value".to_string(),
+        )));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("client_secret=<redacted>"));
+        assert!(!toast.message.contains("secret-value"));
     }
 }
