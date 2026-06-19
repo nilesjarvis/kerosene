@@ -3,6 +3,7 @@ use super::{
     AccountProfile, backup_config_path, clear_all_keychain_secrets, config_path,
     config_sidecar_prefix,
 };
+use crate::helpers::redact_sensitive_response_text;
 use crate::telegram_fast_feed::clear_telegram_fast_session_files_at;
 use std::path::Path;
 
@@ -289,6 +290,7 @@ where
             keychain_entries_cleared = keychain_entry_count(profiles);
         }
         Err(e) => {
+            let e = redact_sensitive_response_text(&e);
             warnings.push(format!("keychain cleanup failed: {e}"));
             return ClearConfigSummary {
                 files_removed,

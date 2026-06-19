@@ -309,7 +309,7 @@ fn clear_all_configs_reports_keychain_failure_before_config_cleanup() {
 
     let summary = clear_all_configs_with(
         &profiles,
-        |_| Err("keychain unavailable".to_string()),
+        |_| Err("keychain unavailable: api_key=super-secret".to_string()),
         || {
             primary_cleanup_called.set(true);
             cleanup_success(2)
@@ -327,8 +327,9 @@ fn clear_all_configs_reports_keychain_failure_before_config_cleanup() {
     assert!(!side_cleanup_called.get());
     assert_eq!(
         summary.warnings,
-        vec!["keychain cleanup failed: keychain unavailable".to_string()]
+        vec!["keychain cleanup failed: keychain unavailable: api_key=<redacted>".to_string()]
     );
+    assert!(!summary.warnings.join("; ").contains("super-secret"));
 }
 
 #[test]
@@ -368,7 +369,7 @@ fn clear_all_configs_skips_side_cleanup_when_keychain_cleanup_fails() {
 
     let summary = clear_all_configs_with(
         &profiles,
-        |_| Err("keychain locked".to_string()),
+        |_| Err("keychain locked: auth_token=super-secret".to_string()),
         || {
             primary_cleanup_called.set(true);
             cleanup_success(3)
@@ -386,8 +387,9 @@ fn clear_all_configs_skips_side_cleanup_when_keychain_cleanup_fails() {
     assert!(!side_cleanup_called.get());
     assert_eq!(
         summary.warnings,
-        vec!["keychain cleanup failed: keychain locked".to_string()]
+        vec!["keychain cleanup failed: keychain locked: auth_token=<redacted>".to_string()]
     );
+    assert!(!summary.warnings.join("; ").contains("super-secret"));
 }
 
 #[test]
