@@ -1,6 +1,5 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::journal_views::style::journal_accent_mint;
 use crate::message::Message;
 use iced::widget::container as container_style;
 use iced::widget::{Column, Space, container, row, text};
@@ -39,7 +38,7 @@ impl TradingTerminal {
                         border: iced::Border {
                             color: t.palette().primary,
                             width: 1.0,
-                            radius: 4.0.into(),
+                            radius: 0.0.into(),
                         },
                         ..Default::default()
                     }),
@@ -99,7 +98,7 @@ impl TradingTerminal {
             } else {
                 "Syncing history...".to_string()
             };
-            status_row = status_row.push(text(sync_text).size(11).color(journal_accent_mint()));
+            status_row = status_row.push(text(sync_text).size(11).color(theme.palette().primary));
         }
 
         content.push(status_row)

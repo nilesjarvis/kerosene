@@ -1,96 +1,85 @@
-use iced::widget::button;
 use iced::widget::container as container_style;
+use iced::widget::{button, text_input};
 use iced::{Color, Theme};
 
 // ---------------------------------------------------------------------------
 // Shared journal styling
 //
-// Centralizes the accent color, panel chrome, and the segmented "pill" button
-// idiom so the header controls and the summary panels share one visual
-// language.
+// Centralizes journal chrome so the standalone window follows the same flat,
+// square-edged theme language as the rest of the terminal.
 // ---------------------------------------------------------------------------
 
-/// Mint accent used across journal charts, panels, and controls.
-pub(super) fn journal_accent_mint() -> Color {
-    Color {
-        r: 0.16,
-        g: 0.94,
-        b: 0.78,
-        a: 1.0,
-    }
-}
-
-/// Shared elevated panel chrome for the summary cards so stacked panels read as
-/// siblings (matching border radius, padding via [`JOURNAL_PANEL_PADDING`], and
-/// elevation).
+/// Shared flat panel chrome for summary blocks.
 pub(super) fn journal_panel_style(theme: &Theme) -> container_style::Style {
-    let mut shadow_color = Color::BLACK;
-    shadow_color.a = 0.24;
+    let mut border_color = theme.extended_palette().background.strong.text;
+    border_color.a = 0.10;
 
     container_style::Style {
-        background: Some(
-            Color {
-                a: 0.94,
-                ..theme.extended_palette().background.strong.color
-            }
-            .into(),
-        ),
+        background: Some(theme.extended_palette().background.weak.color.into()),
         border: iced::Border {
-            color: Color {
-                a: 0.14,
-                ..journal_accent_mint()
-            },
+            color: border_color,
             width: 1.0,
             radius: JOURNAL_PANEL_RADIUS.into(),
-        },
-        shadow: iced::Shadow {
-            color: shadow_color,
-            offset: iced::Vector::new(0.0, 8.0),
-            blur_radius: 22.0,
         },
         ..Default::default()
     }
 }
 
-pub(super) const JOURNAL_PANEL_RADIUS: f32 = 14.0;
-pub(super) const JOURNAL_PANEL_PADDING: [u16; 2] = [14, 16];
+pub(super) const JOURNAL_PANEL_RADIUS: f32 = 0.0;
+pub(super) const JOURNAL_PANEL_PADDING: [u16; 2] = [12, 12];
 
-/// Shared segmented-control pill style. Used by the header sort/filter/refresh
-/// controls and the in-panel timeframe selector so every mutually-exclusive
-/// control in the journal reads the same way.
-pub(super) fn journal_pill_style(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+/// Shared square compact-control style.
+pub(super) fn journal_control_style(
+    active: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme: &Theme, status| {
-        let mint = journal_accent_mint();
+        let palette = theme.palette();
+        let extended = theme.extended_palette();
         let muted = theme.extended_palette().background.weak.text;
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         let background = if active {
-            Color { a: 0.16, ..mint }
-        } else if hovered {
-            Color { a: 0.08, ..mint }
-        } else {
             Color {
-                a: 0.025,
-                ..theme.palette().text
+                a: 0.14,
+                ..palette.primary
             }
+        } else if hovered {
+            Color {
+                a: 0.55,
+                ..extended.background.strong.color
+            }
+        } else {
+            Color::TRANSPARENT
         };
         let border_color = if active || hovered {
-            Color { a: 0.38, ..mint }
+            Color {
+                a: if active { 0.45 } else { 0.18 },
+                ..palette.primary
+            }
         } else {
             Color {
-                a: 0.10,
-                ..theme.palette().text
+                a: 0.12,
+                ..palette.text
             }
         };
 
         button::Style {
             background: Some(background.into()),
-            text_color: if active { mint } else { muted },
+            text_color: if active { palette.primary } else { muted },
             border: iced::Border {
-                radius: 999.0.into(),
+                radius: 0.0.into(),
                 width: 1.0,
                 color: border_color,
             },
             ..Default::default()
         }
     }
+}
+
+pub(super) fn journal_text_input_style(
+    theme: &Theme,
+    status: text_input::Status,
+) -> text_input::Style {
+    let mut style = crate::helpers::text_input_style(theme, status);
+    style.border.radius = 0.0.into();
+    style
 }

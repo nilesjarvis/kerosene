@@ -1,5 +1,5 @@
 use crate::journal;
-use crate::journal_views::style::journal_pill_style;
+use crate::journal_views::style::journal_control_style;
 use crate::message::Message;
 use iced::widget::{Space, button, row, text};
 use iced::{Element, Theme};
@@ -27,7 +27,7 @@ pub(super) fn journal_filter_controls(
             button(text(filter.1).size(11))
                 .on_press(Message::JournalFilterChanged(filter.0))
                 .padding([3, 9])
-                .style(journal_pill_style(is_active)),
+                .style(journal_control_style(is_active)),
         );
     }
     filter_row.into()

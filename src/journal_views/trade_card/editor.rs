@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
-use crate::helpers;
 use crate::journal::AggregatedTrade;
+use crate::journal_views::style::{journal_control_style, journal_text_input_style};
 use crate::message::Message;
 use iced::Fill;
 use iced::widget::{Column, Space, button, row, text, text_input};
@@ -24,7 +24,7 @@ impl TradingTerminal {
             .unwrap_or(&default_note);
 
         let input_open = text_input("Entry reflection...", &note.open)
-            .style(helpers::text_input_style)
+            .style(journal_text_input_style)
             .on_input({
                 let id = trade.id.clone();
                 move |txt| Message::JournalBufferChanged(id.clone(), true, txt)
@@ -34,7 +34,7 @@ impl TradingTerminal {
             .padding(8);
 
         let input_close = text_input("Exit reflection...", &note.close)
-            .style(helpers::text_input_style)
+            .style(journal_text_input_style)
             .on_input({
                 let id = trade.id.clone();
                 move |txt| Message::JournalBufferChanged(id.clone(), false, txt)
@@ -47,11 +47,11 @@ impl TradingTerminal {
             Space::new().width(Fill),
             button(text("Cancel").size(11))
                 .on_press(Message::JournalEditCancel(trade.id.clone()))
-                .style(button::secondary),
+                .style(journal_control_style(false)),
             Space::new().width(8.0),
             button(text("Save").size(11))
                 .on_press(Message::JournalEditSave(trade.id.clone()))
-                .style(button::primary),
+                .style(journal_control_style(true)),
         ];
 
         card.push(Space::new().height(8.0))

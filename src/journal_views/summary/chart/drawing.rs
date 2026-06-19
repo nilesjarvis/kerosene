@@ -11,10 +11,12 @@ use tooltip::draw_hover_state;
 pub(super) use tooltip::tooltip_origin;
 
 const GRID_ALPHA: f32 = 0.055;
-const ZERO_LINE_ALPHA: f32 = 0.16;
-const PNL_AREA_TOP_ALPHA: f32 = 0.26;
-const PNL_AREA_MID_ALPHA: f32 = 0.10;
-const PNL_AREA_BOTTOM_ALPHA: f32 = 0.0;
+const ZERO_LINE_ALPHA: f32 = 0.10;
+const AREA_FILL_TOP_ALPHA: f32 = 0.24;
+const AREA_FILL_LAYERS: usize = 64;
+const AREA_FILL_MIN_FADE_RATIO: f32 = 0.55;
+const AREA_FILL_MIN_FADE_PX: f32 = 120.0;
+const LINE_WIDTH: f32 = 1.5;
 
 // ---------------------------------------------------------------------------
 // Summary Chart Canvas
@@ -58,7 +60,7 @@ fn draw_journal_summary_chart(
         return vec![frame.into_geometry()];
     };
 
-    let mint = journal_chart_mint();
+    let (line_color, area_color) = journal_chart_colors(theme);
     let reveal_progress = ease_out_cubic(chart.reveal_progress.clamp(0.0, 1.0));
     let reveal_width = (bounds.width * reveal_progress).clamp(0.0, bounds.width);
 
@@ -74,7 +76,7 @@ fn draw_journal_summary_chart(
                 height: bounds.height,
             },
             |frame| {
-                draw_pnl_area(frame, &layout.pnl_points, bounds.height, mint);
+                draw_pnl_area(frame, &layout.pnl_points, bounds.height, area_color);
 
                 if chart.show_account_value && !layout.account_value_points.is_empty() {
                     draw_series(
@@ -86,13 +88,9 @@ fn draw_journal_summary_chart(
                     );
                 }
 
-                draw_pnl_series_glow(frame, &layout.pnl_points, mint);
+                draw_pnl_series(frame, &layout.pnl_points, line_color);
             },
         );
-
-        if let Some(marker) = point_at_x(&layout.pnl_points, reveal_width) {
-            draw_reveal_marker(&mut frame, marker, mint);
-        }
     }
 
     if reveal_progress >= 0.995 {
@@ -111,17 +109,26 @@ fn draw_journal_summary_chart(
 }
 
 fn draw_grid(frame: &mut canvas::Frame, theme: &Theme, size: Size) {
-    for fraction in [0.25_f32, 0.5, 0.75] {
-        let y = size.height * fraction;
+    let color = Color {
+        a: GRID_ALPHA,
+        ..theme.palette().text
+    };
+
+    for i in 0..=5 {
+        let y = size.height * i as f32 / 5.0;
         let path = canvas::Path::line(Point::new(0.0, y), Point::new(size.width, y));
         frame.stroke(
             &path,
-            canvas::Stroke::default()
-                .with_color(Color {
-                    a: GRID_ALPHA,
-                    ..theme.palette().text
-                })
-                .with_width(1.0),
+            canvas::Stroke::default().with_color(color).with_width(1.0),
+        );
+    }
+
+    for i in 1..6 {
+        let x = size.width * i as f32 / 6.0;
+        let path = canvas::Path::line(Point::new(x, 0.0), Point::new(x, size.height));
+        frame.stroke(
+            &path,
+            canvas::Stroke::default().with_color(color).with_width(1.0),
         );
     }
 }
@@ -144,20 +151,37 @@ fn draw_pnl_area(frame: &mut canvas::Frame, points: &[ChartPoint], height: f32, 
         return;
     }
 
-    let area = smooth_area_path(points, height);
-    frame.fill(&area, pnl_area_gradient(color, height));
+    let Some(first) = points.first() else {
+        return;
+    };
+    let Some(last) = points.last() else {
+        return;
+    };
+
+    let top_y = points
+        .iter()
+        .map(|point| point.point.y)
+        .fold(f32::INFINITY, f32::min);
+    let bottom_y = height;
+    if bottom_y <= top_y {
+        return;
+    }
+
+    let mut area_points = Vec::with_capacity(points.len() + 2);
+    area_points.push(Point::new(first.point.x, bottom_y));
+    area_points.extend(points.iter().map(|point| point.point));
+    area_points.push(Point::new(last.point.x, bottom_y));
+
+    draw_line_area_fade(frame, &area_points, color, top_y, bottom_y, height);
 }
 
-fn draw_pnl_series_glow(frame: &mut canvas::Frame, points: &[ChartPoint], color: Color) {
+fn draw_pnl_series(frame: &mut canvas::Frame, points: &[ChartPoint], color: Color) {
     match points {
         [] => {}
-        [only] => draw_reveal_marker(frame, only.point, color),
+        [only] => draw_point_marker(frame, only.point, color, 2.5),
         points => {
-            let line = smooth_line_path(points);
-            draw_series_path(frame, &line, Color { a: 0.10, ..color }, 11.0, &[]);
-            draw_series_path(frame, &line, Color { a: 0.18, ..color }, 6.0, &[]);
-            draw_series_path(frame, &line, Color { a: 0.38, ..color }, 3.2, &[]);
-            draw_series_path(frame, &line, color, 2.0, &[]);
+            let line = line_path(points);
+            draw_series_path(frame, &line, color, LINE_WIDTH, &[]);
         }
     }
 }
@@ -171,12 +195,9 @@ fn draw_series(
 ) {
     match points {
         [] => {}
-        [only] => {
-            let dot = canvas::Path::circle(only.point, 2.4);
-            frame.fill(&dot, color);
-        }
+        [only] => draw_point_marker(frame, only.point, color, 2.0),
         points => {
-            let path = smooth_line_path(points);
+            let path = line_path(points);
             draw_series_path(frame, &path, color, width, dash_segments);
         }
     }
@@ -192,8 +213,8 @@ fn draw_series_path(
     let mut stroke = canvas::Stroke::default()
         .with_color(color)
         .with_width(width)
-        .with_line_cap(canvas::LineCap::Round)
-        .with_line_join(canvas::LineJoin::Round);
+        .with_line_cap(canvas::LineCap::Butt)
+        .with_line_join(canvas::LineJoin::Miter);
     if !dash_segments.is_empty() {
         stroke.line_dash = canvas::stroke::LineDash {
             segments: dash_segments,
@@ -203,116 +224,131 @@ fn draw_series_path(
     frame.stroke(path, stroke);
 }
 
-fn smooth_line_path(points: &[ChartPoint]) -> canvas::Path {
+fn line_path(points: &[ChartPoint]) -> canvas::Path {
     canvas::Path::new(|path| {
         let Some(first) = points.first() else {
             return;
         };
         path.move_to(first.point);
-        add_smoothed_points(path, points);
+        for point in &points[1..] {
+            path.line_to(point.point);
+        }
     })
 }
 
-fn smooth_area_path(points: &[ChartPoint], baseline_y: f32) -> canvas::Path {
-    canvas::Path::new(|path| {
-        let Some(first) = points.first() else {
-            return;
-        };
-        let Some(last) = points.last() else {
-            return;
-        };
-
-        path.move_to(first.point);
-        add_smoothed_points(path, points);
-        path.line_to(Point::new(last.point.x, baseline_y));
-        path.line_to(Point::new(first.point.x, baseline_y));
-        path.close();
-    })
-}
-
-fn add_smoothed_points(path: &mut canvas::path::Builder, points: &[ChartPoint]) {
-    if points.len() < 2 {
+fn draw_line_area_fade(
+    frame: &mut canvas::Frame,
+    area_points: &[Point],
+    accent: Color,
+    top_y: f32,
+    bottom_y: f32,
+    height: f32,
+) {
+    let Some((start_y, end_y)) = line_area_fade_bounds(top_y, bottom_y, height) else {
+        return;
+    };
+    let fade_h = end_y - start_y;
+    if fade_h <= f32::EPSILON {
         return;
     }
 
-    for pair in points.windows(2) {
-        let previous = pair[0].point;
-        let current = pair[1].point;
-        let mid = Point::new(
-            previous.x + (current.x - previous.x) * 0.5,
-            previous.y + (current.y - previous.y) * 0.5,
-        );
-        path.quadratic_curve_to(previous, mid);
-    }
+    let color = Color {
+        a: line_area_layer_alpha(),
+        ..accent
+    };
 
-    if let Some(last) = points.last() {
-        path.line_to(last.point);
+    for layer in 0..AREA_FILL_LAYERS {
+        let t = (layer + 1) as f32 / (AREA_FILL_LAYERS + 1) as f32;
+        let clip_y = start_y + fade_h * t;
+        let clipped = clip_polygon_to_max_y(area_points, clip_y);
+        fill_polygon(frame, &clipped, color);
     }
 }
 
-fn draw_reveal_marker(frame: &mut canvas::Frame, point: Point, color: Color) {
-    let glow = canvas::Path::circle(point, 6.0);
-    frame.fill(&glow, Color { a: 0.16, ..color });
-    let marker = canvas::Path::circle(point, 2.7);
-    frame.fill(&marker, Color::WHITE);
-    let inner = canvas::Path::circle(point, 1.5);
-    frame.fill(&inner, color);
-}
-
-fn point_at_x(points: &[ChartPoint], x: f32) -> Option<Point> {
-    let first = points.first()?;
-    if x <= first.point.x {
-        return Some(first.point);
+fn line_area_fade_bounds(top_y: f32, bottom_y: f32, height: f32) -> Option<(f32, f32)> {
+    if !top_y.is_finite()
+        || !bottom_y.is_finite()
+        || !height.is_finite()
+        || bottom_y <= top_y
+        || height <= 0.0
+    {
+        return None;
     }
 
-    for pair in points.windows(2) {
-        let left = pair[0].point;
-        let right = pair[1].point;
-        if x <= right.x {
-            let span = (right.x - left.x).max(f32::EPSILON);
-            let ratio = ((x - left.x) / span).clamp(0.0, 1.0);
-            return Some(Point::new(
-                left.x + (right.x - left.x) * ratio,
-                left.y + (right.y - left.y) * ratio,
-            ));
+    let min_fade_h = (height * AREA_FILL_MIN_FADE_RATIO).max(AREA_FILL_MIN_FADE_PX.min(height));
+    let start_y = top_y.min(bottom_y - min_fade_h).min(bottom_y - 1.0);
+    let end_y = bottom_y.max(start_y + 1.0);
+
+    Some((start_y, end_y))
+}
+
+fn line_area_layer_alpha() -> f32 {
+    1.0 - (1.0 - AREA_FILL_TOP_ALPHA).powf(1.0 / AREA_FILL_LAYERS as f32)
+}
+
+fn clip_polygon_to_max_y(points: &[Point], max_y: f32) -> Vec<Point> {
+    if points.len() < 3 || !max_y.is_finite() {
+        return Vec::new();
+    }
+
+    let mut clipped = Vec::with_capacity(points.len() + 2);
+    let mut previous = *points.last().unwrap_or(&Point::ORIGIN);
+    let mut previous_inside = previous.y <= max_y;
+
+    for current in points.iter().copied() {
+        let current_inside = current.y <= max_y;
+        if current_inside != previous_inside {
+            clipped.push(segment_y_intersection(previous, current, max_y));
         }
+        if current_inside {
+            clipped.push(current);
+        }
+
+        previous = current;
+        previous_inside = current_inside;
     }
 
-    points.last().map(|point| point.point)
+    clipped
 }
 
-fn pnl_area_gradient(color: Color, height: f32) -> canvas::gradient::Linear {
-    canvas::gradient::Linear::new(Point::new(0.0, 0.0), Point::new(0.0, height.max(1.0)))
-        .add_stop(
-            0.0,
-            Color {
-                a: PNL_AREA_TOP_ALPHA,
-                ..color
-            },
-        )
-        .add_stop(
-            0.45,
-            Color {
-                a: PNL_AREA_MID_ALPHA,
-                ..color
-            },
-        )
-        .add_stop(
-            1.0,
-            Color {
-                a: PNL_AREA_BOTTOM_ALPHA,
-                ..color
-            },
-        )
-}
-
-fn journal_chart_mint() -> Color {
-    Color {
-        r: 0.16,
-        g: 0.94,
-        b: 0.78,
-        a: 1.0,
+fn segment_y_intersection(start: Point, end: Point, y: f32) -> Point {
+    let dy = end.y - start.y;
+    if dy.abs() <= f32::EPSILON {
+        return Point::new(start.x, y);
     }
+
+    let t = ((y - start.y) / dy).clamp(0.0, 1.0);
+    Point::new(start.x + (end.x - start.x) * t, y)
+}
+
+fn fill_polygon(frame: &mut canvas::Frame, points: &[Point], color: Color) {
+    if points.len() < 3 {
+        return;
+    }
+
+    let path = canvas::Path::new(|path| {
+        path.move_to(points[0]);
+        for point in &points[1..] {
+            path.line_to(*point);
+        }
+        path.close();
+    });
+    frame.fill(&path, color);
+}
+
+fn draw_point_marker(frame: &mut canvas::Frame, center: Point, color: Color, half_size: f32) {
+    frame.fill_rectangle(
+        Point::new(center.x - half_size, center.y - half_size),
+        Size::new(half_size * 2.0, half_size * 2.0),
+        color,
+    );
+}
+
+fn journal_chart_colors(theme: &Theme) -> (Color, Color) {
+    (
+        theme.palette().text,
+        theme.extended_palette().primary.base.color,
+    )
 }
 
 fn account_value_line_color(theme: &Theme) -> Color {
@@ -322,7 +358,7 @@ fn account_value_line_color(theme: &Theme) -> Color {
     }
 }
 
-fn nearest_chart_point(points: &[ChartPoint], cursor_x: f32) -> Option<ChartPoint> {
+pub(super) fn nearest_chart_point(points: &[ChartPoint], cursor_x: f32) -> Option<ChartPoint> {
     points.iter().copied().min_by(|left, right| {
         let left_dist = (left.point.x - cursor_x).abs();
         let right_dist = (right.point.x - cursor_x).abs();

@@ -102,7 +102,7 @@ fn journal_mode_badge(mode: JournalAccountMode) -> Element<'static, Message> {
             border: iced::Border {
                 color: Color { a: 0.38, ..accent },
                 width: 1.0,
-                radius: 999.0.into(),
+                radius: 0.0.into(),
             },
             ..Default::default()
         }

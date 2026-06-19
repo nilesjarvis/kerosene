@@ -49,7 +49,7 @@ pub(in crate::journal_views::trade_card) fn journal_trade_card_header(
                     ..status_color
                 },
                 width: 1.0,
-                radius: 10.0.into(),
+                radius: 0.0.into(),
             },
             ..Default::default()
         }),

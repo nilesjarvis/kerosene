@@ -101,7 +101,7 @@ impl TradingTerminal {
                 border: iced::Border {
                     color: theme.extended_palette().background.strong.color,
                     width: 1.0,
-                    radius: 6.0.into(),
+                    radius: 0.0.into(),
                 },
                 ..Default::default()
             })

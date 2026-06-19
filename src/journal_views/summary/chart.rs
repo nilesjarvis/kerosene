@@ -4,7 +4,9 @@ use crate::helpers::{
     format_decimal_with_commas, normalize_two_decimal_display_value, signed_number_color,
 };
 use crate::journal::{AggregatedTrade, JournalFilter};
-use crate::journal_views::style::{JOURNAL_PANEL_PADDING, journal_panel_style, journal_pill_style};
+use crate::journal_views::style::{
+    JOURNAL_PANEL_PADDING, journal_control_style, journal_panel_style,
+};
 use crate::message::Message;
 use crate::portfolio_state::{PORTFOLIO_WINDOWS, PortfolioWindow};
 
@@ -297,7 +299,7 @@ fn journal_timeframe_button(
     )
     .on_press(msg)
     .padding([3, 9])
-    .style(journal_pill_style(active))
+    .style(journal_control_style(active))
     .into()
 }
 

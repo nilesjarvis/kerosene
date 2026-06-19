@@ -20,7 +20,7 @@ pub(super) fn journal_note_block<'a>(
                 container_style::Style {
                     background: Some(accent_color.into()),
                     border: iced::Border {
-                        radius: 2.0.into(),
+                        radius: 0.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -47,7 +47,7 @@ pub(super) fn journal_note_block<'a>(
             .into(),
         ),
         border: iced::Border {
-            radius: 4.0.into(),
+            radius: 0.0.into(),
             ..Default::default()
         },
         ..Default::default()

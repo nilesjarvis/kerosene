@@ -1,4 +1,4 @@
-use crate::journal_views::style::journal_pill_style;
+use crate::journal_views::style::journal_control_style;
 use crate::message::Message;
 use iced::Element;
 use iced::widget::{button, text, tooltip};
@@ -11,7 +11,7 @@ pub(super) fn journal_refresh_button(loading: bool) -> Element<'static, Message>
         button(text(icon).size(14).center())
             .on_press(Message::JournalRefresh)
             .padding([3, 9])
-            .style(journal_pill_style(loading)),
+            .style(journal_control_style(loading)),
         text(label).size(10),
         tooltip::Position::Bottom,
     )
@@ -21,7 +21,7 @@ pub(super) fn journal_refresh_button(loading: bool) -> Element<'static, Message>
 pub(super) fn journal_clear_cache_button(enabled: bool) -> Element<'static, Message> {
     let mut clear_button = button(text("\u{232B}").size(14).center())
         .padding([3, 9])
-        .style(journal_pill_style(false));
+        .style(journal_control_style(false));
 
     if enabled {
         clear_button = clear_button.on_press(Message::JournalClearCache);

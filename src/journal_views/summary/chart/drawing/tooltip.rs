@@ -50,7 +50,7 @@ pub(super) fn draw_hover_state(
             })
             .with_width(1.0),
     );
-    frame.fill(&canvas::Path::circle(nearest_pnl.point, 2.8), Color::WHITE);
+    draw_hover_marker(frame, nearest_pnl.point, Color::WHITE, 2.8);
 
     let mut lines = vec![
         format_timestamp(nearest_pnl.timestamp_ms),
@@ -64,10 +64,7 @@ pub(super) fn draw_hover_state(
         && let Some(nearest_account) =
             nearest_chart_point(&layout.account_value_points, cursor_pos.x)
     {
-        frame.fill(
-            &canvas::Path::circle(nearest_account.point, 2.4),
-            theme.palette().primary,
-        );
+        draw_hover_marker(frame, nearest_account.point, theme.palette().primary, 2.4);
         lines.push(format!(
             "Acct {}",
             denomination.format_value(nearest_account.value, 2)
@@ -101,6 +98,14 @@ pub(super) fn draw_hover_state(
         font: crate::app_fonts::monospace_font(),
         ..canvas::Text::default()
     });
+}
+
+fn draw_hover_marker(frame: &mut canvas::Frame, point: Point, color: Color, half_size: f32) {
+    frame.fill_rectangle(
+        Point::new(point.x - half_size, point.y - half_size),
+        Size::new(half_size * 2.0, half_size * 2.0),
+        color,
+    );
 }
 
 pub(in crate::journal_views::summary::chart) fn tooltip_origin(
