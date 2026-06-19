@@ -2,7 +2,7 @@
 // Position Transition Helpers
 // ---------------------------------------------------------------------------
 
-const POSITION_EPSILON: f64 = 1e-6;
+pub(super) const POSITION_EPSILON: f64 = 1e-6;
 
 #[cfg(test)]
 mod tests;

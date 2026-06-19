@@ -11,7 +11,8 @@ use helpers::{
     add_legacy_note_id, legacy_trade_id, non_perp_fee_usd, parse_fill_values, stable_trade_id,
 };
 use position::{
-    fill_position_transition, is_non_perp_coin, resolved_start_position, signed_fill_size,
+    POSITION_EPSILON, fill_position_transition, is_non_perp_coin, resolved_start_position,
+    signed_fill_size,
 };
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -28,6 +29,11 @@ pub use model::{
 
 pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> AggregationResult {
     normalize_fills(&mut fills);
+
+    // Per coin, the earliest fill that opens from flat (`startPosition ≈ 0`).
+    // A trade's basis is reconstructible whenever such an open exists at or
+    // before its own opening fill — see `coin_first_flat_open_times`.
+    let coin_first_flat_open = coin_first_flat_open_times(&fills);
 
     let mut trade_history = Vec::new();
     let mut current_trades: HashMap<String, AggregatedTrade> = HashMap::new();
@@ -102,9 +108,16 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
             tracked_positions.insert(coin.clone(), (fill.time, new_pos));
         }
 
-        let mut trade = current_trades
-            .remove(&coin)
-            .unwrap_or_else(|| new_perp_trade(&coin, &fill, start_pos, new_pos));
+        let mut trade = current_trades.remove(&coin).unwrap_or_else(|| {
+            // The trade's opening basis is reconstructible if the coin opened
+            // from flat at or before this fill within the loaded history, even
+            // when same-timestamp ordering or a dust residual made this chain
+            // begin on a reducing fill rather than the true open.
+            let basis_complete = coin_first_flat_open
+                .get(&coin)
+                .is_some_and(|&flat_time| flat_time <= fill.time);
+            new_perp_trade(&coin, &fill, start_pos, new_pos, basis_complete)
+        });
 
         if trade.total_entry_size == 0.0 && !transition.is_flip {
             trade.is_long = new_pos > 0.0;
@@ -259,6 +272,36 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
         trade_details,
         diagnostics,
     }
+}
+
+/// Earliest fill time, per perp coin, at which a fill reports a flat opening
+/// position (`startPosition ≈ 0`).
+///
+/// Hyperliquid's per-fill `startPosition` is authoritative, so a coin with such
+/// a fill demonstrably opened from flat within the loaded history. Because fills
+/// are fetched contiguously, every trade for that coin that opens at or after
+/// that time has a reconstructible basis — even when same-timestamp fill
+/// ordering or a sub-epsilon dust residual causes the trade's chain to begin on
+/// a reducing ("Close") fill instead of the true open. Relying only on the
+/// chain head's `startPosition` (the previous behavior) mis-flagged those trades
+/// as "partial" despite the open being present in the data.
+fn coin_first_flat_open_times(fills: &[UserFill]) -> HashMap<String, u64> {
+    let mut earliest: HashMap<String, u64> = HashMap::new();
+    for fill in fills {
+        if is_non_perp_coin(&fill.coin) || fill.dir == "Settlement" {
+            continue;
+        }
+        let Ok(parsed) = parse_fill_values(fill) else {
+            continue;
+        };
+        if parsed.start_pos.abs() <= POSITION_EPSILON {
+            earliest
+                .entry(fill.coin.clone())
+                .and_modify(|time| *time = (*time).min(fill.time))
+                .or_insert(fill.time);
+        }
+    }
+    earliest
 }
 
 fn add_stable_note_ids_for_fill(trade: &mut AggregatedTrade, coin: &str, fill: &UserFill) {

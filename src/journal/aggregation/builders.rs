@@ -62,6 +62,7 @@ pub(super) fn new_perp_trade(
     fill: &UserFill,
     start_pos: f64,
     new_pos: f64,
+    basis_complete: bool,
 ) -> AggregatedTrade {
     AggregatedTrade {
         id: stable_trade_id("perp", coin, fill),
@@ -79,7 +80,7 @@ pub(super) fn new_perp_trade(
         total_entry_notional: 0.0,
         total_entry_size: 0.0,
         is_long: new_pos > 0.0 || (new_pos == 0.0 && start_pos > 0.0),
-        basis_complete: start_pos.abs() <= 1e-6,
+        basis_complete,
     }
 }
 
