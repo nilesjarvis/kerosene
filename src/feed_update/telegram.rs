@@ -1,6 +1,6 @@
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
-use crate::helpers::ellipsized_text;
+use crate::helpers::{ellipsized_text, redact_sensitive_response_text};
 use crate::message::{Message, TelegramFastAuthMessageResult};
 use crate::telegram_fast_feed::{
     TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED, TELEGRAM_FAST_SESSION_CLEAR_FAILED,
@@ -778,7 +778,7 @@ impl TradingTerminal {
             }
             Err(err) => {
                 if was_visible_loading || self.telegram_feed.posts.is_empty() {
-                    self.telegram_feed.last_error = Some(err);
+                    self.telegram_feed.last_error = Some(redact_sensitive_response_text(&err));
                 }
                 Task::none()
             }
@@ -1337,6 +1337,26 @@ mod tests {
             terminal.telegram_feed.loading_channels,
             vec!["marketfeed".to_string()]
         );
+    }
+
+    #[test]
+    fn current_public_channel_error_redacts_last_error() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Err("telegram failed: api_hash=feed-secret".to_string()),
+        );
+
+        let error = terminal
+            .telegram_feed
+            .last_error
+            .as_deref()
+            .expect("telegram feed error");
+        assert!(error.contains("api_hash=<redacted>"));
+        assert!(!error.contains("feed-secret"));
     }
 
     #[test]
