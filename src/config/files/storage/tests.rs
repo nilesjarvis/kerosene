@@ -131,6 +131,43 @@ fn pending_keychain_delete_cleanup_failure_preserves_intent_and_redacts_warning(
 }
 
 #[test]
+fn pending_keychain_delete_cleanup_failure_redacts_trimmed_pending_id() {
+    let mut config = KeroseneConfig {
+        accounts: vec![test_profile("account-a", "")],
+        pending_keychain_profile_deletions: vec![" account-b ".to_string()],
+        ..KeroseneConfig::default()
+    };
+    let bundle = SecretPayload::from_credentials(&[test_profile("account-a", "agent-a")], "", "");
+    let warnings = RefCell::new(Vec::new());
+
+    load_os_keychain_secrets_with(
+        &mut config,
+        || Ok(Some(bundle.clone())),
+        |_| Ok(()),
+        KeychainCleanupHooks {
+            clear_legacy_entries: |_: &SecretPayload| Ok(()),
+            clear_pending_profile: |_secret_id: &str| Err("delete account-b denied".to_string()),
+        },
+        |_| panic!("valid bundle should not read legacy profile keychain entries"),
+        no_legacy_global_secrets,
+        |warning| warnings.borrow_mut().push(warning),
+    );
+
+    assert_eq!(
+        config.pending_keychain_profile_deletions.as_slice(),
+        [" account-b "]
+    );
+    let warning = warnings
+        .borrow()
+        .iter()
+        .find(|warning| warning.contains("Pending OS keychain account deletion cleanup failed"))
+        .cloned()
+        .expect("pending cleanup failure should warn");
+    assert!(warning.contains("<redacted-profile>"));
+    assert!(!warning.contains("account-b"));
+}
+
+#[test]
 fn pending_full_keychain_cleanup_retries_and_clears_intent() {
     let mut config = KeroseneConfig {
         credential_storage_mode: CredentialStorageMode::EncryptedConfig,

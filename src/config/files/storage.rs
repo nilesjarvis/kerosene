@@ -114,13 +114,20 @@ fn keychain_cleanup_profiles_for_config(config: &KeroseneConfig) -> Vec<AccountP
 #[cfg(test)]
 fn redact_keychain_cleanup_profile_ids(error: String, profiles: &[AccountProfile]) -> String {
     profiles.iter().fold(error, |message, profile| {
-        let secret_id = profile.secret_id.trim();
-        if secret_id.is_empty() {
-            message
-        } else {
-            message.replace(secret_id, "<redacted-profile>")
-        }
+        redact_keychain_cleanup_secret_id(message, &profile.secret_id)
     })
+}
+
+fn redact_keychain_cleanup_secret_id(message: String, secret_id: &str) -> String {
+    let trimmed = secret_id.trim();
+    let mut redacted = message;
+    if !secret_id.is_empty() {
+        redacted = redacted.replace(secret_id, "<redacted-profile>");
+    }
+    if !trimmed.is_empty() && trimmed != secret_id {
+        redacted = redacted.replace(trimmed, "<redacted-profile>");
+    }
+    redacted
 }
 
 fn load_os_keychain_secrets(config: &mut KeroseneConfig) {
@@ -287,11 +294,7 @@ fn retry_pending_keychain_profile_deletions(
                 cleaned_any = true;
             }
             Err(error) => {
-                let redacted = if secret_id.trim().is_empty() {
-                    error
-                } else {
-                    error.replace(&secret_id, "<redacted-profile>")
-                };
+                let redacted = redact_keychain_cleanup_secret_id(error, &secret_id);
                 config.pending_keychain_profile_deletions.push(secret_id);
                 push_warning(format!(
                     "Pending OS keychain account deletion cleanup failed and will retry later: {redacted}"

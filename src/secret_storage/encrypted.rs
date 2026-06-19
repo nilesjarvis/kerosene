@@ -397,11 +397,7 @@ impl TradingTerminal {
             match clear_pending_profile(&secret_id) {
                 Ok(()) => cleaned_any = true,
                 Err(error) => {
-                    let redacted = if secret_id.trim().is_empty() {
-                        error
-                    } else {
-                        error.replace(&secret_id, "<redacted-profile>")
-                    };
+                    let redacted = redact_keychain_cleanup_secret_id(error, &secret_id);
                     self.pending_keychain_profile_deletions.push(secret_id);
                     failures.push(redacted);
                 }
@@ -436,13 +432,20 @@ fn redact_keychain_cleanup_profile_ids(
     profiles: &[config::AccountProfile],
 ) -> String {
     profiles.iter().fold(error, |message, profile| {
-        let secret_id = profile.secret_id.trim();
-        if secret_id.is_empty() {
-            message
-        } else {
-            message.replace(secret_id, "<redacted-profile>")
-        }
+        redact_keychain_cleanup_secret_id(message, &profile.secret_id)
     })
+}
+
+fn redact_keychain_cleanup_secret_id(message: String, secret_id: &str) -> String {
+    let trimmed = secret_id.trim();
+    let mut redacted = message;
+    if !secret_id.is_empty() {
+        redacted = redacted.replace(secret_id, "<redacted-profile>");
+    }
+    if !trimmed.is_empty() && trimmed != secret_id {
+        redacted = redacted.replace(trimmed, "<redacted-profile>");
+    }
+    redacted
 }
 
 #[cfg(test)]
@@ -898,6 +901,45 @@ mod tests {
             terminal.secret_store_status,
             Some(("Encrypted credentials unlocked".to_string(), false))
         );
+    }
+
+    #[test]
+    fn encrypted_unlock_pending_profile_cleanup_failure_redacts_trimmed_pending_id() {
+        let current_wallet = "0xabc0000000000000000000000000000000000000";
+        let password = "password";
+        let payload = SecretPayload::from_credentials(
+            &[AccountProfile {
+                secret_id: "acct-a".to_string(),
+                name: "acct-a".to_string(),
+                wallet_address: current_wallet.to_string(),
+                agent_key: sensitive_string("agent-key").into_zeroizing(),
+                hydromancer_api_key: sensitive_string("").into_zeroizing(),
+            }],
+            "",
+            "",
+        );
+        let mut terminal = terminal_with_encrypted_payload(&payload, password);
+        terminal.accounts = vec![account("acct-a", current_wallet)];
+        terminal.active_account_index = 0;
+        terminal
+            .pending_keychain_profile_deletions
+            .push(" acct-b ".to_string());
+
+        let _task = terminal.unlock_encrypted_credentials_with_hooks(
+            |_| panic!("failed cleanup should not save cleared intent"),
+            |_| panic!("profile-only cleanup must not run full cleanup"),
+            |_secret_id| Err("delete acct-b denied".to_string()),
+        );
+
+        assert_eq!(
+            terminal.pending_keychain_profile_deletions.as_slice(),
+            [" acct-b "]
+        );
+        let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(message.contains("Encrypted credentials unlocked"));
+        assert!(message.contains("<redacted-profile>"));
+        assert!(!message.contains("acct-b"));
     }
 
     #[test]
