@@ -7,7 +7,7 @@ use crate::app_state::{TradingTerminal, sensitive_string};
 use crate::config::AccountProfile;
 use crate::order_execution::{
     OneShotPlacementContext, OrderSurface, PendingOrderAction, PreparedExchangeOrder,
-    TicketOrderPlaceIntent,
+    TicketOrderPlaceIntent, TicketOrderSubmissionSnapshot,
 };
 use crate::order_update::PendingOneShotStatusRequest;
 use crate::signing::{ExchangeOrderKind, OrderKind};
@@ -143,6 +143,29 @@ fn pending_one_shot_status_request() -> PendingOneShotStatusRequest {
             order_kind: ExchangeOrderKind::Market,
         },
     )
+}
+
+#[test]
+fn ticket_order_submission_snapshot_debug_redacts_order_inputs() {
+    let snapshot = TicketOrderSubmissionSnapshot {
+        order_kind: OrderKind::LimitIoc,
+        symbol_key: "SECRETCOIN".into(),
+        price_input: "price-secret".into(),
+        quantity_input: "quantity-secret".into(),
+        quantity_is_usd: true,
+        reduce_only: true,
+        market_universe: Default::default(),
+    };
+
+    let debug = format!("{snapshot:?}");
+
+    assert!(debug.contains("TicketOrderSubmissionSnapshot"));
+    assert!(debug.contains("order_kind: LimitIoc"));
+    assert!(debug.contains("quantity_is_usd: true"));
+    assert!(debug.contains("reduce_only: true"));
+    assert!(!debug.contains("SECRETCOIN"));
+    assert!(!debug.contains("price-secret"));
+    assert!(!debug.contains("quantity-secret"));
 }
 
 #[test]

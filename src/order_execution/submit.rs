@@ -10,6 +10,7 @@ use crate::order_execution::{
 use crate::signing::{ExchangeOrderKind, OrderKind};
 
 use iced::Task;
+use std::fmt;
 use zeroize::Zeroizing;
 
 #[cfg(test)]
@@ -28,7 +29,7 @@ pub(crate) struct TicketOrderPlaceIntent {
     pub(crate) reduce_only: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct TicketOrderSubmissionSnapshot {
     pub(crate) order_kind: OrderKind,
     pub(crate) symbol_key: String,
@@ -37,6 +38,20 @@ pub(crate) struct TicketOrderSubmissionSnapshot {
     pub(crate) quantity_is_usd: bool,
     pub(crate) reduce_only: bool,
     pub(crate) market_universe: MarketUniverseConfig,
+}
+
+impl fmt::Debug for TicketOrderSubmissionSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TicketOrderSubmissionSnapshot")
+            .field("order_kind", &self.order_kind)
+            .field("symbol_key", &"<redacted>")
+            .field("price_input", &"<redacted>")
+            .field("quantity_input", &"<redacted>")
+            .field("quantity_is_usd", &self.quantity_is_usd)
+            .field("reduce_only", &self.reduce_only)
+            .field("market_universe", &self.market_universe)
+            .finish()
+    }
 }
 
 impl TradingTerminal {
