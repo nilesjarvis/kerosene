@@ -14,7 +14,7 @@ use super::{CustomFontConfig, DisplayFontConfig};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::journal::JournalNote;
 use crate::telegram_feed::{TelegramFeedPrivateChannelConfig, default_telegram_feed_channels};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
 
@@ -375,7 +375,7 @@ pub struct KeroseneConfig {
     #[serde(default = "default_true")]
     pub preset_is_usd: bool,
     /// Global application hotkeys
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_hotkeys")]
     pub hotkeys: Vec<HotkeyConfig>,
     /// Modifier prefix used with number keys to switch the active chart timeframe.
     #[serde(default)]
@@ -384,4 +384,32 @@ pub struct KeroseneConfig {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn deserialize_hotkeys<'de, D>(deserializer: D) -> Result<Vec<HotkeyConfig>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let Some(entries) = value.as_array() else {
+        crate::config::push_config_warning(
+            "Invalid hotkeys config; using no configured hotkeys".to_string(),
+        );
+        return Ok(Vec::new());
+    };
+
+    Ok(entries
+        .iter()
+        .filter_map(
+            |entry| match serde_json::from_value::<HotkeyConfig>(entry.clone()) {
+                Ok(hotkey) => Some(hotkey),
+                Err(_) => {
+                    crate::config::push_config_warning(
+                        "Invalid hotkey entry in config; dropping hotkey".to_string(),
+                    );
+                    None
+                }
+            },
+        )
+        .collect())
 }
