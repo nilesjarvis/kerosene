@@ -2,6 +2,7 @@ use super::results::result_requires_account_refresh;
 use crate::account::AccountDataFetchScope;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::order_execution::{OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext};
 use crate::signing::{ExchangeResponse, update_leverage};
@@ -202,19 +203,21 @@ impl TradingTerminal {
                 ));
             }
             Ok(response) if !response.is_error() => {
+                let summary = redact_sensitive_response_text(&response.summary());
                 self.order_status = Some((
                     format!(
                         "Leverage update status uncertain: {}; refreshing account data",
-                        response.summary()
+                        summary
                     ),
                     true,
                 ));
             }
             Ok(response) => {
-                self.order_status = Some((response.summary(), true));
+                self.order_status =
+                    Some((redact_sensitive_response_text(&response.summary()), true));
             }
             Err(error) => {
-                self.order_status = Some((error, true));
+                self.order_status = Some((redact_sensitive_response_text(&error), true));
             }
         }
 
@@ -485,6 +488,13 @@ mod tests {
         .expect("valid exchange response")
     }
 
+    fn error_exchange_response() -> ExchangeResponse {
+        serde_json::from_str(
+            r#"{"status":"ok","response":{"type":"default","data":{"statuses":[{"error":"update rejected api_key=super-secret"}]}}}"#,
+        )
+        .expect("valid exchange response")
+    }
+
     fn assert_stale_leverage_snapshot_rejected(terminal: &TradingTerminal) {
         assert!(terminal.pending_leverage_update.is_none());
         assert_eq!(
@@ -734,6 +744,46 @@ mod tests {
         assert_eq!(terminal.order_leverage_input, "99");
         assert!(!terminal.order_leverage_is_cross);
         assert_uncertain_leverage_result_refreshes(&terminal, "Resting (oid 42)");
+    }
+
+    #[test]
+    fn leverage_result_exchange_error_redacts_sensitive_status_text() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xabc".to_string());
+        let context = pending_context("BTC", true, 12);
+        terminal.pending_leverage_update = Some(context.clone());
+
+        let _ = terminal.handle_order_leverage_result(context, Ok(error_exchange_response()));
+
+        assert_eq!(terminal.pending_leverage_update, None);
+        assert!(!terminal.account_loading);
+        let (message, is_error) = terminal.order_status.expect("status should be set");
+        assert!(is_error);
+        assert!(message.contains("update rejected"));
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("super-secret"));
+    }
+
+    #[test]
+    fn leverage_result_transport_error_redacts_sensitive_status_text() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some("0xabc".to_string());
+        let context = pending_context("BTC", true, 12);
+        terminal.pending_leverage_update = Some(context.clone());
+
+        let _ = terminal.handle_order_leverage_result(
+            context,
+            Err("leverage request failed: private_key=super-secret".to_string()),
+        );
+
+        assert_eq!(terminal.pending_leverage_update, None);
+        assert!(terminal.account_loading);
+        assert!(terminal.account_reconciliation_required);
+        let (message, is_error) = terminal.order_status.expect("status should be set");
+        assert!(is_error);
+        assert!(message.contains("leverage request failed"));
+        assert!(message.contains("private_key=<redacted>"));
+        assert!(!message.contains("super-secret"));
     }
 
     #[test]
