@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use super::super::image::{
@@ -45,7 +46,13 @@ impl TradingTerminal {
     pub(crate) fn handle_pnl_card_copied(&mut self, result: Result<(), String>) -> Task<Message> {
         match result {
             Ok(()) => self.push_toast("PnL card copied to clipboard".to_string(), false),
-            Err(err) => self.push_toast(format!("PnL card copy failed: {err}"), true),
+            Err(err) => self.push_toast(
+                format!(
+                    "PnL card copy failed: {}",
+                    redact_sensitive_response_text(&err)
+                ),
+                true,
+            ),
         }
         Task::none()
     }
@@ -59,7 +66,13 @@ impl TradingTerminal {
                 self.push_toast(format!("PnL card saved to {}", path.display()), false)
             }
             Ok(None) => {}
-            Err(err) => self.push_toast(format!("PnL card save failed: {err}"), true),
+            Err(err) => self.push_toast(
+                format!(
+                    "PnL card save failed: {}",
+                    redact_sensitive_response_text(&err)
+                ),
+                true,
+            ),
         }
         Task::none()
     }
@@ -121,4 +134,36 @@ pub(in crate::pnl_card) fn pnl_card_account_matches(
         .and_then(TradingTerminal::normalize_wallet_address)
         .as_deref()
         .is_some_and(|address| address == state.account_address)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::KeroseneConfig;
+
+    #[test]
+    fn pnl_card_copy_error_redacts_toast_detail() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        let _ = terminal
+            .handle_pnl_card_copied(Err("clipboard failed: auth_token=token-secret".to_string()));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("auth_token=<redacted>"));
+        assert!(!toast.message.contains("token-secret"));
+    }
+
+    #[test]
+    fn pnl_card_save_error_redacts_toast_detail() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        let _ = terminal
+            .handle_pnl_card_saved(Err("save failed: client_secret=secret-value".to_string()));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("client_secret=<redacted>"));
+        assert!(!toast.message.contains("secret-value"));
+    }
 }
