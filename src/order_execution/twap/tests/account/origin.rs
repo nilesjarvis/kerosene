@@ -1,7 +1,8 @@
 use super::{
     CHILD_OID, CLOID, ORIGIN_ADDRESS, SWITCHED_ADDRESS, TwapChildStatus, TwapStatus,
-    disable_current_account_refresh, empty_account_data, filled_status, origin_account_terminal,
-    pending_twap, reconciliation_twap, switched_account_terminal, test_twap, twap_by_id, user_fill,
+    canceled_status, disable_current_account_refresh, empty_account_data, filled_status,
+    origin_account_terminal, pending_twap, reconciliation_twap, switched_account_terminal,
+    test_twap, twap_by_id, user_fill,
 };
 use crate::account::{AccountData, AccountDataSection};
 use crate::config::ReadDataProvider;
@@ -416,6 +417,73 @@ fn running_twap_reconciliation_clears_status_metadata_after_fill() {
     assert_eq!(twap.status_check_cloid, None);
     assert_eq!(twap.reconciliation_deadline, None);
     assert!(twap.can_schedule_at(now));
+}
+
+#[test]
+fn canceled_status_reconciliation_counts_late_fill_from_account_refresh() {
+    let now = Instant::now();
+    let mut terminal = origin_account_terminal();
+    terminal.twap_orders.insert(1, test_twap(1, CLOID, now));
+
+    let _task = terminal.handle_twap_order_status_result(
+        1,
+        CLOID.to_string(),
+        Ok(canceled_status(CLOID, CHILD_OID)),
+    );
+    assert_eq!(
+        twap_by_id(&terminal, 1).child_orders[0].status,
+        TwapChildStatus::AwaitingNoFillConfirmation
+    );
+
+    terminal.reconcile_twap_fills_for_account_after_refresh(
+        ORIGIN_ADDRESS,
+        &[user_fill(CHILD_OID, "0.5", "100")],
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.filled_size, 0.5);
+    assert_eq!(twap.remaining_size, 0.5);
+    assert_eq!(twap.child_orders[0].status, TwapChildStatus::Filled);
+    assert_eq!(twap.status_check_cloid, None);
+    assert_eq!(twap.reconciliation_deadline, None);
+}
+
+#[test]
+fn canceled_status_empty_refresh_confirms_no_fill_and_finishes_attempt() {
+    let now = Instant::now();
+    let mut terminal = origin_account_terminal();
+    let mut twap = test_twap(1, CLOID, now);
+    twap.slices_attempted = 1;
+    terminal.twap_orders.insert(1, twap);
+
+    let _task = terminal.handle_twap_order_status_result(
+        1,
+        CLOID.to_string(),
+        Ok(canceled_status(CLOID, CHILD_OID)),
+    );
+
+    terminal.reconcile_twap_fills_for_account(ORIGIN_ADDRESS, &[]);
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(
+        twap.child_orders[0].status,
+        TwapChildStatus::AwaitingNoFillConfirmation
+    );
+    assert_eq!(twap.status_check_cloid.as_deref(), Some(CLOID));
+    assert!(twap.reconciliation_deadline.is_some());
+
+    terminal.reconcile_twap_fills_for_account_after_refresh(ORIGIN_ADDRESS, &[]);
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.child_orders[0].status, TwapChildStatus::NoFill);
+    assert_eq!(twap.status_check_cloid, None);
+    assert_eq!(twap.reconciliation_deadline, None);
+    assert_eq!(twap.status, TwapStatus::WaitingForMarket);
+    assert!(twap.next_slice_due > now);
+    assert!(twap.events.iter().any(|event| {
+        event.kind == TwapEventKind::Reconciled
+            && event.message.contains("confirmed no fill")
+            && !event.is_error
+    }));
 }
 
 #[test]

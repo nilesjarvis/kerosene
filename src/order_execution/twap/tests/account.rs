@@ -1,6 +1,6 @@
 use super::fixtures::{
-    empty_account_data, filled_status, missing_status, open_status, pending_twap,
-    reconciliation_deadline, test_twap, twap_by_id, user_fill,
+    canceled_status, empty_account_data, filled_status, missing_status, open_status, pending_twap,
+    reconciliation_deadline, rejected_status, test_twap, twap_by_id, user_fill,
 };
 use crate::account::AccountData;
 use crate::app_state::TradingTerminal;

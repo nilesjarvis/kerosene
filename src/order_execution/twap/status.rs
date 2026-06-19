@@ -23,7 +23,9 @@ fn unresolved_child_status_is_unknown(twap: &crate::twap_state::TwapOrder, cloid
         child.cloid.as_deref() == Some(cloid)
             && matches!(
                 child.status,
-                TwapChildStatus::StatusUnknown | TwapChildStatus::AwaitingReconciliation
+                TwapChildStatus::StatusUnknown
+                    | TwapChildStatus::AwaitingReconciliation
+                    | TwapChildStatus::AwaitingNoFillConfirmation
             )
     })
 }
@@ -127,7 +129,7 @@ impl TradingTerminal {
                         }
                     }
                 }
-                Ok(status) if status.is_no_fill_terminal() => {
+                Ok(status) if status.is_definitive_no_fill_terminal() => {
                     twap.status_check_cloid = None;
                     twap.status_check_retries = 0;
                     twap.retry_slice = None;
@@ -150,6 +152,34 @@ impl TradingTerminal {
                         false,
                     ));
                     finish_attempt = true;
+                }
+                Ok(status) if status.is_no_fill_terminal() => {
+                    twap.status_check_retries = 0;
+                    twap.retry_slice = None;
+                    twap.account_reconciliation_retries = 0;
+                    twap.update_child_orders_matching(
+                        |child| child.cloid.as_deref() == Some(cloid.as_str()),
+                        |child| {
+                            child.oid = status.oid.or(child.oid);
+                            child.status = TwapChildStatus::AwaitingNoFillConfirmation;
+                            child.exchange_summary = status.raw_summary.clone();
+                        },
+                    );
+                    twap.reconciliation_deadline = Some(now + TWAP_RECONCILIATION_TIMEOUT);
+                    twap.push_event(
+                        TwapEventKind::Reconciled,
+                        format!(
+                            "Slice status {}; verifying account fills before continuing: {}",
+                            status.status, status.raw_summary
+                        ),
+                        false,
+                    );
+                    self.order_status = Some((
+                        "TWAP child reported no-fill terminal status; verifying account fills"
+                            .to_string(),
+                        false,
+                    ));
+                    refresh = true;
                 }
                 Ok(status) if status.is_open() => {
                     twap.status_check_cloid = None;

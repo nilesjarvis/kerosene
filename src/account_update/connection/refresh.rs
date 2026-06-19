@@ -116,7 +116,7 @@ impl TradingTerminal {
                             .handle_twap_reconciliation_account_data_failure(&address, warning);
                     }
                     data.fills = dedupe_user_fills_preserving_order(data.fills);
-                    self.reconcile_twap_fills_for_account(&address, &data.fills);
+                    self.reconcile_twap_fills_for_account_after_refresh(&address, &data.fills);
                 }
                 Err(error) => {
                     return self.handle_twap_reconciliation_account_data_failure(&address, error);
@@ -134,7 +134,7 @@ impl TradingTerminal {
         if self.connected_address.as_deref() != Some(address.as_str()) {
             if let Ok(mut data) = result {
                 data.fills = dedupe_user_fills_preserving_order(data.fills);
-                self.reconcile_twap_fills_for_account(&address, &data.fills);
+                self.reconcile_twap_fills_for_account_after_refresh(&address, &data.fills);
             }
             return Task::none();
         }
@@ -147,6 +147,7 @@ impl TradingTerminal {
                 self.account_reconciliation_required = followup_pending;
                 let fills_incomplete = fills_incomplete_warning(&data);
                 data.fills = dedupe_user_fills_preserving_order(data.fills);
+                let fills_for_twap = data.fills.clone();
                 let is_pm = data.is_portfolio_margin();
                 self.bump_account_data_revision();
                 self.account_data = Some(data);
@@ -184,7 +185,7 @@ impl TradingTerminal {
                 let twap_task = if let Some(warning) = fills_incomplete {
                     self.handle_twap_reconciliation_account_data_failure(&address, warning)
                 } else {
-                    self.reconcile_twap_fills_from_account();
+                    self.reconcile_twap_fills_for_account_after_refresh(&address, &fills_for_twap);
                     Task::none()
                 };
 

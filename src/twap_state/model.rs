@@ -139,11 +139,11 @@ pub(crate) struct TwapOrder {
     pub(crate) status_check_cloid: Option<String>,
     pub(crate) status_check_retries: u32,
     pub(crate) account_reconciliation_retries: u32,
-    /// Deadline by which `account.fills` must observe a child the exchange
-    /// already reported as `filled`. `None` when the TWAP is not awaiting
-    /// reconciliation. Set when entering `AwaitingReconciliation`, cleared
-    /// when fills sync catches up, or when the timeout fires and the TWAP
-    /// transitions to terminal error.
+    /// Deadline by which `account.fills` must reconcile a child whose exchange
+    /// status is not yet safe to consume. `None` when the TWAP is not awaiting
+    /// reconciliation. Set when entering a reconciliation child state, cleared
+    /// when a complete fill snapshot resolves it, or when the timeout fires and
+    /// the TWAP transitions to terminal error.
     pub(crate) reconciliation_deadline: Option<Instant>,
     pub(crate) cancel_retries: u32,
     pub(crate) stop_requested: bool,

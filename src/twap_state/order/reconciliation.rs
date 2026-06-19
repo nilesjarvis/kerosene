@@ -12,9 +12,17 @@ impl TwapOrder {
         self.child_orders.iter().any(|child| {
             matches!(
                 child.status,
-                TwapChildStatus::StatusUnknown | TwapChildStatus::AwaitingReconciliation
+                TwapChildStatus::StatusUnknown
+                    | TwapChildStatus::AwaitingReconciliation
+                    | TwapChildStatus::AwaitingNoFillConfirmation
             )
         })
+    }
+
+    pub(crate) fn has_no_fill_confirmation_child(&self) -> bool {
+        self.child_orders
+            .iter()
+            .any(|child| child.status == TwapChildStatus::AwaitingNoFillConfirmation)
     }
 
     pub(crate) fn mark_filled(&mut self, filled_size: f64) {
@@ -31,6 +39,14 @@ impl TwapOrder {
     }
 
     pub(crate) fn reconcile_fills(&mut self, fills: &[UserFill]) {
+        self.reconcile_fills_impl(fills, false);
+    }
+
+    pub(crate) fn reconcile_fills_confirming_no_fill(&mut self, fills: &[UserFill]) {
+        self.reconcile_fills_impl(fills, true);
+    }
+
+    fn reconcile_fills_impl(&mut self, fills: &[UserFill], confirm_no_fill_absence: bool) {
         let had_status_unknown = self.has_status_unknown_child();
         let expected_coin = self.coin.as_str();
         let expected_is_buy = self.is_buy;
@@ -46,6 +62,16 @@ impl TwapOrder {
                 child.fee = child.fee.max(summary.fee.abs());
                 if child.filled_size > 0.0 && child.status != TwapChildStatus::Rejected {
                     child.status = TwapChildStatus::Filled;
+                }
+            }
+        }
+
+        if confirm_no_fill_absence {
+            for child in &mut self.child_orders {
+                if child.status == TwapChildStatus::AwaitingNoFillConfirmation
+                    && child.oid.is_some()
+                {
+                    child.status = TwapChildStatus::NoFill;
                 }
             }
         }

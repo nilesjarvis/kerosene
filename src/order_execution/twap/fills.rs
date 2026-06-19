@@ -126,6 +126,23 @@ impl TradingTerminal {
         account_address: &str,
         fills: &[UserFill],
     ) {
+        self.reconcile_twap_fills_for_account_with_policy(account_address, fills, false);
+    }
+
+    pub(crate) fn reconcile_twap_fills_for_account_after_refresh(
+        &mut self,
+        account_address: &str,
+        fills: &[UserFill],
+    ) {
+        self.reconcile_twap_fills_for_account_with_policy(account_address, fills, true);
+    }
+
+    fn reconcile_twap_fills_for_account_with_policy(
+        &mut self,
+        account_address: &str,
+        fills: &[UserFill],
+        confirm_no_fill_absence: bool,
+    ) {
         let now = Instant::now();
         let mut archive_ids = Vec::new();
         let mut finish_ids = Vec::new();
@@ -137,8 +154,23 @@ impl TradingTerminal {
             let before = twap.filled_size;
             let before_status = twap.status;
             let had_reconciliation_child = twap.has_status_unknown_child();
-            twap.reconcile_fills(fills);
+            let no_fill_confirmation_indexes: Vec<u32> = twap
+                .child_orders
+                .iter()
+                .filter(|child| child.status == TwapChildStatus::AwaitingNoFillConfirmation)
+                .map(|child| child.index)
+                .collect();
+            if confirm_no_fill_absence {
+                twap.reconcile_fills_confirming_no_fill(fills);
+            } else {
+                twap.reconcile_fills(fills);
+            }
             let filled_size_increased = twap.filled_size > before;
+            let no_fill_confirmed = no_fill_confirmation_indexes.iter().any(|index| {
+                twap.child_orders
+                    .iter()
+                    .any(|child| child.index == *index && child.status == TwapChildStatus::NoFill)
+            });
             let reconciliation_resolved =
                 had_reconciliation_child && !twap.has_status_unknown_child();
             if reconciliation_resolved {
@@ -149,6 +181,13 @@ impl TradingTerminal {
                     twap.push_event(
                         TwapEventKind::Reconciled,
                         "TWAP resumed after account fill reconciliation".to_string(),
+                        false,
+                    );
+                }
+                if no_fill_confirmed {
+                    twap.push_event(
+                        TwapEventKind::Reconciled,
+                        "TWAP confirmed no fill after account fill reconciliation".to_string(),
                         false,
                     );
                 }
@@ -166,14 +205,21 @@ impl TradingTerminal {
             } else if !reconciliation_resolved
                 && let Some(message) = fail_twap_reconciliation_timeout(twap, now)
             {
-                // The exchange reported a child as filled, but `account.fills`
-                // never echoed it within TWAP_RECONCILIATION_TIMEOUT. Tear
-                // the TWAP down with a clear, actionable error rather than
-                // leave it paused indefinitely with `status_check_cloid` set
-                // (which would block every future slice via `can_schedule_at`).
+                // The exchange reported a child status that cannot be consumed
+                // until account fills reconcile it. Tear the TWAP down with a
+                // clear error rather than leave it paused indefinitely with
+                // `status_check_cloid` set, blocking future slices.
                 status_update = Some(message);
             }
             if twap.stop_requested
+                && !twap.status.is_terminal()
+                && twap.pending_op.is_none()
+                && !twap.has_status_unknown_child()
+            {
+                finish_ids.push(twap.id);
+                continue;
+            }
+            if no_fill_confirmed
                 && !twap.status.is_terminal()
                 && twap.pending_op.is_none()
                 && !twap.has_status_unknown_child()
@@ -223,12 +269,22 @@ fn fail_twap_reconciliation_timeout(twap: &mut TwapOrder, now: Instant) -> Optio
     twap.account_reconciliation_retries = 0;
     twap.reconciliation_deadline = None;
     twap.status = TwapStatus::Error;
-    let message = format!(
-        "Could not reconcile {pending_slice} via account fills within {}s; \
-         exchange reported fill but account fills did not catch up. Check the \
-         exchange before manually resuming.",
-        TWAP_RECONCILIATION_TIMEOUT.as_secs()
-    );
+    let message = if twap.has_no_fill_confirmation_child() {
+        format!(
+            "Could not verify {pending_slice} had no fills within {}s; \
+             exchange reported a non-definitive no-fill status but account \
+             fills did not confirm it. Check the exchange before manually \
+             resuming.",
+            TWAP_RECONCILIATION_TIMEOUT.as_secs()
+        )
+    } else {
+        format!(
+            "Could not reconcile {pending_slice} via account fills within {}s; \
+             exchange reported fill but account fills did not catch up. Check the \
+             exchange before manually resuming.",
+            TWAP_RECONCILIATION_TIMEOUT.as_secs()
+        )
+    };
     twap.push_event(TwapEventKind::Error, message.clone(), true);
     Some(message)
 }
@@ -248,7 +304,9 @@ fn pending_reconciliation_slice_label(twap: &TwapOrder) -> String {
         .find(|child| {
             matches!(
                 child.status,
-                TwapChildStatus::StatusUnknown | TwapChildStatus::AwaitingReconciliation
+                TwapChildStatus::StatusUnknown
+                    | TwapChildStatus::AwaitingReconciliation
+                    | TwapChildStatus::AwaitingNoFillConfirmation
             )
         })
         .map(pending_child_slice_label)

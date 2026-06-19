@@ -67,6 +67,7 @@ pub(crate) enum TwapChildStatus {
     UnexpectedResting,
     UnexpectedRestingCancelled,
     AwaitingReconciliation,
+    AwaitingNoFillConfirmation,
     StatusUnknown,
 }
 
@@ -81,6 +82,7 @@ impl TwapChildStatus {
             Self::UnexpectedResting => "Resting",
             Self::UnexpectedRestingCancelled => "Canceled",
             Self::AwaitingReconciliation => "Reconciling",
+            Self::AwaitingNoFillConfirmation => "Verifying",
             Self::StatusUnknown => "Unknown",
         }
     }

@@ -49,6 +49,18 @@ pub(in crate::order_execution::twap::tests) fn missing_status(cloid: &str) -> Or
     }
 }
 
+pub(in crate::order_execution::twap::tests) fn canceled_status(
+    cloid: &str,
+    oid: u64,
+) -> OrderStatusResult {
+    OrderStatusResult {
+        status: "canceled".to_string(),
+        oid: Some(oid),
+        cloid: Some(cloid.to_string()),
+        raw_summary: format!("canceled oid={oid} cloid={cloid}"),
+    }
+}
+
 pub(in crate::order_execution::twap::tests) fn open_status(
     cloid: &str,
     oid: u64,
@@ -58,5 +70,17 @@ pub(in crate::order_execution::twap::tests) fn open_status(
         oid: Some(oid),
         cloid: Some(cloid.to_string()),
         raw_summary: format!("open oid={oid} cloid={cloid}"),
+    }
+}
+
+pub(in crate::order_execution::twap::tests) fn rejected_status(
+    cloid: &str,
+    oid: u64,
+) -> OrderStatusResult {
+    OrderStatusResult {
+        status: "rejected".to_string(),
+        oid: Some(oid),
+        cloid: Some(cloid.to_string()),
+        raw_summary: format!("rejected oid={oid} cloid={cloid}"),
     }
 }

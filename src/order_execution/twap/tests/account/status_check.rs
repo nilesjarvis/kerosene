@@ -1,8 +1,8 @@
 use super::{
     CHILD_OID, CLOID, TWAP_MAX_RETRY_ATTEMPTS, TWAP_RECONCILIATION_TIMEOUT, TwapChildStatus,
-    TwapStatus, disable_current_account_refresh, filled_status, missing_status, open_status,
-    origin_account_terminal, pending_twap, reconciliation_deadline, switched_account_terminal,
-    test_twap, twap_by_id,
+    TwapStatus, canceled_status, disable_current_account_refresh, filled_status, missing_status,
+    open_status, origin_account_terminal, pending_twap, reconciliation_deadline, rejected_status,
+    switched_account_terminal, test_twap, twap_by_id,
 };
 use crate::twap_state::{TwapPauseReason, TwapPendingOp};
 
@@ -57,6 +57,50 @@ fn filled_status_check_after_account_switch_does_not_refresh_current_account() {
     );
     assert!(!terminal.account_loading);
     assert!(!terminal.account_reconciliation_required);
+}
+
+#[test]
+fn canceled_status_check_waits_for_account_fill_confirmation() {
+    let now = Instant::now();
+    let mut terminal = origin_account_terminal();
+    terminal.twap_orders.insert(1, test_twap(1, CLOID, now));
+
+    let _task = terminal.handle_twap_order_status_result(
+        1,
+        CLOID.to_string(),
+        Ok(canceled_status(CLOID, CHILD_OID)),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.status_check_cloid.as_deref(), Some(CLOID));
+    assert_eq!(twap.status_check_retries, 0);
+    assert_eq!(
+        twap.child_orders[0].status,
+        TwapChildStatus::AwaitingNoFillConfirmation
+    );
+    let deadline = reconciliation_deadline(twap);
+    assert!(deadline > now);
+    assert!(deadline <= Instant::now() + TWAP_RECONCILIATION_TIMEOUT);
+    assert_eq!(twap.slices_attempted, 0);
+}
+
+#[test]
+fn rejected_status_check_still_finishes_without_account_reconciliation() {
+    let now = Instant::now();
+    let mut terminal = origin_account_terminal();
+    terminal.twap_orders.insert(1, test_twap(1, CLOID, now));
+
+    let _task = terminal.handle_twap_order_status_result(
+        1,
+        CLOID.to_string(),
+        Ok(rejected_status(CLOID, CHILD_OID)),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.status_check_cloid, None);
+    assert_eq!(twap.reconciliation_deadline, None);
+    assert_eq!(twap.child_orders[0].status, TwapChildStatus::Rejected);
+    assert_eq!(twap.status, TwapStatus::WaitingForMarket);
 }
 
 #[test]
