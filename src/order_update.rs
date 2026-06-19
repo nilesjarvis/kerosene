@@ -24,12 +24,16 @@ pub(crate) use results::PendingOneShotStatusRequest;
 impl TradingTerminal {
     pub(crate) fn update_order(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::OrderPriceChanged(value) => self.handle_order_price_changed(value),
+            Message::OrderPriceChanged(value) => {
+                self.handle_order_price_changed(value.into_string())
+            }
             Message::SetMidPrice => self.handle_set_mid_price(),
             Message::OrderBookPriceSelected { id, price } => {
                 return self.handle_order_book_price_selected(id, price);
             }
-            Message::OrderQuantityChanged(value) => self.handle_order_quantity_changed(value),
+            Message::OrderQuantityChanged(value) => {
+                self.handle_order_quantity_changed(value.into_string())
+            }
             Message::ToggleOrderDenomination => self.handle_toggle_order_denomination(),
             Message::OrderPercentageChanged(value) => self.handle_order_percentage_changed(value),
             Message::PrefillOutcomeSell(balance_coin) => {
@@ -143,10 +147,18 @@ impl TradingTerminal {
                 let twap_task = self.stop_all_twaps();
                 return Task::batch([chase_task, twap_task]);
             }
-            Message::TwapDurationChanged(value) => self.handle_twap_duration_changed(value),
-            Message::TwapSlicesChanged(value) => self.handle_twap_slices_changed(value),
-            Message::TwapMinPriceChanged(value) => self.handle_twap_min_price_changed(value),
-            Message::TwapMaxPriceChanged(value) => self.handle_twap_max_price_changed(value),
+            Message::TwapDurationChanged(value) => {
+                self.handle_twap_duration_changed(value.into_string())
+            }
+            Message::TwapSlicesChanged(value) => {
+                self.handle_twap_slices_changed(value.into_string())
+            }
+            Message::TwapMinPriceChanged(value) => {
+                self.handle_twap_min_price_changed(value.into_string())
+            }
+            Message::TwapMaxPriceChanged(value) => {
+                self.handle_twap_max_price_changed(value.into_string())
+            }
             Message::TwapRandomizeToggled(value) => self.handle_twap_randomize_toggled(value),
             Message::StartTwap { is_buy, snapshot } => {
                 return self.start_twap_from_snapshot(is_buy, snapshot);

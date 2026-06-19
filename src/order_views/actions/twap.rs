@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::message::Message;
+use crate::message::{Message, RedactedOrderInput};
 use crate::order_execution::TwapOrderStartSnapshot;
 use crate::twap_state::MAX_ACTIVE_ADVANCED_ORDERS;
 use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
@@ -100,11 +100,11 @@ impl TradingTerminal {
 fn compact_input<'a>(
     placeholder: &'static str,
     value: &'a str,
-    message: fn(String) -> Message,
+    message: fn(RedactedOrderInput) -> Message,
 ) -> Element<'a, Message> {
     text_input(placeholder, value)
         .style(helpers::text_input_style)
-        .on_input(message)
+        .on_input(move |value| message(value.into()))
         .size(12)
         .padding([4, 6])
         .into()

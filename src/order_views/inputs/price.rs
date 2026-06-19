@@ -32,7 +32,7 @@ impl TradingTerminal {
 
         let price_input = text_input("Price", &self.order_price)
             .style(helpers::text_input_style)
-            .on_input(Message::OrderPriceChanged)
+            .on_input(|value| Message::OrderPriceChanged(value.into()))
             .size(13)
             .padding(6);
         let mid_btn = button(text("Mid").size(10).center())

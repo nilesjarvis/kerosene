@@ -218,6 +218,33 @@ impl fmt::Debug for RedactedClipboardText {
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedOrderInput(String);
+
+impl RedactedOrderInput {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedOrderInput {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedOrderInput {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedOrderInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("OrderInput(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct RedactedAccountKey(Option<String>);
 
 impl RedactedAccountKey {
@@ -432,13 +459,13 @@ pub(crate) enum Message {
     PaneDragged(pane_grid::DragEvent),
     PaneClicked(pane_grid::Pane),
     SwitchBottomTab(BottomTab),
-    OrderPriceChanged(String),
+    OrderPriceChanged(RedactedOrderInput),
     SetMidPrice,
     OrderBookPriceSelected {
         id: OrderBookId,
         price: String,
     },
-    OrderQuantityChanged(String),
+    OrderQuantityChanged(RedactedOrderInput),
     SetOrderKind(OrderKind),
     ToggleOrderDenomination,
     OrderPercentageChanged(f32),
@@ -828,10 +855,10 @@ pub(crate) enum Message {
     StopChase,
     StopChaseById(u64),
     StopAllAdvancedOrders,
-    TwapDurationChanged(String),
-    TwapSlicesChanged(String),
-    TwapMinPriceChanged(String),
-    TwapMaxPriceChanged(String),
+    TwapDurationChanged(RedactedOrderInput),
+    TwapSlicesChanged(RedactedOrderInput),
+    TwapMinPriceChanged(RedactedOrderInput),
+    TwapMaxPriceChanged(RedactedOrderInput),
     TwapRandomizeToggled(bool),
     StartTwap {
         is_buy: bool,
@@ -1161,7 +1188,7 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
+        Message, RedactedOrderInput, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
         TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
     };
     use crate::chart_state::ChartSurfaceId;
@@ -1180,6 +1207,32 @@ mod tests {
 
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains("super-secret"));
+    }
+
+    #[test]
+    fn order_input_debug_redacts_value() {
+        let rendered = format!("{:?}", RedactedOrderInput::from("order-input-secret"));
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("order-input-secret"));
+    }
+
+    #[test]
+    fn order_input_message_debug_redacts_value() {
+        let messages = [
+            Message::OrderPriceChanged("order-input-secret".into()),
+            Message::OrderQuantityChanged("order-input-secret".into()),
+            Message::TwapDurationChanged("order-input-secret".into()),
+            Message::TwapSlicesChanged("order-input-secret".into()),
+            Message::TwapMinPriceChanged("order-input-secret".into()),
+            Message::TwapMaxPriceChanged("order-input-secret".into()),
+        ];
+
+        for message in messages {
+            let rendered = format!("{message:?}");
+            assert!(rendered.contains("<redacted>"));
+            assert!(!rendered.contains("order-input-secret"));
+        }
     }
 
     #[test]

@@ -30,7 +30,7 @@ impl TradingTerminal {
         };
         let qty_input = text_input(qty_placeholder, &self.order_quantity)
             .style(helpers::text_input_style)
-            .on_input(Message::OrderQuantityChanged)
+            .on_input(|value| Message::OrderQuantityChanged(value.into()))
             .size(13)
             .padding(6);
 
