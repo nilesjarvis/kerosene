@@ -48,7 +48,7 @@ use crate::spaghetti_state::SpaghettiWsCandleContext;
 use crate::spaghetti_state::{SpaghettiCandleFetch, SpaghettiChartId};
 use crate::telegram_feed::{
     TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage,
-    TelegramPrivateChannelCandidate,
+    TelegramPrivateChannelCandidate, telegram_private_channel_peer_id_from_key,
 };
 use crate::timeframe::Timeframe;
 use crate::ws::WsUserData;
@@ -111,6 +111,37 @@ impl From<&str> for RedactedPhoneInput {
 impl fmt::Debug for RedactedPhoneInput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Phone(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedTelegramChannelKey(String);
+
+impl RedactedTelegramChannelKey {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedTelegramChannelKey {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedTelegramChannelKey {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedTelegramChannelKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if telegram_private_channel_peer_id_from_key(&self.0).is_some() {
+            f.write_str("TelegramChannel(<private>)")
+        } else {
+            f.debug_tuple("TelegramChannel").field(&self.0).finish()
+        }
     }
 }
 
@@ -699,7 +730,7 @@ pub(crate) enum Message {
     ),
     TelegramFeedAddPrivateChannel(i64),
     ToggleTelegramPrivateChannelCandidatesExpanded,
-    TelegramFeedRemoveChannel(String),
+    TelegramFeedRemoveChannel(RedactedTelegramChannelKey),
     ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
     ToggleTelegramFeedOutcomeMarkets,
@@ -1129,7 +1160,10 @@ pub(crate) enum Message {
 
 #[cfg(test)]
 mod tests {
-    use super::{Message, RedactedPhoneInput, SecretInput, TelegramFastAuthMessageResult};
+    use super::{
+        Message, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
+        TelegramFastAuthMessageResult,
+    };
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
     use crate::order_execution::{
@@ -1182,6 +1216,24 @@ mod tests {
 
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains("+15555550123"));
+    }
+
+    #[test]
+    fn private_telegram_channel_message_debug_redacts_key() {
+        let private_key = "private:1001234567890";
+        let rendered = format!(
+            "{:?}",
+            Message::TelegramFeedRemoveChannel(RedactedTelegramChannelKey::from(private_key))
+        );
+
+        assert!(rendered.contains("<private>"));
+        assert!(!rendered.contains(private_key));
+
+        let public = format!(
+            "{:?}",
+            Message::TelegramFeedRemoveChannel(RedactedTelegramChannelKey::from("marketfeed"))
+        );
+        assert!(public.contains("marketfeed"));
     }
 
     #[test]

@@ -667,7 +667,7 @@ fn telegram_channel_chip(
             avatar,
             text(label).size(11).color(label_color),
             button(text("x").size(10).center())
-                .on_press(Message::TelegramFeedRemoveChannel(remove_channel))
+                .on_press(Message::TelegramFeedRemoveChannel(remove_channel.into()))
                 .padding([0, 4])
                 .style(subtle_telegram_icon_button),
         ]

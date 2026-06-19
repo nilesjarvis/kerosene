@@ -95,6 +95,7 @@ impl TradingTerminal {
                 Task::none()
             }
             Message::TelegramFeedRemoveChannel(channel) => {
+                let channel = channel.into_string();
                 self.remove_telegram_feed_channel(&channel);
                 Task::none()
             }
@@ -1236,8 +1237,8 @@ mod tests {
         terminal.telegram_feed.background_loading_channels = vec!["marketfeed".to_string()];
         let stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
 
-        let _task = terminal
-            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".into()));
         deliver_public_feed(
             &mut terminal,
             "marketfeed",
@@ -1272,8 +1273,8 @@ mod tests {
         terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
         let stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
 
-        let _task = terminal
-            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".into()));
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
         terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
         let _current_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
@@ -1308,8 +1309,8 @@ mod tests {
         terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
         let stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
 
-        let _task = terminal
-            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".into()));
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
         terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
         let _current_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
@@ -1339,8 +1340,8 @@ mod tests {
         terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
         let _stale_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
 
-        let _task = terminal
-            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".into()));
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
         terminal.telegram_feed.loading_channels = vec!["marketfeed".to_string()];
         let current_request_id = terminal.telegram_feed.begin_channel_refresh("marketfeed");
@@ -2059,8 +2060,8 @@ mod tests {
             .record_fast_connection_event(TradingTerminal::now_ms());
         let stale_nonce = terminal.telegram_feed.fast_reconnect_nonce;
 
-        let _task = terminal
-            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".into()));
 
         assert_eq!(
             terminal.telegram_feed.fast_reconnect_nonce,
@@ -2431,8 +2432,8 @@ mod tests {
             sample_profile("marketfeed", Some("https://example.com/avatar.jpg")),
         );
 
-        let _task = terminal
-            .update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".to_string()));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel("marketfeed".into()));
 
         assert!(
             !terminal
@@ -2598,7 +2599,8 @@ mod tests {
             .insert(key.clone(), sample_profile(&key, None));
         let nonce = terminal.telegram_feed.fast_reconnect_nonce;
 
-        let _task = terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel(key.clone()));
+        let _task =
+            terminal.update_telegram_feed(Message::TelegramFeedRemoveChannel(key.clone().into()));
 
         assert!(terminal.telegram_feed.private_channels.is_empty());
         assert!(terminal.telegram_feed.posts.is_empty());
