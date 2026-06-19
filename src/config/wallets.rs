@@ -42,7 +42,7 @@ impl fmt::Debug for AddressBookEntryConfig {
             .field("address", &"<redacted>")
             .field("label", &redacted_wallet_debug_value(&self.label))
             .field("color", &self.color)
-            .field("tags", &self.tags)
+            .field("tags", &RedactedWalletTags(self.tags.len()))
             .finish()
     }
 }
@@ -147,6 +147,14 @@ impl fmt::Debug for RedactedWalletAddressList {
     }
 }
 
+struct RedactedWalletTags(usize);
+
+impl fmt::Debug for RedactedWalletTags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{} redacted>", self.0)
+    }
+}
+
 fn redacted_wallet_debug_value(value: &str) -> &str {
     let value = value.trim();
     let Some(hex) = value
@@ -209,7 +217,7 @@ mod tests {
                 address: ADDRESS_A.to_string(),
                 label: ADDRESS_B.to_string(),
                 color: Some("#ff00ff".to_string()),
-                tags: vec!["desk".to_string()],
+                tags: vec!["desk".to_string(), ADDRESS_C.to_string()],
             }],
         };
 
@@ -217,8 +225,10 @@ mod tests {
 
         assert!(!rendered.contains(ADDRESS_A));
         assert!(!rendered.contains(ADDRESS_B));
+        assert!(!rendered.contains(ADDRESS_C));
+        assert!(!rendered.contains("desk"));
         assert!(rendered.contains("<redacted>"));
+        assert!(rendered.contains("tags: <2 redacted>"));
         assert!(rendered.contains("#ff00ff"));
-        assert!(rendered.contains("desk"));
     }
 }
