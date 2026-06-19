@@ -1820,7 +1820,7 @@ mod tests {
         let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
             request_id,
             TelegramFastAuthMessageResult::new(Err(format!(
-                "{TELEGRAM_FAST_SESSION_CLEAR_FAILED}: remove /tmp/kerosene-telegram-fast.session failed"
+                "{TELEGRAM_FAST_SESSION_CLEAR_FAILED}: remove <config-dir>/telegram_fast.session failed"
             ))),
         ));
 

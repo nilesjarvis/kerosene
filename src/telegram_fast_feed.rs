@@ -1038,7 +1038,10 @@ pub(crate) fn clear_telegram_fast_session_files_at(path: &Path) -> Result<usize,
         match std::fs::remove_file(&candidate) {
             Ok(()) => removed += 1,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => errors.push(format!("remove {} failed: {e}", candidate.display())),
+            Err(e) => errors.push(format!(
+                "remove {} failed: {e}",
+                redacted_session_file_display(&candidate)
+            )),
         }
     }
 
@@ -1056,6 +1059,12 @@ fn session_file_family(path: &Path) -> Vec<PathBuf> {
         path.with_extension("session-wal"),
         path.with_extension("session-journal"),
     ]
+}
+
+fn redacted_session_file_display(path: &Path) -> String {
+    path.file_name()
+        .map(|name| format!("<config-dir>/{}", name.to_string_lossy()))
+        .unwrap_or_else(|| "<config-dir>/<session-file>".to_string())
 }
 
 async fn warm_dialog_update_state(client: &Client) {
@@ -1552,12 +1561,22 @@ mod tests {
     fn sign_out_outcome_fails_when_local_session_clear_fails() {
         let result = telegram_fast_sign_out_outcome(
             Ok(()),
-            Err("remove /tmp/kerosene-telegram-fast.session failed: denied".to_string()),
+            Err("remove <config-dir>/telegram_fast.session failed: denied".to_string()),
         );
 
         let error = result.expect_err("local session clear failure should fail sign-out");
         assert!(error.starts_with(TELEGRAM_FAST_SESSION_CLEAR_FAILED));
         assert!(error.contains("denied"));
+    }
+
+    #[test]
+    fn session_file_error_display_redacts_parent_path() {
+        let rendered = redacted_session_file_display(Path::new(
+            "/home/alice/.config/kerosene/telegram_fast.session-wal",
+        ));
+
+        assert_eq!(rendered, "<config-dir>/telegram_fast.session-wal");
+        assert!(!rendered.contains("/home/alice"));
     }
 
     #[test]

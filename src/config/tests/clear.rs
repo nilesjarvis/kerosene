@@ -138,12 +138,13 @@ fn clear_config_files_marks_telegram_session_cleanup_failure_as_blocking() {
 
     assert_eq!(summary.files_removed, 1);
     assert!(summary.file_cleanup_failed);
-    assert!(
-        summary
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("Telegram session cleanup failed"))
-    );
+    let warning = summary
+        .warnings
+        .iter()
+        .find(|warning| warning.contains("Telegram session cleanup failed"))
+        .expect("Telegram cleanup warning should be reported");
+    assert!(warning.contains("<config-dir>/telegram_fast.session"));
+    assert!(!warning.contains(&parent.display().to_string()));
     assert!(session_path.exists());
 
     let _ = std::fs::remove_dir_all(parent);
