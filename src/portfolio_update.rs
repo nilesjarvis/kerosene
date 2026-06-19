@@ -1,5 +1,6 @@
 use crate::account_analytics::{fetch_income_data, fetch_portfolio_history};
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use chrono::{DateTime, Utc};
 use iced::Task;
@@ -65,7 +66,7 @@ impl TradingTerminal {
                         self.portfolio.last_error = None;
                     }
                     Err(e) => {
-                        self.portfolio.last_error = Some(e);
+                        self.portfolio.last_error = Some(redact_sensitive_response_text(&e));
                     }
                 }
                 if followup_pending && let Some(addr) = self.connected_address.clone() {
@@ -141,7 +142,7 @@ impl TradingTerminal {
                         self.income.last_error = None;
                     }
                     Err(e) => {
-                        self.income.last_error = Some(e);
+                        self.income.last_error = Some(redact_sensitive_response_text(&e));
                     }
                 }
                 if followup_pending {

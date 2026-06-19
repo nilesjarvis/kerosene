@@ -134,6 +134,28 @@ fn current_portfolio_result_for_previous_address_finishes_without_applying() {
 }
 
 #[test]
+fn portfolio_error_redacts_last_error() {
+    let mut terminal = TradingTerminal::boot().0;
+    let address = "0xabc0000000000000000000000000000000000000";
+    terminal.connected_address = Some(address.to_string());
+    let request_id = terminal.portfolio.begin_refresh();
+
+    let _ = terminal.update_portfolio_income(Message::PortfolioLoaded(
+        address.to_string().into(),
+        request_id,
+        Box::new(Err("portfolio failed: api_key=portfolio-secret".to_string())),
+    ));
+
+    let error = terminal
+        .portfolio
+        .last_error
+        .as_deref()
+        .expect("portfolio error");
+    assert!(error.contains("api_key=<redacted>"));
+    assert!(!error.contains("portfolio-secret"));
+}
+
+#[test]
 fn stale_income_result_after_newer_same_address_request_is_ignored() {
     let mut terminal = TradingTerminal::boot().0;
     let address = "0xabc0000000000000000000000000000000000000";
@@ -230,6 +252,24 @@ fn current_income_result_for_previous_address_finishes_without_applying() {
             .earned_total,
         10.0
     );
+}
+
+#[test]
+fn income_error_redacts_last_error() {
+    let mut terminal = TradingTerminal::boot().0;
+    let address = "0xabc0000000000000000000000000000000000000";
+    terminal.connected_address = Some(address.to_string());
+    let request_id = terminal.income.begin_refresh();
+
+    let _ = terminal.update_portfolio_income(Message::IncomeLoaded(
+        address.to_string().into(),
+        request_id,
+        Box::new(Err("income failed: signature=income-secret".to_string())),
+    ));
+
+    let error = terminal.income.last_error.as_deref().expect("income error");
+    assert!(error.contains("signature=<redacted>"));
+    assert!(!error.contains("income-secret"));
 }
 
 #[test]
