@@ -46,7 +46,8 @@ impl TradingTerminal {
             )
             .width(Fill)
             .height(SNAPSHOT_HEIGHT)
-            .center(Fill)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center)
             .into();
         }
 
@@ -89,7 +90,8 @@ fn unavailable_snapshot_view(reason: &str, theme: &Theme) -> Element<'static, Me
     )
     .width(Fill)
     .height(SNAPSHOT_HEIGHT)
-    .center(Fill)
+    .align_x(alignment::Horizontal::Center)
+    .align_y(alignment::Vertical::Center)
     .padding(16)
     .style(|theme: &Theme| iced::widget::container::Style {
         background: Some(

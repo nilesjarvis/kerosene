@@ -30,9 +30,7 @@ impl TradingTerminal {
                 .font(crate::app_fonts::serif_font())
                 .color(theme.palette().background),
         )
-        .width(Length::Fixed(26.0))
-        .height(Length::Fixed(26.0))
-        .center(Fill)
+        .center(Length::Fixed(26.0))
         .style(|theme: &Theme| container_style::Style {
             background: Some(theme.palette().primary.into()),
             border: Border {
@@ -80,7 +78,7 @@ impl TradingTerminal {
         .width(Fill)
         .height(Length::Fixed(TITLE_BAR_HEIGHT))
         .padding([0, 16])
-        .center_y(Fill)
+        .align_y(iced::alignment::Vertical::Center)
         .into()
     }
 
@@ -178,7 +176,7 @@ impl TradingTerminal {
         .width(Fill)
         .height(Length::Fixed(TOOLBAR_HEIGHT))
         .padding([0, 16])
-        .center_y(Fill)
+        .align_y(iced::alignment::Vertical::Center)
         .into()
     }
 

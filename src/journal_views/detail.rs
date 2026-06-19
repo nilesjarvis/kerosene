@@ -2,7 +2,7 @@ use super::analytics::{
     JournalKpis, journal_effective_pnl, journal_is_non_perp, journal_trade_r_multiple,
 };
 use super::trade_card::journal_chip;
-use super::trade_list::journal_monogram;
+use super::trade_list::journal_asset_badge;
 use super::trades::trade_duration_ms;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
@@ -31,17 +31,12 @@ impl TradingTerminal {
         let denomination = self.display_denomination_context();
 
         // ---- Header ----
-        let monogram = container(
-            text(journal_monogram(
-                &self.display_coin_for_journal(&trade.coin),
-            ))
-            .size(13)
-            .font(crate::app_fonts::monospace_font()),
-        )
-        .width(Length::Fixed(34.0))
-        .height(Length::Fixed(34.0))
-        .center(Fill)
-        .style(crate::journal_views::style::journal_monogram_style);
+        let monogram = journal_asset_badge(
+            &self.display_coin_for_journal(&trade.coin),
+            34.0,
+            20,
+            &theme,
+        );
 
         let side = if journal_is_non_perp(&trade.coin) {
             ("SPOT", journal_muted(&theme))

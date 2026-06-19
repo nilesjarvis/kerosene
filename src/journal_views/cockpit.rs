@@ -316,7 +316,7 @@ fn cockpit_panel<'a>(
             )
             .height(Length::Fixed(PANEL_TITLE_HEIGHT))
             .padding([0, 12])
-            .center_y(Fill)
+            .align_y(iced::alignment::Vertical::Center)
             .width(Fill),
             rule::horizontal(1).style(journal_rule_style),
             container(body).padding(12).width(Fill),
@@ -603,7 +603,7 @@ fn view_journal_heatmap(
                         .color(journal_muted(theme)),
                 )
                 .width(Length::Fixed(HEAT_CELL))
-                .center_x(Fill),
+                .align_x(iced::alignment::Horizontal::Center),
             );
         }
         row.align_y(Alignment::Center)

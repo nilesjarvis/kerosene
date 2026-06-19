@@ -79,22 +79,13 @@ impl TradingTerminal {
     ) -> Element<'a, Message> {
         let selected = self.journal.selected_trade_id.as_deref() == Some(trade.id.as_str());
         let pnl_color = journal_pnl_color(trade.pnl, theme);
+        let display_coin = self.display_coin_for_journal(&trade.coin);
 
-        let monogram = container(
-            text(journal_monogram(
-                &self.display_coin_for_journal(&trade.coin),
-            ))
-            .size(12)
-            .font(crate::app_fonts::monospace_font()),
-        )
-        .width(Length::Fixed(MONOGRAM_SIZE))
-        .height(Length::Fixed(MONOGRAM_SIZE))
-        .center(Fill)
-        .style(journal_monogram_style);
+        let monogram = journal_asset_badge(&display_coin, MONOGRAM_SIZE, 18, theme);
 
         let side_chip = journal_chip(side_label(trade), side_tint(trade, theme));
         let ticker = row![
-            text(self.display_coin_for_journal(&trade.coin))
+            text(display_coin)
                 .size(13)
                 .font(crate::app_fonts::monospace_font())
                 .color(journal_accent_soft(theme)),
@@ -237,6 +228,29 @@ fn side_tint(trade: &AggregatedTrade, theme: &Theme) -> Color {
     } else {
         theme.palette().danger
     }
+}
+
+/// Square asset badge: the embedded SVG logo when one exists for the symbol,
+/// otherwise a 2-letter monogram. Used by both the list rows and the detail
+/// header.
+pub(super) fn journal_asset_badge(
+    display_coin: &str,
+    box_size: f32,
+    icon_size: u16,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    let inner: Element<'static, Message> =
+        match crate::helpers::symbol_icon(display_coin, icon_size, theme.palette().text) {
+            Some(icon) => icon.into(),
+            None => text(journal_monogram(display_coin))
+                .size((box_size * 0.4).round().max(10.0))
+                .font(crate::app_fonts::monospace_font())
+                .into(),
+        };
+    container(inner)
+        .center(Length::Fixed(box_size))
+        .style(journal_monogram_style)
+        .into()
 }
 
 pub(super) fn journal_monogram(display_coin: &str) -> String {
