@@ -171,7 +171,7 @@ impl fmt::Debug for ClearinghouseState {
 /// Real-time asset context for a market (perp or spot).
 /// For perp: all fields populated. For spot: funding, open_interest,
 /// oracle_px and mark_px will be None.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetContext {
     #[serde(default)]
@@ -192,6 +192,22 @@ pub struct AssetContext {
     pub day_base_vlm: Option<String>,
     #[serde(default, rename = "impactPxs")]
     pub impact_pxs: Option<Vec<String>>,
+}
+
+impl fmt::Debug for AssetContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AssetContext")
+            .field("has_funding", &self.funding.is_some())
+            .field("has_open_interest", &self.open_interest.is_some())
+            .field("has_oracle_px", &self.oracle_px.is_some())
+            .field("has_mark_px", &self.mark_px.is_some())
+            .field("has_mid_px", &self.mid_px.is_some())
+            .field("has_prev_day_px", &self.prev_day_px.is_some())
+            .field("has_day_ntl_vlm", &self.day_ntl_vlm.is_some())
+            .field("has_day_base_vlm", &self.day_base_vlm.is_some())
+            .field("impact_pxs_count", &self.impact_pxs.as_ref().map(Vec::len))
+            .finish()
+    }
 }
 
 impl AssetContext {
