@@ -50,13 +50,62 @@ fn config_load_falls_back_to_backup_when_primary_is_corrupt() {
 
     let loaded = load_existing_config(&path);
     assert_eq!(loaded.address_book[0].label, "Backup");
+    let warnings = take_config_warnings();
     assert!(
-        take_config_warnings()
+        warnings
             .iter()
             .any(|warning| warning.contains("Loaded backup config"))
     );
+    let parent = path
+        .parent()
+        .expect("test path has parent")
+        .display()
+        .to_string();
+    assert!(warnings.iter().all(|warning| !warning.contains(&parent)));
 
     cleanup_path(&path);
+}
+
+#[test]
+fn config_load_errors_do_not_expose_config_directory_path() {
+    let _warning_guard = config_warning_guard();
+    let path = test_path("redacted-load-error");
+    let backup_path = backup_config_path(&path);
+    create_parent_dir(&path);
+    write_file(&path, "{primary");
+    write_file(&backup_path, "{backup");
+
+    let error = match load_config_from_path(&path) {
+        Ok(_) => panic!("corrupt config family should fail"),
+        Err(error) => error,
+    };
+    let parent = path
+        .parent()
+        .expect("test path has parent")
+        .display()
+        .to_string();
+
+    assert!(!error.contains(&parent), "{error}");
+    assert!(error.contains("config.json"), "{error}");
+    assert!(error.contains("config.json.bak"), "{error}");
+
+    cleanup_path(&path);
+}
+
+#[test]
+fn config_save_errors_do_not_expose_config_directory_path() {
+    let path = test_path("redacted-save-error");
+    let parent = path.parent().expect("test path has parent");
+    write_file(parent, "not a directory");
+
+    let error = save_config_to_path(&path, &KeroseneConfig::default())
+        .expect_err("config save should fail when parent path is a file");
+    let parent_display = parent.display().to_string();
+
+    assert!(!error.contains(&parent_display), "{error}");
+    assert!(error.contains("<config-dir>"), "{error}");
+
+    let _ = std::fs::remove_file(parent);
 }
 
 #[test]

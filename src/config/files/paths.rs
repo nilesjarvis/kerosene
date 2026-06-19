@@ -19,6 +19,31 @@ pub(in crate::config) fn backup_config_path(path: &Path) -> PathBuf {
     path.with_extension("json.bak")
 }
 
+pub(in crate::config) fn user_config_dir() -> &'static str {
+    "<config-dir>"
+}
+
+pub(in crate::config) fn user_config_path(path: &Path) -> String {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return user_config_dir().to_string();
+    };
+
+    if file_name == "config.json" || file_name == "config.json.bak" {
+        return file_name.to_string();
+    }
+    if file_name.starts_with("config.json.") || file_name.starts_with("config.json.bak.") {
+        return format!("{}/{file_name}", user_config_dir());
+    }
+    if file_name == "fonts" || file_name == "sounds" {
+        return format!("{}/{file_name}", user_config_dir());
+    }
+    if file_name.starts_with("journal_cache_") {
+        return format!("{}/journal_cache_<redacted>.json", user_config_dir());
+    }
+
+    format!("{}/...", user_config_dir())
+}
+
 fn unique_config_sidecar_path(path: &Path, marker: &str) -> PathBuf {
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
@@ -88,4 +113,38 @@ fn safe_stored_file_name(file_name: &str) -> bool {
         && !file_name.contains('/')
         && !file_name.contains('\\')
         && !file_name.contains("..")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::user_config_path;
+    use std::path::Path;
+
+    #[test]
+    fn user_config_path_redacts_directory_components() {
+        assert_eq!(
+            user_config_path(Path::new("/home/alice/.config/kerosene/config.json")),
+            "config.json"
+        );
+        assert_eq!(
+            user_config_path(Path::new("/home/alice/.config/kerosene/config.json.bak")),
+            "config.json.bak"
+        );
+        assert_eq!(
+            user_config_path(Path::new(
+                "/home/alice/.config/kerosene/config.json.tmp-123"
+            )),
+            "<config-dir>/config.json.tmp-123"
+        );
+        assert_eq!(
+            user_config_path(Path::new("/home/alice/.config/kerosene/fonts")),
+            "<config-dir>/fonts"
+        );
+        assert_eq!(
+            user_config_path(Path::new(
+                "/home/alice/.config/kerosene/journal_cache_0xabc.json"
+            )),
+            "<config-dir>/journal_cache_<redacted>.json"
+        );
+    }
 }

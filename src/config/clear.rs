@@ -1,3 +1,4 @@
+use super::files::{user_config_dir, user_config_path};
 use super::{
     AccountProfile, backup_config_path, clear_all_keychain_secrets, config_path,
     config_sidecar_prefix,
@@ -66,7 +67,7 @@ fn remove_file_if_exists(path: &Path) -> Result<bool, String> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(format!("remove {} failed: {e}", path.display())),
+        Err(e) => Err(format!("remove {} failed: {e}", user_config_path(path))),
     }
 }
 
@@ -74,7 +75,7 @@ fn remove_path_tree_if_exists(path: &Path) -> Result<bool, String> {
     let metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(format!("inspect {} failed: {e}", path.display())),
+        Err(e) => return Err(format!("inspect {} failed: {e}", user_config_path(path))),
     };
 
     let result = if metadata.file_type().is_dir() {
@@ -85,7 +86,7 @@ fn remove_path_tree_if_exists(path: &Path) -> Result<bool, String> {
 
     result
         .map(|()| true)
-        .map_err(|e| format!("remove {} failed: {e}", path.display()))
+        .map_err(|e| format!("remove {} failed: {e}", user_config_path(path)))
 }
 
 pub(super) fn clear_config_path_family(path: &Path) -> Result<usize, String> {
@@ -135,7 +136,7 @@ pub(super) fn clear_config_path_family(path: &Path) -> Result<usize, String> {
                         }
                         Err(e) => errors.push(format!(
                             "read config directory {} entry failed: {e}",
-                            parent.display()
+                            user_config_dir()
                         )),
                     }
                 }
@@ -143,7 +144,7 @@ pub(super) fn clear_config_path_family(path: &Path) -> Result<usize, String> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => errors.push(format!(
                 "read config directory {} failed: {e}",
-                parent.display()
+                user_config_dir()
             )),
         }
     }
@@ -201,7 +202,7 @@ fn clear_journal_cache_files(parent: &Path) -> Result<usize, String> {
                     }
                     Err(e) => errors.push(format!(
                         "read config directory {} entry failed: {e}",
-                        parent.display()
+                        user_config_dir()
                     )),
                 }
             }
@@ -209,7 +210,7 @@ fn clear_journal_cache_files(parent: &Path) -> Result<usize, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => errors.push(format!(
             "read config directory {} failed: {e}",
-            parent.display()
+            user_config_dir()
         )),
     }
 

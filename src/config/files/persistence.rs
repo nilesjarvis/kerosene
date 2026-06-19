@@ -9,6 +9,7 @@ use super::{
     normalization,
     paths::{
         backup_config_path, config_sidecar_prefix, replacement_rollback_path, temp_config_path,
+        user_config_dir, user_config_path,
     },
 };
 
@@ -47,7 +48,7 @@ pub(in crate::config) fn write_with_restricted_permissions(
             .create_new(true)
             .mode(0o600)
             .open(path)
-            .map_err(|e| format!("create {} failed: {e}", path.display()))?
+            .map_err(|e| format!("create {} failed: {e}", user_config_path(path)))?
     };
     #[cfg(not(unix))]
     let mut file = {
@@ -55,19 +56,19 @@ pub(in crate::config) fn write_with_restricted_permissions(
             .write(true)
             .create_new(true)
             .open(path)
-            .map_err(|e| format!("create {} failed: {e}", path.display()))?
+            .map_err(|e| format!("create {} failed: {e}", user_config_path(path)))?
     };
 
     if let Err(e) = file.write_all(contents) {
         drop(file);
         cleanup_file_best_effort(path);
-        return Err(format!("write {} failed: {e}", path.display()));
+        return Err(format!("write {} failed: {e}", user_config_path(path)));
     }
 
     if let Err(e) = file.sync_all() {
         drop(file);
         cleanup_file_best_effort(path);
-        return Err(format!("sync {} failed: {e}", path.display()));
+        return Err(format!("sync {} failed: {e}", user_config_path(path)));
     }
 
     Ok(())
@@ -77,7 +78,7 @@ pub(in crate::config) fn write_with_restricted_permissions(
 fn set_restricted_permissions(path: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-        .map_err(|e| format!("set permissions {} failed: {e}", path.display()))
+        .map_err(|e| format!("set permissions {} failed: {e}", user_config_path(path)))
 }
 
 #[cfg(unix)]
@@ -86,9 +87,9 @@ fn sync_parent_directory(path: &Path) -> Result<(), String> {
         return Ok(());
     };
     let dir = std::fs::File::open(parent)
-        .map_err(|e| format!("open config directory {} failed: {e}", parent.display()))?;
+        .map_err(|e| format!("open config directory {} failed: {e}", user_config_dir()))?;
     dir.sync_all()
-        .map_err(|e| format!("sync config directory {} failed: {e}", parent.display()))
+        .map_err(|e| format!("sync config directory {} failed: {e}", user_config_dir()))
 }
 
 #[cfg(not(unix))]
@@ -131,7 +132,7 @@ fn remove_missing_primary_save_sidecars(path: &Path) -> Result<(), String> {
         Err(error) => {
             return Err(format!(
                 "scan stale config sidecars in {} failed: {error}",
-                parent.display()
+                user_config_dir()
             ));
         }
     };
@@ -143,7 +144,7 @@ fn remove_missing_primary_save_sidecars(path: &Path) -> Result<(), String> {
             Err(error) => {
                 errors.push(format!(
                     "read stale config sidecar entry in {} failed: {error}",
-                    parent.display()
+                    user_config_dir()
                 ));
                 continue;
             }
@@ -157,7 +158,10 @@ fn remove_missing_primary_save_sidecars(path: &Path) -> Result<(), String> {
             continue;
         }
         if let Err(error) = remove_file_if_present(&sidecar_path) {
-            errors.push(format!("remove {} failed: {error}", sidecar_path.display()));
+            errors.push(format!(
+                "remove {} failed: {error}",
+                user_config_path(&sidecar_path)
+            ));
         }
     }
 
@@ -173,7 +177,7 @@ fn remove_missing_primary_save_artifacts(path: &Path) -> Result<(), String> {
     remove_file_if_present(&backup_path).map_err(|e| {
         format!(
             "remove stale backup config {} failed: {e}",
-            backup_path.display()
+            user_config_path(&backup_path)
         )
     })?;
     remove_missing_primary_save_sidecars(path)?;
@@ -256,7 +260,7 @@ fn replace_temp_file_with(
             ops.sync_parent(path).map_err(|error| {
                 ReplaceFileError::after_install(format!(
                     "{context} {} replaced but sync after install failed: {error}",
-                    path.display()
+                    user_config_path(path)
                 ))
             })?;
             Ok(())
@@ -266,7 +270,7 @@ fn replace_temp_file_with(
             ops.rename(path, &rollback_path).map_err(|e| {
                 ReplaceFileError::before_install(format!(
                     "{context} {} failed: {rename_error}; staging existing file for rollback failed: {e}",
-                    path.display()
+                    user_config_path(path)
                 ))
             })?;
 
@@ -279,28 +283,28 @@ fn replace_temp_file_with(
                         (Err(sync_error), Ok(())) => {
                             return Err(ReplaceFileError::after_install(format!(
                                 "{context} {} replaced but sync after install failed: {sync_error}; rollback was cleaned up",
-                                path.display()
+                                user_config_path(path)
                             )));
                         }
                         (Ok(()), Err(cleanup_error)) => {
                             return Err(ReplaceFileError::after_install(format!(
                                 "{context} {} replaced but cleanup rollback {} failed: {cleanup_error}",
-                                path.display(),
-                                rollback_path.display()
+                                user_config_path(path),
+                                user_config_path(&rollback_path)
                             )));
                         }
                         (Err(sync_error), Err(cleanup_error)) => {
                             return Err(ReplaceFileError::after_install(format!(
                                 "{context} {} replaced but sync after install failed: {sync_error}; cleanup rollback {} failed: {cleanup_error}",
-                                path.display(),
-                                rollback_path.display()
+                                user_config_path(path),
+                                user_config_path(&rollback_path)
                             )));
                         }
                     }
                     ops.sync_parent(path).map_err(|error| {
                         ReplaceFileError::after_install(format!(
                             "{context} {} replaced but final sync failed: {error}",
-                            path.display()
+                            user_config_path(path)
                         ))
                     })?;
                     Ok(())
@@ -310,11 +314,11 @@ fn replace_temp_file_with(
                     match restore_result {
                         Ok(()) => Err(ReplaceFileError::before_install(format!(
                             "{context} {} failed after staging existing file for rollback: {replace_error}; original file was restored",
-                            path.display()
+                            user_config_path(path)
                         ))),
                         Err(restore_error) => Err(ReplaceFileError::before_install(format!(
                             "{context} {} failed after staging existing file for rollback: {replace_error}; restore original failed: {restore_error}",
-                            path.display()
+                            user_config_path(path)
                         ))),
                     }
                 }
@@ -322,7 +326,7 @@ fn replace_temp_file_with(
         }
         Err(e) => Err(ReplaceFileError::before_install(format!(
             "{context} {} failed: {e}",
-            path.display()
+            user_config_path(path)
         ))),
     }
 }
@@ -349,12 +353,12 @@ fn read_config_from_path(path: &Path) -> Result<Option<KeroseneConfig>, String> 
     let contents = Zeroizing::new(match std::fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("read {} failed: {e}", path.display())),
+        Err(e) => return Err(format!("read {} failed: {e}", user_config_path(path))),
     });
 
     serde_json::from_str(contents.as_str())
         .map(Some)
-        .map_err(|e| format!("parse {} failed: {e}", path.display()))
+        .map_err(|e| format!("parse {} failed: {e}", user_config_path(path)))
 }
 
 fn backup_config_for_save(
@@ -474,7 +478,7 @@ fn recover_missing_primary_from_interrupted_save(
             Ok(Some(config)) => {
                 push_config_warning(format!(
                     "Loaded interrupted-save recovery config because primary config was missing: {}",
-                    candidate.display()
+                    user_config_path(candidate)
                 ));
                 return Ok(Some(config));
             }
@@ -520,7 +524,7 @@ fn interrupted_save_rollback_candidates(path: &Path) -> Result<Vec<PathBuf>, Str
         Err(error) => {
             return Err(format!(
                 "scan config recovery sidecars in {} failed: {error}",
-                parent.display()
+                user_config_dir()
             ));
         }
     };
@@ -530,7 +534,7 @@ fn interrupted_save_rollback_candidates(path: &Path) -> Result<Vec<PathBuf>, Str
         let entry = entry.map_err(|error| {
             format!(
                 "read config recovery sidecar entry in {} failed: {error}",
-                parent.display()
+                user_config_dir()
             )
         })?;
         let file_name = entry.file_name();
@@ -562,7 +566,7 @@ pub(in crate::config) fn save_config_to_path(
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create config directory {} failed: {e}", parent.display()))?;
+            .map_err(|e| format!("create config directory {} failed: {e}", user_config_dir()))?;
     }
     let json = Zeroizing::new(
         serde_json::to_string_pretty(config)
