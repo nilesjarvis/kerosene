@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use crate::{api, journal};
@@ -118,7 +119,8 @@ impl TradingTerminal {
                             && !self.journal_active_account_is_ghost()
                             && let Err(e) = journal::save_cache(&address, &self.journal.raw_fills)
                         {
-                            warnings.push(format!("Could not save journal cache: {}", e));
+                            let error = redact_sensitive_response_text(&e);
+                            warnings.push(format!("Could not save journal cache: {error}"));
                         }
 
                         if fetched_count == 0 && added == 0 && self.journal.raw_fills.is_empty() {
@@ -153,13 +155,13 @@ impl TradingTerminal {
                         }
                     }
                     Err(e) => {
+                        let error = redact_sensitive_response_text(&e);
                         self.journal.sync_status.complete = false;
                         if self.journal.raw_fills.is_empty() {
-                            self.journal.error = Some(e);
+                            self.journal.error = Some(error);
                         } else {
                             self.journal.warning = Some(format!(
-                                "Journal refresh incomplete: {}. Showing cached data.",
-                                e
+                                "Journal refresh incomplete: {error}. Showing cached data."
                             ));
                         }
                         self.journal.loading = false;
@@ -286,8 +288,9 @@ impl TradingTerminal {
                 self.push_toast(message, false);
             }
             Err(e) => {
+                let error = redact_sensitive_response_text(&e);
                 let warning =
-                    format!("Could not clear journal cache: {e}. Reloading full history.");
+                    format!("Could not clear journal cache: {error}. Reloading full history.");
                 clear_warning = Some(warning.clone());
                 self.push_toast(warning, true);
             }
@@ -473,6 +476,7 @@ impl TradingTerminal {
                 }
             }
             Err(error) => {
+                let error = redact_sensitive_response_text(&error);
                 self.journal.snapshot_requests.remove(&request.trade_id);
                 self.journal.snapshots.insert(
                     request.trade_id.clone(),
@@ -631,11 +635,125 @@ mod tests {
         assert!(terminal.journal.sync_status.complete);
     }
 
+    #[test]
+    fn journal_fills_error_redacts_error_when_no_cached_data() {
+        let mut terminal = journal_terminal_with_account();
+        let request_id = terminal.journal.next_sync_request_id();
+        terminal.journal.loading = true;
+
+        let _task = terminal.update_journal(Message::JournalFillsLoaded {
+            request_id,
+            account_key: Some("acct".to_string()).into(),
+            address: "0xabc".to_string().into(),
+            result: Err("fills failed: api_key=journal-secret".to_string()),
+        });
+
+        let error = terminal.journal.error.as_deref().expect("journal error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(!error.contains("journal-secret"));
+        assert!(!terminal.journal.loading);
+    }
+
+    #[test]
+    fn journal_fills_error_redacts_incomplete_refresh_warning() {
+        let mut terminal = journal_terminal_with_account();
+        terminal.journal.raw_fills.push(user_fill(1));
+        let request_id = terminal.journal.next_sync_request_id();
+        terminal.journal.loading = true;
+
+        let _task = terminal.update_journal(Message::JournalFillsLoaded {
+            request_id,
+            account_key: Some("acct".to_string()).into(),
+            address: "0xabc".to_string().into(),
+            result: Err("fills failed: signature=warning-secret".to_string()),
+        });
+
+        let warning = terminal
+            .journal
+            .warning
+            .as_deref()
+            .expect("journal warning");
+        assert!(warning.contains("signature=<redacted>"));
+        assert!(!warning.contains("warning-secret"));
+        assert!(!terminal.journal.loading);
+    }
+
+    #[test]
+    fn journal_snapshot_error_redacts_unavailable_reason() {
+        let mut terminal = journal_terminal_with_account();
+        terminal.chart_backfill_source = ChartBackfillSource::Hydromancer;
+        terminal.hydromancer_key_generation = 2;
+        let request = snapshot_request(2);
+        terminal.journal.trades = vec![snapshot_trade(&request.trade_id)];
+        terminal
+            .journal
+            .snapshot_requests
+            .insert(request.trade_id.clone(), request.clone());
+
+        let _task = terminal.update_journal(Message::JournalSnapshotLoaded {
+            account_key: Some("acct".to_string()).into(),
+            address: "0xabc".to_string().into(),
+            request: request.clone().into(),
+            result: Err("candles failed: auth_token=snapshot-secret".to_string()),
+        });
+
+        let snapshot = terminal
+            .journal
+            .snapshots
+            .get(&request.trade_id)
+            .expect("journal snapshot");
+        let journal::JournalTradeSnapshotStatus::Unavailable(reason) = &snapshot.status else {
+            panic!("snapshot should be unavailable");
+        };
+        assert!(reason.contains("auth_token=<redacted>"));
+        assert!(!reason.contains("snapshot-secret"));
+    }
+
     fn journal_terminal_with_account() -> TradingTerminal {
         let mut terminal = TradingTerminal::boot().0;
         terminal.journal.active_account_key = Some("acct".to_string());
         terminal.connected_address = Some("0xabc".to_string());
         terminal
+    }
+
+    fn snapshot_trade(id: &str) -> journal::AggregatedTrade {
+        journal::AggregatedTrade {
+            id: id.to_string(),
+            legacy_note_ids: Vec::new(),
+            coin: "BTC".to_string(),
+            start_time: 1_000,
+            end_time: Some(2_000),
+            max_position: 1.0,
+            volume: 100.0,
+            fee: 1.0,
+            pnl: 10.0,
+            status: "Closed".to_string(),
+            fill_count: 2,
+            avg_entry_price: 100.0,
+            total_entry_notional: 100.0,
+            total_entry_size: 1.0,
+            is_long: true,
+            basis_complete: true,
+        }
+    }
+
+    fn user_fill(time: u64) -> api::UserFill {
+        api::UserFill {
+            coin: "BTC".to_string(),
+            px: "100".to_string(),
+            sz: "1".to_string(),
+            side: "B".to_string(),
+            time,
+            start_position: "0".to_string(),
+            dir: "Open Long".to_string(),
+            closed_pnl: "0".to_string(),
+            hash: format!("hash-{time}"),
+            oid: time,
+            crossed: false,
+            fee: "0".to_string(),
+            tid: time,
+            fee_token: "USDC".to_string(),
+        }
     }
 
     fn empty_journal_page(requested_end_time: u64) -> api::UserFillsPage {
