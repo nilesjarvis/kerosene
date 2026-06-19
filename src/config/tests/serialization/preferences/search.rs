@@ -1,7 +1,9 @@
+use super::super::super::config_warning_guard;
 use super::{
-    KeroseneConfig, SavedLayout, default_config_value, json_string, remove_field, value_from_json,
-    value_from_str,
+    KeroseneConfig, SavedLayout, default_config_value, json_string, object_mut, remove_field,
+    value_from_json, value_from_str,
 };
+use crate::config::{MarketUniverseConfig, take_config_warnings};
 
 #[test]
 fn symbol_search_sort_mode_round_trips_and_legacy_defaults_relevance() {
@@ -45,6 +47,55 @@ fn liquidation_distribution_symbol_round_trips_and_legacy_defaults_empty() {
     let decoded_legacy: KeroseneConfig =
         value_from_json(legacy, "legacy config should deserialize");
     assert!(decoded_legacy.liquidation_distribution_symbol.is_empty());
+}
+
+#[test]
+fn market_universe_round_trips_and_invalid_modes_default_all() {
+    let config = KeroseneConfig {
+        market_universe: MarketUniverseConfig::hip3_dex("xyz"),
+        ..KeroseneConfig::default()
+    };
+
+    let json = json_string(&config, "config should serialize");
+    let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert_eq!(
+        decoded.market_universe,
+        MarketUniverseConfig::Hip3Dex {
+            dex: "xyz".to_string()
+        }
+    );
+    assert!(json.contains(r#""market_universe":{"mode":"hip3_dex","dex":"xyz"}"#));
+
+    let mut legacy = default_config_value();
+    remove_field(
+        &mut legacy,
+        "market_universe",
+        "config should serialize to object",
+    );
+    let decoded_legacy: KeroseneConfig =
+        value_from_json(legacy, "legacy config should deserialize");
+    assert_eq!(decoded_legacy.market_universe, MarketUniverseConfig::All);
+
+    let _warning_guard = config_warning_guard();
+    let mut future = default_config_value();
+    object_mut(&mut future, "config should serialize to object").insert(
+        "market_universe".to_string(),
+        serde_json::json!({
+            "mode": "future_universe",
+            "dex": "xyz"
+        }),
+    );
+    let decoded_future: KeroseneConfig =
+        value_from_json(future, "future market universe config should deserialize");
+    assert_eq!(decoded_future.market_universe, MarketUniverseConfig::All);
+
+    let warnings = take_config_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning == "Invalid market universe config; using All Markets")
+    );
+    assert!(!warnings.iter().any(|warning| warning.contains("xyz")));
 }
 
 #[test]
