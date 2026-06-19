@@ -1,5 +1,6 @@
 use crate::api::{self, MarketType};
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 use crate::session_data_state::{
@@ -248,7 +249,7 @@ impl TradingTerminal {
                 };
             }
             Err(error) => {
-                instance.error = Some(error);
+                instance.error = Some(redact_sensitive_response_text(&error));
             }
         }
         Task::none()
@@ -408,6 +409,39 @@ mod tests {
             market_type,
             outcome: None,
         }
+    }
+
+    #[test]
+    fn session_data_error_redacts_state_error() {
+        let mut terminal = TradingTerminal::boot().0;
+        let request = SessionDataRequest {
+            id: 7,
+            symbol: "BTC".to_string(),
+            lookback: SessionDataLookback::FourWeeks,
+            requested_at_ms: 123,
+        };
+        terminal.session_data.insert(
+            7,
+            SessionDataInstance::new(7, "BTC".to_string(), SessionDataLookback::FourWeeks),
+        );
+        {
+            let instance = terminal.session_data.get_mut(&7).expect("session data");
+            instance.loading = true;
+            instance.pending_request = Some(request.clone());
+        }
+
+        let _task = terminal.apply_session_data_candles_loaded(
+            request,
+            Err("session fetch failed: api_key=session-secret".to_string()),
+        );
+
+        let error = terminal
+            .session_data
+            .get(&7)
+            .and_then(|instance| instance.error.as_deref())
+            .expect("state error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(!error.contains("session-secret"));
     }
 
     #[test]
