@@ -175,7 +175,7 @@ impl fmt::Debug for TrackedTradeEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum HydromancerWsMessage {
     Connecting,
     Resuming,
@@ -192,6 +192,29 @@ pub enum HydromancerWsMessage {
     },
     Event(LiquidationEvent),
     TrackedTrade(TrackedTradeEvent),
+}
+
+impl fmt::Debug for HydromancerWsMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Connecting => f.write_str("Connecting"),
+            Self::Resuming => f.write_str("Resuming"),
+            Self::Connected => f.write_str("Connected"),
+            Self::Reconnected => f.write_str("Reconnected"),
+            Self::Heartbeat => f.write_str("Heartbeat"),
+            Self::Reconnecting {
+                retry_delay_secs, ..
+            } => f
+                .debug_struct("Reconnecting")
+                .field("error", &"<redacted>")
+                .field("retry_delay_secs", retry_delay_secs)
+                .finish(),
+            Self::Disconnected(_) => f.debug_tuple("Disconnected").field(&"<redacted>").finish(),
+            Self::Lagged { skipped } => f.debug_struct("Lagged").field("skipped", skipped).finish(),
+            Self::Event(event) => f.debug_tuple("Event").field(event).finish(),
+            Self::TrackedTrade(event) => f.debug_tuple("TrackedTrade").field(event).finish(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -245,6 +268,23 @@ mod tests {
         };
 
         assert_eq!(skipped, 42);
+    }
+
+    #[test]
+    fn hydromancer_control_message_debug_redacts_error_strings() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+        let reconnecting = HydromancerWsMessage::Reconnecting {
+            error: format!("stream failed for {ADDRESS} with token payload-secret"),
+            retry_delay_secs: 2,
+        };
+        let disconnected = HydromancerWsMessage::Disconnected(format!("disconnect for {ADDRESS}"));
+
+        let rendered = format!("{reconnecting:?} {disconnected:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(rendered.contains("retry_delay_secs: 2"));
+        assert!(!rendered.contains(ADDRESS));
+        assert!(!rendered.contains("payload-secret"));
     }
 
     #[test]
