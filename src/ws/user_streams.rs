@@ -9,15 +9,26 @@ use tokio::sync::{broadcast, mpsc};
 use super::{SubscriptionGuard, WsCommand, get_manager};
 use events::parse_user_stream_message;
 use routing::normalize_ws_user_address;
+use std::fmt;
 use subscriptions::build_user_stream_subscriptions;
 
 pub use model::{KeyedUserData, WsUserData};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct WsUserDataStreamParams {
     pub address: Option<String>,
     pub dexes: Vec<String>,
     pub include_mids: bool,
+}
+
+impl fmt::Debug for WsUserDataStreamParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WsUserDataStreamParams")
+            .field("address", &self.address.as_ref().map(|_| "<redacted>"))
+            .field("dexes", &self.dexes)
+            .field("include_mids", &self.include_mids)
+            .finish()
+    }
 }
 
 impl WsUserDataStreamParams {
@@ -203,6 +214,22 @@ mod tests {
         );
 
         assert!(update.is_none());
+    }
+
+    #[test]
+    fn stream_params_debug_redacts_address() {
+        const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+        let params = WsUserDataStreamParams::without_mids(
+            Some(ADDRESS.to_string()),
+            vec!["".to_string(), "dex-a".to_string()],
+        );
+        let rendered = format!("{params:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(ADDRESS), "{rendered}");
+        assert!(rendered.contains("dex-a"), "{rendered}");
+        assert!(rendered.contains("include_mids: false"), "{rendered}");
     }
 
     #[test]
