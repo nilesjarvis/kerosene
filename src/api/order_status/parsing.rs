@@ -7,6 +7,7 @@ use serde_json::Value;
 
 pub(super) fn parse_order_status_inner(
     raw: &Value,
+    expected_oid: Option<u64>,
     expected_cloid: Option<&str>,
 ) -> Result<OrderStatusResult, String> {
     if let Some(error) = raw.get("error").and_then(Value::as_str) {
@@ -30,6 +31,15 @@ pub(super) fn parse_order_status_inner(
             .and_then(|value| value.get("cloid"))
             .and_then(Value::as_str)
             .map(ToString::to_string);
+        if let Some(expected_oid) = expected_oid
+            && oid != Some(expected_oid)
+        {
+            return Err(format!(
+                "orderStatus response oid mismatch for {expected_oid}: got {}",
+                oid.map(|oid| oid.to_string())
+                    .unwrap_or_else(|| "missing oid".to_string())
+            ));
+        }
         if let Some(expected_cloid) = expected_cloid
             && cloid.as_deref() != Some(expected_cloid)
         {

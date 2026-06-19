@@ -15,19 +15,20 @@ pub(crate) async fn fetch_order_status_by_cloid(
     address: String,
     cloid: String,
 ) -> Result<OrderStatusResult, String> {
-    fetch_order_status(address, serde_json::json!(cloid), Some(cloid)).await
+    fetch_order_status(address, serde_json::json!(cloid), None, Some(cloid)).await
 }
 
 pub(crate) async fn fetch_order_status_by_oid(
     address: String,
     oid: u64,
 ) -> Result<OrderStatusResult, String> {
-    fetch_order_status(address, serde_json::json!(oid), None).await
+    fetch_order_status(address, serde_json::json!(oid), Some(oid), None).await
 }
 
 async fn fetch_order_status(
     address: String,
     oid: Value,
+    expected_oid: Option<u64>,
     expected_cloid: Option<String>,
 ) -> Result<OrderStatusResult, String> {
     let body = serde_json::json!({
@@ -60,12 +61,17 @@ async fn fetch_order_status(
         .json()
         .await
         .map_err(|e| format!("orderStatus parse failed: {e}"))?;
-    parse_order_status_inner(&raw, expected_cloid.as_deref())
+    parse_order_status_inner(&raw, expected_oid, expected_cloid.as_deref())
 }
 
 #[cfg(test)]
 fn parse_order_status(raw: &Value) -> Result<OrderStatusResult, String> {
-    parse_order_status_inner(raw, None)
+    parse_order_status_inner(raw, None, None)
+}
+
+#[cfg(test)]
+fn parse_order_status_for_oid(raw: &Value, expected_oid: u64) -> Result<OrderStatusResult, String> {
+    parse_order_status_inner(raw, Some(expected_oid), None)
 }
 
 #[cfg(test)]
@@ -73,7 +79,7 @@ fn parse_order_status_for_cloid(
     raw: &Value,
     expected_cloid: &str,
 ) -> Result<OrderStatusResult, String> {
-    parse_order_status_inner(raw, Some(expected_cloid))
+    parse_order_status_inner(raw, None, Some(expected_cloid))
 }
 
 #[cfg(test)]
