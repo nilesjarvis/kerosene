@@ -45,7 +45,7 @@ pub(crate) enum OrderOperation {
     UpdateLeverage,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct PlaceIntent {
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
@@ -56,14 +56,38 @@ pub(crate) struct PlaceIntent {
     pub(crate) reduce_only_source: ReduceOnlySource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Debug for PlaceIntent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PlaceIntent")
+            .field("surface", &self.surface)
+            .field("symbol_key", &format_args!("<redacted>"))
+            .field("is_buy", &self.is_buy)
+            .field("order_kind", &self.order_kind)
+            .field("price_source", &self.price_source)
+            .field("quantity_source", &self.quantity_source)
+            .field("reduce_only_source", &self.reduce_only_source)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct CancelIntent {
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
     pub(crate) oid: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl fmt::Debug for CancelIntent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CancelIntent")
+            .field("surface", &self.surface)
+            .field("symbol_key", &format_args!("<redacted>"))
+            .field("oid", &format_args!("<redacted>"))
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub(crate) struct ModifyIntent {
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
@@ -78,7 +102,22 @@ pub(crate) struct ModifyIntent {
     pub(crate) invalid_price_message: &'static str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Debug for ModifyIntent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ModifyIntent")
+            .field("surface", &self.surface)
+            .field("symbol_key", &format_args!("<redacted>"))
+            .field("oid", &format_args!("<redacted>"))
+            .field("is_buy", &self.is_buy)
+            .field("new_price", &format_args!("<redacted>"))
+            .field("original_price", &format_args!("<redacted>"))
+            .field("size", &format_args!("<redacted>"))
+            .field("reduce_only", &self.reduce_only)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) enum PriceSource {
     LimitInput {
         value: String,
@@ -91,13 +130,36 @@ pub(crate) enum PriceSource {
     ReferenceMid,
 }
 
+impl fmt::Debug for PriceSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LimitInput {
+                invalid_message, ..
+            } => f
+                .debug_struct("LimitInput")
+                .field("value", &format_args!("<redacted>"))
+                .field("invalid_message", invalid_message)
+                .finish(),
+            Self::MarketWithSlippage {
+                invalid_message,
+                usd_size_reference,
+            } => f
+                .debug_struct("MarketWithSlippage")
+                .field("invalid_message", invalid_message)
+                .field("usd_size_reference", usd_size_reference)
+                .finish(),
+            Self::ReferenceMid => f.write_str("ReferenceMid"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MarketUsdSizeReference {
     ExecutionPrice,
     Mid,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) enum QuantitySource {
     UserInput {
         value: String,
@@ -110,6 +172,35 @@ pub(crate) enum QuantitySource {
         invalid_message: &'static str,
         precision_invalid_message: &'static str,
     },
+}
+
+impl fmt::Debug for QuantitySource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UserInput {
+                denomination,
+                invalid_message,
+                precision_invalid_message,
+                ..
+            } => f
+                .debug_struct("UserInput")
+                .field("value", &format_args!("<redacted>"))
+                .field("denomination", denomination)
+                .field("invalid_message", invalid_message)
+                .field("precision_invalid_message", precision_invalid_message)
+                .finish(),
+            Self::CoinSize {
+                invalid_message,
+                precision_invalid_message,
+                ..
+            } => f
+                .debug_struct("CoinSize")
+                .field("size", &format_args!("<redacted>"))
+                .field("invalid_message", invalid_message)
+                .field("precision_invalid_message", precision_invalid_message)
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,15 +229,15 @@ impl fmt::Debug for OneShotPlacementContext {
         formatter
             .debug_struct("OneShotPlacementContext")
             .field("account_address", &"<redacted>")
-            .field("cloid", &self.cloid)
+            .field("cloid", &format_args!("<redacted>"))
             .field("surface", &self.surface)
-            .field("symbol_key", &self.symbol_key)
+            .field("symbol_key", &format_args!("<redacted>"))
             .field("order_kind", &self.order_kind)
             .finish()
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PreparedCancelOrder {
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
@@ -155,7 +246,19 @@ pub(crate) struct PreparedCancelOrder {
     pub(crate) market_type: MarketType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Debug for PreparedCancelOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedCancelOrder")
+            .field("surface", &self.surface)
+            .field("symbol_key", &format_args!("<redacted>"))
+            .field("asset", &self.asset)
+            .field("oid", &format_args!("<redacted>"))
+            .field("market_type", &self.market_type)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PreparedModifyOrder {
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
@@ -166,6 +269,22 @@ pub(crate) struct PreparedModifyOrder {
     pub(crate) size: String,
     pub(crate) reduce_only: bool,
     pub(crate) market_type: MarketType,
+}
+
+impl fmt::Debug for PreparedModifyOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedModifyOrder")
+            .field("surface", &self.surface)
+            .field("symbol_key", &format_args!("<redacted>"))
+            .field("oid", &format_args!("<redacted>"))
+            .field("asset", &self.asset)
+            .field("is_buy", &self.is_buy)
+            .field("price", &format_args!("<redacted>"))
+            .field("size", &format_args!("<redacted>"))
+            .field("reduce_only", &self.reduce_only)
+            .field("market_type", &self.market_type)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,7 +299,7 @@ impl OneShotPlacementContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PreparedExchangeOrder {
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
@@ -191,6 +310,22 @@ pub(crate) struct PreparedExchangeOrder {
     pub(crate) order_kind: ExchangeOrderKind,
     pub(crate) reduce_only: bool,
     pub(crate) market_type: MarketType,
+}
+
+impl fmt::Debug for PreparedExchangeOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreparedExchangeOrder")
+            .field("surface", &self.surface)
+            .field("symbol_key", &format_args!("<redacted>"))
+            .field("asset", &self.asset)
+            .field("is_buy", &self.is_buy)
+            .field("price", &format_args!("<redacted>"))
+            .field("size", &format_args!("<redacted>"))
+            .field("order_kind", &self.order_kind)
+            .field("reduce_only", &self.reduce_only)
+            .field("market_type", &self.market_type)
+            .finish()
+    }
 }
 
 impl PreparedExchangeOrder {
@@ -866,6 +1001,89 @@ mod tests {
         }
     }
 
+    #[test]
+    fn place_intent_debug_redacts_symbol_price_and_quantity() {
+        let intent = PlaceIntent {
+            surface: OrderSurface::Ticket,
+            symbol_key: "SECRETCOIN".to_string(),
+            is_buy: true,
+            order_kind: ExchangeOrderKind::Limit,
+            price_source: PriceSource::LimitInput {
+                value: "price-secret".to_string(),
+                invalid_message: "Invalid price",
+            },
+            quantity_source: QuantitySource::UserInput {
+                value: "quantity-secret".to_string(),
+                denomination: QuantityDenomination::UsdNotional,
+                invalid_message: "Invalid quantity",
+                precision_invalid_message: "Invalid quantity for asset precision",
+            },
+            reduce_only_source: ReduceOnlySource::Form(true),
+        };
+
+        let rendered = format!("{intent:?}");
+
+        assert!(rendered.contains("symbol_key: <redacted>"));
+        assert!(rendered.contains("value: <redacted>"));
+        assert!(rendered.contains("denomination: UsdNotional"));
+        for secret in ["SECRETCOIN", "price-secret", "quantity-secret"] {
+            assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
+        }
+    }
+
+    #[test]
+    fn prepared_order_debug_redacts_symbols_prices_sizes_and_ids() {
+        let cancel = PreparedCancelOrder {
+            surface: OrderSurface::Cancel,
+            symbol_key: "CANCELSECRET".to_string(),
+            asset: 7,
+            oid: 123456789,
+            market_type: MarketType::Perp,
+        };
+        let modify = PreparedModifyOrder {
+            surface: OrderSurface::Move,
+            symbol_key: "MODIFYSECRET".to_string(),
+            oid: 987654321,
+            asset: 8,
+            is_buy: false,
+            price: "modify-price-secret".to_string(),
+            size: "modify-size-secret".to_string(),
+            reduce_only: true,
+            market_type: MarketType::Perp,
+        };
+        let place = PreparedExchangeOrder {
+            surface: OrderSurface::Ticket,
+            symbol_key: "PLACESECRET".to_string(),
+            asset: 9,
+            is_buy: true,
+            price: "place-price-secret".to_string(),
+            size: "place-size-secret".to_string(),
+            order_kind: ExchangeOrderKind::Limit,
+            reduce_only: false,
+            market_type: MarketType::Perp,
+        };
+
+        let rendered = format!("{cancel:?} {modify:?} {place:?}");
+
+        assert!(rendered.contains("symbol_key: <redacted>"));
+        assert!(rendered.contains("oid: <redacted>"));
+        assert!(rendered.contains("price: <redacted>"));
+        assert!(rendered.contains("size: <redacted>"));
+        for secret in [
+            "CANCELSECRET",
+            "MODIFYSECRET",
+            "PLACESECRET",
+            "123456789",
+            "987654321",
+            "modify-price-secret",
+            "modify-size-secret",
+            "place-price-secret",
+            "place-size-secret",
+        ] {
+            assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
+        }
+    }
+
     fn move_modify_intent(symbol_key: &str) -> ModifyIntent {
         ModifyIntent {
             surface: OrderSurface::Move,
@@ -1353,11 +1571,13 @@ mod tests {
     #[test]
     fn one_shot_placement_context_debug_redacts_account_address() {
         const ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+        const CLOID: &str = "0xdeadbeef";
+        const SYMBOL: &str = "SECRETCOIN";
         let context = OneShotPlacementContext {
             account_address: ACCOUNT.to_string(),
-            cloid: "0xdeadbeef".to_string(),
+            cloid: CLOID.to_string(),
             surface: OrderSurface::Ticket,
-            symbol_key: "BTC".to_string(),
+            symbol_key: SYMBOL.to_string(),
             order_kind: ExchangeOrderKind::Limit,
         };
 
@@ -1365,6 +1585,8 @@ mod tests {
 
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains(ACCOUNT));
+        assert!(!rendered.contains(CLOID));
+        assert!(!rendered.contains(SYMBOL));
     }
 
     #[test]
