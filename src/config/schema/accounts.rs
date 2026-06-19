@@ -1,5 +1,5 @@
 use super::new_secret_id;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 use zeroize::Zeroizing;
 
@@ -32,11 +32,43 @@ impl fmt::Debug for AccountProfile {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
 pub enum CredentialStorageMode {
     #[default]
     OsKeychain,
     EncryptedConfig,
+}
+
+impl CredentialStorageMode {
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "OsKeychain" => Some(Self::OsKeychain),
+            "EncryptedConfig" => Some(Self::EncryptedConfig),
+            _ => None,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for CredentialStorageMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let Some(value) = value.as_str() else {
+            crate::config::push_config_warning(
+                "Invalid credential storage mode in config; using OS Keychain".to_string(),
+            );
+            return Ok(Self::default());
+        };
+
+        Ok(Self::from_config_value(value).unwrap_or_else(|| {
+            crate::config::push_config_warning(
+                "Unknown credential storage mode in config; using OS Keychain".to_string(),
+            );
+            Self::default()
+        }))
+    }
 }
 
 impl std::fmt::Display for CredentialStorageMode {

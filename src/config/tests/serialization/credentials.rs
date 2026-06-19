@@ -1,7 +1,9 @@
+use super::super::config_warning_guard;
 use super::{default_config_value, json_string, object_mut, value_from_json, value_from_str};
 use crate::config::secrets;
 use crate::config::{
     AccountProfile, CredentialStorageMode, EncryptedSecretsConfig, KeroseneConfig,
+    take_config_warnings,
 };
 
 #[test]
@@ -158,5 +160,37 @@ fn credential_storage_mode_wire_values_round_trip_and_missing_defaults_to_keycha
     assert_eq!(
         config.credential_storage_mode,
         CredentialStorageMode::OsKeychain
+    );
+}
+
+#[test]
+fn invalid_credential_storage_mode_defaults_to_keychain_with_warning() {
+    let _warning_guard = config_warning_guard();
+    let mut value = default_config_value();
+    object_mut(&mut value, "config should serialize to object").insert(
+        "credential_storage_mode".to_string(),
+        serde_json::json!("FutureStorageMode"),
+    );
+
+    let config: KeroseneConfig = value_from_json(
+        value,
+        "config with future credential storage mode should deserialize",
+    );
+
+    assert_eq!(
+        config.credential_storage_mode,
+        CredentialStorageMode::OsKeychain
+    );
+
+    let warnings = take_config_warnings();
+    assert!(
+        warnings.iter().any(
+            |warning| warning == "Unknown credential storage mode in config; using OS Keychain"
+        )
+    );
+    assert!(
+        !warnings
+            .iter()
+            .any(|warning| warning.contains("FutureStorageMode"))
     );
 }
