@@ -1,3 +1,6 @@
+use std::fmt;
+
+use crate::helpers::redact_sensitive_response_text;
 use serde::{Deserialize, Serialize};
 
 use super::HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS;
@@ -67,7 +70,7 @@ pub struct LiquidationHeatmap {
 }
 
 /// A single wallet-level perp position for the Positioning Information widget.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq)]
 pub struct TickerPositionEntry {
     pub address: String,
     #[serde(rename = "displayName")]
@@ -90,6 +93,29 @@ pub struct TickerPositionEntry {
     pub funding_pnl: f64,
     #[serde(rename = "accountValue")]
     pub account_value: f64,
+}
+
+impl fmt::Debug for TickerPositionEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TickerPositionEntry")
+            .field("address", &"<redacted>")
+            .field(
+                "display_name",
+                &redacted_optional_wallet_debug_value(&self.display_name),
+            )
+            .field("label", &redacted_optional_wallet_debug_value(&self.label))
+            .field("tag", &redacted_optional_wallet_debug_value(&self.tag))
+            .field("verified", &self.verified)
+            .field("copy_score", &self.copy_score)
+            .field("size", &self.size)
+            .field("notional_size", &self.notional_size)
+            .field("entry_price", &self.entry_price)
+            .field("liquidation_price", &self.liquidation_price)
+            .field("unrealized_pnl", &self.unrealized_pnl)
+            .field("funding_pnl", &self.funding_pnl)
+            .field("account_value", &self.account_value)
+            .finish()
+    }
 }
 
 /// Aggregated HyperDash positioning for one perp ticker.
@@ -115,11 +141,21 @@ pub struct TickerPositions {
 }
 
 /// A single wallet-level position delta from the HyperDash perp delta endpoint.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq)]
 pub struct PerpDeltaEntry {
     pub address: String,
     pub current: f64,
     pub delta: f64,
+}
+
+impl fmt::Debug for PerpDeltaEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PerpDeltaEntry")
+            .field("address", &"<redacted>")
+            .field("current", &self.current)
+            .field("delta", &self.delta)
+            .finish()
+    }
 }
 
 /// Position-size changes for one perp market and timeframe.
@@ -186,7 +222,116 @@ impl HeatmapFetchParams {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub(super) struct GqlError {
     pub(super) message: String,
+}
+
+impl fmt::Debug for GqlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = redact_sensitive_response_text(&self.message);
+        f.debug_struct("GqlError")
+            .field("message", &message)
+            .finish()
+    }
+}
+
+fn redacted_optional_wallet_debug_value(value: &Option<String>) -> Option<&str> {
+    value.as_deref().map(redacted_wallet_debug_value)
+}
+
+fn redacted_wallet_debug_value(value: &str) -> &str {
+    let value = value.trim();
+    let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    else {
+        return value;
+    };
+    if hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        "<redacted>"
+    } else {
+        value
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GqlError, PerpDeltaEntry, PerpDeltas, TickerPositionEntry, TickerPositions};
+
+    const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn ticker_positions_debug_redacts_wallet_addresses() {
+        let positions = TickerPositions {
+            coin: "HYPE".to_string(),
+            positions: vec![TickerPositionEntry {
+                address: TEST_ADDRESS.to_string(),
+                display_name: Some(TEST_ADDRESS.to_string()),
+                label: Some("Whale".to_string()),
+                tag: Some(TEST_ADDRESS.to_string()),
+                verified: Some(true),
+                copy_score: Some(61.5),
+                size: 12.5,
+                notional_size: 500.25,
+                entry_price: 30.0,
+                liquidation_price: None,
+                unrealized_pnl: 125.75,
+                funding_pnl: -4.5,
+                account_value: 1000.0,
+            }],
+            total_long_notional: 600.0,
+            total_short_notional: 400.0,
+            total_notional: 1000.0,
+            long_count: 3,
+            short_count: 2,
+            total_count: 5,
+            has_more: true,
+            timestamp: "2026-05-18T11:52:39.585Z".to_string(),
+        };
+
+        let rendered = format!("{positions:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(rendered.contains("Whale"));
+        assert!(!rendered.contains(TEST_ADDRESS));
+    }
+
+    #[test]
+    fn perp_deltas_debug_redacts_wallet_addresses() {
+        let deltas = PerpDeltas {
+            market: "HYPE".to_string(),
+            timeframe: "15m".to_string(),
+            deltas: vec![PerpDeltaEntry {
+                address: TEST_ADDRESS.to_string(),
+                current: -25.5,
+                delta: 10.25,
+            }],
+        };
+
+        let rendered = format!("{deltas:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(TEST_ADDRESS));
+    }
+
+    #[test]
+    fn graphql_error_debug_redacts_sensitive_values() {
+        let error = GqlError {
+            message: "provider echoed api_key=\"hyper-secret\" Bearer bearer-secret trace=0x0123456789abcdef0123456789abcdef01234567"
+                .to_string(),
+        };
+
+        let rendered = format!("{error:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(rendered.contains("<redacted-hex>"));
+        for secret in [
+            "hyper-secret",
+            "bearer-secret",
+            "0123456789abcdef0123456789abcdef01234567",
+        ] {
+            assert!(!rendered.contains(secret), "debug output leaked {secret}");
+        }
+    }
 }
