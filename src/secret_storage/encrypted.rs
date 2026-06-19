@@ -386,13 +386,16 @@ impl TradingTerminal {
                     self.persist_config_immediately_with(save_config)
                         .err()
                         .map(|error| {
+                            let error = redact_sensitive_response_text(&error);
                             format!(
                                 "OS keychain cleanup completed after unlock, but cleanup state save failed: {error}"
                             )
                         })
                 }
                 Err(error) => {
-                    let redacted = redact_keychain_cleanup_profile_ids(error, &profiles);
+                    let redacted = redact_sensitive_response_text(
+                        &redact_keychain_cleanup_profile_ids(error, &profiles),
+                    );
                     Some(format!(
                         "OS keychain cleanup failed and will retry after the next unlock: {redacted}"
                     ))
@@ -411,7 +414,9 @@ impl TradingTerminal {
             match clear_pending_profile(&secret_id) {
                 Ok(()) => cleaned_any = true,
                 Err(error) => {
-                    let redacted = redact_keychain_cleanup_secret_id(error, &secret_id);
+                    let redacted = redact_sensitive_response_text(
+                        &redact_keychain_cleanup_secret_id(error, &secret_id),
+                    );
                     self.pending_keychain_profile_deletions.push(secret_id);
                     failures.push(redacted);
                 }
@@ -426,17 +431,23 @@ impl TradingTerminal {
 
         match (failures.is_empty(), save_error) {
             (true, None) => None,
-            (true, Some(error)) => Some(format!(
-                "OS keychain account cleanup completed after unlock, but cleanup state save failed: {error}"
-            )),
+            (true, Some(error)) => {
+                let error = redact_sensitive_response_text(&error);
+                Some(format!(
+                    "OS keychain account cleanup completed after unlock, but cleanup state save failed: {error}"
+                ))
+            }
             (false, None) => Some(format!(
                 "OS keychain account cleanup failed and will retry after the next unlock: {}",
                 failures.join("; ")
             )),
-            (false, Some(error)) => Some(format!(
-                "OS keychain account cleanup partially failed and cleanup state save failed: {error}; cleanup will retry after the next unlock: {}",
-                failures.join("; ")
-            )),
+            (false, Some(error)) => {
+                let error = redact_sensitive_response_text(&error);
+                Some(format!(
+                    "OS keychain account cleanup partially failed and cleanup state save failed: {error}; cleanup will retry after the next unlock: {}",
+                    failures.join("; ")
+                ))
+            }
         }
     }
 }
@@ -930,6 +941,43 @@ mod tests {
     }
 
     #[test]
+    fn encrypted_unlock_pending_profile_cleanup_save_failure_redacts_status() {
+        let current_wallet = "0xabc0000000000000000000000000000000000000";
+        let password = "password";
+        let payload = SecretPayload::from_credentials(
+            &[AccountProfile {
+                secret_id: "acct-a".to_string(),
+                name: "acct-a".to_string(),
+                wallet_address: current_wallet.to_string(),
+                agent_key: sensitive_string("agent-key").into_zeroizing(),
+                hydromancer_api_key: sensitive_string("").into_zeroizing(),
+            }],
+            "",
+            "",
+        );
+        let mut terminal = terminal_with_encrypted_payload(&payload, password);
+        terminal.accounts = vec![account("acct-a", current_wallet)];
+        terminal.active_account_index = 0;
+        terminal
+            .pending_keychain_profile_deletions
+            .push("acct-b".to_string());
+
+        let _task = terminal.unlock_encrypted_credentials_with_hooks(
+            |_| Err("save failed: api_key=super-secret".to_string()),
+            |_| panic!("profile-only cleanup must not run full cleanup"),
+            |_| Ok(()),
+        );
+
+        assert!(terminal.pending_keychain_profile_deletions.is_empty());
+        let (message, is_error) = terminal.secret_store_status.as_ref().expect("status");
+        assert!(*is_error);
+        assert!(message.contains("Encrypted credentials unlocked"));
+        assert!(message.contains("cleanup state save failed"));
+        assert!(message.contains("api_key=<redacted>"));
+        assert!(!message.contains("super-secret"));
+    }
+
+    #[test]
     fn encrypted_unlock_pending_profile_cleanup_failure_redacts_trimmed_pending_id() {
         let current_wallet = "0xabc0000000000000000000000000000000000000";
         let password = "password";
@@ -954,7 +1002,7 @@ mod tests {
         let _task = terminal.unlock_encrypted_credentials_with_hooks(
             |_| panic!("failed cleanup should not save cleared intent"),
             |_| panic!("profile-only cleanup must not run full cleanup"),
-            |_secret_id| Err("delete acct-b denied".to_string()),
+            |_secret_id| Err("delete acct-b denied: token=super-secret".to_string()),
         );
 
         assert_eq!(
@@ -965,7 +1013,9 @@ mod tests {
         assert!(*is_error);
         assert!(message.contains("Encrypted credentials unlocked"));
         assert!(message.contains("<redacted-profile>"));
+        assert!(message.contains("token=<redacted>"));
         assert!(!message.contains("acct-b"));
+        assert!(!message.contains("super-secret"));
     }
 
     #[test]
