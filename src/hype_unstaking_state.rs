@@ -1,9 +1,8 @@
 use crate::config::SortDirection;
 use crate::helpers::{format_decimal_with_commas, trim_decimal_zeros};
 
-use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::time::Instant;
+use std::{cmp::Ordering, collections::HashSet, fmt};
 
 // ---------------------------------------------------------------------------
 // HYPE Unstaking Queue State
@@ -97,7 +96,7 @@ impl HypeUnstakingSortField {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct HypeUnstakingQueueState {
     pub(crate) data: Option<HypeUnstakingQueueData>,
     pub(crate) loading: bool,
@@ -109,6 +108,26 @@ pub(crate) struct HypeUnstakingQueueState {
     pub(crate) mine_only: bool,
     pub(crate) sort_field: HypeUnstakingSortField,
     pub(crate) sort_direction: SortDirection,
+}
+
+impl fmt::Debug for HypeUnstakingQueueState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeUnstakingQueueState")
+            .field(
+                "data_events_len",
+                &self.data.as_ref().map(|data| data.events.len()),
+            )
+            .field("loading", &self.loading)
+            .field("error", &self.error.as_ref().map(|_| "<redacted>"))
+            .field("last_fetch", &self.last_fetch)
+            .field("refresh_request_id", &self.refresh_request_id)
+            .field("window_filter", &self.window_filter)
+            .field("amount_filter", &self.amount_filter)
+            .field("mine_only", &self.mine_only)
+            .field("sort_field", &self.sort_field)
+            .field("sort_direction", &self.sort_direction)
+            .finish()
+    }
 }
 
 impl HypeUnstakingQueueState {
@@ -131,9 +150,25 @@ impl HypeUnstakingQueueState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct HypeUnstakingQueueData {
     pub(crate) events: Vec<HypeUnstakingEvent>,
+}
+
+impl fmt::Debug for HypeUnstakingQueueData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeUnstakingQueueData")
+            .field("events_len", &self.events.len())
+            .field(
+                "first_unlock_time_ms",
+                &self.events.first().map(|event| event.unlock_time_ms),
+            )
+            .field(
+                "last_unlock_time_ms",
+                &self.events.last().map(|event| event.unlock_time_ms),
+            )
+            .finish()
+    }
 }
 
 impl HypeUnstakingQueueData {
@@ -168,11 +203,21 @@ impl HypeUnstakingQueueData {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct HypeUnstakingEvent {
     pub(crate) unlock_time_ms: u64,
     pub(crate) user: String,
     pub(crate) amount_wei: u64,
+}
+
+impl fmt::Debug for HypeUnstakingEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HypeUnstakingEvent")
+            .field("unlock_time_ms", &self.unlock_time_ms)
+            .field("user", &"<redacted>")
+            .field("amount_wei", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -326,6 +371,71 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![1_000, 2_000, 3_000]
         );
+    }
+
+    #[test]
+    fn hype_unstaking_event_debug_redacts_wallet_and_amount() {
+        let secret_address = "0xf764939b589138dd1c75601b10a408c66ee68cbe";
+        let event = HypeUnstakingEvent {
+            unlock_time_ms: 1_779_301_327_387,
+            user: secret_address.to_string(),
+            amount_wei: 987_654_321,
+        };
+
+        let rendered = format!("{event:?}");
+
+        assert!(rendered.contains("unlock_time_ms: 1779301327387"));
+        assert!(rendered.contains("user: \"<redacted>\""));
+        assert!(rendered.contains("amount_wei: \"<redacted>\""));
+        assert!(!rendered.contains(secret_address));
+        assert!(!rendered.contains("987654321"));
+    }
+
+    #[test]
+    fn hype_unstaking_data_debug_summarizes_events() {
+        let secret_address = "0xf764939b589138dd1c75601b10a408c66ee68cbe";
+        let data = HypeUnstakingQueueData::new(vec![
+            HypeUnstakingEvent {
+                unlock_time_ms: 2_000,
+                user: secret_address.to_string(),
+                amount_wei: 987_654_321,
+            },
+            HypeUnstakingEvent {
+                unlock_time_ms: 4_000,
+                user: "0x2c64a1d5d602e7fb6d21da6211dcecc6e17a0649".to_string(),
+                amount_wei: 123_456_789,
+            },
+        ]);
+
+        let rendered = format!("{data:?}");
+
+        assert!(rendered.contains("events_len: 2"));
+        assert!(rendered.contains("first_unlock_time_ms: Some(2000)"));
+        assert!(rendered.contains("last_unlock_time_ms: Some(4000)"));
+        assert!(!rendered.contains(secret_address));
+        assert!(!rendered.contains("987654321"));
+    }
+
+    #[test]
+    fn hype_unstaking_queue_state_debug_redacts_data_and_error() {
+        let secret_address = "0xf764939b589138dd1c75601b10a408c66ee68cbe";
+        let state = HypeUnstakingQueueState {
+            data: Some(HypeUnstakingQueueData::new(vec![HypeUnstakingEvent {
+                unlock_time_ms: 2_000,
+                user: secret_address.to_string(),
+                amount_wei: 987_654_321,
+            }])),
+            error: Some("unstaking state secret".to_string()),
+            ..HypeUnstakingQueueState::default()
+        };
+
+        let rendered = format!("{state:?}");
+
+        assert!(rendered.contains("data_events_len: Some(1)"));
+        assert!(rendered.contains("error: Some(\"<redacted>\")"));
+        assert!(!rendered.contains(secret_address));
+        assert!(!rendered.contains("987654321"));
+        assert!(!rendered.contains("unstaking state secret"));
     }
 
     #[test]

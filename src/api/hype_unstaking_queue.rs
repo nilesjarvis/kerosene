@@ -44,7 +44,7 @@ pub(crate) async fn fetch_hype_unstaking_queue() -> Result<HypeUnstakingQueueDat
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Deserialize)]
 struct HypurrscanUnstakingQueueRow {
     time: u64,
     user: String,
