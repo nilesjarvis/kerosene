@@ -23,7 +23,6 @@ mod candles;
 mod crosshair;
 mod defaults;
 mod denomination;
-mod journal;
 mod market_universe;
 mod toast;
 
@@ -62,7 +61,6 @@ pub use defaults::{
     normalize_pane_split_ratio, normalize_ui_scale, normalize_widget_padding,
 };
 pub use denomination::DisplayDenominationConfig;
-pub use journal::JournalTradesView;
 pub use market_universe::MarketUniverseConfig;
 pub use toast::ToastPosition;
 
@@ -97,9 +95,6 @@ pub struct KeroseneConfig {
     /// Last trading journal window height in logical pixels.
     #[serde(default)]
     pub journal_window_height: Option<f32>,
-    /// How trades render inside the trading journal window.
-    #[serde(default)]
-    pub journal_trades_view: JournalTradesView,
     #[serde(default)]
     pub accounts: Vec<AccountProfile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -104,6 +104,23 @@ pub(crate) fn monospace_font() -> Font {
     *font
 }
 
+/// Editorial serif face used for display headlines (window/pane titles, asset
+/// names). Falls back to the platform serif when no bundled serif is present.
+pub(crate) fn serif_font() -> Font {
+    Font {
+        family: Family::Serif,
+        ..Font::DEFAULT
+    }
+}
+
+/// UI sans face used for body copy (reflection prose, button labels).
+pub(crate) fn sans_font() -> Font {
+    Font {
+        family: Family::Name(config::INTER_FONT_FAMILY),
+        ..Font::DEFAULT
+    }
+}
+
 fn set_monospace_font(font: Font) {
     let lock = MONOSPACE_FONT.get_or_init(|| RwLock::new(Font::MONOSPACE));
     let mut current_font = match lock.write() {

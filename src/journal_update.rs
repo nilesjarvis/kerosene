@@ -31,7 +31,7 @@ impl TradingTerminal {
             fetched_at_ms,
         );
         if result.added_open_positions > 0 || result.removed_stale_positions > 0 {
-            self.journal.clear_snapshot_cache();
+            self.journal.clear_snapshot_results();
             self.journal.expanded_snapshot_trade_ids.clear();
         }
         result
@@ -110,8 +110,36 @@ impl TradingTerminal {
                                     position_reconciliation.added_open_positions,
                                 ));
                             }
-                            self.journal.clear_snapshot_cache();
+                            // Preserve in-flight snapshot requests so a response
+                            // arriving after this re-aggregation still applies.
+                            self.journal.clear_snapshot_results();
                             self.journal.expanded_snapshot_trade_ids.clear();
+                            // Drop selection and in-progress edit state for any
+                            // trade that no longer exists after re-aggregation,
+                            // so stale drafts can't resurface on a reused id.
+                            let live_trade_ids: std::collections::HashSet<String> = self
+                                .journal
+                                .trades
+                                .iter()
+                                .map(|trade| trade.id.clone())
+                                .collect();
+                            if let Some(selected) = &self.journal.selected_trade_id
+                                && !live_trade_ids.contains(selected)
+                            {
+                                self.journal.selected_trade_id = None;
+                            }
+                            self.journal
+                                .edit_modes
+                                .retain(|id, _| live_trade_ids.contains(id));
+                            self.journal
+                                .edit_source_keys
+                                .retain(|id, _| live_trade_ids.contains(id));
+                            self.journal
+                                .edit_buffers
+                                .retain(|id, _| live_trade_ids.contains(id));
+                            self.journal
+                                .edit_tag_raw
+                                .retain(|id, _| live_trade_ids.contains(id));
                             self.journal.error = None;
                         }
 
@@ -182,12 +210,16 @@ impl TradingTerminal {
                 if let Some(source_key) = source_key {
                     self.journal.edit_source_keys.insert(id.clone(), source_key);
                 }
+                self.journal
+                    .edit_tag_raw
+                    .insert(id.clone(), journal::journal_tags_input(&note.tags));
                 self.journal.edit_buffers.insert(id, note);
             }
             Message::JournalEditCancel(id) => {
                 self.journal.edit_modes.remove(&id);
                 self.journal.edit_source_keys.remove(&id);
                 self.journal.edit_buffers.remove(&id);
+                self.journal.edit_tag_raw.remove(&id);
             }
             Message::JournalEditSave(id) => {
                 if let Some(note) = self.journal.edit_buffers.remove(&id) {
@@ -196,7 +228,7 @@ impl TradingTerminal {
                     {
                         self.journal.entries.remove(&source_key);
                     }
-                    if note.open.trim().is_empty() && note.close.trim().is_empty() {
+                    if note.is_empty() {
                         self.journal.entries.remove(&id);
                     } else {
                         self.journal.entries.insert(id.clone(), note);
@@ -204,6 +236,7 @@ impl TradingTerminal {
                     self.persist_config();
                 }
                 self.journal.edit_modes.remove(&id);
+                self.journal.edit_tag_raw.remove(&id);
             }
             Message::JournalBufferChanged(id, is_open, text) => {
                 let entry = self.journal.edit_buffers.entry(id).or_default();
@@ -212,6 +245,24 @@ impl TradingTerminal {
                 } else {
                     entry.close = text;
                 }
+            }
+            Message::JournalTagsChanged(id, raw) => {
+                let tags = journal::parse_journal_tags(&raw);
+                self.journal
+                    .edit_buffers
+                    .entry(id.clone())
+                    .or_default()
+                    .tags = tags;
+                self.journal.edit_tag_raw.insert(id, raw);
+            }
+            Message::JournalSelectTrade(trade_id) => {
+                return self.select_journal_trade(trade_id);
+            }
+            Message::JournalDeselectTrade => {
+                self.journal.selected_trade_id = None;
+            }
+            Message::JournalSnapshotTimeframe(trade_id, timeframe) => {
+                return self.request_journal_snapshot_timeframe(trade_id, timeframe);
             }
             Message::JournalFilterChanged(filter) => {
                 self.journal.filter = filter;
@@ -233,9 +284,6 @@ impl TradingTerminal {
             }
             Message::JournalToggleIncludeFeesInPnl => {
                 self.journal.include_fees_in_pnl = !self.journal.include_fees_in_pnl;
-            }
-            Message::JournalSnapshotToggle(trade_id) => {
-                return self.toggle_journal_snapshot(trade_id);
             }
             Message::JournalSnapshotLoaded {
                 account_key,
@@ -305,16 +353,16 @@ impl TradingTerminal {
         task
     }
 
-    fn toggle_journal_snapshot(&mut self, trade_id: String) -> Task<Message> {
-        if self.journal.expanded_snapshot_trade_ids.remove(&trade_id) {
-            self.journal.snapshot_requests.remove(&trade_id);
-            return Task::none();
-        }
+    /// Select a trade for the master-detail inspector and lazily load its
+    /// chart snapshot.
+    fn select_journal_trade(&mut self, trade_id: String) -> Task<Message> {
+        self.journal.selected_trade_id = Some(trade_id.clone());
+        self.ensure_journal_snapshot(trade_id)
+    }
 
-        self.journal
-            .expanded_snapshot_trade_ids
-            .insert(trade_id.clone());
-
+    /// Queue a snapshot fetch for `trade_id` if one is not already loaded for
+    /// the active backfill source or in flight.
+    fn ensure_journal_snapshot(&mut self, trade_id: String) -> Task<Message> {
         if self
             .journal
             .snapshots
@@ -402,6 +450,80 @@ impl TradingTerminal {
         self.queue_journal_snapshot_request(request)
     }
 
+    /// Re-request a trade's snapshot pinned to a specific timeframe (detail-view
+    /// 1m / 5m / 1h selector).
+    fn request_journal_snapshot_timeframe(
+        &mut self,
+        trade_id: String,
+        timeframe: crate::timeframe::Timeframe,
+    ) -> Task<Message> {
+        let Some(trade) = self
+            .journal
+            .trades
+            .iter()
+            .find(|trade| trade.id == trade_id)
+            .cloned()
+        else {
+            return Task::none();
+        };
+
+        // Skip if the loaded snapshot already matches the requested timeframe.
+        if self
+            .journal
+            .snapshots
+            .get(&trade_id)
+            .is_some_and(|snapshot| {
+                snapshot.source == self.chart_backfill_source && snapshot.timeframe == timeframe
+            })
+        {
+            return Task::none();
+        }
+
+        let now_ms = Self::now_ms();
+        let Some(address) = self.connected_address.clone() else {
+            let snapshot = self.journal_unavailable_snapshot(
+                &trade,
+                timeframe,
+                "Connect an account before loading a snapshot.".to_string(),
+            );
+            self.journal.snapshots.insert(trade_id, snapshot);
+            return Task::none();
+        };
+
+        if self
+            .journal
+            .trade_details
+            .get(&trade.id)
+            .is_none_or(|details| details.attributed_fills.is_empty())
+        {
+            let snapshot = self.journal_unavailable_snapshot(
+                &trade,
+                timeframe,
+                "Snapshot unavailable because fill attribution is missing.".to_string(),
+            );
+            self.journal.snapshots.insert(trade_id, snapshot);
+            return Task::none();
+        }
+
+        match journal::snapshot_request_for_timeframe(
+            self.active_journal_account_key(),
+            address,
+            &trade,
+            self.chart_backfill_source,
+            self.read_data_provider_generation,
+            self.hydromancer_key_generation,
+            now_ms,
+            timeframe,
+        ) {
+            Ok(request) => self.queue_journal_snapshot_request(request),
+            Err(reason) => {
+                let snapshot = self.journal_unavailable_snapshot(&trade, timeframe, reason);
+                self.journal.snapshots.insert(trade_id, snapshot);
+                Task::none()
+            }
+        }
+    }
+
     fn apply_journal_snapshot_loaded(
         &mut self,
         account_key: Option<String>,
@@ -437,15 +559,14 @@ impl TradingTerminal {
                     return self.queue_journal_snapshot_request(next_request);
                 }
                 self.journal.snapshot_requests.remove(&request.trade_id);
-                self.journal.snapshots.insert(
-                    request.trade_id.clone(),
-                    journal::unavailable_snapshot(
-                        &trade,
-                        self.chart_backfill_source,
-                        Self::now_ms(),
-                        "No candle data returned for the trade window.".to_string(),
-                    ),
+                let snapshot = self.journal_unavailable_snapshot(
+                    &trade,
+                    request.timeframe,
+                    "No candle data returned for the trade window.".to_string(),
                 );
+                self.journal
+                    .snapshots
+                    .insert(request.trade_id.clone(), snapshot);
             }
             Ok(candles) => {
                 self.journal.snapshot_requests.remove(&request.trade_id);
@@ -463,34 +584,51 @@ impl TradingTerminal {
                             .insert(request.trade_id.clone(), snapshot);
                     }
                     None => {
-                        self.journal.snapshots.insert(
-                            request.trade_id.clone(),
-                            journal::unavailable_snapshot(
-                                &trade,
-                                self.chart_backfill_source,
-                                Self::now_ms(),
-                                "Could not compute snapshot metrics for this trade.".to_string(),
-                            ),
+                        let snapshot = self.journal_unavailable_snapshot(
+                            &trade,
+                            request.timeframe,
+                            "Could not compute snapshot metrics for this trade.".to_string(),
                         );
+                        self.journal
+                            .snapshots
+                            .insert(request.trade_id.clone(), snapshot);
                     }
                 }
             }
             Err(error) => {
                 let error = redact_sensitive_response_text(&error);
                 self.journal.snapshot_requests.remove(&request.trade_id);
-                self.journal.snapshots.insert(
-                    request.trade_id.clone(),
-                    journal::unavailable_snapshot(
-                        &trade,
-                        self.chart_backfill_source,
-                        Self::now_ms(),
-                        format!("Could not load candles: {error}"),
-                    ),
+                let snapshot = self.journal_unavailable_snapshot(
+                    &trade,
+                    request.timeframe,
+                    format!("Could not load candles: {error}"),
                 );
+                self.journal
+                    .snapshots
+                    .insert(request.trade_id.clone(), snapshot);
             }
         }
 
         Task::none()
+    }
+
+    /// Build an unavailable-snapshot placeholder pinned to `timeframe` so the
+    /// detail-view 1m/5m/1h selector keeps the requested timeframe highlighted
+    /// even when no chart could be produced.
+    fn journal_unavailable_snapshot(
+        &self,
+        trade: &journal::AggregatedTrade,
+        timeframe: crate::timeframe::Timeframe,
+        reason: String,
+    ) -> journal::JournalTradeSnapshot {
+        let mut snapshot = journal::unavailable_snapshot(
+            trade,
+            self.chart_backfill_source,
+            Self::now_ms(),
+            reason,
+        );
+        snapshot.timeframe = timeframe;
+        snapshot
     }
 
     fn queue_journal_snapshot_request(
@@ -593,6 +731,80 @@ mod tests {
         ));
 
         assert!(terminal.journal.snapshot_requests.is_empty());
+    }
+
+    #[test]
+    fn reaggregation_preserves_in_flight_snapshot_requests() {
+        // Regression: re-aggregating fills while a snapshot is in flight must
+        // keep the pending request so its candle response still applies, rather
+        // than being silently dropped by the request-equality guard.
+        let mut terminal = journal_terminal_with_account();
+        let request = snapshot_request(terminal.hydromancer_key_generation);
+        let trade = snapshot_trade(&request.trade_id);
+        terminal
+            .journal
+            .snapshot_requests
+            .insert(request.trade_id.clone(), request.clone());
+        terminal.journal.snapshots.insert(
+            request.trade_id.clone(),
+            crate::journal::unavailable_snapshot(
+                &trade,
+                ChartBackfillSource::Hydromancer,
+                1_000,
+                "stale".to_string(),
+            ),
+        );
+
+        terminal.journal.clear_snapshot_results();
+
+        assert!(
+            terminal.journal.snapshots.is_empty(),
+            "stale snapshot results are cleared"
+        );
+        assert_eq!(
+            terminal.journal.snapshot_requests.get(&request.trade_id),
+            Some(&request),
+            "in-flight snapshot request survives re-aggregation"
+        );
+    }
+
+    #[test]
+    fn reaggregation_prunes_orphaned_selection_and_edit_state() {
+        // Regression: a re-aggregation that drops a trade must also clear its
+        // selection and in-progress edit drafts so stale state can't resurface.
+        let mut terminal = journal_terminal_with_account();
+        terminal.journal.selected_trade_id = Some("ghost".to_string());
+        terminal
+            .journal
+            .edit_modes
+            .insert("ghost".to_string(), true);
+        terminal
+            .journal
+            .edit_buffers
+            .insert("ghost".to_string(), crate::journal::JournalNote::default());
+        terminal
+            .journal
+            .edit_source_keys
+            .insert("ghost".to_string(), "ghost".to_string());
+        terminal
+            .journal
+            .edit_tag_raw
+            .insert("ghost".to_string(), "breakout".to_string());
+
+        let request_id = terminal.journal.next_sync_request_id();
+        terminal.journal.loading = true;
+        let _task = terminal.update_journal(Message::JournalFillsLoaded {
+            request_id,
+            account_key: Some("acct".to_string()).into(),
+            address: "0xabc".to_string().into(),
+            result: Ok(empty_journal_page(12_345)),
+        });
+
+        assert!(terminal.journal.selected_trade_id.is_none());
+        assert!(terminal.journal.edit_modes.is_empty());
+        assert!(terminal.journal.edit_buffers.is_empty());
+        assert!(terminal.journal.edit_source_keys.is_empty());
+        assert!(terminal.journal.edit_tag_raw.is_empty());
     }
 
     #[test]

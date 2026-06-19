@@ -262,7 +262,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ChartDottedBackgroundOpacityChanged(_)
         | Message::ChartHollowCandleModeChanged(_)
         | Message::ChartSeriesStyleChanged(_)
-        | Message::JournalTradesViewChanged(_)
         | Message::ToggleChartFisheye(_)
         | Message::ChartFisheyeStrengthChanged(_)
         | Message::ToggleChartChromaticAberration(_)
@@ -371,6 +370,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalEditCancel(_)
         | Message::JournalEditSave(_)
         | Message::JournalBufferChanged(_, _, _)
+        | Message::JournalTagsChanged(_, _)
+        | Message::JournalSelectTrade(_)
+        | Message::JournalDeselectTrade
+        | Message::JournalSnapshotTimeframe(_, _)
         | Message::JournalFilterChanged(_)
         | Message::JournalSortChanged(_)
         | Message::JournalPortfolioWindowChanged(_)
@@ -378,7 +381,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalToggleAllAssets
         | Message::JournalToggleAccountValueChart(_)
         | Message::JournalToggleIncludeFeesInPnl
-        | Message::JournalSnapshotToggle(_)
         | Message::JournalSnapshotLoaded { .. }
         | Message::JournalRefresh => UpdateRoute::Journal,
 

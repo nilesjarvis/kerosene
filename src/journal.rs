@@ -21,7 +21,7 @@ pub use current_positions::{
 pub use snapshot::{
     JournalTradeSnapshot, JournalTradeSnapshotMetrics, JournalTradeSnapshotRequest,
     JournalTradeSnapshotStatus, build_journal_trade_snapshot, initial_snapshot_request,
-    next_snapshot_request, unavailable_snapshot,
+    next_snapshot_request, snapshot_request_for_timeframe, unavailable_snapshot,
 };
 pub(crate) use state::{
     DEFAULT_JOURNAL_WINDOW_HEIGHT, DEFAULT_JOURNAL_WINDOW_WIDTH, JournalAccountState,
@@ -32,6 +32,15 @@ pub use state::{JournalFilter, JournalSort, JournalState, JournalSyncStatus};
 pub struct JournalNote {
     pub open: String,
     pub close: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+impl JournalNote {
+    /// True when the reflection carries no thesis, no reflection, and no tags.
+    pub fn is_empty(&self) -> bool {
+        self.open.trim().is_empty() && self.close.trim().is_empty() && self.tags.is_empty()
+    }
 }
 
 impl fmt::Debug for JournalNote {
@@ -39,6 +48,7 @@ impl fmt::Debug for JournalNote {
         f.debug_struct("JournalNote")
             .field("open", &format_args!("len={}", self.open.len()))
             .field("close", &format_args!("len={}", self.close.len()))
+            .field("tags", &format_args!("len={}", self.tags.len()))
             .finish()
     }
 }
@@ -56,18 +66,46 @@ impl<'de> Deserialize<'de> for JournalNote {
                 open: String,
                 #[serde(default)]
                 close: String,
+                #[serde(default)]
+                tags: Vec<String>,
             },
             Legacy(String),
         }
 
         match NoteWrapper::deserialize(deserializer)? {
-            NoteWrapper::Structured { open, close } => Ok(JournalNote { open, close }),
+            NoteWrapper::Structured { open, close, tags } => Ok(JournalNote { open, close, tags }),
             NoteWrapper::Legacy(s) => Ok(JournalNote {
                 open: s,
                 close: String::new(),
+                tags: Vec::new(),
             }),
         }
     }
+}
+
+/// Parse a free-form tag input ("#breakout, momentum trend") into normalized,
+/// de-duplicated tags. Leading `#` and surrounding whitespace are stripped;
+/// order is preserved and case is kept as typed.
+pub fn parse_journal_tags(raw: &str) -> Vec<String> {
+    let mut tags: Vec<String> = Vec::new();
+    for token in raw.split([',', ' ', '\t', '\n', '#']) {
+        let tag = token.trim();
+        if tag.is_empty() {
+            continue;
+        }
+        if !tags
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(tag))
+        {
+            tags.push(tag.to_string());
+        }
+    }
+    tags
+}
+
+/// Render tags back into an editable input string (space-separated, no `#`).
+pub fn journal_tags_input(tags: &[String]) -> String {
+    tags.join(" ")
 }
 
 pub fn note_key_for_trade(

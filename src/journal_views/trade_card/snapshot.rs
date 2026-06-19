@@ -83,11 +83,32 @@ fn unavailable_snapshot_view(reason: &str, theme: &Theme) -> Element<'static, Me
     container(
         text(reason.to_string())
             .size(11)
+            .font(crate::app_fonts::monospace_font())
+            .align_x(alignment::Horizontal::Center)
             .color(theme.extended_palette().background.weak.text),
     )
     .width(Fill)
     .height(SNAPSHOT_HEIGHT)
     .center(Fill)
+    .padding(16)
+    .style(|theme: &Theme| iced::widget::container::Style {
+        background: Some(
+            Color {
+                a: 0.04,
+                ..theme.palette().primary
+            }
+            .into(),
+        ),
+        border: iced::Border {
+            color: Color {
+                a: 0.5,
+                ..theme.palette().primary
+            },
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    })
     .into()
 }
 

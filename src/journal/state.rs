@@ -40,21 +40,11 @@ impl JournalFilter {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalSort {
-    AssetAsc,
-    AssetDesc,
-    PositionDesc,
-    PositionAsc,
-    StatusAsc,
-    StatusDesc,
+    /// Most recent first (default).
     TimeDesc,
-    TimeAsc,
-    DurationDesc,
-    DurationAsc,
-    FillsDesc,
-    FillsAsc,
-    FeesDesc,
-    FeesAsc,
+    /// Largest realized PnL first.
     PnlDesc,
+    /// Smallest realized PnL first.
     PnlAsc,
 }
 
@@ -97,6 +87,8 @@ pub struct JournalState {
     pub show_account_value_chart: bool,
     pub include_fees_in_pnl: bool,
     pub portfolio_window: PortfolioWindow,
+    /// Trade selected for the master-detail inspector; `None` shows the cockpit.
+    pub selected_trade_id: Option<String>,
     pub error: Option<String>,
     pub warning: Option<String>,
     pub last_refresh_time: Option<u64>,
@@ -104,6 +96,8 @@ pub struct JournalState {
     pub edit_modes: HashMap<String, bool>,
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
+    /// In-progress raw tag input per trade while editing a reflection.
+    pub edit_tag_raw: HashMap<String, String>,
 }
 
 impl JournalState {
@@ -160,6 +154,8 @@ pub struct JournalAccountState {
     pub edit_modes: HashMap<String, bool>,
     pub edit_source_keys: HashMap<String, String>,
     pub edit_buffers: HashMap<String, JournalNote>,
+    pub edit_tag_raw: HashMap<String, String>,
+    pub selected_trade_id: Option<String>,
     pub show_account_value_chart: bool,
     pub include_fees_in_pnl: bool,
     pub portfolio_window: PortfolioWindow,
@@ -214,6 +210,14 @@ impl fmt::Debug for JournalAccountState {
                 "edit_buffers",
                 &format_args!("len={}", self.edit_buffers.len()),
             )
+            .field(
+                "edit_tag_raw",
+                &format_args!("len={}", self.edit_tag_raw.len()),
+            )
+            .field(
+                "selected_trade_id",
+                &self.selected_trade_id.as_ref().map(|_| "<redacted>"),
+            )
             .field("show_account_value_chart", &self.show_account_value_chart)
             .field("include_fees_in_pnl", &self.include_fees_in_pnl)
             .field("portfolio_window", &self.portfolio_window)
@@ -240,6 +244,8 @@ impl Default for JournalAccountState {
             edit_modes: HashMap::new(),
             edit_source_keys: HashMap::new(),
             edit_buffers: HashMap::new(),
+            edit_tag_raw: HashMap::new(),
+            selected_trade_id: None,
             show_account_value_chart: false,
             include_fees_in_pnl: true,
             portfolio_window: PortfolioWindow::Week,

@@ -1,13 +1,13 @@
 use super::super::super::config_warning_guard;
 use super::{
     ChartBackfillSource, ChartCrosshairStyle, ChartHollowCandleMode, ChartHudOrderSound,
-    ChartHudReadoutConfig, ChartSeriesStyle, JournalTradesView, KeroseneConfig,
-    WidgetPaddingConfig, WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig,
-    default_alfred_popup_scale, default_chart_chromatic_aberration_strength,
-    default_chart_crosshair_scale, default_chart_dotted_background_opacity,
-    default_chart_edge_blur_strength, default_chart_fisheye_strength, default_config_value,
-    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
-    default_widget_padding, json_string, object_mut, value_from_json, value_from_str,
+    ChartHudReadoutConfig, ChartSeriesStyle, KeroseneConfig, WidgetPaddingConfig,
+    WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig, default_alfred_popup_scale,
+    default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
+    default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
+    default_chart_fisheye_strength, default_config_value, default_pane_border_thickness,
+    default_pane_corner_radius, default_ui_scale, default_widget_padding, json_string, object_mut,
+    value_from_json, value_from_str,
 };
 use crate::config::{ReadDataProvider, take_config_warnings};
 
@@ -19,7 +19,6 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         chart_dotted_background_opacity: 0.27,
         chart_hollow_candle_mode: ChartHollowCandleMode::Both,
         chart_series_style: ChartSeriesStyle::Line,
-        journal_trades_view: JournalTradesView::Table,
         chart_fisheye_enabled: true,
         chart_fisheye_strength: 0.72,
         chart_chromatic_aberration_enabled: true,
@@ -61,7 +60,6 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         ChartHollowCandleMode::Both
     );
     assert_eq!(decoded.chart_series_style, ChartSeriesStyle::Line);
-    assert_eq!(decoded.journal_trades_view, JournalTradesView::Table);
     assert!(decoded.chart_fisheye_enabled);
     assert_eq!(decoded.chart_fisheye_strength, 0.72);
     assert!(decoded.chart_chromatic_aberration_enabled);
@@ -106,7 +104,6 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("chart_dotted_background_opacity");
     object.remove("chart_hollow_candle_mode");
     object.remove("chart_series_style");
-    object.remove("journal_trades_view");
     object.remove("chart_fisheye_enabled");
     object.remove("chart_fisheye_strength");
     object.remove("chart_chromatic_aberration_enabled");
@@ -141,7 +138,6 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         ChartHollowCandleMode::Off
     );
     assert_eq!(decoded_legacy.chart_series_style, ChartSeriesStyle::Candles);
-    assert_eq!(decoded_legacy.journal_trades_view, JournalTradesView::Cards);
     assert!(!decoded_legacy.chart_fisheye_enabled);
     assert_eq!(
         decoded_legacy.chart_fisheye_strength,
@@ -214,10 +210,6 @@ fn chart_appearance_unknown_enum_values_default_with_warnings() {
         serde_json::json!("FutureSeriesStyle"),
     );
     object.insert(
-        "journal_trades_view".to_string(),
-        serde_json::json!("FutureJournalTradesView"),
-    );
-    object.insert(
         "chart_crosshair_style".to_string(),
         serde_json::json!("FutureCrosshair"),
     );
@@ -235,7 +227,6 @@ fn chart_appearance_unknown_enum_values_default_with_warnings() {
 
     assert_eq!(decoded.chart_hollow_candle_mode, ChartHollowCandleMode::Off);
     assert_eq!(decoded.chart_series_style, ChartSeriesStyle::Candles);
-    assert_eq!(decoded.journal_trades_view, JournalTradesView::Cards);
     assert_eq!(decoded.chart_crosshair_style, ChartCrosshairStyle::Classic);
     assert_eq!(
         decoded.chart_hud_order_sound,
@@ -257,9 +248,6 @@ fn chart_appearance_unknown_enum_values_default_with_warnings() {
             .iter()
             .any(|warning| warning.contains("Unknown chart series style \"FutureSeriesStyle\""))
     );
-    assert!(warnings.iter().any(|warning| {
-        warning.contains("Unknown journal trades view \"FutureJournalTradesView\"")
-    }));
     assert!(
         warnings
             .iter()

@@ -380,7 +380,6 @@ impl TradingTerminal {
                     .unwrap_or(journal::DEFAULT_JOURNAL_WINDOW_HEIGHT);
                 journal
             },
-            journal_trades_view: cfg.journal_trades_view,
             spinner_phase: 0.0,
             status_bar_now_ms: Self::now_ms(),
             status_bar_now: Instant::now(),

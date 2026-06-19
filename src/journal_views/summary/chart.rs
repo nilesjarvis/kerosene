@@ -4,11 +4,9 @@ use crate::helpers::{
     format_decimal_with_commas, normalize_two_decimal_display_value, signed_number_color,
 };
 use crate::journal::{AggregatedTrade, JournalFilter};
-use crate::journal_views::style::{
-    JOURNAL_PANEL_PADDING, journal_control_style, journal_panel_style,
-};
+use crate::journal_views::style::{JOURNAL_PANEL_PADDING, journal_panel_style};
 use crate::message::Message;
-use crate::portfolio_state::{PORTFOLIO_WINDOWS, PortfolioWindow};
+use crate::portfolio_state::PortfolioWindow;
 
 use iced::widget::{Space, button, canvas, checkbox, column, container, row, rule, text};
 use iced::{Alignment, Element, Fill};
@@ -26,7 +24,7 @@ use series::*;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(super) fn view_journal_summary_chart(
+    pub(in crate::journal_views) fn view_journal_summary_chart(
         &self,
         filtered_trades: &[&AggregatedTrade],
         total_pnl: f64,
@@ -104,7 +102,6 @@ impl TradingTerminal {
             ]
             .spacing(8)
             .align_y(Alignment::Center),
-            journal_portfolio_window_row(self.journal.portfolio_window),
             rule::horizontal(1),
             row![
                 button(
@@ -270,37 +267,6 @@ fn journal_filter_label(filter: JournalFilter) -> &'static str {
         JournalFilter::Spot => "Spot",
         JournalFilter::Outcome => "Outcome",
     }
-}
-
-fn journal_portfolio_window_row(
-    selected_window: PortfolioWindow,
-) -> iced::widget::Row<'static, Message> {
-    PORTFOLIO_WINDOWS.iter().copied().fold(
-        row![].spacing(4).align_y(Alignment::Center),
-        |row, window| {
-            row.push(journal_timeframe_button(
-                window.label(),
-                selected_window == window,
-                Message::JournalPortfolioWindowChanged(window),
-            ))
-        },
-    )
-}
-
-fn journal_timeframe_button(
-    label: &'static str,
-    active: bool,
-    msg: Message,
-) -> Element<'static, Message> {
-    button(
-        text(label)
-            .size(11)
-            .font(crate::app_fonts::monospace_font()),
-    )
-    .on_press(msg)
-    .padding([3, 9])
-    .style(journal_control_style(active))
-    .into()
 }
 
 fn apply_journal_portfolio_window(

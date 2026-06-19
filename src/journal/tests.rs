@@ -94,6 +94,7 @@ fn note(open: &str) -> JournalNote {
     JournalNote {
         open: open.to_string(),
         close: String::new(),
+        ..Default::default()
     }
 }
 
@@ -102,6 +103,7 @@ fn journal_note_debug_summarizes_private_text() {
     let note = JournalNote {
         open: "private open note sentinel".to_string(),
         close: "private close note sentinel".to_string(),
+        ..Default::default()
     };
 
     let rendered = format!("{note:?}");

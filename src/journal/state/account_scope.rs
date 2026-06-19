@@ -66,6 +66,7 @@ impl JournalState {
             show_account_value_chart: false,
             include_fees_in_pnl: true,
             portfolio_window: crate::portfolio_state::PortfolioWindow::Week,
+            selected_trade_id: None,
             error: None,
             warning: None,
             last_refresh_time: None,
@@ -73,6 +74,7 @@ impl JournalState {
             edit_modes: HashMap::new(),
             edit_source_keys: HashMap::new(),
             edit_buffers: HashMap::new(),
+            edit_tag_raw: HashMap::new(),
         }
     }
 
@@ -130,6 +132,8 @@ impl JournalState {
         self.edit_modes.clear();
         self.edit_source_keys.clear();
         self.edit_buffers.clear();
+        self.edit_tag_raw.clear();
+        self.selected_trade_id = None;
     }
 
     pub fn clear_active_account_data(&mut self) {
@@ -145,6 +149,8 @@ impl JournalState {
         self.edit_modes.clear();
         self.edit_source_keys.clear();
         self.edit_buffers.clear();
+        self.edit_tag_raw.clear();
+        self.selected_trade_id = None;
     }
 
     pub(crate) fn snapshot_active_account_state(&self) -> JournalAccountState {
@@ -165,6 +171,8 @@ impl JournalState {
             edit_modes: self.edit_modes.clone(),
             edit_source_keys: self.edit_source_keys.clone(),
             edit_buffers: self.edit_buffers.clone(),
+            edit_tag_raw: self.edit_tag_raw.clone(),
+            selected_trade_id: self.selected_trade_id.clone(),
             show_account_value_chart: self.show_account_value_chart,
             include_fees_in_pnl: self.include_fees_in_pnl,
             portfolio_window: self.portfolio_window,
@@ -188,6 +196,8 @@ impl JournalState {
         self.edit_modes = state.edit_modes;
         self.edit_source_keys = state.edit_source_keys;
         self.edit_buffers = state.edit_buffers;
+        self.edit_tag_raw = state.edit_tag_raw;
+        self.selected_trade_id = state.selected_trade_id;
         self.show_account_value_chart = state.show_account_value_chart;
         self.include_fees_in_pnl = state.include_fees_in_pnl;
         self.portfolio_window = state.portfolio_window;
@@ -202,6 +212,13 @@ impl JournalState {
 
     pub fn clear_snapshot_cache(&mut self) {
         self.snapshot_requests.clear();
+        self.snapshots.clear();
+    }
+
+    /// Clear only cached snapshot *results*, preserving any in-flight requests
+    /// so a candle response that arrives after a re-aggregation still applies
+    /// to its (still-selected) trade rather than being silently dropped.
+    pub fn clear_snapshot_results(&mut self) {
         self.snapshots.clear();
     }
 }

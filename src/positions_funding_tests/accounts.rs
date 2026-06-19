@@ -61,6 +61,7 @@ fn ghost_journal_entries_are_excluded_from_persisted_snapshot() {
         journal::JournalNote {
             open: "session only".to_string(),
             close: String::new(),
+            ..Default::default()
         },
     );
     journal.account_states.insert(
@@ -71,6 +72,7 @@ fn ghost_journal_entries_are_excluded_from_persisted_snapshot() {
                 journal::JournalNote {
                     open: "persisted".to_string(),
                     close: String::new(),
+                    ..Default::default()
                 },
             )]),
             ..journal::JournalAccountState::default()

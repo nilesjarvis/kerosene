@@ -143,6 +143,48 @@ pub fn initial_snapshot_request(
     )
 }
 
+/// Build a snapshot request pinned to a specific timeframe (for the detail-view
+/// 1m / 5m / 1h selector), rather than the auto-selected ladder rung.
+#[allow(clippy::too_many_arguments)]
+pub fn snapshot_request_for_timeframe(
+    account_key: Option<String>,
+    address: String,
+    trade: &AggregatedTrade,
+    source: ChartBackfillSource,
+    read_data_provider_generation: u64,
+    hydromancer_key_generation: u64,
+    now_ms: u64,
+    timeframe: Timeframe,
+) -> Result<JournalTradeSnapshotRequest, String> {
+    if trade.coin.starts_with('@') || trade.coin.starts_with('#') {
+        return Err("Chart snapshots are currently available for perp trades only.".to_string());
+    }
+    if !trade.basis_complete {
+        return Err(
+            "Snapshot unavailable because opening fills are outside loaded history.".to_string(),
+        );
+    }
+
+    let ladder_index = SNAPSHOT_LADDER
+        .iter()
+        .position(|candidate| *candidate == timeframe)
+        .ok_or_else(|| "Unsupported snapshot timeframe.".to_string())?;
+    let trade_end_ms = trade.end_time.unwrap_or(now_ms).max(trade.start_time);
+    snapshot_request_for_ladder_index(
+        SnapshotRequestContext {
+            account_key,
+            address,
+            source,
+            read_data_provider_generation,
+            hydromancer_key_generation,
+            trade_end_ms,
+            is_open: trade.end_time.is_none(),
+        },
+        trade,
+        ladder_index,
+    )
+}
+
 struct SnapshotRequestContext {
     account_key: Option<String>,
     address: String,
