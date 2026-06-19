@@ -421,6 +421,25 @@ fn execution_result_classifier_separates_rejected_ambiguous_and_transport_unknow
 }
 
 #[test]
+fn execution_result_classifier_redacts_sensitive_external_errors() {
+    let rejected = classify_execution_result(Ok(exchange_response(vec![serde_json::json!({
+        "error": "Order rejected private_key=super-secret"
+    })])));
+    assert_eq!(rejected.kind, ExecutionOutcomeKind::Rejected);
+    assert!(rejected.status.contains("Order rejected"));
+    assert!(rejected.status.contains("private_key=<redacted>"));
+    assert!(!rejected.status.contains("super-secret"));
+
+    let unknown = classify_execution_result(Err(
+        "Exchange request failed: token=transport-secret".to_string()
+    ));
+    assert_eq!(unknown.kind, ExecutionOutcomeKind::TransportUnknown);
+    assert!(unknown.status.contains("Exchange request failed"));
+    assert!(unknown.status.contains("token=<redacted>"));
+    assert!(!unknown.status.contains("transport-secret"));
+}
+
+#[test]
 fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
     let mut terminal = terminal_with_connected_account();
 
@@ -532,7 +551,7 @@ fn one_shot_status_error_stays_pending_until_account_refresh() {
     let _task = terminal.handle_one_shot_placement_status_result(
         request_id,
         context,
-        Err("orderStatus request failed".to_string()),
+        Err("orderStatus request failed: private_key=super-secret".to_string()),
     );
 
     assert!(terminal.pending_one_shot_status_request.is_some());
@@ -543,6 +562,8 @@ fn one_shot_status_error_stays_pending_until_account_refresh() {
     assert!(is_error);
     assert!(message.contains("placement status still uncertain"));
     assert!(message.contains("orderStatus request failed"));
+    assert!(message.contains("private_key=<redacted>"));
+    assert!(!message.contains("super-secret"));
 
     finish_current_account_refresh(&mut terminal);
 
@@ -1063,6 +1084,24 @@ fn cancel_order_status_open_keeps_cancel_uncertain_and_local_order() {
     assert!(is_error);
     assert!(message.contains("still uncertain"));
     assert!(message.contains("reports open"));
+}
+
+#[test]
+fn cancel_order_status_error_redacts_sensitive_text() {
+    let mut terminal = terminal_with_connected_account();
+
+    let _task = terminal.handle_cancel_order_status_result(
+        TEST_ACCOUNT.to_string(),
+        42,
+        "BTC".to_string(),
+        Err("orderStatus request failed: api_key=super-secret".to_string()),
+    );
+
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("Cancel status still uncertain for order 42"));
+    assert!(message.contains("api_key=<redacted>"));
+    assert!(!message.contains("super-secret"));
 }
 
 #[test]

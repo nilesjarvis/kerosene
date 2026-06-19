@@ -1,5 +1,6 @@
 use crate::api::{OrderStatusResult, fetch_order_status_by_cloid, fetch_order_status_by_oid};
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::order_execution::OneShotPlacementContext;
 use crate::signing::ExchangeResponse;
@@ -73,6 +74,11 @@ pub(crate) fn classify_execution_result(
         Ok(response) => {
             let status = response.summary();
             let response_is_error = response.is_error();
+            let status = if response_is_error {
+                redact_sensitive_response_text(&status)
+            } else {
+                status
+            };
             let kind = if response_is_error {
                 ExecutionOutcomeKind::Rejected
             } else if status == "Cancelled" {
@@ -94,7 +100,7 @@ pub(crate) fn classify_execution_result(
         }
         Err(error) => ExecutionOutcome {
             kind: ExecutionOutcomeKind::TransportUnknown,
-            status: error,
+            status: redact_sensitive_response_text(&error),
             is_error: true,
             refresh_account: true,
         },
@@ -295,6 +301,7 @@ impl TradingTerminal {
                 );
             }
             Err(error) => {
+                let error = redact_sensitive_response_text(&error);
                 self.set_order_status(
                     format!(
                         "Cancel status still uncertain for order {oid}: {error}; refreshing account data"
@@ -586,6 +593,7 @@ impl TradingTerminal {
                 );
             }
             Err(error) => {
+                let error = redact_sensitive_response_text(&error);
                 self.set_order_status(
                     format!(
                         "{} placement status still uncertain for {} ({}): {}",
