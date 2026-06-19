@@ -234,7 +234,7 @@ fn provider_error_summary(error: &str) -> String {
         return "authentication failed".to_string();
     }
 
-    crate::helpers::text_excerpt(error, 160)
+    crate::helpers::sensitive_response_excerpt(error, 160)
 }
 
 #[cfg(test)]
@@ -274,6 +274,39 @@ mod tests {
             ReadDataProvider::Hydromancer,
             2
         )));
+    }
+
+    #[test]
+    fn fallback_warning_redacts_provider_error_secrets() {
+        let warning = fallback_warning(
+            "portfolio",
+            "upstream echoed api_key=\"hydro-secret\" cursor=\"cursor-secret\" trace=0x0123456789abcdef0123456789abcdef01234567",
+        );
+
+        assert!(warning.contains("Hydromancer portfolio failed; used Hyperliquid fallback"));
+        assert!(warning.contains("<redacted>"));
+        assert!(warning.contains("<redacted-hex>"));
+        for secret in [
+            "hydro-secret",
+            "cursor-secret",
+            "0123456789abcdef0123456789abcdef01234567",
+        ] {
+            assert!(
+                !warning.contains(secret),
+                "fallback warning leaked {secret}"
+            );
+        }
+    }
+
+    #[test]
+    fn fallback_warning_collapses_authentication_failures() {
+        let warning = fallback_warning("orders", "401 invalid api key hydro-secret");
+
+        assert_eq!(
+            warning,
+            "Hydromancer orders failed; used Hyperliquid fallback: authentication failed"
+        );
+        assert!(!warning.contains("hydro-secret"));
     }
 
     #[test]
