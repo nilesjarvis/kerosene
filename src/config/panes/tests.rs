@@ -1,5 +1,6 @@
 use super::{
-    DetachedChartWindowConfig, OrderBookConfig, OrderBookDisplayModeConfig, PositioningInfoConfig,
+    DetachedChartWindowConfig, OrderBookConfig, OrderBookDisplayModeConfig,
+    OrderBookSymbolModeConfig, PositioningInfoConfig,
 };
 use crate::config::SortDirection;
 use crate::positioning_state::PositioningInfoPage;
@@ -44,6 +45,26 @@ fn order_book_config_round_trips_dom_ladder_display_mode() {
     assert!(rendered.contains(r#""display_mode":"DomLadder""#));
     assert!(rendered.contains(r#""center_on_mid":true"#));
     assert!(rendered.contains(r#""reverse_side":true"#));
+}
+
+#[test]
+fn order_book_config_round_trips_fixed_symbol_mode() {
+    let config: OrderBookConfig = serde_json::from_str(
+        r#"{
+            "id": 7,
+            "mode": { "Fixed": "ETH" },
+            "tick_size": 1.0,
+            "display_mode": "DepthList"
+        }"#,
+    )
+    .expect("config");
+
+    assert_eq!(
+        config.mode,
+        OrderBookSymbolModeConfig::Fixed("ETH".to_string())
+    );
+    let rendered = serde_json::to_string(&config).expect("json");
+    assert!(rendered.contains(r#""mode":{"Fixed":"ETH"}"#));
 }
 
 #[test]

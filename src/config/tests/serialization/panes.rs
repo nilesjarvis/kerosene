@@ -1,8 +1,8 @@
 use super::super::config_warning_guard;
 use super::{json_string, value_from_json};
 use crate::config::{
-    AxisConfig, BottomTabConfig, KeroseneConfig, PaneKindConfig, PaneLayoutConfig,
-    take_config_warnings,
+    AxisConfig, BottomTabConfig, KeroseneConfig, OrderBookConfig, OrderBookDisplayModeConfig,
+    OrderBookSymbolModeConfig, PaneKindConfig, PaneLayoutConfig, take_config_warnings,
 };
 use crate::session_data_state::SessionDataLookback;
 
@@ -96,6 +96,38 @@ fn unknown_future_bottom_tab_defaults_to_positions() {
         take_config_warnings()
             .iter()
             .any(|warning| warning.contains("Unknown bottom tab \"FutureTab\""))
+    );
+}
+
+#[test]
+fn unknown_future_order_book_modes_default_with_warnings() {
+    let _warning_guard = config_warning_guard();
+    let order_book: OrderBookConfig = value_from_json(
+        serde_json::json!({
+            "id": 7,
+            "mode": "FutureMode",
+            "tick_size": 1.0,
+            "display_mode": "FutureDisplayMode"
+        }),
+        "future order book modes should deserialize",
+    );
+
+    assert_eq!(order_book.mode, OrderBookSymbolModeConfig::Active);
+    assert_eq!(
+        order_book.display_mode,
+        OrderBookDisplayModeConfig::DepthList
+    );
+
+    let warnings = take_config_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("Unknown order book symbol mode \"FutureMode\""))
+    );
+    assert!(
+        warnings.iter().any(
+            |warning| warning.contains("Unknown order book display mode \"FutureDisplayMode\"")
+        )
     );
 }
 
