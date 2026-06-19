@@ -237,32 +237,7 @@ impl From<journal::JournalTradeSnapshotRequest> for RedactedJournalSnapshotReque
 
 impl fmt::Debug for RedactedJournalSnapshotRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let request = &self.0;
-        f.debug_struct("JournalTradeSnapshotRequest")
-            .field(
-                "account_key",
-                &request.account_key.as_ref().map(|_| "<redacted>"),
-            )
-            .field("address", &format_args!("<redacted>"))
-            .field("trade_id", &request.trade_id)
-            .field("coin", &request.coin)
-            .field("source", &request.source)
-            .field(
-                "read_data_provider_generation",
-                &request.read_data_provider_generation,
-            )
-            .field(
-                "hydromancer_key_generation",
-                &request.hydromancer_key_generation,
-            )
-            .field("timeframe", &request.timeframe)
-            .field("ladder_index", &request.ladder_index)
-            .field("trade_start_ms", &request.trade_start_ms)
-            .field("trade_end_ms", &request.trade_end_ms)
-            .field("is_open", &request.is_open)
-            .field("start_ms", &request.start_ms)
-            .field("end_ms", &request.end_ms)
-            .finish()
+        fmt::Debug::fmt(&self.0, f)
     }
 }
 

@@ -3,6 +3,7 @@ use crate::api::Candle;
 use crate::chart::TradeMarker;
 use crate::config::ChartBackfillSource;
 use crate::timeframe::Timeframe;
+use std::fmt;
 
 const SNAPSHOT_MAX_CANDLES: u64 = 260;
 const MIN_PADDING_MS: u64 = 60 * 60 * 1000;
@@ -22,7 +23,7 @@ const SNAPSHOT_LADDER: &[Timeframe] = &[
     Timeframe::W1,
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct JournalTradeSnapshotRequest {
     pub account_key: Option<String>,
     pub address: String,
@@ -38,6 +39,36 @@ pub struct JournalTradeSnapshotRequest {
     pub is_open: bool,
     pub start_ms: u64,
     pub end_ms: u64,
+}
+
+impl fmt::Debug for JournalTradeSnapshotRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalTradeSnapshotRequest")
+            .field(
+                "account_key",
+                &self.account_key.as_ref().map(|_| "<redacted>"),
+            )
+            .field("address", &format_args!("<redacted>"))
+            .field("trade_id", &self.trade_id)
+            .field("coin", &self.coin)
+            .field("source", &self.source)
+            .field(
+                "read_data_provider_generation",
+                &self.read_data_provider_generation,
+            )
+            .field(
+                "hydromancer_key_generation",
+                &self.hydromancer_key_generation,
+            )
+            .field("timeframe", &self.timeframe)
+            .field("ladder_index", &self.ladder_index)
+            .field("trade_start_ms", &self.trade_start_ms)
+            .field("trade_end_ms", &self.trade_end_ms)
+            .field("is_open", &self.is_open)
+            .field("start_ms", &self.start_ms)
+            .field("end_ms", &self.end_ms)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -482,6 +513,17 @@ mod tests {
             start_ms: 0,
             end_ms: 3_000,
         }
+    }
+
+    #[test]
+    fn request_debug_redacts_account_identifiers() {
+        let rendered = format!("{:?}", request());
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains("acct"));
+        assert!(!rendered.contains("0xabc"));
+        assert!(rendered.contains("perp:BTC:test"));
+        assert!(rendered.contains("BTC"));
     }
 
     #[test]

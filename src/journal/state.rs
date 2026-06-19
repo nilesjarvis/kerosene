@@ -2,8 +2,12 @@ use super::{
     AggregatedTrade, JournalNote, JournalTradeDetails, JournalTradeSnapshot,
     JournalTradeSnapshotRequest,
 };
+use crate::helpers::redact_sensitive_response_text;
 use crate::portfolio_state::PortfolioWindow;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 mod account_scope;
 
@@ -126,7 +130,7 @@ impl JournalState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct JournalAccountState {
     pub loaded_address: Option<String>,
     pub entries: HashMap<String, JournalNote>,
@@ -147,6 +151,62 @@ pub struct JournalAccountState {
     pub show_account_value_chart: bool,
     pub include_fees_in_pnl: bool,
     pub portfolio_window: PortfolioWindow,
+}
+
+impl fmt::Debug for JournalAccountState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JournalAccountState")
+            .field(
+                "loaded_address",
+                &self.loaded_address.as_ref().map(|_| "<redacted>"),
+            )
+            .field("entries", &format_args!("len={}", self.entries.len()))
+            .field("raw_fills", &format_args!("len={}", self.raw_fills.len()))
+            .field("trades", &format_args!("len={}", self.trades.len()))
+            .field(
+                "trade_details",
+                &format_args!("len={}", self.trade_details.len()),
+            )
+            .field(
+                "expanded_snapshot_trade_ids",
+                &format_args!("len={}", self.expanded_snapshot_trade_ids.len()),
+            )
+            .field(
+                "snapshot_requests",
+                &format_args!("len={}", self.snapshot_requests.len()),
+            )
+            .field("snapshots", &format_args!("len={}", self.snapshots.len()))
+            .field("loading", &self.loading)
+            .field(
+                "error",
+                &self
+                    .error
+                    .as_ref()
+                    .map(|error| redact_sensitive_response_text(error)),
+            )
+            .field(
+                "warning",
+                &self
+                    .warning
+                    .as_ref()
+                    .map(|warning| redact_sensitive_response_text(warning)),
+            )
+            .field("last_refresh_time", &self.last_refresh_time)
+            .field("sync_status", &self.sync_status)
+            .field("edit_modes", &format_args!("len={}", self.edit_modes.len()))
+            .field(
+                "edit_source_keys",
+                &format_args!("len={}", self.edit_source_keys.len()),
+            )
+            .field(
+                "edit_buffers",
+                &format_args!("len={}", self.edit_buffers.len()),
+            )
+            .field("show_account_value_chart", &self.show_account_value_chart)
+            .field("include_fees_in_pnl", &self.include_fees_in_pnl)
+            .field("portfolio_window", &self.portfolio_window)
+            .finish()
+    }
 }
 
 impl Default for JournalAccountState {

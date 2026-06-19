@@ -1,5 +1,12 @@
 use super::note;
-use crate::journal::{JournalFilter, JournalState, JournalSyncStatus};
+use crate::{
+    config::ChartBackfillSource,
+    journal::{
+        JournalAccountState, JournalFilter, JournalState, JournalSyncStatus,
+        JournalTradeSnapshotRequest,
+    },
+    timeframe::Timeframe,
+};
 use std::collections::HashMap;
 
 #[test]
@@ -21,6 +28,56 @@ fn journal_filter_matches_expected_coin_prefixes() {
             "{coin} outcome"
         );
     }
+}
+
+#[test]
+fn journal_account_state_debug_redacts_account_scoped_data() {
+    const ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+    const ACCOUNT_KEY: &str = "journal-account-key-sentinel";
+    const NOTE_TEXT: &str = "private journal note sentinel";
+    const DRAFT_TEXT: &str = "private draft sentinel";
+
+    let mut state = JournalAccountState {
+        loaded_address: Some(ADDRESS.to_string()),
+        ..JournalAccountState::default()
+    };
+    state.entries.insert("trade-1".to_string(), note(NOTE_TEXT));
+    state
+        .edit_buffers
+        .insert("trade-1".to_string(), note(DRAFT_TEXT));
+    state.snapshot_requests.insert(
+        "trade-1".to_string(),
+        JournalTradeSnapshotRequest {
+            account_key: Some(ACCOUNT_KEY.to_string()),
+            address: ADDRESS.to_string(),
+            trade_id: "trade-1".to_string(),
+            coin: "HYPE".to_string(),
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: 1,
+            hydromancer_key_generation: 2,
+            timeframe: Timeframe::M1,
+            ladder_index: 0,
+            trade_start_ms: 100,
+            trade_end_ms: 200,
+            is_open: false,
+            start_ms: 50,
+            end_ms: 250,
+        },
+    );
+    state.error = Some(format!("failed for {ADDRESS} api_key=journal-secret"));
+    state.warning = Some(format!("warning for {ADDRESS}"));
+
+    let rendered = format!("{state:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(ADDRESS), "{rendered}");
+    assert!(!rendered.contains(ACCOUNT_KEY), "{rendered}");
+    assert!(!rendered.contains("journal-secret"), "{rendered}");
+    assert!(!rendered.contains(NOTE_TEXT), "{rendered}");
+    assert!(!rendered.contains(DRAFT_TEXT), "{rendered}");
+    assert!(rendered.contains("entries: len=1"), "{rendered}");
+    assert!(rendered.contains("snapshot_requests: len=1"), "{rendered}");
+    assert!(rendered.contains("edit_buffers: len=1"), "{rendered}");
 }
 
 #[test]
