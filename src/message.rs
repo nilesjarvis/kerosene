@@ -579,6 +579,7 @@ pub(crate) enum Message {
     ChartDottedBackgroundOpacityChanged(f32),
     ChartHollowCandleModeChanged(config::ChartHollowCandleMode),
     ChartSeriesStyleChanged(config::ChartSeriesStyle),
+    JournalTradesViewChanged(config::JournalTradesView),
     ToggleChartFisheye(bool),
     ChartFisheyeStrengthChanged(f32),
     ToggleChartChromaticAberration(bool),

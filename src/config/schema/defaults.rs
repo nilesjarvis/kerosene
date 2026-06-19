@@ -269,6 +269,7 @@ impl Default for KeroseneConfig {
             main_window_y: None,
             journal_window_width: None,
             journal_window_height: None,
+            journal_trades_view: Default::default(),
             accounts: Vec::new(),
             pending_keychain_profile_deletions: Vec::new(),
             pending_keychain_cleanup_all: false,

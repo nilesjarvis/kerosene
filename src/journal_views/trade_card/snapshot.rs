@@ -26,7 +26,7 @@ const SNAPSHOT_DEFAULT_EMPTY_SPACE_FRACTION: u64 = 12;
 const SNAPSHOT_MIN_DATA_OVERLAP_FRACTION: u64 = 12;
 
 impl TradingTerminal {
-    pub(super) fn view_journal_trade_snapshot<'a>(
+    pub(in crate::journal_views) fn view_journal_trade_snapshot<'a>(
         &'a self,
         trade: &'a AggregatedTrade,
     ) -> Element<'a, Message> {

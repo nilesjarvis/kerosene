@@ -10,7 +10,7 @@ use iced::widget::{Column, Space, button, row, text, text_input};
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
-    pub(super) fn push_journal_trade_editor<'a>(
+    pub(in crate::journal_views) fn push_journal_trade_editor<'a>(
         &'a self,
         card: Column<'a, Message>,
         trade: &'a AggregatedTrade,

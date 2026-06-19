@@ -89,6 +89,10 @@ impl TradingTerminal {
                 self.sync_chart_series_style();
                 self.persist_config();
             }
+            Message::JournalTradesViewChanged(view) if self.journal_trades_view != view => {
+                self.journal_trades_view = view;
+                self.persist_config();
+            }
             Message::ToggleChartFisheye(enabled) if self.chart_fisheye_enabled != enabled => {
                 self.chart_fisheye_enabled = enabled;
                 self.sync_chart_fisheye();

@@ -527,6 +527,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) live_watchlist_history_loaded_at: HashMap<String, u64>,
     pub(crate) live_watchlist_status: Option<(String, bool)>,
     pub(crate) journal: journal::JournalState,
+    pub(crate) journal_trades_view: config::JournalTradesView,
     // Shared loading spinner phase
     pub(crate) spinner_phase: f32,
     // Last status bar tick timestamp, used by render code that displays wall-clock state.

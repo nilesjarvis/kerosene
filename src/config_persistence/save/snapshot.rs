@@ -113,6 +113,7 @@ impl TradingTerminal {
             main_window_y: self.main_window_pos.map(|p| p.y),
             journal_window_width: Some(self.journal.width),
             journal_window_height: Some(self.journal.height),
+            journal_trades_view: self.journal_trades_view,
 
             live_watchlists: layout_snapshot.live_watchlists,
             positioning_infos: layout_snapshot.positioning_infos,

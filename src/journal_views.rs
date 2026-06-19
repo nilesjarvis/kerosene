@@ -49,40 +49,36 @@ impl TradingTerminal {
                     .color(theme.palette().success),
             );
         } else {
-            let mut list = Column::new().spacing(8);
             let filtered_trades = self.filtered_journal_trades();
 
             content = self.push_journal_summary(content, &filtered_trades);
 
-            let mut has_trades = false;
-            let current_time_ms = self.status_bar_now_ms;
-
-            for trade in filtered_trades {
-                has_trades = true;
-                list = list.push(self.view_journal_trade_card(trade, current_time_ms));
-            }
-
-            if !has_trades {
+            if filtered_trades.is_empty() {
                 content = content.push(
                     text("No trades match the current filter.")
                         .size(14)
                         .color(theme.palette().text),
                 );
             } else {
-                if self.journal.loading {
-                    list = list.push(
-                        container(
-                            text("Fetching historical trades...")
-                                .size(12)
-                                .color(theme.palette().success),
-                        )
-                        .width(Fill)
-                        .padding(12)
-                        .center_x(Fill),
-                    );
-                }
+                let current_time_ms = self.status_bar_now_ms;
+                let trade_list = if self.journal_trades_view.is_table() {
+                    self.view_journal_trade_table(&filtered_trades, current_time_ms)
+                } else {
+                    let mut list = Column::new().spacing(8);
+
+                    for trade in filtered_trades {
+                        list = list.push(self.view_journal_trade_card(trade, current_time_ms));
+                    }
+
+                    if self.journal.loading {
+                        list = list.push(self.view_journal_fetching_history_row(&theme));
+                    }
+
+                    list.into()
+                };
+
                 content = content.push(
-                    scrollable(list)
+                    scrollable(trade_list)
                         .direction(iced::widget::scrollable::Direction::Vertical(
                             iced::widget::scrollable::Scrollbar::new()
                                 .width(4)

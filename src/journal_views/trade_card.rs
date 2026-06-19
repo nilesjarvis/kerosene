@@ -108,7 +108,7 @@ impl TradingTerminal {
             .into()
     }
 
-    fn journal_max_position_label(&self, trade: &AggregatedTrade) -> String {
+    pub(super) fn journal_max_position_label(&self, trade: &AggregatedTrade) -> String {
         let side_label = if trade.coin.starts_with('@') {
             "Spot"
         } else if trade.coin.starts_with('#') {
