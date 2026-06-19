@@ -19,6 +19,30 @@ fn switch_account_hotkey_round_trips_secret_id() {
 }
 
 #[test]
+fn switch_account_hotkey_debug_redacts_secret_id() {
+    let secret_id = "acct-secret-id";
+    let hotkey = HotkeyConfig {
+        action: HotkeyAction::SwitchAccount {
+            secret_id: secret_id.to_string(),
+        },
+        key: "1".to_string(),
+        shift: false,
+        ctrl: true,
+        alt: false,
+        logo: false,
+    };
+
+    let action_debug = format!("{:?}", hotkey.action);
+    let config_debug = format!("{hotkey:?}");
+
+    assert!(!action_debug.contains(secret_id));
+    assert!(!config_debug.contains(secret_id));
+    assert!(action_debug.contains("<redacted>"));
+    assert!(config_debug.contains("<redacted>"));
+    assert!(config_debug.contains("ctrl: true"));
+}
+
+#[test]
 fn settings_window_hotkey_round_trips() {
     let hotkey = HotkeyConfig {
         action: HotkeyAction::OpenSettingsWindow,
