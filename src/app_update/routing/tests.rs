@@ -5,6 +5,7 @@ use crate::portfolio_state::PnlValueDisplayMode;
 mod account;
 mod annotations;
 mod chrome_layout;
+mod feature_groups;
 mod markets;
 
 fn assert_route(message: Message, expected: UpdateRoute) {
