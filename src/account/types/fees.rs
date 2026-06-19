@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Fee Rates
@@ -7,7 +8,7 @@ use serde::Deserialize;
 /// User's personalized fee rates (from the `userFees` endpoint).
 /// Rates already include VIP tier discounts, referral discounts,
 /// and staking discounts.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct UserFeeRates {
     /// Perp taker (cross) fee rate, e.g. "0.000315" = 0.0315%.
@@ -22,6 +23,17 @@ pub struct UserFeeRates {
     /// Spot maker (add) fee rate, e.g. "0.00028" = 0.028%.
     #[serde(default)]
     pub user_spot_add_rate: String,
+}
+
+impl fmt::Debug for UserFeeRates {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserFeeRates")
+            .field("user_cross_rate", &"<redacted>")
+            .field("user_add_rate", &"<redacted>")
+            .field("user_spot_cross_rate", &"<redacted>")
+            .field("user_spot_add_rate", &"<redacted>")
+            .finish()
+    }
 }
 
 impl UserFeeRates {
