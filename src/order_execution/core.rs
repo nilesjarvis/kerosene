@@ -11,7 +11,7 @@ use crate::signing::{
 };
 use iced::Task;
 use sha3::{Digest, Keccak256};
-use std::fmt::Write as _;
+use std::fmt::{self, Write as _};
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
 
@@ -124,13 +124,26 @@ pub(crate) enum ReduceOnlySource {
     Fixed(bool),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct OneShotPlacementContext {
     pub(crate) account_address: String,
     pub(crate) cloid: String,
     pub(crate) surface: OrderSurface,
     pub(crate) symbol_key: String,
     pub(crate) order_kind: ExchangeOrderKind,
+}
+
+impl fmt::Debug for OneShotPlacementContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OneShotPlacementContext")
+            .field("account_address", &"<redacted>")
+            .field("cloid", &self.cloid)
+            .field("surface", &self.surface)
+            .field("symbol_key", &self.symbol_key)
+            .field("order_kind", &self.order_kind)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1335,6 +1348,23 @@ mod tests {
         assert_eq!(first.len(), 34);
         assert!(first.starts_with("0x"));
         assert!(first[2..].chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn one_shot_placement_context_debug_redacts_account_address() {
+        const ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
+        let context = OneShotPlacementContext {
+            account_address: ACCOUNT.to_string(),
+            cloid: "0xdeadbeef".to_string(),
+            surface: OrderSurface::Ticket,
+            symbol_key: "BTC".to_string(),
+            order_kind: ExchangeOrderKind::Limit,
+        };
+
+        let rendered = format!("{context:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(ACCOUNT));
     }
 
     #[test]
