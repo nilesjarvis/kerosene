@@ -3,11 +3,11 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::ellipsized_text;
 use crate::message::{Message, TelegramFastAuthMessageResult};
 use crate::telegram_fast_feed::{
-    TELEGRAM_FAST_SESSION_CLEAR_FAILED, bundled_telegram_api_hash, bundled_telegram_api_id,
-    clear_telegram_fast_pending_auth, clear_telegram_fast_pending_auth_except_request,
-    clear_telegram_fast_pending_auth_for_request, list_telegram_private_channel_candidates,
-    request_telegram_fast_login_code, sign_out_telegram_fast, submit_telegram_fast_login_code,
-    submit_telegram_fast_password,
+    TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED, TELEGRAM_FAST_SESSION_CLEAR_FAILED,
+    bundled_telegram_api_hash, bundled_telegram_api_id, clear_telegram_fast_pending_auth,
+    clear_telegram_fast_pending_auth_except_request, clear_telegram_fast_pending_auth_for_request,
+    list_telegram_private_channel_candidates, request_telegram_fast_login_code,
+    sign_out_telegram_fast, submit_telegram_fast_login_code, submit_telegram_fast_password,
 };
 use crate::telegram_feed::{
     TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_PUBLIC_CHANNELS, TelegramFastAuthOutcome,
@@ -597,10 +597,7 @@ impl TradingTerminal {
                 self.telegram_feed.fast_phone_input.clear();
                 self.telegram_feed.fast_reconnect_nonce =
                     self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
-                self.telegram_feed.fast_status = Some(warning.map_or_else(
-                    || ("Telegram fast session signed out".to_string(), false),
-                    |warning| (warning, true),
-                ));
+                self.telegram_feed.fast_status = Some(telegram_fast_signed_out_status(warning));
             }
             Err(err) => {
                 self.telegram_feed.fast_status =
@@ -1072,6 +1069,15 @@ fn telegram_fast_auth_error_status(error: &str) -> String {
         error.to_string()
     } else {
         "Telegram fast-mode request failed".to_string()
+    }
+}
+
+fn telegram_fast_signed_out_status(warning: Option<String>) -> (String, bool) {
+    match warning.as_deref() {
+        Some(TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED) => {
+            (TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string(), true)
+        }
+        _ => ("Telegram fast session signed out".to_string(), false),
     }
 }
 
@@ -1857,7 +1863,7 @@ mod tests {
         let _task = terminal.update_telegram_feed(Message::TelegramFastAuthResult(
             request_id,
             TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedOut {
-                warning: Some("Remote sign-out could not be confirmed".to_string()),
+                warning: Some(TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string()),
             })),
         ));
 
@@ -1876,7 +1882,17 @@ mod tests {
         );
         assert_eq!(
             terminal.telegram_feed.fast_status,
-            Some(("Remote sign-out could not be confirmed".to_string(), true))
+            Some((TELEGRAM_FAST_REMOTE_SIGN_OUT_UNCONFIRMED.to_string(), true))
+        );
+    }
+
+    #[test]
+    fn fast_auth_signed_out_warning_status_is_sanitized() {
+        assert_eq!(
+            telegram_fast_signed_out_status(Some(
+                "remote sign-out failed: auth_token=token-secret".to_string()
+            )),
+            ("Telegram fast session signed out".to_string(), false)
         );
     }
 
