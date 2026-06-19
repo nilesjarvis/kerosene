@@ -197,7 +197,7 @@ fn off_account_twap_reconciliation_error_records_retry_and_can_retry() {
     let _task = terminal.apply_account_data_loaded(
         ORIGIN_ADDRESS.to_string(),
         context,
-        Err("429 too many requests".to_string()),
+        Err("429 too many requests: api_key=super-secret".to_string()),
     );
 
     let twap = twap_by_id(&terminal, 1);
@@ -209,6 +209,8 @@ fn off_account_twap_reconciliation_error_records_retry_and_can_retry() {
                 && event.is_error
                 && event.message.contains("retry 1/")
                 && event.message.contains("429 too many requests")
+                && event.message.contains("api_key=<redacted>")
+                && !event.message.contains("super-secret")
         }),
         "reconciliation refresh failure should be visible on the TWAP"
     );
@@ -217,7 +219,10 @@ fn off_account_twap_reconciliation_error_records_retry_and_can_retry() {
             .order_status
             .as_ref()
             .is_some_and(|(message, is_error)| {
-                *is_error && message.contains("TWAP account-fill reconciliation refresh failed")
+                *is_error
+                    && message.contains("TWAP account-fill reconciliation refresh failed")
+                    && message.contains("api_key=<redacted>")
+                    && !message.contains("super-secret")
             })
     );
 
@@ -341,7 +346,7 @@ fn exhausted_twap_reconciliation_error_does_not_start_retry() {
     let _task = terminal.apply_account_data_loaded(
         ORIGIN_ADDRESS.to_string(),
         context,
-        Err("read provider unavailable".to_string()),
+        Err("read provider unavailable: token=super-secret".to_string()),
     );
 
     let generation_after_failure = terminal
@@ -359,6 +364,8 @@ fn exhausted_twap_reconciliation_error_does_not_start_retry() {
                 && event
                     .message
                     .contains("reconciliation refresh failed after")
+                && event.message.contains("token=<redacted>")
+                && !event.message.contains("super-secret")
         }),
         "exhausted reconciliation refresh failures should be visible"
     );

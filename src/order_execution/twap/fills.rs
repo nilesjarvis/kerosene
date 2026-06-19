@@ -1,5 +1,6 @@
 use crate::account::UserFill;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::signing::float_to_wire;
 use crate::twap_state::{
@@ -20,6 +21,7 @@ impl TradingTerminal {
         account_address: &str,
         error: String,
     ) -> Task<Message> {
+        let error = redact_sensitive_response_text(&error);
         let now = Instant::now();
         let mut archive_ids = Vec::new();
         let mut retry_delay = None;
