@@ -65,3 +65,27 @@ fn contexts_loaded_error_keeps_cache_and_fetch_timestamp() {
         Some(("24h volume refresh failed: rate limited".to_string(), true))
     );
 }
+
+#[test]
+fn contexts_loaded_error_redacts_sensitive_status_details() {
+    let mut loading = true;
+    let mut last_fetch_ms = Some(20);
+    let mut contexts = HashMap::from([("BTC".to_string(), context(1.0))]);
+    let mut status = None;
+
+    apply_contexts_loaded(
+        &mut loading,
+        &mut last_fetch_ms,
+        &mut contexts,
+        &mut status,
+        42,
+        Err("provider rejected api_key=key-secret cursor=cursor-secret".to_string()),
+    );
+
+    let (message, is_error) = status.expect("status");
+    assert!(is_error);
+    assert!(message.contains("api_key=<redacted>"));
+    assert!(message.contains("cursor=<redacted>"));
+    assert!(!message.contains("key-secret"));
+    assert!(!message.contains("cursor-secret"));
+}

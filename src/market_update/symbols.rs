@@ -7,6 +7,7 @@ use crate::api::{ExchangeSymbolsPayload, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::config::MarketUniverseConfig;
+use crate::helpers::redact_sensitive_response_text;
 use crate::market_state::SymbolSearchMarketFilter;
 use crate::message::Message;
 use crate::spaghetti_state::SpaghettiChartId;
@@ -391,7 +392,10 @@ impl TradingTerminal {
                 self.symbols_loading = false;
                 // Background refreshes fail quietly; the next tick retries.
                 if self.exchange_symbols.is_empty() {
-                    let message = format!("Symbol load failed: {error}");
+                    let message = format!(
+                        "Symbol load failed: {}",
+                        redact_sensitive_response_text(&error)
+                    );
                     self.symbol_search_status = Some((message.clone(), true));
                     self.push_toast(message, true);
                 }
@@ -994,5 +998,27 @@ mod tests {
             "background refresh failures must not surface error status"
         );
         assert!(!terminal.symbols_loading);
+    }
+
+    #[test]
+    fn symbols_load_error_before_initial_load_redacts_status_and_toast() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols.clear();
+        terminal.toasts.clear();
+
+        let _task = terminal.apply_symbols_loaded(Err(
+            "symbol fetch failed: api_key=key-secret auth_token=token-secret".to_string(),
+        ));
+
+        let status = terminal.symbol_search_status.as_ref().expect("status");
+        assert!(status.1);
+        assert!(status.0.contains("api_key=<redacted>"));
+        assert!(status.0.contains("auth_token=<redacted>"));
+        assert!(!status.0.contains("key-secret"));
+        assert!(!status.0.contains("token-secret"));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert_eq!(toast.message, status.0);
     }
 }

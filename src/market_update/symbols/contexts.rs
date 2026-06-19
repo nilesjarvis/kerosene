@@ -1,4 +1,5 @@
 use crate::api::WatchlistContext;
+use crate::helpers::redact_sensitive_response_text;
 
 use std::collections::HashMap;
 
@@ -8,6 +9,8 @@ mod tests;
 // ---------------------------------------------------------------------------
 // Symbol Search Contexts
 // ---------------------------------------------------------------------------
+
+const SYMBOL_SEARCH_CONTEXT_FAILURE_PREFIX: &str = "24h volume refresh failed:";
 
 pub(super) fn apply_contexts_loaded(
     loading: &mut bool,
@@ -26,7 +29,13 @@ pub(super) fn apply_contexts_loaded(
             *status = None;
         }
         Err(error) => {
-            *status = Some((format!("24h volume refresh failed: {error}"), true));
+            *status = Some((
+                format!(
+                    "{SYMBOL_SEARCH_CONTEXT_FAILURE_PREFIX} {}",
+                    redact_sensitive_response_text(&error)
+                ),
+                true,
+            ));
         }
     }
 }
