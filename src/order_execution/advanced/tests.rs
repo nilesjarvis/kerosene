@@ -1,9 +1,10 @@
-use super::AdvancedOrderKind;
+use super::{AdvancedOrderKind, AdvancedOrderStartSnapshot, TwapOrderStartSnapshot};
 use crate::app_state::{TradingTerminal, sensitive_string};
-use crate::config::AccountProfile;
+use crate::config::{AccountProfile, MarketUniverseConfig};
 use crate::order_execution::{OneShotPlacementContext, OrderSurface, PendingOrderAction};
 use crate::order_update::PendingOneShotStatusRequest;
-use crate::signing::ExchangeOrderKind;
+use crate::signing::{ExchangeOrderKind, OrderKind};
+use crate::twap_state::TwapOrderForm;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 
@@ -31,6 +32,55 @@ fn pending_one_shot_status_request() -> PendingOneShotStatusRequest {
             order_kind: ExchangeOrderKind::Market,
         },
     )
+}
+
+fn advanced_snapshot() -> AdvancedOrderStartSnapshot {
+    AdvancedOrderStartSnapshot {
+        order_kind: OrderKind::Limit,
+        symbol_key: "SECRETCOIN".into(),
+        quantity_input: "quantity-secret".into(),
+        quantity_is_usd: true,
+        reduce_only: true,
+        market_universe: MarketUniverseConfig::hip3_dex("secret-dex"),
+    }
+}
+
+#[test]
+fn advanced_order_start_snapshot_debug_redacts_symbol_and_quantity() {
+    let debug = format!("{:?}", advanced_snapshot());
+
+    assert!(debug.contains("AdvancedOrderStartSnapshot"));
+    assert!(debug.contains("order_kind: Limit"));
+    assert!(debug.contains("quantity_is_usd: true"));
+    assert!(debug.contains("reduce_only: true"));
+    assert!(!debug.contains("SECRETCOIN"));
+    assert!(!debug.contains("quantity-secret"));
+}
+
+#[test]
+fn twap_order_start_snapshot_debug_redacts_order_and_twap_form() {
+    let snapshot = TwapOrderStartSnapshot {
+        order: advanced_snapshot(),
+        twap_form: TwapOrderForm {
+            duration_minutes: "duration-secret".into(),
+            slices: "slices-secret".into(),
+            min_price: "min-price-secret".into(),
+            max_price: "max-price-secret".into(),
+            randomize: false,
+        },
+    };
+
+    let debug = format!("{snapshot:?}");
+
+    assert!(debug.contains("TwapOrderStartSnapshot"));
+    assert!(debug.contains("order: AdvancedOrderStartSnapshot"));
+    assert!(debug.contains("twap_form: \"<redacted>\""));
+    assert!(!debug.contains("SECRETCOIN"));
+    assert!(!debug.contains("quantity-secret"));
+    assert!(!debug.contains("duration-secret"));
+    assert!(!debug.contains("slices-secret"));
+    assert!(!debug.contains("min-price-secret"));
+    assert!(!debug.contains("max-price-secret"));
 }
 
 #[test]

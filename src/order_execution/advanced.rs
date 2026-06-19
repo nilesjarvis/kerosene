@@ -4,6 +4,8 @@ use crate::signing::CapturedAgentKey;
 use crate::signing::OrderKind;
 use crate::twap_state::{MAX_ACTIVE_ADVANCED_ORDERS, TwapOrderForm};
 
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Advanced Order Startup
 // ---------------------------------------------------------------------------
@@ -35,7 +37,7 @@ pub(super) struct AdvancedOrderStartContext {
     pub(super) agent_key: CapturedAgentKey,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct AdvancedOrderStartSnapshot {
     pub(crate) order_kind: OrderKind,
     pub(crate) symbol_key: String,
@@ -45,10 +47,32 @@ pub(crate) struct AdvancedOrderStartSnapshot {
     pub(crate) market_universe: MarketUniverseConfig,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Debug for AdvancedOrderStartSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AdvancedOrderStartSnapshot")
+            .field("order_kind", &self.order_kind)
+            .field("symbol_key", &"<redacted>")
+            .field("quantity_input", &"<redacted>")
+            .field("quantity_is_usd", &self.quantity_is_usd)
+            .field("reduce_only", &self.reduce_only)
+            .field("market_universe", &self.market_universe)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct TwapOrderStartSnapshot {
     pub(crate) order: AdvancedOrderStartSnapshot,
     pub(crate) twap_form: TwapOrderForm,
+}
+
+impl fmt::Debug for TwapOrderStartSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapOrderStartSnapshot")
+            .field("order", &self.order)
+            .field("twap_form", &"<redacted>")
+            .finish()
+    }
 }
 
 impl TradingTerminal {
