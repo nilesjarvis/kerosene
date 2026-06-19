@@ -131,6 +131,45 @@ fn reconnect_prunes_closed_registry_entry() {
 }
 
 #[test]
+fn direct_reconnect_requests_are_coalesced_until_dequeued() {
+    let stream_key = HydromancerStreamKey::new("hydro-secret-token-a", u64::MAX - 103);
+    let manager_id = stream_key.manager_id();
+    remove_manager_for_test(manager_id);
+
+    let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+    let command_sender = HydromancerCommandSender::new_for_test(raw_cmd_tx);
+    let (_msg_tx, msg_rx) = broadcast::channel(1);
+    {
+        let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+        let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
+        managers.insert(
+            manager_id,
+            HydromancerManager {
+                task_id: 4001,
+                cmd_tx: command_sender.clone(),
+                msg_rx,
+            },
+        );
+    }
+
+    reconnect_hydromancer(stream_key.clone());
+    reconnect_hydromancer(stream_key.clone());
+
+    let command = cmd_rx.try_recv().expect("first reconnect command");
+    assert!(matches!(command, HydromancerCommand::Reconnect));
+    assert!(cmd_rx.try_recv().is_err());
+
+    command_sender.note_command_dequeued_for_test(&command);
+    reconnect_hydromancer(stream_key);
+
+    assert!(matches!(
+        cmd_rx.try_recv().unwrap(),
+        HydromancerCommand::Reconnect
+    ));
+    remove_manager_for_test(manager_id);
+}
+
+#[test]
 fn routed_message_debug_redacts_json_payload() {
     let message = HydromancerRoutedMessage {
         msg_type: "connected".to_string(),

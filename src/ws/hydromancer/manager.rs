@@ -165,8 +165,12 @@ impl HydromancerCommandSender {
         self.inner.send(command)
     }
 
-    pub(super) fn request_lag_reconnect(&self) -> bool {
+    pub(super) fn request_reconnect(&self) -> bool {
         self.reconnect_gate.request_lag_reconnect(&self.inner)
+    }
+
+    pub(super) fn request_lag_reconnect(&self) -> bool {
+        self.request_reconnect()
     }
 
     fn is_closed(&self) -> bool {
@@ -284,7 +288,7 @@ pub fn reconnect_hydromancer(stream_key: HydromancerStreamKey) {
     };
     let manager_id = stream_key.manager_id();
     if let Some(manager) = managers.get(&manager_id)
-        && manager.cmd_tx.send(HydromancerCommand::Reconnect).is_err()
+        && !manager.cmd_tx.request_reconnect()
     {
         managers.remove(&manager_id);
     }
