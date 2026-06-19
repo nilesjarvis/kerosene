@@ -29,10 +29,12 @@ pub enum JournalFilter {
 
 impl JournalFilter {
     pub fn matches_coin(self, coin: &str) -> bool {
+        // A named spot pair (`PURR/USDC`) is spot, alongside `@`-prefixed spot
+        // indices; `#` is outcome; everything else is perp.
         match self {
             Self::All => true,
-            Self::Perp => !coin.starts_with('@') && !coin.starts_with('#'),
-            Self::Spot => coin.starts_with('@'),
+            Self::Perp => !coin.starts_with('@') && !coin.starts_with('#') && !coin.contains('/'),
+            Self::Spot => coin.starts_with('@') || coin.contains('/'),
             Self::Outcome => coin.starts_with('#'),
         }
     }

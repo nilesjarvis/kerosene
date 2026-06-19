@@ -83,6 +83,26 @@ fn current_position_does_not_duplicate_fill_derived_open_trade() {
 }
 
 #[test]
+fn open_carried_in_trade_basis_recovered_from_clearinghouse_entry() {
+    let mut partial = open_trade("VVV");
+    partial.basis_complete = false;
+    partial.avg_entry_price = 0.0;
+    let mut trades = vec![partial];
+
+    let result = reconcile_current_position_trades(
+        &mut trades,
+        &[asset_position("VVV", "0.01", "16.5857")],
+        12_345,
+    );
+
+    assert_eq!(result.added_open_positions, 0);
+    assert_eq!(trades.len(), 1);
+    assert_eq!(trades[0].id, "perp:VVV:fill");
+    assert!(trades[0].basis_complete);
+    assert_eq!(trades[0].avg_entry_price, 16.5857);
+}
+
+#[test]
 fn current_position_reconciliation_removes_stale_synthetic_trades() {
     let mut trades = Vec::new();
     reconcile_current_position_trades(&mut trades, &[asset_position("ZEC", "-1", "600")], 1_000);

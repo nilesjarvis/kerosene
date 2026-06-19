@@ -116,7 +116,12 @@ mod tests {
     #[test]
     fn journal_filters_partition_perp_spot_and_outcome_trades() {
         let mut terminal = TradingTerminal::boot().0;
-        terminal.journal.trades = vec![trade("BTC", 3), trade("@107", 2), trade("#950", 1)];
+        terminal.journal.trades = vec![
+            trade("BTC", 4),
+            trade("@107", 3),
+            trade("#950", 2),
+            trade("PURR/USDC", 1),
+        ];
 
         terminal.journal.filter = journal::JournalFilter::All;
         assert_eq!(
@@ -125,7 +130,7 @@ mod tests {
                 .iter()
                 .map(|trade| trade.coin.as_str())
                 .collect::<Vec<_>>(),
-            vec!["BTC", "@107", "#950"]
+            vec!["BTC", "@107", "#950", "PURR/USDC"]
         );
 
         terminal.journal.filter = journal::JournalFilter::Perp;
@@ -145,7 +150,7 @@ mod tests {
                 .iter()
                 .map(|trade| trade.coin.as_str())
                 .collect::<Vec<_>>(),
-            vec!["@107"]
+            vec!["@107", "PURR/USDC"]
         );
 
         terminal.journal.filter = journal::JournalFilter::Outcome;

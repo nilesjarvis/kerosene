@@ -23,18 +23,32 @@ pub fn reconcile_current_position_trades(
 
     let mut added_open_positions = 0;
     for position in positions {
-        let Some(trade) = current_position_trade(position, snapshot_time_ms) else {
+        let szi = parse_finite_number(&position.position.szi).unwrap_or(0.0);
+        if szi.abs() <= POSITION_EPSILON {
             continue;
-        };
+        }
+        let entry_px = parse_finite_number(&position.position.entry_px).unwrap_or(0.0);
 
-        if trades.iter().any(|existing| {
-            existing.coin == trade.coin
+        // If this open position already has a fill-derived trade, recover its
+        // basis from the authoritative clearinghouse entry price rather than
+        // adding a synthetic fallback. This completes positions carried in from
+        // before the loaded fill history (their opening fills are unavailable,
+        // but the live entry price is known).
+        if let Some(existing) = trades.iter_mut().find(|existing| {
+            existing.coin == position.position.coin
                 && existing.status == "OPEN"
                 && !is_current_position_trade(&existing.id)
         }) {
+            if !existing.basis_complete && entry_px.is_finite() && entry_px > 0.0 {
+                existing.basis_complete = true;
+                existing.avg_entry_price = entry_px;
+            }
             continue;
         }
 
+        let Some(trade) = current_position_trade(position, snapshot_time_ms) else {
+            continue;
+        };
         trades.push(trade);
         added_open_positions += 1;
     }

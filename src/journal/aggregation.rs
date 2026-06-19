@@ -17,6 +17,17 @@ use position::{
 use std::cmp::Reverse;
 use std::collections::HashMap;
 
+/// Notional value (USD) below which a fill's `startPosition` is treated as an
+/// "opened from flat" position when deciding `basis_complete` — a minimum-lot
+/// dust residual left by a near-flat close rather than a real carried-in
+/// position. Judging by notional (`size * price`) rather than raw size makes
+/// this robust across coins: a `0.01` BTC residual (~$600) is correctly NOT
+/// treated as dust, while a `0.0001`-unit equity/metal residual (~$0.20) is.
+/// Set just below Hyperliquid's ~$10 minimum order notional: a position smaller
+/// than the smallest order that could open it cannot be a real fresh entry, so
+/// it is necessarily a sub-minimum residual of a flat close.
+const FLAT_OPEN_NOTIONAL_USD: f64 = 9.99;
+
 pub use identity::{FillIdentity, merge_fills, newest_fill_time, normalize_fills};
 pub use model::{
     AggregatedTrade, AggregationDiagnostics, AggregationResult, JournalAttributedFill,
@@ -261,6 +272,36 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
         trade_history.push(trade);
     }
 
+    // Recover the entry basis of CLOSED perp trades whose opening fills are not
+    // in the loaded history (so they're partial, or were marked complete by the
+    // flat-open scan yet carry no in-window opening fill and thus a 0 entry).
+    // HL's per-fill closedPnl is computed against the true entry, so the entry
+    // price is `exit ∓ closedPnl/size`, size-weighted across the closing fills
+    // (exact for the carried-in pure-close chains this targets — trades with
+    // real in-window opens already have a usable `avg_entry_price` and are left
+    // untouched).
+    for trade in trade_history.iter_mut() {
+        if trade.status != "CLOSED" || is_non_perp_coin(&trade.coin) {
+            continue;
+        }
+        if trade.basis_complete && trade.avg_entry_price > 0.0 {
+            continue;
+        }
+        if let Some(entry) = trade_details
+            .get(&trade.id)
+            .and_then(derive_entry_from_realized_pnl)
+        {
+            trade.avg_entry_price = entry;
+            // The opening fill is absent, so direction was inferred from the
+            // post-close position (often zero). The peak position's sign is the
+            // authoritative direction for a carried-in trade.
+            if trade.max_position.abs() > f64::EPSILON {
+                trade.is_long = trade.max_position > 0.0;
+            }
+            trade.basis_complete = true;
+        }
+    }
+
     trade_history.sort_by_key(|trade| Reverse(trade.start_time));
     diagnostics.incomplete_trade_count = trade_history
         .iter()
@@ -274,14 +315,15 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
     }
 }
 
-/// Earliest fill time, per perp coin, at which a fill reports a flat opening
-/// position (`startPosition ≈ 0`).
+/// Earliest fill time, per perp coin, at which a fill opens from flat — its
+/// `startPosition` is zero, or a dust residual worth less than
+/// [`FLAT_OPEN_NOTIONAL_USD`].
 ///
 /// Hyperliquid's per-fill `startPosition` is authoritative, so a coin with such
 /// a fill demonstrably opened from flat within the loaded history. Because fills
 /// are fetched contiguously, every trade for that coin that opens at or after
 /// that time has a reconstructible basis — even when same-timestamp fill
-/// ordering or a sub-epsilon dust residual causes the trade's chain to begin on
+/// ordering or a minimum-lot dust residual causes the trade's chain to begin on
 /// a reducing ("Close") fill instead of the true open. Relying only on the
 /// chain head's `startPosition` (the previous behavior) mis-flagged those trades
 /// as "partial" despite the open being present in the data.
@@ -294,7 +336,12 @@ fn coin_first_flat_open_times(fills: &[UserFill]) -> HashMap<String, u64> {
         let Ok(parsed) = parse_fill_values(fill) else {
             continue;
         };
-        if parsed.start_pos.abs() <= POSITION_EPSILON {
+        let start_abs = parsed.start_pos.abs();
+        let opened_from_flat = start_abs <= POSITION_EPSILON
+            || (parsed.px.is_finite()
+                && parsed.px > 0.0
+                && start_abs * parsed.px <= FLAT_OPEN_NOTIONAL_USD);
+        if opened_from_flat {
             earliest
                 .entry(fill.coin.clone())
                 .and_modify(|time| *time = (*time).min(fill.time))
@@ -302,6 +349,46 @@ fn coin_first_flat_open_times(fills: &[UserFill]) -> HashMap<String, u64> {
         }
     }
     earliest
+}
+
+/// Implied entry price of a closed position, derived from the realized PnL of
+/// its closing fills. Hyperliquid reports `closedPnl = (price - entry) * size`
+/// when closing a long (a sell, side `A`) and `(entry - price) * size` when
+/// closing a short (a buy, side `B`), so `entry = price ∓ closedPnl/size`. The
+/// closing fill's side gives the closed direction authoritatively (the trade's
+/// own `is_long` is unreliable when the open is missing). Every closing fill of
+/// one position implies the same entry, so the size-weighted average is exact.
+/// Returns `None` when no closing fill carries a usable size/PnL.
+fn derive_entry_from_realized_pnl(details: &JournalTradeDetails) -> Option<f64> {
+    let mut weighted_entry = 0.0;
+    let mut total_size = 0.0;
+    for fill in &details.attributed_fills {
+        if !matches!(
+            fill.role,
+            JournalAttributedFillRole::Reduce | JournalAttributedFillRole::FlipClose
+        ) {
+            continue;
+        }
+        let size = fill.attributed_size;
+        if !size.is_finite()
+            || size <= 0.0
+            || !fill.price.is_finite()
+            || fill.price <= 0.0
+            || !fill.closed_pnl.is_finite()
+        {
+            continue;
+        }
+        let implied_entry = match fill.side.as_str() {
+            "A" => fill.price - fill.closed_pnl / size,
+            "B" => fill.price + fill.closed_pnl / size,
+            _ => continue,
+        };
+        if implied_entry.is_finite() && implied_entry > 0.0 {
+            weighted_entry += implied_entry * size;
+            total_size += size;
+        }
+    }
+    (total_size > 0.0).then(|| weighted_entry / total_size)
 }
 
 fn add_stable_note_ids_for_fill(trade: &mut AggregatedTrade, coin: &str, fill: &UserFill) {

@@ -19,7 +19,8 @@ const MS_PER_DAY: u64 = 86_400_000;
 const MS_PER_HOUR: u64 = 3_600_000;
 
 pub(crate) fn journal_is_non_perp(coin: &str) -> bool {
-    coin.starts_with('@') || coin.starts_with('#')
+    // Spot index (`@`), outcome (`#`), or a named spot pair (`PURR/USDC`).
+    coin.starts_with('@') || coin.starts_with('#') || coin.contains('/')
 }
 
 fn journal_is_scored(trade: &AggregatedTrade) -> bool {

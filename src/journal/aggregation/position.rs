@@ -21,7 +21,12 @@ pub(super) struct ResolvedStartPosition {
 }
 
 pub(super) fn is_non_perp_coin(coin: &str) -> bool {
-    coin.starts_with('@') || coin.starts_with('#')
+    // `@`/`#` are Hyperliquid spot index / outcome markets; a `/` names a spot
+    // pair (e.g. `PURR/USDC`). Perp coins are bare (`BTC`) or dex-qualified with
+    // `:` (`xyz:AAPL`), never containing `/`. Treating spot pairs as perp here
+    // tracks their token balance as a never-flat margin position and flags every
+    // segment partial.
+    coin.starts_with('@') || coin.starts_with('#') || coin.contains('/')
 }
 
 pub(super) fn signed_fill_size(side: &str, size: f64) -> f64 {

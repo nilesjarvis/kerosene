@@ -22,7 +22,7 @@ impl TradingTerminal {
         &self,
         trade: &AggregatedTrade,
     ) -> String {
-        let side_label = if trade.coin.starts_with('@') {
+        let side_label = if trade.coin.starts_with('@') || trade.coin.contains('/') {
             "Spot"
         } else if trade.coin.starts_with('#') {
             "Outcome"

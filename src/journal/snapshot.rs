@@ -117,7 +117,7 @@ pub fn initial_snapshot_request(
     hydromancer_key_generation: u64,
     now_ms: u64,
 ) -> Result<JournalTradeSnapshotRequest, String> {
-    if trade.coin.starts_with('@') || trade.coin.starts_with('#') {
+    if trade.coin.starts_with('@') || trade.coin.starts_with('#') || trade.coin.contains('/') {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
     }
     if !trade.basis_complete {
@@ -156,7 +156,7 @@ pub fn snapshot_request_for_timeframe(
     now_ms: u64,
     timeframe: Timeframe,
 ) -> Result<JournalTradeSnapshotRequest, String> {
-    if trade.coin.starts_with('@') || trade.coin.starts_with('#') {
+    if trade.coin.starts_with('@') || trade.coin.starts_with('#') || trade.coin.contains('/') {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
     }
     if !trade.basis_complete {
