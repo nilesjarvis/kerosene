@@ -166,7 +166,7 @@ impl std::fmt::Debug for TwapOrder {
             .field("id", &self.id)
             .field("coin", &self.coin)
             .field("display_coin", &self.display_coin)
-            .field("account_address", &self.account_address)
+            .field("account_address", &"<redacted>")
             .field("agent_key", &"<redacted>")
             .field("is_buy", &self.is_buy)
             .field("target_size", &self.target_size)

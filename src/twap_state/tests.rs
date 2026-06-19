@@ -56,7 +56,7 @@ fn test_twap_order(now: Instant, target_size: f64, randomize: bool, slice_count:
         id: 1,
         coin: "BTC".to_string(),
         display_coin: "BTC".to_string(),
-        account_address: "0xabc".to_string(),
+        account_address: "0xabc0000000000000000000000000000000000000".to_string(),
         agent_key: "twap-agent-secret".to_string().into(),
         is_buy: true,
         target_size,
@@ -75,13 +75,14 @@ fn test_twap_order(now: Instant, target_size: f64, randomize: bool, slice_count:
 }
 
 #[test]
-fn twap_order_debug_redacts_agent_key() {
+fn twap_order_debug_redacts_agent_key_and_account_address() {
     let twap = test_twap_order(Instant::now(), 1.0, false, 2);
 
     let rendered = format!("{twap:?}");
 
     assert!(rendered.contains("<redacted>"));
     assert!(!rendered.contains("twap-agent-secret"));
+    assert!(!rendered.contains("0xabc0000000000000000000000000000000000000"));
 }
 
 fn next_slice(twap: &mut TwapOrder, context: &str) -> f64 {

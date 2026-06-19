@@ -47,11 +47,12 @@ fn chase_place_cloid_is_stable_unique_128_bit_hex() {
 }
 
 #[test]
-fn chase_order_debug_redacts_agent_key() {
+fn chase_order_debug_redacts_agent_key_and_account_address() {
     let chase = chase_order("super-secret-agent-key");
     let rendered = format!("{chase:?}");
 
     assert!(!rendered.contains("super-secret-agent-key"));
+    assert!(!rendered.contains("0xabc0000000000000000000000000000000000000"));
     assert!(rendered.contains("<redacted>"));
 }
 
