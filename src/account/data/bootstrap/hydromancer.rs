@@ -17,7 +17,7 @@ use crate::hydromancer_api::HYDROMANCER_API_URL;
 
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 use zeroize::Zeroizing;
 
 pub(crate) type PortfolioClearinghouses = (
@@ -567,11 +567,20 @@ where
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct HydromancerPortfolioState {
     clearinghouse_state: Value,
     spot_clearinghouse_state: Value,
     user_abstraction: Value,
+}
+
+impl fmt::Debug for HydromancerPortfolioState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HydromancerPortfolioState")
+            .field("clearinghouse_state", &"<redacted>")
+            .field("spot_clearinghouse_state", &"<redacted>")
+            .field("user_abstraction", &"<redacted>")
+            .finish()
+    }
 }
 
 impl HydromancerPortfolioState {
@@ -793,6 +802,33 @@ mod tests {
             hydromancer_portfolio_chunk_size(&AccountDataFetchScope::hip3_dex("xyz")),
             500
         );
+    }
+
+    #[test]
+    fn portfolio_state_debug_redacts_raw_api_values() {
+        let portfolio = HydromancerPortfolioState {
+            clearinghouse_state: serde_json::json!({
+                "wallet": "0xabc0000000000000000000000000000000000000",
+                "client_secret": "portfolio-secret"
+            }),
+            spot_clearinghouse_state: serde_json::json!({
+                "balances": ["spot-secret"]
+            }),
+            user_abstraction: Value::String("unifiedAccount".to_string()),
+        };
+
+        let rendered = format!("{portfolio:?}");
+
+        assert!(rendered.contains("HydromancerPortfolioState"));
+        assert_eq!(rendered.matches("<redacted>").count(), 3);
+        for secret in [
+            "0xabc0000000000000000000000000000000000000",
+            "portfolio-secret",
+            "spot-secret",
+            "unifiedAccount",
+        ] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
     }
 
     fn clearinghouse_state_json(coin: &str) -> Value {
