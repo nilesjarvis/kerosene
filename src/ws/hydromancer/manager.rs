@@ -7,13 +7,11 @@ use super::HydromancerStreamKey;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use zeroize::Zeroizing;
-
-use self::task::hydromancer_manager_task;
 
 const HYDROMANCER_READ_TIMEOUT_SECS: u64 = 95;
 const HYDROMANCER_CONNECT_TIMEOUT_SECS: u64 = 10;
@@ -113,7 +111,7 @@ pub(super) fn redacted_hydromancer_topic_debug_value(topic: &str) -> &str {
 
 struct HydromancerManager {
     task_id: u64,
-    cmd_tx: mpsc::UnboundedSender<HydromancerCommand>,
+    cmd_tx: HydromancerCommandSender,
     msg_rx: broadcast::Receiver<HydromancerRoutedMessage>,
 }
 
@@ -121,14 +119,79 @@ static HYDROMANCER_MANAGERS: OnceLock<std::sync::Mutex<HashMap<u64, HydromancerM
     OnceLock::new();
 static NEXT_HYDROMANCER_MANAGER_TASK_ID: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Default)]
+pub(super) struct HydromancerReconnectGate(Arc<AtomicBool>);
+
+impl HydromancerReconnectGate {
+    fn request_lag_reconnect(&self, cmd_tx: &mpsc::UnboundedSender<HydromancerCommand>) -> bool {
+        if self.0.swap(true, Ordering::AcqRel) {
+            return true;
+        }
+        if cmd_tx.send(HydromancerCommand::Reconnect).is_err() {
+            self.0.store(false, Ordering::Release);
+            return false;
+        }
+        true
+    }
+
+    pub(super) fn note_dequeued(&self, command: &HydromancerCommand) {
+        if matches!(command, HydromancerCommand::Reconnect) {
+            self.0.store(false, Ordering::Release);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct HydromancerCommandSender {
+    inner: mpsc::UnboundedSender<HydromancerCommand>,
+    reconnect_gate: HydromancerReconnectGate,
+}
+
+impl HydromancerCommandSender {
+    fn new(
+        inner: mpsc::UnboundedSender<HydromancerCommand>,
+        reconnect_gate: HydromancerReconnectGate,
+    ) -> Self {
+        Self {
+            inner,
+            reconnect_gate,
+        }
+    }
+
+    pub(super) fn send(
+        &self,
+        command: HydromancerCommand,
+    ) -> Result<(), mpsc::error::SendError<HydromancerCommand>> {
+        self.inner.send(command)
+    }
+
+    pub(super) fn request_lag_reconnect(&self) -> bool {
+        self.reconnect_gate.request_lag_reconnect(&self.inner)
+    }
+
+    fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+
+    #[cfg(test)]
+    pub(super) fn new_for_test(inner: mpsc::UnboundedSender<HydromancerCommand>) -> Self {
+        Self::new(inner, HydromancerReconnectGate::default())
+    }
+
+    #[cfg(test)]
+    pub(super) fn note_command_dequeued_for_test(&self, command: &HydromancerCommand) {
+        self.reconnect_gate.note_dequeued(command);
+    }
+}
+
 pub(super) struct HydromancerSubscriptionGuard {
-    cmd_tx: mpsc::UnboundedSender<HydromancerCommand>,
+    cmd_tx: HydromancerCommandSender,
     subscriptions: Vec<(String, Value)>,
 }
 
 impl HydromancerSubscriptionGuard {
     pub(super) fn new(
-        cmd_tx: mpsc::UnboundedSender<HydromancerCommand>,
+        cmd_tx: HydromancerCommandSender,
         subscriptions: Vec<(String, Value)>,
     ) -> Self {
         Self {
@@ -157,13 +220,16 @@ fn spawn_hydromancer_manager(manager_id: u64, api_key: Zeroizing<String>) -> Hyd
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     let (msg_tx, msg_rx) = broadcast::channel(10000);
     let task_id = next_hydromancer_manager_task_id();
+    let reconnect_gate = HydromancerReconnectGate::default();
+    let command_sender = HydromancerCommandSender::new(cmd_tx, reconnect_gate.clone());
     tokio::spawn(async move {
-        hydromancer_manager_task(api_key, cmd_rx, msg_tx).await;
+        task::hydromancer_manager_task_with_reconnect_gate(api_key, cmd_rx, msg_tx, reconnect_gate)
+            .await;
         remove_hydromancer_manager_if_finished(manager_id, task_id);
     });
     HydromancerManager {
         task_id,
-        cmd_tx,
+        cmd_tx: command_sender,
         msg_rx,
     }
 }
@@ -186,7 +252,7 @@ fn remove_hydromancer_manager_if_finished(manager_id: u64, task_id: u64) -> bool
 pub(super) fn get_hydromancer_manager(
     stream_key: HydromancerStreamKey,
 ) -> (
-    mpsc::UnboundedSender<HydromancerCommand>,
+    HydromancerCommandSender,
     broadcast::Receiver<HydromancerRoutedMessage>,
 ) {
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
@@ -232,6 +298,7 @@ pub(crate) fn hydromancer_manager_reconnect_sent_for_test(
     let manager_id = stream_key.manager_id();
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+    let cmd_tx = HydromancerCommandSender::new_for_test(cmd_tx);
     let (_msg_tx, msg_rx) = broadcast::channel(1);
     {
         let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());

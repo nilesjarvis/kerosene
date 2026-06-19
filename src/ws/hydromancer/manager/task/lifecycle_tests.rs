@@ -140,6 +140,7 @@ async fn hanging_connect_emits_reconnecting_after_connect_timeout() {
         msg_tx,
         Duration::from_millis(50),
         Some(server.url.clone()),
+        HydromancerReconnectGate::default(),
     ));
 
     assert!(cmd_tx.send(subscribe_cmd("liquidations")).is_ok());
@@ -179,6 +180,7 @@ async fn shutdown_cancels_hanging_connect_before_timeout() {
         msg_tx,
         Duration::from_secs(60),
         Some(server.url.clone()),
+        HydromancerReconnectGate::default(),
     ));
 
     assert!(cmd_tx.send(subscribe_cmd("liquidations")).is_ok());
@@ -203,7 +205,11 @@ fn drain_pending_shutdown_handles_queued_rotation_before_reconnect() {
     assert!(tx.send(HydromancerCommand::Shutdown).is_ok());
 
     assert_eq!(
-        drain_pending_hydromancer_shutdown(&mut rx, &mut active_subs),
+        drain_pending_hydromancer_shutdown(
+            &mut rx,
+            &mut active_subs,
+            &HydromancerReconnectGate::default(),
+        ),
         HydromancerTaskControlFlow::Shutdown
     );
 }
@@ -217,10 +223,16 @@ async fn reconnect_sleep_exits_promptly_on_shutdown() {
         json!({ "channel": "liquidations" }),
     );
     assert!(tx.send(HydromancerCommand::Shutdown).is_ok());
+    let reconnect_gate = HydromancerReconnectGate::default();
 
     let result = match tokio::time::timeout(
         Duration::from_millis(50),
-        hydromancer_sleep_or_shutdown(&mut rx, &mut active_subs, Duration::from_secs(60)),
+        hydromancer_sleep_or_shutdown(
+            &mut rx,
+            &mut active_subs,
+            Duration::from_secs(60),
+            &reconnect_gate,
+        ),
     )
     .await
     {
@@ -246,10 +258,16 @@ async fn reconnect_sleep_processes_unsubscribe_before_retrying_old_key() {
         })
         .is_ok()
     );
+    let reconnect_gate = HydromancerReconnectGate::default();
 
     let result = match tokio::time::timeout(
         Duration::from_millis(50),
-        hydromancer_sleep_or_shutdown(&mut rx, &mut active_subs, Duration::from_secs(60)),
+        hydromancer_sleep_or_shutdown(
+            &mut rx,
+            &mut active_subs,
+            Duration::from_secs(60),
+            &reconnect_gate,
+        ),
     )
     .await
     {
@@ -265,10 +283,16 @@ async fn reconnect_sleep_processes_unsubscribe_before_retrying_old_key() {
 async fn reconnect_sleep_returns_immediately_when_no_subscriptions_remain() {
     let (_tx, mut rx) = mpsc::unbounded_channel();
     let mut active_subs = ActiveHydromancerSubscriptions::default();
+    let reconnect_gate = HydromancerReconnectGate::default();
 
     let result = match tokio::time::timeout(
         Duration::from_millis(50),
-        hydromancer_sleep_or_shutdown(&mut rx, &mut active_subs, Duration::from_secs(60)),
+        hydromancer_sleep_or_shutdown(
+            &mut rx,
+            &mut active_subs,
+            Duration::from_secs(60),
+            &reconnect_gate,
+        ),
     )
     .await
     {
@@ -283,6 +307,7 @@ async fn reconnect_sleep_returns_immediately_when_no_subscriptions_remain() {
 async fn idle_wait_shuts_down_after_timeout_without_subscriptions() {
     let (_tx, mut rx) = mpsc::unbounded_channel();
     let mut active_subs = ActiveHydromancerSubscriptions::default();
+    let reconnect_gate = HydromancerReconnectGate::default();
 
     let result = match tokio::time::timeout(
         Duration::from_millis(100),
@@ -290,6 +315,7 @@ async fn idle_wait_shuts_down_after_timeout_without_subscriptions() {
             &mut rx,
             &mut active_subs,
             Duration::from_millis(10),
+            &reconnect_gate,
         ),
     )
     .await
@@ -307,6 +333,7 @@ async fn idle_wait_accepts_subscription_before_timeout() {
     let (tx, mut rx) = mpsc::unbounded_channel();
     let mut active_subs = ActiveHydromancerSubscriptions::default();
     assert!(tx.send(subscribe_cmd("liquidations")).is_ok());
+    let reconnect_gate = HydromancerReconnectGate::default();
 
     let result = match tokio::time::timeout(
         Duration::from_millis(100),
@@ -314,6 +341,7 @@ async fn idle_wait_accepts_subscription_before_timeout() {
             &mut rx,
             &mut active_subs,
             Duration::from_secs(60),
+            &reconnect_gate,
         ),
     )
     .await

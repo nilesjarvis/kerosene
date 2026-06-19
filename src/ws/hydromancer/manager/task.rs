@@ -17,7 +17,7 @@ use super::super::HYDROMANCER_RECONNECT_DELAY_SECS;
 use super::{
     HYDROMANCER_CONNECT_TIMEOUT_SECS, HYDROMANCER_IDLE_SHUTDOWN_SECS,
     HYDROMANCER_MAX_CONNECT_RETRY_SECS, HYDROMANCER_READ_TIMEOUT_SECS, HydromancerCommand,
-    HydromancerRoutedMessage, hydromancer_read_remaining,
+    HydromancerReconnectGate, HydromancerRoutedMessage, hydromancer_read_remaining,
 };
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
@@ -37,10 +37,11 @@ mod subscriptions;
 // Hydromancer Manager Task
 // ---------------------------------------------------------------------------
 
-pub(super) async fn hydromancer_manager_task(
+pub(super) async fn hydromancer_manager_task_with_reconnect_gate(
     api_key: Zeroizing<String>,
     cmd_rx: mpsc::UnboundedReceiver<HydromancerCommand>,
     msg_tx: broadcast::Sender<HydromancerRoutedMessage>,
+    reconnect_gate: HydromancerReconnectGate,
 ) {
     hydromancer_manager_task_with_options(
         api_key,
@@ -48,6 +49,7 @@ pub(super) async fn hydromancer_manager_task(
         msg_tx,
         Duration::from_secs(HYDROMANCER_CONNECT_TIMEOUT_SECS),
         None,
+        reconnect_gate,
     )
     .await;
 }
@@ -58,6 +60,7 @@ async fn hydromancer_manager_task_with_options(
     msg_tx: broadcast::Sender<HydromancerRoutedMessage>,
     connect_timeout: Duration,
     connect_url_override: Option<String>,
+    reconnect_gate: HydromancerReconnectGate,
 ) {
     let mut active_subs = ActiveHydromancerSubscriptions::default();
     let mut coalescer = HydromancerCoalescedSender::new(msg_tx.clone());
@@ -73,6 +76,7 @@ async fn hydromancer_manager_task_with_options(
                 &mut cmd_rx,
                 &mut active_subs,
                 Duration::from_secs(HYDROMANCER_IDLE_SHUTDOWN_SECS),
+                &reconnect_gate,
             )
             .await
                 == HydromancerTaskControlFlow::Shutdown
@@ -83,7 +87,7 @@ async fn hydromancer_manager_task_with_options(
         // A Shutdown can be queued by key rotation while this task is between
         // reconnect sleeps and the next connect attempt. Drain it before
         // constructing another old-key URL.
-        if drain_pending_hydromancer_shutdown(&mut cmd_rx, &mut active_subs)
+        if drain_pending_hydromancer_shutdown(&mut cmd_rx, &mut active_subs, &reconnect_gate)
             == HydromancerTaskControlFlow::Shutdown
         {
             return;
@@ -123,6 +127,7 @@ async fn hydromancer_manager_task_with_options(
                 drop(pending_connect);
                 match cmd {
                     Some(cmd) => {
+                        reconnect_gate.note_dequeued(&cmd);
                         if handle_preconnect_hydromancer_command(cmd, &mut active_subs)
                             == HydromancerTaskControlFlow::Shutdown
                         {
@@ -147,6 +152,7 @@ async fn hydromancer_manager_task_with_options(
                     &mut cmd_rx,
                     &mut active_subs,
                     Duration::from_secs(retry_delay),
+                    &reconnect_gate,
                 )
                 .await
                     == HydromancerTaskControlFlow::Shutdown
@@ -166,6 +172,7 @@ async fn hydromancer_manager_task_with_options(
                     &mut cmd_rx,
                     &mut active_subs,
                     Duration::from_secs(retry_delay),
+                    &reconnect_gate,
                 )
                 .await
                     == HydromancerTaskControlFlow::Shutdown
@@ -192,14 +199,15 @@ async fn hydromancer_manager_task_with_options(
             let read_fut = Box::pin(tokio::time::timeout(read_timeout, read.next()));
 
             match select(cmd_fut, read_fut).await {
-                Either::Left((Some(HydromancerCommand::Shutdown), _)) => {
-                    // Rotation / clear path: stop the task so the owned
-                    // `api_key` String is dropped instead of resident for
-                    // the process lifetime.
-                    finish_connected_hydromancer_session(&mut coalescer);
-                    return;
-                }
                 Either::Left((Some(cmd), _)) => {
+                    reconnect_gate.note_dequeued(&cmd);
+                    if matches!(cmd, HydromancerCommand::Shutdown) {
+                        // Rotation / clear path: stop the task so the owned
+                        // `api_key` String is dropped instead of resident for
+                        // the process lifetime.
+                        finish_connected_hydromancer_session(&mut coalescer);
+                        return;
+                    }
                     disconnected =
                         handle_hydromancer_command(cmd, &mut active_subs, &session, &mut write)
                             .await;
@@ -254,6 +262,7 @@ async fn hydromancer_manager_task_with_options(
             &mut cmd_rx,
             &mut active_subs,
             Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
+            &reconnect_gate,
         )
         .await
             == HydromancerTaskControlFlow::Shutdown

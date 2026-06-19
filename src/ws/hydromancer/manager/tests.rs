@@ -59,6 +59,7 @@ fn insert_manager_for_test(
     cmd_tx: mpsc::UnboundedSender<HydromancerCommand>,
 ) {
     let (_msg_tx, msg_rx) = broadcast::channel(1);
+    let cmd_tx = HydromancerCommandSender::new_for_test(cmd_tx);
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut managers = managers.lock().unwrap_or_else(|e| e.into_inner());
     managers.insert(
