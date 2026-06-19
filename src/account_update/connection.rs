@@ -311,6 +311,9 @@ impl TradingTerminal {
         if self.account_change_blocked_by_pending_trading_request("disconnecting wallet") {
             return Task::none();
         }
+        if self.account_change_blocked_by_active_chase("disconnecting wallet") {
+            return Task::none();
+        }
         if self.account_change_blocked_by_uncertain_twap("disconnecting wallet") {
             return Task::none();
         }
@@ -1185,6 +1188,35 @@ mod tests {
             toast
                 .message
                 .contains("pending trading requests to finish before disconnecting wallet")
+        );
+    }
+
+    #[test]
+    fn disconnect_wallet_blocks_active_chase() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        terminal.chase_orders.insert(42, chase_order(TEST_ACCOUNT));
+
+        let _task = terminal.disconnect_wallet();
+
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert_eq!(terminal.wallet_address_input, TEST_ACCOUNT);
+        assert!(terminal.chase_orders.contains_key(&42));
+        let chase = terminal.chase_orders.get(&42).expect("chase");
+        assert_eq!(chase.lifecycle, ChaseLifecycle::Resting);
+        assert_eq!(chase.current_oid, Some(1001));
+        assert!(!terminal.account_loading);
+        assert!(terminal.account_data_address.is_none());
+        let toast = terminal
+            .toasts
+            .last()
+            .expect("blocked disconnect should toast");
+        assert!(toast.is_error);
+        assert!(
+            toast
+                .message
+                .contains("Stop active chase orders and wait for cancellation")
         );
     }
 
