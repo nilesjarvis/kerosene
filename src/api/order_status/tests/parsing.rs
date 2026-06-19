@@ -22,6 +22,30 @@ fn parses_order_status_by_cloid_response() {
 }
 
 #[test]
+fn order_status_result_debug_redacts_identifiers_and_raw_summary() {
+    let parsed = status_or_panic(&serde_json::json!({
+        "status": "order",
+        "order": {
+            "status": "open",
+            "order": {
+                "oid": 424242_u64,
+                "cloid": "0x1234567890abcdef1234567890abcdef"
+            }
+        }
+    }));
+
+    let rendered = format!("{parsed:?}");
+
+    assert!(rendered.contains("OrderStatusResult"));
+    assert!(rendered.contains("status: \"open\""));
+    assert!(rendered.contains("has_oid: true"));
+    assert!(rendered.contains("has_cloid: true"));
+    assert!(rendered.contains("raw_summary: \"<redacted>\""));
+    assert!(!rendered.contains("424242"));
+    assert!(!rendered.contains("0x1234567890abcdef1234567890abcdef"));
+}
+
+#[test]
 fn parses_missing_order_status() {
     let parsed = status_or_panic(&serde_json::json!({
         "status": "unknownOid"

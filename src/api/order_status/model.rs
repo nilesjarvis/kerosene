@@ -1,13 +1,26 @@
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // Order Status Model
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct OrderStatusResult {
     pub(crate) status: String,
     pub(crate) oid: Option<u64>,
     pub(crate) cloid: Option<String>,
     pub(crate) raw_summary: String,
+}
+
+impl fmt::Debug for OrderStatusResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderStatusResult")
+            .field("status", &self.status)
+            .field("has_oid", &self.oid.is_some())
+            .field("has_cloid", &self.cloid.is_some())
+            .field("raw_summary", &"<redacted>")
+            .finish()
+    }
 }
 
 impl OrderStatusResult {
