@@ -1,3 +1,5 @@
+use crate::helpers::redact_sensitive_response_text;
+
 use super::super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerWsMessage};
 use serde_json::Value;
 
@@ -69,9 +71,10 @@ fn hydromancer_status_error(error: &str) -> String {
             .to_string();
     }
 
+    let error = redact_sensitive_response_text(error);
     if lower.contains("timeout") || lower.contains("timed out") {
         return format!("Hydromancer network timeout: {error}");
     }
 
-    error.to_string()
+    error
 }

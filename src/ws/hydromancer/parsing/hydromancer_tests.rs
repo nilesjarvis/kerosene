@@ -206,6 +206,29 @@ fn control_message_labels_authentication_failures() {
 }
 
 #[test]
+fn control_message_redacts_sensitive_non_auth_errors() {
+    let data = serde_json::json!({
+        "message": r#"upstream rejected cursor="cursor-secret" sessionId="session-secret" signature=signature-secret client_secret="client-secret""#,
+    });
+
+    let Some(HydromancerWsMessage::Disconnected(error)) =
+        hydromancer_control_message("error", &data)
+    else {
+        panic!("expected disconnected control message");
+    };
+
+    assert!(error.contains("<redacted>"));
+    for secret in [
+        "cursor-secret",
+        "session-secret",
+        "signature-secret",
+        "client-secret",
+    ] {
+        assert!(!error.contains(secret), "control error leaked {secret}");
+    }
+}
+
+#[test]
 fn connecting_control_distinguishes_session_resume() {
     let data = serde_json::json!({
         "resuming": true,
