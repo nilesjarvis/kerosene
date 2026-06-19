@@ -99,6 +99,13 @@ impl TradingTerminal {
                 return Task::none();
             };
             let now_ms = Self::now_ms();
+            if !account_data.completeness.open_orders_complete {
+                self.order_status = Some((
+                    "Open orders are incomplete; refresh before starting chase".into(),
+                    true,
+                ));
+                return self.refresh_account_data();
+            }
             if !account_data.is_fresh_for_open_order_action_for_symbol(&coin, now_ms) {
                 let age_label = account_data
                     .open_order_action_snapshot_age_ms_for_symbol(&coin, now_ms)
@@ -106,13 +113,6 @@ impl TradingTerminal {
                     .unwrap_or_else(|| "from the future".to_string());
                 self.order_status = Some((
                     format!("Open orders are stale ({age_label}); refresh before starting chase"),
-                    true,
-                ));
-                return self.refresh_account_data();
-            }
-            if !account_data.completeness.open_orders_complete {
-                self.order_status = Some((
-                    "Open orders are incomplete; refresh before starting chase".into(),
                     true,
                 ));
                 return self.refresh_account_data();

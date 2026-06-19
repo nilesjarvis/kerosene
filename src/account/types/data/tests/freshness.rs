@@ -69,3 +69,58 @@ fn open_order_action_freshness_tracks_dex_lanes_independently() {
         Some(0)
     );
 }
+
+#[test]
+fn scoped_hip3_open_order_freshness_does_not_cover_main_or_other_dexes() {
+    let mut data = account_data_snapshot(1_000);
+    data.fetch_scope = AccountDataFetchScope::hip3_dex("flx");
+
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("BTC", 1_000),
+        None
+    );
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("xyz:BTC", 1_000),
+        None
+    );
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("flx:BTC", 1_000),
+        Some(0)
+    );
+    assert!(!data.is_fresh_for_open_order_action_for_symbol("BTC", 1_000));
+    assert!(!data.is_fresh_for_open_order_action_for_symbol("xyz:BTC", 1_000));
+    assert!(data.is_fresh_for_open_order_action_for_symbol("flx:BTC", 1_000));
+}
+
+#[test]
+fn scoped_hip3_positions_refresh_preserves_prior_open_order_lane_timestamp() {
+    let mut data = account_data_snapshot(1_000);
+    data.fetch_scope = AccountDataFetchScope::hip3_dex("flx");
+    let stale_now = 1_000 + AccountData::POSITION_ACTION_MAX_AGE_MS + 1;
+
+    data.mark_positions_fetched_at(stale_now);
+
+    assert!(data.is_fresh_for_position_action(stale_now));
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("flx:BTC", stale_now),
+        Some(AccountData::POSITION_ACTION_MAX_AGE_MS + 1)
+    );
+    assert!(!data.is_fresh_for_open_order_action_for_symbol("flx:BTC", stale_now));
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("BTC", stale_now),
+        None
+    );
+}
+
+#[test]
+fn incomplete_open_orders_do_not_fallback_to_account_fetch_timestamp() {
+    let mut data = account_data_snapshot(1_000);
+    data.fetch_scope = AccountDataFetchScope::hip3_dex("flx");
+    data.completeness.open_orders_complete = false;
+
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("flx:BTC", 1_000),
+        None
+    );
+    assert!(!data.is_fresh_for_open_order_action_for_symbol("flx:BTC", 1_000));
+}

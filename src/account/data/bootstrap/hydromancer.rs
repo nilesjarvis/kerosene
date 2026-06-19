@@ -143,9 +143,15 @@ async fn fetch_account_data_scoped_hydromancer(
         portfolio.clearinghouses_for_scope(&scope)?;
 
     let mut bootstrap_warnings = Vec::new();
+    let mut main_open_orders_fetched = false;
     let open_orders: Vec<OpenOrder> = match main_orders_resp {
         Some(response) => {
-            hydromancer_response_vec("frontendOpenOrders", response, &mut bootstrap_warnings).await
+            let warning_count = bootstrap_warnings.len();
+            let orders =
+                hydromancer_response_vec("frontendOpenOrders", response, &mut bootstrap_warnings)
+                    .await;
+            main_open_orders_fetched = bootstrap_warnings.len() == warning_count;
+            orders
         }
         None => Vec::new(),
     };
@@ -157,13 +163,16 @@ async fn fetch_account_data_scoped_hydromancer(
     let fee_rates = fee_rates_from_response(fees_resp, &mut completeness).await;
 
     let mut hip3_order_sets = Vec::new();
+    let mut hip3_open_orders_fetched = Vec::new();
     for (dex, resp) in hip3_order_results {
         if let Some(orders) = hip3_open_orders_from_response(&dex, resp, &mut completeness).await {
+            hip3_open_orders_fetched.push(dex);
             hip3_order_sets.push(orders);
         }
     }
 
-    Ok(AccountData {
+    let fetched_at_ms = now_ms();
+    let mut account_data = AccountData {
         fetch_scope: scope,
         request_weight_estimate,
         account_abstraction,
@@ -175,8 +184,16 @@ async fn fetch_account_data_scoped_hydromancer(
         funding_history,
         fee_rates,
         completeness,
-        fetched_at_ms: now_ms(),
-    })
+        fetched_at_ms,
+    };
+    if main_open_orders_fetched {
+        account_data.mark_open_orders_fetched_at(fetched_at_ms);
+    }
+    for dex in hip3_open_orders_fetched {
+        account_data.mark_open_orders_fetched_at_for_dex(&dex, fetched_at_ms);
+    }
+
+    Ok(account_data)
 }
 
 pub(crate) fn hydromancer_portfolio_chunk_size(scope: &AccountDataFetchScope) -> usize {

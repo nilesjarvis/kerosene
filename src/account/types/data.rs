@@ -90,7 +90,13 @@ impl AccountData {
             }
             (Some(dex_fetched_at_ms), None) => dex_fetched_at_ms,
             (None, Some(snapshot_fetched_at_ms)) => snapshot_fetched_at_ms,
-            (None, None) => self.fetched_at_ms,
+            (None, None)
+                if self.completeness.open_orders_complete
+                    && self.fetch_scope.fetches_open_orders_for_dex(dex.as_str()) =>
+            {
+                self.fetched_at_ms
+            }
+            (None, None) => return None,
         };
         now_ms.checked_sub(fetched_at_ms)
     }
@@ -101,14 +107,23 @@ impl AccountData {
     }
 
     pub fn mark_positions_fetched_at(&mut self, fetched_at_ms: u64) {
-        self.completeness
-            .open_orders_fetched_at_ms
-            .get_or_insert(self.fetched_at_ms);
+        match &self.fetch_scope {
+            AccountDataFetchScope::AllMarkets { .. } => {
+                self.completeness
+                    .open_orders_fetched_at_ms
+                    .get_or_insert(self.fetched_at_ms);
+            }
+            AccountDataFetchScope::Hip3Dex { dex } => {
+                self.completeness
+                    .open_orders_fetched_at_ms_by_dex
+                    .entry(normalized_open_orders_dex_key(dex))
+                    .or_insert(self.fetched_at_ms);
+            }
+        }
         self.completeness.positions_fetched_at_ms = Some(fetched_at_ms);
         self.fetched_at_ms = fetched_at_ms;
     }
 
-    #[cfg(test)]
     pub fn mark_open_orders_fetched_at(&mut self, fetched_at_ms: u64) {
         self.completeness.open_orders_fetched_at_ms = Some(fetched_at_ms);
     }

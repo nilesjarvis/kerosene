@@ -161,10 +161,18 @@ pub async fn fetch_account_data_scoped(
     let account_abstraction =
         account_abstraction_from_best_effort_value(abstraction_resp, &spot, &mut completeness);
     let mut bootstrap_warnings = Vec::new();
+    let mut main_open_orders_fetched = false;
     let open_orders: Vec<OpenOrder> = match orders_resp {
         Some(orders_resp) => {
-            best_effort_response_vec("frontendOpenOrders", orders_resp, &mut bootstrap_warnings)
-                .await
+            let warning_count = bootstrap_warnings.len();
+            let orders = best_effort_response_vec(
+                "frontendOpenOrders",
+                orders_resp,
+                &mut bootstrap_warnings,
+            )
+            .await;
+            main_open_orders_fetched = bootstrap_warnings.len() == warning_count;
+            orders
         }
         None => Vec::new(),
     };
@@ -188,16 +196,18 @@ pub async fn fetch_account_data_scoped(
     }
 
     let mut hip3_order_sets = Vec::new();
+    let mut hip3_open_orders_fetched = Vec::new();
     for (dex, resp) in hip3_dexes.iter().zip(hip3_ord_results) {
         if let Some(orders) = hip3_open_orders_from_response(dex, resp, &mut completeness).await {
+            hip3_open_orders_fetched.push(dex.to_string());
             hip3_order_sets.push(orders);
         }
     }
 
     let merged_clearinghouse = merge_hip3_positions(clearinghouse, hip3_states);
     let open_orders = merge_hip3_open_orders(open_orders, hip3_order_sets);
-
-    Ok(AccountData {
+    let fetched_at_ms = now_ms();
+    let mut account_data = AccountData {
         fetch_scope: scope,
         request_weight_estimate,
         account_abstraction,
@@ -209,8 +219,16 @@ pub async fn fetch_account_data_scoped(
         funding_history,
         fee_rates,
         completeness,
-        fetched_at_ms: now_ms(),
-    })
+        fetched_at_ms,
+    };
+    if main_open_orders_fetched {
+        account_data.mark_open_orders_fetched_at(fetched_at_ms);
+    }
+    for dex in hip3_open_orders_fetched {
+        account_data.mark_open_orders_fetched_at_for_dex(&dex, fetched_at_ms);
+    }
+
+    Ok(account_data)
 }
 
 pub async fn fetch_account_data_scoped_with_provider(

@@ -61,6 +61,16 @@ impl AccountDataFetchScope {
         matches!(self, Self::AllMarkets { .. })
     }
 
+    pub fn fetches_open_orders_for_dex(&self, dex: &str) -> bool {
+        let Some(dex) = normalized_hip3_dex(dex) else {
+            return self.fetches_main_open_orders();
+        };
+        match self {
+            Self::AllMarkets { hip3_dexes } => hip3_dexes.iter().any(|known| known == &dex),
+            Self::Hip3Dex { dex: selected } => selected == &dex,
+        }
+    }
+
     pub fn estimated_info_weight(&self) -> u32 {
         // Hyperliquid currently weights clearinghouseState and spotClearinghouseState at 2.
         // User fills/funding have return-size adders, so use a conservative base estimate.
