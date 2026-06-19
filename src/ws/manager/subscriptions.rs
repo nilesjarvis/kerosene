@@ -1,4 +1,7 @@
+use super::{redacted_ws_topic_debug_value, redacted_ws_value};
+
 use serde_json::Value;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
@@ -7,11 +10,29 @@ mod tests;
 // Active Subscription Reference Counts
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) enum WsUnsubscribeResult {
     Missing,
     StillActive,
     Removed { unsubscribe_payload: Value },
+}
+
+impl fmt::Debug for WsUnsubscribeResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Missing => f.write_str("Missing"),
+            Self::StillActive => f.write_str("StillActive"),
+            Self::Removed {
+                unsubscribe_payload,
+            } => f
+                .debug_struct("Removed")
+                .field(
+                    "unsubscribe_payload",
+                    &redacted_ws_value(unsubscribe_payload),
+                )
+                .finish(),
+        }
+    }
 }
 
 impl WsUnsubscribeResult {
@@ -25,16 +46,33 @@ impl WsUnsubscribeResult {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(super) struct ActiveWsSubscriptions {
     entries: Vec<ActiveWsSubscription>,
 }
 
-#[derive(Debug)]
 struct ActiveWsSubscription {
     topic: String,
     count: usize,
     payload: Value,
+}
+
+impl fmt::Debug for ActiveWsSubscriptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActiveWsSubscriptions")
+            .field("entries", &self.entries)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ActiveWsSubscription {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActiveWsSubscription")
+            .field("topic", &redacted_ws_topic_debug_value(&self.topic))
+            .field("count", &self.count)
+            .field("payload", &redacted_ws_value(&self.payload))
+            .finish()
+    }
 }
 
 impl ActiveWsSubscriptions {

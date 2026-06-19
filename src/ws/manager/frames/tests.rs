@@ -30,3 +30,17 @@ fn text_frame_parser_ignores_invalid_or_incomplete_frames() {
         WsTextFrame::Ignored
     );
 }
+
+#[test]
+fn text_frame_debug_redacts_raw_data() {
+    let address = "0xabc0000000000000000000000000000000000000";
+    let frame = parse_ws_text_frame(&format!(
+        r#"{{"channel":"userFills","data":{{"user":"{address}","hash":"fill-secret"}}}}"#
+    ));
+
+    let rendered = format!("{frame:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(address));
+    assert!(!rendered.contains("fill-secret"));
+}

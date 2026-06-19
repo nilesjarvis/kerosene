@@ -135,3 +135,25 @@ fn reconnect_command_disconnects_without_changing_subscriptions() {
     );
     assert!(subscriptions.payloads().next().is_some());
 }
+
+#[test]
+fn command_action_debug_redacts_outbound_payload() {
+    let action = WsCommandAction {
+        outbound_payload: Some(json!({
+            "method": "subscribe",
+            "subscription": {
+                "type": "openOrders",
+                "user": "0xabc0000000000000000000000000000000000000"
+            }
+        })),
+        disconnect_on_send_error: true,
+        mark_ping_start: false,
+        disconnect_after_handling: false,
+    };
+
+    let rendered = format!("{action:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(rendered.contains("subscription_type: Some(\"openOrders\")"));
+    assert!(!rendered.contains("0xabc0000000000000000000000000000000000000"));
+}

@@ -15,6 +15,7 @@ use super::telemetry::{
 };
 use futures::SinkExt as _;
 use serde_json::Value;
+use std::fmt;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -44,18 +45,78 @@ const API_LATENCY_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 #[cfg(test)]
 const API_LATENCY_PROBE_INTERVAL: Duration = Duration::from_millis(50);
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct WsRoutedMessage {
     pub channel: String,
     pub data: Arc<Value>,
 }
 
-#[derive(Debug)]
+impl fmt::Debug for WsRoutedMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WsRoutedMessage")
+            .field("channel", &redacted_ws_topic_debug_value(&self.channel))
+            .field("data", &redacted_ws_value(&self.data))
+            .finish()
+    }
+}
+
 pub enum WsCommand {
     Subscribe { topic: String, payload: Value },
     Unsubscribe { topic: String, payload: Value },
     Ping,
     Reconnect,
+}
+
+impl fmt::Debug for WsCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Subscribe { topic, payload } => f
+                .debug_struct("Subscribe")
+                .field("topic", &redacted_ws_topic_debug_value(topic))
+                .field("payload", &redacted_ws_value(payload))
+                .finish(),
+            Self::Unsubscribe { topic, payload } => f
+                .debug_struct("Unsubscribe")
+                .field("topic", &redacted_ws_topic_debug_value(topic))
+                .field("payload", &redacted_ws_value(payload))
+                .finish(),
+            Self::Ping => f.write_str("Ping"),
+            Self::Reconnect => f.write_str("Reconnect"),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RedactedWsValue<'a>(&'a Value);
+
+impl fmt::Debug for RedactedWsValue<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let method = self.0.get("method").and_then(Value::as_str);
+        let subscription_type = self
+            .0
+            .pointer("/subscription/type")
+            .and_then(Value::as_str)
+            .or_else(|| self.0.get("type").and_then(Value::as_str));
+
+        f.debug_struct("WsJson")
+            .field("method", &method)
+            .field("subscription_type", &subscription_type)
+            .field("payload", &"<redacted>")
+            .finish()
+    }
+}
+
+pub(super) fn redacted_ws_value(value: &Value) -> RedactedWsValue<'_> {
+    RedactedWsValue(value)
+}
+
+pub(super) fn redacted_ws_topic_debug_value(topic: &str) -> &str {
+    let lower = topic.to_ascii_lowercase();
+    if lower.starts_with("0x") || lower.contains(":0x") {
+        "<redacted>"
+    } else {
+        topic
+    }
 }
 
 struct WsManager {

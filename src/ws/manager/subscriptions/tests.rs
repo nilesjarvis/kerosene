@@ -73,3 +73,27 @@ fn unsubscribe_missing_topic_is_noop() {
         WsUnsubscribeResult::Missing
     );
 }
+
+#[test]
+fn subscription_debug_redacts_user_topics_and_payloads() {
+    let address = "0xabc0000000000000000000000000000000000000";
+    let payload = json!({
+        "method": "subscribe",
+        "subscription": {
+            "type": "openOrders",
+            "user": address
+        }
+    });
+    let mut subscriptions = ActiveWsSubscriptions::default();
+    subscriptions.subscribe(format!("openOrders:{address}"), payload.clone());
+
+    let active_rendered = format!("{subscriptions:?}");
+    assert!(active_rendered.contains("<redacted>"));
+    assert!(active_rendered.contains("subscription_type: Some(\"openOrders\")"));
+    assert!(!active_rendered.contains(address));
+
+    let removed = subscriptions.unsubscribe(format!("openOrders:{address}"), payload);
+    let removed_rendered = format!("{removed:?}");
+    assert!(removed_rendered.contains("<redacted>"));
+    assert!(!removed_rendered.contains(address));
+}

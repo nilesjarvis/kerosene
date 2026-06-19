@@ -1,7 +1,8 @@
-use super::WsCommand;
 use super::subscriptions::ActiveWsSubscriptions;
+use super::{WsCommand, redacted_ws_value};
 
 use serde_json::Value;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
@@ -10,12 +11,26 @@ mod tests;
 // Outbound Command Planning
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) struct WsCommandAction {
     pub(super) outbound_payload: Option<Value>,
     pub(super) disconnect_on_send_error: bool,
     pub(super) mark_ping_start: bool,
     pub(super) disconnect_after_handling: bool,
+}
+
+impl fmt::Debug for WsCommandAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WsCommandAction")
+            .field(
+                "outbound_payload",
+                &self.outbound_payload.as_ref().map(redacted_ws_value),
+            )
+            .field("disconnect_on_send_error", &self.disconnect_on_send_error)
+            .field("mark_ping_start", &self.mark_ping_start)
+            .field("disconnect_after_handling", &self.disconnect_after_handling)
+            .finish()
+    }
 }
 
 impl WsCommandAction {
