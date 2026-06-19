@@ -291,7 +291,9 @@ impl TradingTerminal {
                     chart_h,
                 });
             }
-            Message::QuickOrderQtyChanged(id, qty) => self.handle_quick_order_qty_changed(id, qty),
+            Message::QuickOrderQtyChanged(id, qty) => {
+                self.handle_quick_order_qty_changed(id, qty.into_string())
+            }
             Message::QuickOrderPercentageChanged(id, value) => {
                 self.handle_quick_order_percentage_changed(id, value)
             }

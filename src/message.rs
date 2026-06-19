@@ -1021,7 +1021,7 @@ pub(crate) enum Message {
     ToggleHidePnl,
     // Quick order form (right-click on chart)
     OpenQuickOrder(ChartId, ChartSurfaceId, f64, f32, f32, f32, f32),
-    QuickOrderQtyChanged(ChartId, String),
+    QuickOrderQtyChanged(ChartId, RedactedOrderInput),
     QuickOrderPercentageChanged(ChartId, f32),
     QuickOrderToggleDenomination(ChartId),
     QuickOrderToggleType(ChartId),
@@ -1226,6 +1226,7 @@ mod tests {
             Message::TwapSlicesChanged("order-input-secret".into()),
             Message::TwapMinPriceChanged("order-input-secret".into()),
             Message::TwapMaxPriceChanged("order-input-secret".into()),
+            Message::QuickOrderQtyChanged(7, "order-input-secret".into()),
         ];
 
         for message in messages {

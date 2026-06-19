@@ -18,7 +18,7 @@ impl TradingTerminal {
                 chart_id
             )))
             .style(helpers::text_input_style)
-            .on_input(move |q| Message::QuickOrderQtyChanged(id, q))
+            .on_input(move |q| Message::QuickOrderQtyChanged(id, q.into()))
             .size(12)
             .padding([4, 6])
             .into()
