@@ -36,12 +36,14 @@ fn hydromancer_window_is_larger_than_the_app_level_stale_label() {
 }
 
 #[test]
-fn hydromancer_manager_id_uses_generation_not_api_key() {
+fn hydromancer_manager_id_uses_key_and_generation() {
     let first = HydromancerStreamKey::new("hydro-secret-token-a", 7);
+    let same = HydromancerStreamKey::new("hydro-secret-token-a", 7);
     let rotated_same_generation = HydromancerStreamKey::new("hydro-secret-token-b", 7);
     let next_generation = HydromancerStreamKey::new("hydro-secret-token-b", 8);
 
-    assert_eq!(first.manager_id(), rotated_same_generation.manager_id());
+    assert_eq!(first.manager_id(), same.manager_id());
+    assert_ne!(first.manager_id(), rotated_same_generation.manager_id());
     assert_ne!(first.manager_id(), next_generation.manager_id());
 }
 
@@ -114,14 +116,15 @@ fn finished_manager_cleanup_keeps_replacement_entry() {
 
 #[test]
 fn reconnect_prunes_closed_registry_entry() {
-    let manager_id = u64::MAX - 102;
+    let stream_key = HydromancerStreamKey::new("hydro-secret-token-a", u64::MAX - 102);
+    let manager_id = stream_key.manager_id();
     remove_manager_for_test(manager_id);
 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     drop(cmd_rx);
     insert_manager_for_test(manager_id, 3001, cmd_tx);
 
-    reconnect_hydromancer(manager_id);
+    reconnect_hydromancer(stream_key);
 
     assert!(!manager_exists_for_test(manager_id));
 }

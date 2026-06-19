@@ -271,7 +271,10 @@ impl TradingTerminal {
         let hydromancer_key_changed =
             !previous_hydromancer_key.is_empty() || !self.hydromancer_key_input.trim().is_empty();
         if !previous_hydromancer_key.is_empty() {
-            ws::evict_hydromancer_manager(previous_hydromancer_generation);
+            ws::evict_hydromancer_manager(ws::HydromancerStreamKey::from_zeroizing(
+                previous_hydromancer_key.clone(),
+                previous_hydromancer_generation,
+            ));
         }
         self.hydromancer_api_key.zeroize();
         self.hydromancer_key_input.zeroize();

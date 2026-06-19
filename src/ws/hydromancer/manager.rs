@@ -158,13 +158,14 @@ pub(super) fn get_hydromancer_manager(
     (manager.cmd_tx.clone(), manager.msg_rx.resubscribe())
 }
 
-pub fn reconnect_hydromancer(manager_id: u64) {
+pub fn reconnect_hydromancer(stream_key: HydromancerStreamKey) {
     let Some(managers) = HYDROMANCER_MANAGERS.get() else {
         return;
     };
     let Ok(mut managers) = managers.lock() else {
         return;
     };
+    let manager_id = stream_key.manager_id();
     if let Some(manager) = managers.get(&manager_id)
         && manager.cmd_tx.send(HydromancerCommand::Reconnect).is_err()
     {
@@ -174,9 +175,10 @@ pub fn reconnect_hydromancer(manager_id: u64) {
 
 #[cfg(test)]
 pub(crate) fn hydromancer_manager_reconnect_sent_for_test(
-    manager_id: u64,
+    stream_key: HydromancerStreamKey,
     action: impl FnOnce(),
 ) -> bool {
+    let manager_id = stream_key.manager_id();
     let managers = HYDROMANCER_MANAGERS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
     let (_msg_tx, msg_rx) = broadcast::channel(1);
@@ -207,20 +209,21 @@ pub(crate) fn hydromancer_manager_reconnect_sent_for_test(
     sent_reconnect
 }
 
-/// Tear down the Hydromancer manager for `manager_id` if one exists. Sends
-/// `Shutdown` to the task (so its owned `api_key` String drops) and
-/// removes the registry entry.
+/// Tear down the Hydromancer manager for `stream_key` if one exists. Sends
+/// `Shutdown` to the task (so its owned `api_key` String drops) and removes the
+/// registry entry.
 ///
 /// Intended for API-key rotation / clearing flows — every consumer that
 /// re-subscribes after rotation will pick up the new key through
 /// `get_hydromancer_manager`, which spawns a fresh task.
-pub fn evict_hydromancer_manager(manager_id: u64) {
+pub fn evict_hydromancer_manager(stream_key: HydromancerStreamKey) {
     let Some(managers) = HYDROMANCER_MANAGERS.get() else {
         return;
     };
     let Ok(mut managers) = managers.lock() else {
         return;
     };
+    let manager_id = stream_key.manager_id();
     if let Some((_key, manager)) = managers.remove_entry(&manager_id) {
         // Best-effort shutdown signal. If the channel is already closed
         // the task is gone anyway.

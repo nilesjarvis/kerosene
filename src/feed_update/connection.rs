@@ -37,7 +37,10 @@ impl TradingTerminal {
                 self.hydromancer_api_key = next_key.as_str().to_string().into();
                 let hydromancer_key_changed = previous_key.as_str() != next_key.as_str();
                 if !previous_key.is_empty() && hydromancer_key_changed {
-                    ws::evict_hydromancer_manager(previous_generation);
+                    ws::evict_hydromancer_manager(ws::HydromancerStreamKey::from_zeroizing(
+                        previous_key.clone(),
+                        previous_generation,
+                    ));
                 }
                 if hydromancer_key_changed {
                     self.bump_hydromancer_key_generation();
@@ -60,7 +63,10 @@ impl TradingTerminal {
                     self.journal.clear_snapshot_cache();
                     self.journal.expanded_snapshot_trade_ids.clear();
                     if !self.hydromancer_api_key.trim().is_empty() {
-                        ws::reconnect_hydromancer(self.hydromancer_key_generation);
+                        ws::reconnect_hydromancer(ws::HydromancerStreamKey::from_zeroizing(
+                            self.hydromancer_api_key_for_task(),
+                            self.hydromancer_key_generation,
+                        ));
                     }
                     return self.refresh_hydromancer_dependent_data();
                 }
@@ -111,6 +117,13 @@ mod tests {
         terminal.hyperdash_api_key = sensitive_string("hyperdash-key");
         terminal.secret_migration_save_blocked = false;
         terminal.secret_store_status = None;
+    }
+
+    fn hydromancer_stream_key(terminal: &TradingTerminal) -> ws::HydromancerStreamKey {
+        ws::HydromancerStreamKey::from_zeroizing(
+            terminal.hydromancer_api_key_for_task(),
+            terminal.hydromancer_key_generation,
+        )
     }
 
     fn snapshot_request(generation: u64) -> JournalTradeSnapshotRequest {
@@ -281,7 +294,7 @@ mod tests {
         terminal.config_save_due_at = None;
 
         let sent_manager_reconnect = ws::hydromancer_manager_reconnect_sent_for_test(
-            terminal.hydromancer_key_generation,
+            hydromancer_stream_key(&terminal),
             || {
                 let _task = terminal.update_feed_connection(Message::SaveHydromancerKey);
             },
@@ -337,7 +350,7 @@ mod tests {
         terminal.tracked_trades_status = "Trades current".to_string();
 
         let sent_manager_reconnect = ws::hydromancer_manager_reconnect_sent_for_test(
-            terminal.hydromancer_key_generation,
+            hydromancer_stream_key(&terminal),
             || {
                 let _task = terminal.update_feed_connection(Message::ReconnectLiquidations);
             },
@@ -365,7 +378,7 @@ mod tests {
         terminal.tracked_trades_status = "Trades current".to_string();
 
         let sent_manager_reconnect = ws::hydromancer_manager_reconnect_sent_for_test(
-            terminal.hydromancer_key_generation,
+            hydromancer_stream_key(&terminal),
             || {
                 let _task = terminal.update_feed_connection(Message::ReconnectTrackedTrades);
             },

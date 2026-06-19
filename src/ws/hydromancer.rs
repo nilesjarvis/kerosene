@@ -5,6 +5,7 @@ mod parsing;
 mod recent;
 mod tracked_trades;
 
+use std::collections::hash_map::DefaultHasher;
 use std::fmt;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -55,7 +56,10 @@ impl HydromancerStreamKey {
     }
 
     pub(super) fn manager_id(&self) -> u64 {
-        self.generation
+        let mut hasher = DefaultHasher::new();
+        self.generation.hash(&mut hasher);
+        self.api_key.as_str().hash(&mut hasher);
+        hasher.finish()
     }
 }
 
@@ -71,6 +75,7 @@ impl fmt::Debug for HydromancerStreamKey {
 impl Hash for HydromancerStreamKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.generation.hash(state);
+        self.api_key.as_str().hash(state);
     }
 }
 
@@ -206,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn hydromancer_stream_key_redacts_debug_and_hashes_generation_only() {
+    fn hydromancer_stream_key_redacts_debug_and_hashes_key_and_generation() {
         let first = HydromancerStreamKey::new("hydro-secret-a", 7);
         let rotated_same_generation = HydromancerStreamKey::new("hydro-secret-b", 7);
         let next_generation = HydromancerStreamKey::new("hydro-secret-b", 8);
@@ -215,7 +220,7 @@ mod tests {
         assert!(debug.contains("<redacted>"));
         assert!(!debug.contains("hydro-secret-a"));
 
-        assert_eq!(hash_value(&first), hash_value(&rotated_same_generation));
+        assert_ne!(hash_value(&first), hash_value(&rotated_same_generation));
         assert_ne!(hash_value(&first), hash_value(&next_generation));
     }
 }

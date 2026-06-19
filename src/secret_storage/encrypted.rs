@@ -183,7 +183,10 @@ impl TradingTerminal {
         let hydromancer_key_changed =
             previous_hydromancer_key.as_str() != payload.global.hydromancer_api_key.trim();
         if !previous_hydromancer_key.is_empty() && hydromancer_key_changed {
-            crate::ws::evict_hydromancer_manager(previous_hydromancer_generation);
+            crate::ws::evict_hydromancer_manager(crate::ws::HydromancerStreamKey::from_zeroizing(
+                previous_hydromancer_key.clone(),
+                previous_hydromancer_generation,
+            ));
         }
         self.hydromancer_api_key.zeroize();
         self.hydromancer_api_key = payload.global.hydromancer_api_key.into();
@@ -220,7 +223,10 @@ impl TradingTerminal {
             self.tracked_trades_status = self.liquidations_status.clone();
 
             if !self.hydromancer_api_key.trim().is_empty() {
-                crate::ws::reconnect_hydromancer(self.hydromancer_key_generation);
+                crate::ws::reconnect_hydromancer(crate::ws::HydromancerStreamKey::from_zeroizing(
+                    self.hydromancer_api_key_for_task(),
+                    self.hydromancer_key_generation,
+                ));
             }
         }
 
@@ -473,6 +479,13 @@ mod tests {
         terminal
     }
 
+    fn hydromancer_stream_key(terminal: &TradingTerminal) -> ws::HydromancerStreamKey {
+        ws::HydromancerStreamKey::from_zeroizing(
+            terminal.hydromancer_api_key_for_task(),
+            terminal.hydromancer_key_generation,
+        )
+    }
+
     #[test]
     fn encrypted_payload_save_writes_candidate_config_before_reporting_success() {
         let password = "password";
@@ -680,7 +693,7 @@ mod tests {
         let payload = SecretPayload::from_credentials(&[], "hydro-secret", "hyper-secret");
 
         let sent_manager_reconnect = ws::hydromancer_manager_reconnect_sent_for_test(
-            terminal.hydromancer_key_generation,
+            hydromancer_stream_key(&terminal),
             || {
                 let _skipped = terminal.apply_secret_payload(payload);
             },
