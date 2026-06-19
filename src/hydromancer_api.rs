@@ -140,8 +140,12 @@ async fn fetch_funding_history_page(
 }
 
 fn parse_funding_history_response(text: &str) -> Result<Vec<FundingRatePoint>, String> {
-    let raw: Vec<RawFundingRatePoint> = serde_json::from_str(text)
-        .map_err(|e| format!("Hydromancer funding response parse failed: {e}"))?;
+    let raw: Vec<RawFundingRatePoint> = serde_json::from_str(text).map_err(|e| {
+        format!(
+            "Hydromancer funding response parse failed: {e}; Response: {}",
+            sensitive_response_snippet(text)
+        )
+    })?;
     normalize_funding_history(raw)
 }
 

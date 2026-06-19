@@ -35,3 +35,23 @@ fn rejects_malformed_funding_rate() {
 
     assert!(err.contains("Invalid Hydromancer funding rate"));
 }
+
+#[test]
+fn malformed_funding_response_error_includes_redacted_snippet() {
+    let err = parse_funding_history_response(
+        r#"upstream failure Authorization: Bearer hydro-secret api_key="json-secret" signature=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"#,
+    )
+    .expect_err("malformed response should fail");
+
+    assert!(err.contains("Hydromancer funding response parse failed"));
+    assert!(err.contains("Response:"));
+    assert!(err.contains("<redacted>"));
+    assert!(err.contains("<redacted-hex>"));
+    for secret in [
+        "hydro-secret",
+        "json-secret",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    ] {
+        assert!(!err.contains(secret), "funding parse error leaked {secret}");
+    }
+}
