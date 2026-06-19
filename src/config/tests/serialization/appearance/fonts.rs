@@ -1,7 +1,9 @@
+use super::super::super::config_warning_guard;
 use super::{
     CustomFontConfig, DisplayFontConfig, KeroseneConfig, default_config_value, json_string,
     object_mut, value_from_json, value_from_str,
 };
+use crate::config::take_config_warnings;
 
 #[test]
 fn display_and_monospace_fonts_round_trip_and_legacy_default_system() {
@@ -73,4 +75,46 @@ fn bundled_display_and_monospace_fonts_do_not_require_custom_font_entries() {
             }
         );
     }
+}
+
+#[test]
+fn invalid_display_font_modes_default_with_warnings() {
+    let _warning_guard = config_warning_guard();
+    let mut config = default_config_value();
+    let object = object_mut(&mut config, "config should serialize to object");
+    object.insert(
+        "display_font".to_string(),
+        serde_json::json!({
+            "mode": "future",
+            "family": "Future Font"
+        }),
+    );
+    object.insert(
+        "monospace_font".to_string(),
+        serde_json::json!({
+            "mode": "custom"
+        }),
+    );
+
+    let decoded: KeroseneConfig =
+        value_from_json(config, "future display font config should deserialize");
+
+    assert_eq!(decoded.display_font, DisplayFontConfig::System);
+    assert_eq!(decoded.monospace_font, DisplayFontConfig::System);
+
+    let warnings = take_config_warnings();
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(
+                |warning| warning.as_str() == "Invalid display font config; using System Default"
+            )
+            .count(),
+        2
+    );
+    assert!(
+        !warnings
+            .iter()
+            .any(|warning| warning.contains("Future Font"))
+    );
 }

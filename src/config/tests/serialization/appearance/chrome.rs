@@ -217,6 +217,10 @@ fn chart_appearance_unknown_enum_values_default_with_warnings() {
         "chart_hud_order_sound".to_string(),
         serde_json::json!("FutureOrderSound"),
     );
+    object.insert(
+        "chart_backfill_source".to_string(),
+        serde_json::json!("FutureBackfillSource"),
+    );
 
     let decoded: KeroseneConfig =
         value_from_json(config, "future chart appearance config should deserialize");
@@ -227,6 +231,10 @@ fn chart_appearance_unknown_enum_values_default_with_warnings() {
     assert_eq!(
         decoded.chart_hud_order_sound,
         ChartHudOrderSound::GunShot8Bit
+    );
+    assert_eq!(
+        decoded.chart_backfill_source,
+        ChartBackfillSource::Hyperliquid
     );
 
     let warnings = take_config_warnings();
@@ -250,6 +258,9 @@ fn chart_appearance_unknown_enum_values_default_with_warnings() {
             .iter()
             .any(|warning| warning.contains("Unknown chart HUD order sound \"FutureOrderSound\""))
     );
+    assert!(warnings.iter().any(|warning| {
+        warning.contains("Unknown chart backfill source \"FutureBackfillSource\"")
+    }));
 }
 
 #[test]

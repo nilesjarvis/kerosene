@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -29,7 +29,7 @@ pub struct CustomFontConfig {
     pub file_name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum DisplayFontConfig {
     #[default]
@@ -37,6 +37,42 @@ pub enum DisplayFontConfig {
     Custom {
         family: String,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+enum DisplayFontConfigWire {
+    System,
+    Custom { family: String },
+}
+
+impl From<DisplayFontConfigWire> for DisplayFontConfig {
+    fn from(value: DisplayFontConfigWire) -> Self {
+        match value {
+            DisplayFontConfigWire::System => Self::System,
+            DisplayFontConfigWire::Custom { family } => Self::Custom { family },
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DisplayFontConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Ok(
+            match serde_json::from_value::<DisplayFontConfigWire>(value) {
+                Ok(value) => value.into(),
+                Err(_) => {
+                    crate::config::push_config_warning(
+                        "Invalid display font config; using System Default".to_string(),
+                    );
+                    Self::default()
+                }
+            },
+        )
+    }
 }
 
 impl fmt::Display for DisplayFontConfig {

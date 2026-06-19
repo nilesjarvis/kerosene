@@ -56,7 +56,7 @@ impl std::fmt::Display for ReadDataProvider {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub enum ChartBackfillSource {
     #[default]
     Hyperliquid,
@@ -64,11 +64,36 @@ pub enum ChartBackfillSource {
 }
 
 impl ChartBackfillSource {
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "Hyperliquid" => Some(Self::Hyperliquid),
+            "Hydromancer" => Some(Self::Hydromancer),
+            _ => None,
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Hyperliquid => "Hyperliquid",
             Self::Hydromancer => "Hydromancer",
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for ChartBackfillSource {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            crate::config::push_config_warning(format!(
+                "Unknown chart backfill source {value:?} in config; using {}",
+                default.label()
+            ));
+            default
+        }))
     }
 }
 
