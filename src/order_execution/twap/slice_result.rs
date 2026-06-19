@@ -3,7 +3,7 @@ use super::helpers::{
     twap_cancel_child_task, twap_place_result_refresh_policy,
 };
 use crate::app_state::TradingTerminal;
-use crate::helpers::format_price;
+use crate::helpers::{format_price, redact_sensitive_response_text};
 use crate::message::Message;
 use crate::signing::{ExchangeResponse, float_to_wire};
 use crate::twap_state::{
@@ -327,6 +327,7 @@ impl TradingTerminal {
                     }
                 }
                 Err(error) => {
+                    let error = redact_sensitive_response_text(&error);
                     finish_attempt = false;
                     if let Some(child) = twap.child_order_mut(pending.index) {
                         child.status = TwapChildStatus::StatusUnknown;

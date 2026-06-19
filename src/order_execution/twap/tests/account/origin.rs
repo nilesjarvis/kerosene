@@ -545,13 +545,29 @@ fn ambiguous_slice_result_after_account_switch_does_not_refresh_current_account(
     disable_current_account_refresh(&mut terminal);
     terminal.twap_orders.insert(1, pending_twap(1, CLOID, now));
 
-    let _task =
-        terminal.handle_twap_slice_result(1, Err("Exchange request failed after submit".into()));
+    let _task = terminal.handle_twap_slice_result(
+        1,
+        Err("Exchange request failed after submit: api_key=super-secret".into()),
+    );
 
     let twap = twap_by_id(&terminal, 1);
     assert_eq!(twap.account_address, ORIGIN_ADDRESS);
     assert_eq!(twap.status_check_cloid.as_deref(), Some(CLOID));
     assert_eq!(twap.child_orders[0].status, TwapChildStatus::StatusUnknown);
+    assert!(
+        twap.child_orders[0]
+            .exchange_summary
+            .contains("api_key=<redacted>")
+    );
+    assert!(
+        !twap.child_orders[0]
+            .exchange_summary
+            .contains("super-secret")
+    );
+    let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+    assert!(*is_error);
+    assert!(message.contains("api_key=<redacted>"));
+    assert!(!message.contains("super-secret"));
     assert!(!terminal.account_loading);
     assert!(!terminal.account_reconciliation_required);
 }
