@@ -608,6 +608,41 @@ fn deferred_legacy_account_key_blocks_conflicting_profile_hydromancer_key_cleanu
 }
 
 #[test]
+fn deferred_legacy_account_key_read_failure_redacts_status() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.secret_storage_mode = config::CredentialStorageMode::OsKeychain;
+    terminal.accounts = vec![account(
+        "account-a",
+        "Account A",
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )];
+    terminal.accounts[0].agent_key.zeroize();
+    let persist_called = Cell::new(false);
+
+    terminal.load_deferred_legacy_account_key_with(
+        0,
+        |_profile| Err("keychain read failed: agent_key=super-secret".to_string()),
+        |_| {
+            persist_called.set(true);
+            true
+        },
+    );
+
+    assert!(!persist_called.get());
+    let (status, is_error) = terminal
+        .secret_store_status
+        .as_ref()
+        .expect("read failure status should be set");
+    assert!(*is_error);
+    assert!(
+        status.contains("Legacy account key read failed"),
+        "{status}"
+    );
+    assert!(status.contains("agent_key=<redacted>"), "{status}");
+    assert!(!status.contains("super-secret"), "{status}");
+}
+
+#[test]
 fn account_switch_marks_connect_pending_so_summary_does_not_flash_disconnected() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.accounts = vec![

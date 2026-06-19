@@ -6,6 +6,7 @@ mod tests;
 
 use crate::app_state::TradingTerminal;
 use crate::config::{self, AccountProfile};
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
@@ -124,6 +125,7 @@ impl TradingTerminal {
             }
             Ok(()) => {}
             Err(error) => {
+                let error = redact_sensitive_response_text(&error);
                 self.secret_store_status =
                     Some((format!("Legacy account key read failed: {error}"), true));
             }
