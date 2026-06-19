@@ -537,16 +537,6 @@ fn hydromancer_market_disconnect_should_fallback(error: &str) -> bool {
         || lower.contains("invalid token")
         || lower.contains("http 401")
         || lower.contains("http 403")
-        || ((lower.contains("subscription")
-            || lower.contains("subscribe")
-            || lower.contains("quota")
-            || lower.contains("too many"))
-            && (lower.contains("rejected")
-                || lower.contains("denied")
-                || lower.contains("unsupported")
-                || lower.contains("not supported")
-                || lower.contains("too many")
-                || lower.contains("quota")))
 }
 
 fn l2_book_items(value: &Value) -> Vec<&Value> {
@@ -700,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn market_stream_fallback_ignores_transient_reconnect_controls() {
+    fn market_stream_fallback_only_uses_auth_failures() {
         assert!(!hydromancer_market_control_should_fallback(
             &HydromancerWsMessage::Connecting
         ));
@@ -721,9 +711,15 @@ mod tests {
                 retry_delay_secs: 2,
             }
         ));
-        assert!(hydromancer_market_control_should_fallback(
+        assert!(!hydromancer_market_control_should_fallback(
             &HydromancerWsMessage::Reconnecting {
                 error: "subscription rejected: too many subscriptions".to_string(),
+                retry_delay_secs: 2,
+            }
+        ));
+        assert!(!hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Reconnecting {
+                error: "subscription denied: quota exceeded".to_string(),
                 retry_delay_secs: 2,
             }
         ));
@@ -741,9 +737,14 @@ mod tests {
                     .to_string()
             )
         ));
-        assert!(hydromancer_market_control_should_fallback(
+        assert!(!hydromancer_market_control_should_fallback(
             &HydromancerWsMessage::Disconnected(
                 "subscription rejected: too many subscriptions".to_string()
+            )
+        ));
+        assert!(!hydromancer_market_control_should_fallback(
+            &HydromancerWsMessage::Disconnected(
+                "subscription unsupported: quota exhausted".to_string()
             )
         ));
     }
