@@ -8,6 +8,7 @@ use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId, DetachedChartWi
 use crate::config::AccountProfile;
 use crate::order_execution::{
     OneShotPlacementContext, OrderSurface, PendingOrderAction, QuickOrderForm, QuickOrderRecovery,
+    QuickOrderSubmissionSnapshot,
 };
 use crate::order_update::PendingOneShotStatusRequest;
 use crate::signing::{ExchangeOrderKind, ExchangeResponse};
@@ -47,6 +48,38 @@ fn quick_order_form() -> QuickOrderForm {
         click_y: 20.0,
         chart_w: 400.0,
         chart_h: 300.0,
+    }
+}
+
+#[test]
+fn quick_order_submission_snapshot_debug_redacts_symbol_and_form_values() {
+    let snapshot = QuickOrderSubmissionSnapshot {
+        surface_id: ChartSurfaceId::Docked(1),
+        symbol_key: "SECRETCOIN".to_string(),
+        form: QuickOrderForm {
+            price: 98765.4321,
+            quantity: "quantity-secret".to_string(),
+            quantity_is_usd: true,
+            percentage: 42.42,
+            quantity_provenance: None,
+            is_limit: true,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 400.0,
+            chart_h: 300.0,
+        },
+        reduce_only: true,
+        market_universe: Default::default(),
+    };
+
+    let rendered = format!("{snapshot:?}");
+
+    assert!(rendered.contains("symbol_key: <redacted>"));
+    assert!(rendered.contains("price: <redacted>"));
+    assert!(rendered.contains("quantity: <redacted>"));
+    assert!(rendered.contains("reduce_only: true"));
+    for secret in ["SECRETCOIN", "quantity-secret", "98765.4321", "42.42"] {
+        assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
     }
 }
 

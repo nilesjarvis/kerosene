@@ -386,14 +386,15 @@ impl PendingLeverageUpdateContext {
 mod tests {
     use super::{
         MoveOrderKey, OneShotPlacementContext, OrderSurface, PendingLeverageUpdateContext,
-        PendingMoveOrderContext, PendingNukeExecution, PendingOrderAction,
-        QuickOrderQuantityProvenance,
+        PendingMoveOrderContext, PendingNukeExecution, PendingOrderAction, QuickOrderForm,
+        QuickOrderQuantityProvenance, QuickOrderRecovery,
     };
     use crate::account::{
         AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
         SpotClearinghouseState,
     };
     use crate::app_state::{TradingTerminal, sensitive_string};
+    use crate::chart_state::ChartSurfaceId;
     use crate::config::AccountProfile;
     use crate::order_update::PendingOneShotStatusRequest;
     use crate::signing::ExchangeOrderKind;
@@ -451,11 +452,11 @@ mod tests {
         let provenance = QuickOrderQuantityProvenance {
             account_address: TEST_ACCOUNT.to_string(),
             account_data_revision: 7,
-            symbol_key: "BTC".to_string(),
+            symbol_key: "SECRETCOIN".to_string(),
             quantity_is_usd: true,
-            percentage: 25.0,
+            percentage: 42.42,
             is_limit: false,
-            reference_price: Some(100.0),
+            reference_price: Some(98765.4321),
             reduce_only: false,
             market_universe: crate::config::MarketUniverseConfig::default(),
         };
@@ -464,6 +465,57 @@ mod tests {
 
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains(TEST_ACCOUNT));
+        assert!(!rendered.contains("SECRETCOIN"));
+        assert!(!rendered.contains("42.42"));
+        assert!(!rendered.contains("98765.4321"));
+    }
+
+    #[test]
+    fn quick_order_form_and_recovery_debug_redact_order_details() {
+        let form = QuickOrderForm {
+            price: 98765.4321,
+            quantity: "quantity-secret".to_string(),
+            quantity_is_usd: true,
+            percentage: 42.42,
+            quantity_provenance: Some(QuickOrderQuantityProvenance {
+                account_address: TEST_ACCOUNT.to_string(),
+                account_data_revision: 7,
+                symbol_key: "SECRETCOIN".to_string(),
+                quantity_is_usd: true,
+                percentage: 42.42,
+                is_limit: true,
+                reference_price: Some(12345.6789),
+                reduce_only: false,
+                market_universe: crate::config::MarketUniverseConfig::default(),
+            }),
+            is_limit: true,
+            click_x: 10.0,
+            click_y: 20.0,
+            chart_w: 400.0,
+            chart_h: 300.0,
+        };
+        let recovery = QuickOrderRecovery {
+            chart_id: 1,
+            form,
+            surface_id: Some(ChartSurfaceId::Docked(1)),
+        };
+
+        let rendered = format!("{recovery:?}");
+
+        assert!(rendered.contains("price: <redacted>"));
+        assert!(rendered.contains("quantity: <redacted>"));
+        assert!(rendered.contains("quantity_provenance: Some(\"<redacted>\")"));
+        assert!(rendered.contains("chart_id: 1"));
+        for secret in [
+            TEST_ACCOUNT,
+            "SECRETCOIN",
+            "quantity-secret",
+            "98765.4321",
+            "12345.6789",
+            "42.42",
+        ] {
+            assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
+        }
     }
 
     #[test]
@@ -721,7 +773,7 @@ impl PendingMoveOrderContext {
 }
 
 /// State for the right-click quick order form on a chart.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct QuickOrderForm {
     /// Price at the right-click Y coordinate (pre-filled for limit orders).
     pub(crate) price: f64,
@@ -746,11 +798,41 @@ pub(crate) struct QuickOrderForm {
     pub(crate) chart_h: f32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl fmt::Debug for QuickOrderForm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QuickOrderForm")
+            .field("price", &format_args!("<redacted>"))
+            .field("quantity", &format_args!("<redacted>"))
+            .field("quantity_is_usd", &self.quantity_is_usd)
+            .field("percentage", &format_args!("<redacted>"))
+            .field(
+                "quantity_provenance",
+                &self.quantity_provenance.as_ref().map(|_| "<redacted>"),
+            )
+            .field("is_limit", &self.is_limit)
+            .field("click_x", &self.click_x)
+            .field("click_y", &self.click_y)
+            .field("chart_w", &self.chart_w)
+            .field("chart_h", &self.chart_h)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub(crate) struct QuickOrderRecovery {
     pub(crate) chart_id: ChartId,
     pub(crate) form: QuickOrderForm,
     pub(crate) surface_id: Option<ChartSurfaceId>,
+}
+
+impl fmt::Debug for QuickOrderRecovery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QuickOrderRecovery")
+            .field("chart_id", &self.chart_id)
+            .field("form", &self.form)
+            .field("surface_id", &self.surface_id)
+            .finish()
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -771,11 +853,14 @@ impl fmt::Debug for QuickOrderQuantityProvenance {
         f.debug_struct("QuickOrderQuantityProvenance")
             .field("account_address", &"<redacted>")
             .field("account_data_revision", &self.account_data_revision)
-            .field("symbol_key", &self.symbol_key)
+            .field("symbol_key", &format_args!("<redacted>"))
             .field("quantity_is_usd", &self.quantity_is_usd)
-            .field("percentage", &self.percentage)
+            .field("percentage", &format_args!("<redacted>"))
             .field("is_limit", &self.is_limit)
-            .field("reference_price", &self.reference_price)
+            .field(
+                "reference_price",
+                &self.reference_price.as_ref().map(|_| "<redacted>"),
+            )
             .field("reduce_only", &self.reduce_only)
             .field("market_universe", &self.market_universe)
             .finish()

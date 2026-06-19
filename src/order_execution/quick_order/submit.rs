@@ -10,18 +10,31 @@ use crate::order_execution::{
 use crate::signing::ExchangeOrderKind;
 
 use iced::Task;
+use std::fmt;
 use zeroize::Zeroizing;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct QuickOrderSubmissionSnapshot {
     pub(crate) surface_id: ChartSurfaceId,
     pub(crate) symbol_key: String,
     pub(crate) form: QuickOrderForm,
     pub(crate) reduce_only: bool,
     pub(crate) market_universe: MarketUniverseConfig,
+}
+
+impl fmt::Debug for QuickOrderSubmissionSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QuickOrderSubmissionSnapshot")
+            .field("surface_id", &self.surface_id)
+            .field("symbol_key", &format_args!("<redacted>"))
+            .field("form", &self.form)
+            .field("reduce_only", &self.reduce_only)
+            .field("market_universe", &self.market_universe)
+            .finish()
+    }
 }
 
 impl TradingTerminal {
