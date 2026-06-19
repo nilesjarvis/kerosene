@@ -54,6 +54,21 @@ fn watchlist_history_finish_errors_when_all_requested_fetches_fail() {
 }
 
 #[test]
+fn watchlist_history_finish_redacts_all_failed_last_error() {
+    let result: Result<HashMap<String, (f64, f64, f64)>, String> = finish_symbol_history(
+        HashMap::new(),
+        2,
+        2,
+        Some("candle request failed: api_key=super-secret".to_string()),
+        Some("No watchlist history available"),
+    );
+
+    let error = result.expect_err("all failed requests should return the last error");
+    assert!(error.contains("api_key=<redacted>"), "{error}");
+    assert!(!error.contains("super-secret"), "{error}");
+}
+
+#[test]
 fn watchlist_history_finish_allows_empty_success_without_fetch_failures() {
     let result: Result<HashMap<String, (f64, f64, f64)>, String> = finish_symbol_history(
         HashMap::new(),

@@ -1,7 +1,7 @@
 use super::super::Candle;
 use super::super::candles::fetch_candles;
 use crate::app_time::now_ms;
-use crate::helpers::finite_value;
+use crate::helpers::{finite_value, redact_sensitive_response_text};
 use std::collections::HashMap;
 
 pub async fn fetch_watchlist_history(
@@ -70,7 +70,9 @@ fn finish_symbol_history<T>(
         && map.is_empty()
         && let Some(error) = all_failed_error
     {
-        return Err(last_error.unwrap_or_else(|| error.to_string()));
+        return Err(last_error
+            .map(|error| redact_sensitive_response_text(&error))
+            .unwrap_or_else(|| error.to_string()));
     }
 
     Ok(map)
