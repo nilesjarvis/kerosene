@@ -646,6 +646,179 @@ fn split_ratios(layout: &crate::config::PaneLayoutConfig) -> Vec<f32> {
 }
 
 #[test]
+fn repairs_duplicate_non_chart_widget_ids() {
+    let mut config = KeroseneConfig {
+        order_books: vec![order_book_config(0), order_book_config(0)],
+        live_watchlists: vec![live_watchlist_config(0), live_watchlist_config(0)],
+        positioning_infos: vec![positioning_info_config(0), positioning_info_config(0)],
+        session_data: vec![session_data_config(0), session_data_config(0)],
+        pane_layout: Some(crate::config::PaneLayoutConfig::Split {
+            axis: crate::config::AxisConfig::Vertical,
+            ratio: 0.5,
+            a: Box::new(crate::config::PaneLayoutConfig::Leaf(
+                crate::config::PaneKindConfig::OrderBook { id: 0 },
+            )),
+            b: Box::new(crate::config::PaneLayoutConfig::Leaf(
+                crate::config::PaneKindConfig::OrderBook { id: 0 },
+            )),
+        }),
+        saved_layouts: vec![
+            serde_json::from_value(serde_json::json!({
+                "name": "duplicate-widgets",
+                "order_books": [{ "id": 0 }, { "id": 0 }],
+                "live_watchlists": [{ "id": 0 }, { "id": 0 }],
+                "positioning_infos": [{ "id": 0 }, { "id": 0 }],
+                "session_data": [{ "id": 0 }, { "id": 0 }],
+                "pane_layout": {
+                    "Split": {
+                        "axis": "Vertical",
+                        "ratio": 0.5,
+                        "a": { "Leaf": { "SessionData": { "id": 0 } } },
+                        "b": { "Leaf": { "SessionData": { "id": 0 } } }
+                    }
+                }
+            }))
+            .expect("saved layout should deserialize"),
+        ],
+        ..KeroseneConfig::default()
+    };
+
+    normalize_loaded_config(&mut config);
+
+    assert_eq!(
+        config
+            .order_books
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        config
+            .live_watchlists
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        config
+            .positioning_infos
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        config
+            .session_data
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        order_book_leaf_ids(config.pane_layout.as_ref().expect("pane layout")),
+        vec![0, 2]
+    );
+
+    let saved = &config.saved_layouts[0];
+    assert_eq!(
+        saved
+            .order_books
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        saved
+            .live_watchlists
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        saved
+            .positioning_infos
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        saved
+            .session_data
+            .iter()
+            .map(|cfg| cfg.id)
+            .collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert_eq!(
+        session_data_leaf_ids(saved.pane_layout.as_ref().expect("saved pane layout")),
+        vec![0, 2]
+    );
+}
+
+fn order_book_config(id: u64) -> crate::config::OrderBookConfig {
+    serde_json::from_value(serde_json::json!({ "id": id })).expect("order book config")
+}
+
+fn live_watchlist_config(id: u64) -> crate::config::LiveWatchlistConfig {
+    serde_json::from_value(serde_json::json!({ "id": id })).expect("live watchlist config")
+}
+
+fn positioning_info_config(id: u64) -> crate::config::PositioningInfoConfig {
+    serde_json::from_value(serde_json::json!({ "id": id })).expect("positioning config")
+}
+
+fn session_data_config(id: u64) -> crate::config::SessionDataConfig {
+    serde_json::from_value(serde_json::json!({ "id": id })).expect("session data config")
+}
+
+fn order_book_leaf_ids(layout: &crate::config::PaneLayoutConfig) -> Vec<u64> {
+    non_chart_leaf_ids(layout, |kind| match kind {
+        crate::config::PaneKindConfig::OrderBook { id } => Some(*id),
+        _ => None,
+    })
+}
+
+fn session_data_leaf_ids(layout: &crate::config::PaneLayoutConfig) -> Vec<u64> {
+    non_chart_leaf_ids(layout, |kind| match kind {
+        crate::config::PaneKindConfig::SessionData { id } => Some(*id),
+        _ => None,
+    })
+}
+
+fn non_chart_leaf_ids(
+    layout: &crate::config::PaneLayoutConfig,
+    id_for: fn(&crate::config::PaneKindConfig) -> Option<u64>,
+) -> Vec<u64> {
+    fn walk(
+        layout: &crate::config::PaneLayoutConfig,
+        id_for: fn(&crate::config::PaneKindConfig) -> Option<u64>,
+        ids: &mut Vec<u64>,
+    ) {
+        match layout {
+            crate::config::PaneLayoutConfig::Leaf(kind) => {
+                if let Some(id) = id_for(kind) {
+                    ids.push(id);
+                }
+            }
+            crate::config::PaneLayoutConfig::Split { a, b, .. } => {
+                walk(a, id_for, ids);
+                walk(b, id_for, ids);
+            }
+        }
+    }
+
+    let mut ids = Vec::new();
+    walk(layout, id_for, &mut ids);
+    ids
+}
+
+#[test]
 fn preserves_unknown_future_panes_in_loaded_layouts() {
     let raw_future_pane = serde_json::json!({
         "FuturePane": {

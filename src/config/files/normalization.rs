@@ -2,15 +2,15 @@ use crate::config::themes::{
     default_custom_themes, is_known_default_bloomberg_theme, is_known_default_hyperliquid_theme,
 };
 use crate::config::{
-    AccountProfile, KeroseneConfig, default_layout_ratios, default_market_slippage_pct,
-    new_secret_id, normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
-    normalize_chart_dotted_background_opacity, normalize_chart_edge_blur_strength,
-    normalize_chart_fisheye_strength, normalize_chart_hud_order_sound_volume,
-    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
-    normalize_pane_split_ratio, normalize_ui_scale, prune_legacy_unsupported_pane_layout,
-    push_config_warning,
+    AccountProfile, KeroseneConfig, PaneKindConfig, PaneLayoutConfig, default_layout_ratios,
+    default_market_slippage_pct, new_secret_id, normalize_alfred_popup_scale,
+    normalize_chart_chromatic_aberration_strength, normalize_chart_dotted_background_opacity,
+    normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
+    normalize_chart_hud_order_sound_volume, normalize_market_slippage_pct,
+    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_pane_split_ratio,
+    normalize_ui_scale, prune_legacy_unsupported_pane_layout, push_config_warning,
 };
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use zeroize::Zeroize;
 
 // ---------------------------------------------------------------------------
@@ -22,6 +22,7 @@ pub(super) fn normalize_loaded_config(config: &mut KeroseneConfig) {
     merge_default_themes(config);
     ensure_layout_ratios(config);
     prune_unsupported_pane_layouts(config);
+    repair_duplicate_non_chart_widget_ids(config);
     normalize_market_slippage(config);
     normalize_pane_chrome(config);
     normalize_fonts(config);
@@ -167,6 +168,158 @@ fn normalize_layout_ratio_values(ratios: &mut [f32]) {
     for ratio in ratios {
         *ratio = normalize_pane_split_ratio(*ratio);
     }
+}
+
+#[derive(Debug, Default)]
+struct NonChartWidgetIds {
+    order_books: BTreeSet<u64>,
+    live_watchlists: BTreeSet<u64>,
+    positioning_infos: BTreeSet<u64>,
+    session_data: BTreeSet<u64>,
+}
+
+fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
+    let mut repaired_any = repair_duplicate_non_chart_widget_ids_for_layout(
+        &mut config.order_books,
+        &mut config.live_watchlists,
+        &mut config.positioning_infos,
+        &mut config.session_data,
+        config.pane_layout.as_mut(),
+    );
+
+    for layout in &mut config.saved_layouts {
+        repaired_any |= repair_duplicate_non_chart_widget_ids_for_layout(
+            &mut layout.order_books,
+            &mut layout.live_watchlists,
+            &mut layout.positioning_infos,
+            &mut layout.session_data,
+            layout.pane_layout.as_mut(),
+        );
+    }
+
+    if repaired_any {
+        push_config_warning(
+            "Duplicate non-chart widget identifiers were repaired in persisted layouts."
+                .to_string(),
+        );
+    }
+}
+
+fn repair_duplicate_non_chart_widget_ids_for_layout(
+    order_books: &mut [crate::config::OrderBookConfig],
+    live_watchlists: &mut [crate::config::LiveWatchlistConfig],
+    positioning_infos: &mut [crate::config::PositioningInfoConfig],
+    session_data: &mut [crate::config::SessionDataConfig],
+    pane_layout: Option<&mut PaneLayoutConfig>,
+) -> bool {
+    let (order_books_repaired, order_book_ids) =
+        repair_duplicate_ids(order_books, |config| &mut config.id);
+    let (live_watchlists_repaired, live_watchlist_ids) =
+        repair_duplicate_ids(live_watchlists, |config| &mut config.id);
+    let (positioning_infos_repaired, positioning_info_ids) =
+        repair_duplicate_ids(positioning_infos, |config| &mut config.id);
+    let (session_data_repaired, session_data_ids) =
+        repair_duplicate_ids(session_data, |config| &mut config.id);
+
+    let mut repaired_any = order_books_repaired
+        || live_watchlists_repaired
+        || positioning_infos_repaired
+        || session_data_repaired;
+
+    if let Some(pane_layout) = pane_layout {
+        let mut seen = NonChartWidgetIds::default();
+        let mut reserved = NonChartWidgetIds {
+            order_books: order_book_ids,
+            live_watchlists: live_watchlist_ids,
+            positioning_infos: positioning_info_ids,
+            session_data: session_data_ids,
+        };
+        repaired_any |= repair_duplicate_non_chart_pane_ids(pane_layout, &mut seen, &mut reserved);
+    }
+
+    repaired_any
+}
+
+fn repair_duplicate_ids<T>(
+    items: &mut [T],
+    mut id_for: impl FnMut(&mut T) -> &mut u64,
+) -> (bool, BTreeSet<u64>) {
+    let mut repaired = false;
+    let mut used = BTreeSet::new();
+
+    for item in items {
+        let id = id_for(item);
+        if !used.insert(*id) {
+            *id = next_unused_widget_id(&used);
+            used.insert(*id);
+            repaired = true;
+        }
+    }
+
+    (repaired, used)
+}
+
+fn repair_duplicate_non_chart_pane_ids(
+    layout: &mut PaneLayoutConfig,
+    seen: &mut NonChartWidgetIds,
+    reserved: &mut NonChartWidgetIds,
+) -> bool {
+    match layout {
+        PaneLayoutConfig::Leaf(kind) => repair_duplicate_non_chart_leaf_id(kind, seen, reserved),
+        PaneLayoutConfig::Split { a, b, .. } => {
+            repair_duplicate_non_chart_pane_ids(a, seen, reserved)
+                | repair_duplicate_non_chart_pane_ids(b, seen, reserved)
+        }
+    }
+}
+
+fn repair_duplicate_non_chart_leaf_id(
+    kind: &mut PaneKindConfig,
+    seen: &mut NonChartWidgetIds,
+    reserved: &mut NonChartWidgetIds,
+) -> bool {
+    match kind {
+        PaneKindConfig::OrderBook { id } => {
+            repair_duplicate_leaf_id(id, &mut seen.order_books, &mut reserved.order_books)
+        }
+        PaneKindConfig::LiveWatchlist { id } => {
+            repair_duplicate_leaf_id(id, &mut seen.live_watchlists, &mut reserved.live_watchlists)
+        }
+        PaneKindConfig::PositioningInfo { id } => repair_duplicate_leaf_id(
+            id,
+            &mut seen.positioning_infos,
+            &mut reserved.positioning_infos,
+        ),
+        PaneKindConfig::SessionData { id } => {
+            repair_duplicate_leaf_id(id, &mut seen.session_data, &mut reserved.session_data)
+        }
+        _ => false,
+    }
+}
+
+fn repair_duplicate_leaf_id(
+    id: &mut u64,
+    seen: &mut BTreeSet<u64>,
+    reserved: &mut BTreeSet<u64>,
+) -> bool {
+    if seen.insert(*id) {
+        reserved.insert(*id);
+        return false;
+    }
+
+    let replacement = next_unused_widget_id(reserved);
+    *id = replacement;
+    seen.insert(replacement);
+    reserved.insert(replacement);
+    true
+}
+
+fn next_unused_widget_id(used: &BTreeSet<u64>) -> u64 {
+    let mut next = 0;
+    while used.contains(&next) {
+        next = next.saturating_add(1);
+    }
+    next
 }
 
 fn migrate_legacy_single_account(config: &mut KeroseneConfig) {
