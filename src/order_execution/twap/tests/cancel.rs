@@ -1,7 +1,9 @@
 use super::super::twap_cancel_target_matches;
 use super::fixtures::{exchange_response_from_value, test_twap, twap_by_id};
 use crate::app_state::TradingTerminal;
-use crate::twap_state::{TwapChildStatus, TwapPauseReason, TwapPendingOp, TwapStatus};
+use crate::twap_state::{
+    TWAP_MAX_UNEXPECTED_CANCEL_RETRIES, TwapChildStatus, TwapPauseReason, TwapPendingOp, TwapStatus,
+};
 
 use std::time::{Duration, Instant};
 
@@ -89,6 +91,68 @@ fn ambiguous_ok_unexpected_child_cancel_stays_pending_for_retry() {
             .exchange_summary
             .contains("OK (no statuses)")
     );
+}
+
+#[test]
+fn transport_unexpected_child_cancel_redacts_child_summary_before_retry() {
+    let mut terminal = terminal_with_unexpected_cancel();
+
+    let task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        Err("cancel request failed: api_key=super-secret".to_string()),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(
+        twap.pending_op,
+        Some(TwapPendingOp::CancelUnexpectedResting {
+            oid: Some(OID),
+            cloid: Some(CLOID.to_string()),
+        })
+    );
+    assert_eq!(twap.cancel_retries, 1);
+    assert_eq!(
+        twap.child_orders[0].status,
+        TwapChildStatus::UnexpectedResting
+    );
+    assert!(
+        twap.child_orders[0]
+            .exchange_summary
+            .contains("api_key=<redacted>")
+    );
+    assert!(
+        !twap.child_orders[0]
+            .exchange_summary
+            .contains("super-secret")
+    );
+    assert_eq!(task.units(), 2);
+}
+
+#[test]
+fn exhausted_transport_unexpected_child_cancel_redacts_error_event() {
+    let mut terminal = terminal_with_unexpected_cancel();
+    {
+        let twap = terminal.twap_orders.get_mut(&1).expect("twap");
+        twap.cancel_retries = TWAP_MAX_UNEXPECTED_CANCEL_RETRIES - 1;
+    }
+
+    let _task = terminal.handle_twap_unexpected_cancel_result(
+        1,
+        Some(OID),
+        Some(CLOID.to_string()),
+        Err("cancel request failed: token=super-secret".to_string()),
+    );
+
+    let twap = twap_by_id(&terminal, 1);
+    assert_eq!(twap.pending_op, None);
+    assert_eq!(twap.status, TwapStatus::Error);
+    let event = twap.events.last().expect("error event");
+    assert!(event.is_error);
+    assert!(event.message.contains("Cancel status unknown"));
+    assert!(event.message.contains("token=<redacted>"));
+    assert!(!event.message.contains("super-secret"));
 }
 
 #[test]

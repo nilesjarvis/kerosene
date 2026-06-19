@@ -3,6 +3,7 @@ use super::helpers::{
     twap_child_matches_cancel_target, twap_terminal_cancel_error,
 };
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::signing::ExchangeResponse;
 use crate::twap_state::{
@@ -84,7 +85,7 @@ impl TradingTerminal {
             matched_cancel_target = true;
             let exchange_summary = match &result {
                 Ok(response) => response.summary(),
-                Err(error) => error.clone(),
+                Err(error) => redact_sensitive_response_text(error),
             };
             twap.update_child_orders_matching(
                 |child| twap_child_matches_cancel_target(child, oid, cloid.as_deref()),
@@ -175,6 +176,7 @@ impl TradingTerminal {
                     }
                 }
                 Err(error) => {
+                    let error = redact_sensitive_response_text(&error);
                     finish_attempt = false;
                     twap.cancel_retries = twap.cancel_retries.saturating_add(1);
                     if twap.cancel_retries >= TWAP_MAX_UNEXPECTED_CANCEL_RETRIES {
