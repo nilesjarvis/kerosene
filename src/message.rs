@@ -1162,7 +1162,7 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
-        TelegramFastAuthMessageResult,
+        TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
     };
     use crate::chart_state::ChartSurfaceId;
     use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
@@ -1194,6 +1194,12 @@ mod tests {
             Message::TelegramFastAuthResult(
                 1,
                 TelegramFastAuthMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::TelegramFastAuthResult(
+                2,
+                TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedIn {
+                    display_name: "sentinel-secret".to_string(),
+                })),
             ),
             Message::WalletKeyInputChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),

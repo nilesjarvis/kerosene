@@ -172,9 +172,9 @@ impl fmt::Debug for TelegramFastAuthOutcome {
                 .debug_struct("PasswordRequired")
                 .field("hint", &hint.as_ref().map(|_| "<redacted>"))
                 .finish(),
-            Self::SignedIn { display_name } => f
+            Self::SignedIn { .. } => f
                 .debug_struct("SignedIn")
-                .field("display_name", display_name)
+                .field("display_name", &"<redacted>")
                 .finish(),
             Self::SignedOut { warning } => f
                 .debug_struct("SignedOut")
