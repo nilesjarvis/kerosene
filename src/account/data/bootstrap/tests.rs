@@ -1,4 +1,7 @@
-use super::responses::{fee_rates_from_best_effort_value, record_best_effort_section_warnings};
+use super::responses::{
+    clearinghouse_from_required_value, fee_rates_from_best_effort_value,
+    record_best_effort_section_warnings,
+};
 use super::{
     FUNDING_HISTORY_LOOKBACK_MS, frontend_open_orders_payload, funding_history_start_ms_from,
     user_fills_payload,
@@ -55,6 +58,30 @@ fn fee_rate_parse_success_keeps_fees_complete() {
 
     assert!(rates.rate_for(false, false).is_some());
     assert_eq!(completeness.section_warning(AccountDataSection::Fees), None);
+}
+
+#[test]
+fn clearinghouse_deserialize_error_redacts_sensitive_json_preview() {
+    let error = clearinghouse_from_required_value(serde_json::json!({
+        "user": "0xabc0000000000000000000000000000000000000",
+        "Authorization": "Bearer bearer-secret",
+        "accessToken": "access-secret"
+    }))
+    .expect_err("invalid clearinghouse response should fail");
+
+    assert!(error.contains("clearinghouseState deserialize failed"));
+    assert!(error.contains("<redacted>"));
+    assert!(error.contains("<redacted-hex>"));
+    for secret in [
+        "bearer-secret",
+        "access-secret",
+        "abc0000000000000000000000000000000000000",
+    ] {
+        assert!(
+            !error.contains(secret),
+            "clearinghouse deserialize error leaked {secret}"
+        );
+    }
 }
 
 #[test]

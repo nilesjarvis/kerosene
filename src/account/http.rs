@@ -1,11 +1,13 @@
 use crate::api::API_URL;
-use crate::helpers::text_excerpt;
+use crate::helpers::sensitive_response_excerpt;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
 // Account HTTP Helpers
 // ---------------------------------------------------------------------------
+
+const ACCOUNT_HTTP_ERROR_PREVIEW_CHARS: usize = 160;
 
 pub(super) async fn post_info_json_with_retries(
     client: reqwest::Client,
@@ -30,7 +32,7 @@ pub(super) async fn post_info_json_with_retries(
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            let body_preview = text_excerpt(&body, 160);
+            let body_preview = account_info_error_preview(&body);
             last_error = if body_preview.is_empty() {
                 format!("{label} request failed with HTTP {status}")
             } else {
@@ -80,6 +82,35 @@ where
         Err(e) => {
             warnings.push(format!("{label} parse failed: {e}"));
             Vec::new()
+        }
+    }
+}
+
+fn account_info_error_preview(body: &str) -> String {
+    sensitive_response_excerpt(body, ACCOUNT_HTTP_ERROR_PREVIEW_CHARS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn account_info_error_preview_redacts_sensitive_values() {
+        let preview = account_info_error_preview(
+            "upstream echoed Authorization: Basic basic-secret accessToken=\"access-secret\" user=0xabc0000000000000000000000000000000000000",
+        );
+
+        assert!(preview.contains("Authorization: Basic <redacted>"));
+        assert!(preview.contains("<redacted-hex>"));
+        for secret in [
+            "basic-secret",
+            "access-secret",
+            "abc0000000000000000000000000000000000000",
+        ] {
+            assert!(
+                !preview.contains(secret),
+                "account info preview leaked {secret}"
+            );
         }
     }
 }
