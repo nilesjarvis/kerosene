@@ -1,9 +1,14 @@
-use super::{AccountAbstractionMode, OpenOrder, SpotBalance, UserFill};
+use super::{
+    AccountAbstractionMode, AssetPosition, ClearinghouseState, CumFunding, FundingDelta,
+    FundingEntry, MarginSummary, OpenOrder, Position, PositionLeverage, SpotBalance,
+    SpotClearinghouseState, UserFill,
+};
 
 mod abstraction;
 mod asset_context;
 mod fills;
 mod orders;
+mod positions;
 mod spot;
 
 fn open_order_value(extra: serde_json::Value) -> serde_json::Value {

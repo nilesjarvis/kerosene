@@ -42,7 +42,7 @@ impl AccountAbstractionMode {
 }
 
 /// Margin summary from clearinghouseState.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarginSummary {
     pub account_value: String,
@@ -50,16 +50,34 @@ pub struct MarginSummary {
     pub total_margin_used: String,
 }
 
+impl fmt::Debug for MarginSummary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MarginSummary")
+            .field("account_value", &"<redacted>")
+            .field("total_ntl_pos", &"<redacted>")
+            .field("total_margin_used", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Cumulative funding amounts for a position.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CumFunding {
     /// Funding since the current position was opened.
     pub since_open: String,
 }
 
+impl fmt::Debug for CumFunding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CumFunding")
+            .field("since_open", &"<redacted>")
+            .finish()
+    }
+}
+
 /// A single perpetual position.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
     pub coin: String,
@@ -77,6 +95,22 @@ pub struct Position {
     pub cum_funding: Option<CumFunding>,
 }
 
+impl fmt::Debug for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Position")
+            .field("coin", &"<redacted>")
+            .field("szi", &"<redacted>")
+            .field("entry_px", &"<redacted>")
+            .field("position_value", &"<redacted>")
+            .field("unrealized_pnl", &"<redacted>")
+            .field("has_liquidation_px", &self.liquidation_px.is_some())
+            .field("leverage", &self.leverage)
+            .field("margin_used", &"<redacted>")
+            .field("has_cum_funding", &self.cum_funding.is_some())
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PositionLeverage {
     #[serde(rename = "type")]
@@ -85,7 +119,7 @@ pub struct PositionLeverage {
 }
 
 /// Wrapper for the position in assetPositions array.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetPosition {
     pub position: Position,
@@ -94,8 +128,17 @@ pub struct AssetPosition {
     pub liquidation_px: Option<String>,
 }
 
+impl fmt::Debug for AssetPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AssetPosition")
+            .field("position", &self.position)
+            .field("has_liquidation_px", &self.liquidation_px.is_some())
+            .finish()
+    }
+}
+
 /// Full clearinghouse state for a user (perps).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClearinghouseState {
     pub margin_summary: MarginSummary,
@@ -105,6 +148,24 @@ pub struct ClearinghouseState {
     pub cross_maintenance_margin_used: Option<String>,
     pub withdrawable: String,
     pub asset_positions: Vec<AssetPosition>,
+}
+
+impl fmt::Debug for ClearinghouseState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClearinghouseState")
+            .field("margin_summary", &self.margin_summary)
+            .field(
+                "has_cross_margin_summary",
+                &self.cross_margin_summary.is_some(),
+            )
+            .field(
+                "has_cross_maintenance_margin_used",
+                &self.cross_maintenance_margin_used.is_some(),
+            )
+            .field("withdrawable", &"<redacted>")
+            .field("asset_positions_count", &self.asset_positions.len())
+            .finish()
+    }
 }
 
 /// Real-time asset context for a market (perp or spot).
@@ -265,7 +326,7 @@ pub(crate) fn dedupe_user_fills_preserving_order(fills: Vec<UserFill>) -> Vec<Us
 }
 
 /// A single funding payment record from the `userFunding` endpoint.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FundingDelta {
     pub coin: String,
@@ -275,15 +336,35 @@ pub struct FundingDelta {
     pub usdc: String,
 }
 
+impl fmt::Debug for FundingDelta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FundingDelta")
+            .field("coin", &"<redacted>")
+            .field("funding_rate", &"<redacted>")
+            .field("szi", &"<redacted>")
+            .field("usdc", &"<redacted>")
+            .finish()
+    }
+}
+
 /// A funding payment entry with timestamp.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct FundingEntry {
     pub delta: FundingDelta,
     pub time: u64,
 }
 
+impl fmt::Debug for FundingEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FundingEntry")
+            .field("delta", &self.delta)
+            .field("time", &self.time)
+            .finish()
+    }
+}
+
 /// A spot balance entry.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpotBalance {
     pub coin: String,
@@ -296,8 +377,21 @@ pub struct SpotBalance {
     pub supplied: Option<String>,
 }
 
+impl fmt::Debug for SpotBalance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpotBalance")
+            .field("coin", &"<redacted>")
+            .field("token", &self.token)
+            .field("total", &"<redacted>")
+            .field("hold", &"<redacted>")
+            .field("entry_ntl", &"<redacted>")
+            .field("has_supplied", &self.supplied.is_some())
+            .finish()
+    }
+}
+
 /// Spot clearinghouse state.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpotClearinghouseState {
     pub balances: Vec<SpotBalance>,
@@ -312,4 +406,24 @@ pub struct SpotClearinghouseState {
     /// Token 0 = USDC. Only present for portfolio margin accounts.
     #[serde(default)]
     pub token_to_available_after_maintenance: Option<Vec<(u32, String)>>,
+}
+
+impl fmt::Debug for SpotClearinghouseState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpotClearinghouseState")
+            .field("balances_count", &self.balances.len())
+            .field("portfolio_margin_enabled", &self.portfolio_margin_enabled)
+            .field(
+                "has_portfolio_margin_ratio",
+                &self.portfolio_margin_ratio.is_some(),
+            )
+            .field(
+                "token_to_available_after_maintenance_count",
+                &self
+                    .token_to_available_after_maintenance
+                    .as_ref()
+                    .map(Vec::len),
+            )
+            .finish()
+    }
 }
