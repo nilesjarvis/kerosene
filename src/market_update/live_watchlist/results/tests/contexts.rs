@@ -50,3 +50,27 @@ fn contexts_loaded_error_keeps_existing_contexts_without_marking_fresh() {
         ))
     );
 }
+
+#[test]
+fn contexts_loaded_error_redacts_sensitive_status_details() {
+    let mut loading = true;
+    let mut last_fetch_ms = None;
+    let mut contexts = HashMap::new();
+    let mut status = None;
+
+    apply_contexts_loaded(
+        &mut loading,
+        &mut last_fetch_ms,
+        &mut contexts,
+        &mut status,
+        50,
+        Err("provider rejected api_key=key-secret cursor=cursor-secret".to_string()),
+    );
+
+    let (message, is_error) = status.expect("status");
+    assert!(is_error);
+    assert!(message.contains("api_key=<redacted>"));
+    assert!(message.contains("cursor=<redacted>"));
+    assert!(!message.contains("key-secret"));
+    assert!(!message.contains("cursor-secret"));
+}

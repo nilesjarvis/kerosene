@@ -1,4 +1,5 @@
 use crate::api::WatchlistContext;
+use crate::helpers::redact_sensitive_response_text;
 
 use std::collections::HashMap;
 
@@ -8,6 +9,9 @@ mod tests;
 // ---------------------------------------------------------------------------
 // Live Watchlist Results
 // ---------------------------------------------------------------------------
+
+const WATCHLIST_CONTEXT_FAILURE_PREFIX: &str = "Watchlist context refresh failed:";
+const WATCHLIST_HISTORY_FAILURE_PREFIX: &str = "Watchlist history refresh failed:";
 
 pub(super) fn apply_contexts_loaded(
     loading: &mut bool,
@@ -25,7 +29,10 @@ pub(super) fn apply_contexts_loaded(
             *contexts = loaded_contexts;
         }
         Err(error) => {
-            *status = Some((format!("Watchlist context refresh failed: {error}"), true));
+            *status = Some(live_watchlist_failure_status(
+                WATCHLIST_CONTEXT_FAILURE_PREFIX,
+                &error,
+            ));
         }
     }
 }
@@ -50,7 +57,17 @@ pub(super) fn apply_history_loaded(
             history.extend(loaded_history);
         }
         Err(error) => {
-            *status = Some((format!("Watchlist history refresh failed: {error}"), true));
+            *status = Some(live_watchlist_failure_status(
+                WATCHLIST_HISTORY_FAILURE_PREFIX,
+                &error,
+            ));
         }
     }
+}
+
+fn live_watchlist_failure_status(prefix: &str, error: &str) -> (String, bool) {
+    (
+        format!("{prefix} {}", redact_sensitive_response_text(error)),
+        true,
+    )
 }

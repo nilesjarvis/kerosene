@@ -84,3 +84,28 @@ fn history_loaded_error_keeps_existing_history_without_marking_fresh() {
         ))
     );
 }
+
+#[test]
+fn history_loaded_error_redacts_sensitive_status_details() {
+    let mut loading = true;
+    let mut loaded_at = HashMap::new();
+    let mut history = HashMap::new();
+    let mut status = None;
+
+    apply_history_loaded(
+        &mut loading,
+        &mut loaded_at,
+        &mut history,
+        &mut status,
+        vec!["ETH".to_string()],
+        70,
+        Err("history rejected auth_token=token-secret signature=sig-secret".to_string()),
+    );
+
+    let (message, is_error) = status.expect("status");
+    assert!(is_error);
+    assert!(message.contains("auth_token=<redacted>"));
+    assert!(message.contains("signature=<redacted>"));
+    assert!(!message.contains("token-secret"));
+    assert!(!message.contains("sig-secret"));
+}
