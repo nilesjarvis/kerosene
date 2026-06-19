@@ -3,6 +3,7 @@ use crate::account::{
     fetch_account_data_scoped_with_provider,
 };
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::journal;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
@@ -202,7 +203,7 @@ impl TradingTerminal {
                     self.account_refresh_backoff_until_ms = Some(due_ms);
                     return self.mark_account_reconciliation_waiting_for_backoff(due_ms, 60_000);
                 }
-                self.account_error = Some(e);
+                self.account_error = Some(redact_sensitive_response_text(&e));
                 if followup_pending {
                     return self.force_refresh_account_data_for_reconciliation(address);
                 }
@@ -543,6 +544,28 @@ mod tests {
         assert!(!terminal.account_refresh_followup_pending);
         assert!(terminal.account_reconciliation_required);
         assert!(terminal.account_error.is_none());
+    }
+
+    #[test]
+    fn account_load_error_redacts_account_error() {
+        let mut terminal = TradingTerminal::boot().0;
+        let address = "0xabc0000000000000000000000000000000000000".to_string();
+        terminal.connected_address = Some(address.clone());
+        terminal.account_loading = true;
+        terminal.account_reconciliation_required = true;
+        let context = terminal.current_account_data_request_context();
+
+        let _task = terminal.apply_account_data_loaded(
+            address,
+            context,
+            Err("refresh failed: api_key=account-secret signature=sig-secret".to_string()),
+        );
+
+        let error = terminal.account_error.as_deref().expect("account error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(error.contains("signature=<redacted>"));
+        assert!(!error.contains("account-secret"));
+        assert!(!error.contains("sig-secret"));
     }
 
     #[test]
