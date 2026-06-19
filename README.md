@@ -141,10 +141,38 @@ The terminal opens with a default chart view. To trade:
 - Avoid storing secrets in plaintext config files.
 - If a key, wallet-private material, or API token is exposed, rotate it immediately.
 
-Optional integrations may require API keys:
+Optional integrations are bring-your-own-key (BYOK): they stay disabled until you
+add the relevant provider key, and Kerosene stores those secrets separately
+through the configured secret-storage backend.
 
-- Hydromancer: liquidation and tracked-trade streams
-- HyperDash: liquidation heatmap data
+### BYOK Integrations
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <p align="center">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/hydromancer.svg">
+          <img src="assets/hydromancer-dark.svg" alt="Hydromancer logo" width="260">
+        </picture>
+      </p>
+      <p><strong>Hydromancer</strong></p>
+      <p>Enable liquidation and tracked-trade streams for richer market-flow context.</p>
+      <p><sub>Requires a Hydromancer API key.</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <p align="center">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/hyperdash.svg">
+          <img src="assets/hyperdash-dark.svg" alt="HyperDash logo" width="220">
+        </picture>
+      </p>
+      <p><strong>HyperDash</strong></p>
+      <p>Enable liquidation heatmap data alongside the native Hyperliquid workspace.</p>
+      <p><sub>Requires a HyperDash API key.</sub></p>
+    </td>
+  </tr>
+</table>
 
 ## Test and Validate
 
