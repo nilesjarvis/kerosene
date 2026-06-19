@@ -435,7 +435,7 @@ fn legacy_profile_read_failure_warning_redacts_account_name() {
 
     assert!(!load_legacy_os_keychain_secrets_with_warnings(
         &mut config,
-        |_profile| Err("keychain denied read".to_string()),
+        |_profile| Err("keychain denied read: agent_key=super-secret".to_string()),
         no_legacy_global_secrets,
         |warning| warnings.push(warning),
     ));
@@ -445,6 +445,8 @@ fn legacy_profile_read_failure_warning_redacts_account_name() {
         .find(|warning| warning.contains("legacy account credential read failed"))
         .expect("read failure warning should be emitted");
     assert!(warning.contains("keychain denied read"));
+    assert!(warning.contains("agent_key=<redacted>"));
+    assert!(!warning.contains("super-secret"));
     assert!(!warning.contains(sensitive_name));
 }
 
@@ -492,7 +494,7 @@ fn corrupt_bundle_does_not_fall_back_to_legacy_keychain_or_overwrite() {
 
     load_os_keychain_secrets_with(
         &mut config,
-        || Err("keychain payload parse failed".to_string()),
+        || Err("keychain payload parse failed: api_key=super-secret".to_string()),
         |_| {
             stores.set(stores.get() + 1);
             Ok(())
@@ -518,7 +520,9 @@ fn corrupt_bundle_does_not_fall_back_to_legacy_keychain_or_overwrite() {
         warnings
             .borrow()
             .iter()
-            .any(|warning| warning.contains("left unchanged"))
+            .any(|warning| warning.contains("left unchanged")
+                && warning.contains("api_key=<redacted>")
+                && !warning.contains("super-secret"))
     );
 }
 
@@ -543,7 +547,7 @@ fn corrupt_bundle_with_plaintext_secrets_blocks_config_save() {
 
     load_os_keychain_secrets_with(
         &mut config,
-        || Err("keychain payload parse failed".to_string()),
+        || Err("keychain payload parse failed: api_key=super-secret".to_string()),
         |_| {
             stores.set(stores.get() + 1);
             Ok(())
@@ -570,6 +574,8 @@ fn corrupt_bundle_with_plaintext_secrets_blocks_config_save() {
     assert!(warnings.borrow().iter().any(|warning| {
         warning.contains("Credential bundle read failed")
             && warning.contains("config saves are paused")
+            && warning.contains("api_key=<redacted>")
+            && !warning.contains("super-secret")
     }));
 }
 
@@ -694,7 +700,7 @@ fn legacy_keychain_global_read_failure_blocks_store_and_cleanup() {
             profile_reads.set(profile_reads.get() + 1);
             Ok(())
         },
-        |_, _| Err("keychain denied read".to_string()),
+        |_, _| Err("keychain denied read: hydromancer_api_key=super-secret".to_string()),
         |warning| warnings.borrow_mut().push(warning),
     );
 
@@ -702,12 +708,11 @@ fn legacy_keychain_global_read_failure_blocks_store_and_cleanup() {
     assert_eq!(cleanups.get(), 0);
     assert_eq!(profile_reads.get(), 0);
     assert!(config.secret_migration_save_blocked);
-    assert!(
-        warnings
-            .borrow()
-            .iter()
-            .any(|warning| warning.contains("Legacy shared credential read failed"))
-    );
+    assert!(warnings.borrow().iter().any(|warning| {
+        warning.contains("Legacy shared credential read failed")
+            && warning.contains("hydromancer_api_key=<redacted>")
+            && !warning.contains("super-secret")
+    }));
 }
 
 #[test]
@@ -930,7 +935,7 @@ fn valid_partial_bundle_blocks_when_active_legacy_profile_read_fails() {
         }),
         |profile| {
             loaded_profiles.borrow_mut().push(profile.secret_id.clone());
-            Err("keychain denied read".to_string())
+            Err("keychain denied read: agent_key=super-secret".to_string())
         },
         no_legacy_global_secrets,
         |warning| warnings.borrow_mut().push(warning),
@@ -945,6 +950,8 @@ fn valid_partial_bundle_blocks_when_active_legacy_profile_read_fails() {
     assert!(warnings.borrow().iter().any(|warning| {
         warning.contains("Active legacy account credential read failed")
             && warning.contains("config saves are paused")
+            && warning.contains("agent_key=<redacted>")
+            && !warning.contains("super-secret")
     }));
 }
 

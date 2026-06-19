@@ -7,6 +7,7 @@ use crate::config::secrets::{
 use crate::config::{
     AccountProfile, CredentialStorageMode, KeroseneConfig, SecretPayload, new_secret_id,
 };
+use crate::helpers::redact_sensitive_response_text;
 use zeroize::Zeroize;
 
 mod payload;
@@ -80,7 +81,9 @@ fn retry_pending_keychain_cleanup_all(
             config.secret_cleanup_state_dirty = true;
         }
         Err(error) => {
-            let redacted = redact_keychain_cleanup_profile_ids(error, &profiles);
+            let redacted = redact_sensitive_response_text(&redact_keychain_cleanup_profile_ids(
+                error, &profiles,
+            ));
             push_warning(format!(
                 "Pending OS keychain cleanup failed and will retry later: {redacted}"
             ));
@@ -170,6 +173,7 @@ fn load_os_keychain_secrets_with(
         Ok(Some(payload)) => {
             if let Err(error) = normalize_legacy_plaintext_secrets(config) {
                 config.secret_migration_save_blocked = true;
+                let error = redact_sensitive_response_text(&error);
                 push_warning(format!(
                     "Legacy plaintext credential migration failed: {error}; config saves are paused until credentials are saved to a working store"
                 ));
@@ -188,6 +192,7 @@ fn load_os_keychain_secrets_with(
                 Ok(changed) => changed,
                 Err(error) => {
                     config.secret_migration_save_blocked = true;
+                    let error = redact_sensitive_response_text(&error);
                     push_warning(format!(
                         "Active legacy account credential read failed: {error}; config saves are paused until credentials are saved to a working store"
                     ));
@@ -199,6 +204,7 @@ fn load_os_keychain_secrets_with(
                 plaintext_merge_changed || legacy_binding_changed || active_legacy_profile_changed;
             if should_store && let Err(error) = store_payload(&merged_payload) {
                 config.secret_migration_save_blocked = true;
+                let error = redact_sensitive_response_text(&error);
                 push_warning(format!(
                     "Credential bundle migration failed: {error}; config saves are paused until credentials are saved to a working store"
                 ));
@@ -209,6 +215,7 @@ fn load_os_keychain_secrets_with(
                 applied_secret_payload_for_legacy_cleanup(config, &merged_payload);
             apply_secret_payload(config, &merged_payload);
             if let Err(error) = (cleanup_hooks.clear_legacy_entries)(&cleanup_payload) {
+                let error = redact_sensitive_response_text(&error);
                 push_warning(format!(
                     "Legacy OS keychain cleanup failed after bundle load: {error}"
                 ));
@@ -217,8 +224,11 @@ fn load_os_keychain_secrets_with(
         }
         Ok(None) => {}
         Err(error) => {
+            let error = redact_sensitive_response_text(&error);
             let has_plaintext_secrets = has_legacy_plaintext_secrets(config);
-            let normalization_error = normalize_legacy_plaintext_secrets(config).err();
+            let normalization_error = normalize_legacy_plaintext_secrets(config)
+                .err()
+                .map(|error| redact_sensitive_response_text(&error));
             if has_plaintext_secrets {
                 config.secret_migration_save_blocked = true;
                 let mut warning = format!(
@@ -257,6 +267,7 @@ fn load_os_keychain_secrets_with(
         match store_payload(&payload) {
             Ok(()) => {
                 if let Err(error) = (cleanup_hooks.clear_legacy_entries)(&payload) {
+                    let error = redact_sensitive_response_text(&error);
                     push_warning(format!(
                         "Credential bundle migrated, but legacy OS keychain cleanup failed: {error}"
                     ));
@@ -269,6 +280,7 @@ fn load_os_keychain_secrets_with(
             }
             Err(error) => {
                 config.secret_migration_save_blocked = true;
+                let error = redact_sensitive_response_text(&error);
                 push_warning(format!(
                     "Credential bundle migration failed: {error}; config saves are paused until credentials are saved to a working store"
                 ));
@@ -294,7 +306,9 @@ fn retry_pending_keychain_profile_deletions(
                 cleaned_any = true;
             }
             Err(error) => {
-                let redacted = redact_keychain_cleanup_secret_id(error, &secret_id);
+                let redacted = redact_sensitive_response_text(&redact_keychain_cleanup_secret_id(
+                    error, &secret_id,
+                ));
                 config.pending_keychain_profile_deletions.push(secret_id);
                 push_warning(format!(
                     "Pending OS keychain account deletion cleanup failed and will retry later: {redacted}"
@@ -317,6 +331,7 @@ fn load_legacy_os_keychain_secrets_with_warnings(
     mut push_warning: impl FnMut(String),
 ) -> bool {
     if let Err(error) = normalize_legacy_plaintext_secrets(config) {
+        let error = redact_sensitive_response_text(&error);
         push_warning(format!(
             "Legacy plaintext credential migration failed: {error}"
         ));
@@ -326,6 +341,7 @@ fn load_legacy_os_keychain_secrets_with_warnings(
         &mut config.hydromancer_api_key,
         &mut config.hyperdash_api_key,
     ) {
+        let error = redact_sensitive_response_text(&error);
         push_warning(format!("Legacy shared credential read failed: {error}"));
         return false;
     }
@@ -338,12 +354,14 @@ fn load_legacy_os_keychain_secrets_with_warnings(
     {
         let profile = &mut config.accounts[active_index];
         if let Err(error) = load_profile(profile) {
+            let error = redact_sensitive_response_text(&error);
             push_warning(format!(
                 "Active legacy account credential read failed: {error}"
             ));
             return false;
         }
         if let Err(error) = normalize_legacy_plaintext_secrets(config) {
+            let error = redact_sensitive_response_text(&error);
             push_warning(format!(
                 "Legacy plaintext credential migration failed: {error}"
             ));
