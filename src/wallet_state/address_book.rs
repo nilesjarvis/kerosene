@@ -11,11 +11,24 @@ pub(crate) fn normalize_wallet_address_value(input: &str) -> Option<String> {
     (hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(address)
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct AddressBookEntry {
     pub(crate) label: String,
     pub(crate) color: Option<String>,
     pub(crate) tags: Vec<String>,
+}
+
+impl fmt::Debug for AddressBookEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AddressBookEntry")
+            .field(
+                "label",
+                &redact_wallet_address_debug_value(self.label.trim()),
+            )
+            .field("color", &self.color)
+            .field("tags", &format_args!("<{} redacted>", self.tags.len()))
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -90,6 +103,23 @@ mod tests {
     use std::collections::HashMap;
 
     const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn address_book_entry_debug_redacts_wallet_labels_and_tags() {
+        let entry = AddressBookEntry {
+            label: TEST_ADDRESS.to_string(),
+            color: Some("#ff00ff".to_string()),
+            tags: vec!["desk".to_string(), TEST_ADDRESS.to_string()],
+        };
+
+        let rendered = format!("{entry:?}");
+
+        assert!(rendered.contains("label: \"<redacted>\""));
+        assert!(rendered.contains("color: Some(\"#ff00ff\")"));
+        assert!(rendered.contains("tags: <2 redacted>"));
+        assert!(!rendered.contains(TEST_ADDRESS));
+        assert!(!rendered.contains("desk"));
+    }
 
     #[test]
     fn wallet_display_debug_redacts_full_addresses() {
