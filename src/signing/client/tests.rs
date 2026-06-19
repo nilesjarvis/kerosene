@@ -120,7 +120,7 @@ fn parse_exchange_response_accepts_valid_exchange_json() {
 fn parse_exchange_response_redacts_sensitive_raw_body_on_error() {
     let signature = "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     let raw = format!(
-        "upstream parse failed Authorization: Bearer exchange-secret api_key=\"json-secret\" signature={signature}"
+        "upstream parse failed Authorization: Bearer exchange-secret api_key=\"json-secret\" txid={signature}"
     );
 
     let error = parse_exchange_response(&raw).expect_err("malformed body should fail");

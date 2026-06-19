@@ -55,7 +55,7 @@ fn exchange_response_error_status_drives_error_transition() {
 #[test]
 fn exchange_response_error_status_redacts_sensitive_values() {
     let response = exchange_response(serde_json::json!({
-        "error": "rejected api_key=\"exchange-secret\" Authorization: Bearer bearer-secret sig=0x0123456789abcdef0123456789abcdef01234567"
+        "error": "rejected api_key=\"exchange-secret\" Authorization: Bearer bearer-secret txid=0x0123456789abcdef0123456789abcdef01234567"
     }));
 
     let summary = response.summary();

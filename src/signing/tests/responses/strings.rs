@@ -108,7 +108,7 @@ fn exchange_response_error_string_body_redacts_sensitive_values() {
     let response = exchange_response_from_value(
         serde_json::json!({
             "status": "err",
-            "response": "upstream echoed api_key=\"exchange-secret\" Authorization: Bearer bearer-secret sig=0x0123456789abcdef0123456789abcdef01234567"
+            "response": "upstream echoed api_key=\"exchange-secret\" Authorization: Bearer bearer-secret txid=0x0123456789abcdef0123456789abcdef01234567"
         }),
         "error response string should deserialize",
     );
@@ -133,7 +133,7 @@ fn exchange_response_debug_redacts_raw_sensitive_values() {
             "status": "err",
             "response": {
                 "message": "upstream echoed api_key=\"exchange-secret\" Authorization: Bearer bearer-secret",
-                "sig": "0x0123456789abcdef0123456789abcdef01234567"
+                "txid": "0x0123456789abcdef0123456789abcdef01234567"
             }
         }),
         "error response object should deserialize",

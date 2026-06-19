@@ -39,7 +39,7 @@ fn rejects_malformed_funding_rate() {
 #[test]
 fn malformed_funding_response_error_includes_redacted_snippet() {
     let err = parse_funding_history_response(
-        r#"upstream failure Authorization: Bearer hydro-secret api_key="json-secret" signature=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"#,
+        r#"upstream failure Authorization: Bearer hydro-secret api_key="json-secret" txid=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"#,
     )
     .expect_err("malformed response should fail");
 
