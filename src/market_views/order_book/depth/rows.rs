@@ -43,6 +43,21 @@ pub(super) fn centered_order_book_side_row_count(side_height: f32, available_row
     ((side_height / BOOK_ROW_HEIGHT).floor() as usize).min(available_rows)
 }
 
+/// Rows to render per side in a centered (pinned-spread) layout. Both sides
+/// must show an identical count so the book stays symmetric about the spread
+/// and never lists more depth on one side than the other when aggregation or
+/// scope drift leaves the sides with different numbers of levels. The
+/// height-derived capacity is therefore clamped to the *thinner* side's
+/// available rows, keeping the count equal as the market moves in either
+/// direction instead of one side shrinking independently.
+pub(super) fn centered_symmetric_side_row_count(
+    side_height: f32,
+    asks_available: usize,
+    bids_available: usize,
+) -> usize {
+    centered_order_book_side_row_count(side_height, asks_available.min(bids_available))
+}
+
 pub(super) fn order_book_row_padding() -> iced::Padding {
     iced::Padding {
         top: 0.0,

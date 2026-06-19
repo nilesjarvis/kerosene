@@ -40,11 +40,15 @@ pub(super) fn view_order_book_dom_ladder(
         let centered_bids = rows.bids.clone();
         let centered_ask_orders = user_order_levels.clone();
         let centered_bid_orders = user_order_levels.clone();
+        // Keep both sides at an identical row count so the ladder stays
+        // symmetric about the spread rather than listing more depth on one
+        // side than the other.
+        let ask_len = centered_asks.len();
+        let bid_len = centered_bids.len();
 
         let ladder = iced::widget::column![
             responsive(move |size| {
-                let count =
-                    super::centered_order_book_side_row_count(size.height, centered_asks.len());
+                let count = super::centered_symmetric_side_row_count(size.height, ask_len, bid_len);
                 let start = centered_asks.len().saturating_sub(count);
                 let asks =
                     dom_rows_column(&centered_asks[start..], row_context, &centered_ask_orders);
@@ -57,8 +61,7 @@ pub(super) fn view_order_book_dom_ladder(
             .height(Fill),
             spread_widget,
             responsive(move |size| {
-                let count =
-                    super::centered_order_book_side_row_count(size.height, centered_bids.len());
+                let count = super::centered_symmetric_side_row_count(size.height, ask_len, bid_len);
                 let bids =
                     dom_rows_column(&centered_bids[..count], row_context, &centered_bid_orders);
 
