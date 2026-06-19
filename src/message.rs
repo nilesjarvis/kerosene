@@ -1101,7 +1101,11 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{Message, SecretInput, TelegramFastAuthMessageResult};
-    use crate::config::{ChartBackfillSource, ReadDataProvider};
+    use crate::chart_state::ChartSurfaceId;
+    use crate::config::{ChartBackfillSource, MarketUniverseConfig, ReadDataProvider};
+    use crate::order_execution::{
+        OneShotPlacementContext, QuickOrderForm, QuickOrderQuantityProvenance, QuickOrderRecovery,
+    };
     use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
     use crate::timeframe::Timeframe;
     use crate::ws::{HydromancerWsMessage, WsUserData};
@@ -1224,6 +1228,43 @@ mod tests {
             ),
             Message::WalletAddressActionsHovered(ADDRESS.into()),
             Message::WalletAddressActionsExited(ADDRESS.into()),
+            Message::QuickOrderResult {
+                pending_indicator_id: None,
+                context: OneShotPlacementContext {
+                    account_address: ADDRESS.to_string(),
+                    cloid: "0x00000000000000000000000000000000".to_string(),
+                    surface: crate::order_execution::OrderSurface::QuickOrder,
+                    symbol_key: "HYPE".to_string(),
+                    order_kind: crate::signing::ExchangeOrderKind::Limit,
+                },
+                recovery: Some(QuickOrderRecovery {
+                    chart_id: 1,
+                    form: QuickOrderForm {
+                        price: 100.0,
+                        quantity: "1".to_string(),
+                        quantity_is_usd: false,
+                        percentage: 25.0,
+                        quantity_provenance: Some(QuickOrderQuantityProvenance {
+                            account_address: ADDRESS.to_string(),
+                            account_data_revision: 1,
+                            symbol_key: "HYPE".to_string(),
+                            quantity_is_usd: false,
+                            percentage: 25.0,
+                            is_limit: true,
+                            reference_price: Some(100.0),
+                            reduce_only: false,
+                            market_universe: MarketUniverseConfig::default(),
+                        }),
+                        is_limit: true,
+                        click_x: 0.0,
+                        click_y: 0.0,
+                        chart_w: 100.0,
+                        chart_h: 100.0,
+                    },
+                    surface_id: Some(ChartSurfaceId::Docked(1)),
+                }),
+                result: Box::new(Err("quick failed".to_string())),
+            },
             Message::CancelResult {
                 account_address: ADDRESS.into(),
                 pending_indicator_id: None,

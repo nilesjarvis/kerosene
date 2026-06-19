@@ -33,6 +33,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartId, ChartSurfaceId};
 use crate::config;
 use crate::signing::{CapturedAgentKey, ChaseOrder};
+use std::fmt;
 use zeroize::Zeroizing;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -372,6 +373,7 @@ mod tests {
     use super::{
         MoveOrderKey, OneShotPlacementContext, OrderSurface, PendingLeverageUpdateContext,
         PendingMoveOrderContext, PendingNukeExecution, PendingOrderAction,
+        QuickOrderQuantityProvenance,
     };
     use crate::account::{
         AccountData, AccountDataCompleteness, ClearinghouseState, MarginSummary,
@@ -428,6 +430,26 @@ mod tests {
             completeness: AccountDataCompleteness::default(),
             fetched_at_ms: 1,
         }
+    }
+
+    #[test]
+    fn quick_order_quantity_provenance_debug_redacts_account_address() {
+        let provenance = QuickOrderQuantityProvenance {
+            account_address: TEST_ACCOUNT.to_string(),
+            account_data_revision: 7,
+            symbol_key: "BTC".to_string(),
+            quantity_is_usd: true,
+            percentage: 25.0,
+            is_limit: false,
+            reference_price: Some(100.0),
+            reduce_only: false,
+            market_universe: crate::config::MarketUniverseConfig::default(),
+        };
+
+        let rendered = format!("{provenance:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(TEST_ACCOUNT));
     }
 
     #[test]
@@ -717,7 +739,7 @@ pub(crate) struct QuickOrderRecovery {
     pub(crate) surface_id: Option<ChartSurfaceId>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct QuickOrderQuantityProvenance {
     pub(crate) account_address: String,
     pub(crate) account_data_revision: u64,
@@ -728,4 +750,20 @@ pub(crate) struct QuickOrderQuantityProvenance {
     pub(crate) reference_price: Option<f64>,
     pub(crate) reduce_only: bool,
     pub(crate) market_universe: crate::config::MarketUniverseConfig,
+}
+
+impl fmt::Debug for QuickOrderQuantityProvenance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QuickOrderQuantityProvenance")
+            .field("account_address", &"<redacted>")
+            .field("account_data_revision", &self.account_data_revision)
+            .field("symbol_key", &self.symbol_key)
+            .field("quantity_is_usd", &self.quantity_is_usd)
+            .field("percentage", &self.percentage)
+            .field("is_limit", &self.is_limit)
+            .field("reference_price", &self.reference_price)
+            .field("reduce_only", &self.reduce_only)
+            .field("market_universe", &self.market_universe)
+            .finish()
+    }
 }

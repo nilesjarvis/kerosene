@@ -4,6 +4,7 @@ use crate::helpers::{format_price, parse_number, positive_finite_value};
 use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::Task;
+use std::fmt;
 
 mod order_book;
 mod quantity;
@@ -15,7 +16,7 @@ mod tests;
 use quantity::toggled_order_quantity_text;
 use sizing::{OrderSizingBasis, position_size_for_symbol};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct OrderQuantityProvenance {
     account_address: String,
     account_data_revision: u64,
@@ -25,6 +26,21 @@ pub(crate) struct OrderQuantityProvenance {
     reference_price: Option<f64>,
     reduce_only: bool,
     market_universe: crate::config::MarketUniverseConfig,
+}
+
+impl fmt::Debug for OrderQuantityProvenance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OrderQuantityProvenance")
+            .field("account_address", &"<redacted>")
+            .field("account_data_revision", &self.account_data_revision)
+            .field("symbol_key", &self.symbol_key)
+            .field("quantity_is_usd", &self.quantity_is_usd)
+            .field("order_kind", &self.order_kind)
+            .field("reference_price", &self.reference_price)
+            .field("reduce_only", &self.reduce_only)
+            .field("market_universe", &self.market_universe)
+            .finish()
+    }
 }
 
 impl TradingTerminal {

@@ -188,6 +188,25 @@ fn percentage_quantity_records_source_and_manual_edit_clears_it() {
 }
 
 #[test]
+fn order_quantity_provenance_debug_redacts_account_address() {
+    let mut terminal = terminal_with_position("BTC", "0");
+    terminal.order_quantity_is_usd = true;
+
+    terminal.handle_order_percentage_changed(50.0);
+
+    let rendered = format!(
+        "{:?}",
+        terminal
+            .order_quantity_provenance
+            .as_ref()
+            .expect("percentage provenance")
+    );
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(TEST_ACCOUNT));
+}
+
+#[test]
 fn percentage_quantity_recomputes_provenance_when_denomination_toggles() {
     let mut terminal = terminal_with_position("BTC", "0");
     terminal.order_quantity_is_usd = true;

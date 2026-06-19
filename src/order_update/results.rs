@@ -4,6 +4,7 @@ use crate::message::Message;
 use crate::order_execution::OneShotPlacementContext;
 use crate::signing::ExchangeResponse;
 use iced::Task;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
@@ -26,11 +27,21 @@ pub(crate) struct ExecutionOutcome {
     pub(crate) refresh_account: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct PendingOneShotStatusRequest {
     pub(crate) request_id: u64,
     account_address: String,
     cloid: String,
+}
+
+impl fmt::Debug for PendingOneShotStatusRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingOneShotStatusRequest")
+            .field("request_id", &self.request_id)
+            .field("account_address", &"<redacted>")
+            .field("cloid", &self.cloid)
+            .finish()
+    }
 }
 
 impl PendingOneShotStatusRequest {

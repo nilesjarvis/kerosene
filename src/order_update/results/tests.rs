@@ -163,6 +163,17 @@ fn begin_one_shot_status_request(
     terminal.begin_one_shot_status_request(context)
 }
 
+#[test]
+fn pending_one_shot_status_request_debug_redacts_account_address() {
+    let request = PendingOneShotStatusRequest::new(7, &one_shot_context());
+
+    let rendered = format!("{request:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(TEST_ACCOUNT));
+    assert!(rendered.contains("0x00000000000000000000000000000000"));
+}
+
 fn quick_order_form() -> QuickOrderForm {
     QuickOrderForm {
         price: 100.0,
