@@ -1,3 +1,5 @@
+use crate::helpers::redact_sensitive_response_text;
+
 use super::model::OrderStatusResult;
 use serde_json::Value;
 
@@ -11,7 +13,10 @@ pub(super) fn parse_order_status_inner(
     expected_cloid: Option<&str>,
 ) -> Result<OrderStatusResult, String> {
     if let Some(error) = raw.get("error").and_then(Value::as_str) {
-        return Err(format!("orderStatus error: {error}"));
+        return Err(format!(
+            "orderStatus error: {}",
+            redact_sensitive_response_text(error)
+        ));
     }
 
     if raw.get("status").and_then(Value::as_str) == Some("order") {

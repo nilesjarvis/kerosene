@@ -31,6 +31,24 @@ fn parses_missing_order_status() {
 }
 
 #[test]
+fn parsed_order_status_error_redacts_sensitive_values() {
+    let error = status_error_or_panic(&serde_json::json!({
+        "error": "upstream echoed Authorization: Basic basic-secret accessToken=\"access-secret\" trace=0x0123456789abcdef0123456789abcdef01234567"
+    }));
+
+    assert!(error.contains("orderStatus error:"));
+    assert!(error.contains("<redacted>"));
+    assert!(error.contains("<redacted-hex>"));
+    for secret in [
+        "basic-secret",
+        "access-secret",
+        "0123456789abcdef0123456789abcdef01234567",
+    ] {
+        assert!(!error.contains(secret), "orderStatus error leaked {secret}");
+    }
+}
+
+#[test]
 fn canceled_status_is_not_definitive_no_fill() {
     let parsed = status_or_panic(&serde_json::json!({
         "status": "order",

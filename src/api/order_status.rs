@@ -3,13 +3,15 @@ mod parsing;
 
 use self::parsing::parse_order_status_inner;
 use super::{API_URL, CLIENT};
-use crate::helpers::text_excerpt;
+use crate::helpers::sensitive_response_excerpt;
 pub(crate) use model::OrderStatusResult;
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
 // Order Status
 // ---------------------------------------------------------------------------
+
+const ORDER_STATUS_ERROR_PREVIEW_CHARS: usize = 160;
 
 pub(crate) async fn fetch_order_status_by_cloid(
     address: String,
@@ -47,7 +49,7 @@ async fn fetch_order_status(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        let preview = text_excerpt(&body, 160);
+        let preview = order_status_error_preview(&body);
         return if preview.is_empty() {
             Err(format!("orderStatus request failed with HTTP {status}"))
         } else {
@@ -62,6 +64,10 @@ async fn fetch_order_status(
         .await
         .map_err(|e| format!("orderStatus parse failed: {e}"))?;
     parse_order_status_inner(&raw, expected_oid, expected_cloid.as_deref())
+}
+
+fn order_status_error_preview(body: &str) -> String {
+    sensitive_response_excerpt(body, ORDER_STATUS_ERROR_PREVIEW_CHARS)
 }
 
 #[cfg(test)]

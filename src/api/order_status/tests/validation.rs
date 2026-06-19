@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn order_status_error_preview_redacts_sensitive_values() {
+    let preview = order_status_error_preview(
+        "upstream echoed Authorization: Token token-secret refreshToken=\"refresh-secret\" user=0xabc0000000000000000000000000000000000000",
+    );
+
+    assert!(preview.contains("Authorization: Token <redacted>"));
+    assert!(preview.contains("<redacted-hex>"));
+    for secret in [
+        "token-secret",
+        "refresh-secret",
+        "abc0000000000000000000000000000000000000",
+    ] {
+        assert!(
+            !preview.contains(secret),
+            "orderStatus preview leaked {secret}"
+        );
+    }
+}
+
+#[test]
 fn rejects_mismatched_order_status_cloid() {
     let error = cloid_status_error_or_panic(
         &serde_json::json!({
