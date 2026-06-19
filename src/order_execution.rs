@@ -121,7 +121,7 @@ impl PendingNukeExecution {
     }
 }
 
-pub(in crate::order_execution) fn order_account_addresses_match(left: &str, right: &str) -> bool {
+pub(crate) fn order_account_addresses_match(left: &str, right: &str) -> bool {
     let left = left.trim();
     let right = right.trim();
     !left.is_empty() && !right.is_empty() && left.eq_ignore_ascii_case(right)

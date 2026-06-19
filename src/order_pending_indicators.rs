@@ -1,6 +1,7 @@
 use crate::account::{OpenOrder, UserFill};
 use crate::app_state::TradingTerminal;
 use crate::helpers::{parse_positive_finite_number, values_match_approx};
+use crate::order_execution::order_account_addresses_match;
 
 use std::fmt;
 
@@ -489,7 +490,7 @@ fn pending_indicator_is_for_account(
     indicator: &PendingOrderIndicator,
     account_address: &str,
 ) -> bool {
-    indicator.account_address == account_address
+    order_account_addresses_match(&indicator.account_address, account_address)
 }
 
 /// The exchange commits orders before the place ack returns, so the
@@ -1071,6 +1072,24 @@ mod tests {
     }
 
     #[test]
+    fn pending_indicators_match_account_case_insensitively() {
+        let mut terminal = terminal_with_chart();
+        terminal.connected_address = Some(TEST_ACCOUNT.to_ascii_uppercase());
+        terminal.optimistic_account_updates = true;
+
+        add_market_indicator(&mut terminal, "BTC", true, "1");
+        let cancel_id = terminal.add_pending_order_cancellation_indicator(
+            TEST_ACCOUNT.to_string(),
+            &open_order(42, "B"),
+        );
+        assert!(cancel_id.is_some());
+
+        assert!(terminal.has_pending_cancel_indicator(42));
+        assert_eq!(terminal.pending_order_indicators_for_symbol("BTC").len(), 2);
+        assert_eq!(terminal.optimistic_position_deltas().len(), 1);
+    }
+
+    #[test]
     fn pending_indicators_ignore_blank_connected_account() {
         let mut terminal = terminal_with_chart();
         terminal.connected_address = Some("   ".to_string());
@@ -1107,7 +1126,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_indicator_account_predicate_requires_exact_connected_account() {
+    fn pending_indicator_account_predicate_requires_matching_connected_account() {
         let mut terminal = terminal_with_chart();
         let pending_id = terminal
             .add_pending_order_placement_indicator(
@@ -1126,6 +1145,10 @@ mod tests {
         assert!(pending_indicator_is_for_connected_account(
             indicator,
             Some(TEST_ACCOUNT)
+        ));
+        assert!(pending_indicator_is_for_connected_account(
+            indicator,
+            Some(&format!(" {} ", TEST_ACCOUNT.to_ascii_uppercase()))
         ));
         assert!(!pending_indicator_is_for_connected_account(indicator, None));
         assert!(!pending_indicator_is_for_connected_account(
