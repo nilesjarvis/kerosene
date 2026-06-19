@@ -1,4 +1,4 @@
-use crate::helpers::text_excerpt;
+use crate::helpers::sensitive_response_excerpt;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -54,7 +54,7 @@ where
 }
 
 pub(super) fn account_analytics_preview(text: &str) -> String {
-    text_excerpt(text, ACCOUNT_ANALYTICS_PREVIEW_CHARS)
+    sensitive_response_excerpt(text, ACCOUNT_ANALYTICS_PREVIEW_CHARS)
 }
 
 pub(super) async fn optional_response_value(

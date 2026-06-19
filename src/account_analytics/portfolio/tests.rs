@@ -62,6 +62,28 @@ async fn portfolio_non_array_unicode_preview_does_not_panic() {
     assert!(err.contains("portfolio response was not an array"));
 }
 
+#[tokio::test]
+async fn portfolio_error_response_redacts_sensitive_values() {
+    let body = serde_json::json!({
+        "error": "upstream echoed Authorization: Token token-secret refreshToken=\"refresh-secret\" user=0xabc0000000000000000000000000000000000000"
+    })
+    .to_string();
+    let err = one_shot_info_result("200 OK", &body)
+        .await
+        .expect_err("portfolio error response should fail");
+
+    assert!(err.contains("portfolio error:"));
+    assert!(err.contains("Authorization: Token <redacted>"));
+    assert!(err.contains("<redacted-hex>"));
+    for secret in [
+        "token-secret",
+        "refresh-secret",
+        "abc0000000000000000000000000000000000000",
+    ] {
+        assert!(!err.contains(secret), "portfolio error leaked {secret}");
+    }
+}
+
 #[test]
 fn history_points_skip_malformed_numeric_values() {
     let raw = serde_json::json!([

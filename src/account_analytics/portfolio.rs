@@ -1,7 +1,7 @@
 use super::http::{account_analytics_preview, post_info_json};
 use super::model::{PortfolioBucket, PortfolioHistory};
 use crate::api::{API_URL, CLIENT};
-use crate::helpers::parse_finite_json_number;
+use crate::helpers::{parse_finite_json_number, redact_sensitive_response_text};
 
 use serde_json::Value;
 
@@ -26,7 +26,10 @@ async fn fetch_portfolio_history_from_url(
     if let Some(obj) = raw.as_object()
         && let Some(err) = obj.get("error").and_then(|v| v.as_str())
     {
-        return Err(format!("portfolio error: {err}"));
+        return Err(format!(
+            "portfolio error: {}",
+            redact_sensitive_response_text(err)
+        ));
     }
 
     let entries = raw.as_array().ok_or_else(|| {

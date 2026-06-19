@@ -3,6 +3,7 @@ use self::snapshot::build_income_snapshot;
 use super::http::{account_analytics_preview, optional_response_value, response_json};
 use super::model::{BorrowLendInterestEntry, BorrowLendUserState, IncomeSnapshot};
 use crate::api::{API_URL, CLIENT};
+use crate::helpers::redact_sensitive_response_text;
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -51,7 +52,10 @@ async fn fetch_income_data_from_url(
     .await?;
 
     if let Some(err) = reserve_raw.get("error").and_then(|v| v.as_str()) {
-        return Err(format!("allBorrowLendReserveStates error: {err}"));
+        return Err(format!(
+            "allBorrowLendReserveStates error: {}",
+            redact_sensitive_response_text(err)
+        ));
     }
 
     let reserve_by_token = parse_reserve_states(&reserve_raw);

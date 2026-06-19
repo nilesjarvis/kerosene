@@ -287,23 +287,35 @@ fn redact_bearer_phrases(text: &str) -> String {
 }
 
 fn redact_long_hex_tokens(text: &str) -> String {
-    let bytes = text.as_bytes();
     let mut redacted = String::with_capacity(text.len());
-    let mut index = 0;
+    let mut run_start = None;
+    let mut run_len = 0_usize;
 
-    while index < bytes.len() {
-        let start = index;
-        while index < bytes.len() && bytes[index].is_ascii_hexdigit() {
-            index += 1;
+    for (index, ch) in text.char_indices() {
+        if ch.is_ascii_hexdigit() {
+            if run_start.is_none() {
+                run_start = Some(index);
+            }
+            run_len += 1;
+            continue;
         }
-        if index.saturating_sub(start) >= 40 {
+
+        if let Some(start) = run_start.take() {
+            if run_len >= 40 {
+                redacted.push_str("<redacted-hex>");
+            } else {
+                redacted.push_str(&text[start..index]);
+            }
+            run_len = 0;
+        }
+        redacted.push(ch);
+    }
+
+    if let Some(start) = run_start {
+        if run_len >= 40 {
             redacted.push_str("<redacted-hex>");
         } else {
-            redacted.push_str(&text[start..index]);
-        }
-        if index < bytes.len() {
-            redacted.push(bytes[index] as char);
-            index += 1;
+            redacted.push_str(&text[start..]);
         }
     }
 
@@ -425,6 +437,15 @@ mod tests {
         for secret in ["access-secret", "refresh-secret", "bearer-secret"] {
             assert!(!rendered.contains(secret), "excerpt leaked {secret}");
         }
+    }
+
+    #[test]
+    fn sensitive_response_excerpt_preserves_unicode_while_redacting_hex() {
+        let text = "é€ 0x0123456789abcdef0123456789abcdef01234567";
+        let rendered = sensitive_response_excerpt(text, 240);
+
+        assert!(rendered.starts_with("é€ 0x<redacted-hex>"));
+        assert!(!rendered.contains("0123456789abcdef0123456789abcdef01234567"));
     }
 
     #[test]

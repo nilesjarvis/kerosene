@@ -1,4 +1,4 @@
-use super::post_info_json;
+use super::{account_analytics_preview, post_info_json};
 
 async fn one_shot_response(status_line: &str, content_type: &str, body: &str) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -79,6 +79,26 @@ async fn post_info_json_reports_http_status_and_body_preview_before_json_parse()
     assert!(err.contains("portfolio request failed with HTTP 429 Too Many Requests"));
     assert!(err.contains("rate limited, retry later"));
     assert!(!err.contains("parse failed"));
+}
+
+#[test]
+fn account_analytics_preview_redacts_sensitive_response_values() {
+    let preview = account_analytics_preview(
+        "upstream echoed Authorization: Basic basic-secret accessToken=\"access-secret\" user=0xabc0000000000000000000000000000000000000",
+    );
+
+    assert!(preview.contains("Authorization: Basic <redacted>"));
+    assert!(preview.contains("<redacted-hex>"));
+    for secret in [
+        "basic-secret",
+        "access-secret",
+        "abc0000000000000000000000000000000000000",
+    ] {
+        assert!(
+            !preview.contains(secret),
+            "account analytics preview leaked {secret}"
+        );
+    }
 }
 
 #[tokio::test]
