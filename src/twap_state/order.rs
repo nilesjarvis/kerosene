@@ -161,33 +161,41 @@ impl TwapOrder {
 
 impl std::fmt::Debug for TwapOrder {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let has_pending_op = self.pending_op.is_some();
+        let has_latest_book = self.latest_book.is_some();
+        let has_retry_slice = self.retry_slice.is_some();
+        let has_status_check_cloid = self.status_check_cloid.is_some();
+        let stop_reason_is_error = self.stop_reason.as_ref().map(|(_, is_error)| *is_error);
+
         formatter
             .debug_struct("TwapOrder")
             .field("id", &self.id)
-            .field("coin", &self.coin)
-            .field("display_coin", &self.display_coin)
+            .field("coin", &"<redacted>")
+            .field("display_coin", &"<redacted>")
             .field("account_address", &"<redacted>")
             .field("agent_key", &"<redacted>")
             .field("is_buy", &self.is_buy)
-            .field("target_size", &self.target_size)
-            .field("remaining_size", &self.remaining_size)
-            .field("filled_size", &self.filled_size)
+            .field("target_size", &"<redacted>")
+            .field("remaining_size", &"<redacted>")
+            .field("filled_size", &"<redacted>")
             .field("asset", &self.asset)
             .field("sz_decimals", &self.sz_decimals)
             .field("is_spot", &self.is_spot)
             .field("reduce_only", &self.reduce_only)
-            .field("min_price", &self.min_price)
-            .field("max_price", &self.max_price)
+            .field("min_price", &"<redacted>")
+            .field("max_price", &"<redacted>")
             .field("randomize", &self.randomize)
-            .field("duration", &self.duration)
-            .field("slice_count", &self.slice_count)
+            .field("duration", &"<redacted>")
+            .field("slice_count", &"<redacted>")
             .field("slices_attempted", &self.slices_attempted)
             .field("slices_sent", &self.slices_sent)
+            .field("has_pending_op", &has_pending_op)
+            .field("has_latest_book", &has_latest_book)
             .field("status", &self.status)
             .field("pause_reason", &self.pause_reason)
             .field("paused_until", &self.paused_until)
-            .field("retry_slice", &self.retry_slice)
-            .field("status_check_cloid", &self.status_check_cloid)
+            .field("has_retry_slice", &has_retry_slice)
+            .field("has_status_check_cloid", &has_status_check_cloid)
             .field("status_check_retries", &self.status_check_retries)
             .field(
                 "account_reconciliation_retries",
@@ -196,6 +204,9 @@ impl std::fmt::Debug for TwapOrder {
             .field("reconciliation_deadline", &self.reconciliation_deadline)
             .field("cancel_retries", &self.cancel_retries)
             .field("stop_requested", &self.stop_requested)
+            .field("stop_reason_is_error", &stop_reason_is_error)
+            .field("child_orders_count", &self.child_orders.len())
+            .field("events_count", &self.events.len())
             .finish()
     }
 }

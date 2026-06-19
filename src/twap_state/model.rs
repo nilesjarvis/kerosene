@@ -4,6 +4,7 @@ use crate::api::OrderBook;
 use crate::signing::CapturedAgentKey;
 
 use iced::window;
+use std::fmt;
 use std::time::{Duration, Instant};
 
 mod status;
@@ -63,7 +64,7 @@ pub(crate) struct TwapEvent {
     pub(crate) is_error: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct TwapPendingSlice {
     pub(crate) index: u32,
     pub(crate) planned_size: f64,
@@ -72,7 +73,19 @@ pub(crate) struct TwapPendingSlice {
     pub(crate) retry_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl fmt::Debug for TwapPendingSlice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapPendingSlice")
+            .field("index", &self.index)
+            .field("planned_size", &"<redacted>")
+            .field("limit_price", &"<redacted>")
+            .field("cloid", &"<redacted>")
+            .field("retry_count", &self.retry_count)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub(crate) enum TwapPendingOp {
     Place(TwapPendingSlice),
     CancelUnexpectedResting {
@@ -81,13 +94,26 @@ pub(crate) enum TwapPendingOp {
     },
 }
 
+impl fmt::Debug for TwapPendingOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Place(slice) => f.debug_tuple("Place").field(slice).finish(),
+            Self::CancelUnexpectedResting { oid, cloid } => f
+                .debug_struct("CancelUnexpectedResting")
+                .field("has_oid", &oid.is_some())
+                .field("has_cloid", &cloid.is_some())
+                .finish(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct TwapBookSnapshot {
     pub(crate) book: OrderBook,
     pub(crate) updated_at: Instant,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct TwapChildOrder {
     pub(crate) index: u32,
     pub(crate) requested_at: Instant,
@@ -101,6 +127,25 @@ pub(crate) struct TwapChildOrder {
     pub(crate) avg_price: Option<f64>,
     pub(crate) fee: f64,
     pub(crate) retry_count: u32,
+}
+
+impl fmt::Debug for TwapChildOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TwapChildOrder")
+            .field("index", &self.index)
+            .field("requested_at", &self.requested_at)
+            .field("planned_size", &"<redacted>")
+            .field("limit_price", &"<redacted>")
+            .field("has_oid", &self.oid.is_some())
+            .field("has_cloid", &self.cloid.is_some())
+            .field("status", &self.status)
+            .field("exchange_summary", &"<redacted>")
+            .field("filled_size", &"<redacted>")
+            .field("avg_price", &"<redacted>")
+            .field("fee", &"<redacted>")
+            .field("retry_count", &self.retry_count)
+            .finish()
+    }
 }
 
 #[derive(Clone)]

@@ -1,9 +1,9 @@
 use super::{
     MIN_EXCHANGE_ORDER_NOTIONAL_USD, TWAP_MAX_AGGREGATE_SLICE_RATE, TWAP_RECONCILIATION_TIMEOUT,
-    TwapChildOrder, TwapChildStatus, TwapOrder, TwapOrderInit, TwapPauseReason, TwapStatus,
-    parse_twap_duration_minutes, parse_twap_slice_count, quantize_twap_slice_size,
-    twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate, twap_child_cloid,
-    twap_limit_price_for_slice, twap_min_quantized_child_notional,
+    TwapChildOrder, TwapChildStatus, TwapOrder, TwapOrderInit, TwapPauseReason, TwapPendingOp,
+    TwapPendingSlice, TwapStatus, parse_twap_duration_minutes, parse_twap_slice_count,
+    quantize_twap_slice_size, twap_aggregate_schedule_has_capacity, twap_aggregate_slice_rate,
+    twap_child_cloid, twap_limit_price_for_slice, twap_min_quantized_child_notional,
     twap_order_notional_meets_minimum, twap_required_slice_rate, twap_response_fill_summary,
     twap_target_size_from_quantity, validate_twap_interval,
 };
@@ -76,13 +76,90 @@ fn test_twap_order(now: Instant, target_size: f64, randomize: bool, slice_count:
 
 #[test]
 fn twap_order_debug_redacts_agent_key_and_account_address() {
-    let twap = test_twap_order(Instant::now(), 1.0, false, 2);
+    let mut twap = test_twap_order(Instant::now(), 7.654321, false, 2);
+    twap.coin = "SECRET_TWAP_COIN".to_string();
+    twap.display_coin = "SECRET TWAP DISPLAY".to_string();
+    twap.remaining_size = 6.54321;
+    twap.filled_size = 1.11111;
+    twap.min_price = 12345.67;
+    twap.max_price = 23456.78;
+    twap.pending_op = Some(TwapPendingOp::CancelUnexpectedResting {
+        oid: Some(424242),
+        cloid: Some("pending-cloid-secret".to_string()),
+    });
+    twap.retry_slice = Some(TwapPendingSlice {
+        index: 9,
+        planned_size: 2.22222,
+        limit_price: 34567.89,
+        cloid: "retry-cloid-secret".to_string(),
+        retry_count: 3,
+    });
+    twap.status_check_cloid = Some("status-cloid-secret".to_string());
+    twap.stop_reason = Some(("stop reason with SECRET_TWAP_COIN".to_string(), true));
+    twap.child_orders.push(TwapChildOrder {
+        index: 4,
+        requested_at: Instant::now(),
+        planned_size: 3.33333,
+        limit_price: 45678.9,
+        oid: Some(777777),
+        cloid: Some("child-cloid-secret".to_string()),
+        status: TwapChildStatus::Pending,
+        exchange_summary: "exchange-summary-secret".to_string(),
+        filled_size: 4.44444,
+        avg_price: Some(56789.01),
+        fee: 5.55555,
+        retry_count: 6,
+    });
 
     let rendered = format!("{twap:?}");
+    let retry_slice_debug = format!("{:?}", twap.retry_slice.as_ref().expect("retry slice"));
+    let cancel_op_debug = format!("{:?}", twap.pending_op.as_ref().expect("pending op"));
+    let place_op_debug = format!(
+        "{:?}",
+        TwapPendingOp::Place(twap.retry_slice.clone().expect("retry slice"))
+    );
+    let child_debug = format!("{:?}", twap.child_orders.first().expect("child order"));
 
+    assert!(rendered.contains("TwapOrder"));
+    assert!(rendered.contains("has_pending_op: true"));
+    assert!(rendered.contains("has_retry_slice: true"));
+    assert!(rendered.contains("has_status_check_cloid: true"));
+    assert!(rendered.contains("stop_reason_is_error: Some(true)"));
+    assert!(rendered.contains("child_orders_count: 1"));
     assert!(rendered.contains("<redacted>"));
     assert!(!rendered.contains("twap-agent-secret"));
     assert!(!rendered.contains("0xabc0000000000000000000000000000000000000"));
+
+    for debug in [
+        rendered.as_str(),
+        retry_slice_debug.as_str(),
+        cancel_op_debug.as_str(),
+        place_op_debug.as_str(),
+        child_debug.as_str(),
+    ] {
+        assert!(!debug.contains("SECRET_TWAP_COIN"));
+        assert!(!debug.contains("SECRET TWAP DISPLAY"));
+        assert!(!debug.contains("pending-cloid-secret"));
+        assert!(!debug.contains("retry-cloid-secret"));
+        assert!(!debug.contains("status-cloid-secret"));
+        assert!(!debug.contains("child-cloid-secret"));
+        assert!(!debug.contains("exchange-summary-secret"));
+        assert!(!debug.contains("424242"));
+        assert!(!debug.contains("777777"));
+        assert!(!debug.contains("7.654321"));
+        assert!(!debug.contains("6.54321"));
+        assert!(!debug.contains("1.11111"));
+        assert!(!debug.contains("12345.67"));
+        assert!(!debug.contains("23456.78"));
+        assert!(!debug.contains("2.22222"));
+        assert!(!debug.contains("34567.89"));
+        assert!(!debug.contains("3.33333"));
+        assert!(!debug.contains("45678.9"));
+        assert!(!debug.contains("4.44444"));
+        assert!(!debug.contains("56789.01"));
+        assert!(!debug.contains("5.55555"));
+        assert!(!debug.contains("stop reason with"));
+    }
 }
 
 fn next_slice(twap: &mut TwapOrder, context: &str) -> f64 {
