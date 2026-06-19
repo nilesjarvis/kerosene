@@ -128,6 +128,15 @@ fn redact_sensitive_key_values(text: &str) -> String {
         "cursor",
         "password",
         "passcode",
+        "set-cookie",
+        "cookie",
+        "session_token",
+        "sessiontoken",
+        "session-token",
+        "csrf_token",
+        "csrftoken",
+        "csrf-token",
+        "jwt",
         "signature",
         "phone_code_hash",
         "phonecodehash",
@@ -261,6 +270,10 @@ fn sensitive_value_bounds(text: &str, key_start: usize, key_end: usize) -> Optio
         return Some((value_start, cursor));
     }
 
+    if sensitive_key_is_cookie_header(text, key_start, key_end) {
+        return Some((value_start, cookie_header_value_end(bytes, cursor)));
+    }
+
     while bytes.get(cursor).is_some_and(|byte| {
         !byte.is_ascii_whitespace()
             && !matches!(byte, b',' | b'&' | b';' | b'}' | b']' | b'"' | b'\'')
@@ -268,6 +281,21 @@ fn sensitive_value_bounds(text: &str, key_start: usize, key_end: usize) -> Optio
         cursor += 1;
     }
     Some((value_start, cursor))
+}
+
+fn sensitive_key_is_cookie_header(text: &str, key_start: usize, key_end: usize) -> bool {
+    let key = &text[key_start..key_end];
+    key.eq_ignore_ascii_case("cookie") || key.eq_ignore_ascii_case("set-cookie")
+}
+
+fn cookie_header_value_end(bytes: &[u8], mut cursor: usize) -> usize {
+    while bytes
+        .get(cursor)
+        .is_some_and(|byte| !matches!(byte, b'\n' | b'\r'))
+    {
+        cursor += 1;
+    }
+    cursor
 }
 
 fn authorization_credential_start(bytes: &[u8], mut cursor: usize) -> usize {
@@ -504,6 +532,29 @@ mod tests {
             "camel-client-secret",
             "signature-secret",
             "sig-secret",
+        ] {
+            assert!(!rendered.contains(secret), "excerpt leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn sensitive_response_excerpt_redacts_cookie_headers() {
+        let text = concat!(
+            "Set-Cookie: sid=session-secret; Path=/; HttpOnly\n",
+            "Cookie: a=first-cookie-secret; b=second-cookie-secret\n",
+            "session_token=session-secret csrf-token=csrf-secret jwt=jwt-secret ok=true",
+        );
+        let rendered = sensitive_response_excerpt(text, 512);
+
+        assert!(rendered.contains("Set-Cookie: <redacted>"));
+        assert!(rendered.contains("Cookie: <redacted>"));
+        assert!(rendered.contains("ok=true"));
+        for secret in [
+            "session-secret",
+            "first-cookie-secret",
+            "second-cookie-secret",
+            "csrf-secret",
+            "jwt-secret",
         ] {
             assert!(!rendered.contains(secret), "excerpt leaked {secret}");
         }
