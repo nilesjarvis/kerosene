@@ -1,4 +1,4 @@
-use crate::api::fetch_exchange_symbols;
+use crate::api::fetch_exchange_symbols_cached;
 use crate::app_state::TradingTerminal;
 use crate::config;
 use crate::layout_persistence::LayoutWidgetConfigs;
@@ -130,7 +130,7 @@ impl TradingTerminal {
         let book_task = state.boot_order_book_tasks();
         let positioning_task = state.boot_positioning_info_tasks();
 
-        let symbols_task = Task::perform(fetch_exchange_symbols(), Message::SymbolsLoaded);
+        let symbols_task = Task::perform(fetch_exchange_symbols_cached(), Message::SymbolsLoaded);
 
         let connect_task = if has_boot_wallet {
             Task::done(Message::ConnectWallet)

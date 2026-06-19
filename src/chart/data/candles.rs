@@ -12,6 +12,7 @@ impl CandlestickChart {
     /// Replace all candle data (e.g. after initial fetch or interval change).
     pub fn set_candles(&mut self, candles: Vec<Candle>) {
         self.candles = normalize_candles(candles);
+        trim_to_max_chart_candles(&mut self.candles);
         self.status = if self.candles.is_empty() {
             ChartStatus::Error("No candle data returned".to_string())
         } else {

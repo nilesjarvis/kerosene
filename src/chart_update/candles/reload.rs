@@ -23,9 +23,7 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let key = (symbol.clone(), tf);
-        self.candle_data_cache.remove(&key);
-        self.candle_data_cache_order.retain(|k| k != &key);
+        self.remove_cached_candles(&symbol, tf);
         self.clear_chart_heatmap_pending_request_state(id);
         self.clear_chart_liquidation_pending_request_state(id);
 
@@ -62,9 +60,7 @@ impl TradingTerminal {
             return Task::none();
         }
 
-        let key = (symbol.clone(), tf);
-        self.candle_data_cache.remove(&key);
-        self.candle_data_cache_order.retain(|k| k != &key);
+        self.remove_cached_candles(&symbol, tf);
 
         if let Some(instance) = self.charts.get_mut(&id) {
             instance.secondary_candle_fetch_error = None;

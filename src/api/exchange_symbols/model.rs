@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 mod outcome_labels;
 
 /// Whether a symbol is a perpetual or spot market.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MarketType {
     Perp,
     Spot,
@@ -46,7 +46,7 @@ pub struct OutcomeSymbolInfo {
 ///   - HIP-3 dexes:   "xyz:NVDA", "flx:BTC", "km:US500"
 ///   - Spot pairs:     "@1" (PURR/USDC), "@107" (HYPE/USDC)
 ///   - Outcomes:       "#0", "#1" (quote-token-denominated prediction contracts)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExchangeSymbol {
     /// Coin name for API calls (e.g. "HYPE", "xyz:NVDA", or "@107")
     pub key: String,

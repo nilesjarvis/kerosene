@@ -20,11 +20,11 @@ mod wallets;
 pub use clear::{ClearConfigSummary, clear_all_configs};
 #[cfg(test)]
 pub(crate) use files::installed_config_save_error_for_test;
-pub(crate) use files::{config_save_installed_snapshot, user_config_dir, user_config_path};
 pub use files::{
-    custom_font_path, custom_sound_path, font_storage_dir, journal_cache_path, load_config,
-    save_config, sound_storage_dir,
+    api_cache_dir, custom_font_path, custom_sound_path, font_storage_dir, journal_cache_path,
+    load_config, save_config, sound_storage_dir,
 };
+pub(crate) use files::{config_save_installed_snapshot, user_config_dir, user_config_path};
 pub(crate) use fonts::{
     BUNDLED_DISPLAY_FONT_FAMILIES, DM_SANS_FONT_FAMILY, INTER_FONT_FAMILY, QUANTICO_FONT_FAMILY,
     ROBOTO_FONT_FAMILY, ROBOTO_MONO_FONT_FAMILY, UBUNTU_SANS_FONT_FAMILY,

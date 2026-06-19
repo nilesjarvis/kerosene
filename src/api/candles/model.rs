@@ -1,7 +1,7 @@
-use serde::{Deserialize, de};
+use serde::{Deserialize, Serialize, de};
 use std::fmt;
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Candle {
     #[serde(rename = "t")]
     pub open_time: u64,

@@ -37,6 +37,9 @@ pub(crate) fn user_config_path(path: &Path) -> String {
     if file_name == "fonts" || file_name == "sounds" {
         return format!("{}/{file_name}", user_config_dir());
     }
+    if file_name == "cache" {
+        return format!("{}/{file_name}", user_config_dir());
+    }
     if file_name.starts_with("journal_cache_") {
         return format!("{}/journal_cache_<redacted>.json", user_config_dir());
     }
@@ -80,6 +83,18 @@ pub fn journal_cache_path(address: &str) -> Option<PathBuf> {
         d.join("kerosene")
             .join(format!("journal_cache_{}.json", address))
     })
+}
+
+#[cfg(test)]
+pub fn api_cache_dir() -> Option<PathBuf> {
+    // Tests must never read or write the real platform cache directory; the
+    // cache's own unit tests exercise the *_from_dir helpers with temp roots.
+    None
+}
+
+#[cfg(not(test))]
+pub fn api_cache_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("kerosene").join("cache").join("v1"))
 }
 
 pub fn font_storage_dir() -> Option<PathBuf> {
@@ -139,6 +154,10 @@ mod tests {
         assert_eq!(
             user_config_path(Path::new("/home/alice/.config/kerosene/fonts")),
             "<config-dir>/fonts"
+        );
+        assert_eq!(
+            user_config_path(Path::new("/home/alice/.config/kerosene/cache")),
+            "<config-dir>/cache"
         );
         assert_eq!(
             user_config_path(Path::new(

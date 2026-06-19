@@ -150,9 +150,7 @@ impl TradingTerminal {
             self.sync_chart_trade_markers_for(id);
             self.cache_candles(&symbol, tf, new_cache);
         } else if let Some((symbol, tf)) = remove_cache_data {
-            let key = (symbol, tf);
-            self.candle_data_cache.remove(&key);
-            self.candle_data_cache_order.retain(|k| k != &key);
+            self.remove_cached_candles(&symbol, tf);
         }
 
         let mut tasks = Vec::new();
@@ -293,9 +291,7 @@ impl TradingTerminal {
         if let Some((symbol, tf, new_cache)) = new_cache_data {
             self.cache_candles(&symbol, tf, new_cache);
         } else if let Some((symbol, tf)) = remove_cache_data {
-            let key = (symbol, tf);
-            self.candle_data_cache.remove(&key);
-            self.candle_data_cache_order.retain(|k| k != &key);
+            self.remove_cached_candles(&symbol, tf);
         }
 
         if continue_older_backfill {
@@ -573,8 +569,8 @@ mod tests {
         // Provider returns a non-empty page that does not predate the oldest
         // loaded candle (here a duplicate of it). The window does not grow older,
         // so backfill must stop instead of re-issuing the identical request.
-        let _task = terminal
-            .apply_chart_candles_loaded(request, Ok(vec![Candle::test_flat(2_000, 105.0)]));
+        let _task =
+            terminal.apply_chart_candles_loaded(request, Ok(vec![Candle::test_flat(2_000, 105.0)]));
 
         let instance = terminal.charts.get(&1).expect("chart instance");
         assert!(matches!(instance.chart.status, ChartStatus::Loaded));

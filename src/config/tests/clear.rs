@@ -68,10 +68,19 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
         parent.join("journal_cache_0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json.tmp.1");
     let journal_cache_other_path =
         parent.join("journal_cache_0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json");
+    let api_cache_dir = parent.join("cache");
+    let api_cache_file = api_cache_dir
+        .join("v1")
+        .join("candles")
+        .join("hyperliquid")
+        .join("BTC")
+        .join("1h.json");
     let unrelated_journal_path = parent.join("journal_cache_notes.txt");
     let unrelated_path = parent.join("telegram_fast.session.keep");
 
     std::fs::create_dir_all(parent).expect("test directory can be created");
+    std::fs::create_dir_all(api_cache_file.parent().expect("api cache file parent"))
+        .expect("test cache directory can be created");
     for candidate in [
         &path,
         &backup_path,
@@ -86,6 +95,7 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
         &journal_cache_path,
         &journal_cache_temp_path,
         &journal_cache_other_path,
+        &api_cache_file,
         &unrelated_journal_path,
         &unrelated_path,
     ] {
@@ -94,7 +104,7 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
 
     let summary = clear_config_files_at(&path);
 
-    assert_eq!(summary.files_removed, 13);
+    assert_eq!(summary.files_removed, 14);
     assert!(!summary.file_cleanup_failed);
     assert!(summary.warnings.is_empty());
     for candidate in [
@@ -118,6 +128,7 @@ fn clear_config_files_removes_credential_and_account_cache_files() {
             candidate.display()
         );
     }
+    assert!(!api_cache_dir.exists());
     assert!(unrelated_journal_path.exists());
     assert!(unrelated_path.exists());
 

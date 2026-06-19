@@ -80,9 +80,7 @@ impl TradingTerminal {
         if let Some((sym, tf, new_cache)) = new_cache_data {
             self.cache_candles(&sym, tf, new_cache);
         } else if let Some((sym, tf)) = remove_cache_data {
-            let key = (sym, tf);
-            self.candle_data_cache.remove(&key);
-            self.candle_data_cache_order.retain(|k| k != &key);
+            self.remove_cached_candles(&sym, tf);
         }
 
         Task::none()

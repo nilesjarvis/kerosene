@@ -176,6 +176,10 @@ fn clear_config_asset_dirs(parent: &Path) -> Result<usize, String> {
     }
 }
 
+fn clear_api_cache_dir(parent: &Path) -> Result<usize, String> {
+    remove_path_tree_if_exists(&parent.join("cache")).map(usize::from)
+}
+
 fn clear_journal_cache_files(parent: &Path) -> Result<usize, String> {
     let mut removed = 0;
     let mut errors = Vec::new();
@@ -237,6 +241,10 @@ pub(super) fn clear_config_side_files_at(parent: &Path) -> ConfigFileCleanupSumm
     match clear_config_asset_dirs(parent) {
         Ok(count) => summary.add_removed(count),
         Err(e) => summary.add_warning(format!("asset cleanup failed: {e}")),
+    }
+    match clear_api_cache_dir(parent) {
+        Ok(count) => summary.add_removed(count),
+        Err(e) => summary.add_warning(format!("API cache cleanup failed: {e}")),
     }
 
     summary

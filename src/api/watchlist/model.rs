@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WatchlistContext {
     pub funding: Option<f64>,
     pub prev_day_px: Option<f64>,

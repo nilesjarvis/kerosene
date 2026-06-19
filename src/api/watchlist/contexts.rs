@@ -7,6 +7,11 @@ use std::collections::{BTreeSet, HashMap};
 pub async fn fetch_watchlist_contexts(
     symbols: Vec<String>,
 ) -> Result<HashMap<String, WatchlistContext>, String> {
+    let now_ms = crate::app_time::now_ms();
+    if let Ok(Some(cached)) = crate::api_cache::load_fresh_watchlist_contexts(&symbols, now_ms) {
+        return Ok(cached);
+    }
+
     let client = CLIENT.clone();
     let mut map = HashMap::new();
     let mut needed_dexes = BTreeSet::new();
@@ -63,6 +68,7 @@ pub async fn fetch_watchlist_contexts(
     }
 
     if !needs_spot {
+        let _ = crate::api_cache::save_watchlist_contexts(&map);
         return Ok(map);
     }
 
@@ -81,5 +87,6 @@ pub async fn fetch_watchlist_contexts(
     append_spot_contexts(spot_resp, &mut map)
         .map_err(|e| format!("spotMetaAndAssetCtxs payload invalid: {e}"))?;
 
+    let _ = crate::api_cache::save_watchlist_contexts(&map);
     Ok(map)
 }

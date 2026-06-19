@@ -15,6 +15,7 @@ mod alfred_views;
 mod annotation_update;
 mod annotations;
 mod api;
+mod api_cache;
 mod app_boot;
 mod app_fonts;
 mod app_state;

@@ -1,5 +1,5 @@
 use super::{API_URL, CLIENT};
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 mod model;
@@ -15,7 +15,7 @@ use spot::append_spot_symbols;
 /// Result of a symbols fetch. Spot and outcome metadata failures are partial:
 /// perp symbols still load, but the failed source's symbols are absent and the
 /// caller must keep any previously loaded symbols of that market type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExchangeSymbolsPayload {
     pub symbols: Vec<ExchangeSymbol>,
     pub spot_meta_failed: bool,
@@ -59,11 +59,25 @@ pub async fn fetch_exchange_symbols() -> Result<ExchangeSymbolsPayload, String> 
 
     symbols.sort_by(|a, b| a.ticker.cmp(&b.ticker));
 
-    Ok(ExchangeSymbolsPayload {
+    let payload = ExchangeSymbolsPayload {
         symbols,
         spot_meta_failed,
         outcome_meta_failed,
-    })
+    };
+    if !payload.spot_meta_failed && !payload.outcome_meta_failed {
+        let _ = crate::api_cache::save_exchange_symbols(&payload);
+    }
+
+    Ok(payload)
+}
+
+pub async fn fetch_exchange_symbols_cached() -> Result<ExchangeSymbolsPayload, String> {
+    let now_ms = crate::app_time::now_ms();
+    if let Ok(Some(payload)) = crate::api_cache::load_fresh_exchange_symbols(now_ms) {
+        return Ok(payload);
+    }
+
+    fetch_exchange_symbols().await
 }
 
 fn info_request_payload(request_type: &'static str) -> serde_json::Value {

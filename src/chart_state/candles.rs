@@ -455,13 +455,19 @@ impl TradingTerminal {
     }
 
     pub(crate) fn cache_candles(&mut self, symbol: &str, tf: Timeframe, candles: Vec<Candle>) {
+        let candles = api::normalize_candles(candles);
+        if candles.is_empty() {
+            return;
+        }
         store_normalized_candles(
             &mut self.candle_data_cache,
             &mut self.candle_data_cache_order,
             symbol,
             tf,
-            candles,
+            candles.clone(),
         );
+        let source = self.chart_backfill_source_for_timeframe(tf);
+        let _ = crate::api_cache::save_candles_snapshot(source, symbol, tf, candles);
     }
 
     pub(crate) fn get_cached_candles(
@@ -469,12 +475,40 @@ impl TradingTerminal {
         symbol: &str,
         tf: Timeframe,
     ) -> Option<Vec<Candle>> {
-        get_fresh_cached_candles(
+        let now_ms = Self::now_ms();
+        if let Some(candles) = get_fresh_cached_candles(
             &mut self.candle_data_cache,
             &mut self.candle_data_cache_order,
             symbol,
             tf,
-            Self::now_ms(),
-        )
+            now_ms,
+        ) {
+            return Some(candles);
+        }
+
+        let source = self.chart_backfill_source_for_timeframe(tf);
+        if !crate::api_cache::cache_eligible(source, tf, &self.hydromancer_api_key) {
+            return None;
+        }
+        let candles = crate::api_cache::load_fresh_candles(source, symbol, tf, now_ms)
+            .ok()
+            .flatten()?;
+        store_normalized_candles(
+            &mut self.candle_data_cache,
+            &mut self.candle_data_cache_order,
+            symbol,
+            tf,
+            candles.clone(),
+        );
+        Some(candles)
+    }
+
+    pub(crate) fn remove_cached_candles(&mut self, symbol: &str, tf: Timeframe) {
+        let key = (symbol.to_string(), tf);
+        self.candle_data_cache.remove(&key);
+        self.candle_data_cache_order
+            .retain(|existing| existing != &key);
+        let source = self.chart_backfill_source_for_timeframe(tf);
+        let _ = crate::api_cache::remove_candles(source, symbol, tf);
     }
 }

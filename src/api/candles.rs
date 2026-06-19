@@ -47,7 +47,7 @@ pub async fn fetch_candles(
         return Err("1s candles require Hydromancer chart backfill".to_string());
     }
 
-    fetch_candles_from_endpoint(API_URL, None, coin, interval, start_time, end_time).await
+    fetch_hyperliquid_candles_with_cache(coin, interval, start_time, end_time).await
 }
 
 pub async fn fetch_chart_backfill_candles(
@@ -66,7 +66,7 @@ pub async fn fetch_chart_backfill_candles(
             Err("1s candles require Hydromancer chart backfill".to_string())
         }
         ChartBackfillSource::Hyperliquid => {
-            fetch_candles_from_endpoint(API_URL, None, coin, interval, start_time, end_time).await
+            fetch_hyperliquid_candles_with_cache(coin, interval, start_time, end_time).await
         }
         ChartBackfillSource::Hydromancer => {
             let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
@@ -75,10 +75,18 @@ pub async fn fetch_chart_backfill_candles(
                     return Err("Hydromancer API key required for 1s candles".to_string());
                 }
 
-                return fetch_candles_from_endpoint(
-                    API_URL, None, coin, interval, start_time, end_time,
-                )
-                .await;
+                return fetch_hyperliquid_candles_with_cache(coin, interval, start_time, end_time)
+                    .await;
+            }
+
+            if let Ok(Some(cached)) = crate::api_cache::load_candles_for_range(
+                ChartBackfillSource::Hydromancer,
+                &coin,
+                &interval,
+                start_time,
+                end_time,
+            ) {
+                return Ok(cached);
             }
 
             let interval_ms = candle_interval_ms(&interval);
@@ -100,13 +108,8 @@ pub async fn fetch_chart_backfill_candles(
                         ));
                     }
 
-                    return fetch_candles_from_endpoint(
-                        API_URL,
-                        None,
-                        coin,
-                        interval,
-                        start_time,
-                        end_time,
+                    return fetch_hyperliquid_candles_with_cache(
+                        coin, interval, start_time, end_time,
                     )
                     .await
                     .map_err(|fallback_error| {
@@ -116,12 +119,53 @@ pub async fn fetch_chart_backfill_candles(
                     });
                 }
             };
-            Ok(match interval_ms {
+            let candles = match interval_ms {
                 Some(interval_ms) => fill_zero_volume_candle_gaps(candles, interval_ms),
                 None => candles,
-            })
+            };
+            let _ = crate::api_cache::merge_candle_page(
+                ChartBackfillSource::Hydromancer,
+                &coin,
+                &interval,
+                candles.clone(),
+            );
+            Ok(candles)
         }
     }
+}
+
+async fn fetch_hyperliquid_candles_with_cache(
+    coin: String,
+    interval: String,
+    start_time: u64,
+    end_time: u64,
+) -> Result<Vec<Candle>, String> {
+    if let Ok(Some(cached)) = crate::api_cache::load_candles_for_range(
+        ChartBackfillSource::Hyperliquid,
+        &coin,
+        &interval,
+        start_time,
+        end_time,
+    ) {
+        return Ok(cached);
+    }
+
+    let candles = fetch_candles_from_endpoint(
+        API_URL,
+        None,
+        coin.clone(),
+        interval.clone(),
+        start_time,
+        end_time,
+    )
+    .await?;
+    let _ = crate::api_cache::merge_candle_page(
+        ChartBackfillSource::Hyperliquid,
+        &coin,
+        &interval,
+        candles.clone(),
+    );
+    Ok(candles)
 }
 
 async fn fetch_candles_from_endpoint(

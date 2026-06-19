@@ -40,6 +40,7 @@ impl TradingTerminal {
         let read_data_provider_generation = self.read_data_provider_generation;
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_api_key = self.hydromancer_api_key_for_task();
+        let mut removed_cache_keys = Vec::new();
         if let Some(inst) = self.spaghetti_charts.get_mut(&id) {
             Self::normalize_spaghetti_session_granularity(inst, Self::now_ms());
             let target_tf = Self::spaghetti_effective_timeframe_for(
@@ -50,9 +51,7 @@ impl TradingTerminal {
             );
 
             for series in &mut inst.canvas.series {
-                let key = (series.symbol.clone(), target_tf);
-                self.candle_data_cache.remove(&key);
-                self.candle_data_cache_order.retain(|k| k != &key);
+                removed_cache_keys.push((series.symbol.clone(), target_tf));
 
                 series.candles.clear();
                 series.loaded = false;
@@ -73,6 +72,9 @@ impl TradingTerminal {
                 ));
             }
             inst.canvas.cache.clear();
+        }
+        for (symbol, timeframe) in removed_cache_keys {
+            self.remove_cached_candles(&symbol, timeframe);
         }
         Task::batch(tasks)
     }
