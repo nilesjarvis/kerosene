@@ -13,13 +13,14 @@ use super::telemetry::{
     telemetry_add_rx, telemetry_add_tx, telemetry_mark_ws_ping_start, telemetry_on_connect,
     telemetry_on_disconnect, telemetry_update_ws_latency_from_ping_start,
 };
-use futures::SinkExt as _;
+use futures::{Sink, SinkExt as _};
 use serde_json::Value;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
+use tokio_tungstenite::tungstenite::Message as WsMsg;
 
 mod coalescer;
 mod commands;
@@ -44,6 +45,10 @@ mod tests;
 const API_LATENCY_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 #[cfg(test)]
 const API_LATENCY_PROBE_INTERVAL: Duration = Duration::from_millis(50);
+#[cfg(not(test))]
+const WS_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const WS_WRITE_TIMEOUT: Duration = Duration::from_millis(20);
 
 #[derive(Clone)]
 pub struct WsRoutedMessage {
@@ -185,7 +190,6 @@ async fn ws_manager_task_with_options(
     let mut coalescer = CoalescedSender::new(msg_tx);
     use futures::StreamExt as _;
     use futures::future::{Either, select};
-    use tokio_tungstenite::tungstenite::Message as WsMsg;
 
     let policy = EXCHANGE_WS_RECONNECT_POLICY;
     let mut reconnect_delay_secs = policy.base_delay_secs;
@@ -260,9 +264,7 @@ async fn ws_manager_task_with_options(
         }
 
         for payload in active_subs.payloads() {
-            let text = payload.to_string();
-            telemetry_add_tx(text.len() as u64);
-            if write.send(WsMsg::Text(text.into())).await.is_err() {
+            if !send_ws_text_with_timeout(&mut write, payload.to_string()).await {
                 disconnected = true;
                 break;
             }
@@ -297,14 +299,11 @@ async fn ws_manager_task_with_options(
                     if action.mark_ping_start {
                         telemetry_mark_ws_ping_start();
                     }
-                    if let Some(payload) = action.outbound_payload {
-                        let text = payload.to_string();
-                        telemetry_add_tx(text.len() as u64);
-                        if write.send(WsMsg::Text(text.into())).await.is_err()
-                            && action.disconnect_on_send_error
-                        {
-                            disconnected = true;
-                        }
+                    if let Some(payload) = action.outbound_payload
+                        && !send_ws_text_with_timeout(&mut write, payload.to_string()).await
+                        && action.disconnect_on_send_error
+                    {
+                        disconnected = true;
                     }
                     if action.disconnect_after_handling {
                         disconnected = true;
@@ -438,6 +437,24 @@ async fn update_api_latency_once() {
         let latency = now_ms().saturating_sub(start_time);
         telemetry_update_api_latency(latency);
     }
+}
+
+async fn send_ws_text_with_timeout<W>(write: &mut W, text: String) -> bool
+where
+    W: Sink<WsMsg> + Unpin,
+{
+    telemetry_add_tx(text.len() as u64);
+    let mut send = std::pin::pin!(write.send(WsMsg::Text(text.into())));
+    let first_poll = futures::future::poll_fn(|cx| {
+        std::task::Poll::Ready(std::future::Future::poll(send.as_mut(), cx))
+    })
+    .await;
+    if let std::task::Poll::Ready(result) = first_poll {
+        return result.is_ok();
+    }
+    tokio::time::timeout(WS_WRITE_TIMEOUT, send)
+        .await
+        .is_ok_and(|result| result.is_ok())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

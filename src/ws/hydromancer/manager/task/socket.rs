@@ -17,6 +17,11 @@ use tokio_tungstenite::tungstenite::Message as WsMsg;
 #[cfg(test)]
 mod tests;
 
+#[cfg(not(test))]
+const HYDROMANCER_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(test)]
+const HYDROMANCER_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(20);
+
 // ---------------------------------------------------------------------------
 // Connected Socket Event Handling
 // ---------------------------------------------------------------------------
@@ -80,7 +85,7 @@ where
         }
         WsMsg::Ping(payload) => {
             let _ = broadcast_hydromancer_heartbeat(msg_tx);
-            write.send(WsMsg::Pong(payload)).await.is_err()
+            !send_with_timeout(write, WsMsg::Pong(payload)).await
         }
         WsMsg::Pong(_) => {
             let _ = broadcast_hydromancer_heartbeat(msg_tx);
@@ -148,5 +153,22 @@ where
     W: Sink<WsMsg> + Unpin,
 {
     telemetry_add_hydromancer_tx(text.len() as u64);
-    write.send(WsMsg::Text(text.into())).await.is_ok()
+    send_with_timeout(write, WsMsg::Text(text.into())).await
+}
+
+async fn send_with_timeout<W>(write: &mut W, message: WsMsg) -> bool
+where
+    W: Sink<WsMsg> + Unpin,
+{
+    let mut send = std::pin::pin!(write.send(message));
+    let first_poll = futures::future::poll_fn(|cx| {
+        std::task::Poll::Ready(std::future::Future::poll(send.as_mut(), cx))
+    })
+    .await;
+    if let std::task::Poll::Ready(result) = first_poll {
+        return result.is_ok();
+    }
+    tokio::time::timeout(HYDROMANCER_WRITE_TIMEOUT, send)
+        .await
+        .is_ok_and(|result| result.is_ok())
 }

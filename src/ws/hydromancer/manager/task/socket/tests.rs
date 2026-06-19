@@ -29,3 +29,41 @@ fn routed_msg_or_panic(
         Err(error) => panic!("missing routed frame: {error}"),
     }
 }
+
+struct PendingWriteSink;
+
+impl futures::Sink<WsMsg> for PendingWriteSink {
+    type Error = ();
+
+    fn poll_ready(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Pending
+    }
+
+    fn start_send(self: std::pin::Pin<&mut Self>, _item: WsMsg) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Pending
+    }
+
+    fn poll_close(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Pending
+    }
+}
+
+#[tokio::test]
+async fn hydromancer_text_send_times_out_for_pending_sink() {
+    let mut sink = PendingWriteSink;
+
+    assert!(!send_text(&mut sink, "{}".to_string()).await);
+}
