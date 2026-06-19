@@ -4,7 +4,7 @@ use crate::config::{TrackedWalletConfig, WalletTrackerConfig};
 use crate::read_data_provider::ReadDataRequestContext;
 
 use iced::window;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 pub(crate) const WALLET_TRACKER_CORE_TICK_SECS: u64 = 5;
 pub(crate) const WALLET_TRACKER_CORE_MIN_AGE_MS: u64 = 60_000;
@@ -35,7 +35,7 @@ pub(crate) struct WalletTrackerRow {
     pub(crate) next_order_retry_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct WalletDetailsWindowState {
     pub(crate) address: String,
     pub(crate) data: Option<WalletDetailsData>,
@@ -63,6 +63,23 @@ impl WalletDetailsWindowState {
             x: None,
             y: None,
         }
+    }
+}
+
+impl fmt::Debug for WalletDetailsWindowState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletDetailsWindowState")
+            .field("address", &"<redacted>")
+            .field("data", &self.data)
+            .field("loading", &self.loading)
+            .field("loading_context", &self.loading_context)
+            .field("error", &self.error)
+            .field("last_refresh_ms", &self.last_refresh_ms)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .finish()
     }
 }
 
@@ -169,5 +186,22 @@ impl WalletTrackerState {
             x: self.x,
             y: self.y,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WalletDetailsWindowState;
+
+    const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn wallet_details_window_state_debug_redacts_address() {
+        let state = WalletDetailsWindowState::new(TEST_ADDRESS.to_string());
+
+        let rendered = format!("{state:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(TEST_ADDRESS));
     }
 }

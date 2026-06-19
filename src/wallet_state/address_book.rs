@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use std::fmt;
 
 mod display;
 mod labels;
@@ -16,11 +17,35 @@ pub(crate) struct AddressBookEntry {
     pub(crate) tags: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct WalletDisplay {
     pub(crate) primary: String,
     pub(crate) secondary: String,
     pub(crate) has_label: bool,
+}
+
+impl fmt::Debug for WalletDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletDisplay")
+            .field(
+                "primary",
+                &redacted_wallet_display_debug_value(&self.primary),
+            )
+            .field(
+                "secondary",
+                &redacted_wallet_display_debug_value(&self.secondary),
+            )
+            .field("has_label", &self.has_label)
+            .finish()
+    }
+}
+
+fn redacted_wallet_display_debug_value(value: &str) -> &str {
+    if normalize_wallet_address_value(value).is_some() {
+        "<redacted>"
+    } else {
+        value
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -66,5 +91,25 @@ impl TradingTerminal {
         } else {
             address.to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    const TEST_ADDRESS: &str = "0xabc0000000000000000000000000000000000000";
+
+    #[test]
+    fn wallet_display_debug_redacts_full_addresses() {
+        let display =
+            TradingTerminal::wallet_display_from_address_book(&HashMap::new(), TEST_ADDRESS);
+
+        let rendered = format!("{display:?}");
+
+        assert!(rendered.contains("0xabc0...0000"));
+        assert!(rendered.contains("<redacted>"));
+        assert!(!rendered.contains(TEST_ADDRESS));
     }
 }
