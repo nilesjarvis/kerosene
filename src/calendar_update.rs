@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use chrono::{DateTime, Local, Utc};
 use iced::Task;
@@ -64,7 +65,7 @@ impl TradingTerminal {
                         .map(|_: ()| Message::NoOp);
                     }
                     Err(e) => {
-                        self.calendar_error = Some(e);
+                        self.calendar_error = Some(redact_sensitive_response_text(&e));
                         let delay_secs =
                             Self::calendar_retry_delay_secs(self.calendar_retry_attempts);
                         self.calendar_retry_attempts =
@@ -155,6 +156,25 @@ mod tests {
 
         assert_eq!(terminal.calendar_events.len(), 1);
         assert_eq!(terminal.calendar_events[0].title, "accepted");
+    }
+
+    #[test]
+    fn calendar_loaded_error_redacts_error_and_schedules_retry() {
+        let mut terminal = terminal_with_calendar_pane();
+        terminal.calendar_loading = true;
+        terminal.calendar_request_id = 3;
+
+        let _task = terminal.update_calendar(Message::CalendarLoaded(
+            3,
+            Err("calendar failed: api_key=calendar-secret".to_string()),
+        ));
+
+        assert!(!terminal.calendar_loading);
+        let error = terminal.calendar_error.as_deref().expect("calendar error");
+        assert!(error.contains("api_key=<redacted>"));
+        assert!(!error.contains("calendar-secret"));
+        assert_eq!(terminal.calendar_retry_attempts, 1);
+        assert!(terminal.calendar_next_retry.is_some());
     }
 
     #[test]
