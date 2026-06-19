@@ -1,7 +1,7 @@
 mod pane_kind_wire;
 mod widget_padding_wire;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::{
     ChartConfig, CustomThemeConfig, LiveWatchlistConfig, OrderBookConfig, OrderPresetsConfig,
@@ -12,20 +12,96 @@ use super::{
 use std::collections::BTreeMap;
 
 /// Persisted axis for a pane split.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Default)]
 pub enum AxisConfig {
+    #[default]
     Horizontal,
     Vertical,
 }
 
+impl AxisConfig {
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "Horizontal" => Some(Self::Horizontal),
+            "Vertical" => Some(Self::Vertical),
+            _ => None,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::Horizontal => "Horizontal",
+            Self::Vertical => "Vertical",
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AxisConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            crate::config::push_config_warning(format!(
+                "Unknown pane split axis {value:?} in config; using {}",
+                default.config_value()
+            ));
+            default
+        }))
+    }
+}
+
 /// Persisted bottom tab selection.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Default)]
 pub enum BottomTabConfig {
+    #[default]
     Positions,
     OpenOrders,
     Balances,
     TradeHistory,
     FundingHistory,
+}
+
+impl BottomTabConfig {
+    fn from_config_value(value: &str) -> Option<Self> {
+        match value {
+            "Positions" => Some(Self::Positions),
+            "OpenOrders" => Some(Self::OpenOrders),
+            "Balances" => Some(Self::Balances),
+            "TradeHistory" => Some(Self::TradeHistory),
+            "FundingHistory" => Some(Self::FundingHistory),
+            _ => None,
+        }
+    }
+
+    fn config_value(self) -> &'static str {
+        match self {
+            Self::Positions => "Positions",
+            Self::OpenOrders => "OpenOrders",
+            Self::Balances => "Balances",
+            Self::TradeHistory => "TradeHistory",
+            Self::FundingHistory => "FundingHistory",
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BottomTabConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_config_value(&value).unwrap_or_else(|| {
+            let default = Self::default();
+            crate::config::push_config_warning(format!(
+                "Unknown bottom tab {value:?} in config; using {}",
+                default.config_value()
+            ));
+            default
+        }))
+    }
 }
 
 /// Persisted pane content kind.

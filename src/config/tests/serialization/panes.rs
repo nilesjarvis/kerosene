@@ -1,5 +1,9 @@
+use super::super::config_warning_guard;
 use super::{json_string, value_from_json};
-use crate::config::{BottomTabConfig, KeroseneConfig, PaneKindConfig, PaneLayoutConfig};
+use crate::config::{
+    AxisConfig, BottomTabConfig, KeroseneConfig, PaneKindConfig, PaneLayoutConfig,
+    take_config_warnings,
+};
 use crate::session_data_state::SessionDataLookback;
 
 #[test]
@@ -44,6 +48,54 @@ fn unknown_future_pane_round_trips_raw_json() {
     assert_eq!(
         serde_json::to_value(&layout).expect("future pane should serialize"),
         raw_layout
+    );
+}
+
+#[test]
+fn unknown_future_split_axis_defaults_to_horizontal() {
+    let _warning_guard = config_warning_guard();
+    let layout: PaneLayoutConfig = value_from_json(
+        serde_json::json!({
+            "Split": {
+                "axis": "Diagonal",
+                "ratio": 0.5,
+                "a": { "Leaf": "Watchlist" },
+                "b": { "Leaf": "OrderEntry" }
+            }
+        }),
+        "future split axis should deserialize",
+    );
+
+    let PaneLayoutConfig::Split { axis, .. } = layout else {
+        panic!("layout should remain a split");
+    };
+
+    assert_eq!(axis, AxisConfig::Horizontal);
+    assert!(
+        take_config_warnings()
+            .iter()
+            .any(|warning| warning.contains("Unknown pane split axis \"Diagonal\""))
+    );
+}
+
+#[test]
+fn unknown_future_bottom_tab_defaults_to_positions() {
+    let _warning_guard = config_warning_guard();
+    let kind: PaneKindConfig = value_from_json(
+        serde_json::json!({ "BottomTabs": { "active_tab": "FutureTab" } }),
+        "future bottom tab should deserialize",
+    );
+
+    assert_eq!(
+        kind,
+        PaneKindConfig::BottomTabs {
+            active_tab: BottomTabConfig::Positions
+        }
+    );
+    assert!(
+        take_config_warnings()
+            .iter()
+            .any(|warning| warning.contains("Unknown bottom tab \"FutureTab\""))
     );
 }
 
