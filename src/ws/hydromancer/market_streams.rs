@@ -5,7 +5,7 @@ use crate::account::AssetContext;
 use crate::api::{Candle, parse_ws_book};
 use crate::ws::{
     KeyedAssetContextStreamEvent, KeyedBookStreamEvent, KeyedCandleStreamEvent,
-    SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, WsStream, WsStreamEvent,
+    SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, WsStream,
     l2_book_payload_matches_sigfigs,
 };
 
@@ -19,6 +19,24 @@ type KeyedAssetContextStream = WsStream<KeyedAssetContextStreamEvent>;
 type SymbolAssetContextStream = WsStream<SymbolAssetContextStreamEvent>;
 type KeyedCandleStream = WsStream<KeyedCandleStreamEvent>;
 type SpaghettiCandleStream = WsStream<SpaghettiCandleStreamEvent>;
+
+#[derive(Debug, Clone)]
+enum HydromancerAssetCtxStreamEvent {
+    Item(String, Option<u64>, Box<AssetContext>),
+    Lagged {
+        hydromancer_key_generation: Option<u64>,
+        skipped: u64,
+    },
+}
+
+#[derive(Debug, Clone)]
+enum HydromancerCandleStreamEvent {
+    Item(Option<u64>, Candle),
+    Lagged {
+        hydromancer_key_generation: Option<u64>,
+        skipped: u64,
+    },
+}
 
 // ---------------------------------------------------------------------------
 // Hydromancer Market Streams
@@ -64,28 +82,30 @@ pub fn ws_hydromancer_book_stream_keyed_events(
                             ));
                             while let Some(event) = fallback.next().await {
                                 let scoped_event = match event {
-                                    KeyedBookStreamEvent::Item(id, coin, sigfigs, _, book) => {
-                                        KeyedBookStreamEvent::Item(
-                                            id,
-                                            coin,
-                                            sigfigs,
-                                            Some(hydromancer_key_generation),
-                                            book,
-                                        )
-                                    }
+                                    KeyedBookStreamEvent::Item(
+                                        id,
+                                        coin,
+                                        sigfigs,
+                                        fallback_generation,
+                                        book,
+                                    ) => KeyedBookStreamEvent::Item(
+                                        id,
+                                        coin,
+                                        sigfigs,
+                                        fallback_generation,
+                                        book,
+                                    ),
                                     KeyedBookStreamEvent::Lagged {
                                         id,
                                         coin,
                                         sigfigs,
                                         skipped,
-                                        ..
+                                        hydromancer_key_generation,
                                     } => KeyedBookStreamEvent::Lagged {
                                         id,
                                         coin,
                                         sigfigs,
-                                        hydromancer_key_generation: Some(
-                                            hydromancer_key_generation,
-                                        ),
+                                        hydromancer_key_generation,
                                         skipped,
                                     },
                                 };
@@ -159,21 +179,20 @@ pub fn ws_hydromancer_asset_ctx_stream_keyed(
     params: &(HydromancerStreamKey, u64, String),
 ) -> KeyedAssetContextStream {
     let stream_key = params.0.clone();
-    let hydromancer_key_generation = params.0.generation();
     let id = params.1;
     let coin = params.2.clone();
     let inner = hydromancer_asset_ctx_stream(stream_key, coin.clone());
     Box::pin(futures::StreamExt::map(inner, move |event| match event {
-        WsStreamEvent::Item((_coin, ctx)) => KeyedAssetContextStreamEvent::Item(
-            id,
-            coin.clone(),
-            Some(hydromancer_key_generation),
-            Box::new(ctx),
-        ),
-        WsStreamEvent::Lagged { skipped } => KeyedAssetContextStreamEvent::Lagged {
+        HydromancerAssetCtxStreamEvent::Item(_symbol, hydromancer_key_generation, ctx) => {
+            KeyedAssetContextStreamEvent::Item(id, coin.clone(), hydromancer_key_generation, ctx)
+        }
+        HydromancerAssetCtxStreamEvent::Lagged {
+            hydromancer_key_generation,
+            skipped,
+        } => KeyedAssetContextStreamEvent::Lagged {
             id,
             symbol: coin.clone(),
-            hydromancer_key_generation: Some(hydromancer_key_generation),
+            hydromancer_key_generation,
             skipped,
         },
     }))
@@ -182,18 +201,18 @@ pub fn ws_hydromancer_asset_ctx_stream_keyed(
 pub fn ws_hydromancer_asset_ctx_stream_symbol(
     params: &(HydromancerStreamKey, String),
 ) -> SymbolAssetContextStream {
-    let hydromancer_key_generation = params.0.generation();
     let symbol = params.1.clone();
     let inner = hydromancer_asset_ctx_stream(params.0.clone(), params.1.clone());
     Box::pin(futures::StreamExt::map(inner, move |event| match event {
-        WsStreamEvent::Item((symbol, ctx)) => SymbolAssetContextStreamEvent::Item(
-            symbol,
-            Some(hydromancer_key_generation),
-            Box::new(ctx),
-        ),
-        WsStreamEvent::Lagged { skipped } => SymbolAssetContextStreamEvent::Lagged {
+        HydromancerAssetCtxStreamEvent::Item(symbol, hydromancer_key_generation, ctx) => {
+            SymbolAssetContextStreamEvent::Item(symbol, hydromancer_key_generation, ctx)
+        }
+        HydromancerAssetCtxStreamEvent::Lagged {
+            hydromancer_key_generation,
+            skipped,
+        } => SymbolAssetContextStreamEvent::Lagged {
             symbol: symbol.clone(),
-            hydromancer_key_generation: Some(hydromancer_key_generation),
+            hydromancer_key_generation,
             skipped,
         },
     }))
@@ -203,24 +222,28 @@ pub fn ws_hydromancer_candle_stream_keyed(
     params: &(HydromancerStreamKey, u64, String, String),
 ) -> KeyedCandleStream {
     let stream_key = params.0.clone();
-    let hydromancer_key_generation = params.0.generation();
     let id = params.1;
     let coin = params.2.clone();
     let interval = params.3.clone();
     let inner = hydromancer_candle_stream(stream_key, coin.clone(), interval.clone());
     Box::pin(futures::StreamExt::map(inner, move |event| match event {
-        WsStreamEvent::Item(candle) => KeyedCandleStreamEvent::Item(
-            id,
-            coin.clone(),
-            interval.clone(),
-            Some(hydromancer_key_generation),
-            candle,
-        ),
-        WsStreamEvent::Lagged { skipped } => KeyedCandleStreamEvent::Lagged {
+        HydromancerCandleStreamEvent::Item(hydromancer_key_generation, candle) => {
+            KeyedCandleStreamEvent::Item(
+                id,
+                coin.clone(),
+                interval.clone(),
+                hydromancer_key_generation,
+                candle,
+            )
+        }
+        HydromancerCandleStreamEvent::Lagged {
+            hydromancer_key_generation,
+            skipped,
+        } => KeyedCandleStreamEvent::Lagged {
             id,
             symbol: coin.clone(),
             interval: interval.clone(),
-            hydromancer_key_generation: Some(hydromancer_key_generation),
+            hydromancer_key_generation,
             skipped,
         },
     }))
@@ -237,7 +260,6 @@ pub fn ws_hydromancer_spaghetti_candle_stream(
     ),
 ) -> SpaghettiCandleStream {
     let stream_key = params.0.clone();
-    let hydromancer_key_generation = params.0.generation();
     let id = params.1;
     let coin = params.2.clone();
     let timeframe = params.3;
@@ -246,20 +268,25 @@ pub fn ws_hydromancer_spaghetti_candle_stream(
     let interval = params.3.api_str().to_string();
     let inner = hydromancer_candle_stream(stream_key, coin.clone(), interval);
     Box::pin(futures::StreamExt::map(inner, move |event| match event {
-        WsStreamEvent::Item(candle) => SpaghettiCandleStreamEvent::Item {
+        HydromancerCandleStreamEvent::Item(hydromancer_key_generation, candle) => {
+            SpaghettiCandleStreamEvent::Item {
+                id,
+                symbol: coin.clone(),
+                timeframe,
+                hydromancer_key_generation,
+                session,
+                session_granularity,
+                candle,
+            }
+        }
+        HydromancerCandleStreamEvent::Lagged {
+            hydromancer_key_generation,
+            skipped,
+        } => SpaghettiCandleStreamEvent::Lagged {
             id,
             symbol: coin.clone(),
             timeframe,
-            hydromancer_key_generation: Some(hydromancer_key_generation),
-            session,
-            session_granularity,
-            candle,
-        },
-        WsStreamEvent::Lagged { skipped } => SpaghettiCandleStreamEvent::Lagged {
-            id,
-            symbol: coin.clone(),
-            timeframe,
-            hydromancer_key_generation: Some(hydromancer_key_generation),
+            hydromancer_key_generation,
             session,
             session_granularity,
             skipped,
@@ -270,7 +297,8 @@ pub fn ws_hydromancer_spaghetti_candle_stream(
 fn hydromancer_asset_ctx_stream(
     stream_key: HydromancerStreamKey,
     coin: String,
-) -> WsStream<WsStreamEvent<(String, AssetContext)>> {
+) -> WsStream<HydromancerAssetCtxStreamEvent> {
+    let hydromancer_key_generation = stream_key.generation();
     Box::pin(iced::stream::channel(10, async move |mut output| {
         let (cmd_tx, mut msg_rx) = get_hydromancer_manager(stream_key);
         let (topic, payload) = hydromancer_asset_ctx_subscription(&coin);
@@ -299,12 +327,23 @@ fn hydromancer_asset_ctx_stream(
                                 crate::ws::ws_asset_ctx_stream_symbol(&(coin.clone(),));
                             while let Some(event) = fallback.next().await {
                                 let event = match event {
-                                    SymbolAssetContextStreamEvent::Item(symbol, _, ctx) => {
-                                        WsStreamEvent::Item((symbol, *ctx))
-                                    }
-                                    SymbolAssetContextStreamEvent::Lagged { skipped, .. } => {
-                                        WsStreamEvent::Lagged { skipped }
-                                    }
+                                    SymbolAssetContextStreamEvent::Item(
+                                        symbol,
+                                        hydromancer_key_generation,
+                                        ctx,
+                                    ) => HydromancerAssetCtxStreamEvent::Item(
+                                        symbol,
+                                        hydromancer_key_generation,
+                                        ctx,
+                                    ),
+                                    SymbolAssetContextStreamEvent::Lagged {
+                                        hydromancer_key_generation,
+                                        skipped,
+                                        ..
+                                    } => HydromancerAssetCtxStreamEvent::Lagged {
+                                        hydromancer_key_generation,
+                                        skipped,
+                                    },
                                 };
                                 if output.send(event).await.is_err() {
                                     return;
@@ -326,7 +365,11 @@ fn hydromancer_asset_ctx_stream(
                         };
                         if let Ok(ctx) = serde_json::from_value::<AssetContext>(ctx_val.clone())
                             && output
-                                .send(WsStreamEvent::Item((coin.clone(), ctx)))
+                                .send(HydromancerAssetCtxStreamEvent::Item(
+                                    coin.clone(),
+                                    Some(hydromancer_key_generation),
+                                    Box::new(ctx),
+                                ))
                                 .await
                                 .is_err()
                         {
@@ -337,7 +380,10 @@ fn hydromancer_asset_ctx_stream(
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
                     if !super::emit_hydromancer_lag_after_reconnect(
                         &reconnect_tx,
-                        WsStreamEvent::Lagged { skipped },
+                        HydromancerAssetCtxStreamEvent::Lagged {
+                            hydromancer_key_generation: Some(hydromancer_key_generation),
+                            skipped,
+                        },
                         |event| async { output.send(event).await.is_ok() },
                         std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
                     )
@@ -364,7 +410,8 @@ fn hydromancer_candle_stream(
     stream_key: HydromancerStreamKey,
     coin: String,
     interval: String,
-) -> WsStream<WsStreamEvent<Candle>> {
+) -> WsStream<HydromancerCandleStreamEvent> {
+    let hydromancer_key_generation = stream_key.generation();
     Box::pin(iced::stream::channel(10, async move |mut output| {
         let (cmd_tx, mut msg_rx) = get_hydromancer_manager(stream_key);
         let (topic, payload) = hydromancer_candle_subscription(&coin, &interval);
@@ -395,21 +442,28 @@ fn hydromancer_candle_stream(
                                 interval.clone(),
                             ));
                             while let Some(event) = fallback.next().await {
-                                match event {
-                                    KeyedCandleStreamEvent::Item(_, _, _, _, candle) => {
-                                        if output.send(WsStreamEvent::Item(candle)).await.is_err() {
-                                            return;
-                                        }
-                                    }
-                                    KeyedCandleStreamEvent::Lagged { skipped, .. } => {
-                                        if output
-                                            .send(WsStreamEvent::Lagged { skipped })
-                                            .await
-                                            .is_err()
-                                        {
-                                            return;
-                                        }
-                                    }
+                                let event = match event {
+                                    KeyedCandleStreamEvent::Item(
+                                        _,
+                                        _,
+                                        _,
+                                        hydromancer_key_generation,
+                                        candle,
+                                    ) => HydromancerCandleStreamEvent::Item(
+                                        hydromancer_key_generation,
+                                        candle,
+                                    ),
+                                    KeyedCandleStreamEvent::Lagged {
+                                        hydromancer_key_generation,
+                                        skipped,
+                                        ..
+                                    } => HydromancerCandleStreamEvent::Lagged {
+                                        hydromancer_key_generation,
+                                        skipped,
+                                    },
+                                };
+                                if output.send(event).await.is_err() {
+                                    return;
                                 }
                             }
                             return;
@@ -426,7 +480,13 @@ fn hydromancer_candle_stream(
                             continue;
                         }
                         if let Ok(candle) = serde_json::from_value::<Candle>(item.clone())
-                            && output.send(WsStreamEvent::Item(candle)).await.is_err()
+                            && output
+                                .send(HydromancerCandleStreamEvent::Item(
+                                    Some(hydromancer_key_generation),
+                                    candle,
+                                ))
+                                .await
+                                .is_err()
                         {
                             return;
                         }
@@ -435,7 +495,10 @@ fn hydromancer_candle_stream(
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
                     if !super::emit_hydromancer_lag_after_reconnect(
                         &reconnect_tx,
-                        WsStreamEvent::Lagged { skipped },
+                        HydromancerCandleStreamEvent::Lagged {
+                            hydromancer_key_generation: Some(hydromancer_key_generation),
+                            skipped,
+                        },
                         |event| async { output.send(event).await.is_ok() },
                         std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
                     )

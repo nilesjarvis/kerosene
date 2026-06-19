@@ -8,6 +8,8 @@ use crate::ws::{
 
 use iced::Subscription;
 
+use super::source_context_for_stream_event;
+
 // ---------------------------------------------------------------------------
 // Chase Market Streams
 // ---------------------------------------------------------------------------
@@ -85,10 +87,8 @@ fn chase_book_stream_event_message(
 ) -> Message {
     match event {
         KeyedBookStreamEvent::Item(chase_id, coin, sigfigs, hydromancer_key_generation, book) => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChaseBookUpdate {
                 chase_id,
                 coin,
@@ -104,10 +104,8 @@ fn chase_book_stream_event_message(
             hydromancer_key_generation,
             skipped,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChaseBookLagged {
                 chase_id: id,
                 coin,

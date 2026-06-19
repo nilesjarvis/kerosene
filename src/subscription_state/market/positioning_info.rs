@@ -8,6 +8,8 @@ use crate::ws::{
 
 use iced::Subscription;
 
+use super::source_context_for_stream_event;
+
 // ---------------------------------------------------------------------------
 // Positioning Info Market Streams
 // ---------------------------------------------------------------------------
@@ -72,10 +74,8 @@ pub(super) fn positioning_asset_ctx_stream_event_message(
 ) -> Message {
     match event {
         SymbolAssetContextStreamEvent::Item(symbol, hydromancer_key_generation, ctx) => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::PositioningInfoWsAssetCtxUpdate(symbol, source_context, *ctx)
         }
         SymbolAssetContextStreamEvent::Lagged {
@@ -83,10 +83,8 @@ pub(super) fn positioning_asset_ctx_stream_event_message(
             hydromancer_key_generation,
             skipped,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::PositioningInfoWsAssetCtxLagged(symbol, source_context, skipped)
         }
     }

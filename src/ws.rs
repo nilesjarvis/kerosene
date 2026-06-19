@@ -29,9 +29,9 @@ pub use hydromancer::{
 };
 pub use market_streams::{
     KeyedAssetContextStreamEvent, KeyedBookStreamEvent, KeyedCandleStreamEvent,
-    SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, WsStreamEvent,
-    ws_asset_ctx_stream_keyed, ws_asset_ctx_stream_symbol, ws_book_stream_keyed_events,
-    ws_candle_stream_keyed, ws_spaghetti_candle_stream,
+    SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, ws_asset_ctx_stream_keyed,
+    ws_asset_ctx_stream_symbol, ws_book_stream_keyed_events, ws_candle_stream_keyed,
+    ws_spaghetti_candle_stream,
 };
 pub use user_streams::{WsUserData, WsUserDataStreamParams, ws_user_data_stream};
 

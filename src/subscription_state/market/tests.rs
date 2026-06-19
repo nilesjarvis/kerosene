@@ -4,6 +4,7 @@ use super::*;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::chart::ChartStatus;
 use crate::chart_state::ChartInstance;
+use crate::config::ReadDataProvider;
 use crate::positioning_state::PositioningInfoInstance;
 use crate::spaghetti::{Series, SpaghettiCanvas};
 use crate::spaghetti_state::SpaghettiChartInstance;

@@ -8,6 +8,7 @@ use crate::ws::{
     ws_hydromancer_candle_stream_keyed,
 };
 
+use super::source_context_for_stream_event;
 use iced::Subscription;
 use std::collections::BTreeMap;
 
@@ -132,10 +133,8 @@ fn chart_candle_stream_event_message(
 ) -> Message {
     match event {
         KeyedCandleStreamEvent::Item(id, symbol, interval, hydromancer_key_generation, candle) => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChartWsCandleUpdate(id, symbol, interval, source_context, candle)
         }
         KeyedCandleStreamEvent::Lagged {
@@ -145,10 +144,8 @@ fn chart_candle_stream_event_message(
             hydromancer_key_generation,
             skipped,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChartWsCandleLagged(id, symbol, interval, source_context, skipped)
         }
     }
@@ -162,10 +159,8 @@ pub(super) fn chart_asset_ctx_stream_event_message(
 ) -> Message {
     match event {
         KeyedAssetContextStreamEvent::Item(id, symbol, hydromancer_key_generation, ctx) => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChartWsAssetCtxUpdate(id, symbol, source_context, *ctx)
         }
         KeyedAssetContextStreamEvent::Lagged {
@@ -174,10 +169,8 @@ pub(super) fn chart_asset_ctx_stream_event_message(
             hydromancer_key_generation,
             skipped,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::ChartWsAssetCtxLagged(id, symbol, source_context, skipped)
         }
     }

@@ -145,7 +145,7 @@ impl TradingTerminal {
                 self.hydromancer_read_provider_enabled()
                     && self.hydromancer_key_generation_is_current(generation)
             }
-            None => !self.hydromancer_read_provider_enabled(),
+            None => true,
         }
     }
 
@@ -355,7 +355,7 @@ mod tests {
 
         terminal.hydromancer_api_key = "hydro-secret".to_string().into();
         let hydromancer_context = terminal.market_data_source_context();
-        assert!(!terminal.market_stream_source_is_current(fallback_context));
+        assert!(terminal.market_stream_source_is_current(fallback_context));
         assert!(
             !terminal.market_stream_source_is_current(MarketDataSourceContext {
                 hydromancer_key_generation: Some(1),

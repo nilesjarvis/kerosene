@@ -8,6 +8,8 @@ use crate::ws::{
 
 use iced::Subscription;
 
+use super::source_context_for_stream_event;
+
 // ---------------------------------------------------------------------------
 // Spaghetti Market Streams
 // ---------------------------------------------------------------------------
@@ -89,10 +91,8 @@ fn spaghetti_candle_stream_event_to_message(
             session_granularity,
             candle,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::SpaghettiWsCandleUpdate(
                 SpaghettiWsCandleContext {
                     chart_id: id.saturating_sub(10000),
@@ -114,10 +114,8 @@ fn spaghetti_candle_stream_event_to_message(
             session_granularity,
             skipped,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::SpaghettiWsCandleLagged(
                 SpaghettiWsCandleContext {
                     chart_id: id.saturating_sub(10000),

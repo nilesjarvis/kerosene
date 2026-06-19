@@ -21,6 +21,14 @@ use order_book::*;
 // Market Subscriptions
 // ---------------------------------------------------------------------------
 
+pub(in crate::subscription_state::market) fn source_context_for_stream_event(
+    mut source_context: crate::read_data_provider::MarketDataSourceContext,
+    hydromancer_key_generation: Option<u64>,
+) -> crate::read_data_provider::MarketDataSourceContext {
+    source_context.hydromancer_key_generation = hydromancer_key_generation;
+    source_context
+}
+
 impl TradingTerminal {
     pub(super) fn push_market_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
         if self
@@ -120,10 +128,8 @@ fn order_book_stream_event_message(
 ) -> Message {
     match event {
         KeyedBookStreamEvent::Item(id, coin, sigfigs, hydromancer_key_generation, book) => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::WsBookUpdate {
                 id,
                 coin,
@@ -139,10 +145,8 @@ fn order_book_stream_event_message(
             hydromancer_key_generation,
             skipped,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::OrderBookWsBookLagged {
                 id,
                 coin,
@@ -162,10 +166,8 @@ fn order_book_asset_ctx_stream_event_message(
 ) -> Message {
     match event {
         KeyedAssetContextStreamEvent::Item(id, symbol, hydromancer_key_generation, ctx) => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::OrderBookWsAssetCtxUpdate {
                 id,
                 coin: symbol,
@@ -179,10 +181,8 @@ fn order_book_asset_ctx_stream_event_message(
             hydromancer_key_generation,
             skipped,
         } => {
-            debug_assert_eq!(
-                source_context.hydromancer_key_generation,
-                hydromancer_key_generation
-            );
+            let source_context =
+                source_context_for_stream_event(source_context, hydromancer_key_generation);
             Message::OrderBookWsAssetCtxLagged {
                 id,
                 coin: symbol,

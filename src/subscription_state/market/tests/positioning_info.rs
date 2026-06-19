@@ -62,3 +62,35 @@ fn positioning_asset_context_lagged_event_maps_to_market_message() {
         other => panic!("expected positioning asset-context lagged message, got {other:?}"),
     }
 }
+
+#[test]
+fn positioning_asset_context_lagged_event_preserves_fallback_generation_scope() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.read_data_provider = ReadDataProvider::Hydromancer;
+    terminal.hydromancer_api_key = "hydro-secret".to_string().into();
+    terminal.hydromancer_key_generation = 2;
+    let source_context = terminal.market_data_source_context();
+    assert_eq!(source_context.hydromancer_key_generation, Some(2));
+
+    let message = positioning_asset_ctx_stream_event_message((
+        source_context,
+        crate::ws::SymbolAssetContextStreamEvent::Lagged {
+            symbol: "BTC".to_string(),
+            hydromancer_key_generation: None,
+            skipped: 9,
+        },
+    ));
+
+    match message {
+        Message::PositioningInfoWsAssetCtxLagged(_, mapped_context, _) => {
+            assert_eq!(
+                mapped_context,
+                crate::read_data_provider::MarketDataSourceContext {
+                    hydromancer_key_generation: None,
+                    ..source_context
+                }
+            );
+        }
+        other => panic!("expected positioning asset-context lagged message, got {other:?}"),
+    }
+}
