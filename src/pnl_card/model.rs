@@ -1,3 +1,5 @@
+use std::fmt;
+
 // ---------------------------------------------------------------------------
 // PnL Card State
 // ---------------------------------------------------------------------------
@@ -56,7 +58,7 @@ impl std::fmt::Display for PnlCardPercentMode {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct PnlCardWindowState {
     pub(crate) target: PnlCardTarget,
     pub(crate) account_address: String,
@@ -76,5 +78,18 @@ impl PnlCardWindowState {
             obscure_prices: true,
             show_position_size: false,
         }
+    }
+}
+
+impl fmt::Debug for PnlCardWindowState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PnlCardWindowState")
+            .field("target", &self.target)
+            .field("account_address", &"<redacted>")
+            .field("display_mode", &self.display_mode)
+            .field("percent_mode", &self.percent_mode)
+            .field("obscure_prices", &self.obscure_prices)
+            .field("show_position_size", &self.show_position_size)
+            .finish()
     }
 }

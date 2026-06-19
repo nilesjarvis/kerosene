@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn pnl_card_window_state_debug_redacts_account_address() {
+    let state = PnlCardWindowState::new(PnlCardTarget::Position("BTC".to_string()), test_account());
+
+    let rendered = format!("{state:?}");
+
+    assert!(!rendered.contains(&test_account()));
+    assert!(rendered.contains("<redacted>"));
+    assert!(rendered.contains("Position(\"BTC\")"));
+    assert!(rendered.contains("obscure_prices: true"));
+}
+
+#[test]
 fn privacy_price_display_can_be_disabled() {
     assert_eq!(privacy_price_display("82,543.2", true), "82,5xx");
     assert_eq!(privacy_price_display("82,543.2", false), "82,543.2");
