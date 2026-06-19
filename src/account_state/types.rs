@@ -1,4 +1,4 @@
-use crate::config;
+use crate::{config, helpers::redact_wallet_address_debug_value};
 
 use std::fmt;
 
@@ -15,8 +15,14 @@ impl fmt::Debug for AccountPickerOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AccountPickerOption")
             .field("index", &self.index)
-            .field("label", &redacted_wallet_debug_value(&self.label))
-            .field("address", &redacted_wallet_debug_value(&self.address))
+            .field(
+                "label",
+                &redact_wallet_address_debug_value(self.label.trim()),
+            )
+            .field(
+                "address",
+                &redact_wallet_address_debug_value(self.address.trim()),
+            )
             .field("can_trade", &self.can_trade)
             .field("is_ghost", &self.is_ghost)
             .finish()
@@ -26,21 +32,6 @@ impl fmt::Debug for AccountPickerOption {
 impl fmt::Display for AccountPickerOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.label)
-    }
-}
-
-fn redacted_wallet_debug_value(value: &str) -> &str {
-    let value = value.trim();
-    let Some(hex) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-    else {
-        return value;
-    };
-    if hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        "<redacted>"
-    } else {
-        value
     }
 }
 
