@@ -1,5 +1,6 @@
 use super::normalize_fills;
 use crate::api::UserFill;
+use crate::config::{user_config_dir, user_config_path};
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -117,7 +118,7 @@ fn clear_cache_path_family(path: &std::path::Path) -> Result<usize, String> {
                         }
                         Err(e) => errors.push(format!(
                             "read journal cache directory {} entry failed: {e}",
-                            parent.display()
+                            user_config_dir()
                         )),
                     }
                 }
@@ -125,7 +126,7 @@ fn clear_cache_path_family(path: &std::path::Path) -> Result<usize, String> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => errors.push(format!(
                 "read journal cache directory {} failed: {e}",
-                parent.display()
+                user_config_dir()
             )),
         }
     }
@@ -141,7 +142,7 @@ fn remove_file_if_exists(path: &std::path::Path) -> Result<bool, String> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(format!("remove {} failed: {e}", path.display())),
+        Err(e) => Err(format!("remove {} failed: {e}", user_config_path(path))),
     }
 }
 

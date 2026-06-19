@@ -19,11 +19,11 @@ pub(in crate::config) fn backup_config_path(path: &Path) -> PathBuf {
     path.with_extension("json.bak")
 }
 
-pub(in crate::config) fn user_config_dir() -> &'static str {
+pub(crate) fn user_config_dir() -> &'static str {
     "<config-dir>"
 }
 
-pub(in crate::config) fn user_config_path(path: &Path) -> String {
+pub(crate) fn user_config_path(path: &Path) -> String {
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return user_config_dir().to_string();
     };

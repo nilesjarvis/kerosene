@@ -68,3 +68,26 @@ fn clear_cache_path_family_tolerates_missing_cache() {
     assert_eq!(removed, 0);
     let _ = std::fs::remove_dir(dir);
 }
+
+#[test]
+fn clear_cache_path_family_errors_redact_cache_path() {
+    let dir = std::env::temp_dir().join(format!(
+        "kerosene-journal-cache-error-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp test directory");
+    let target = dir.join("journal_cache_0xabc0000000000000000000000000000000000000.json");
+    std::fs::create_dir_all(&target).expect("create directory where cache file should be");
+
+    let error = clear_cache_path_family(&target).expect_err("directory cache path should fail");
+
+    assert!(error.contains("<config-dir>/journal_cache_<redacted>.json"));
+    assert!(!error.contains(&dir.display().to_string()));
+    assert!(!error.contains("0xabc0000000000000000000000000000000000000"));
+
+    let _ = std::fs::remove_dir_all(dir);
+}

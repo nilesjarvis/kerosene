@@ -5,12 +5,11 @@ mod paths;
 mod persistence;
 mod storage;
 
-pub(super) use paths::{
-    backup_config_path, config_path, config_sidecar_prefix, user_config_dir, user_config_path,
-};
+pub(super) use paths::{backup_config_path, config_path, config_sidecar_prefix};
 pub use paths::{
     custom_font_path, custom_sound_path, font_storage_dir, journal_cache_path, sound_storage_dir,
 };
+pub(crate) use paths::{user_config_dir, user_config_path};
 pub(crate) use persistence::config_save_installed_snapshot;
 #[cfg(test)]
 pub(crate) use persistence::installed_config_save_error_for_test;
