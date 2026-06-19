@@ -1,6 +1,6 @@
 use std::fmt;
 
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 // ---------------------------------------------------------------------------
 // Captured Agent Key
@@ -17,6 +17,10 @@ impl CapturedAgentKey {
 
     pub(crate) fn clone_for_task(&self) -> Zeroizing<String> {
         Zeroizing::new(self.0.trim().to_string())
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.0.zeroize();
     }
 
     #[cfg(test)]
@@ -67,6 +71,17 @@ mod tests {
     #[test]
     fn captured_agent_key_rejects_empty_values() {
         assert!(CapturedAgentKey::new(Zeroizing::new("   ".to_string())).is_none());
+    }
+
+    #[test]
+    fn captured_agent_key_clear_removes_task_clone_value() {
+        let mut key =
+            CapturedAgentKey::new(Zeroizing::new("agent-secret".to_string())).expect("valid key");
+
+        key.clear();
+
+        assert!(key.as_str().is_empty());
+        assert!(key.clone_for_task().is_empty());
     }
 
     #[test]

@@ -46,11 +46,16 @@ pub(crate) fn prune_advanced_order_history(history: &mut VecDeque<AdvancedOrderH
 
 impl TradingTerminal {
     pub(crate) fn archive_twap_if_terminal(&mut self, twap_id: u64) {
+        let completed_at_ms = Self::now_ms();
         let Some(entry) = self
             .twap_orders
-            .get(&twap_id)
+            .get_mut(&twap_id)
             .filter(|twap| twap.status.is_terminal())
-            .map(|twap| AdvancedOrderHistoryEntry::from_twap(twap, Self::now_ms()))
+            .map(|twap| {
+                let entry = AdvancedOrderHistoryEntry::from_twap(twap, completed_at_ms);
+                twap.agent_key.clear();
+                entry
+            })
         else {
             return;
         };
