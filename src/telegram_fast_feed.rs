@@ -233,7 +233,7 @@ pub(crate) struct TelegramFastFeedStreamParams {
 impl fmt::Debug for TelegramFastFeedStreamParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TelegramFastFeedStreamParams")
-            .field("api_id", &self.api_id)
+            .field("api_id", &"<redacted>")
             .field("channels", &self.channels)
             .field(
                 "private_channels",
@@ -1648,8 +1648,10 @@ mod tests {
         let rendered = format!("{params:?}");
 
         assert!(rendered.contains("marketfeed"));
+        assert!(rendered.contains("api_id: \"<redacted>\""));
         assert!(rendered.contains("private_channels: <1 redacted>"));
         assert!(rendered.contains("reconnect_nonce: 7"));
+        assert!(!rendered.contains("12345"));
         assert!(!rendered.contains("42"));
         assert!(!rendered.contains("Private Macro"));
     }
