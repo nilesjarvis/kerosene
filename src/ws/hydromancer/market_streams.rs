@@ -124,26 +124,22 @@ pub fn ws_hydromancer_book_stream_keyed_events(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if output
-                        .send(KeyedBookStreamEvent::Lagged {
+                    if !super::emit_hydromancer_lag_after_reconnect(
+                        &reconnect_tx,
+                        KeyedBookStreamEvent::Lagged {
                             id,
                             coin: coin.clone(),
                             sigfigs,
                             hydromancer_key_generation: Some(hydromancer_key_generation),
                             skipped,
-                        })
-                        .await
-                        .is_err()
+                        },
+                        |event| async { output.send(event).await.is_ok() },
+                        std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
+                    )
+                    .await
                     {
                         return;
                     }
-                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
-                        return;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(
-                        HYDROMANCER_RECONNECT_DELAY_SECS,
-                    ))
-                    .await;
                 }
                 Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
                     return;
@@ -339,20 +335,16 @@ fn hydromancer_asset_ctx_stream(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if output
-                        .send(WsStreamEvent::Lagged { skipped })
-                        .await
-                        .is_err()
+                    if !super::emit_hydromancer_lag_after_reconnect(
+                        &reconnect_tx,
+                        WsStreamEvent::Lagged { skipped },
+                        |event| async { output.send(event).await.is_ok() },
+                        std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
+                    )
+                    .await
                     {
                         return;
                     }
-                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
-                        return;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(
-                        HYDROMANCER_RECONNECT_DELAY_SECS,
-                    ))
-                    .await;
                 }
                 Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
                     return;
@@ -441,20 +433,16 @@ fn hydromancer_candle_stream(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if output
-                        .send(WsStreamEvent::Lagged { skipped })
-                        .await
-                        .is_err()
+                    if !super::emit_hydromancer_lag_after_reconnect(
+                        &reconnect_tx,
+                        WsStreamEvent::Lagged { skipped },
+                        |event| async { output.send(event).await.is_ok() },
+                        std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
+                    )
+                    .await
                     {
                         return;
                     }
-                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
-                        return;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(
-                        HYDROMANCER_RECONNECT_DELAY_SECS,
-                    ))
-                    .await;
                 }
                 Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
                     return;

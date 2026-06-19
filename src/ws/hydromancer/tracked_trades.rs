@@ -92,20 +92,16 @@ pub fn ws_hydromancer_tracked_trades(
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    if output
-                        .send(HydromancerWsMessage::Lagged { skipped })
-                        .await
-                        .is_err()
+                    if !super::emit_hydromancer_lag_after_reconnect(
+                        &reconnect_tx,
+                        HydromancerWsMessage::Lagged { skipped },
+                        |event| async { output.send(event).await.is_ok() },
+                        std::time::Duration::from_secs(HYDROMANCER_RECONNECT_DELAY_SECS),
+                    )
+                    .await
                     {
                         return;
                     }
-                    if !super::request_hydromancer_reconnect_after_lag(&reconnect_tx) {
-                        return;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(
-                        HYDROMANCER_RECONNECT_DELAY_SECS,
-                    ))
-                    .await;
                 }
                 Err(error) if crate::ws::broadcast_receiver_closed(&error) => {
                     return;

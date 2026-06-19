@@ -6,7 +6,9 @@ mod recent;
 mod tracked_trades;
 
 use std::fmt;
+use std::future::Future;
 use std::hash::{Hash, Hasher};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use zeroize::Zeroizing;
 
@@ -78,6 +80,28 @@ fn request_hydromancer_reconnect_after_lag(
     cmd_tx.send(manager::HydromancerCommand::Reconnect).is_ok()
 }
 
+async fn emit_hydromancer_lag_after_reconnect<T, Emit, Fut>(
+    cmd_tx: &mpsc::UnboundedSender<manager::HydromancerCommand>,
+    event: T,
+    emit: Emit,
+    pause: Duration,
+) -> bool
+where
+    Emit: FnOnce(T) -> Fut,
+    Fut: Future<Output = bool>,
+{
+    if !request_hydromancer_reconnect_after_lag(cmd_tx) {
+        return false;
+    }
+    if !emit(event).await {
+        return false;
+    }
+    if !pause.is_zero() {
+        tokio::time::sleep(pause).await;
+    }
+    true
+}
+
 #[derive(Debug, Clone)]
 pub struct LiquidationEvent {
     pub coin: String,
@@ -145,6 +169,25 @@ mod tests {
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
 
         assert!(request_hydromancer_reconnect_after_lag(&cmd_tx));
+        assert!(matches!(
+            cmd_rx.try_recv().unwrap(),
+            manager::HydromancerCommand::Reconnect
+        ));
+    }
+
+    #[tokio::test]
+    async fn lag_emit_requests_reconnect_before_downstream_send_failure() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+
+        let emitted = emit_hydromancer_lag_after_reconnect(
+            &cmd_tx,
+            HydromancerWsMessage::Lagged { skipped: 7 },
+            |_event| async { false },
+            Duration::ZERO,
+        )
+        .await;
+
+        assert!(!emitted);
         assert!(matches!(
             cmd_rx.try_recv().unwrap(),
             manager::HydromancerCommand::Reconnect

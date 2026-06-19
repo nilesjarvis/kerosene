@@ -4,6 +4,7 @@ mod routing;
 mod subscriptions;
 
 use futures::SinkExt as _;
+use std::{future::Future, time::Duration};
 use tokio::sync::{broadcast, mpsc};
 
 use super::{SubscriptionGuard, WsCommand, get_manager};
@@ -150,8 +151,13 @@ pub fn ws_user_data_stream(
                             }
                         }
                         UserStreamReceiveAction::EmitAndReconnect(update) => {
-                            if output.send(update).await.is_err()
-                                || !request_user_data_reconnect_after_lag(&reconnect_tx)
+                            if !emit_user_data_after_reconnect(
+                                &reconnect_tx,
+                                update,
+                                |update| async { output.send(update).await.is_ok() },
+                                Duration::ZERO,
+                            )
+                            .await
                             {
                                 return;
                             }
@@ -173,12 +179,16 @@ pub fn ws_user_data_stream(
                             }
                         }
                         UserStreamReceiveAction::EmitAndReconnect(update) => {
-                            if output.send(update).await.is_err()
-                                || !request_user_data_reconnect_after_lag(&reconnect_tx)
+                            if !emit_user_data_after_reconnect(
+                                &reconnect_tx,
+                                update,
+                                |update| async { output.send(update).await.is_ok() },
+                                Duration::from_secs(2),
+                            )
+                            .await
                             {
                                 return;
                             }
-                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                         }
                         UserStreamReceiveAction::Ignore => {}
                     }
@@ -196,6 +206,28 @@ pub fn ws_user_data_stream(
 
 fn request_user_data_reconnect_after_lag(cmd_tx: &mpsc::UnboundedSender<WsCommand>) -> bool {
     cmd_tx.send(WsCommand::Reconnect).is_ok()
+}
+
+async fn emit_user_data_after_reconnect<T, Emit, Fut>(
+    cmd_tx: &mpsc::UnboundedSender<WsCommand>,
+    update: T,
+    emit: Emit,
+    pause: Duration,
+) -> bool
+where
+    Emit: FnOnce(T) -> Fut,
+    Fut: Future<Output = bool>,
+{
+    if !request_user_data_reconnect_after_lag(cmd_tx) {
+        return false;
+    }
+    if !emit(update).await {
+        return false;
+    }
+    if !pause.is_zero() {
+        tokio::time::sleep(pause).await;
+    }
+    true
 }
 
 #[cfg(test)]
@@ -299,6 +331,22 @@ mod tests {
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
 
         assert!(request_user_data_reconnect_after_lag(&cmd_tx));
+        assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
+    }
+
+    #[tokio::test]
+    async fn lag_emit_requests_reconnect_before_downstream_send_failure() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+
+        let emitted = emit_user_data_after_reconnect(
+            &cmd_tx,
+            (None::<String>, WsUserData::Lagged { skipped: 7 }),
+            |_update| async { false },
+            Duration::ZERO,
+        )
+        .await;
+
+        assert!(!emitted);
         assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
     }
 }
