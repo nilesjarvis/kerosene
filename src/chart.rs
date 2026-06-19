@@ -29,6 +29,7 @@ mod tooltips;
 mod viewport;
 mod volume_profile;
 
+pub(crate) use self::data::MAX_CHART_CANDLES;
 pub(crate) use self::model::HudSelectorKind;
 #[cfg(test)]
 pub use self::model::PRICE_AXIS_WIDTH;

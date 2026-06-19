@@ -477,7 +477,7 @@ fn redact_keychain_cleanup_secret_id(message: String, secret_id: &str) -> String
 mod tests {
     use super::*;
     use crate::app_state::sensitive_string;
-    use crate::chart_state::{CandleFetchRequest, ChartInstance};
+    use crate::chart_state::{CandleFetchMode, CandleFetchRequest, ChartInstance};
     use crate::config::{AccountProfile, ChartBackfillSource, SecretPayload};
     use crate::journal::JournalTradeSnapshotRequest;
     use crate::timeframe::Timeframe;
@@ -1057,6 +1057,7 @@ mod tests {
             chart_id: 7,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hydromancer,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,

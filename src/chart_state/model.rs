@@ -25,12 +25,19 @@ pub(crate) struct CandleFetchRequest {
     pub(crate) chart_id: ChartId,
     pub(crate) symbol: String,
     pub(crate) timeframe: Timeframe,
+    pub(crate) mode: CandleFetchMode,
     pub(crate) source: config::ChartBackfillSource,
     pub(crate) read_data_provider_generation: u64,
     pub(crate) hydromancer_key_generation: u64,
     pub(crate) start_ms: u64,
     pub(crate) end_ms: u64,
     pub(crate) attempt: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CandleFetchMode {
+    Refresh,
+    BackfillOlder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,10 +182,14 @@ pub(crate) struct ChartInstance {
     pub(crate) candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking refresh error shown while previously loaded candles remain visible.
     pub(crate) candle_fetch_error: Option<String>,
+    /// Whether older primary candle pagination reached the provider boundary.
+    pub(crate) candle_backfill_exhausted: bool,
     /// Latest in-flight secondary comparison candle request for stale-response guards.
     pub(crate) secondary_candle_fetch_request: Option<CandleFetchRequest>,
     /// Non-blocking secondary comparison refresh error.
     pub(crate) secondary_candle_fetch_error: Option<String>,
+    /// Whether older secondary candle pagination reached the provider boundary.
+    pub(crate) secondary_candle_backfill_exhausted: bool,
     /// Transient direction flash for price-derived header numbers after WS updates.
     pub(crate) last_price_flash: Option<PriceFlash>,
     /// Whether SEC earnings-release markers are enabled for this chart.

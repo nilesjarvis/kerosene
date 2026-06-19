@@ -22,6 +22,27 @@ fn merge_candles_replaces_overlaps_and_keeps_sorted_order() {
 }
 
 #[test]
+fn merge_candles_prepends_older_history_without_dropping_newer_tail() {
+    let mut chart = CandlestickChart::new(1);
+    chart.set_candles(vec![
+        candle_at(2_000, 20.0),
+        candle_at(3_000, 30.0),
+        candle_at(4_000, 40.0),
+    ]);
+
+    chart.merge_candles(vec![candle_at(1_000, 10.0), candle_at(2_000, 22.0)]);
+
+    assert_eq!(
+        chart
+            .candles
+            .iter()
+            .map(|candle| (candle.open_time, candle.close))
+            .collect::<Vec<_>>(),
+        vec![(1_000, 10.0), (2_000, 22.0), (3_000, 30.0), (4_000, 40.0)]
+    );
+}
+
+#[test]
 fn realtime_candle_update_rejects_malformed_candles() {
     let mut chart = CandlestickChart::new(1);
     chart.set_candles(vec![candle_at(1_000, 10.0)]);

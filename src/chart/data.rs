@@ -2,8 +2,7 @@ mod candles;
 mod earnings;
 mod funding;
 
-#[cfg(test)]
-pub(in crate::chart) use candles::MAX_CHART_CANDLES;
+pub(crate) use candles::MAX_CHART_CANDLES;
 
 use super::{
     CandlestickChart, ChartStatus, DEFAULT_FUNDING_PANEL_HEIGHT, DEFAULT_SESSION_PANEL_HEIGHT,

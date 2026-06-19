@@ -23,6 +23,8 @@ impl TradingTerminal {
         instance.heatmap_viewport = None;
         instance.heatmap_status = None;
         instance.heatmap_fetching = false;
+        instance.candle_backfill_exhausted = false;
+        instance.secondary_candle_backfill_exhausted = false;
         instance.last_price_flash = None;
         Self::clear_heatmap_display(instance);
         Self::clear_liquidation_display(instance);
@@ -276,9 +278,11 @@ impl TradingTerminal {
                 } else {
                     false
                 };
+                let backfill_task = self.maybe_backfill_chart_candles_for_viewport(id, viewport);
                 if should_fetch {
-                    return self.maybe_fetch_heatmap(id);
+                    return Task::batch([self.maybe_fetch_heatmap(id), backfill_task]);
                 }
+                return backfill_task;
             }
             Message::ChartFundingPanelHeightChanged(id, height, persist) => {
                 if let Some(instance) = self.charts.get_mut(&id) {

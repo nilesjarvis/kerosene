@@ -1,4 +1,7 @@
-use super::{CandleFetchRequest, ChartBackfillFetchContext, ChartBackfillRequestContext, ChartId};
+use super::{
+    CandleFetchMode, CandleFetchRequest, ChartBackfillFetchContext, ChartBackfillRequestContext,
+    ChartId,
+};
 use crate::api::{self, Candle};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
@@ -13,6 +16,7 @@ mod cache;
 use self::cache::{get_fresh_cached_candles, store_normalized_candles};
 
 pub(crate) const CANDLE_FETCH_MAX_ATTEMPTS: u8 = 4;
+pub(crate) const CANDLE_BACKFILL_MAX_CANDLES_PER_REQUEST: u64 = 4_000;
 
 impl TradingTerminal {
     /// Fetch daily/weekly/monthly candles for macro indicators, tagged with
@@ -101,6 +105,7 @@ impl TradingTerminal {
             chart_id,
             symbol: coin.to_string(),
             timeframe: tf,
+            mode: CandleFetchMode::Refresh,
             source: backfill.source,
             read_data_provider_generation: backfill.read_data_provider_generation,
             hydromancer_key_generation: backfill.hydromancer_key_generation,
@@ -108,6 +113,42 @@ impl TradingTerminal {
             end_ms: now_ms,
             attempt,
         }
+    }
+
+    pub(crate) fn build_older_candle_fetch_request(
+        chart_id: ChartId,
+        coin: &str,
+        tf: Timeframe,
+        backfill: ChartBackfillRequestContext,
+        oldest_loaded_open_ms: u64,
+        remaining_candle_headroom: usize,
+    ) -> Option<CandleFetchRequest> {
+        if !tf.uses_candle_backfill()
+            || oldest_loaded_open_ms == 0
+            || remaining_candle_headroom == 0
+        {
+            return None;
+        }
+
+        // Never request more candles than will survive `trim_to_max_chart_candles`
+        // (which drops from the oldest end). Otherwise a page fetched near the cap
+        // is merged and then immediately trimmed away, wasting the request.
+        let candles_this_request =
+            CANDLE_BACKFILL_MAX_CANDLES_PER_REQUEST.min(remaining_candle_headroom as u64);
+        let end_ms = oldest_loaded_open_ms.saturating_sub(1);
+        let request_span_ms = tf.duration_ms().saturating_mul(candles_this_request);
+        Some(CandleFetchRequest {
+            chart_id,
+            symbol: coin.to_string(),
+            timeframe: tf,
+            mode: CandleFetchMode::BackfillOlder,
+            source: backfill.source,
+            read_data_provider_generation: backfill.read_data_provider_generation,
+            hydromancer_key_generation: backfill.hydromancer_key_generation,
+            start_ms: end_ms.saturating_sub(request_span_ms),
+            end_ms,
+            attempt: 0,
+        })
     }
 
     pub(crate) fn candle_fetch_retry_delay_ms(attempt: u8) -> u64 {
@@ -335,6 +376,7 @@ impl TradingTerminal {
                 instance.chart.candle_cache.clear();
                 instance.candle_fetch_request = Some(request.clone());
                 instance.candle_fetch_error = None;
+                instance.candle_backfill_exhausted = false;
                 instance.heatmap_last_fetch = None;
                 instance.heatmap_viewport = None;
                 instance.heatmap_status = None;
@@ -350,6 +392,7 @@ impl TradingTerminal {
                 instance.chart.set_secondary_candles(Vec::new());
                 instance.secondary_candle_fetch_request = Some(request.clone());
                 instance.secondary_candle_fetch_error = None;
+                instance.secondary_candle_backfill_exhausted = false;
             }
         }
 

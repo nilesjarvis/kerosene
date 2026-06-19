@@ -1,7 +1,7 @@
 use crate::api::Candle;
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
-use crate::chart_state::{CANDLE_FETCH_MAX_ATTEMPTS, CandleFetchRequest};
+use crate::chart_state::{CANDLE_FETCH_MAX_ATTEMPTS, CandleFetchMode, CandleFetchRequest};
 use crate::config::ChartBackfillSource;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
@@ -34,6 +34,8 @@ impl TradingTerminal {
         let mut remove_cache_data = None;
         let mut retry_request = None;
         let mut fetch_overlays = false;
+        let mut continue_older_backfill = false;
+        let mut check_viewport_backfill = false;
 
         if let Some(instance) = self.charts.get_mut(&id) {
             let request_matches = instance.symbol == request.symbol
@@ -54,6 +56,10 @@ impl TradingTerminal {
                                 instance.symbol_display, request.timeframe
                             ));
                             remove_cache_data = Some((request.symbol.clone(), request.timeframe));
+                        } else if request.mode == CandleFetchMode::BackfillOlder {
+                            instance.chart.status = ChartStatus::Loaded;
+                            instance.candle_fetch_error = None;
+                            instance.candle_backfill_exhausted = true;
                         } else {
                             instance.chart.status = ChartStatus::Loaded;
                             instance.candle_fetch_error =
@@ -61,8 +67,35 @@ impl TradingTerminal {
                         }
                     } else {
                         instance.candle_fetch_error = None;
+                        let oldest_before_merge = instance
+                            .chart
+                            .candles
+                            .first()
+                            .map(|candle| candle.open_time);
                         instance.chart.merge_candles(candles);
-                        fetch_overlays = true;
+                        let oldest_after_merge = instance
+                            .chart
+                            .candles
+                            .first()
+                            .map(|candle| candle.open_time);
+                        if request.mode == CandleFetchMode::BackfillOlder {
+                            // Only keep paging older if the window actually grew
+                            // older. A non-empty page that does not predate the
+                            // current oldest candle (provider clamped the range,
+                            // returned duplicates, etc.) means we reached the
+                            // boundary; stop so we don't re-fetch the same page.
+                            if oldest_after_merge < oldest_before_merge {
+                                instance.candle_backfill_exhausted = false;
+                                continue_older_backfill = true;
+                            } else {
+                                instance.candle_backfill_exhausted = true;
+                            }
+                        } else {
+                            check_viewport_backfill = true;
+                            // Overlays key off the live/visible window, which only
+                            // a refresh changes; backfilling old history does not.
+                            fetch_overlays = true;
+                        }
                         new_cache_data = Some((
                             request.symbol.clone(),
                             request.timeframe,
@@ -77,7 +110,9 @@ impl TradingTerminal {
                     {
                         let mut next_request = request.clone();
                         next_request.attempt = next_attempt;
-                        next_request.end_ms = Self::now_ms();
+                        if next_request.mode == CandleFetchMode::Refresh {
+                            next_request.end_ms = Self::now_ms();
+                        }
                         instance.candle_fetch_request = Some(next_request.clone());
                         if instance.chart.candles.is_empty() {
                             instance.chart.status = ChartStatus::Loading;
@@ -120,11 +155,19 @@ impl TradingTerminal {
             self.candle_data_cache_order.retain(|k| k != &key);
         }
 
+        let mut tasks = Vec::new();
         if fetch_overlays {
-            let liq_task = self.maybe_fetch_liquidations(id);
-            let heat_task = self.maybe_fetch_heatmap(id);
-            let funding_task = self.maybe_fetch_chart_funding(id);
-            return Task::batch([liq_task, heat_task, funding_task]);
+            tasks.push(self.maybe_fetch_liquidations(id));
+            tasks.push(self.maybe_fetch_heatmap(id));
+            tasks.push(self.maybe_fetch_chart_funding(id));
+        }
+        if continue_older_backfill {
+            tasks.push(self.continue_older_primary_candle_backfill(id));
+        } else if check_viewport_backfill {
+            tasks.push(self.maybe_continue_chart_candle_backfill(id));
+        }
+        if !tasks.is_empty() {
+            return Task::batch(tasks);
         }
 
         Task::none()
@@ -154,6 +197,8 @@ impl TradingTerminal {
         let mut new_cache_data = None;
         let mut remove_cache_data = None;
         let mut retry_request = None;
+        let mut continue_older_backfill = false;
+        let mut check_viewport_backfill = false;
 
         if let Some(instance) = self.charts.get_mut(&id) {
             let request_matches = instance.secondary_symbol.as_deref()
@@ -168,12 +213,41 @@ impl TradingTerminal {
                 Ok(candles) => {
                     instance.secondary_candle_fetch_request = None;
                     if candles.is_empty() {
-                        instance.secondary_candle_fetch_error =
-                            Some("No comparison candle data returned".to_string());
-                        remove_cache_data = Some((request.symbol.clone(), request.timeframe));
+                        if request.mode == CandleFetchMode::BackfillOlder {
+                            instance.secondary_candle_fetch_error = None;
+                            instance.secondary_candle_backfill_exhausted = true;
+                        } else {
+                            instance.secondary_candle_fetch_error =
+                                Some("No comparison candle data returned".to_string());
+                            remove_cache_data = Some((request.symbol.clone(), request.timeframe));
+                        }
                     } else {
                         instance.secondary_candle_fetch_error = None;
+                        let oldest_before_merge = instance
+                            .chart
+                            .secondary_series
+                            .as_ref()
+                            .and_then(|series| series.candles.first())
+                            .map(|candle| candle.open_time);
                         instance.chart.merge_secondary_candles(candles);
+                        let oldest_after_merge = instance
+                            .chart
+                            .secondary_series
+                            .as_ref()
+                            .and_then(|series| series.candles.first())
+                            .map(|candle| candle.open_time);
+                        if request.mode == CandleFetchMode::BackfillOlder {
+                            // See the primary handler: stop paging when a non-empty
+                            // page does not extend the window further back.
+                            if oldest_after_merge < oldest_before_merge {
+                                instance.secondary_candle_backfill_exhausted = false;
+                                continue_older_backfill = true;
+                            } else {
+                                instance.secondary_candle_backfill_exhausted = true;
+                            }
+                        } else {
+                            check_viewport_backfill = true;
+                        }
                         if let Some(series) = instance.chart.secondary_series.as_ref() {
                             new_cache_data = Some((
                                 request.symbol.clone(),
@@ -190,7 +264,9 @@ impl TradingTerminal {
                     {
                         let mut next_request = request.clone();
                         next_request.attempt = next_attempt;
-                        next_request.end_ms = Self::now_ms();
+                        if next_request.mode == CandleFetchMode::Refresh {
+                            next_request.end_ms = Self::now_ms();
+                        }
                         instance.secondary_candle_fetch_request = Some(next_request.clone());
                         instance.secondary_candle_fetch_error = Some(format!(
                             "Retrying comparison refresh ({}/{})",
@@ -222,6 +298,13 @@ impl TradingTerminal {
             self.candle_data_cache_order.retain(|k| k != &key);
         }
 
+        if continue_older_backfill {
+            return self.continue_older_secondary_candle_backfill(id);
+        }
+        if check_viewport_backfill {
+            return self.maybe_continue_chart_candle_backfill(id);
+        }
+
         Task::none()
     }
 }
@@ -247,6 +330,7 @@ mod tests {
             chart_id: 1,
             symbol: "#950".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,
@@ -281,6 +365,7 @@ mod tests {
             chart_id: 1,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hydromancer,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: 1,
@@ -310,6 +395,7 @@ mod tests {
             chart_id: 1,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hydromancer,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,
@@ -338,6 +424,7 @@ mod tests {
             chart_id: 1,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::S1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hydromancer,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,
@@ -366,6 +453,7 @@ mod tests {
             chart_id: 1,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,
@@ -402,6 +490,7 @@ mod tests {
             chart_id: 1,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,
@@ -422,6 +511,119 @@ mod tests {
     }
 
     #[test]
+    fn empty_older_primary_backfill_marks_boundary_without_chart_error() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_backfill_source = ChartBackfillSource::Hyperliquid;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(1_000, 100.0)]);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            mode: CandleFetchMode::BackfillOlder,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 999,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal.apply_chart_candles_loaded(request, Ok(Vec::new()));
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        assert!(matches!(instance.chart.status, ChartStatus::Loaded));
+        assert_eq!(instance.chart.candles.len(), 1);
+        assert!(instance.candle_fetch_request.is_none());
+        assert!(instance.candle_fetch_error.is_none());
+        assert!(instance.candle_backfill_exhausted);
+    }
+
+    #[test]
+    fn non_advancing_older_primary_backfill_marks_boundary_and_stops() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_backfill_source = ChartBackfillSource::Hyperliquid;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(2_000, 100.0)]);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            mode: CandleFetchMode::BackfillOlder,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 1_999,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        // Provider returns a non-empty page that does not predate the oldest
+        // loaded candle (here a duplicate of it). The window does not grow older,
+        // so backfill must stop instead of re-issuing the identical request.
+        let _task = terminal
+            .apply_chart_candles_loaded(request, Ok(vec![Candle::test_flat(2_000, 105.0)]));
+
+        let instance = terminal.charts.get(&1).expect("chart instance");
+        assert!(matches!(instance.chart.status, ChartStatus::Loaded));
+        assert_eq!(instance.chart.candles.len(), 1);
+        assert!(instance.candle_backfill_exhausted);
+        // No continuation was queued (the bug would re-fetch the same page).
+        assert!(instance.candle_fetch_request.is_none());
+    }
+
+    #[test]
+    fn retrying_older_primary_backfill_preserves_historical_window() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+        terminal.chart_backfill_source = ChartBackfillSource::Hyperliquid;
+
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance
+            .chart
+            .set_candles(vec![Candle::test_flat(1_000, 100.0)]);
+        let request = CandleFetchRequest {
+            chart_id: 1,
+            symbol: "BTC".to_string(),
+            timeframe: Timeframe::H1,
+            mode: CandleFetchMode::BackfillOlder,
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: terminal.read_data_provider_generation,
+            hydromancer_key_generation: terminal.hydromancer_key_generation,
+            start_ms: 0,
+            end_ms: 999,
+            attempt: 0,
+        };
+        instance.candle_fetch_request = Some(request.clone());
+        terminal.charts.insert(1, instance);
+
+        let _task = terminal
+            .apply_chart_candles_loaded(request, Err("transient candle failure".to_string()));
+
+        let retry = terminal
+            .charts
+            .get(&1)
+            .and_then(|instance| instance.candle_fetch_request.as_ref())
+            .expect("retry request");
+        assert_eq!(retry.mode, CandleFetchMode::BackfillOlder);
+        assert_eq!(retry.start_ms, 0);
+        assert_eq!(retry.end_ms, 999);
+        assert_eq!(retry.attempt, 1);
+    }
+
+    #[test]
     fn secondary_candle_load_updates_comparison_series_only() {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.charts.clear();
@@ -436,6 +638,7 @@ mod tests {
             chart_id: 1,
             symbol: "ETH".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,
@@ -475,6 +678,7 @@ mod tests {
             chart_id: 1,
             symbol: "ETH".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,
@@ -511,6 +715,7 @@ mod tests {
             chart_id: 1,
             symbol: "ETH".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,

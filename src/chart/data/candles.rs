@@ -6,7 +6,7 @@ use crate::chart::model::SecondarySeries;
 // Candle Data Lifecycle
 // ---------------------------------------------------------------------------
 
-pub(in crate::chart) const MAX_CHART_CANDLES: usize = 10_000;
+pub(crate) const MAX_CHART_CANDLES: usize = 10_000;
 
 impl CandlestickChart {
     /// Replace all candle data (e.g. after initial fetch or interval change).
@@ -21,19 +21,8 @@ impl CandlestickChart {
     }
 
     /// Merge new candles seamlessly, preserving existing ones if applicable.
-    pub fn merge_candles(&mut self, mut new_candles: Vec<Candle>) {
-        new_candles = normalize_candles(new_candles);
-        if self.candles.is_empty() {
-            self.candles = new_candles;
-        } else if !new_candles.is_empty() {
-            let first_new_time = new_candles.first().map(|c| c.open_time).unwrap_or_default();
-
-            self.candles.retain(|c| c.open_time < first_new_time);
-            self.candles.append(&mut new_candles);
-        }
-
-        trim_to_max_chart_candles(&mut self.candles);
-
+    pub fn merge_candles(&mut self, new_candles: Vec<Candle>) {
+        merge_into_candle_series(&mut self.candles, new_candles);
         self.status = if self.candles.is_empty() {
             ChartStatus::Error("No candle data returned".to_string())
         } else {
@@ -94,20 +83,11 @@ impl CandlestickChart {
         self.candle_cache.clear();
     }
 
-    pub(crate) fn merge_secondary_candles(&mut self, mut new_candles: Vec<Candle>) {
+    pub(crate) fn merge_secondary_candles(&mut self, new_candles: Vec<Candle>) {
         let Some(series) = self.secondary_series.as_mut() else {
             return;
         };
-        new_candles = normalize_candles(new_candles);
-        if series.candles.is_empty() {
-            series.candles = new_candles;
-        } else if !new_candles.is_empty() {
-            let first_new_time = new_candles.first().map(|c| c.open_time).unwrap_or_default();
-            series.candles.retain(|c| c.open_time < first_new_time);
-            series.candles.append(&mut new_candles);
-        }
-
-        trim_to_max_chart_candles(&mut series.candles);
+        merge_into_candle_series(&mut series.candles, new_candles);
         self.candle_cache.clear();
     }
 
@@ -142,6 +122,24 @@ impl CandlestickChart {
         self.monthly_candles.clear();
         self.candle_cache.clear();
     }
+}
+
+/// Merge freshly fetched candles into an existing series and bound it: append,
+/// then `normalize_candles` (sort by `open_time`, drop invalid, dedupe keeping
+/// the later element so a newly fetched candle wins on a duplicate timestamp),
+/// then trim to `MAX_CHART_CANDLES`. Both inputs are concatenated and sorted
+/// once — `new_candles` is intentionally not pre-normalized.
+fn merge_into_candle_series(existing: &mut Vec<Candle>, new_candles: Vec<Candle>) {
+    if existing.is_empty() {
+        *existing = normalize_candles(new_candles);
+    } else if !new_candles.is_empty() {
+        let mut merged = std::mem::take(existing);
+        merged.reserve(new_candles.len());
+        merged.extend(new_candles);
+        *existing = normalize_candles(merged);
+    }
+
+    trim_to_max_chart_candles(existing);
 }
 
 fn trim_to_max_chart_candles(candles: &mut Vec<Candle>) {

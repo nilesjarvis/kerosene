@@ -455,7 +455,7 @@ mod tests {
     use crate::advanced_order_history::{AdvancedOrderHistoryEntry, AdvancedOrderHistoryKind};
     use crate::app_state::{TradingTerminal, sensitive_string};
     use crate::chart::{HudSelectorKind, OrderOverlay, PositionOverlay, TradeMarker};
-    use crate::chart_state::{CandleFetchRequest, ChartInstance, ChartSurfaceId};
+    use crate::chart_state::{CandleFetchMode, CandleFetchRequest, ChartInstance, ChartSurfaceId};
     use crate::config::{AccountProfile, ChartBackfillSource, ClearConfigSummary};
     use crate::order_execution::{MoveOrderKey, PendingOrderAction, QuickOrderForm};
     use crate::signing::{ChaseLifecycle, ChaseOrder};
@@ -998,6 +998,7 @@ mod tests {
             chart_id: 7,
             symbol: "BTC".to_string(),
             timeframe: Timeframe::H1,
+            mode: CandleFetchMode::Refresh,
             source: ChartBackfillSource::Hydromancer,
             read_data_provider_generation: terminal.read_data_provider_generation,
             hydromancer_key_generation: terminal.hydromancer_key_generation,

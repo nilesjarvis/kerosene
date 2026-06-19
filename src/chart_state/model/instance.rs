@@ -58,8 +58,10 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            candle_backfill_exhausted: false,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: None,
+            secondary_candle_backfill_exhausted: false,
             last_price_flash: None,
             show_earnings_markers: false,
             earnings_events: None,
@@ -83,6 +85,9 @@ impl ChartInstance {
         self.symbol_display = display.clone();
         self.chart.set_symbol_key(symbol);
         self.chart.set_symbol_label(display);
+        if changed {
+            self.candle_backfill_exhausted = false;
+        }
         changed
     }
 
@@ -96,6 +101,9 @@ impl ChartInstance {
         self.secondary_symbol = Some(symbol.clone());
         self.secondary_symbol_display = Some(display.clone());
         self.chart.set_secondary_series_identity(symbol, display);
+        if changed {
+            self.secondary_candle_backfill_exhausted = false;
+        }
         changed
     }
 
@@ -107,6 +115,7 @@ impl ChartInstance {
         self.secondary_editor_selected_index = None;
         self.secondary_candle_fetch_request = None;
         self.secondary_candle_fetch_error = None;
+        self.secondary_candle_backfill_exhausted = false;
         self.chart.clear_secondary_series();
     }
 
@@ -153,8 +162,10 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: self.candle_fetch_error.clone(),
+            candle_backfill_exhausted: self.candle_backfill_exhausted,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: self.secondary_candle_fetch_error.clone(),
+            secondary_candle_backfill_exhausted: self.secondary_candle_backfill_exhausted,
             last_price_flash: None,
             show_earnings_markers: self.show_earnings_markers,
             earnings_events: self.earnings_events.clone(),
@@ -292,8 +303,10 @@ impl ChartInstance {
             heatmap_fetching: false,
             candle_fetch_request: None,
             candle_fetch_error: None,
+            candle_backfill_exhausted: false,
             secondary_candle_fetch_request: None,
             secondary_candle_fetch_error: None,
+            secondary_candle_backfill_exhausted: false,
             last_price_flash: None,
             show_earnings_markers: false,
             earnings_events: None,
