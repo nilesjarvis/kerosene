@@ -869,7 +869,7 @@ fn telegram_post_card(
         Space::new().width(Fill),
         tooltip(
             button(text("Link").size(10).center())
-                .on_press(Message::CopyToClipboard(url))
+                .on_press(Message::CopyToClipboard(url.into()))
                 .padding([1, 6])
                 .style(subtle_telegram_icon_button),
             text("Copy link").size(10),

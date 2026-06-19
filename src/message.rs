@@ -160,6 +160,33 @@ impl fmt::Debug for RedactedAddress {
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct RedactedClipboardText(String);
+
+impl RedactedClipboardText {
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for RedactedClipboardText {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for RedactedClipboardText {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Debug for RedactedClipboardText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ClipboardText(<redacted>)")
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct RedactedAccountKey(Option<String>);
 
 impl RedactedAccountKey {
@@ -689,7 +716,7 @@ pub(crate) enum Message {
     ToastPositionChanged(config::ToastPosition),
     ToggleToastAnimations(bool),
     ToastAnimationTick,
-    CopyToClipboard(String),
+    CopyToClipboard(RedactedClipboardText),
     WalletAddressActionsHovered(RedactedAddress),
     WalletAddressActionsExited(RedactedAddress),
     TickToastCleanup,
@@ -1240,6 +1267,7 @@ mod tests {
                 1,
                 Box::new(Err("income failed".to_string())),
             ),
+            Message::CopyToClipboard(ADDRESS.into()),
             Message::WalletAddressActionsHovered(ADDRESS.into()),
             Message::WalletAddressActionsExited(ADDRESS.into()),
             Message::QuickOrderResult {

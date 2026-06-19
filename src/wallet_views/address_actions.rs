@@ -94,7 +94,7 @@ fn wallet_address_label(
 
     tooltip(
         button(content)
-            .on_press(Message::CopyToClipboard(address))
+            .on_press(Message::CopyToClipboard(address.into()))
             .padding([0, 4])
             .width(Fill)
             .height(Length::Fixed(WALLET_ACTION_CELL_HEIGHT))
@@ -111,7 +111,7 @@ fn wallet_address_segments(address: String) -> Element<'static, Message> {
     let segments = Row::new()
         .push(wallet_action_segment(
             COPY_ICON_SVG,
-            Message::CopyToClipboard(address.clone()),
+            Message::CopyToClipboard(address.clone().into()),
         ))
         .push(wallet_action_separator())
         .push(wallet_action_segment(

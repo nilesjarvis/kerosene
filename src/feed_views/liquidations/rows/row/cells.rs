@@ -33,7 +33,7 @@ impl TradingTerminal {
                 .color(theme.palette().primary)
                 .wrapping(Wrapping::None),
         )
-        .on_press(Message::CopyToClipboard(liquidated_user))
+        .on_press(Message::CopyToClipboard(liquidated_user.into()))
         .padding(0)
         .style(|_theme: &Theme, _status| button::Style {
             background: None,

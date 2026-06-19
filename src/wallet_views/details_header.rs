@@ -75,7 +75,7 @@ impl TradingTerminal {
             .spacing(6)
             .align_y(iced::Alignment::Center),
             button(text("Copy").size(10))
-                .on_press(Message::CopyToClipboard(state.address.clone()))
+                .on_press(Message::CopyToClipboard(state.address.clone().into()))
                 .padding([3, 8]),
             button(text("Ghost").size(10))
                 .on_press(Message::GhostWallet(state.address.clone().into()))

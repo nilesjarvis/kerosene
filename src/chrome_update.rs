@@ -88,7 +88,7 @@ impl TradingTerminal {
             }
             Message::CopyToClipboard(text) => {
                 self.push_toast("Copied to clipboard".to_string(), false);
-                return clipboard::write(text).map(|()| Message::NoOp);
+                return clipboard::write(text.into_string()).map(|()| Message::NoOp);
             }
             Message::WalletAddressActionsHovered(key) => {
                 self.hovered_wallet_address_actions = Some(key.into_string());

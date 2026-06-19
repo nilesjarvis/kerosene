@@ -44,7 +44,7 @@ impl TradingTerminal {
         };
         let can_copy_address = !selected.address.trim().is_empty();
         let copy_message =
-            can_copy_address.then(|| Message::CopyToClipboard(selected.address.clone()));
+            can_copy_address.then(|| Message::CopyToClipboard(selected.address.clone().into()));
         let inner_width = ACCOUNT_PICKER_WIDTH - ACCOUNT_PICKER_FRAME_PADDING * 2.0;
         let inner_height = ACCOUNT_PICKER_HEIGHT - ACCOUNT_PICKER_FRAME_PADDING * 2.0;
 
