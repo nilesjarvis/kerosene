@@ -43,7 +43,7 @@ pub(crate) struct TelegramTickerMention {
     pub(crate) reference_seen_ms: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct TelegramFeedPost {
     pub(crate) channel: String,
     pub(crate) message_id: u64,
@@ -60,6 +60,29 @@ pub(crate) struct TelegramFeedPost {
     pub(crate) ticker_mentions: Vec<TelegramTickerMention>,
 }
 
+impl fmt::Debug for TelegramFeedPost {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TelegramFeedPost")
+            .field(
+                "channel",
+                &redacted_telegram_channel_debug_value(&self.channel),
+            )
+            .field("message_id", &self.message_id)
+            .field("text", &"<redacted>")
+            .field("timestamp_ms", &self.timestamp_ms)
+            .field("source", &self.source)
+            .field("received_at_ms", &self.received_at_ms)
+            .field("applied_at_ms", &self.applied_at_ms)
+            .field("fetched_at_ms", &self.fetched_at_ms)
+            .field("request_started_ms", &self.request_started_ms)
+            .field("request_duration_ms", &self.request_duration_ms)
+            .field("first_seen_ms", &self.first_seen_ms)
+            .field("url", &redacted_telegram_url_debug_value(&self.url))
+            .field("ticker_mentions", &self.ticker_mentions.len())
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TelegramFeedPostSource {
     PublicPoll,
@@ -67,7 +90,7 @@ pub(crate) enum TelegramFeedPostSource {
     FastLive,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct TelegramChannelProfile {
     pub(crate) channel: String,
     pub(crate) title: String,
@@ -77,6 +100,46 @@ pub(crate) struct TelegramChannelProfile {
     pub(crate) avatar_loading_url: Option<String>,
     pub(crate) avatar_request_id: u64,
     pub(crate) avatar_failed_at_ms: Option<u64>,
+}
+
+impl fmt::Debug for TelegramChannelProfile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let private = telegram_private_channel_peer_id_from_key(&self.channel).is_some();
+        f.debug_struct("TelegramChannelProfile")
+            .field(
+                "channel",
+                &redacted_telegram_channel_debug_value(&self.channel),
+            )
+            .field(
+                "title",
+                &redacted_private_telegram_debug_value(private, &self.title),
+            )
+            .field(
+                "initials",
+                &redacted_private_telegram_debug_value(private, &self.initials),
+            )
+            .field(
+                "avatar_url",
+                &self
+                    .avatar_url
+                    .as_ref()
+                    .map(|value| redacted_private_telegram_debug_value(private, value)),
+            )
+            .field(
+                "avatar_handle",
+                &self.avatar_handle.as_ref().map(|_| "<image>"),
+            )
+            .field(
+                "avatar_loading_url",
+                &self
+                    .avatar_loading_url
+                    .as_ref()
+                    .map(|value| redacted_private_telegram_debug_value(private, value)),
+            )
+            .field("avatar_request_id", &self.avatar_request_id)
+            .field("avatar_failed_at_ms", &self.avatar_failed_at_ms)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,13 +211,13 @@ impl fmt::Debug for TelegramFastFeedEvent {
                 let result_summary = match result.as_ref() {
                     Ok(page) => format!(
                         "Ok(TelegramFeedPage {{ channel: {}, posts: {} }})",
-                        page.profile.channel,
+                        redacted_telegram_channel_debug_value(&page.profile.channel),
                         page.posts.len()
                     ),
                     Err(error) => format!("Err({})", redact_sensitive_response_text(error)),
                 };
                 f.debug_tuple("Loaded")
-                    .field(channel)
+                    .field(&redacted_telegram_channel_debug_value(channel))
                     .field(&result_summary)
                     .finish()
             }
@@ -162,10 +225,19 @@ impl fmt::Debug for TelegramFastFeedEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TelegramFeedPrivateChannelConfig {
     pub peer_id: i64,
     pub title: String,
+}
+
+impl fmt::Debug for TelegramFeedPrivateChannelConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TelegramFeedPrivateChannelConfig")
+            .field("peer_id", &"<redacted>")
+            .field("title", &"<redacted>")
+            .finish()
+    }
 }
 
 impl TelegramFeedPrivateChannelConfig {
@@ -181,11 +253,24 @@ impl TelegramFeedPrivateChannelConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct TelegramPrivateChannelCandidate {
     pub(crate) peer_id: i64,
     pub(crate) title: String,
     pub(crate) avatar_handle: Option<ImageHandle>,
+}
+
+impl fmt::Debug for TelegramPrivateChannelCandidate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TelegramPrivateChannelCandidate")
+            .field("peer_id", &"<redacted>")
+            .field("title", &"<redacted>")
+            .field(
+                "avatar_handle",
+                &self.avatar_handle.as_ref().map(|_| "<image>"),
+            )
+            .finish()
+    }
 }
 
 impl TelegramPrivateChannelCandidate {
@@ -316,28 +401,146 @@ impl fmt::Debug for TelegramFeedState {
             .field("fast_reconnect_nonce", &self.fast_reconnect_nonce)
             .field("fast_last_event_ms", &self.fast_last_event_ms)
             .field("channels_expanded", &self.channels_expanded)
-            .field("channel_input", &self.channel_input)
-            .field("channel_profiles", &self.channel_profiles)
-            .field("posts", &self.posts)
-            .field("seen_post_ids", &self.seen_post_ids)
+            .field(
+                "channel_input",
+                &redacted_telegram_channel_debug_value(&self.channel_input),
+            )
+            .field(
+                "channel_profiles",
+                &TelegramChannelProfileMapDebug(&self.channel_profiles),
+            )
+            .field("posts", &TelegramPostListDebug(&self.posts))
+            .field(
+                "seen_post_ids",
+                &TelegramSeenPostIdsDebug(&self.seen_post_ids),
+            )
             .field(
                 "channel_refresh_request_ids",
-                &self.channel_refresh_request_ids,
+                &TelegramRefreshRequestIdsDebug(&self.channel_refresh_request_ids),
             )
             .field(
                 "next_channel_refresh_request_id",
                 &self.next_channel_refresh_request_id,
             )
-            .field("loading_channels", &self.loading_channels)
+            .field(
+                "loading_channels",
+                &TelegramChannelListDebug(&self.loading_channels),
+            )
             .field(
                 "background_loading_channels",
-                &self.background_loading_channels,
+                &TelegramChannelListDebug(&self.background_loading_channels),
             )
             .field("next_avatar_request_id", &self.next_avatar_request_id)
-            .field("last_error", &self.last_error)
+            .field(
+                "last_error",
+                &self
+                    .last_error
+                    .as_ref()
+                    .map(|error| redact_sensitive_response_text(error)),
+            )
             .field("last_refresh_ms", &self.last_refresh_ms)
             .finish()
     }
+}
+
+struct TelegramChannelListDebug<'a>(&'a [String]);
+
+impl fmt::Debug for TelegramChannelListDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list()
+            .entries(
+                self.0
+                    .iter()
+                    .map(|channel| redacted_telegram_channel_debug_value(channel)),
+            )
+            .finish()
+    }
+}
+
+struct TelegramChannelProfileMapDebug<'a>(&'a HashMap<String, TelegramChannelProfile>);
+
+impl fmt::Debug for TelegramChannelProfileMapDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let private = self
+            .0
+            .keys()
+            .filter(|channel| telegram_private_channel_peer_id_from_key(channel).is_some())
+            .count();
+        f.debug_struct("TelegramChannelProfiles")
+            .field("total", &self.0.len())
+            .field("private", &private)
+            .finish()
+    }
+}
+
+struct TelegramPostListDebug<'a>(&'a [TelegramFeedPost]);
+
+impl fmt::Debug for TelegramPostListDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let private = self
+            .0
+            .iter()
+            .filter(|post| telegram_private_channel_peer_id_from_key(&post.channel).is_some())
+            .count();
+        f.debug_struct("TelegramPosts")
+            .field("total", &self.0.len())
+            .field("private", &private)
+            .finish()
+    }
+}
+
+struct TelegramSeenPostIdsDebug<'a>(&'a HashMap<String, VecDeque<u64>>);
+
+impl fmt::Debug for TelegramSeenPostIdsDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let private = self
+            .0
+            .keys()
+            .filter(|channel| telegram_private_channel_peer_id_from_key(channel).is_some())
+            .count();
+        let seen_ids = self.0.values().map(VecDeque::len).sum::<usize>();
+        f.debug_struct("TelegramSeenPostIds")
+            .field("channels", &self.0.len())
+            .field("private_channels", &private)
+            .field("seen_ids", &seen_ids)
+            .finish()
+    }
+}
+
+struct TelegramRefreshRequestIdsDebug<'a>(&'a HashMap<String, u64>);
+
+impl fmt::Debug for TelegramRefreshRequestIdsDebug<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let private = self
+            .0
+            .keys()
+            .filter(|channel| telegram_private_channel_peer_id_from_key(channel).is_some())
+            .count();
+        f.debug_struct("TelegramRefreshRequestIds")
+            .field("channels", &self.0.len())
+            .field("private_channels", &private)
+            .finish()
+    }
+}
+
+fn redacted_telegram_channel_debug_value(value: &str) -> &str {
+    if telegram_private_channel_peer_id_from_key(value).is_some() {
+        "<private>"
+    } else {
+        value
+    }
+}
+
+fn redacted_telegram_url_debug_value(value: &str) -> &str {
+    if value.contains("t.me/c/") || value.contains("telegram.me/c/") {
+        "<private>"
+    } else {
+        value
+    }
+}
+
+fn redacted_private_telegram_debug_value(private: bool, value: &str) -> &str {
+    if private { "<redacted>" } else { value }
 }
 
 impl TelegramFeedState {
@@ -1182,6 +1385,7 @@ mod tests {
         for secret in ["hash-secret", "code-secret", "password-secret"] {
             assert!(!rendered.contains(secret), "debug leaked {secret}");
         }
+        assert!(!rendered.contains("private:42"));
     }
 
     #[test]
@@ -1220,7 +1424,134 @@ mod tests {
         );
 
         assert!(rendered.contains("posts: 1"));
+        assert!(rendered.contains("<private>"));
+        assert!(!rendered.contains("private:42"));
+        assert!(!rendered.contains("Private Feed"));
         assert!(!rendered.contains("post body should not appear in debug"));
+        assert!(!rendered.contains("https://t.me/s/private/1"));
+    }
+
+    #[test]
+    fn telegram_private_channel_debug_redacts_identity() {
+        let config = TelegramFeedPrivateChannelConfig {
+            peer_id: 42,
+            title: "Private Alpha".to_string(),
+        };
+        let candidate = TelegramPrivateChannelCandidate {
+            peer_id: 43,
+            title: "Private Beta".to_string(),
+            avatar_handle: None,
+        };
+
+        let rendered = format!("{config:?} {candidate:?}");
+
+        assert!(rendered.contains("<redacted>"));
+        for secret in ["42", "43", "Private Alpha", "Private Beta"] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn telegram_feed_post_debug_redacts_body_and_private_source() {
+        let post = TelegramFeedPost {
+            channel: "private:42".to_string(),
+            message_id: 7,
+            text: "private post text".to_string(),
+            timestamp_ms: 1,
+            source: TelegramFeedPostSource::FastLive,
+            received_at_ms: 2,
+            applied_at_ms: 2,
+            fetched_at_ms: 2,
+            request_started_ms: 1,
+            request_duration_ms: 1,
+            first_seen_ms: 2,
+            url: "https://t.me/c/42/7".to_string(),
+            ticker_mentions: vec![TelegramTickerMention {
+                symbol: "BTC".to_string(),
+                ticker: "BTC".to_string(),
+                matched_text: "private post text".to_string(),
+                source: SymbolAliasSource::Ticker,
+                confidence: 100,
+                reference_price: None,
+                reference_seen_ms: 0,
+            }],
+        };
+
+        let rendered = format!("{post:?}");
+
+        assert!(rendered.contains("<private>"));
+        assert!(rendered.contains("ticker_mentions: 1"));
+        for secret in ["private:42", "private post text", "https://t.me/c/42/7"] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
+    }
+
+    #[test]
+    fn telegram_feed_state_debug_redacts_private_feed_content() {
+        let private_channels = vec![TelegramFeedPrivateChannelConfig {
+            peer_id: 42,
+            title: "Private Alpha".to_string(),
+        }];
+        let mut state =
+            TelegramFeedState::new(&[], &private_channels, false, true, Some(12345), true);
+        state.private_channel_candidates = vec![TelegramPrivateChannelCandidate {
+            peer_id: 43,
+            title: "Private Beta".to_string(),
+            avatar_handle: None,
+        }];
+        state.channel_input = "private:42".to_string();
+        state.channel_profiles.insert(
+            "private:42".to_string(),
+            TelegramChannelProfile {
+                channel: "private:42".to_string(),
+                title: "Private Alpha".to_string(),
+                initials: "PA".to_string(),
+                avatar_url: Some("https://cdn.telegram.example/private-alpha.jpg".to_string()),
+                avatar_handle: None,
+                avatar_loading_url: None,
+                avatar_request_id: 3,
+                avatar_failed_at_ms: None,
+            },
+        );
+        state.posts.push(TelegramFeedPost {
+            channel: "private:42".to_string(),
+            message_id: 7,
+            text: "private post text".to_string(),
+            timestamp_ms: 1,
+            source: TelegramFeedPostSource::FastLive,
+            received_at_ms: 2,
+            applied_at_ms: 2,
+            fetched_at_ms: 2,
+            request_started_ms: 1,
+            request_duration_ms: 1,
+            first_seen_ms: 2,
+            url: "https://t.me/c/42/7".to_string(),
+            ticker_mentions: Vec::new(),
+        });
+        state.record_seen_post("private:42", 7);
+        state
+            .channel_refresh_request_ids
+            .insert("private:42".to_string(), 11);
+        state.loading_channels.push("private:42".to_string());
+        state
+            .background_loading_channels
+            .push("private:42".to_string());
+
+        let rendered = format!("{state:?}");
+
+        assert!(rendered.contains("<private>"));
+        assert!(rendered.contains("private: 1"));
+        assert!(rendered.contains("private_channels: 1"));
+        for secret in [
+            "private:42",
+            "Private Alpha",
+            "Private Beta",
+            "private post text",
+            "https://t.me/c/42/7",
+            "https://cdn.telegram.example/private-alpha.jpg",
+        ] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
     }
 
     #[test]

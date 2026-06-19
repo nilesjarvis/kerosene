@@ -16,6 +16,7 @@ use grammers_client::{Client, SenderPool, SignInError};
 use grammers_session::types::{PeerId, PeerKind, PeerRef};
 use iced::widget::image::Handle as ImageHandle;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -221,12 +222,34 @@ impl<F: FnOnce()> Drop for DropGuard<F> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TelegramFastFeedStreamParams {
     pub(crate) api_id: i32,
     pub(crate) channels: Vec<String>,
     pub(crate) private_channels: Vec<TelegramFeedPrivateChannelConfig>,
     pub(crate) reconnect_nonce: u64,
+}
+
+impl fmt::Debug for TelegramFastFeedStreamParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TelegramFastFeedStreamParams")
+            .field("api_id", &self.api_id)
+            .field("channels", &self.channels)
+            .field(
+                "private_channels",
+                &RedactedPrivateChannelCount(self.private_channels.len()),
+            )
+            .field("reconnect_nonce", &self.reconnect_nonce)
+            .finish()
+    }
+}
+
+struct RedactedPrivateChannelCount(usize);
+
+impl fmt::Debug for RedactedPrivateChannelCount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{} redacted>", self.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1576,6 +1599,27 @@ mod tests {
             telegram_post_url("marketfeed", 7),
             "https://t.me/marketfeed/7"
         );
+    }
+
+    #[test]
+    fn fast_feed_stream_params_debug_redacts_private_channels() {
+        let params = TelegramFastFeedStreamParams {
+            api_id: 12345,
+            channels: vec!["marketfeed".to_string()],
+            private_channels: vec![TelegramFeedPrivateChannelConfig {
+                peer_id: 42,
+                title: "Private Macro".to_string(),
+            }],
+            reconnect_nonce: 7,
+        };
+
+        let rendered = format!("{params:?}");
+
+        assert!(rendered.contains("marketfeed"));
+        assert!(rendered.contains("private_channels: <1 redacted>"));
+        assert!(rendered.contains("reconnect_nonce: 7"));
+        assert!(!rendered.contains("42"));
+        assert!(!rendered.contains("Private Macro"));
     }
 
     #[test]
