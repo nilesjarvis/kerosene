@@ -6,8 +6,11 @@ use crate::account::AssetContext;
 use crate::api::Candle;
 use crate::spaghetti;
 use crate::timeframe::Timeframe;
+#[cfg(test)]
 use crate::ws::WsCommand;
+use crate::ws::WsCommandSender;
 use std::{future::Future, time::Duration};
+#[cfg(test)]
 use tokio::sync::mpsc;
 
 pub use asset_context::ws_asset_ctx_stream_keyed;
@@ -96,12 +99,12 @@ pub enum SpaghettiCandleStreamEvent {
 
 const WS_LAG_RECONNECT_PAUSE_SECS: u64 = 2;
 
-fn request_ws_reconnect_after_lag(cmd_tx: &mpsc::UnboundedSender<WsCommand>) -> bool {
-    cmd_tx.send(WsCommand::Reconnect).is_ok()
+fn request_ws_reconnect_after_lag(cmd_tx: &WsCommandSender) -> bool {
+    cmd_tx.request_lag_reconnect()
 }
 
 async fn emit_lag_after_reconnect<T, Emit, Fut>(
-    cmd_tx: &mpsc::UnboundedSender<WsCommand>,
+    cmd_tx: &WsCommandSender,
     event: T,
     emit: Emit,
     pause: Duration,
@@ -128,15 +131,33 @@ mod tests {
 
     #[test]
     fn lag_reconnect_helper_sends_reconnect_command() {
-        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
 
+        assert!(request_ws_reconnect_after_lag(&cmd_tx));
+        assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
+    }
+
+    #[test]
+    fn lag_reconnect_helper_coalesces_until_reconnect_dequeued() {
+        let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
+
+        assert!(request_ws_reconnect_after_lag(&cmd_tx));
+        assert!(request_ws_reconnect_after_lag(&cmd_tx));
+        let command = cmd_rx.try_recv().expect("first reconnect command");
+        assert!(matches!(command, WsCommand::Reconnect));
+        assert!(cmd_rx.try_recv().is_err());
+
+        cmd_tx.note_command_dequeued_for_test(&command);
         assert!(request_ws_reconnect_after_lag(&cmd_tx));
         assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
     }
 
     #[tokio::test]
     async fn lag_emit_requests_reconnect_before_downstream_send_failure() {
-        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
 
         let emitted = emit_lag_after_reconnect(
             &cmd_tx,

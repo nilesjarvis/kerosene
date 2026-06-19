@@ -10,7 +10,7 @@ pub(crate) use l2_book::{
     L2BookSigfigs, l2_book_payload_matches_sigfigs, l2_book_sigfigs_from_value,
 };
 pub use manager::WsCommand;
-pub(crate) use manager::{SubscriptionGuard, get_manager};
+pub(crate) use manager::{SubscriptionGuard, WsCommandSender, get_manager};
 pub(crate) use telemetry::now_ms;
 pub use telemetry::telemetry_snapshot;
 pub(crate) use telemetry::{

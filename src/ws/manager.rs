@@ -18,6 +18,7 @@ use serde_json::Value;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
 use tokio_tungstenite::tungstenite::Message as WsMsg;
@@ -125,19 +126,73 @@ pub(super) fn redacted_ws_topic_debug_value(topic: &str) -> &str {
 }
 
 struct WsManager {
-    cmd_tx: mpsc::UnboundedSender<WsCommand>,
+    cmd_tx: WsCommandSender,
     msg_rx: broadcast::Receiver<WsRoutedMessage>,
 }
 
 static WS_MANAGER: OnceLock<WsManager> = OnceLock::new();
 
-pub(crate) fn get_manager() -> (
-    mpsc::UnboundedSender<WsCommand>,
-    broadcast::Receiver<WsRoutedMessage>,
-) {
+#[derive(Clone, Default)]
+struct WsReconnectGate(Arc<AtomicBool>);
+
+impl WsReconnectGate {
+    fn request_lag_reconnect(&self, cmd_tx: &mpsc::UnboundedSender<WsCommand>) -> bool {
+        if self.0.swap(true, Ordering::AcqRel) {
+            return true;
+        }
+        if cmd_tx.send(WsCommand::Reconnect).is_err() {
+            self.0.store(false, Ordering::Release);
+            return false;
+        }
+        true
+    }
+
+    fn note_dequeued(&self, command: &WsCommand) {
+        if matches!(command, WsCommand::Reconnect) {
+            self.0.store(false, Ordering::Release);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct WsCommandSender {
+    inner: mpsc::UnboundedSender<WsCommand>,
+    reconnect_gate: WsReconnectGate,
+}
+
+impl WsCommandSender {
+    fn new(inner: mpsc::UnboundedSender<WsCommand>, reconnect_gate: WsReconnectGate) -> Self {
+        Self {
+            inner,
+            reconnect_gate,
+        }
+    }
+
+    pub(crate) fn send(&self, command: WsCommand) -> Result<(), mpsc::error::SendError<WsCommand>> {
+        self.inner.send(command)
+    }
+
+    pub(crate) fn request_lag_reconnect(&self) -> bool {
+        self.reconnect_gate.request_lag_reconnect(&self.inner)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(inner: mpsc::UnboundedSender<WsCommand>) -> Self {
+        Self::new(inner, WsReconnectGate::default())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn note_command_dequeued_for_test(&self, command: &WsCommand) {
+        self.reconnect_gate.note_dequeued(command);
+    }
+}
+
+pub(crate) fn get_manager() -> (WsCommandSender, broadcast::Receiver<WsRoutedMessage>) {
     let mgr = WS_MANAGER.get_or_init(|| {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (msg_tx, msg_rx) = broadcast::channel(10000);
+        let reconnect_gate = WsReconnectGate::default();
+        let command_sender = WsCommandSender::new(cmd_tx.clone(), reconnect_gate.clone());
 
         let ping_tx = cmd_tx.clone();
         tokio::spawn(async move {
@@ -149,18 +204,43 @@ pub(crate) fn get_manager() -> (
             }
         });
 
-        tokio::spawn(ws_manager_task(WS_URL.to_string(), cmd_rx, msg_tx));
-        WsManager { cmd_tx, msg_rx }
+        tokio::spawn(ws_manager_task_with_reconnect_gate(
+            WS_URL.to_string(),
+            cmd_rx,
+            msg_tx,
+            reconnect_gate,
+        ));
+        WsManager {
+            cmd_tx: command_sender,
+            msg_rx,
+        }
     });
     (mgr.cmd_tx.clone(), mgr.msg_rx.resubscribe())
 }
 
+#[cfg(test)]
 pub(super) async fn ws_manager_task(
     ws_url: String,
     cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
     msg_tx: broadcast::Sender<WsRoutedMessage>,
 ) {
-    ws_manager_task_with_api_probe(ws_url, cmd_rx, msg_tx, ApiLatencyProbe::production()).await;
+    ws_manager_task_with_reconnect_gate(ws_url, cmd_rx, msg_tx, WsReconnectGate::default()).await;
+}
+
+async fn ws_manager_task_with_reconnect_gate(
+    ws_url: String,
+    cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
+    msg_tx: broadcast::Sender<WsRoutedMessage>,
+    reconnect_gate: WsReconnectGate,
+) {
+    ws_manager_task_with_api_probe(
+        ws_url,
+        cmd_rx,
+        msg_tx,
+        ApiLatencyProbe::production(),
+        reconnect_gate,
+    )
+    .await;
 }
 
 async fn ws_manager_task_with_api_probe(
@@ -168,12 +248,14 @@ async fn ws_manager_task_with_api_probe(
     cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
     msg_tx: broadcast::Sender<WsRoutedMessage>,
     api_probe: ApiLatencyProbe,
+    reconnect_gate: WsReconnectGate,
 ) {
     ws_manager_task_with_options(
         ws_url,
         cmd_rx,
         msg_tx,
         api_probe,
+        reconnect_gate,
         Duration::from_secs(WS_CONNECT_TIMEOUT_SECS),
     )
     .await;
@@ -184,6 +266,7 @@ async fn ws_manager_task_with_options(
     mut cmd_rx: mpsc::UnboundedReceiver<WsCommand>,
     msg_tx: broadcast::Sender<WsRoutedMessage>,
     api_probe: ApiLatencyProbe,
+    reconnect_gate: WsReconnectGate,
     connect_timeout: Duration,
 ) {
     let mut active_subs = ActiveWsSubscriptions::default();
@@ -195,11 +278,11 @@ async fn ws_manager_task_with_options(
     let mut reconnect_delay_secs = policy.base_delay_secs;
 
     'manager: loop {
-        if !drain_disconnected_ws_commands(&mut active_subs, &mut cmd_rx) {
+        if !drain_disconnected_ws_commands(&mut active_subs, &mut cmd_rx, &reconnect_gate) {
             return;
         }
         if reset_reconnect_backoff_if_idle(&active_subs, &mut reconnect_delay_secs, policy)
-            && !wait_for_ws_subscription(&mut active_subs, &mut cmd_rx).await
+            && !wait_for_ws_subscription(&mut active_subs, &mut cmd_rx, &reconnect_gate).await
         {
             return;
         }
@@ -219,6 +302,7 @@ async fn ws_manager_task_with_options(
                     let Some(cmd) = cmd else {
                         return;
                     };
+                    reconnect_gate.note_dequeued(&cmd);
                     match handle_connecting_ws_command(&mut active_subs, cmd) {
                         ConnectingWsCommandAction::ContinueConnecting => {
                             connect_fut = pending_connect;
@@ -239,6 +323,7 @@ async fn ws_manager_task_with_options(
                     Duration::from_secs(reconnect_delay_secs),
                     &mut active_subs,
                     &mut cmd_rx,
+                    &reconnect_gate,
                 )
                 .await
                 {
@@ -256,7 +341,7 @@ async fn ws_manager_task_with_options(
         let mut last_rx_at = Instant::now();
         let mut next_api_probe_at = Instant::now();
 
-        if !drain_disconnected_ws_commands(&mut active_subs, &mut cmd_rx) {
+        if !drain_disconnected_ws_commands(&mut active_subs, &mut cmd_rx, &reconnect_gate) {
             return;
         }
         if active_subs.is_empty() {
@@ -295,6 +380,7 @@ async fn ws_manager_task_with_options(
                     }
                 }
                 Ok(Either::Left((Some(cmd), _))) => {
+                    reconnect_gate.note_dequeued(&cmd);
                     let action = handle_ws_command(&mut active_subs, cmd);
                     if action.mark_ping_start {
                         telemetry_mark_ws_ping_start();
@@ -347,6 +433,7 @@ async fn ws_manager_task_with_options(
             Duration::from_secs(delay_secs),
             &mut active_subs,
             &mut cmd_rx,
+            &reconnect_gate,
         )
         .await
         {
@@ -401,7 +488,14 @@ pub(super) async fn ws_manager_task_with_api_probe_notifier(
     msg_tx: broadcast::Sender<WsRoutedMessage>,
     probe_tx: mpsc::UnboundedSender<()>,
 ) {
-    ws_manager_task_with_api_probe(ws_url, cmd_rx, msg_tx, ApiLatencyProbe::Notify(probe_tx)).await;
+    ws_manager_task_with_api_probe(
+        ws_url,
+        cmd_rx,
+        msg_tx,
+        ApiLatencyProbe::Notify(probe_tx),
+        WsReconnectGate::default(),
+    )
+    .await;
 }
 
 #[cfg(test)]
@@ -416,6 +510,7 @@ pub(super) async fn ws_manager_task_with_connect_timeout_for_test(
         cmd_rx,
         msg_tx,
         ApiLatencyProbe::Disabled,
+        WsReconnectGate::default(),
         connect_timeout,
     )
     .await;
@@ -479,11 +574,13 @@ fn reset_reconnect_backoff_if_idle(
 async fn wait_for_ws_subscription(
     active_subs: &mut ActiveWsSubscriptions,
     cmd_rx: &mut mpsc::UnboundedReceiver<WsCommand>,
+    reconnect_gate: &WsReconnectGate,
 ) -> bool {
     while active_subs.is_empty() {
         let Some(command) = cmd_rx.recv().await else {
             return false;
         };
+        reconnect_gate.note_dequeued(&command);
         handle_disconnected_ws_command(active_subs, command);
     }
     true
@@ -526,10 +623,14 @@ fn handle_disconnected_ws_command(active_subs: &mut ActiveWsSubscriptions, comma
 fn drain_disconnected_ws_commands(
     active_subs: &mut ActiveWsSubscriptions,
     cmd_rx: &mut mpsc::UnboundedReceiver<WsCommand>,
+    reconnect_gate: &WsReconnectGate,
 ) -> bool {
     loop {
         match cmd_rx.try_recv() {
-            Ok(command) => handle_disconnected_ws_command(active_subs, command),
+            Ok(command) => {
+                reconnect_gate.note_dequeued(&command);
+                handle_disconnected_ws_command(active_subs, command);
+            }
             Err(mpsc::error::TryRecvError::Empty) => return true,
             Err(mpsc::error::TryRecvError::Disconnected) => return false,
         }
@@ -540,8 +641,9 @@ async fn sleep_with_disconnected_ws_commands(
     delay: Duration,
     active_subs: &mut ActiveWsSubscriptions,
     cmd_rx: &mut mpsc::UnboundedReceiver<WsCommand>,
+    reconnect_gate: &WsReconnectGate,
 ) -> bool {
-    if !drain_disconnected_ws_commands(active_subs, cmd_rx) {
+    if !drain_disconnected_ws_commands(active_subs, cmd_rx, reconnect_gate) {
         return false;
     }
     if active_subs.is_empty() {
@@ -554,12 +656,13 @@ async fn sleep_with_disconnected_ws_commands(
     loop {
         tokio::select! {
             () = &mut sleep => {
-                return drain_disconnected_ws_commands(active_subs, cmd_rx);
+                return drain_disconnected_ws_commands(active_subs, cmd_rx, reconnect_gate);
             }
             command = cmd_rx.recv() => {
                 let Some(command) = command else {
                     return false;
                 };
+                reconnect_gate.note_dequeued(&command);
                 handle_disconnected_ws_command(active_subs, command);
                 if active_subs.is_empty() {
                     return true;
@@ -570,7 +673,7 @@ async fn sleep_with_disconnected_ws_commands(
 }
 
 pub(crate) struct SubscriptionGuard {
-    pub(crate) cmd_tx: mpsc::UnboundedSender<WsCommand>,
+    pub(crate) cmd_tx: WsCommandSender,
     pub(crate) subscriptions: Vec<(String, Value)>,
 }
 

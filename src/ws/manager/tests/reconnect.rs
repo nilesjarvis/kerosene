@@ -209,10 +209,12 @@ fn disconnected_command_drain_updates_replay_set_without_outbound_socket() {
         .unwrap();
     cmd_tx.send(WsCommand::Reconnect).unwrap();
     cmd_tx.send(WsCommand::Ping).unwrap();
+    let reconnect_gate = WsReconnectGate::default();
 
     assert!(drain_disconnected_ws_commands(
         &mut subscriptions,
-        &mut cmd_rx
+        &mut cmd_rx,
+        &reconnect_gate,
     ));
 
     let replay_payloads: Vec<_> = subscriptions.payloads().cloned().collect();
@@ -236,10 +238,11 @@ async fn wait_for_subscription_ignores_non_subscription_commands() {
             }),
         })
         .unwrap();
+    let reconnect_gate = WsReconnectGate::default();
 
     let result = tokio::time::timeout(
         Duration::from_millis(50),
-        wait_for_ws_subscription(&mut subscriptions, &mut cmd_rx),
+        wait_for_ws_subscription(&mut subscriptions, &mut cmd_rx, &reconnect_gate),
     )
     .await
     .expect("queued subscription should wake the manager");
@@ -252,6 +255,7 @@ async fn wait_for_subscription_ignores_non_subscription_commands() {
 async fn reconnect_sleep_returns_immediately_without_subscriptions() {
     let mut subscriptions = ActiveWsSubscriptions::default();
     let (_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+    let reconnect_gate = WsReconnectGate::default();
 
     let result = tokio::time::timeout(
         Duration::from_millis(50),
@@ -259,6 +263,7 @@ async fn reconnect_sleep_returns_immediately_without_subscriptions() {
             Duration::from_secs(60),
             &mut subscriptions,
             &mut cmd_rx,
+            &reconnect_gate,
         ),
     )
     .await
@@ -272,6 +277,7 @@ async fn reconnect_sleep_returns_immediately_without_subscriptions() {
 async fn reconnect_sleep_processes_unsubscribe_before_retry() {
     let mut subscriptions = ActiveWsSubscriptions::default();
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+    let reconnect_gate = WsReconnectGate::default();
 
     subscriptions.subscribe(
         "l2Book.BTC".to_string(),
@@ -296,6 +302,7 @@ async fn reconnect_sleep_processes_unsubscribe_before_retry() {
             Duration::from_secs(60),
             &mut subscriptions,
             &mut cmd_rx,
+            &reconnect_gate,
         ),
     )
     .await

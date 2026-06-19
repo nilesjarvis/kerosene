@@ -5,9 +5,11 @@ mod subscriptions;
 
 use futures::SinkExt as _;
 use std::{future::Future, time::Duration};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
+#[cfg(test)]
+use tokio::sync::mpsc;
 
-use super::{SubscriptionGuard, WsCommand, get_manager};
+use super::{SubscriptionGuard, WsCommand, WsCommandSender, get_manager};
 use events::parse_user_stream_message;
 use routing::normalize_ws_user_address;
 use std::fmt;
@@ -204,12 +206,12 @@ pub fn ws_user_data_stream(
     }))
 }
 
-fn request_user_data_reconnect_after_lag(cmd_tx: &mpsc::UnboundedSender<WsCommand>) -> bool {
-    cmd_tx.send(WsCommand::Reconnect).is_ok()
+fn request_user_data_reconnect_after_lag(cmd_tx: &WsCommandSender) -> bool {
+    cmd_tx.request_lag_reconnect()
 }
 
 async fn emit_user_data_after_reconnect<T, Emit, Fut>(
-    cmd_tx: &mpsc::UnboundedSender<WsCommand>,
+    cmd_tx: &WsCommandSender,
     update: T,
     emit: Emit,
     pause: Duration,
@@ -328,7 +330,8 @@ mod tests {
 
     #[test]
     fn user_data_lag_requests_shared_ws_reconnect() {
-        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
 
         assert!(request_user_data_reconnect_after_lag(&cmd_tx));
         assert!(matches!(cmd_rx.try_recv().unwrap(), WsCommand::Reconnect));
@@ -336,7 +339,8 @@ mod tests {
 
     #[tokio::test]
     async fn lag_emit_requests_reconnect_before_downstream_send_failure() {
-        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (raw_cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let cmd_tx = WsCommandSender::new_for_test(raw_cmd_tx);
 
         let emitted = emit_user_data_after_reconnect(
             &cmd_tx,
