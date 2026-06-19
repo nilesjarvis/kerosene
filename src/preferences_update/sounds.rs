@@ -1,5 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::sound;
 use iced::Task;
@@ -54,7 +55,13 @@ impl TradingTerminal {
                 Ok(None) => {}
                 Err(e) => {
                     if e != "Import cancelled" {
-                        self.push_toast(format!("HUD order sound import failed: {e}"), true);
+                        self.push_toast(
+                            format!(
+                                "HUD order sound import failed: {}",
+                                redact_sensitive_response_text(&e)
+                            ),
+                            true,
+                        );
                     }
                 }
             },
@@ -191,6 +198,20 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         assert!(err.contains("too large"));
+    }
+
+    #[test]
+    fn hud_order_sound_import_error_redacts_toast_detail() {
+        let (mut terminal, _) = TradingTerminal::boot();
+
+        let _task = terminal.update_sound_preferences(Message::ChartHudOrderSoundImported(Err(
+            "copy failed: auth_token=token-secret".to_string(),
+        )));
+
+        let toast = terminal.toasts.last().expect("toast");
+        assert!(toast.is_error);
+        assert!(toast.message.contains("auth_token=<redacted>"));
+        assert!(!toast.message.contains("token-secret"));
     }
 
     fn unique_temp_path(name: &str) -> std::path::PathBuf {
