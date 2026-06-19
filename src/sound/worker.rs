@@ -79,10 +79,32 @@ fn play_request(handle: &rodio::OutputStreamHandle, request: SoundRequest) -> Re
         }
         SoundSource::EmbeddedWav(bytes) => play_wav_bytes(handle, bytes, volume),
         SoundSource::FileWav(path) => {
-            let bytes =
-                std::fs::read(&path).map_err(|e| format!("read {} failed: {e}", path.display()))?;
+            let bytes = std::fs::read(&path).map_err(|e| custom_wav_read_failure(&e))?;
             play_wav_bytes(handle, &bytes, volume)
         }
+    }
+}
+
+pub(super) fn custom_wav_read_failure(error: &std::io::Error) -> String {
+    format!("read custom WAV file failed: {}", io_error_detail(error))
+}
+
+fn io_error_detail(error: &std::io::Error) -> String {
+    let kind = match error.kind() {
+        std::io::ErrorKind::NotFound => "not found",
+        std::io::ErrorKind::PermissionDenied => "permission denied",
+        std::io::ErrorKind::AlreadyExists => "already exists",
+        std::io::ErrorKind::InvalidInput => "invalid input",
+        std::io::ErrorKind::InvalidData => "invalid data",
+        std::io::ErrorKind::Interrupted => "interrupted",
+        std::io::ErrorKind::UnexpectedEof => "unexpected EOF",
+        std::io::ErrorKind::WriteZero => "write failed",
+        _ => "I/O error",
+    };
+
+    match error.raw_os_error() {
+        Some(code) => format!("{kind} (os error {code})"),
+        None => kind.to_string(),
     }
 }
 

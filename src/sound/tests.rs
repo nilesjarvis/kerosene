@@ -130,3 +130,17 @@ fn sound_status_messages_are_deduplicated_until_drained() {
     );
     assert!(take_status_messages().is_empty());
 }
+
+#[test]
+fn custom_wav_read_failure_omits_path_and_custom_error_payload() {
+    let error = std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "denied /home/alice/hud-secret.wav api_key=sound-secret",
+    );
+
+    let rendered = worker::custom_wav_read_failure(&error);
+
+    assert_eq!(rendered, "read custom WAV file failed: permission denied");
+    assert!(!rendered.contains("/home/alice"));
+    assert!(!rendered.contains("sound-secret"));
+}
