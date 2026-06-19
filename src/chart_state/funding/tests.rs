@@ -70,3 +70,47 @@ fn stale_hydromancer_generation_does_not_apply_funding_history() {
     assert_eq!(instance.funding_fetch_request.as_ref(), Some(&request));
     assert!(instance.chart.funding_rates.is_empty());
 }
+
+#[test]
+fn funding_fetch_error_redacts_toast_detail() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+    terminal.hydromancer_key_generation = 1;
+
+    let request = FundingFetchRequest {
+        chart_id: 7,
+        symbol: "BTC".to_string(),
+        coin: "BTC".to_string(),
+        hydromancer_key_generation: 1,
+        start_ms: 0,
+        end_ms: 3_600_000,
+        mode: FundingFetchMode::Snapshot,
+    };
+    let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+    instance.macro_indicators.show_funding_rate = true;
+    instance.funding_fetch_request = Some(request.clone());
+    terminal.charts.insert(7, instance);
+
+    let _task = terminal.apply_chart_funding_history_loaded(
+        request,
+        Err("funding rejected: api_key=key-secret signature=sig-secret".to_string()),
+    );
+
+    let instance = terminal.charts.get(&7).expect("chart instance");
+    assert!(instance.funding_fetch_request.is_none());
+    assert_eq!(
+        instance
+            .chart
+            .funding_status
+            .as_ref()
+            .map(|(message, is_error)| (message.as_str(), *is_error)),
+        Some(("Funding fetch failed", true))
+    );
+
+    let toast = terminal.toasts.last().expect("toast");
+    assert!(toast.is_error);
+    assert!(toast.message.contains("api_key=<redacted>"));
+    assert!(toast.message.contains("signature=<redacted>"));
+    assert!(!toast.message.contains("key-secret"));
+    assert!(!toast.message.contains("sig-secret"));
+}

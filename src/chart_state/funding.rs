@@ -1,5 +1,6 @@
 use super::{ChartId, ChartInstance, FundingFetchMode, FundingFetchRequest};
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::hydromancer_api::{FundingRatePoint, fetch_funding_history};
 use crate::message::Message;
 use iced::Task;
@@ -167,7 +168,10 @@ impl TradingTerminal {
                     instance
                         .chart
                         .set_funding_status("Funding fetch failed".to_string(), true);
-                    toast = Some(format!("Funding fetch failed: {error}"));
+                    toast = Some(format!(
+                        "Funding fetch failed: {}",
+                        redact_sensitive_response_text(&error)
+                    ));
                 }
             }
         }
