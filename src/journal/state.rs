@@ -40,8 +40,20 @@ impl JournalFilter {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalSort {
+    AssetAsc,
+    AssetDesc,
+    PositionDesc,
+    PositionAsc,
+    StatusAsc,
+    StatusDesc,
     TimeDesc,
     TimeAsc,
+    DurationDesc,
+    DurationAsc,
+    FillsDesc,
+    FillsAsc,
+    FeesDesc,
+    FeesAsc,
     PnlDesc,
     PnlAsc,
 }
