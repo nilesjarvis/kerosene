@@ -33,3 +33,39 @@ fn positions_refresh_does_not_refresh_open_order_action_snapshot() {
     assert_eq!(data.open_order_action_snapshot_age_ms(stale_now), Some(0));
     assert!(data.is_fresh_for_open_order_action(stale_now));
 }
+
+#[test]
+fn open_order_action_freshness_tracks_dex_lanes_independently() {
+    let mut data = account_data_snapshot(1_000);
+    let fresh_now = 1_000 + AccountData::POSITION_ACTION_MAX_AGE_MS;
+    let stale_now = fresh_now + 1;
+
+    assert!(data.is_fresh_for_open_order_action_for_symbol("BTC", fresh_now));
+    assert!(data.is_fresh_for_open_order_action_for_symbol("flx:BTC", fresh_now));
+
+    data.mark_open_orders_fetched_at_for_dex(" FLX ", stale_now);
+
+    assert!(data.is_fresh_for_open_order_action_for_symbol("flx:BTC", stale_now));
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("flx:BTC", stale_now),
+        Some(0)
+    );
+    assert!(!data.is_fresh_for_open_order_action_for_symbol("BTC", stale_now));
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("BTC", stale_now),
+        Some(AccountData::POSITION_ACTION_MAX_AGE_MS + 1)
+    );
+
+    data.mark_open_orders_fetched_at_for_dex("", stale_now);
+
+    assert!(data.is_fresh_for_open_order_action_for_symbol("BTC", stale_now));
+
+    let full_snapshot_now = stale_now + AccountData::POSITION_ACTION_MAX_AGE_MS + 1;
+    data.mark_open_orders_fetched_at(full_snapshot_now);
+
+    assert!(data.is_fresh_for_open_order_action_for_symbol("flx:BTC", full_snapshot_now));
+    assert_eq!(
+        data.open_order_action_snapshot_age_ms_for_symbol("flx:BTC", full_snapshot_now),
+        Some(0)
+    );
+}

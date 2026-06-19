@@ -1,6 +1,6 @@
 use super::*;
 use crate::account::{
-    AssetPosition, ClearinghouseState, MarginSummary, Position, PositionLeverage,
+    AccountData, AssetPosition, ClearinghouseState, MarginSummary, Position, PositionLeverage,
 };
 
 mod chase_fills;
@@ -103,6 +103,31 @@ fn non_position_ws_updates_do_not_refresh_position_snapshot_timestamp() {
             .map(|data| data.fetched_at_ms),
         Some(1_000)
     );
+}
+
+#[test]
+fn websocket_open_order_update_refreshes_only_matching_dex_lane() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    let address = "0xabc0000000000000000000000000000000000000".to_string();
+    terminal.connected_address = Some(address.clone());
+    terminal.account_data_address = Some(address.clone());
+    terminal.account_data = Some(account_data_with_timestamp(1_000));
+
+    let _task = terminal.apply_ws_user_data_update(
+        Some(address),
+        WsUserData::OpenOrders {
+            dex: "flx".to_string(),
+            orders: vec![open_order(42, Some(false))],
+        },
+    );
+
+    let now_ms = TradingTerminal::now_ms();
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert!(data.is_fresh_for_open_order_action_for_symbol("flx:BTC", now_ms));
+    assert!(!data.is_fresh_for_open_order_action_for_symbol(
+        "BTC",
+        1_000 + AccountData::POSITION_ACTION_MAX_AGE_MS + 1
+    ));
 }
 
 #[test]

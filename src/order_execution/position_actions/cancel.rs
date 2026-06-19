@@ -39,9 +39,9 @@ impl TradingTerminal {
             return Task::none();
         };
         let now_ms = Self::now_ms();
-        if !account_data.is_fresh_for_open_order_action(now_ms) {
+        if !account_data.is_fresh_for_open_order_action_for_symbol(coin, now_ms) {
             let age_label = account_data
-                .open_order_action_snapshot_age_ms(now_ms)
+                .open_order_action_snapshot_age_ms_for_symbol(coin, now_ms)
                 .map(|age| format!("{}s old", age.div_ceil(1000)))
                 .unwrap_or_else(|| "from the future".to_string());
             self.order_status = Some((
@@ -419,6 +419,25 @@ mod tests {
         let account_data = terminal.account_data.as_mut().expect("account data");
         account_data.fetched_at_ms = 1;
         account_data.mark_positions_fetched_at(now_ms);
+
+        let _task = terminal.execute_cancel("BTC", 42);
+
+        assert!(!terminal.has_pending_cancel_indicator(42));
+        assert!(terminal.account_loading);
+        let (message, is_error) = terminal.order_status.as_ref().expect("order status");
+        assert!(*is_error);
+        assert!(message.contains("Open orders are stale"));
+        assert!(message.contains("refresh before cancelling orders"));
+    }
+
+    #[test]
+    fn execute_cancel_does_not_treat_other_dex_open_orders_as_fresh() {
+        let mut terminal = terminal_with_cancelable_order();
+        let now_ms = TradingTerminal::now_ms();
+        let stale_ms = now_ms.saturating_sub(AccountData::POSITION_ACTION_MAX_AGE_MS + 1_000);
+        let account_data = terminal.account_data.as_mut().expect("account data");
+        account_data.fetched_at_ms = stale_ms;
+        account_data.mark_open_orders_fetched_at_for_dex("flx", now_ms);
 
         let _task = terminal.execute_cancel("BTC", 42);
 

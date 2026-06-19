@@ -134,7 +134,7 @@ impl TradingTerminal {
                         data.open_orders.retain(|o| !o.coin.starts_with(&prefix));
                     }
                     data.open_orders.extend(orders);
-                    data.mark_open_orders_fetched_at(Self::now_ms());
+                    data.mark_open_orders_fetched_at_for_dex(&dex, Self::now_ms());
                     account_data_changed = true;
                     orders_changed = true;
                 }

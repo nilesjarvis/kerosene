@@ -2,6 +2,8 @@
 // Account Data Completeness
 // ---------------------------------------------------------------------------
 
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountDataSection {
     Positions,
@@ -27,6 +29,7 @@ pub struct AccountDataCompleteness {
     pub fees_complete: bool,
     pub positions_fetched_at_ms: Option<u64>,
     pub open_orders_fetched_at_ms: Option<u64>,
+    pub open_orders_fetched_at_ms_by_dex: HashMap<String, u64>,
     warnings: Vec<(AccountDataSection, String)>,
 }
 
@@ -41,6 +44,7 @@ impl Default for AccountDataCompleteness {
             fees_complete: true,
             positions_fetched_at_ms: None,
             open_orders_fetched_at_ms: None,
+            open_orders_fetched_at_ms_by_dex: HashMap::new(),
             warnings: Vec::new(),
         }
     }

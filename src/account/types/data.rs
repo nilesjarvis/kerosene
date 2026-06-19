@@ -55,6 +55,7 @@ impl AccountData {
             .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
     }
 
+    #[cfg(test)]
     pub fn open_order_action_snapshot_age_ms(&self, now_ms: u64) -> Option<u64> {
         now_ms.checked_sub(
             self.completeness
@@ -63,8 +64,39 @@ impl AccountData {
         )
     }
 
+    #[cfg(test)]
     pub fn is_fresh_for_open_order_action(&self, now_ms: u64) -> bool {
         self.open_order_action_snapshot_age_ms(now_ms)
+            .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
+    }
+
+    pub fn open_order_action_snapshot_age_ms_for_symbol(
+        &self,
+        symbol_key: &str,
+        now_ms: u64,
+    ) -> Option<u64> {
+        let dex = open_orders_dex_key_from_symbol(symbol_key);
+        let dex_fetched_at_ms = self
+            .completeness
+            .open_orders_fetched_at_ms_by_dex
+            .get(dex.as_str())
+            .copied();
+        let fetched_at_ms = match (
+            dex_fetched_at_ms,
+            self.completeness.open_orders_fetched_at_ms,
+        ) {
+            (Some(dex_fetched_at_ms), Some(snapshot_fetched_at_ms)) => {
+                dex_fetched_at_ms.max(snapshot_fetched_at_ms)
+            }
+            (Some(dex_fetched_at_ms), None) => dex_fetched_at_ms,
+            (None, Some(snapshot_fetched_at_ms)) => snapshot_fetched_at_ms,
+            (None, None) => self.fetched_at_ms,
+        };
+        now_ms.checked_sub(fetched_at_ms)
+    }
+
+    pub fn is_fresh_for_open_order_action_for_symbol(&self, symbol_key: &str, now_ms: u64) -> bool {
+        self.open_order_action_snapshot_age_ms_for_symbol(symbol_key, now_ms)
             .is_some_and(|age| age <= Self::POSITION_ACTION_MAX_AGE_MS)
     }
 
@@ -76,8 +108,15 @@ impl AccountData {
         self.fetched_at_ms = fetched_at_ms;
     }
 
+    #[cfg(test)]
     pub fn mark_open_orders_fetched_at(&mut self, fetched_at_ms: u64) {
         self.completeness.open_orders_fetched_at_ms = Some(fetched_at_ms);
+    }
+
+    pub fn mark_open_orders_fetched_at_for_dex(&mut self, dex: &str, fetched_at_ms: u64) {
+        self.completeness
+            .open_orders_fetched_at_ms_by_dex
+            .insert(normalized_open_orders_dex_key(dex), fetched_at_ms);
     }
 
     /// Whether this account has portfolio margin enabled.
@@ -199,6 +238,17 @@ impl AccountData {
 
         None
     }
+}
+
+fn open_orders_dex_key_from_symbol(symbol_key: &str) -> String {
+    symbol_key
+        .split_once(':')
+        .map(|(dex, _)| normalized_open_orders_dex_key(dex))
+        .unwrap_or_default()
+}
+
+fn normalized_open_orders_dex_key(dex: &str) -> String {
+    dex.trim().to_ascii_lowercase()
 }
 
 fn parse_account_number(raw: &str) -> Option<f64> {
