@@ -12,7 +12,10 @@ mod response;
 mod tests;
 
 pub use model::{Candle, de_string_or_number_to_f64};
-pub use normalize::{is_valid_candle, normalize_candles};
+pub use normalize::{
+    candles_have_interior_gap, is_valid_candle, normalize_candles, open_time_starts_after_gap,
+    trailing_contiguous_run_start,
+};
 use response::parse_candle_response;
 
 const HYDROMANCER_API_URL: &str = "https://api.hydromancer.xyz/info";

@@ -1,4 +1,7 @@
-use crate::api::{Candle, ExchangeSymbolsPayload, WatchlistContext, normalize_candles};
+use crate::api::{
+    Candle, ExchangeSymbolsPayload, WatchlistContext, candles_have_interior_gap, normalize_candles,
+    trailing_contiguous_run_start,
+};
 use crate::config::{self, ChartBackfillSource};
 use crate::timeframe::Timeframe;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -44,7 +47,18 @@ pub(crate) fn load_fresh_candles(
     timeframe: Timeframe,
     now_ms: u64,
 ) -> Result<Option<Vec<Candle>>, String> {
-    let Some(candles) = load_candle_snapshot(source, symbol, timeframe.api_str())? else {
+    load_fresh_candles_from_dir(&cache_root()?, source, symbol, timeframe, now_ms)
+}
+
+fn load_fresh_candles_from_dir(
+    root: &Path,
+    source: ChartBackfillSource,
+    symbol: &str,
+    timeframe: Timeframe,
+    now_ms: u64,
+) -> Result<Option<Vec<Candle>>, String> {
+    let Some(candles) = load_candle_snapshot_from_dir(root, source, symbol, timeframe.api_str())?
+    else {
         return Ok(None);
     };
     let Some(last_time) = candles.last().map(|candle| candle.open_time) else {
@@ -53,7 +67,16 @@ pub(crate) fn load_fresh_candles(
     if now_ms.saturating_sub(last_time) > timeframe.lookback_ms() {
         return Ok(None);
     }
-    Ok(Some(candles))
+    // Never surface a snapshot across an interior gap: a stale block stitched to
+    // a fresh tail (e.g. by a sleep/wake live append) would otherwise be served
+    // and re-saved on every boot, rendering as a phantom price jump. Serve only
+    // the trailing contiguous run; older history is repopulated by backfill.
+    let mut candles = candles;
+    let start = trailing_contiguous_run_start(&candles, timeframe.duration_ms());
+    if start > 0 {
+        candles.drain(0..start);
+    }
+    Ok((!candles.is_empty()).then_some(candles))
 }
 
 pub(crate) fn load_candles_for_range(
@@ -189,16 +212,14 @@ pub(crate) fn save_watchlist_contexts(
     Ok(())
 }
 
-fn load_candle_snapshot(
+fn load_candle_snapshot_from_dir(
+    root: &Path,
     source: ChartBackfillSource,
     symbol: &str,
     interval: &str,
 ) -> Result<Option<Vec<Candle>>, String> {
-    let Some(cached) = load_json::<Vec<Candle>>(
-        &cache_root()?,
-        "candles",
-        &candle_key(source, symbol, interval),
-    )?
+    let Some(cached) =
+        load_json::<Vec<Candle>>(root, "candles", &candle_key(source, symbol, interval))?
     else {
         return Ok(None);
     };
@@ -236,7 +257,19 @@ fn load_candles_for_range_from_dir(
         .into_iter()
         .filter(|candle| candle.close_time >= start_time && candle.open_time <= end_time)
         .collect::<Vec<_>>();
-    Ok((!subset.is_empty()).then_some(subset))
+    if subset.is_empty() {
+        return Ok(None);
+    }
+    // `candles_cover_range` only checks the endpoints, so a cached snapshot with
+    // an interior hole can still satisfy a spanning range. Miss in that case so
+    // the caller fetches the gap from the network instead of serving a gapped
+    // subset that would be merged straight into the chart.
+    if let Some(interval_ms) = candle_interval_ms(interval)
+        && candles_have_interior_gap(&subset, interval_ms)
+    {
+        return Ok(None);
+    }
+    Ok(Some(subset))
 }
 
 fn save_candle_snapshot(
@@ -250,7 +283,17 @@ fn save_candle_snapshot(
     if candles.is_empty() {
         return Ok(());
     }
-    let complete_through_ms = candles.last().map(|candle| candle.open_time);
+    // Only claim completeness through the last candle when the snapshot is
+    // actually contiguous; a gapped vec must not certify coverage across its
+    // hole (see `candles_cover_range`).
+    let contiguous = candle_interval_ms(interval)
+        .map(|interval_ms| !candles_have_interior_gap(&candles, interval_ms))
+        .unwrap_or(true);
+    let complete_through_ms = if contiguous {
+        candles.last().map(|candle| candle.open_time)
+    } else {
+        None
+    };
     save_json(
         &root,
         "candles",
@@ -866,6 +909,124 @@ mod tests {
         )
         .expect("range load succeeds");
         assert!(missing.is_none());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// A snapshot whose stale head is stitched to a fresh tail (the reported
+    /// 1m HYPE "4d ago -> 3h ago" gap). The recent tail is within lookback, so
+    /// the old gate would serve the whole gapped vec; the fix serves only the
+    /// trailing contiguous run.
+    fn gapped_hype_snapshot(now_ms: u64) -> Vec<Candle> {
+        let four_days = 4 * 24 * 60 * 60 * 1_000;
+        let old_start = now_ms - four_days;
+        let recent_start = now_ms - 180_000;
+        vec![
+            Candle::test_flat(old_start, 60.0),
+            Candle::test_flat(old_start + 60_000, 60.0),
+            Candle::test_flat(old_start + 120_000, 60.0),
+            Candle::test_flat(recent_start, 70.0),
+            Candle::test_flat(recent_start + 60_000, 70.0),
+            Candle::test_flat(recent_start + 120_000, 70.0),
+        ]
+    }
+
+    #[test]
+    fn load_fresh_candles_serves_only_trailing_run_across_interior_gap() {
+        let root = test_cache_dir("fresh-gap");
+        let now_ms = 10_000_000_000;
+        save_candle_snapshot(
+            root.clone(),
+            ChartBackfillSource::Hyperliquid,
+            "HYPE",
+            "1m",
+            gapped_hype_snapshot(now_ms),
+        )
+        .expect("snapshot save succeeds");
+
+        let served = load_fresh_candles_from_dir(
+            &root,
+            ChartBackfillSource::Hyperliquid,
+            "HYPE",
+            Timeframe::M1,
+            now_ms,
+        )
+        .expect("load succeeds")
+        .expect("recent tail is fresh");
+
+        // Only the recent contiguous block survives; the phantom $60 head is gone.
+        assert_eq!(served.len(), 3);
+        assert_eq!(served[0].open_time, now_ms - 180_000);
+        assert!(served.iter().all(|candle| candle.close == 70.0));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn candle_range_load_misses_across_interior_gap() {
+        let root = test_cache_dir("range-gap");
+        let now_ms = 10_000_000_000;
+        let candles = gapped_hype_snapshot(now_ms);
+        let span_start = candles[0].open_time;
+        save_candle_snapshot(
+            root.clone(),
+            ChartBackfillSource::Hyperliquid,
+            "HYPE",
+            "1m",
+            candles,
+        )
+        .expect("snapshot save succeeds");
+
+        // Endpoints are covered, but the range spans the hole — it must MISS so
+        // the caller refetches instead of serving a gapped subset.
+        let spanning = load_candles_for_range_from_dir(
+            &root,
+            ChartBackfillSource::Hyperliquid,
+            "HYPE",
+            "1m",
+            span_start,
+            now_ms,
+        )
+        .expect("range load succeeds");
+        assert!(spanning.is_none());
+
+        // A range wholly inside the recent block is still served.
+        let recent_only = load_candles_for_range_from_dir(
+            &root,
+            ChartBackfillSource::Hyperliquid,
+            "HYPE",
+            "1m",
+            now_ms - 180_000,
+            now_ms,
+        )
+        .expect("range load succeeds")
+        .expect("recent block is covered");
+        assert_eq!(recent_only.len(), 3);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn gapped_snapshot_is_not_certified_complete_through_last() {
+        let root = test_cache_dir("complete-gap");
+        let now_ms = 10_000_000_000;
+        save_candle_snapshot(
+            root.clone(),
+            ChartBackfillSource::Hyperliquid,
+            "HYPE",
+            "1m",
+            gapped_hype_snapshot(now_ms),
+        )
+        .expect("snapshot save succeeds");
+
+        let cached = load_json::<Vec<Candle>>(
+            &root,
+            "candles",
+            &candle_key(ChartBackfillSource::Hyperliquid, "HYPE", "1m"),
+        )
+        .expect("load succeeds")
+        .expect("snapshot exists");
+        assert_eq!(cached.complete_through_ms, None);
 
         let _ = fs::remove_dir_all(root);
     }

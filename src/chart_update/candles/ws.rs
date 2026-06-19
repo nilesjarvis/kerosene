@@ -1,4 +1,4 @@
-use crate::api::{Candle, is_valid_candle};
+use crate::api::{Candle, is_valid_candle, open_time_starts_after_gap};
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::ChartId;
@@ -69,28 +69,54 @@ impl TradingTerminal {
         let should_flash = is_valid_candle(&candle);
         let mut refresh_funding_ids = Vec::new();
         let mut secondary_updated = false;
+        let mut primary_reload_ids = Vec::new();
+        let mut secondary_reload_ids = Vec::new();
 
         for (chart_id, instance) in &mut self.charts {
+            let interval_matches = instance.interval.api_str() == interval;
+            let interval_ms = instance.interval.duration_ms();
             if matches!(instance.chart.status, ChartStatus::Loaded)
                 && instance.symbol == symbol
-                && instance.interval.api_str() == interval
+                && interval_matches
             {
-                let previous_close = instance.chart.candles.last().map(|candle| candle.close);
-                let next_close = candle.close;
-                instance.chart.push_candle(candle.clone());
-                if should_flash {
-                    instance.track_last_price_update(previous_close, next_close, now_ms);
-                }
-                if instance.macro_indicators.show_funding_rate {
-                    refresh_funding_ids.push(*chart_id);
+                if instance.chart.candles.last().is_some_and(|last| {
+                    open_time_starts_after_gap(last.open_time, candle.open_time, interval_ms)
+                }) {
+                    // A live candle that jumps past the tail (reconnect after a
+                    // sleep/quiet outage) means missed candles. Blind-appending
+                    // would splice a phantom gap that then persists; reload to
+                    // refetch a contiguous window instead.
+                    primary_reload_ids.push(*chart_id);
+                } else {
+                    let previous_close = instance.chart.candles.last().map(|candle| candle.close);
+                    let next_close = candle.close;
+                    instance.chart.push_candle(candle.clone());
+                    if should_flash {
+                        instance.track_last_price_update(previous_close, next_close, now_ms);
+                    }
+                    if instance.macro_indicators.show_funding_rate {
+                        refresh_funding_ids.push(*chart_id);
+                    }
                 }
             }
             if matches!(instance.chart.status, ChartStatus::Loaded)
                 && instance.secondary_symbol.as_deref() == Some(symbol.as_str())
-                && instance.interval.api_str() == interval
+                && interval_matches
             {
-                instance.chart.push_secondary_candle(candle.clone());
-                secondary_updated = true;
+                let secondary_last_open = instance
+                    .chart
+                    .secondary_series
+                    .as_ref()
+                    .and_then(|series| series.candles.last())
+                    .map(|candle| candle.open_time);
+                if secondary_last_open.is_some_and(|last| {
+                    open_time_starts_after_gap(last, candle.open_time, interval_ms)
+                }) {
+                    secondary_reload_ids.push(*chart_id);
+                } else {
+                    instance.chart.push_secondary_candle(candle.clone());
+                    secondary_updated = true;
+                }
             }
         }
 
@@ -98,14 +124,21 @@ impl TradingTerminal {
             self.cache_secondary_candles_for(&symbol, &interval);
         }
 
-        if !refresh_funding_ids.is_empty() {
-            return Task::batch(
-                refresh_funding_ids
-                    .into_iter()
-                    .map(|chart_id| self.maybe_fetch_chart_funding(chart_id)),
-            );
+        let mut tasks = Vec::new();
+        for chart_id in primary_reload_ids {
+            tasks.push(self.reload_chart_candles(chart_id));
         }
-        Task::none()
+        for chart_id in secondary_reload_ids {
+            tasks.push(self.reload_chart_secondary_candles(chart_id));
+        }
+        for chart_id in refresh_funding_ids {
+            tasks.push(self.maybe_fetch_chart_funding(chart_id));
+        }
+        if tasks.is_empty() {
+            Task::none()
+        } else {
+            Task::batch(tasks)
+        }
     }
 
     pub(in crate::chart_update) fn apply_chart_ws_candle_lagged(

@@ -28,12 +28,14 @@ impl TradingTerminal {
         self.clear_chart_liquidation_pending_request_state(id);
 
         if let Some(instance) = self.charts.get_mut(&id) {
-            if instance.chart.candles.is_empty() {
-                instance.chart.status = ChartStatus::Loading;
-            } else {
-                instance.chart.status = ChartStatus::Loaded;
-            }
+            // Clear before refetching so the reload REPLACES the series rather
+            // than merging a fresh window onto a stale block — merging would only
+            // shrink an interior gap, not heal it. The fresh fetch repopulates
+            // from scratch and older history is restored by backfill.
+            instance.chart.candles.clear();
+            instance.chart.status = ChartStatus::Loading;
             instance.candle_fetch_error = None;
+            instance.candle_backfill_exhausted = false;
             Self::clear_chart_market_display_state(instance);
             instance.chart.candle_cache.clear();
         }

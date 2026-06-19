@@ -57,5 +57,13 @@ pub(super) fn get_fresh_cached_candles(
     order.retain(|existing| existing != &key);
     order.push_back(key);
 
-    Some(candles.clone())
+    // Mirror the on-disk guard: hand back only the trailing contiguous run so an
+    // interior gap is never re-displayed. The clean chart series overwrites this
+    // entry on the next `cache_candles`, healing the LRU.
+    let mut candles = candles.clone();
+    let start = api::trailing_contiguous_run_start(&candles, timeframe.duration_ms());
+    if start > 0 {
+        candles.drain(0..start);
+    }
+    (!candles.is_empty()).then_some(candles)
 }

@@ -71,6 +71,57 @@ fn ws_candle_update_fans_out_to_matching_chart_instances() {
 }
 
 #[test]
+fn ws_candle_after_large_gap_triggers_reload_instead_of_blind_append() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    // A live candle four hours past the tail — a reconnect after a sleep/quiet
+    // outage. Blind-appending it would splice a persistent phantom gap.
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(3_600_000 + 4 * 3_600_000, 200.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    // The phantom candle was NOT appended; a reload was queued and the stale
+    // series cleared so the refetch replaces rather than stitches.
+    assert!(instance.candle_fetch_request.is_some());
+    assert!(instance.chart.candles.is_empty());
+}
+
+#[test]
+fn ws_candle_one_interval_ahead_appends_without_reload() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.charts.clear();
+
+    let mut chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+    chart.chart.status = ChartStatus::Loaded;
+    chart.chart.set_candles(vec![candle(3_600_000, 100.0)]);
+    terminal.charts.insert(1, chart);
+
+    // The very next candle (exactly one interval later) is normal — append it.
+    let _task = terminal.apply_chart_ws_candle_update(
+        1,
+        "BTC".to_string(),
+        "1h".to_string(),
+        source_context(&terminal, None),
+        candle(7_200_000, 101.0),
+    );
+
+    let instance = terminal.charts.get(&1).expect("chart");
+    assert!(instance.candle_fetch_request.is_none());
+    assert_eq!(last_close(&terminal, 1), Some(101.0));
+}
+
+#[test]
 fn ws_candle_lagged_queues_reload_for_matching_chart_instances() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.charts.clear();

@@ -13,7 +13,8 @@ mod watchlist;
 
 pub use calendar::{CalendarEvent, fetch_economic_calendar};
 pub use candles::{
-    Candle, fetch_candles, fetch_chart_backfill_candles, is_valid_candle, normalize_candles,
+    Candle, candles_have_interior_gap, fetch_candles, fetch_chart_backfill_candles,
+    is_valid_candle, normalize_candles, open_time_starts_after_gap, trailing_contiguous_run_start,
 };
 pub(crate) use chart_asset_context::fetch_chart_asset_context;
 pub use exchange_symbols::{
