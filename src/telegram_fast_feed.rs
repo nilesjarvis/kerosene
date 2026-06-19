@@ -252,18 +252,50 @@ impl fmt::Debug for RedactedPrivateChannelCount {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct FastChannelIdentity {
     key: String,
     title: String,
     cursor_generation: FastCursorGeneration,
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for FastChannelIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let private = telegram_private_channel_peer_id_from_key(&self.key).is_some();
+        let key = if private {
+            "<private>"
+        } else {
+            self.key.as_str()
+        };
+        let title = if private {
+            "<redacted>"
+        } else {
+            self.title.as_str()
+        };
+
+        f.debug_struct("FastChannelIdentity")
+            .field("key", &key)
+            .field("title", &title)
+            .field("cursor_generation", &self.cursor_generation)
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 struct FastChannelTarget {
     identity: FastChannelIdentity,
     profile: TelegramChannelProfile,
     peer_ref: PeerRef,
+}
+
+impl fmt::Debug for FastChannelTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FastChannelTarget")
+            .field("identity", &self.identity)
+            .field("profile", &self.profile)
+            .field("peer_ref", &"<redacted>")
+            .finish()
+    }
 }
 
 enum PendingAuth {
@@ -1620,6 +1652,34 @@ mod tests {
         assert!(rendered.contains("reconnect_nonce: 7"));
         assert!(!rendered.contains("42"));
         assert!(!rendered.contains("Private Macro"));
+    }
+
+    #[test]
+    fn fast_channel_target_debug_redacts_private_identity_and_peer_ref() {
+        let identity = FastChannelIdentity {
+            key: "private:42".to_string(),
+            title: "Private Macro".to_string(),
+            cursor_generation: FastCursorGeneration {
+                global: 1,
+                channel: 2,
+            },
+        };
+        let target = FastChannelTarget {
+            profile: telegram_channel_profile_from_title(&identity.key, Some(&identity.title)),
+            identity,
+            peer_ref: PeerRef {
+                id: PeerId::channel_unchecked(42),
+                auth: grammers_session::types::PeerAuth::from_hash(98765),
+            },
+        };
+
+        let rendered = format!("{target:?}");
+
+        assert!(rendered.contains("<private>"));
+        assert!(rendered.contains("peer_ref"));
+        for secret in ["private:42", "Private Macro", "98765"] {
+            assert!(!rendered.contains(secret), "debug leaked {secret}");
+        }
     }
 
     #[test]
