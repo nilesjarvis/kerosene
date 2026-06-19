@@ -178,7 +178,8 @@ impl TradingTerminal {
             | Message::ChartHudOrderSoundVolumeChanged(_)
             | Message::ImportChartHudOrderSound
             | Message::ChartHudOrderSoundImported(_)
-            | Message::TestChartHudOrderSound) => {
+            | Message::TestChartHudOrderSound
+            | Message::ToggleChartHudUiSounds(_)) => {
                 return self.update_sound_preferences(message);
             }
             Message::ReadDataProviderChanged(provider) if self.read_data_provider != provider => {
@@ -478,5 +479,17 @@ mod tests {
         );
         assert!(!rendered.contains("/home/alice"));
         assert!(!rendered.contains("font-secret"));
+    }
+
+    #[test]
+    fn root_update_routes_hud_ui_sound_toggle_to_sound_preferences() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.chart_hud_ui_sounds = true;
+        terminal.config_save_due_at = None;
+
+        let _task = terminal.update(Message::ToggleChartHudUiSounds(false));
+
+        assert!(!terminal.chart_hud_ui_sounds);
+        assert!(terminal.config_save_due_at.is_some());
     }
 }
