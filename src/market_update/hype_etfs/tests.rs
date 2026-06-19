@@ -100,6 +100,26 @@ fn failed_refresh_does_not_mark_hype_etfs_fresh() {
 }
 
 #[test]
+fn hype_etf_error_redacts_state_error() {
+    let (mut terminal, _) = TradingTerminal::boot();
+    terminal.hype_etfs.loading = true;
+    terminal.hype_etfs.refresh_request_id = 1;
+
+    let _task = terminal.update_hype_etfs_market(Message::HypeEtfsLoaded(
+        1,
+        Box::new(Err(
+            "ETF fetch failed: api_key=etf-secret signature=sig-secret".to_string(),
+        )),
+    ));
+
+    let error = terminal.hype_etfs.error.as_deref().expect("state error");
+    assert!(error.contains("api_key=<redacted>"));
+    assert!(error.contains("signature=<redacted>"));
+    assert!(!error.contains("etf-secret"));
+    assert!(!error.contains("sig-secret"));
+}
+
+#[test]
 fn hype_etf_tick_refresh_is_ignored_when_pane_is_closed() {
     let (mut terminal, _) = TradingTerminal::boot();
     let (panes, _) = pane_grid::State::new(PaneKind::Chart(0));

@@ -1,5 +1,6 @@
 use crate::api::fetch_hype_etfs;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 
@@ -42,7 +43,7 @@ impl TradingTerminal {
                         self.hype_etfs.error = None;
                     }
                     Err(error) => {
-                        self.hype_etfs.error = Some(error);
+                        self.hype_etfs.error = Some(redact_sensitive_response_text(&error));
                     }
                 }
                 Task::none()

@@ -1,5 +1,6 @@
 use crate::api::fetch_hype_unstaking_queue;
 use crate::app_state::TradingTerminal;
+use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
 
@@ -63,7 +64,8 @@ impl TradingTerminal {
                         self.hype_unstaking_queue.error = None;
                     }
                     Err(error) => {
-                        self.hype_unstaking_queue.error = Some(error);
+                        self.hype_unstaking_queue.error =
+                            Some(redact_sensitive_response_text(&error));
                     }
                 }
                 Task::none()
@@ -269,6 +271,28 @@ mod tests {
 
         assert!(terminal.hype_unstaking_queue.loading);
         assert_eq!(terminal.hype_unstaking_queue.refresh_request_id, 2);
+    }
+
+    #[test]
+    fn hype_unstaking_queue_error_redacts_state_error() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.hype_unstaking_queue.loading = true;
+        terminal.hype_unstaking_queue.refresh_request_id = 1;
+
+        let _task = terminal.update_hype_unstaking_queue_market(Message::HypeUnstakingQueueLoaded(
+            1,
+            Box::new(Err(
+                "unstaking fetch failed: auth_token=unstaking-secret".to_string()
+            )),
+        ));
+
+        let error = terminal
+            .hype_unstaking_queue
+            .error
+            .as_deref()
+            .expect("state error");
+        assert!(error.contains("auth_token=<redacted>"));
+        assert!(!error.contains("unstaking-secret"));
     }
 
     #[test]
