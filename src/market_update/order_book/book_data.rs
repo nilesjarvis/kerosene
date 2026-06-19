@@ -138,7 +138,10 @@ impl TradingTerminal {
                     }
                 }
                 Err(error) => {
-                    let message = format!("Order book load failed: {error}");
+                    let message = format!(
+                        "Order book load failed: {}",
+                        helpers::redact_sensitive_response_text(&error)
+                    );
                     let should_toast = !inst.book_failure_toasted;
                     inst.book_failure_toasted = true;
                     inst.book_error = Some(message.clone());

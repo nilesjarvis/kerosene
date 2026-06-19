@@ -199,6 +199,35 @@ fn repeated_load_failures_toast_once_per_streak() {
 }
 
 #[test]
+fn load_failure_redacts_inline_error_and_toast() {
+    let mut terminal = terminal_with_fixed_btc_book(7, 50.0);
+
+    let request_id = mark_pending_book_request(&mut terminal, 7, "BTC", 50.0, (None, None));
+    let _ = terminal.apply_order_book_loaded(
+        request_id,
+        7,
+        "BTC".to_string(),
+        50.0,
+        (None, None),
+        Err("l2Book failed: api_key=key-secret signature=sig-secret".to_string()),
+    );
+
+    let inst = terminal
+        .order_books
+        .get(&7)
+        .expect("order book instance should exist");
+    let error = inst.book_error.as_ref().expect("book error");
+    assert!(error.contains("api_key=<redacted>"));
+    assert!(error.contains("signature=<redacted>"));
+    assert!(!error.contains("key-secret"));
+    assert!(!error.contains("sig-secret"));
+
+    let toast = terminal.toasts.last().expect("toast");
+    assert!(toast.is_error);
+    assert_eq!(toast.message, *error);
+}
+
+#[test]
 fn successful_load_ends_the_failure_streak() {
     // Tick chosen to sit inside the populated book's option set, so the
     // success path does not re-seed it and later loads still match.
