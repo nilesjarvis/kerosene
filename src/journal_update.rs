@@ -459,56 +459,14 @@ impl TradingTerminal {
         now_ms: u64,
         timeframe: Option<crate::timeframe::Timeframe>,
     ) -> Result<journal::JournalTradeSnapshotRequest, String> {
-        let account_key = self.active_journal_account_key();
-        let source = self.chart_backfill_source;
-        let rdg = self.read_data_provider_generation;
-        let hkg = self.hydromancer_key_generation;
-
-        let fill_based = |addr: String| match timeframe {
-            Some(tf) => journal::snapshot_request_for_timeframe(
-                account_key.clone(),
-                addr,
-                trade,
-                source,
-                rdg,
-                hkg,
-                self.journal.snapshot_coverage,
-                now_ms,
-                tf,
-            ),
-            None => journal::initial_snapshot_request(
-                account_key.clone(),
-                addr,
-                trade,
-                source,
-                rdg,
-                hkg,
-                self.journal.snapshot_coverage,
-                now_ms,
-            ),
-        };
-        let live = |addr: String| match timeframe {
-            Some(tf) => journal::live_position_snapshot_request_for_timeframe(
-                account_key.clone(),
-                addr,
-                trade,
-                source,
-                rdg,
-                hkg,
-                self.journal.snapshot_coverage,
-                now_ms,
-                tf,
-            ),
-            None => journal::live_position_snapshot_request(
-                account_key.clone(),
-                addr,
-                trade,
-                source,
-                rdg,
-                hkg,
-                self.journal.snapshot_coverage,
-                now_ms,
-            ),
+        let settings = journal::JournalSnapshotRequestSettings {
+            account_key: self.active_journal_account_key(),
+            address,
+            source: self.chart_backfill_source,
+            read_data_provider_generation: self.read_data_provider_generation,
+            hydromancer_key_generation: self.hydromancer_key_generation,
+            coverage: self.journal.snapshot_coverage,
+            now_ms,
         };
 
         if has_fills {
@@ -517,9 +475,18 @@ impl TradingTerminal {
             // falling back to a live-position window — the live render path
             // keys on "no fills", so falling back here would build a recent
             // window but render it with fabricated entry/exit boundaries.
-            fill_based(address)
+            match timeframe {
+                Some(tf) => journal::snapshot_request_for_timeframe(settings, trade, tf),
+                None => journal::initial_snapshot_request(settings, trade),
+            }
         } else {
-            live(address).map_err(|reason| {
+            let result = match timeframe {
+                Some(tf) => {
+                    journal::live_position_snapshot_request_for_timeframe(settings, trade, tf)
+                }
+                None => journal::live_position_snapshot_request(settings, trade),
+            };
+            result.map_err(|reason| {
                 // A closed trade with no fills can never be a live position;
                 // keep the historical attribution-missing message.
                 if trade.end_time.is_some() {

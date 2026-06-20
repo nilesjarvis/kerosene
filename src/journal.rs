@@ -19,9 +19,9 @@ pub use current_positions::{
     reconcile_current_position_trades,
 };
 pub use snapshot::{
-    JournalSnapshotCoverage, JournalTradeSnapshot, JournalTradeSnapshotMetrics,
-    JournalTradeSnapshotRequest, JournalTradeSnapshotStatus, build_journal_trade_snapshot,
-    initial_snapshot_request, live_position_snapshot_request,
+    JournalSnapshotCoverage, JournalSnapshotRequestSettings, JournalTradeSnapshot,
+    JournalTradeSnapshotMetrics, JournalTradeSnapshotRequest, JournalTradeSnapshotStatus,
+    build_journal_trade_snapshot, initial_snapshot_request, live_position_snapshot_request,
     live_position_snapshot_request_for_timeframe, next_snapshot_request,
     snapshot_request_for_timeframe, unavailable_snapshot,
 };

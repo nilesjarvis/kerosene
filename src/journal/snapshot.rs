@@ -28,8 +28,9 @@ const SNAPSHOT_LADDER: &[Timeframe] = &[
     Timeframe::W1,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JournalSnapshotCoverage {
+    #[default]
     TwoX,
     FourX,
     EightX,
@@ -55,12 +56,6 @@ impl JournalSnapshotCoverage {
     }
 }
 
-impl Default for JournalSnapshotCoverage {
-    fn default() -> Self {
-        Self::TwoX
-    }
-}
-
 #[derive(Clone, PartialEq, Eq)]
 pub struct JournalTradeSnapshotRequest {
     pub account_key: Option<String>,
@@ -78,6 +73,38 @@ pub struct JournalTradeSnapshotRequest {
     pub is_open: bool,
     pub start_ms: u64,
     pub end_ms: u64,
+}
+
+#[derive(Clone)]
+pub struct JournalSnapshotRequestSettings {
+    pub account_key: Option<String>,
+    pub address: String,
+    pub source: ChartBackfillSource,
+    pub read_data_provider_generation: u64,
+    pub hydromancer_key_generation: u64,
+    pub coverage: JournalSnapshotCoverage,
+    pub now_ms: u64,
+}
+
+impl JournalSnapshotRequestSettings {
+    fn into_context(
+        self,
+        trade_start_ms: u64,
+        trade_end_ms: u64,
+        is_open: bool,
+    ) -> SnapshotRequestContext {
+        SnapshotRequestContext {
+            account_key: self.account_key,
+            address: self.address,
+            source: self.source,
+            read_data_provider_generation: self.read_data_provider_generation,
+            hydromancer_key_generation: self.hydromancer_key_generation,
+            coverage: self.coverage,
+            trade_start_ms,
+            trade_end_ms,
+            is_open,
+        }
+    }
 }
 
 impl fmt::Debug for JournalTradeSnapshotRequest {
@@ -154,14 +181,8 @@ pub enum JournalTradeSnapshotStatus {
 }
 
 pub fn initial_snapshot_request(
-    account_key: Option<String>,
-    address: String,
+    settings: JournalSnapshotRequestSettings,
     trade: &AggregatedTrade,
-    source: ChartBackfillSource,
-    read_data_provider_generation: u64,
-    hydromancer_key_generation: u64,
-    coverage: JournalSnapshotCoverage,
-    now_ms: u64,
 ) -> Result<JournalTradeSnapshotRequest, String> {
     if is_spot_symbol(&trade.coin) {
         return Err("Chart snapshots are currently available for perp trades only.".to_string());
@@ -172,20 +193,12 @@ pub fn initial_snapshot_request(
         );
     }
 
+    let coverage = settings.coverage;
+    let now_ms = settings.now_ms;
     let trade_end_ms = trade.end_time.unwrap_or(now_ms).max(trade.start_time);
     let ladder_index = initial_ladder_index(trade.start_time, trade_end_ms, coverage);
     snapshot_request_for_ladder_index(
-        SnapshotRequestContext {
-            account_key,
-            address,
-            source,
-            read_data_provider_generation,
-            hydromancer_key_generation,
-            coverage,
-            trade_start_ms: trade.start_time,
-            trade_end_ms,
-            is_open: trade.end_time.is_none(),
-        },
+        settings.into_context(trade.start_time, trade_end_ms, trade.end_time.is_none()),
         trade,
         ladder_index,
     )
@@ -220,46 +233,25 @@ fn validate_live_position(trade: &AggregatedTrade) -> Result<(), String> {
 /// synthetic current-position trade). The true open time is unknown, so a fixed
 /// recent window is charted with the entry level marked.
 pub fn live_position_snapshot_request(
-    account_key: Option<String>,
-    address: String,
+    settings: JournalSnapshotRequestSettings,
     trade: &AggregatedTrade,
-    source: ChartBackfillSource,
-    read_data_provider_generation: u64,
-    hydromancer_key_generation: u64,
-    coverage: JournalSnapshotCoverage,
-    now_ms: u64,
 ) -> Result<JournalTradeSnapshotRequest, String> {
     validate_live_position(trade)?;
+    let coverage = settings.coverage;
+    let now_ms = settings.now_ms;
     let trade_start_ms = now_ms.saturating_sub(LIVE_POSITION_LOOKBACK_MS);
     let ladder_index = initial_ladder_index(trade_start_ms, now_ms, coverage);
     snapshot_request_for_ladder_index(
-        SnapshotRequestContext {
-            account_key,
-            address,
-            source,
-            read_data_provider_generation,
-            hydromancer_key_generation,
-            coverage,
-            trade_start_ms,
-            trade_end_ms: now_ms,
-            is_open: true,
-        },
+        settings.into_context(trade_start_ms, now_ms, true),
         trade,
         ladder_index,
     )
 }
 
 /// Live-position variant pinned to a specific timeframe (detail-view selector).
-#[allow(clippy::too_many_arguments)]
 pub fn live_position_snapshot_request_for_timeframe(
-    account_key: Option<String>,
-    address: String,
+    settings: JournalSnapshotRequestSettings,
     trade: &AggregatedTrade,
-    source: ChartBackfillSource,
-    read_data_provider_generation: u64,
-    hydromancer_key_generation: u64,
-    coverage: JournalSnapshotCoverage,
-    now_ms: u64,
     timeframe: Timeframe,
 ) -> Result<JournalTradeSnapshotRequest, String> {
     validate_live_position(trade)?;
@@ -271,21 +263,12 @@ pub fn live_position_snapshot_request_for_timeframe(
     // request tens of thousands of candles; coarse timeframes still span the
     // full lookback. (The auto-ladder request is already bounded by
     // initial_ladder_index, but an explicitly pinned timeframe is not.)
+    let now_ms = settings.now_ms;
     let lookback =
         LIVE_POSITION_LOOKBACK_MS.min(timeframe.duration_ms().saturating_mul(SNAPSHOT_MAX_CANDLES));
     let trade_start_ms = now_ms.saturating_sub(lookback);
     snapshot_request_for_ladder_index(
-        SnapshotRequestContext {
-            account_key,
-            address,
-            source,
-            read_data_provider_generation,
-            hydromancer_key_generation,
-            coverage,
-            trade_start_ms,
-            trade_end_ms: now_ms,
-            is_open: true,
-        },
+        settings.into_context(trade_start_ms, now_ms, true),
         trade,
         ladder_index,
     )
@@ -293,16 +276,9 @@ pub fn live_position_snapshot_request_for_timeframe(
 
 /// Build a snapshot request pinned to a specific timeframe (for the detail-view
 /// 1m / 5m / 1h selector), rather than the auto-selected ladder rung.
-#[allow(clippy::too_many_arguments)]
 pub fn snapshot_request_for_timeframe(
-    account_key: Option<String>,
-    address: String,
+    settings: JournalSnapshotRequestSettings,
     trade: &AggregatedTrade,
-    source: ChartBackfillSource,
-    read_data_provider_generation: u64,
-    hydromancer_key_generation: u64,
-    coverage: JournalSnapshotCoverage,
-    now_ms: u64,
     timeframe: Timeframe,
 ) -> Result<JournalTradeSnapshotRequest, String> {
     if is_spot_symbol(&trade.coin) {
@@ -318,19 +294,10 @@ pub fn snapshot_request_for_timeframe(
         .iter()
         .position(|candidate| *candidate == timeframe)
         .ok_or_else(|| "Unsupported snapshot timeframe.".to_string())?;
+    let now_ms = settings.now_ms;
     let trade_end_ms = trade.end_time.unwrap_or(now_ms).max(trade.start_time);
     snapshot_request_for_ladder_index(
-        SnapshotRequestContext {
-            account_key,
-            address,
-            source,
-            read_data_provider_generation,
-            hydromancer_key_generation,
-            coverage,
-            trade_start_ms: trade.start_time,
-            trade_end_ms,
-            is_open: trade.end_time.is_none(),
-        },
+        settings.into_context(trade.start_time, trade_end_ms, trade.end_time.is_none()),
         trade,
         ladder_index,
     )
@@ -738,6 +705,23 @@ mod tests {
         }
     }
 
+    fn request_settings(
+        account_key: Option<&str>,
+        address: &str,
+        coverage: JournalSnapshotCoverage,
+        now_ms: u64,
+    ) -> JournalSnapshotRequestSettings {
+        JournalSnapshotRequestSettings {
+            account_key: account_key.map(str::to_string),
+            address: address.to_string(),
+            source: ChartBackfillSource::Hyperliquid,
+            read_data_provider_generation: 0,
+            hydromancer_key_generation: 0,
+            coverage,
+            now_ms,
+        }
+    }
+
     #[test]
     fn request_debug_redacts_account_identifiers() {
         let rendered = format!("{:?}", request());
@@ -791,14 +775,13 @@ mod tests {
         trade.end_time = Some(10_060_000);
 
         let request = initial_snapshot_request(
-            Some("acct".to_string()),
-            "0xabc".to_string(),
+            request_settings(
+                Some("acct"),
+                "0xabc",
+                JournalSnapshotCoverage::default(),
+                10_060_000,
+            ),
             &trade,
-            ChartBackfillSource::Hyperliquid,
-            0,
-            0,
-            JournalSnapshotCoverage::default(),
-            10_060_000,
         )
         .expect("snapshot request");
 
@@ -818,26 +801,14 @@ mod tests {
         trade.end_time = Some(20_060_000);
 
         let two_x = snapshot_request_for_timeframe(
-            None,
-            "0xabc".to_string(),
+            request_settings(None, "0xabc", JournalSnapshotCoverage::TwoX, 20_060_000),
             &trade,
-            ChartBackfillSource::Hyperliquid,
-            0,
-            0,
-            JournalSnapshotCoverage::TwoX,
-            20_060_000,
             Timeframe::M1,
         )
         .expect("2x request");
         let four_x = snapshot_request_for_timeframe(
-            None,
-            "0xabc".to_string(),
+            request_settings(None, "0xabc", JournalSnapshotCoverage::FourX, 20_060_000),
             &trade,
-            ChartBackfillSource::Hyperliquid,
-            0,
-            0,
-            JournalSnapshotCoverage::FourX,
-            20_060_000,
             Timeframe::M1,
         )
         .expect("4x request");
@@ -866,14 +837,13 @@ mod tests {
     fn live_position_request_charts_recent_window_for_open_position() {
         let now = 1_000_000_000_000;
         let request = live_position_snapshot_request(
-            Some("acct".to_string()),
-            "0xabc".to_string(),
+            request_settings(
+                Some("acct"),
+                "0xabc",
+                JournalSnapshotCoverage::default(),
+                now,
+            ),
             &live_trade(),
-            ChartBackfillSource::Hyperliquid,
-            0,
-            0,
-            JournalSnapshotCoverage::default(),
-            now,
         )
         .expect("live request");
 
@@ -887,19 +857,12 @@ mod tests {
     #[test]
     fn live_position_request_rejects_closed_spot_and_missing_entry() {
         let now = 1_000_000_000_000;
-        let source = ChartBackfillSource::Hyperliquid;
 
         // A closed trade is not a live position.
         assert!(
             live_position_snapshot_request(
-                None,
-                "a".to_string(),
+                request_settings(None, "a", JournalSnapshotCoverage::default(), now),
                 &trade(true),
-                source,
-                0,
-                0,
-                JournalSnapshotCoverage::default(),
-                now,
             )
             .is_err()
         );
@@ -908,14 +871,8 @@ mod tests {
         spot.coin = "PURR/USDC".to_string();
         assert!(
             live_position_snapshot_request(
-                None,
-                "a".to_string(),
+                request_settings(None, "a", JournalSnapshotCoverage::default(), now),
                 &spot,
-                source,
-                0,
-                0,
-                JournalSnapshotCoverage::default(),
-                now,
             )
             .is_err()
         );
@@ -924,14 +881,8 @@ mod tests {
         no_entry.avg_entry_price = 0.0;
         assert!(
             live_position_snapshot_request(
-                None,
-                "a".to_string(),
+                request_settings(None, "a", JournalSnapshotCoverage::default(), now),
                 &no_entry,
-                source,
-                0,
-                0,
-                JournalSnapshotCoverage::default(),
-                now,
             )
             .is_err()
         );

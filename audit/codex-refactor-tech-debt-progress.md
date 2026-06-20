@@ -217,3 +217,46 @@ Source prompt: `audit/codex-refactor-tech-debt-long-running-prompt.md`
   functions are journal snapshot API boundaries and need focused tests.
 - Next candidate: either address the journal snapshot clippy findings as a
   scoped refactor batch, or continue the public API/model Debug derive scan.
+
+## Batch 5 — Refactor Journal Snapshot Request Inputs
+
+- Status: validated
+- Scope: `src/journal/snapshot.rs`, `src/journal.rs`, and
+  `src/journal_update.rs`.
+- Motivation: clear the strict clippy findings recorded during broad
+  validation while keeping journal snapshot behavior and redaction boundaries
+  unchanged.
+- Behavior invariant: fill-based, live-position, pinned-timeframe, retry,
+  provider-generation, account-key, address, coverage, and now-time semantics
+  remain unchanged.
+- Evidence: `JournalSnapshotCoverage` had a manual `Default` implementation
+  matching the `TwoX` variant, and the snapshot constructors accepted repeated
+  account/provider/timing fields. The fields are metadata for request
+  construction rather than independent behavior switches.
+- Change summary: derived `Default` for `JournalSnapshotCoverage` with `TwoX`
+  as the default variant; introduced `JournalSnapshotRequestSettings` to carry
+  account/provider/timing metadata; routed all snapshot constructors through the
+  settings value; and updated journal update/tests to use the lower-arity API.
+  `JournalSnapshotRequestSettings` intentionally does not implement `Debug`
+  because it carries account identifiers and wallet addresses before request
+  redaction.
+- Tests/checks run:
+  - `cargo fmt` passed.
+  - `cargo test --package kerosene --bin kerosene journal::snapshot` passed
+    (11 tests).
+  - `cargo test --package kerosene --bin kerosene journal_update::tests` passed
+    (15 tests).
+  - `cargo check` passed.
+  - `cargo clippy --all-targets --all-features -- -D warnings` passed.
+  - `cargo test` passed: 3304 passed, 0 failed, 3 ignored.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed.
+- Compatibility impact: expected none for persisted data, UI, trading behavior,
+  and secrets. The refactor changes internal Rust call shapes only; snapshot
+  request fields and redacted `JournalTradeSnapshotRequest` Debug output are
+  unchanged.
+- Residual risk: downstream code outside the crate cannot use the old long
+  constructor signatures. This is expected for the binary crate boundary and
+  compile checks covered all local call sites.
+- Next candidate: resume the ranked public API/model Debug derive scan and
+  separate true leak risk from already-redacted model Debug implementations.
