@@ -102,7 +102,9 @@ impl Default for PortfolioState {
             refresh_request_id: 0,
             refresh_followup_pending: false,
             scope: PortfolioScope::All,
-            window: PortfolioWindow::Week,
+            // Spec default: the all-time window is active on first load so the
+            // hero shows the headline lifetime PnL.
+            window: PortfolioWindow::AllTime,
             pnl_value_display_mode: PnlValueDisplayMode::Usd,
             data: None,
             last_error: None,

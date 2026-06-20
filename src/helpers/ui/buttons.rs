@@ -7,29 +7,6 @@ use iced::{Color, Element, Fill, Theme};
 // Shared Buttons
 // ---------------------------------------------------------------------------
 
-pub fn timeframe_button(label: &str, active: bool, msg: Message) -> Element<'_, Message> {
-    let btn = button(text(label).size(11)).on_press(msg).padding([2, 8]);
-
-    btn.style(move |theme: &Theme, status| {
-        let palette = theme.palette();
-        let extended = theme.extended_palette();
-        let mut style = button::secondary(theme, status);
-        style.background = match status {
-            button::Status::Hovered => Some(extended.background.strong.color.into()),
-            _ => Some(Color::TRANSPARENT.into()),
-        };
-
-        style.text_color = if active {
-            palette.primary
-        } else {
-            palette.text
-        };
-
-        style
-    })
-    .into()
-}
-
 pub fn order_type_button(label: &str, active: bool, msg: Message) -> Element<'_, Message> {
     let btn = button(
         text(label)

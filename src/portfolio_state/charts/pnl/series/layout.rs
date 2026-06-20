@@ -7,7 +7,10 @@ use super::{PnlChartLayout, PnlChartPoint};
 // ---------------------------------------------------------------------------
 
 const FLAT_RANGE_EPSILON: f64 = 1e-9;
-const Y_PADDING_RATIO: f64 = 0.08;
+// Asymmetric headroom that always keeps the zero baseline in view (spec §4):
+// 12% below the minimum, 16% above the maximum of the zero-inclusive range.
+const Y_PADDING_BOTTOM_RATIO: f64 = 0.12;
+const Y_PADDING_TOP_RATIO: f64 = 0.16;
 
 pub(in crate::portfolio_state::charts::pnl) fn prepare_pnl_chart_layout(
     points: &[(u64, f64)],
@@ -66,12 +69,16 @@ pub(in crate::portfolio_state::charts::pnl) fn nearest_pnl_point(
 }
 
 fn padded_pnl_range(min_pnl: f64, max_pnl: f64) -> (f64, f64) {
-    let mut lo = min_pnl;
-    let mut hi = max_pnl;
+    // Always include the zero baseline so the dashed axis stays on screen.
+    let mut lo = min_pnl.min(0.0);
+    let mut hi = max_pnl.max(0.0);
     if (hi - lo).abs() < FLAT_RANGE_EPSILON {
         lo -= 1.0;
         hi += 1.0;
     }
-    let pad = (hi - lo) * Y_PADDING_RATIO;
-    (lo - pad, hi + pad)
+    let range = hi - lo;
+    (
+        lo - range * Y_PADDING_BOTTOM_RATIO,
+        hi + range * Y_PADDING_TOP_RATIO,
+    )
 }

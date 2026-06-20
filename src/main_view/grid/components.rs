@@ -9,6 +9,38 @@ pub(super) fn pane_drag_ghost_body() -> Element<'static, Message> {
         .into()
 }
 
+pub(super) fn pane_refresh_button() -> button::Button<'static, Message> {
+    button(
+        text("\u{21bb}")
+            .size(11)
+            .center()
+            .font(crate::app_fonts::monospace_font()),
+    )
+    .on_press(Message::RefreshPortfolio)
+    .padding([2, 5])
+    .style(|theme: &Theme, status| {
+        let bg = match status {
+            button::Status::Hovered => theme.extended_palette().background.strong.color,
+            _ => iced::Color::TRANSPARENT,
+        };
+        button::Style {
+            background: Some(bg.into()),
+            text_color: match status {
+                button::Status::Hovered => theme.palette().primary,
+                _ => iced::Color {
+                    a: 0.55,
+                    ..theme.palette().text
+                },
+            },
+            border: iced::Border {
+                radius: 2.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    })
+}
+
 pub(super) fn pane_close_button(
     pane: pane_grid::Pane,
     pane_count: usize,

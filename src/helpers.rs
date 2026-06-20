@@ -28,7 +28,7 @@ pub use symbols::{
 pub use ui::{
     buy_button, ease_out_cubic, label_value, label_value_colored, optional_value_color,
     order_type_button, pane_title, sell_button, signed_number_color, text_color_for_bg,
-    text_input_style, timeframe_button, vertical_spacer,
+    text_input_style, vertical_spacer,
 };
 
 #[cfg(test)]

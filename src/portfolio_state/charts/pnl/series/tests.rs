@@ -13,22 +13,33 @@ fn layout_rejects_too_few_points_or_flat_time_range() {
 
 #[test]
 fn layout_maps_time_edges_and_pads_pnl_range() {
+    // Range [-10, 10]: 12% headroom below (vMin = -12.4), 16% above (vMax = 13.2).
     let layout = prepare_pnl_chart_layout(&[(1_000, -10.0), (2_000, 10.0)], 100.0, 50.0).unwrap();
 
     assert_near(layout.points[0].point.x, 0.0);
     assert_near(layout.points[1].point.x, 100.0);
-    assert_near(layout.points[0].point.y, 46.5517);
-    assert_near(layout.points[1].point.y, 3.4483);
-    assert_near(layout.zero_y, 25.0);
+    assert_near(layout.points[0].point.y, 45.3125);
+    assert_near(layout.points[1].point.y, 6.25);
+    assert_near(layout.zero_y, 25.78125);
 }
 
 #[test]
-fn layout_expands_flat_pnl_values() {
+fn layout_keeps_zero_baseline_for_all_positive_series() {
+    // A purely positive series still pins the zero baseline inside the plot.
     let layout = prepare_pnl_chart_layout(&[(1_000, 5.0), (2_000, 5.0)], 100.0, 50.0).unwrap();
 
-    assert_near(layout.points[0].point.y, 25.0);
-    assert_near(layout.points[1].point.y, 25.0);
-    assert_near(layout.zero_y, 50.0);
+    assert_near(layout.points[0].point.y, 6.25);
+    assert_near(layout.points[1].point.y, 6.25);
+    assert_near(layout.zero_y, 45.3125);
+}
+
+#[test]
+fn layout_expands_all_zero_series() {
+    let layout = prepare_pnl_chart_layout(&[(1_000, 0.0), (2_000, 0.0)], 100.0, 50.0).unwrap();
+
+    assert_near(layout.points[0].point.y, 25.78125);
+    assert_near(layout.points[1].point.y, 25.78125);
+    assert_near(layout.zero_y, 25.78125);
 }
 
 #[test]

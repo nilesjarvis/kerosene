@@ -8,6 +8,7 @@ use self::history::{
     compute_daily_pnl_rows_from_cumulative, compute_percent_performance_series,
 };
 use super::{PortfolioScope, PortfolioWindow};
+use crate::helpers::finite_value;
 
 // ---------------------------------------------------------------------------
 // Portfolio Data Selection
@@ -92,6 +93,19 @@ impl TradingTerminal {
         let pnl_points = self.selected_portfolio_points();
         let account_value_points = self.selected_portfolio_account_value_points();
         compute_percent_performance_series(&pnl_points, &account_value_points)
+    }
+
+    /// Trailing 30-day performance for the active scope, independent of the
+    /// selected window (the stat strip's `ROI 30D`).
+    pub(crate) fn portfolio_roi_30d_percent(&self) -> Option<f64> {
+        let key = match self.portfolio.scope {
+            PortfolioScope::All => "month",
+            PortfolioScope::Perp => "perpMonth",
+        };
+        let bucket = self.portfolio_bucket_by_key(key)?;
+        let series =
+            compute_percent_performance_series(&bucket.pnl_history, &bucket.account_value_history);
+        series.last().and_then(|(_, value)| finite_value(*value))
     }
 
     fn apply_selected_portfolio_window(&self, points: Vec<(u64, f64)>) -> Vec<(u64, f64)> {

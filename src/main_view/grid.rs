@@ -5,7 +5,7 @@ use crate::app_state::TradingTerminal;
 use crate::helpers::pane_title;
 use crate::message::Message;
 use crate::pane_state::PaneKind;
-use components::{pane_close_button, pane_drag_ghost_body};
+use components::{pane_close_button, pane_drag_ghost_body, pane_refresh_button};
 use iced::widget::{container, pane_grid, row, text};
 use iced::{Element, Fill, Theme};
 use styles::{
@@ -69,6 +69,8 @@ impl TradingTerminal {
                     self.view_detach_chart_button(*chart_id),
                     close_btn
                 ]
+            } else if matches!(kind, PaneKind::Portfolio) {
+                row![pane_refresh_button(), close_btn]
             } else if matches!(kind, PaneKind::TelegramFeed) {
                 row![self.view_telegram_status_chip(), close_btn]
             } else {

@@ -12,11 +12,14 @@ use chrono::{DateTime, Utc};
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Renderer, Size, Theme};
 
-const AREA_MAX_ALPHA: f32 = 0.22;
-const AREA_MID_ALPHA: f32 = 0.08;
-const AREA_EDGE_ALPHA: f32 = 0.02;
-const AREA_ZERO_ALPHA: f32 = 0.0;
-const LINE_HALO_ALPHA: f32 = 0.16;
+const AREA_POSITIVE_MAX_ALPHA: f32 = 0.34;
+const AREA_NEGATIVE_MAX_ALPHA: f32 = 0.30;
+const AREA_MID_RATIO: f32 = 0.36;
+const AREA_EDGE_RATIO: f32 = 0.09;
+const LINE_WIDTH: f32 = 1.7;
+const ZERO_LINE_ALPHA: f32 = 0.16;
+const END_DOT_RADIUS: f32 = 3.2;
+const END_DOT_HALO_WIDTH: f32 = 1.6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PnlAreaSide {
@@ -59,14 +62,22 @@ pub(super) fn draw_portfolio_pnl_chart(
     );
 
     let zero_line = canvas::Path::line(Point::new(0.0, zero_y), Point::new(bounds.width, zero_y));
+    let zero_dash = [2.0_f32, 3.0_f32];
     frame.stroke(
         &zero_line,
-        canvas::Stroke::default()
-            .with_color(Color {
-                a: 0.18,
+        canvas::Stroke {
+            style: canvas::Style::Solid(Color {
+                a: ZERO_LINE_ALPHA,
                 ..theme.palette().text
-            })
-            .with_width(1.0),
+            }),
+            width: 1.0,
+            line_cap: canvas::LineCap::Butt,
+            line_join: canvas::LineJoin::Miter,
+            line_dash: canvas::LineDash {
+                segments: &zero_dash,
+                offset: 0,
+            },
+        },
     );
 
     draw_pnl_line(
@@ -75,6 +86,14 @@ pub(super) fn draw_portfolio_pnl_chart(
         zero_y,
         positive_color,
         negative_color,
+    );
+
+    draw_end_dot(
+        &mut frame,
+        &layout.points,
+        positive_color,
+        negative_color,
+        theme,
     );
 
     if let Some(cursor_pos) = cursor.position_in(bounds)
@@ -100,7 +119,7 @@ pub(super) fn draw_portfolio_pnl_chart(
         );
 
         let marker = canvas::Path::circle(nearest_point, 2.8);
-        frame.fill(&marker, Color::WHITE);
+        frame.fill(&marker, theme.palette().text);
 
         let ts_label = i64::try_from(nearest.timestamp_ms)
             .ok()
@@ -165,7 +184,12 @@ fn draw_pnl_area(
 
         match segment.side {
             PnlAreaSide::Positive if zero_y > 0.0 => {
-                let gradient = segment_area_gradient(positive_color, &segment, zero_y);
+                let gradient = segment_area_gradient(
+                    positive_color,
+                    &segment,
+                    zero_y,
+                    AREA_POSITIVE_MAX_ALPHA,
+                );
                 frame.with_clip(
                     Rectangle {
                         x: 0.0,
@@ -177,7 +201,12 @@ fn draw_pnl_area(
                 );
             }
             PnlAreaSide::Negative if zero_y < height => {
-                let gradient = segment_area_gradient(negative_color, &segment, zero_y);
+                let gradient = segment_area_gradient(
+                    negative_color,
+                    &segment,
+                    zero_y,
+                    AREA_NEGATIVE_MAX_ALPHA,
+                );
                 frame.with_clip(
                     Rectangle {
                         x: 0.0,
@@ -331,21 +360,36 @@ fn draw_pnl_line_stroke(frame: &mut canvas::Frame, line: &canvas::Path, color: C
     frame.stroke(
         line,
         canvas::Stroke::default()
-            .with_color(Color {
-                a: LINE_HALO_ALPHA,
-                ..color
-            })
-            .with_width(5.0)
+            .with_color(color)
+            .with_width(LINE_WIDTH)
             .with_line_cap(canvas::LineCap::Round)
             .with_line_join(canvas::LineJoin::Round),
     );
+}
+
+fn draw_end_dot(
+    frame: &mut canvas::Frame,
+    points: &[PnlChartPoint],
+    positive_color: Color,
+    negative_color: Color,
+    theme: &Theme,
+) {
+    let Some(last) = points.last() else {
+        return;
+    };
+    let dot_color = if last.pnl >= 0.0 {
+        positive_color
+    } else {
+        negative_color
+    };
+    let dot = canvas::Path::circle(last.point, END_DOT_RADIUS);
+    frame.fill(&dot, dot_color);
+    // Halo straddling the dot edge so it reads against the panel surface.
     frame.stroke(
-        line,
+        &dot,
         canvas::Stroke::default()
-            .with_color(color)
-            .with_width(2.0)
-            .with_line_cap(canvas::LineCap::Round)
-            .with_line_join(canvas::LineJoin::Round),
+            .with_color(theme.extended_palette().background.strong.color)
+            .with_width(END_DOT_HALO_WIDTH),
     );
 }
 
@@ -353,23 +397,21 @@ fn segment_area_gradient(
     color: Color,
     segment: &PnlAreaSegment,
     zero_y: f32,
+    max_alpha: f32,
 ) -> canvas::gradient::Linear {
     let strong = Color {
-        a: AREA_MAX_ALPHA,
+        a: max_alpha,
         ..color
     };
     let mid = Color {
-        a: AREA_MID_ALPHA,
+        a: max_alpha * AREA_MID_RATIO,
         ..color
     };
     let edge = Color {
-        a: AREA_EDGE_ALPHA,
+        a: max_alpha * AREA_EDGE_RATIO,
         ..color
     };
-    let clear = Color {
-        a: AREA_ZERO_ALPHA,
-        ..color
-    };
+    let clear = Color { a: 0.0, ..color };
 
     match segment.side {
         PnlAreaSide::Positive => {
@@ -475,8 +517,18 @@ mod tests {
             points: vec![points[2].point],
         };
 
-        let positive_gradient = segment_area_gradient(Color::WHITE, &positive_segment, zero_y);
-        let negative_gradient = segment_area_gradient(Color::WHITE, &negative_segment, zero_y);
+        let positive_gradient = segment_area_gradient(
+            Color::WHITE,
+            &positive_segment,
+            zero_y,
+            AREA_POSITIVE_MAX_ALPHA,
+        );
+        let negative_gradient = segment_area_gradient(
+            Color::WHITE,
+            &negative_segment,
+            zero_y,
+            AREA_NEGATIVE_MAX_ALPHA,
+        );
 
         assert_near(positive_gradient.start.y, 10.0);
         assert_near(positive_gradient.end.y, zero_y);
