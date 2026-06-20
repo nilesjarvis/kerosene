@@ -331,6 +331,10 @@ pub struct KeroseneConfig {
     /// to true so upgrades keep existing behaviour.
     #[serde(default = "default_true")]
     pub telegram_feed_include_outcome_markets: bool,
+    /// Whether the Telegram Feed onboarding (Connect) screen has been dismissed.
+    /// Defaults to false so first-run users see it once.
+    #[serde(default)]
+    pub telegram_feed_onboarding_dismissed: bool,
     /// Optional Telegram MTProto fast-feed mode. Secret session material is stored separately.
     #[serde(default)]
     pub telegram_feed_fast_mode_enabled: bool,

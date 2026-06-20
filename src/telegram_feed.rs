@@ -405,11 +405,21 @@ pub(crate) struct TelegramFeedState {
     pub(crate) private_channel_candidates_expanded: bool,
     pub(crate) notifications_enabled: bool,
     pub(crate) include_outcome_markets: bool,
+    // Whether the user has left the Connect onboarding screen (by signing in or
+    // choosing public mode). Persisted so onboarding only greets a user once.
+    pub(crate) onboarding_dismissed: bool,
     pub(crate) fast_mode_enabled: bool,
     pub(crate) fast_api_id: Option<i32>,
     pub(crate) fast_api_id_input: String,
     pub(crate) fast_api_hash_input: SensitiveString,
+    // Reveals the "use my own API credentials" inputs on the sign-in screen.
+    pub(crate) fast_advanced_expanded: bool,
+    // Dialing code shown beside the phone field, combined with `fast_phone_input`
+    // when a login code is requested.
+    pub(crate) fast_country_code: String,
     pub(crate) fast_phone_input: String,
+    // When the most recent login code was requested, driving the resend cooldown.
+    pub(crate) fast_code_sent_at_ms: Option<u64>,
     pub(crate) fast_code_input: SensitiveString,
     pub(crate) fast_password_input: SensitiveString,
     pub(crate) fast_auth_stage: TelegramFastAuthStage,
@@ -420,7 +430,6 @@ pub(crate) struct TelegramFeedState {
     pub(crate) fast_password_hint: Option<String>,
     pub(crate) fast_reconnect_nonce: u64,
     pub(crate) fast_last_event_ms: Option<u64>,
-    pub(crate) channels_expanded: bool,
     pub(crate) channel_input: String,
     pub(crate) channel_profiles: HashMap<String, TelegramChannelProfile>,
     pub(crate) posts: Vec<TelegramFeedPost>,
@@ -463,11 +472,15 @@ impl fmt::Debug for TelegramFeedState {
             )
             .field("notifications_enabled", &self.notifications_enabled)
             .field("include_outcome_markets", &self.include_outcome_markets)
+            .field("onboarding_dismissed", &self.onboarding_dismissed)
             .field("fast_mode_enabled", &self.fast_mode_enabled)
             .field("fast_api_id", &"<redacted>")
             .field("fast_api_id_input", &"<redacted>")
             .field("fast_api_hash_input", &"<redacted>")
+            .field("fast_advanced_expanded", &self.fast_advanced_expanded)
+            .field("fast_country_code", &self.fast_country_code)
             .field("fast_phone_input", &"<redacted>")
+            .field("fast_code_sent_at_ms", &self.fast_code_sent_at_ms)
             .field("fast_code_input", &"<redacted>")
             .field("fast_password_input", &"<redacted>")
             .field("fast_auth_stage", &self.fast_auth_stage)
@@ -481,7 +494,6 @@ impl fmt::Debug for TelegramFeedState {
             )
             .field("fast_reconnect_nonce", &self.fast_reconnect_nonce)
             .field("fast_last_event_ms", &self.fast_last_event_ms)
-            .field("channels_expanded", &self.channels_expanded)
             .field(
                 "channel_input",
                 &redacted_telegram_channel_debug_value(&self.channel_input),
@@ -633,6 +645,7 @@ impl TelegramFeedState {
         fast_mode_enabled: bool,
         fast_api_id: Option<i32>,
         include_outcome_markets: bool,
+        onboarding_dismissed: bool,
     ) -> Self {
         let (channels, public_channels_capped) = normalized_channel_list_with_status(channels);
         Self {
@@ -644,13 +657,17 @@ impl TelegramFeedState {
             private_channel_candidates_expanded: false,
             notifications_enabled,
             include_outcome_markets,
+            onboarding_dismissed,
             fast_mode_enabled,
             fast_api_id,
             fast_api_id_input: fast_api_id
                 .map(|api_id| api_id.to_string())
                 .unwrap_or_default(),
             fast_api_hash_input: sensitive_string(String::new()),
+            fast_advanced_expanded: false,
+            fast_country_code: default_telegram_country_code(),
             fast_phone_input: String::new(),
+            fast_code_sent_at_ms: None,
             fast_code_input: sensitive_string(String::new()),
             fast_password_input: sensitive_string(String::new()),
             fast_auth_stage: TelegramFastAuthStage::Idle,
@@ -661,7 +678,6 @@ impl TelegramFeedState {
             fast_password_hint: None,
             fast_reconnect_nonce: 0,
             fast_last_event_ms: None,
-            channels_expanded: false,
             channel_input: String::new(),
             channel_profiles: HashMap::new(),
             posts: Vec::new(),
@@ -688,10 +704,6 @@ impl TelegramFeedState {
 
     pub(crate) fn channel_refresh_in_flight(&self) -> bool {
         self.loading() || !self.background_loading_channels.is_empty()
-    }
-
-    pub(crate) fn refreshing(&self) -> bool {
-        self.channel_refresh_in_flight() || self.private_channel_candidates_loading
     }
 
     pub(crate) fn begin_channel_refresh(&mut self, channel: &str) -> u64 {
@@ -821,10 +833,92 @@ impl TelegramFeedState {
             })
             .unwrap_or(true)
     }
+
+    /// True once a Fast Mode session is established (either confirmed by the live
+    /// stream or by a completed sign-in).
+    pub(crate) fn signed_in(&self) -> bool {
+        self.fast_connected || matches!(self.fast_auth_stage, TelegramFastAuthStage::SignedIn)
+    }
+
+    /// Which of the four pane render states is active. The pane is one small state
+    /// machine: a connected (or public-mode) feed, the two sign-in steps, or the
+    /// first-run onboarding screen.
+    pub(crate) fn current_screen(&self) -> TelegramFeedScreen {
+        if self.signed_in() {
+            return TelegramFeedScreen::LiveFeed;
+        }
+        if self.fast_mode_enabled {
+            return match self.fast_auth_stage {
+                TelegramFastAuthStage::CodeRequested | TelegramFastAuthStage::PasswordRequired => {
+                    TelegramFeedScreen::SignInCode
+                }
+                _ => TelegramFeedScreen::SignInPhone,
+            };
+        }
+        if self.onboarding_dismissed {
+            TelegramFeedScreen::LiveFeed
+        } else {
+            TelegramFeedScreen::Connect
+        }
+    }
+}
+
+/// The four render states of the Telegram Feed pane. See
+/// [`TelegramFeedState::current_screen`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TelegramFeedScreen {
+    Connect,
+    SignInPhone,
+    SignInCode,
+    LiveFeed,
 }
 
 pub(crate) fn default_telegram_feed_channels() -> Vec<String> {
     vec!["marketfeed".to_string()]
+}
+
+pub(crate) fn default_telegram_country_code() -> String {
+    "+1".to_string()
+}
+
+/// Curated dialing codes offered by the sign-in country-code picker. Not
+/// exhaustive — users who need another code can paste a full `+…` number into
+/// the phone field, which is respected verbatim.
+pub(crate) const TELEGRAM_COUNTRY_CODES: &[&str] = &[
+    "+1", "+44", "+7", "+33", "+49", "+34", "+39", "+31", "+41", "+46", "+47", "+351", "+61",
+    "+64", "+81", "+82", "+86", "+852", "+886", "+91", "+92", "+62", "+63", "+65", "+66", "+84",
+    "+971", "+972", "+966", "+90", "+20", "+27", "+234", "+254", "+55", "+52", "+54", "+57", "+56",
+    "+380", "+48", "+420", "+30", "+353", "+358",
+];
+
+/// Build the E.164-style phone number sent to Telegram from the picked dialing
+/// code and the national-number field. A value the user typed with its own `+`
+/// prefix is treated as already-complete and the picker is ignored.
+pub(crate) fn combine_telegram_phone(country_code: &str, national: &str) -> String {
+    let national_trimmed = national.trim();
+    if national_trimmed.starts_with('+') {
+        let digits: String = national_trimmed
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect();
+        return format!("+{digits}");
+    }
+    let code_digits: String = country_code.chars().filter(char::is_ascii_digit).collect();
+    let national_digits: String = national_trimmed
+        .chars()
+        .filter(char::is_ascii_digit)
+        .collect();
+    format!("+{code_digits}{national_digits}")
+}
+
+/// Mask a phone number for display on the code screen, e.g. `+1 415 ••• 2207`.
+pub(crate) fn masked_telegram_phone(full: &str) -> String {
+    let digits: String = full.chars().filter(char::is_ascii_digit).collect();
+    if digits.len() < 4 {
+        return "your number".to_string();
+    }
+    let last4 = &digits[digits.len() - 4..];
+    format!("•••• {last4}")
 }
 
 pub(crate) fn normalized_channel_list(channels: &[String]) -> Vec<String> {
@@ -1501,7 +1595,7 @@ mod tests {
 
     #[test]
     fn telegram_feed_state_debug_redacts_fast_credentials() {
-        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345), true);
+        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345), true, false);
         state.fast_api_hash_input = "hash-secret".to_string().into();
         state.fast_phone_input = "+15555550123".to_string();
         state.fast_code_input = "code-secret".to_string().into();
@@ -1529,7 +1623,7 @@ mod tests {
 
     #[test]
     fn telegram_fast_input_fields_debug_redact_when_formatted_directly() {
-        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345), true);
+        let mut state = TelegramFeedState::new(&[], &[], false, false, Some(12345), true, false);
         state.fast_api_hash_input = "hash-secret".to_string().into();
         state.fast_code_input = "code-secret".to_string().into();
         state.fast_password_input = "password-secret".to_string().into();
@@ -1686,8 +1780,15 @@ mod tests {
             peer_id: 42,
             title: "Private Alpha".to_string(),
         }];
-        let mut state =
-            TelegramFeedState::new(&[], &private_channels, false, true, Some(12345), true);
+        let mut state = TelegramFeedState::new(
+            &[],
+            &private_channels,
+            false,
+            true,
+            Some(12345),
+            true,
+            false,
+        );
         state.private_channel_candidates = vec![TelegramPrivateChannelCandidate {
             peer_id: 43,
             title: "Private Beta".to_string(),
@@ -1788,7 +1889,7 @@ mod tests {
             .map(|index| format!("channel_{index}"))
             .collect::<Vec<_>>();
 
-        let state = TelegramFeedState::new(&channels, &[], false, false, None, true);
+        let state = TelegramFeedState::new(&channels, &[], false, false, None, true, false);
 
         assert_eq!(state.channels.len(), TELEGRAM_FEED_MAX_PUBLIC_CHANNELS);
         assert_eq!(
@@ -2123,5 +2224,53 @@ mod tests {
 
         assert!(!avatar.is_empty());
         assert!(avatar.len() <= TELEGRAM_AVATAR_MAX_BODY_BYTES);
+    }
+
+    #[test]
+    fn current_screen_walks_the_onboarding_state_machine() {
+        // First run with no login and onboarding not yet dismissed.
+        let mut state = TelegramFeedState::new(&[], &[], false, false, None, true, false);
+        assert_eq!(state.current_screen(), TelegramFeedScreen::Connect);
+
+        // Choosing public mode reaches the feed without a login.
+        state.onboarding_dismissed = true;
+        assert_eq!(state.current_screen(), TelegramFeedScreen::LiveFeed);
+
+        // Entering the connect flow shows the phone step, then the code step.
+        state.onboarding_dismissed = false;
+        state.fast_mode_enabled = true;
+        assert_eq!(state.current_screen(), TelegramFeedScreen::SignInPhone);
+        state.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+        assert_eq!(state.current_screen(), TelegramFeedScreen::SignInCode);
+        state.fast_auth_stage = TelegramFastAuthStage::PasswordRequired;
+        assert_eq!(state.current_screen(), TelegramFeedScreen::SignInCode);
+
+        // A live session always lands on the feed.
+        state.fast_connected = true;
+        assert_eq!(state.current_screen(), TelegramFeedScreen::LiveFeed);
+        assert!(state.signed_in());
+    }
+
+    #[test]
+    fn combine_telegram_phone_prefixes_dialing_code_and_keeps_explicit_numbers() {
+        assert_eq!(combine_telegram_phone("+1", "415 813 2207"), "+14158132207");
+        assert_eq!(
+            combine_telegram_phone("+44", "20 7946 0958"),
+            "+442079460958"
+        );
+        // A number the user typed with its own country code is respected verbatim.
+        assert_eq!(
+            combine_telegram_phone("+1", "+44 20 7946 0958"),
+            "+442079460958"
+        );
+    }
+
+    #[test]
+    fn masked_telegram_phone_reveals_only_the_last_four_digits() {
+        let masked = masked_telegram_phone("+1 415 813 2207");
+        assert!(masked.ends_with("2207"), "got {masked}");
+        assert!(masked.contains('•'));
+        assert!(!masked.contains("813"));
+        assert_eq!(masked_telegram_phone("12"), "your number");
     }
 }

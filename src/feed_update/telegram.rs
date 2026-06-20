@@ -45,6 +45,29 @@ impl TradingTerminal {
                 Task::none()
             }
             Message::ToggleTelegramFastFeed => self.toggle_telegram_fast_feed(),
+            Message::TelegramFeedDismissOnboarding => {
+                self.telegram_feed.onboarding_dismissed = true;
+                self.persist_config();
+                Task::none()
+            }
+            Message::TelegramFeedShowOnboarding => self.show_telegram_onboarding(),
+            Message::ToggleTelegramFastAdvanced => {
+                self.telegram_feed.fast_advanced_expanded =
+                    !self.telegram_feed.fast_advanced_expanded;
+                Task::none()
+            }
+            Message::TelegramFastCountryCodeChanged(code) => {
+                self.clear_abandoned_telegram_fast_auth_challenge();
+                self.telegram_feed.fast_country_code = code;
+                Task::none()
+            }
+            Message::TelegramFastEditNumber => {
+                // Return from the code step to the phone step, discarding the
+                // pending code challenge.
+                self.clear_abandoned_telegram_fast_auth_challenge();
+                self.telegram_feed.fast_code_sent_at_ms = None;
+                Task::none()
+            }
             Message::TelegramFastApiIdChanged(input) => {
                 self.clear_abandoned_telegram_fast_auth_challenge();
                 self.telegram_feed.fast_api_id_input = input.into_zeroizing().to_string();
@@ -64,7 +87,14 @@ impl TradingTerminal {
             }
             Message::TelegramFastCodeChanged(input) => {
                 self.telegram_feed.fast_code_input.zeroize();
-                self.telegram_feed.fast_code_input = input.into_zeroizing().into();
+                // Telegram login codes are 5 digits; keep only those so the
+                // digit-cell display stays aligned regardless of paste/format.
+                let raw = input.into_zeroizing();
+                let mut digits = Zeroizing::new(String::new());
+                for ch in raw.chars().filter(char::is_ascii_digit).take(5) {
+                    digits.push(ch);
+                }
+                self.telegram_feed.fast_code_input = digits.into();
                 Task::none()
             }
             Message::TelegramFastPasswordChanged(input) => {
@@ -104,10 +134,6 @@ impl TradingTerminal {
             Message::TelegramFeedRemoveChannel(channel) => {
                 let channel = channel.into_string();
                 self.remove_telegram_feed_channel(&channel);
-                Task::none()
-            }
-            Message::ToggleTelegramFeedChannelsExpanded => {
-                self.telegram_feed.channels_expanded = !self.telegram_feed.channels_expanded;
                 Task::none()
             }
             Message::ToggleTelegramFeedNotifications => {
@@ -415,7 +441,21 @@ impl TradingTerminal {
             self.telegram_feed.fast_status = Some(("Fast mode disabled".to_string(), false));
             self.telegram_feed.fast_auth_in_flight = false;
             self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::Idle;
+            self.telegram_feed.fast_code_sent_at_ms = None;
         }
+        self.persist_config();
+        Task::none()
+    }
+
+    /// Return to the Connect onboarding screen — used by the sign-in back chevron
+    /// and the public-mode status chip. Tearing down an in-progress Fast Mode
+    /// flow reuses the Fast toggle's off path.
+    fn show_telegram_onboarding(&mut self) -> Task<Message> {
+        if self.telegram_feed.fast_mode_enabled {
+            let _ = self.toggle_telegram_fast_feed();
+        }
+        self.telegram_feed.fast_code_sent_at_ms = None;
+        self.telegram_feed.onboarding_dismissed = false;
         self.persist_config();
         Task::none()
     }
@@ -477,7 +517,10 @@ impl TradingTerminal {
         } else {
             api_hash
         };
-        let phone = Zeroizing::new(self.telegram_feed.fast_phone_input.trim().to_string());
+        let phone = Zeroizing::new(crate::telegram_feed::combine_telegram_phone(
+            &self.telegram_feed.fast_country_code,
+            &self.telegram_feed.fast_phone_input,
+        ));
         let request_id = self.telegram_feed.next_fast_auth_request_id();
         self.telegram_feed.fast_auth_in_flight = true;
         self.telegram_feed.fast_status =
@@ -569,6 +612,7 @@ impl TradingTerminal {
             Ok(TelegramFastAuthOutcome::CodeSent) => {
                 clear_telegram_fast_pending_auth_except_request(request_id);
                 self.telegram_feed.fast_auth_stage = TelegramFastAuthStage::CodeRequested;
+                self.telegram_feed.fast_code_sent_at_ms = Some(Self::now_ms());
                 self.telegram_feed.fast_status = Some(("Telegram code sent".to_string(), false));
             }
             Ok(TelegramFastAuthOutcome::PasswordRequired { hint }) => {
@@ -588,6 +632,7 @@ impl TradingTerminal {
                 self.telegram_feed.fast_password_input.zeroize();
                 self.telegram_feed.fast_api_hash_input.zeroize();
                 self.telegram_feed.fast_phone_input.clear();
+                self.telegram_feed.fast_code_sent_at_ms = None;
                 self.telegram_feed.fast_password_hint = None;
                 self.telegram_feed.fast_reconnect_nonce =
                     self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
@@ -602,6 +647,7 @@ impl TradingTerminal {
                 self.telegram_feed.fast_code_input.zeroize();
                 self.telegram_feed.fast_password_input.zeroize();
                 self.telegram_feed.fast_phone_input.clear();
+                self.telegram_feed.fast_code_sent_at_ms = None;
                 self.telegram_feed.fast_reconnect_nonce =
                     self.telegram_feed.fast_reconnect_nonce.saturating_add(1);
                 self.telegram_feed.fast_status = Some(telegram_fast_signed_out_status(warning));
@@ -2483,15 +2529,6 @@ mod tests {
     }
 
     #[test]
-    fn telegram_channel_list_expansion_is_runtime_only() {
-        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
-
-        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFeedChannelsExpanded);
-
-        assert!(terminal.telegram_feed.channels_expanded);
-    }
-
-    #[test]
     fn refreshing_existing_post_preserves_row_timing() {
         let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
         terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
@@ -3206,5 +3243,58 @@ mod tests {
         );
 
         assert!(terminal.toasts.is_empty());
+    }
+
+    #[test]
+    fn onboarding_dismiss_reaches_feed_and_persists_flag() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        assert_eq!(
+            terminal.telegram_feed.current_screen(),
+            crate::telegram_feed::TelegramFeedScreen::Connect
+        );
+
+        let _ = terminal.update_telegram_feed(Message::TelegramFeedDismissOnboarding);
+
+        assert!(terminal.telegram_feed.onboarding_dismissed);
+        assert_eq!(
+            terminal.telegram_feed.current_screen(),
+            crate::telegram_feed::TelegramFeedScreen::LiveFeed
+        );
+    }
+
+    #[test]
+    fn connect_then_back_returns_to_onboarding_and_disables_fast() {
+        // Toggling Fast Mode mutates the global pending-auth registry; serialize
+        // with the other fast-auth tests.
+        let _guard = telegram_fast_pending_auth_test_lock()
+            .lock()
+            .expect("pending auth test lock");
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        // "Connect Telegram" enables Fast Mode and shows the phone step.
+        let _ = terminal.update_telegram_feed(Message::ToggleTelegramFastFeed);
+        assert!(terminal.telegram_feed.fast_mode_enabled);
+        assert_eq!(
+            terminal.telegram_feed.current_screen(),
+            crate::telegram_feed::TelegramFeedScreen::SignInPhone
+        );
+
+        // The back chevron tears Fast Mode down and returns to onboarding.
+        let _ = terminal.update_telegram_feed(Message::TelegramFeedShowOnboarding);
+        assert!(!terminal.telegram_feed.fast_mode_enabled);
+        assert!(!terminal.telegram_feed.onboarding_dismissed);
+        assert_eq!(
+            terminal.telegram_feed.current_screen(),
+            crate::telegram_feed::TelegramFeedScreen::Connect
+        );
+    }
+
+    #[test]
+    fn telegram_code_input_keeps_only_five_digits() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+
+        let _ = terminal.update_telegram_feed(Message::TelegramFastCodeChanged("12 34 567".into()));
+
+        assert_eq!(terminal.telegram_feed.fast_code_input.as_str(), "12345");
     }
 }

@@ -238,6 +238,26 @@ impl ScreenerState {
                 .and_then(|samples| sample_at_or_before(samples, target_ms))
         })
     }
+
+    /// Recorded mids at or after `from_ms`, in chronological order, for the first
+    /// candidate key that has any. Used to shape the Telegram impact-chip
+    /// sparkline over the window since a post was first seen. Returns an empty
+    /// vec when no samples fall inside the window.
+    pub(crate) fn mid_samples_since(&self, candidates: &[String], from_ms: u64) -> Vec<f32> {
+        candidates
+            .iter()
+            .find_map(|candidate| {
+                let samples = self.samples.get(candidate)?;
+                let values: Vec<f32> = samples
+                    .iter()
+                    .filter(|sample| sample.timestamp_ms >= from_ms)
+                    .filter(|sample| sample.price.is_finite() && sample.price > 0.0)
+                    .map(|sample| sample.price as f32)
+                    .collect();
+                (!values.is_empty()).then_some(values)
+            })
+            .unwrap_or_default()
+    }
 }
 
 impl TradingTerminal {
@@ -477,6 +497,25 @@ mod tests {
         let samples = state.samples.get("BTC").expect("BTC samples");
         assert_eq!(samples.len(), 1);
         assert_eq!(samples[0].price, 102.0);
+    }
+
+    #[test]
+    fn mid_samples_since_returns_window_in_order_for_first_candidate() {
+        let mut state = ScreenerState::default();
+        state.record_mid_samples(&HashMap::from([("BTC".to_string(), 100.0)]), 0);
+        state.record_mid_samples(&HashMap::from([("BTC".to_string(), 110.0)]), 60_000);
+        state.record_mid_samples(&HashMap::from([("BTC".to_string(), 120.0)]), 120_000);
+
+        let candidates = vec!["MISSING".to_string(), "BTC".to_string()];
+        // Only samples at or after the window start are returned, oldest first.
+        assert_eq!(
+            state.mid_samples_since(&candidates, 60_000),
+            vec![110.0_f32, 120.0_f32]
+        );
+        // A window past every sample yields nothing.
+        assert!(state.mid_samples_since(&candidates, 200_000).is_empty());
+        // Unknown candidates yield nothing.
+        assert!(state.mid_samples_since(&["NONE".to_string()], 0).is_empty());
     }
 
     #[test]

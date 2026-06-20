@@ -12,6 +12,7 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
         }],
         telegram_feed_notifications_enabled: true,
         telegram_feed_include_outcome_markets: false,
+        telegram_feed_onboarding_dismissed: true,
         telegram_feed_fast_mode_enabled: true,
         telegram_feed_fast_api_id: Some(12345),
         ..KeroseneConfig::default()
@@ -31,6 +32,7 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
         }]
     );
     assert!(decoded.telegram_feed_notifications_enabled);
+    assert!(decoded.telegram_feed_onboarding_dismissed);
     assert!(decoded.telegram_feed_fast_mode_enabled);
     assert_eq!(decoded.telegram_feed_fast_api_id, Some(12345));
 
@@ -65,6 +67,7 @@ fn telegram_feed_channels_round_trip_and_legacy_defaults_marketfeed() {
     assert_eq!(decoded_legacy.telegram_feed_channels, vec!["marketfeed"]);
     assert!(decoded_legacy.telegram_feed_private_channels.is_empty());
     assert!(!decoded_legacy.telegram_feed_notifications_enabled);
+    assert!(!decoded_legacy.telegram_feed_onboarding_dismissed);
     assert!(!decoded_legacy.telegram_feed_fast_mode_enabled);
     assert_eq!(decoded_legacy.telegram_feed_fast_api_id, None);
 }

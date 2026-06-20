@@ -409,6 +409,7 @@ impl TradingTerminal {
                 cfg.telegram_feed_fast_mode_enabled,
                 cfg.telegram_feed_fast_api_id,
                 cfg.telegram_feed_include_outcome_markets,
+                cfg.telegram_feed_onboarding_dismissed,
             ),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg

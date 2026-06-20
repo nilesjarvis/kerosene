@@ -541,6 +541,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TelegramAvatarLoaded(_, _, _, _)
         | Message::TelegramMediaLoaded(_, _, _, _, _)
         | Message::ToggleTelegramFastFeed
+        | Message::TelegramFeedDismissOnboarding
+        | Message::TelegramFeedShowOnboarding
+        | Message::ToggleTelegramFastAdvanced
+        | Message::TelegramFastCountryCodeChanged(_)
+        | Message::TelegramFastEditNumber
         | Message::TelegramFastApiIdChanged(_)
         | Message::TelegramFastApiHashChanged(_)
         | Message::TelegramFastPhoneChanged(_)
@@ -559,7 +564,6 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TelegramFeedAddPrivateChannel(_)
         | Message::ToggleTelegramPrivateChannelCandidatesExpanded
         | Message::TelegramFeedRemoveChannel(_)
-        | Message::ToggleTelegramFeedChannelsExpanded
         | Message::ToggleTelegramFeedNotifications
         | Message::ToggleTelegramFeedOutcomeMarkets => UpdateRoute::Feed,
 

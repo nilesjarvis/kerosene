@@ -69,6 +69,8 @@ impl TradingTerminal {
                     self.view_detach_chart_button(*chart_id),
                     close_btn
                 ]
+            } else if matches!(kind, PaneKind::TelegramFeed) {
+                row![self.view_telegram_status_chip(), close_btn]
             } else {
                 row![close_btn]
             }

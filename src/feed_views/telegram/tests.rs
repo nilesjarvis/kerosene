@@ -176,6 +176,51 @@ fn telegram_ticker_impact_cards_compute_signed_impact_against_fresh_mid() {
 }
 
 #[test]
+fn telegram_screens_build_across_states_and_widths() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(perp_symbol("HYPE"));
+    let now = TradingTerminal::now_ms();
+
+    // A post with a priced mention so the live feed exercises the card, the
+    // impact chip, and the sparkline path.
+    terminal.all_mids.insert("HYPE".to_string(), 110.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("HYPE".to_string(), now);
+    let mut post = post_with_mention("HYPE", "HYPE");
+    post.ticker_mentions[0].reference_price = Some(100.0);
+    post.ticker_mentions[0].reference_seen_ms = now.saturating_sub(120_000);
+    post.first_seen_ms = now.saturating_sub(2_000);
+    terminal.telegram_feed.posts.push(post);
+
+    let colors = TelegramColors::from_theme(&terminal.theme());
+
+    // Connect + both widths of the phone step, including the advanced section.
+    let _ = terminal.view_telegram_connect(colors);
+    let _ = terminal.view_telegram_sign_in_phone(colors, 440.0);
+    terminal.telegram_feed.fast_advanced_expanded = true;
+    let _ = terminal.view_telegram_sign_in_phone(colors, 300.0);
+
+    // Code step with a partial code, a running resend timer, and the 2FA branch.
+    terminal.telegram_feed.fast_code_input = "123".into();
+    terminal.telegram_feed.fast_code_sent_at_ms = Some(now.saturating_sub(18_000));
+    terminal.telegram_feed.fast_auth_stage =
+        crate::telegram_feed::TelegramFastAuthStage::PasswordRequired;
+    let _ = terminal.view_telegram_sign_in_code(colors, now);
+
+    // Live feed in both Fast and public flavours, wide and narrow.
+    terminal.telegram_feed.fast_connected = true;
+    terminal.telegram_feed.fast_mode_enabled = true;
+    let _ = terminal.view_telegram_live_feed(colors, now, 440.0);
+    let _ = terminal.view_telegram_status_chip();
+    terminal.telegram_feed.fast_connected = false;
+    terminal.telegram_feed.fast_mode_enabled = false;
+    terminal.telegram_feed.onboarding_dismissed = true;
+    let _ = terminal.view_telegram_live_feed(colors, now, 300.0);
+    let _ = terminal.view_telegram_status_chip();
+}
+
+#[test]
 fn telegram_ticker_impact_cards_drop_unorderable_and_spot_mentions() {
     let mut terminal = TradingTerminal::boot().0;
 

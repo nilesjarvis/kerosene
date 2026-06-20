@@ -28,6 +28,11 @@ impl TradingTerminal {
             | Message::TelegramFeedLoaded(_, _, _)
             | Message::TelegramAvatarLoaded(_, _, _, _)
             | Message::ToggleTelegramFastFeed
+            | Message::TelegramFeedDismissOnboarding
+            | Message::TelegramFeedShowOnboarding
+            | Message::ToggleTelegramFastAdvanced
+            | Message::TelegramFastCountryCodeChanged(_)
+            | Message::TelegramFastEditNumber
             | Message::TelegramFastApiIdChanged(_)
             | Message::TelegramFastApiHashChanged(_)
             | Message::TelegramFastPhoneChanged(_)
@@ -46,7 +51,6 @@ impl TradingTerminal {
             | Message::TelegramFeedAddPrivateChannel(_)
             | Message::ToggleTelegramPrivateChannelCandidatesExpanded
             | Message::TelegramFeedRemoveChannel(_)
-            | Message::ToggleTelegramFeedChannelsExpanded
             | Message::ToggleTelegramFeedNotifications
             | Message::ToggleTelegramFeedOutcomeMarkets) => {
                 return self.update_telegram_feed(message);
