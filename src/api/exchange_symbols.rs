@@ -1,6 +1,7 @@
 use super::{API_URL, CLIENT};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
+use std::fmt;
 
 mod model;
 mod outcomes;
@@ -15,11 +16,36 @@ use spot::append_spot_symbols;
 /// Result of a symbols fetch. Spot and outcome metadata failures are partial:
 /// perp symbols still load, but the failed source's symbols are absent and the
 /// caller must keep any previously loaded symbols of that market type.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExchangeSymbolsPayload {
     pub symbols: Vec<ExchangeSymbol>,
     pub spot_meta_failed: bool,
     pub outcome_meta_failed: bool,
+}
+
+impl fmt::Debug for ExchangeSymbolsPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut perp_count = 0;
+        let mut spot_count = 0;
+        let mut outcome_count = 0;
+
+        for symbol in &self.symbols {
+            match symbol.market_type {
+                MarketType::Perp => perp_count += 1,
+                MarketType::Spot => spot_count += 1,
+                MarketType::Outcome => outcome_count += 1,
+            }
+        }
+
+        f.debug_struct("ExchangeSymbolsPayload")
+            .field("symbols_len", &self.symbols.len())
+            .field("perp_count", &perp_count)
+            .field("spot_count", &spot_count)
+            .field("outcome_count", &outcome_count)
+            .field("spot_meta_failed", &self.spot_meta_failed)
+            .field("outcome_meta_failed", &self.outcome_meta_failed)
+            .finish()
+    }
 }
 
 /// Fetch all tradeable symbols (perps + spot + outcomes) by combining

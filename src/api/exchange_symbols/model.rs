@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 mod outcome_labels;
 
@@ -10,7 +11,7 @@ pub enum MarketType {
     Outcome,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OutcomeSymbolInfo {
     pub outcome_id: u32,
     pub question_id: Option<u32>,
@@ -40,13 +41,57 @@ pub struct OutcomeSymbolInfo {
     pub encoding: u32,
 }
 
+impl fmt::Debug for OutcomeSymbolInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OutcomeSymbolInfo")
+            .field("outcome_id", &self.outcome_id)
+            .field("question_id", &self.question_id)
+            .field("has_question_name", &self.question_name.is_some())
+            .field(
+                "has_question_description",
+                &self.question_description.is_some(),
+            )
+            .field("question_class", &self.question_class)
+            .field("question_underlying", &self.question_underlying)
+            .field("question_expiry", &self.question_expiry)
+            .field(
+                "question_price_threshold_count",
+                &self.question_price_thresholds.len(),
+            )
+            .field(
+                "question_named_outcome_count",
+                &self.question_named_outcomes.len(),
+            )
+            .field(
+                "question_settled_named_outcome_count",
+                &self.question_settled_named_outcomes.len(),
+            )
+            .field("question_fallback_outcome", &self.question_fallback_outcome)
+            .field("bucket_index", &self.bucket_index)
+            .field("is_question_fallback", &self.is_question_fallback)
+            .field("side_index", &self.side_index)
+            .field("has_side_name", &(!self.side_name.is_empty()))
+            .field("has_outcome_name", &(!self.outcome_name.is_empty()))
+            .field("has_description", &(!self.description.is_empty()))
+            .field("class", &self.class)
+            .field("underlying", &self.underlying)
+            .field("expiry", &self.expiry)
+            .field("has_target_price", &self.target_price.is_some())
+            .field("period", &self.period)
+            .field("quote_symbol", &self.quote_symbol)
+            .field("quote_token_index", &self.quote_token_index)
+            .field("encoding", &self.encoding)
+            .finish()
+    }
+}
+
 /// A tradeable symbol on the exchange.
 /// `key` is the coin name in the format the candle/book/WS APIs expect:
 ///   - Main perp dex: "BTC", "ETH", "HYPE"
 ///   - HIP-3 dexes:   "xyz:NVDA", "flx:BTC", "km:US500"
 ///   - Spot pairs:     "@1" (PURR/USDC), "@107" (HYPE/USDC)
 ///   - Outcomes:       "#0", "#1" (quote-token-denominated prediction contracts)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExchangeSymbol {
     /// Coin name for API calls (e.g. "HYPE", "xyz:NVDA", or "@107")
     pub key: String,
@@ -77,6 +122,25 @@ pub struct ExchangeSymbol {
     pub outcome: Option<OutcomeSymbolInfo>,
 }
 
+impl fmt::Debug for ExchangeSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExchangeSymbol")
+            .field("key", &self.key)
+            .field("ticker", &self.ticker)
+            .field("category", &self.category)
+            .field("has_display_name", &self.display_name.is_some())
+            .field("keyword_count", &self.keywords.len())
+            .field("asset_index", &self.asset_index)
+            .field("collateral_token", &self.collateral_token)
+            .field("sz_decimals", &self.sz_decimals)
+            .field("max_leverage", &self.max_leverage)
+            .field("only_isolated", &self.only_isolated)
+            .field("market_type", &self.market_type)
+            .field("has_outcome", &self.outcome.is_some())
+            .finish()
+    }
+}
+
 impl ExchangeSymbol {
     /// Outcome questions expose fallback settlement contracts that are useful
     /// for metadata, but should not appear as user-selectable markets.
@@ -88,5 +152,84 @@ impl ExchangeSymbol {
             .outcome
             .as_ref()
             .is_some_and(|info| info.is_question_fallback)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
+
+    fn outcome_info() -> OutcomeSymbolInfo {
+        OutcomeSymbolInfo {
+            outcome_id: 66,
+            question_id: Some(12),
+            question_name: Some("Will BTC close above the secret threshold?".to_string()),
+            question_description: Some("Long question text with raw market details".to_string()),
+            question_class: Some("priceBucket".to_string()),
+            question_underlying: Some("BTC".to_string()),
+            question_expiry: Some("20260520-0600".to_string()),
+            question_price_thresholds: vec!["75348.12".to_string(), "78423.45".to_string()],
+            question_period: Some("1d".to_string()),
+            question_named_outcomes: vec![67, 68, 69],
+            question_settled_named_outcomes: vec![67],
+            question_fallback_outcome: Some(66),
+            bucket_index: Some(2),
+            is_question_fallback: false,
+            side_index: 0,
+            side_name: "Yes".to_string(),
+            outcome_name: "BTC above threshold".to_string(),
+            description: "Outcome contract description".to_string(),
+            class: Some("binary".to_string()),
+            underlying: Some("BTC".to_string()),
+            expiry: Some("20260520-0600".to_string()),
+            target_price: Some("75348.12".to_string()),
+            period: Some("1d".to_string()),
+            quote_symbol: "USDH".to_string(),
+            quote_token_index: Some(crate::api::USDH_TOKEN_INDEX),
+            encoding: 660,
+        }
+    }
+
+    #[test]
+    fn outcome_symbol_debug_summarizes_metadata_payload() {
+        let rendered = format!("{:?}", outcome_info());
+
+        assert!(rendered.contains("OutcomeSymbolInfo"));
+        assert!(rendered.contains("question_price_threshold_count: 2"));
+        assert!(rendered.contains("question_named_outcome_count: 3"));
+        assert!(rendered.contains("has_question_name: true"));
+        assert!(!rendered.contains("secret threshold"));
+        assert!(!rendered.contains("Long question text"));
+        assert!(!rendered.contains("75348.12"));
+        assert!(!rendered.contains("BTC above threshold"));
+        assert!(!rendered.contains("Outcome contract description"));
+    }
+
+    #[test]
+    fn exchange_symbol_debug_summarizes_outcome_payload() {
+        let symbol = ExchangeSymbol {
+            key: "#660".to_string(),
+            ticker: "#660".to_string(),
+            category: "outcome".to_string(),
+            display_name: Some("BTC above threshold".to_string()),
+            keywords: vec!["btc".to_string(), "threshold".to_string()],
+            asset_index: 100_000_000,
+            collateral_token: None,
+            sz_decimals: 0,
+            max_leverage: 1,
+            only_isolated: true,
+            market_type: MarketType::Outcome,
+            outcome: Some(outcome_info()),
+        };
+
+        let rendered = format!("{symbol:?}");
+
+        assert!(rendered.contains("ExchangeSymbol"));
+        assert!(rendered.contains("key: \"#660\""));
+        assert!(rendered.contains("keyword_count: 2"));
+        assert!(rendered.contains("has_outcome: true"));
+        assert!(!rendered.contains("BTC above threshold"));
+        assert!(!rendered.contains("secret threshold"));
+        assert!(!rendered.contains("75348.12"));
     }
 }
