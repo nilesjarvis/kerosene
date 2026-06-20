@@ -1426,6 +1426,7 @@ mod tests {
             first_seen_ms: 1,
             url: "https://t.me/c/42/1".to_string(),
             ticker_mentions: Vec::new(),
+            media: None,
         }
     }
 }

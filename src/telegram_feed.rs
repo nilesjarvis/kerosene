@@ -20,7 +20,9 @@ const TELEGRAM_USER_AGENT: &str =
 const TELEGRAM_FEED_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const TELEGRAM_FEED_MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 const TELEGRAM_AVATAR_MAX_BODY_BYTES: usize = 512 * 1024;
+const TELEGRAM_MEDIA_MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 pub(crate) const TELEGRAM_AVATAR_RETRY_BACKOFF_MS: u64 = 300_000;
+pub(crate) const TELEGRAM_MEDIA_RETRY_BACKOFF_MS: u64 = 300_000;
 pub(crate) const TELEGRAM_FEED_FETCH_LIMIT: usize = 10;
 pub(crate) const TELEGRAM_FEED_RENDER_LIMIT: usize = 100;
 pub(crate) const TELEGRAM_FEED_MAX_PUBLIC_CHANNELS: usize = 12;
@@ -43,6 +45,82 @@ pub(crate) struct TelegramTickerMention {
     pub(crate) reference_seen_ms: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TelegramMediaKind {
+    Photo,
+    Video,
+    Sticker,
+    Gif,
+}
+
+impl TelegramMediaKind {
+    /// Short label shown when the preview image has not loaded (or failed). Also
+    /// used as the post's body fallback for media-only messages.
+    pub(crate) fn placeholder_label(self) -> &'static str {
+        match self {
+            Self::Photo => "[photo]",
+            Self::Video => "[video]",
+            Self::Sticker => "[sticker]",
+            Self::Gif => "[gif]",
+        }
+    }
+}
+
+/// A single attached preview image for a post. The decoded `handle` is held only
+/// in memory (never persisted): public-mode media is fetched from `url`
+/// avatar-style, while fast-mode media is downloaded inline and arrives with the
+/// handle already populated (and `url` left `None`).
+#[derive(Clone, PartialEq)]
+pub(crate) struct TelegramPostMedia {
+    pub(crate) kind: TelegramMediaKind,
+    pub(crate) url: Option<String>,
+    pub(crate) handle: Option<ImageHandle>,
+    pub(crate) loading_url: Option<String>,
+    pub(crate) request_id: u64,
+    pub(crate) failed_at_ms: Option<u64>,
+}
+
+impl fmt::Debug for TelegramPostMedia {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // URLs can reference private channels, so summarize rather than print them.
+        f.debug_struct("TelegramPostMedia")
+            .field("kind", &self.kind)
+            .field("url", &self.url.as_ref().map(|_| "<url>"))
+            .field("handle", &self.handle.as_ref().map(|_| "<image>"))
+            .field("loading_url", &self.loading_url.as_ref().map(|_| "<url>"))
+            .field("request_id", &self.request_id)
+            .field("failed_at_ms", &self.failed_at_ms)
+            .finish()
+    }
+}
+
+impl TelegramPostMedia {
+    /// Public-mode descriptor: the preview must still be fetched from `url`.
+    pub(crate) fn from_url(kind: TelegramMediaKind, url: String) -> Self {
+        Self {
+            kind,
+            url: Some(url),
+            handle: None,
+            loading_url: None,
+            request_id: 0,
+            failed_at_ms: None,
+        }
+    }
+
+    /// Fast-mode descriptor whose preview download is still pending; the card
+    /// shows the kind label until the handle is filled in by a later event.
+    pub(crate) fn placeholder(kind: TelegramMediaKind) -> Self {
+        Self {
+            kind,
+            url: None,
+            handle: None,
+            loading_url: None,
+            request_id: 0,
+            failed_at_ms: None,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub(crate) struct TelegramFeedPost {
     pub(crate) channel: String,
@@ -58,6 +136,7 @@ pub(crate) struct TelegramFeedPost {
     pub(crate) first_seen_ms: u64,
     pub(crate) url: String,
     pub(crate) ticker_mentions: Vec<TelegramTickerMention>,
+    pub(crate) media: Option<TelegramPostMedia>,
 }
 
 impl fmt::Debug for TelegramFeedPost {
@@ -79,6 +158,7 @@ impl fmt::Debug for TelegramFeedPost {
             .field("first_seen_ms", &self.first_seen_ms)
             .field("url", &redacted_telegram_url_debug_value(&self.url))
             .field("ticker_mentions", &self.ticker_mentions.len())
+            .field("media", &self.media)
             .finish()
     }
 }
@@ -351,6 +431,7 @@ pub(crate) struct TelegramFeedState {
     pub(crate) loading_channels: Vec<String>,
     pub(crate) background_loading_channels: Vec<String>,
     pub(crate) next_avatar_request_id: u64,
+    pub(crate) next_media_request_id: u64,
     pub(crate) last_error: Option<String>,
     pub(crate) last_refresh_ms: Option<u64>,
 }
@@ -431,6 +512,7 @@ impl fmt::Debug for TelegramFeedState {
                 &TelegramChannelListDebug(&self.background_loading_channels),
             )
             .field("next_avatar_request_id", &self.next_avatar_request_id)
+            .field("next_media_request_id", &self.next_media_request_id)
             .field(
                 "last_error",
                 &self
@@ -590,6 +672,7 @@ impl TelegramFeedState {
             loading_channels: Vec::new(),
             background_loading_channels: Vec::new(),
             next_avatar_request_id: 0,
+            next_media_request_id: 0,
             last_error: public_channels_capped.then(|| {
                 format!(
                     "Telegram Feed supports up to {TELEGRAM_FEED_MAX_PUBLIC_CHANNELS} public channels; extra saved channels were ignored"
@@ -934,6 +1017,47 @@ pub(crate) async fn fetch_telegram_avatar_bytes(
     Ok(body)
 }
 
+pub(crate) async fn fetch_telegram_media_bytes(
+    channel: String,
+    message_id: u64,
+    media_url: String,
+) -> Result<Vec<u8>, String> {
+    let channel = normalize_public_channel_input(&channel)?;
+    let response = CLIENT
+        .get(&media_url)
+        .header(USER_AGENT, TELEGRAM_USER_AGENT)
+        .timeout(TELEGRAM_FEED_REQUEST_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| format!("@{channel}/{message_id} media request failed: {e}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "@{channel}/{message_id} media request failed with HTTP {status}"
+        ));
+    }
+    let content_type = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+
+    let body = read_response_body_limited(
+        response,
+        TELEGRAM_MEDIA_MAX_BODY_BYTES,
+        &format!("@{channel}/{message_id} media"),
+    )
+    .await?;
+    if !is_supported_raster_image(&body) {
+        let content_type = content_type.unwrap_or_else(|| "unknown content type".to_string());
+        return Err(format!(
+            "@{channel}/{message_id} media response was not a supported image: {content_type}"
+        ));
+    }
+
+    Ok(body)
+}
+
 async fn read_response_body_limited(
     mut response: reqwest::Response,
     max_body_bytes: usize,
@@ -1022,7 +1146,7 @@ pub(crate) fn telegram_channel_profile_from_title(
     }
 }
 
-fn is_supported_raster_image(bytes: &[u8]) -> bool {
+pub(crate) fn is_supported_raster_image(bytes: &[u8]) -> bool {
     bytes.starts_with(&[0xFF, 0xD8, 0xFF])
         || bytes.starts_with(b"\x89PNG\r\n\x1A\n")
         || bytes.starts_with(b"GIF87a")
@@ -1074,10 +1198,19 @@ fn parse_telegram_message_block(channel: &str, block: &str) -> Option<TelegramFe
         .with_timezone(&Utc)
         .timestamp_millis();
     let timestamp_ms = u64::try_from(timestamp_ms).ok()?;
-    let text = html_between(block, "tgme_widget_message_text js-message_text", "</div>")
+    let media = parse_telegram_post_media(block);
+    let caption = html_between(block, "tgme_widget_message_text js-message_text", "</div>")
         .map(|text_html| html_to_plain_text(&text_html))
-        .unwrap_or_else(|| telegram_message_fallback_text(block));
-    if text.trim().is_empty() {
+        .filter(|caption| !caption.trim().is_empty());
+    // A media-only post renders its preview instead of a placeholder string; only
+    // posts with neither a caption nor a displayable preview fall back to a label,
+    // and a post with nothing to show at all is dropped.
+    let text = match caption {
+        Some(caption) => caption,
+        None if media.is_some() => String::new(),
+        None => telegram_message_fallback_text(block),
+    };
+    if text.trim().is_empty() && media.is_none() {
         return None;
     }
 
@@ -1095,6 +1228,7 @@ fn parse_telegram_message_block(channel: &str, block: &str) -> Option<TelegramFe
         first_seen_ms: 0,
         url: format!("https://t.me/{channel}/{message_id}"),
         ticker_mentions: Vec::new(),
+        media,
     })
 }
 
@@ -1174,6 +1308,63 @@ fn normalize_telegram_asset_url(url: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Extracts the first displayable preview image from a public message block,
+/// classifying it so the card can label media that has not loaded yet. Returns
+/// `None` when the block has no extractable preview URL (the caller then keeps
+/// the textual `[photo]`/`[video]` fallback instead).
+fn parse_telegram_post_media(block: &str) -> Option<TelegramPostMedia> {
+    // Stickers expose a static WebP preview via data-webp on t.me/s.
+    if block.contains("tgme_widget_message_sticker")
+        && let Some(url) = attr_value(block, "data-webp=\"")
+            .and_then(|url| normalize_telegram_asset_url(&decode_html_entities(url.trim())))
+            .or_else(|| telegram_media_background_url(block, "tgme_widget_message_sticker"))
+    {
+        return Some(TelegramPostMedia::from_url(TelegramMediaKind::Sticker, url));
+    }
+    // Round video messages carry their preview frame as a background image.
+    if let Some(url) = telegram_media_background_url(block, "tgme_widget_message_roundvideo_thumb")
+    {
+        return Some(TelegramPostMedia::from_url(TelegramMediaKind::Video, url));
+    }
+    // Videos and GIFs both surface a still preview frame; t.me badges GIFs with a
+    // "GIF" duration label (`<time ...>GIF</time>`). Matching the closing `</time>`
+    // keeps a caption that merely contains the word "gif" from being misclassified.
+    if let Some(url) = telegram_media_background_url(block, "tgme_widget_message_video_thumb") {
+        let kind = if block.to_ascii_lowercase().contains(">gif</time>") {
+            TelegramMediaKind::Gif
+        } else {
+            TelegramMediaKind::Video
+        };
+        return Some(TelegramPostMedia::from_url(kind, url));
+    }
+    // Plain photos.
+    if let Some(url) = telegram_media_background_url(block, "tgme_widget_message_photo_wrap") {
+        return Some(TelegramPostMedia::from_url(TelegramMediaKind::Photo, url));
+    }
+    None
+}
+
+/// Reads a `background-image:url(...)` value from the opening tag that carries
+/// `class_marker`. Scanning only that tag keeps an element without an inline
+/// style from borrowing a sibling element's preview URL.
+fn telegram_media_background_url(block: &str, class_marker: &str) -> Option<String> {
+    let class_start = block.find(class_marker)?;
+    let tag_end = block[class_start..]
+        .find('>')
+        .map(|offset| class_start + offset)
+        .unwrap_or(block.len());
+    let tag = &block[class_start..tag_end];
+    let background = tag.find("background-image")?;
+    let url_open = tag[background..].find("url(")? + background + 4;
+    // Decode entities before stripping quotes and locating the closing delimiter,
+    // so an entity-encoded inner quote (`url(&#39;...&#39;)`) is handled like a
+    // literal one instead of leaking into the extracted URL.
+    let decoded = decode_html_entities(&tag[url_open..]);
+    let value = decoded.trim_start_matches(['\'', '"', ' ']);
+    let end = value.find([')', '\'', '"'])?;
+    normalize_telegram_asset_url(value[..end].trim())
 }
 
 fn telegram_message_fallback_text(block: &str) -> String {
@@ -1416,6 +1607,7 @@ mod tests {
                 first_seen_ms: 2,
                 url: "https://t.me/s/private/1".to_string(),
                 ticker_mentions: Vec::new(),
+                media: None,
             }],
         };
 
@@ -1476,6 +1668,7 @@ mod tests {
                 reference_price: None,
                 reference_seen_ms: 0,
             }],
+            media: None,
         };
 
         let rendered = format!("{post:?}");
@@ -1528,6 +1721,7 @@ mod tests {
             first_seen_ms: 2,
             url: "https://t.me/c/42/7".to_string(),
             ticker_mentions: Vec::new(),
+            media: None,
         });
         state.record_seen_post("private:42", 7);
         state
@@ -1705,7 +1899,115 @@ mod tests {
         let posts = parse_telegram_channel_html("marketfeed", SAMPLE_HTML, 10);
         let media_post = posts.iter().find(|post| post.message_id == 12).unwrap();
 
+        // No preview URL is extractable from this block, so the post keeps the
+        // textual placeholder and carries no displayable media.
         assert_eq!(media_post.text, "[photo]");
+        assert!(media_post.media.is_none());
+    }
+
+    const MEDIA_HTML: &str = r#"
+<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="marketfeed/30">
+<a class="tgme_widget_message_photo_wrap" style="background-image:url('https://cdn4.telesco.pe/file/photo30.jpg')" href="https://t.me/marketfeed/30"></a>
+<a class="tgme_widget_message_date" href="https://t.me/marketfeed/30"><time datetime="2026-05-31T19:00:00+00:00" class="time">19:00</time></a>
+</div></div>
+<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="marketfeed/31">
+<div class="tgme_widget_message_text js-message_text" dir="auto">caption here</div>
+<a class="tgme_widget_message_video_player blured" href="https://t.me/marketfeed/31"><i class="tgme_widget_message_video_thumb" style="background-image:url('https://cdn4.telesco.pe/file/video31.jpg')"></i><time class="message_video_duration js-message_video_duration">0:15</time></a>
+<a class="tgme_widget_message_date" href="https://t.me/marketfeed/31"><time datetime="2026-05-31T19:01:00+00:00" class="time">19:01</time></a>
+</div></div>
+<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="marketfeed/32">
+<i class="tgme_widget_message_sticker" data-webp="https://cdn4.telesco.pe/file/sticker32.webp" style="width:128px;height:128px"></i>
+<a class="tgme_widget_message_date" href="https://t.me/marketfeed/32"><time datetime="2026-05-31T19:02:00+00:00" class="time">19:02</time></a>
+</div></div>
+<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="marketfeed/33">
+<a class="tgme_widget_message_video_player" href="https://t.me/marketfeed/33"><i class="tgme_widget_message_video_thumb" style="background-image:url('https://cdn4.telesco.pe/file/gif33.jpg')"></i><time class="message_video_duration">GIF</time></a>
+<a class="tgme_widget_message_date" href="https://t.me/marketfeed/33"><time datetime="2026-05-31T19:03:00+00:00" class="time">19:03</time></a>
+</div></div>
+"#;
+
+    #[test]
+    fn parses_attached_media_previews() {
+        let posts = parse_telegram_channel_html("marketfeed", MEDIA_HTML, 10);
+
+        let photo = posts.iter().find(|post| post.message_id == 30).unwrap();
+        // A captionless photo renders its preview, so it carries no placeholder text.
+        assert!(photo.text.is_empty());
+        let photo_media = photo.media.as_ref().expect("photo media");
+        assert_eq!(photo_media.kind, TelegramMediaKind::Photo);
+        assert_eq!(
+            photo_media.url.as_deref(),
+            Some("https://cdn4.telesco.pe/file/photo30.jpg")
+        );
+        assert!(photo_media.handle.is_none());
+
+        let video = posts.iter().find(|post| post.message_id == 31).unwrap();
+        assert_eq!(video.text, "caption here");
+        let video_media = video.media.as_ref().expect("video media");
+        assert_eq!(video_media.kind, TelegramMediaKind::Video);
+        assert_eq!(
+            video_media.url.as_deref(),
+            Some("https://cdn4.telesco.pe/file/video31.jpg")
+        );
+
+        let sticker = posts.iter().find(|post| post.message_id == 32).unwrap();
+        let sticker_media = sticker.media.as_ref().expect("sticker media");
+        assert_eq!(sticker_media.kind, TelegramMediaKind::Sticker);
+        assert_eq!(
+            sticker_media.url.as_deref(),
+            Some("https://cdn4.telesco.pe/file/sticker32.webp")
+        );
+
+        let gif = posts.iter().find(|post| post.message_id == 33).unwrap();
+        assert_eq!(
+            gif.media.as_ref().expect("gif media").kind,
+            TelegramMediaKind::Gif
+        );
+    }
+
+    #[test]
+    fn extracts_background_image_url_with_entity_encoded_quotes() {
+        let block = r#"<div data-post="marketfeed/40">
+<a class="tgme_widget_message_photo_wrap" style="background-image:url(&#39;https://cdn4.telesco.pe/file/enc40.jpg&#39;)" href="https://t.me/marketfeed/40"></a>
+<a class="tgme_widget_message_date" href="https://t.me/marketfeed/40"><time datetime="2026-05-31T20:00:00+00:00">20:00</time></a>
+</div>"#;
+        let posts = parse_telegram_channel_html("marketfeed", block, 10);
+
+        let media = posts[0].media.as_ref().expect("photo media");
+        assert_eq!(media.kind, TelegramMediaKind::Photo);
+        assert_eq!(
+            media.url.as_deref(),
+            Some("https://cdn4.telesco.pe/file/enc40.jpg")
+        );
+    }
+
+    #[test]
+    fn video_with_gif_caption_text_is_not_classified_as_gif() {
+        // The caption merely contains the word "gif"; only the duration badge
+        // (`<time>GIF</time>`) should drive GIF classification.
+        let block = r#"<div data-post="marketfeed/41">
+<div class="tgme_widget_message_text js-message_text" dir="auto">is this a gif or a video</div>
+<a class="tgme_widget_message_video_player" href="https://t.me/marketfeed/41"><i class="tgme_widget_message_video_thumb" style="background-image:url('https://cdn4.telesco.pe/file/vid41.jpg')"></i><time class="message_video_duration">0:30</time></a>
+<a class="tgme_widget_message_date" href="https://t.me/marketfeed/41"><time datetime="2026-05-31T20:01:00+00:00">20:01</time></a>
+</div>"#;
+        let posts = parse_telegram_channel_html("marketfeed", block, 10);
+
+        assert_eq!(
+            posts[0].media.as_ref().expect("video media").kind,
+            TelegramMediaKind::Video
+        );
+    }
+
+    #[test]
+    fn telegram_post_media_debug_redacts_url() {
+        let media = TelegramPostMedia::from_url(
+            TelegramMediaKind::Photo,
+            "https://t.me/c/42/7/private-file.jpg".to_string(),
+        );
+
+        let rendered = format!("{media:?}");
+
+        assert!(rendered.contains("<url>"));
+        assert!(!rendered.contains("https://t.me/c/42/7/private-file.jpg"));
     }
 
     #[test]
@@ -1739,6 +2041,7 @@ mod tests {
             first_seen_ms: 1_250,
             url: "https://t.me/marketfeed/1".to_string(),
             ticker_mentions: Vec::new(),
+            media: None,
         };
 
         assert_eq!(
@@ -1763,6 +2066,7 @@ mod tests {
             first_seen_ms: 0,
             url: "https://t.me/marketfeed/1".to_string(),
             ticker_mentions: Vec::new(),
+            media: None,
         };
 
         assert_eq!(telegram_arrival_latency_label(&post), None);

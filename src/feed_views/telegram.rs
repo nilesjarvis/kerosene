@@ -4,7 +4,7 @@ use crate::helpers;
 use crate::message::Message;
 use crate::symbol_mentions::SymbolAliasSource;
 use crate::telegram_feed::{
-    TelegramChannelProfile, TelegramFastAuthStage, TelegramFeedPost,
+    TelegramChannelProfile, TelegramFastAuthStage, TelegramFeedPost, TelegramPostMedia,
     TelegramPrivateChannelCandidate, telegram_age_countdown_label, telegram_arrival_latency_label,
     telegram_new_message_heat, telegram_price_impact_pct,
 };
@@ -26,6 +26,8 @@ const TELEGRAM_PRIVATE_CANDIDATE_LIST_HEIGHT: f32 = 150.0;
 const TELEGRAM_FAST_STATUS_BUTTON_SIZE: f32 = 24.0;
 const TELEGRAM_FAST_STATUS_ICON_SIZE: f32 = 14.0;
 const TELEGRAM_FAST_STATUS_DOT_SIZE: f32 = 7.0;
+const TELEGRAM_MEDIA_MAX_HEIGHT: f32 = 240.0;
+const TELEGRAM_MEDIA_PLACEHOLDER_HEIGHT: f32 = 56.0;
 
 #[derive(Debug, Clone)]
 struct TelegramTickerImpactCard {
@@ -889,13 +891,17 @@ fn telegram_post_card(
     }
     let time_line = time_line.wrap().vertical_spacing(4);
 
-    let mut content = column![
-        top_line,
-        time_line,
-        text(post.text).size(12).color(body_text).width(Fill),
-    ]
-    .spacing(6)
-    .width(Fill);
+    let mut content = column![top_line, time_line].spacing(6).width(Fill);
+    if !post.text.trim().is_empty() {
+        content = content.push(text(post.text).size(12).color(body_text).width(Fill));
+    }
+    if let Some(media) = post.media {
+        content = content.push(telegram_post_media_view(
+            media,
+            post.url.clone(),
+            muted_text,
+        ));
+    }
     if !ticker_impacts.is_empty() {
         content = content.push(telegram_ticker_impact_cards(
             ticker_impacts,
@@ -910,6 +916,49 @@ fn telegram_post_card(
         .width(Fill)
         .padding([8, 10])
         .style(move |theme: &Theme| telegram_post_container(theme, heat))
+        .into()
+}
+
+fn telegram_post_media_view(
+    media: TelegramPostMedia,
+    post_url: String,
+    muted_text: Color,
+) -> Element<'static, Message> {
+    if let Some(handle) = media.handle {
+        // Clicking the preview copies the post link, matching the card's "Link"
+        // button (iced cannot play video, so a still frame is shown for clips).
+        return button(
+            container(
+                image(handle)
+                    .width(Fill)
+                    .height(TELEGRAM_MEDIA_MAX_HEIGHT)
+                    .content_fit(ContentFit::Contain)
+                    .border_radius(6.0),
+            )
+            .width(Fill)
+            .clip(true),
+        )
+        .on_press(Message::CopyToClipboard(post_url.into()))
+        .padding(0)
+        .width(Fill)
+        .style(telegram_media_button)
+        .into();
+    }
+
+    // No preview: show a compact labelled box so a media-only post is never
+    // blank. A recorded failure reads as "unavailable" rather than an indefinite
+    // loading state.
+    let label = if media.failed_at_ms.is_some() {
+        "[media unavailable]"
+    } else {
+        media.kind.placeholder_label()
+    };
+    container(text(label).size(11).color(muted_text))
+        .width(Fill)
+        .height(TELEGRAM_MEDIA_PLACEHOLDER_HEIGHT)
+        .center_x(Fill)
+        .center_y(Fill)
+        .style(telegram_media_placeholder_style)
         .into()
 }
 
@@ -1230,6 +1279,40 @@ fn telegram_ticker_impact_button(
             radius: 4.0.into(),
             width: 1.0,
             color: Color { a: 0.28, ..accent },
+        },
+        ..Default::default()
+    }
+}
+
+fn telegram_media_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let overlay = match status {
+        button::Status::Hovered | button::Status::Pressed => Color {
+            a: 0.06,
+            ..Color::BLACK
+        },
+        _ => Color::TRANSPARENT,
+    };
+
+    button::Style {
+        background: Some(overlay.into()),
+        border: iced::Border {
+            radius: 6.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn telegram_media_placeholder_style(theme: &Theme) -> container_style::Style {
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: iced::Border {
+            radius: 6.0.into(),
+            width: 1.0,
+            color: Color {
+                a: 0.18,
+                ..theme.extended_palette().background.strong.color
+            },
         },
         ..Default::default()
     }

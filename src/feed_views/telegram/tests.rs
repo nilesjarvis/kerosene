@@ -85,6 +85,7 @@ fn post_with_mention(symbol: &str, ticker: &str) -> TelegramFeedPost {
             reference_price: None,
             reference_seen_ms: 0,
         }],
+        media: None,
     }
 }
 

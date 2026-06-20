@@ -10,11 +10,12 @@ use crate::telegram_fast_feed::{
     sign_out_telegram_fast, submit_telegram_fast_login_code, submit_telegram_fast_password,
 };
 use crate::telegram_feed::{
-    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_PUBLIC_CHANNELS, TelegramFastAuthOutcome,
-    TelegramFastAuthStage, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
-    TelegramFeedPostSource, TelegramTickerMention, fetch_telegram_avatar_bytes,
-    fetch_telegram_channel_posts, normalize_public_channel_input, normalized_channel_list,
-    telegram_private_channel_peer_id_from_key,
+    TELEGRAM_AVATAR_RETRY_BACKOFF_MS, TELEGRAM_FEED_MAX_PUBLIC_CHANNELS,
+    TELEGRAM_MEDIA_RETRY_BACKOFF_MS, TelegramFastAuthOutcome, TelegramFastAuthStage,
+    TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost, TelegramFeedPostSource,
+    TelegramPostMedia, TelegramTickerMention, fetch_telegram_avatar_bytes,
+    fetch_telegram_channel_posts, fetch_telegram_media_bytes, normalize_public_channel_input,
+    normalized_channel_list, telegram_private_channel_peer_id_from_key,
 };
 use iced::Task;
 use iced::widget::image::Handle as ImageHandle;
@@ -35,6 +36,12 @@ impl TradingTerminal {
             }
             Message::TelegramAvatarLoaded(channel, avatar_url, request_id, result) => {
                 self.handle_telegram_avatar_loaded(channel, avatar_url, request_id, *result);
+                Task::none()
+            }
+            Message::TelegramMediaLoaded(channel, message_id, media_url, request_id, result) => {
+                self.handle_telegram_media_loaded(
+                    channel, message_id, media_url, request_id, *result,
+                );
                 Task::none()
             }
             Message::ToggleTelegramFastFeed => self.toggle_telegram_fast_feed(),
@@ -734,6 +741,8 @@ impl TradingTerminal {
                         existing_post.url = post.url;
                         existing_post.ticker_mentions = mentions;
                         existing_post.applied_at_ms = post.applied_at_ms;
+                        existing_post.media =
+                            merge_telegram_post_media(existing_post.media.take(), post.media);
                     } else {
                         // History backfill must never read as breaking news: a
                         // live fast message can land before its channel's
@@ -774,7 +783,8 @@ impl TradingTerminal {
                 if self.telegram_feed.notifications_enabled {
                     self.push_new_telegram_post_alerts(&new_posts);
                 }
-                avatar_task
+                let media_task = self.schedule_telegram_media_fetches(&channel);
+                Task::batch([avatar_task, media_task])
             }
             Err(err) => {
                 if was_visible_loading || self.telegram_feed.posts.is_empty() {
@@ -1019,6 +1029,111 @@ impl TradingTerminal {
         }
     }
 
+    fn schedule_telegram_media_fetches(&mut self, channel: &str) -> Task<Message> {
+        let now_ms = Self::now_ms();
+        // First pass identifies public posts whose preview still needs fetching;
+        // fast-mode media carries no URL and is downloaded by the stream instead.
+        let targets = self
+            .telegram_feed
+            .posts
+            .iter()
+            .filter(|post| post.channel == channel)
+            .filter_map(|post| {
+                let media = post.media.as_ref()?;
+                let url = media.url.clone()?;
+                let needs_fetch = media.handle.is_none()
+                    && media.loading_url.as_deref() != Some(url.as_str())
+                    && !media.failed_at_ms.is_some_and(|failed_at_ms| {
+                        now_ms.saturating_sub(failed_at_ms) < TELEGRAM_MEDIA_RETRY_BACKOFF_MS
+                    });
+                needs_fetch.then_some((post.message_id, url))
+            })
+            .collect::<Vec<_>>();
+        if targets.is_empty() {
+            return Task::none();
+        }
+
+        let mut tasks = Vec::with_capacity(targets.len());
+        for (message_id, url) in targets {
+            self.telegram_feed.next_media_request_id =
+                self.telegram_feed.next_media_request_id.saturating_add(1);
+            let request_id = self.telegram_feed.next_media_request_id;
+            if let Some(media) = self
+                .telegram_feed
+                .posts
+                .iter_mut()
+                .find(|post| post.channel == channel && post.message_id == message_id)
+                .and_then(|post| post.media.as_mut())
+            {
+                media.loading_url = Some(url.clone());
+                media.request_id = request_id;
+                media.failed_at_ms = None;
+            }
+            let channel = channel.to_string();
+            tasks.push(Task::perform(
+                fetch_telegram_media_bytes(channel.clone(), message_id, url.clone()),
+                move |result| {
+                    Message::TelegramMediaLoaded(
+                        channel.clone(),
+                        message_id,
+                        url.clone(),
+                        request_id,
+                        Box::new(result),
+                    )
+                },
+            ));
+        }
+        Task::batch(tasks)
+    }
+
+    fn handle_telegram_media_loaded(
+        &mut self,
+        channel: String,
+        message_id: u64,
+        media_url: String,
+        request_id: u64,
+        result: Result<Vec<u8>, String>,
+    ) {
+        if !self.telegram_feed.feed_source_selected(&channel) {
+            return;
+        }
+        let Some(media) = self
+            .telegram_feed
+            .posts
+            .iter_mut()
+            .find(|post| post.channel == channel && post.message_id == message_id)
+            .and_then(|post| post.media.as_mut())
+        else {
+            return;
+        };
+        // Guard against a stale response landing on media that has since changed,
+        // been superseded by a newer fetch, or already resolved.
+        if media.url.as_deref() != Some(media_url.as_str()) {
+            return;
+        }
+        if media.request_id != request_id {
+            return;
+        }
+        if media.loading_url.as_deref() == Some(media_url.as_str()) {
+            media.loading_url = None;
+        } else {
+            return;
+        }
+
+        match result {
+            Ok(bytes) => {
+                media.handle = Some(ImageHandle::from_bytes(bytes));
+                media.request_id = 0;
+                media.failed_at_ms = None;
+            }
+            Err(_) => {
+                media.handle = None;
+                media.request_id = 0;
+                media.failed_at_ms = Some(Self::now_ms());
+            }
+        }
+    }
+
     fn push_new_telegram_post_alerts(&mut self, posts: &[TelegramFeedPost]) {
         const MAX_ALERTS_PER_REFRESH: usize = 3;
 
@@ -1031,6 +1146,45 @@ impl TradingTerminal {
                 "{} more Telegram messages",
                 posts.len() - MAX_ALERTS_PER_REFRESH
             ));
+        }
+    }
+}
+
+/// Reconciles a post's media across a refresh or a follow-up download. A freshly
+/// downloaded handle always wins (e.g. a fast-mode preview arriving late);
+/// otherwise an unchanged media reference keeps whatever was already downloaded
+/// or is mid-fetch, so a refresh never discards a loaded preview or restarts its
+/// fetch. A changed reference is replaced and re-fetched.
+fn merge_telegram_post_media(
+    existing: Option<TelegramPostMedia>,
+    incoming: Option<TelegramPostMedia>,
+) -> Option<TelegramPostMedia> {
+    match (existing, incoming) {
+        (existing, None) => existing,
+        (None, incoming) => incoming,
+        (Some(existing), Some(incoming)) => {
+            if incoming.handle.is_some() {
+                // A freshly decoded preview always wins (e.g. a fast follow-up).
+                Some(incoming)
+            } else if existing.handle.is_some()
+                && (existing.url.is_none() || existing.url == incoming.url)
+            {
+                // Keep an already-loaded preview across a refresh: fast-sourced
+                // media (url == None) has no public URL to re-fetch, and an
+                // unchanged public reference points at the same image. This stops
+                // a public refresh from discarding a loaded handle and re-fetching.
+                Some(existing)
+            } else if incoming.failed_at_ms.is_some() {
+                // Surface a download failure onto the pending placeholder so the
+                // card can stop showing an indefinite loading state.
+                Some(incoming)
+            } else if existing.url == incoming.url {
+                // Same pending reference: keep in-flight / backoff bookkeeping.
+                Some(existing)
+            } else {
+                // A genuinely changed reference is replaced and re-fetched.
+                Some(incoming)
+            }
         }
     }
 }
@@ -1129,6 +1283,7 @@ mod tests {
         set_fast_channel_cursor_for_test, set_telegram_fast_pending_auth_placeholders_for_test,
         telegram_fast_pending_auth_request_ids_for_test, telegram_fast_pending_auth_test_lock,
     };
+    use crate::telegram_feed::TelegramMediaKind;
 
     fn exchange_symbol(key: &str, ticker: &str) -> ExchangeSymbol {
         ExchangeSymbol {
@@ -1162,7 +1317,143 @@ mod tests {
             first_seen_ms: 0,
             url: format!("https://t.me/{channel}/{message_id}"),
             ticker_mentions: Vec::new(),
+            media: None,
         }
+    }
+
+    fn sample_post_with_media(
+        channel: &str,
+        message_id: u64,
+        media: TelegramPostMedia,
+    ) -> TelegramFeedPost {
+        TelegramFeedPost {
+            media: Some(media),
+            ..sample_post(channel, message_id)
+        }
+    }
+
+    fn find_post_media(
+        terminal: &TradingTerminal,
+        channel: &str,
+        message_id: u64,
+    ) -> TelegramPostMedia {
+        terminal
+            .telegram_feed
+            .posts
+            .iter()
+            .find(|post| post.channel == channel && post.message_id == message_id)
+            .and_then(|post| post.media.clone())
+            .expect("post media")
+    }
+
+    #[test]
+    fn public_media_schedules_fetch_then_stores_handle() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+
+        let media =
+            TelegramPostMedia::from_url(TelegramMediaKind::Photo, "https://cdn/p.jpg".to_string());
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page(
+                "marketfeed",
+                vec![sample_post_with_media("marketfeed", 1, media)],
+            )),
+        );
+
+        let pending = find_post_media(&terminal, "marketfeed", 1);
+        assert_eq!(pending.loading_url.as_deref(), Some("https://cdn/p.jpg"));
+        assert!(pending.handle.is_none());
+        assert!(pending.request_id > 0);
+
+        let _task = terminal.update_telegram_feed(Message::TelegramMediaLoaded(
+            "marketfeed".to_string(),
+            1,
+            "https://cdn/p.jpg".to_string(),
+            pending.request_id,
+            Box::new(Ok(vec![0xFF, 0xD8, 0xFF, 0x00])),
+        ));
+
+        let loaded = find_post_media(&terminal, "marketfeed", 1);
+        assert!(loaded.handle.is_some());
+        assert!(loaded.loading_url.is_none());
+        assert_eq!(loaded.request_id, 0);
+        assert_eq!(loaded.failed_at_ms, None);
+    }
+
+    #[test]
+    fn stale_media_response_is_ignored() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.telegram_feed.channels = vec!["marketfeed".to_string()];
+
+        let media =
+            TelegramPostMedia::from_url(TelegramMediaKind::Photo, "https://cdn/p.jpg".to_string());
+        load_public_feed(
+            &mut terminal,
+            "marketfeed",
+            Ok(sample_page(
+                "marketfeed",
+                vec![sample_post_with_media("marketfeed", 1, media)],
+            )),
+        );
+        let request_id = find_post_media(&terminal, "marketfeed", 1).request_id;
+
+        let _task = terminal.update_telegram_feed(Message::TelegramMediaLoaded(
+            "marketfeed".to_string(),
+            1,
+            "https://cdn/p.jpg".to_string(),
+            request_id + 999,
+            Box::new(Ok(vec![0xFF, 0xD8, 0xFF, 0x00])),
+        ));
+
+        let media = find_post_media(&terminal, "marketfeed", 1);
+        assert!(media.handle.is_none());
+        assert_eq!(media.loading_url.as_deref(), Some("https://cdn/p.jpg"));
+    }
+
+    #[test]
+    fn refresh_keeps_loaded_media_and_refetches_changed_media() {
+        // An unchanged reference keeps the already-downloaded preview.
+        let mut existing =
+            TelegramPostMedia::from_url(TelegramMediaKind::Photo, "same".to_string());
+        existing.handle = Some(ImageHandle::from_bytes(vec![1, 2, 3]));
+        let incoming = TelegramPostMedia::from_url(TelegramMediaKind::Photo, "same".to_string());
+        let merged = merge_telegram_post_media(Some(existing), Some(incoming)).unwrap();
+        assert!(merged.handle.is_some());
+
+        // A freshly downloaded handle (fast follow-up) always wins over a placeholder.
+        let placeholder = TelegramPostMedia::placeholder(TelegramMediaKind::Video);
+        let mut downloaded = TelegramPostMedia::placeholder(TelegramMediaKind::Video);
+        downloaded.handle = Some(ImageHandle::from_bytes(vec![9]));
+        let merged = merge_telegram_post_media(Some(placeholder), Some(downloaded)).unwrap();
+        assert!(merged.handle.is_some());
+
+        // A changed public reference is replaced and must be re-fetched.
+        let mut existing = TelegramPostMedia::from_url(TelegramMediaKind::Photo, "old".to_string());
+        existing.handle = Some(ImageHandle::from_bytes(vec![1]));
+        let incoming = TelegramPostMedia::from_url(TelegramMediaKind::Photo, "new".to_string());
+        let merged = merge_telegram_post_media(Some(existing), Some(incoming)).unwrap();
+        assert_eq!(merged.url.as_deref(), Some("new"));
+        assert!(merged.handle.is_none());
+
+        // A loaded fast-mode preview (no URL) survives a public refresh that
+        // re-delivers the same message with a fetchable URL, so it is not dropped
+        // and re-downloaded.
+        let mut fast_loaded = TelegramPostMedia::placeholder(TelegramMediaKind::Photo);
+        fast_loaded.handle = Some(ImageHandle::from_bytes(vec![7]));
+        let public_incoming =
+            TelegramPostMedia::from_url(TelegramMediaKind::Photo, "https://cdn/p.jpg".to_string());
+        let merged = merge_telegram_post_media(Some(fast_loaded), Some(public_incoming)).unwrap();
+        assert!(merged.handle.is_some());
+        assert!(merged.url.is_none());
+
+        // A failed download is surfaced onto a still-pending placeholder.
+        let placeholder = TelegramPostMedia::placeholder(TelegramMediaKind::Video);
+        let mut failed = TelegramPostMedia::placeholder(TelegramMediaKind::Video);
+        failed.failed_at_ms = Some(42);
+        let merged = merge_telegram_post_media(Some(placeholder), Some(failed)).unwrap();
+        assert_eq!(merged.failed_at_ms, Some(42));
     }
 
     fn sample_profile(

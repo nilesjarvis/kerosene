@@ -2,13 +2,14 @@ use crate::app_time::now_ms;
 use crate::telegram_feed::{
     TELEGRAM_FAST_HEALTH_CHECK_INTERVAL_SECS, TELEGRAM_FEED_FETCH_LIMIT, TelegramChannelProfile,
     TelegramFastAuthOutcome, TelegramFastFeedEvent, TelegramFeedPage, TelegramFeedPost,
-    TelegramFeedPostSource, TelegramFeedPrivateChannelConfig, TelegramPrivateChannelCandidate,
-    normalize_private_channel_title, normalize_public_channel_input, normalize_telegram_plain_text,
+    TelegramFeedPostSource, TelegramFeedPrivateChannelConfig, TelegramMediaKind, TelegramPostMedia,
+    TelegramPrivateChannelCandidate, is_supported_raster_image, normalize_private_channel_title,
+    normalize_public_channel_input, normalize_telegram_plain_text,
     telegram_channel_profile_from_title, telegram_private_channel_peer_id_from_key,
 };
 use futures::{SinkExt as _, channel::mpsc};
 use grammers_client::client::{LoginToken, PasswordToken, UpdatesConfiguration};
-use grammers_client::media::ChatPhoto;
+use grammers_client::media::{ChatPhoto, Document, Downloadable, Media};
 use grammers_client::peer::Peer;
 use grammers_client::session::storages::SqliteSession;
 use grammers_client::update::Update;
@@ -22,11 +23,16 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use zeroize::Zeroizing;
 
 const TELEGRAM_FAST_UPDATE_QUEUE_LIMIT: usize = 2_000;
 const TELEGRAM_PRIVATE_CANDIDATE_AVATAR_MAX_BYTES: usize = 128 * 1024;
+const TELEGRAM_FAST_MEDIA_MAX_BYTES: usize = 2 * 1024 * 1024;
+const TELEGRAM_FAST_MEDIA_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
+// Cap concurrent in-flight media downloads per session so a burst of media-heavy
+// messages (or a slow backfill) cannot spawn an unbounded number of downloads.
+const TELEGRAM_FAST_MEDIA_CONCURRENCY: usize = 4;
 const TELEGRAM_FAST_RECONNECT_BACKFILL_LIMIT: usize = 100;
 const TELEGRAM_FAST_RECONNECT_BASE_DELAY: Duration = Duration::from_secs(2);
 const TELEGRAM_FAST_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
@@ -44,6 +50,14 @@ pub(crate) const TELEGRAM_FAST_SESSION_CLEAR_FAILED: &str =
     "Telegram fast session sign-out could not remove the local session files";
 type ChannelIdMap = Arc<RwLock<HashMap<PeerId, FastChannelIdentity>>>;
 type ChannelCursorMap = Arc<RwLock<HashMap<String, FastChannelCursor>>>;
+
+/// Session-scoped shared handles threaded through channel resolution and
+/// backfill, bundled to keep those functions' signatures small.
+struct FastBackfillResources<'a> {
+    channel_ids: &'a ChannelIdMap,
+    channel_cursors: &'a ChannelCursorMap,
+    media_semaphore: &'a Arc<Semaphore>,
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct FastCursorGeneration {
@@ -587,15 +601,148 @@ async fn download_private_channel_avatar_handle(
 }
 
 async fn download_chat_photo_bytes(client: &Client, photo: &ChatPhoto) -> Option<Vec<u8>> {
+    download_downloadable_bytes(client, photo, TELEGRAM_PRIVATE_CANDIDATE_AVATAR_MAX_BYTES).await
+}
+
+async fn download_downloadable_bytes<D: Downloadable>(
+    client: &Client,
+    downloadable: &D,
+    max_bytes: usize,
+) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
-    let mut download = client.iter_download(photo);
+    let mut download = client.iter_download(downloadable);
     while let Some(chunk) = download.next().await.ok()? {
         bytes.extend_from_slice(&chunk);
-        if bytes.len() > TELEGRAM_PRIVATE_CANDIDATE_AVATAR_MAX_BYTES {
+        if bytes.len() > max_bytes {
             return None;
         }
     }
     (!bytes.is_empty()).then_some(bytes)
+}
+
+/// Classifies a message's media into a renderable preview kind, or `None` for
+/// media we never show inline (polls, contacts, generic files, animated
+/// stickers, …). Kept in sync with [`download_fast_post_media`].
+fn fast_media_kind(media: &Media) -> Option<TelegramMediaKind> {
+    match media {
+        Media::Photo(_) => Some(TelegramMediaKind::Photo),
+        Media::Sticker(sticker) => (!sticker.is_animated()).then_some(TelegramMediaKind::Sticker),
+        Media::Document(document) => fast_document_media_kind(document),
+        _ => None,
+    }
+}
+
+fn fast_document_media_kind(document: &Document) -> Option<TelegramMediaKind> {
+    let mime = document
+        .mime_type()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let is_gif = document.is_animated() || mime == "image/gif";
+    if mime.starts_with("video/") || is_gif {
+        Some(if is_gif {
+            TelegramMediaKind::Gif
+        } else {
+            TelegramMediaKind::Video
+        })
+    } else if mime.starts_with("image/") {
+        Some(TelegramMediaKind::Photo)
+    } else {
+        None
+    }
+}
+
+/// Downloads a renderable preview image for a message's media, in memory only.
+/// Photos and static stickers download in full (already compressed and small);
+/// videos and GIFs would be far too large to inline, so only their
+/// server-rendered preview thumbnail is fetched.
+async fn download_fast_post_media(
+    client: &Client,
+    message: &grammers_client::message::Message,
+) -> Option<ImageHandle> {
+    let media = message.media()?;
+    let bytes = match media {
+        Media::Photo(photo) => {
+            download_downloadable_bytes(client, &photo, TELEGRAM_FAST_MEDIA_MAX_BYTES).await?
+        }
+        Media::Sticker(sticker) => {
+            if sticker.is_animated() {
+                return None;
+            }
+            let document = &sticker.document;
+            let mime = document
+                .mime_type()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if mime == "image/webp" {
+                download_downloadable_bytes(client, document, TELEGRAM_FAST_MEDIA_MAX_BYTES).await?
+            } else {
+                let thumb = document
+                    .thumbs()
+                    .into_iter()
+                    .max_by_key(|thumb| thumb.size())?;
+                download_downloadable_bytes(client, &thumb, TELEGRAM_FAST_MEDIA_MAX_BYTES).await?
+            }
+        }
+        Media::Document(document) => match fast_document_media_kind(&document)? {
+            TelegramMediaKind::Photo => {
+                download_downloadable_bytes(client, &document, TELEGRAM_FAST_MEDIA_MAX_BYTES)
+                    .await?
+            }
+            _ => {
+                let thumb = document
+                    .thumbs()
+                    .into_iter()
+                    .max_by_key(|thumb| thumb.size())?;
+                download_downloadable_bytes(client, &thumb, TELEGRAM_FAST_MEDIA_MAX_BYTES).await?
+            }
+        },
+        _ => return None,
+    };
+    is_supported_raster_image(&bytes).then(|| ImageHandle::from_bytes(bytes))
+}
+
+/// Downloads a post's preview off the critical path and merges it back via a
+/// follow-up `Loaded` event, so neither the live stream nor a backfilled page is
+/// stalled on a file fetch. Bounded by `media_semaphore` so a media burst cannot
+/// spawn unbounded concurrent downloads. On failure the post is re-delivered with
+/// `failed_at_ms` set, so the card can stop showing a loading placeholder.
+fn spawn_fast_media_download(
+    client: &Client,
+    media_semaphore: &Arc<Semaphore>,
+    output: &mpsc::Sender<TelegramFastFeedEvent>,
+    channel: String,
+    profile: TelegramChannelProfile,
+    mut post: TelegramFeedPost,
+    message: grammers_client::message::Message,
+) {
+    let client = client.clone();
+    let media_semaphore = Arc::clone(media_semaphore);
+    let mut output = output.clone();
+    tokio::spawn(async move {
+        let Ok(_permit) = media_semaphore.acquire_owned().await else {
+            return;
+        };
+        let outcome = tokio::time::timeout(
+            TELEGRAM_FAST_MEDIA_DOWNLOAD_TIMEOUT,
+            download_fast_post_media(&client, &message),
+        )
+        .await;
+        if let Some(media) = post.media.as_mut() {
+            match outcome {
+                Ok(Some(handle)) => media.handle = Some(handle),
+                _ => media.failed_at_ms = Some(now_ms()),
+            }
+        }
+        let _ = output
+            .send(TelegramFastFeedEvent::Loaded(
+                channel,
+                Box::new(Ok(TelegramFeedPage {
+                    profile,
+                    posts: vec![post],
+                })),
+            ))
+            .await;
+    });
 }
 
 pub(crate) fn telegram_fast_feed_stream(
@@ -664,6 +811,7 @@ async fn run_telegram_fast_feed_session(
         handle,
     } = SenderPool::new(session, params.api_id);
     let client = Client::new(handle.clone());
+    let media_semaphore = Arc::new(Semaphore::new(TELEGRAM_FAST_MEDIA_CONCURRENCY));
     let _pool_task = AbortOnDrop::new(tokio::spawn(runner.run()));
     let handle_for_drop = handle.clone();
     let _handle_guard = DropGuard::new(move || {
@@ -699,6 +847,7 @@ async fn run_telegram_fast_feed_session(
     let background_channel_cursor_generations = channel_cursor_generations.clone();
     let background_channel_ids = Arc::clone(&channel_ids);
     let background_channel_cursors = Arc::clone(&channel_cursors);
+    let background_media_semaphore = Arc::clone(&media_semaphore);
     let mut background_output = output.clone();
     let background_task = AbortOnDrop::new(tokio::spawn(async move {
         let _ = send_status(
@@ -708,13 +857,17 @@ async fn run_telegram_fast_feed_session(
             "Fast Telegram mode resolving channels",
         )
         .await;
+        let backfill_resources = FastBackfillResources {
+            channel_ids: &background_channel_ids,
+            channel_cursors: &background_channel_cursors,
+            media_semaphore: &background_media_semaphore,
+        };
         let unresolved = resolve_and_backfill_fast_channels(
             &background_client,
             background_channels,
             background_private_channels,
             background_channel_cursor_generations,
-            &background_channel_ids,
-            background_channel_cursors,
+            &backfill_resources,
             &mut background_output,
         )
         .await;
@@ -810,6 +963,18 @@ async fn run_telegram_fast_feed_session(
                     .map(|post| post.message_id)
                     .max()
                     .unwrap_or_default();
+                // Capture media that still needs its preview so it can be
+                // downloaded off the hot update path and merged in afterward,
+                // rather than stalling the live stream on a file fetch.
+                let media_followup = page
+                    .posts
+                    .iter()
+                    .find(|post| {
+                        post.media
+                            .as_ref()
+                            .is_some_and(|media| media.handle.is_none())
+                    })
+                    .map(|post| (page.profile.clone(), post.clone()));
                 if output
                     .send(TelegramFastFeedEvent::Loaded(
                         channel.clone(),
@@ -833,6 +998,19 @@ async fn run_telegram_fast_feed_session(
                     cursor_generation,
                 )
                 .await;
+                if let Some((profile, post)) = media_followup {
+                    // `message` is an update wrapper; clone the inner message it
+                    // derefs to (the type the downloader expects).
+                    spawn_fast_media_download(
+                        &client,
+                        &media_semaphore,
+                        output,
+                        channel.clone(),
+                        profile,
+                        post,
+                        (*message).clone(),
+                    );
+                }
             }
             Ok(_) => {}
             Err(_) => {
@@ -1087,8 +1265,7 @@ async fn resolve_and_backfill_fast_channels(
     mut pending_channels: HashSet<String>,
     mut pending_private_channels: HashMap<i64, TelegramFeedPrivateChannelConfig>,
     channel_cursor_generations: HashMap<String, FastCursorGeneration>,
-    channel_ids: &ChannelIdMap,
-    channel_cursors: ChannelCursorMap,
+    resources: &FastBackfillResources<'_>,
     output: &mut mpsc::Sender<TelegramFastFeedEvent>,
 ) -> Vec<String> {
     let mut attempts = 0;
@@ -1098,14 +1275,21 @@ async fn resolve_and_backfill_fast_channels(
             &pending_channels,
             &pending_private_channels,
             &channel_cursor_generations,
-            channel_ids,
+            resources.channel_ids,
         )
         .await;
         let resolved: HashSet<String> = targets
             .iter()
             .map(|target| target.identity.key.clone())
             .collect();
-        backfill_fast_channels(client, targets, Arc::clone(&channel_cursors), output).await;
+        backfill_fast_channels(
+            client,
+            targets,
+            Arc::clone(resources.channel_cursors),
+            resources.media_semaphore,
+            output,
+        )
+        .await;
 
         pending_channels.retain(|channel| !resolved.contains(channel));
         pending_private_channels.retain(|_, config| !resolved.contains(&config.key()));
@@ -1209,10 +1393,12 @@ async fn backfill_fast_channels(
     client: &Client,
     targets: Vec<FastChannelTarget>,
     channel_cursors: ChannelCursorMap,
+    media_semaphore: &Arc<Semaphore>,
     output: &mut mpsc::Sender<TelegramFastFeedEvent>,
 ) {
     for target in targets {
         let mut posts = Vec::new();
+        let mut media_jobs = Vec::new();
         let cursor = channel_cursor_message_id(
             &channel_cursors,
             &target.identity.key,
@@ -1243,6 +1429,11 @@ async fn backfill_fast_channels(
                     if cursor > 0 && post.message_id <= cursor {
                         break;
                     }
+                    // Defer the preview download so a slow file never delays the
+                    // rest of the backfilled page (text posts included).
+                    if post.media.is_some() {
+                        media_jobs.push((post.clone(), message));
+                    }
                     posts.push(post);
                 }
                 Ok(None) => break,
@@ -1264,6 +1455,7 @@ async fn backfill_fast_channels(
             .map(|post| post.message_id)
             .max()
             .unwrap_or_default();
+        let profile = target.profile.clone();
         if !posts.is_empty()
             && output
                 .send(TelegramFastFeedEvent::Loaded(
@@ -1277,6 +1469,19 @@ async fn backfill_fast_channels(
                 .is_err()
         {
             return;
+        }
+        // The page (with placeholder media) is delivered; fill in each preview
+        // off the critical path, merged back via follow-up events.
+        for (post, message) in media_jobs {
+            spawn_fast_media_download(
+                client,
+                media_semaphore,
+                output,
+                target.identity.key.clone(),
+                profile.clone(),
+                post,
+                message,
+            );
         }
         record_channel_cursor(
             &channel_cursors,
@@ -1349,9 +1554,22 @@ fn fast_post_from_message(
     source: TelegramFeedPostSource,
 ) -> Option<TelegramFeedPost> {
     let message_id = u64::try_from(message.id()).ok()?;
+    // The preview bytes are downloaded separately (inline for backfill, off the
+    // hot path for live); this only records that a renderable preview exists.
+    let media = message
+        .media()
+        .as_ref()
+        .and_then(fast_media_kind)
+        .map(TelegramPostMedia::placeholder);
     let mut text = normalize_telegram_plain_text(message.text());
     if text.trim().is_empty() {
-        text = "[media]".to_string();
+        // A renderable preview stands in for the body; otherwise label the
+        // media-only message so the card is not blank.
+        text = if media.is_some() {
+            String::new()
+        } else {
+            "[media]".to_string()
+        };
     }
     let timestamp_ms = u64::try_from(message.date().timestamp_millis()).ok()?;
     let fetched_at_ms = now_ms();
@@ -1374,6 +1592,7 @@ fn fast_post_from_message(
         },
         url: telegram_post_url(channel, message_id),
         ticker_mentions: Vec::new(),
+        media,
     })
 }
 

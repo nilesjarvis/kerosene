@@ -539,6 +539,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TelegramFeedRefreshTick
         | Message::TelegramFeedLoaded(_, _, _)
         | Message::TelegramAvatarLoaded(_, _, _, _)
+        | Message::TelegramMediaLoaded(_, _, _, _, _)
         | Message::ToggleTelegramFastFeed
         | Message::TelegramFastApiIdChanged(_)
         | Message::TelegramFastApiHashChanged(_)

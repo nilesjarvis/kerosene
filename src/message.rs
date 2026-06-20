@@ -741,6 +741,7 @@ pub(crate) enum Message {
     TelegramFeedRefreshTick,
     TelegramFeedLoaded(String, u64, Box<Result<TelegramFeedPage, String>>),
     TelegramAvatarLoaded(String, String, u64, Box<Result<Vec<u8>, String>>),
+    TelegramMediaLoaded(String, u64, String, u64, Box<Result<Vec<u8>, String>>),
     ToggleTelegramFastFeed,
     TelegramFastApiIdChanged(SecretInput),
     TelegramFastApiHashChanged(SecretInput),
