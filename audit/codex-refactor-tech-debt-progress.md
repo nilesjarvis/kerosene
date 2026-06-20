@@ -122,3 +122,45 @@ Source prompt: `audit/codex-refactor-tech-debt-long-running-prompt.md`
   with `Debug`; current search and compile checks show no such dependency.
 - Next candidate: continue scanning HyperDash raw response Debug derives or
   re-rank strict persisted enum candidates.
+
+## Batch 3 — Drop HyperDash Raw GraphQL Debug Derives
+
+- Status: validated
+- Scope: `src/hyperdash_api/heatmap/parsing.rs`,
+  `src/hyperdash_api/liquidation_levels.rs`, and
+  `src/hyperdash_api/positioning/response.rs`.
+- Motivation: continue the raw-response cleanup by removing derived `Debug`
+  from private GraphQL response wrappers that are only deserialized and mapped
+  into public model/state types.
+- Behavior invariant: HyperDash heatmap parsing, liquidation-level parsing,
+  positioning/perp-delta parsing, error classification, response size bounds,
+  and UI update behavior remain unchanged. Public model Debug implementations
+  are not changed in this batch.
+- Evidence: private `Gql*` wrapper structs in the scoped files derive `Debug`;
+  `rg` found no formatting or trait-bound dependence on those private Debug
+  impls.
+- Change summary: removed `Debug` from private HyperDash heatmap,
+  liquidation-level, and positioning GraphQL response wrappers while leaving
+  public model/value Debug behavior unchanged.
+- Tests/checks run:
+  - `cargo fmt` passed.
+  - `rg -n "derive\\([^\\n]*Debug|#\\[derive\\([^\\]]*Debug" src/hyperdash_api/heatmap/parsing.rs src/hyperdash_api/liquidation_levels.rs src/hyperdash_api/positioning/response.rs`
+    returned no matches.
+  - `cargo test --package kerosene --bin kerosene hyperdash_api::heatmap`
+    passed (6 tests).
+  - `cargo test --package kerosene --bin kerosene hyperdash_api::liquidation_levels`
+    passed (2 tests).
+  - `cargo test --package kerosene --bin kerosene hyperdash_api::positioning`
+    passed (9 tests).
+  - `cargo test --package kerosene --bin kerosene market_update::positioning_info::tests`
+    passed (13 tests).
+  - `cargo check` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed.
+- Compatibility impact: expected none for persisted data, UI, trading behavior,
+  and secrets. Response parsing and public model state are unchanged.
+- Residual risk: downstream code cannot format these private raw GraphQL
+  wrappers with `Debug`; current search and compile checks show no such
+  dependency.
+- Next candidate: re-rank remaining public API/model Debug derives versus
+  strict persisted enum candidates.

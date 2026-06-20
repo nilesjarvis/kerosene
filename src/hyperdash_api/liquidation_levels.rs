@@ -14,24 +14,24 @@ pub use buckets::bucket_liquidations;
 // HyperDash Historical Liquidation Levels
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlResponse {
     data: Option<GqlData>,
     errors: Option<Vec<GqlError>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlData {
     analytics: GqlAnalytics,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlAnalytics {
     #[serde(rename = "historicalLiquidationLevel")]
     historical_liquidation_level: GqlLiquidationLevel,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlLiquidationLevel {
     coin: String,
     min: f64,

@@ -8,29 +8,29 @@ use super::super::{HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, response_snippet};
 // Heatmap Response Parsing
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlHeatmapResponse {
     data: Option<GqlHeatmapData>,
     errors: Option<Vec<GqlError>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlHeatmapData {
     analytics: GqlHeatmapAnalytics,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlHeatmapAnalytics {
     #[serde(rename = "liquidationLevels")]
     liquidation_levels: GqlHeatmapLevels,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlHeatmapLevels {
     bands: Vec<GqlHeatmapBand>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlHeatmapBand {
     #[serde(rename = "minPrice")]
     min_price: f64,
@@ -40,7 +40,7 @@ struct GqlHeatmapBand {
     historical_data: Vec<GqlHeatmapCell>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlHeatmapCell {
     timestamp: String,
     #[serde(rename = "totalAmount")]

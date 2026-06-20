@@ -12,20 +12,20 @@ use super::super::response_snippet;
 pub(super) const PERP_DELTAS_RESPONSE_MAX_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const PERP_DELTAS_ENTRY_LIMIT: usize = 2_000;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlResponse {
     data: Option<GqlData>,
     errors: Option<Vec<GqlError>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlData {
     analytics: Option<GqlAnalytics>,
     #[serde(rename = "perpDeltas")]
     perp_deltas: Option<PerpDeltas>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct GqlAnalytics {
     #[serde(rename = "perpsTickerPositions")]
     perps_ticker_positions: Option<TickerPositions>,
