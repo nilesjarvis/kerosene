@@ -199,3 +199,21 @@ Source prompt: `audit/codex-refactor-tech-debt-long-running-prompt.md`
   with `Debug`; current search and compile checks show no such dependency.
 - Next candidate: re-rank remaining public API/model Debug derives versus
   strict persisted enum candidates.
+
+## Broad Validation — 2026-06-20
+
+- Status: partial
+- Scope: milestone validation after Batches 1-4.
+- Tests/checks run:
+  - `cargo test` passed: 3304 passed, 0 failed, 3 ignored.
+  - `cargo clippy --all-targets --all-features -- -D warnings` failed with
+    pre-existing journal findings in `src/journal/snapshot.rs`:
+    `clippy::derivable_impls` on `JournalSnapshotCoverage` and
+    `clippy::too_many_arguments` on `initial_snapshot_request` and
+    `live_position_snapshot_request`.
+- Compatibility impact: no code changed for this validation entry.
+- Residual risk: strict clippy remains red for journal snapshot issues outside
+  the Debug-output batches. Re-rank separately before changing because the
+  functions are journal snapshot API boundaries and need focused tests.
+- Next candidate: either address the journal snapshot clippy findings as a
+  scoped refactor batch, or continue the public API/model Debug derive scan.
