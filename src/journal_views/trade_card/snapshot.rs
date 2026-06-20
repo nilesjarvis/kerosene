@@ -12,15 +12,18 @@ use iced::widget::{Column, Row, Space, column, container, row, text};
 use iced::{Color, Element, Fill, Point, Rectangle, Renderer, Size, Theme, alignment};
 
 const SNAPSHOT_HEIGHT: f32 = 240.0;
-const SNAPSHOT_MARKER_RADIUS: f32 = 4.8;
-const SNAPSHOT_MARKER_GROUP_RADIUS: f32 = 6.4;
+const SNAPSHOT_MARKER_RADIUS: f32 = 2.8;
+const SNAPSHOT_MARKER_GROUP_RADIUS: f32 = 3.8;
+const SNAPSHOT_MARKER_CHART_GAP: f32 = 2.0;
+const SNAPSHOT_MARKER_GROUP_GAP: f32 = 2.0;
 const SNAPSHOT_LEFT_PAD: f32 = 6.0;
 const SNAPSHOT_RIGHT_PAD: f32 = 6.0;
 const SNAPSHOT_TOP_PAD: f32 = 48.0;
 const SNAPSHOT_BOTTOM_PAD: f32 = 34.0;
 const SNAPSHOT_ZOOM_FACTOR: f64 = 0.82;
-const SNAPSHOT_MARKER_OFFSET: f32 = SNAPSHOT_MARKER_GROUP_RADIUS + 3.0;
-const SNAPSHOT_MARKER_GROUP_DISTANCE: f32 = SNAPSHOT_MARKER_GROUP_RADIUS * 3.0;
+const SNAPSHOT_MARKER_OFFSET: f32 = SNAPSHOT_MARKER_GROUP_RADIUS + SNAPSHOT_MARKER_CHART_GAP;
+const SNAPSHOT_MARKER_GROUP_DISTANCE: f32 =
+    SNAPSHOT_MARKER_GROUP_RADIUS * 2.0 + SNAPSHOT_MARKER_GROUP_GAP;
 const SNAPSHOT_VISUAL_RANGE_FRACTION: u64 = 1;
 const SNAPSHOT_DEFAULT_EMPTY_SPACE_FRACTION: u64 = 12;
 const SNAPSHOT_MIN_DATA_OVERLAP_FRACTION: u64 = 12;
@@ -895,14 +898,28 @@ fn draw_markers(
 ) {
     let mut marker_layouts = marker_group_layouts(plot, markers);
     marker_layouts.sort_by(|a, b| a.center.x.total_cmp(&b.center.x));
-    let marker_color = Color {
-        a: 0.88,
-        ..theme.palette().primary
+    let outline_color = Color {
+        a: 0.72,
+        ..theme.extended_palette().background.strong.color
     };
 
     for layout in marker_layouts {
+        let marker_color = Color {
+            a: 0.9,
+            ..if layout.is_buy {
+                theme.palette().success
+            } else {
+                theme.palette().danger
+            }
+        };
         let dot = canvas::Path::circle(layout.center, layout.radius);
         frame.fill(&dot, marker_color);
+        frame.stroke(
+            &dot,
+            canvas::Stroke::default()
+                .with_color(outline_color)
+                .with_width(0.75),
+        );
     }
 }
 
@@ -910,6 +927,7 @@ fn draw_markers(
 struct SnapshotMarkerLayout {
     center: Point,
     radius: f32,
+    is_buy: bool,
 }
 
 fn marker_group_layouts(plot: SnapshotPlot, markers: &[TradeMarker]) -> Vec<SnapshotMarkerLayout> {
@@ -953,7 +971,7 @@ fn push_marker_side_layouts(
 
     for &x in rest {
         if x - group_last_x > SNAPSHOT_MARKER_GROUP_DISTANCE {
-            push_marker_group(layouts, group_sum, group_count, y);
+            push_marker_group(layouts, group_sum, group_count, y, is_buy);
             group_sum = x;
             group_count = 1;
         } else {
@@ -963,7 +981,7 @@ fn push_marker_side_layouts(
         group_last_x = x;
     }
 
-    push_marker_group(layouts, group_sum, group_count, y);
+    push_marker_group(layouts, group_sum, group_count, y, is_buy);
 }
 
 fn push_marker_group(
@@ -971,6 +989,7 @@ fn push_marker_group(
     group_sum: f32,
     group_count: usize,
     y: f32,
+    is_buy: bool,
 ) {
     let x = group_sum / group_count.max(1) as f32;
     let radius = if group_count > 1 {
@@ -981,6 +1000,7 @@ fn push_marker_group(
     layouts.push(SnapshotMarkerLayout {
         center: Point::new(x, y),
         radius,
+        is_buy,
     });
 }
 
@@ -1045,7 +1065,51 @@ mod tests {
         let layouts = marker_group_layouts(plot, &markers);
 
         assert_eq!(layouts.len(), 2);
+        assert!(layouts.iter().all(|layout| layout.is_buy));
         assert_eq!(layouts[0].radius, SNAPSHOT_MARKER_GROUP_RADIUS);
         assert!(layouts[1].center.x - layouts[0].center.x > layouts[0].radius + layouts[1].radius);
+    }
+
+    #[test]
+    fn marker_group_layouts_place_sells_above_and_buys_below_plot() {
+        let plot = SnapshotPlot {
+            left: 0.0,
+            top: 50.0,
+            width: 100.0,
+            height: 100.0,
+            start_ms: 0,
+            end_ms: 1_000,
+            min_price: 1.0,
+            max_price: 2.0,
+        };
+        let markers = vec![
+            TradeMarker {
+                time_ms: 100,
+                price: 1.0,
+                size: 1.0,
+                is_buy: false,
+            },
+            TradeMarker {
+                time_ms: 900,
+                price: 1.0,
+                size: 1.0,
+                is_buy: true,
+            },
+        ];
+
+        let layouts = marker_group_layouts(plot, &markers);
+        let sell = layouts
+            .iter()
+            .find(|layout| !layout.is_buy)
+            .expect("sell marker");
+        let buy = layouts
+            .iter()
+            .find(|layout| layout.is_buy)
+            .expect("buy marker");
+
+        assert_eq!(sell.radius, SNAPSHOT_MARKER_RADIUS);
+        assert_eq!(buy.radius, SNAPSHOT_MARKER_RADIUS);
+        assert!(sell.center.y + sell.radius <= plot.top - SNAPSHOT_MARKER_CHART_GAP);
+        assert!(buy.center.y - buy.radius >= plot.top + plot.height + SNAPSHOT_MARKER_CHART_GAP);
     }
 }
