@@ -297,3 +297,21 @@ Source prompt: `audit/codex-refactor-tech-debt-long-running-prompt.md`
 - Next candidate: continue the ranked Debug derive scan, prioritizing private
   raw response helpers before public model/value types that already have
   redaction or harmless summary output.
+
+## Final Validation and Report — 2026-06-20
+
+- Status: validated
+- Scope: all committed refactor batches in this campaign.
+- Tests/checks run:
+  - `cargo clippy --all-targets --all-features -- -D warnings` passed.
+  - `cargo test` passed: 3304 passed, 0 failed, 3 ignored; doc-tests passed
+    with 0 tests.
+- Compatibility impact: no persisted config, layout, secret storage, trading,
+  signing, order planning, subscription, or UI behavior changes were made. The
+  only Rust API shape change was internal to journal snapshot request
+  construction and was covered by focused tests plus full test/clippy runs.
+- Stopping rationale: the remaining obvious API `Debug` derives are public value
+  models, custom-redacted implementations, or lower-value private request
+  payloads. Continuing mechanically would risk churn without a stronger safety
+  payoff.
+- Final report: `audit/codex-refactor-tech-debt-report.md`.
