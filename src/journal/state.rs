@@ -1,6 +1,6 @@
 use super::{
-    AggregatedTrade, JournalNote, JournalTradeDetails, JournalTradeSnapshot,
-    JournalTradeSnapshotRequest,
+    AggregatedTrade, JournalNote, JournalSnapshotCoverage, JournalTradeDetails,
+    JournalTradeSnapshot, JournalTradeSnapshotRequest,
 };
 use crate::helpers::redact_sensitive_response_text;
 use crate::portfolio_state::PortfolioWindow;
@@ -88,6 +88,7 @@ pub struct JournalState {
     pub show_all_assets: bool,
     pub show_account_value_chart: bool,
     pub include_fees_in_pnl: bool,
+    pub snapshot_coverage: JournalSnapshotCoverage,
     pub portfolio_window: PortfolioWindow,
     /// Trade selected for the master-detail inspector; `None` shows the cockpit.
     pub selected_trade_id: Option<String>,
@@ -160,6 +161,7 @@ pub struct JournalAccountState {
     pub selected_trade_id: Option<String>,
     pub show_account_value_chart: bool,
     pub include_fees_in_pnl: bool,
+    pub snapshot_coverage: JournalSnapshotCoverage,
     pub portfolio_window: PortfolioWindow,
 }
 
@@ -222,6 +224,7 @@ impl fmt::Debug for JournalAccountState {
             )
             .field("show_account_value_chart", &self.show_account_value_chart)
             .field("include_fees_in_pnl", &self.include_fees_in_pnl)
+            .field("snapshot_coverage", &self.snapshot_coverage)
             .field("portfolio_window", &self.portfolio_window)
             .finish()
     }
@@ -250,6 +253,7 @@ impl Default for JournalAccountState {
             selected_trade_id: None,
             show_account_value_chart: false,
             include_fees_in_pnl: true,
+            snapshot_coverage: JournalSnapshotCoverage::default(),
             portfolio_window: PortfolioWindow::Week,
         }
     }

@@ -19,10 +19,11 @@ pub use current_positions::{
     reconcile_current_position_trades,
 };
 pub use snapshot::{
-    JournalTradeSnapshot, JournalTradeSnapshotMetrics, JournalTradeSnapshotRequest,
-    JournalTradeSnapshotStatus, build_journal_trade_snapshot, initial_snapshot_request,
-    live_position_snapshot_request, live_position_snapshot_request_for_timeframe,
-    next_snapshot_request, snapshot_request_for_timeframe, unavailable_snapshot,
+    JournalSnapshotCoverage, JournalTradeSnapshot, JournalTradeSnapshotMetrics,
+    JournalTradeSnapshotRequest, JournalTradeSnapshotStatus, build_journal_trade_snapshot,
+    initial_snapshot_request, live_position_snapshot_request,
+    live_position_snapshot_request_for_timeframe, next_snapshot_request,
+    snapshot_request_for_timeframe, unavailable_snapshot,
 };
 pub(crate) use state::{
     DEFAULT_JOURNAL_WINDOW_HEIGHT, DEFAULT_JOURNAL_WINDOW_WIDTH, JournalAccountState,

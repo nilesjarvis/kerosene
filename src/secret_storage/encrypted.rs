@@ -713,6 +713,7 @@ mod tests {
                 source: ChartBackfillSource::Hydromancer,
                 read_data_provider_generation: terminal.read_data_provider_generation,
                 hydromancer_key_generation: terminal.hydromancer_key_generation,
+                coverage: crate::journal::JournalSnapshotCoverage::default(),
                 timeframe: Timeframe::M1,
                 ladder_index: 0,
                 trade_start_ms: 1_000,

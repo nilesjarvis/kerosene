@@ -664,9 +664,10 @@ fn ranges_overlap(left: (u64, u64), right: (u64, u64)) -> bool {
 
 fn snapshot_reset_key(snapshot: &JournalTradeSnapshot) -> String {
     format!(
-        "{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}",
         snapshot.trade_id,
         snapshot.source.label(),
+        snapshot.coverage.label(),
         snapshot.timeframe.api_str(),
         snapshot.start_ms,
         snapshot.end_ms,

@@ -1,4 +1,6 @@
-use super::{JournalAccountState, JournalFilter, JournalSort, JournalState};
+use super::{
+    JournalAccountState, JournalFilter, JournalSnapshotCoverage, JournalSort, JournalState,
+};
 use crate::journal::JournalNote;
 use std::collections::{HashMap, HashSet};
 
@@ -65,6 +67,7 @@ impl JournalState {
             show_all_assets: false,
             show_account_value_chart: false,
             include_fees_in_pnl: true,
+            snapshot_coverage: JournalSnapshotCoverage::default(),
             portfolio_window: crate::portfolio_state::PortfolioWindow::Week,
             selected_trade_id: None,
             error: None,
@@ -175,6 +178,7 @@ impl JournalState {
             selected_trade_id: self.selected_trade_id.clone(),
             show_account_value_chart: self.show_account_value_chart,
             include_fees_in_pnl: self.include_fees_in_pnl,
+            snapshot_coverage: self.snapshot_coverage,
             portfolio_window: self.portfolio_window,
         }
     }
@@ -200,6 +204,7 @@ impl JournalState {
         self.selected_trade_id = state.selected_trade_id;
         self.show_account_value_chart = state.show_account_value_chart;
         self.include_fees_in_pnl = state.include_fees_in_pnl;
+        self.snapshot_coverage = state.snapshot_coverage;
         self.portfolio_window = state.portfolio_window;
     }
 

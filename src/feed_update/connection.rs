@@ -135,6 +135,7 @@ mod tests {
             source: ChartBackfillSource::Hydromancer,
             read_data_provider_generation: 0,
             hydromancer_key_generation: generation,
+            coverage: crate::journal::JournalSnapshotCoverage::default(),
             timeframe: Timeframe::M1,
             ladder_index: 0,
             trade_start_ms: 1_000,

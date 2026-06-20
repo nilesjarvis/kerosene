@@ -55,6 +55,7 @@ fn journal_account_state_debug_redacts_account_scoped_data() {
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: 1,
             hydromancer_key_generation: 2,
+            coverage: crate::journal::JournalSnapshotCoverage::default(),
             timeframe: Timeframe::M1,
             ladder_index: 0,
             trade_start_ms: 100,

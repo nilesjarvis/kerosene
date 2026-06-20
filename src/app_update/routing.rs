@@ -375,6 +375,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::JournalSelectTrade(_)
         | Message::JournalDeselectTrade
         | Message::JournalSnapshotTimeframe(_, _)
+        | Message::JournalSnapshotCoverageChanged(_)
         | Message::JournalFilterChanged(_)
         | Message::JournalSortChanged(_)
         | Message::JournalPortfolioWindowChanged(_)

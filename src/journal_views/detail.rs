@@ -6,7 +6,7 @@ use super::trade_list::journal_asset_badge;
 use super::trades::trade_duration_ms;
 use crate::app_state::TradingTerminal;
 use crate::helpers;
-use crate::journal::{AggregatedTrade, JournalTradeSnapshotStatus};
+use crate::journal::{AggregatedTrade, JournalSnapshotCoverage, JournalTradeSnapshotStatus};
 use crate::journal_views::style::{
     journal_accent_soft, journal_card_style, journal_dim, journal_muted, journal_rule_style,
     journal_segment_style,
@@ -173,6 +173,28 @@ impl TradingTerminal {
         .align_y(Alignment::Center);
 
         if is_perp {
+            let mut coverage_selector = row![
+                text("COVERAGE")
+                    .size(9)
+                    .font(crate::app_fonts::monospace_font())
+                    .color(journal_dim(theme)),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center);
+            for coverage in JournalSnapshotCoverage::OPTIONS {
+                let active = self.journal.snapshot_coverage == coverage;
+                coverage_selector = coverage_selector.push(
+                    button(
+                        text(coverage.label())
+                            .size(10)
+                            .font(crate::app_fonts::monospace_font()),
+                    )
+                    .on_press(Message::JournalSnapshotCoverageChanged(coverage))
+                    .padding([3, 9])
+                    .style(journal_segment_style(active)),
+                );
+            }
+
             let mut selector = row![].spacing(4).align_y(Alignment::Center);
             for timeframe in DETAIL_TIMEFRAMES {
                 let active = active_timeframe == Some(timeframe);
@@ -190,6 +212,7 @@ impl TradingTerminal {
                     .style(journal_segment_style(active)),
                 );
             }
+            header = header.push(coverage_selector);
             header = header.push(selector);
         }
 

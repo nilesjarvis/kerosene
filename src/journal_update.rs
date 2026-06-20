@@ -271,6 +271,9 @@ impl TradingTerminal {
             Message::JournalSnapshotTimeframe(trade_id, timeframe) => {
                 return self.request_journal_snapshot_timeframe(trade_id, timeframe);
             }
+            Message::JournalSnapshotCoverageChanged(coverage) => {
+                return self.update_journal_snapshot_coverage(coverage);
+            }
             Message::JournalFilterChanged(filter) => {
                 self.journal.filter = filter;
             }
@@ -374,8 +377,14 @@ impl TradingTerminal {
             .journal
             .snapshots
             .get(&trade_id)
-            .is_some_and(|snapshot| snapshot.source == self.chart_backfill_source)
-            || self.journal.snapshot_requests.contains_key(&trade_id)
+            .is_some_and(|snapshot| self.journal_snapshot_matches_current_settings(snapshot))
+            || self
+                .journal
+                .snapshot_requests
+                .get(&trade_id)
+                .is_some_and(|request| {
+                    self.journal_snapshot_request_matches_current_settings(request)
+                })
         {
             return Task::none();
         }
@@ -393,15 +402,12 @@ impl TradingTerminal {
 
         let now_ms = Self::now_ms();
         let Some(address) = self.connected_address.clone() else {
-            self.journal.snapshots.insert(
-                trade_id,
-                journal::unavailable_snapshot(
-                    &trade,
-                    self.chart_backfill_source,
-                    now_ms,
-                    "Connect an account before loading a snapshot.".to_string(),
-                ),
+            let snapshot = self.journal_unavailable_snapshot(
+                &trade,
+                crate::timeframe::Timeframe::M1,
+                "Connect an account before loading a snapshot.".to_string(),
             );
+            self.journal.snapshots.insert(trade_id, snapshot);
             return Task::none();
         };
 
@@ -414,18 +420,31 @@ impl TradingTerminal {
         match self.journal_snapshot_request_for(&trade, address, has_fills, now_ms, None) {
             Ok(request) => self.queue_journal_snapshot_request(request),
             Err(reason) => {
-                self.journal.snapshots.insert(
-                    trade_id,
-                    journal::unavailable_snapshot(
-                        &trade,
-                        self.chart_backfill_source,
-                        now_ms,
-                        reason,
-                    ),
+                let snapshot = self.journal_unavailable_snapshot(
+                    &trade,
+                    crate::timeframe::Timeframe::M1,
+                    reason,
                 );
+                self.journal.snapshots.insert(trade_id, snapshot);
                 Task::none()
             }
         }
+    }
+
+    fn journal_snapshot_matches_current_settings(
+        &self,
+        snapshot: &journal::JournalTradeSnapshot,
+    ) -> bool {
+        snapshot.source == self.chart_backfill_source
+            && snapshot.coverage == self.journal.snapshot_coverage
+    }
+
+    fn journal_snapshot_request_matches_current_settings(
+        &self,
+        request: &journal::JournalTradeSnapshotRequest,
+    ) -> bool {
+        request.source == self.chart_backfill_source
+            && request.coverage == self.journal.snapshot_coverage
     }
 
     /// Resolve the snapshot request for a trade, choosing between a fill-based
@@ -453,6 +472,7 @@ impl TradingTerminal {
                 source,
                 rdg,
                 hkg,
+                self.journal.snapshot_coverage,
                 now_ms,
                 tf,
             ),
@@ -463,6 +483,7 @@ impl TradingTerminal {
                 source,
                 rdg,
                 hkg,
+                self.journal.snapshot_coverage,
                 now_ms,
             ),
         };
@@ -474,6 +495,7 @@ impl TradingTerminal {
                 source,
                 rdg,
                 hkg,
+                self.journal.snapshot_coverage,
                 now_ms,
                 tf,
             ),
@@ -484,6 +506,7 @@ impl TradingTerminal {
                 source,
                 rdg,
                 hkg,
+                self.journal.snapshot_coverage,
                 now_ms,
             ),
         };
@@ -531,7 +554,8 @@ impl TradingTerminal {
             .snapshots
             .get(&trade_id)
             .is_some_and(|snapshot| {
-                snapshot.source == self.chart_backfill_source && snapshot.timeframe == timeframe
+                self.journal_snapshot_matches_current_settings(snapshot)
+                    && snapshot.timeframe == timeframe
             })
         {
             return Task::none();
@@ -562,6 +586,42 @@ impl TradingTerminal {
                 self.journal.snapshots.insert(trade_id, snapshot);
                 Task::none()
             }
+        }
+    }
+
+    fn update_journal_snapshot_coverage(
+        &mut self,
+        coverage: journal::JournalSnapshotCoverage,
+    ) -> Task<Message> {
+        if self.journal.snapshot_coverage == coverage {
+            return Task::none();
+        }
+
+        let selected_trade_id = self.journal.selected_trade_id.clone();
+        let active_timeframe = selected_trade_id.as_ref().and_then(|trade_id| {
+            self.journal
+                .snapshots
+                .get(trade_id)
+                .map(|snapshot| snapshot.timeframe)
+                .or_else(|| {
+                    self.journal
+                        .snapshot_requests
+                        .get(trade_id)
+                        .map(|request| request.timeframe)
+                })
+        });
+
+        self.journal.snapshot_coverage = coverage;
+        self.journal.clear_snapshot_cache();
+
+        let Some(trade_id) = selected_trade_id else {
+            return Task::none();
+        };
+
+        if let Some(timeframe) = active_timeframe {
+            self.request_journal_snapshot_timeframe(trade_id, timeframe)
+        } else {
+            self.ensure_journal_snapshot(trade_id)
         }
     }
 
@@ -663,6 +723,7 @@ impl TradingTerminal {
             reason,
         );
         snapshot.timeframe = timeframe;
+        snapshot.coverage = self.journal.snapshot_coverage;
         snapshot
     }
 
@@ -714,6 +775,7 @@ mod tests {
             source: ChartBackfillSource::Hydromancer,
             read_data_provider_generation: 0,
             hydromancer_key_generation: generation,
+            coverage: journal::JournalSnapshotCoverage::default(),
             timeframe: Timeframe::M1,
             ladder_index: 0,
             trade_start_ms: 1_000,
@@ -973,6 +1035,39 @@ mod tests {
         };
         assert!(reason.contains("auth_token=<redacted>"));
         assert!(!reason.contains("snapshot-secret"));
+    }
+
+    #[test]
+    fn coverage_change_requeues_selected_snapshot_with_active_timeframe() {
+        let mut terminal = journal_terminal_with_account();
+        let trade = open_position_trade("position:BTC");
+        terminal.journal.trades.push(trade.clone());
+        terminal.journal.selected_trade_id = Some(trade.id.clone());
+
+        let mut stale_snapshot = journal::unavailable_snapshot(
+            &trade,
+            ChartBackfillSource::Hyperliquid,
+            2_000,
+            "old coverage".to_string(),
+        );
+        stale_snapshot.timeframe = Timeframe::M5;
+        terminal
+            .journal
+            .snapshots
+            .insert(trade.id.clone(), stale_snapshot);
+
+        let _task = terminal.update_journal(Message::JournalSnapshotCoverageChanged(
+            journal::JournalSnapshotCoverage::FourX,
+        ));
+
+        assert!(terminal.journal.snapshots.is_empty());
+        let request = terminal
+            .journal
+            .snapshot_requests
+            .get(&trade.id)
+            .expect("coverage change queues selected snapshot");
+        assert_eq!(request.coverage, journal::JournalSnapshotCoverage::FourX);
+        assert_eq!(request.timeframe, Timeframe::M5);
     }
 
     #[test]

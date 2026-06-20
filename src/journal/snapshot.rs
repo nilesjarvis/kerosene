@@ -28,6 +28,39 @@ const SNAPSHOT_LADDER: &[Timeframe] = &[
     Timeframe::W1,
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JournalSnapshotCoverage {
+    TwoX,
+    FourX,
+    EightX,
+}
+
+impl JournalSnapshotCoverage {
+    pub const OPTIONS: [Self; 3] = [Self::TwoX, Self::FourX, Self::EightX];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::TwoX => "2x",
+            Self::FourX => "4x",
+            Self::EightX => "8x",
+        }
+    }
+
+    fn padding_multiplier(self) -> u64 {
+        match self {
+            Self::TwoX => 2,
+            Self::FourX => 4,
+            Self::EightX => 8,
+        }
+    }
+}
+
+impl Default for JournalSnapshotCoverage {
+    fn default() -> Self {
+        Self::TwoX
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct JournalTradeSnapshotRequest {
     pub account_key: Option<String>,
@@ -37,6 +70,7 @@ pub struct JournalTradeSnapshotRequest {
     pub source: ChartBackfillSource,
     pub read_data_provider_generation: u64,
     pub hydromancer_key_generation: u64,
+    pub coverage: JournalSnapshotCoverage,
     pub timeframe: Timeframe,
     pub ladder_index: usize,
     pub trade_start_ms: u64,
@@ -65,6 +99,7 @@ impl fmt::Debug for JournalTradeSnapshotRequest {
                 "hydromancer_key_generation",
                 &self.hydromancer_key_generation,
             )
+            .field("coverage", &self.coverage)
             .field("timeframe", &self.timeframe)
             .field("ladder_index", &self.ladder_index)
             .field("trade_start_ms", &self.trade_start_ms)
@@ -82,6 +117,7 @@ pub struct JournalTradeSnapshot {
     pub trade_id: String,
     pub coin: String,
     pub source: ChartBackfillSource,
+    pub coverage: JournalSnapshotCoverage,
     pub timeframe: Timeframe,
     pub trade_start_ms: u64,
     pub trade_end_ms: u64,
@@ -124,6 +160,7 @@ pub fn initial_snapshot_request(
     source: ChartBackfillSource,
     read_data_provider_generation: u64,
     hydromancer_key_generation: u64,
+    coverage: JournalSnapshotCoverage,
     now_ms: u64,
 ) -> Result<JournalTradeSnapshotRequest, String> {
     if is_spot_symbol(&trade.coin) {
@@ -136,7 +173,7 @@ pub fn initial_snapshot_request(
     }
 
     let trade_end_ms = trade.end_time.unwrap_or(now_ms).max(trade.start_time);
-    let ladder_index = initial_ladder_index(trade.start_time, trade_end_ms);
+    let ladder_index = initial_ladder_index(trade.start_time, trade_end_ms, coverage);
     snapshot_request_for_ladder_index(
         SnapshotRequestContext {
             account_key,
@@ -144,6 +181,7 @@ pub fn initial_snapshot_request(
             source,
             read_data_provider_generation,
             hydromancer_key_generation,
+            coverage,
             trade_start_ms: trade.start_time,
             trade_end_ms,
             is_open: trade.end_time.is_none(),
@@ -188,11 +226,12 @@ pub fn live_position_snapshot_request(
     source: ChartBackfillSource,
     read_data_provider_generation: u64,
     hydromancer_key_generation: u64,
+    coverage: JournalSnapshotCoverage,
     now_ms: u64,
 ) -> Result<JournalTradeSnapshotRequest, String> {
     validate_live_position(trade)?;
     let trade_start_ms = now_ms.saturating_sub(LIVE_POSITION_LOOKBACK_MS);
-    let ladder_index = initial_ladder_index(trade_start_ms, now_ms);
+    let ladder_index = initial_ladder_index(trade_start_ms, now_ms, coverage);
     snapshot_request_for_ladder_index(
         SnapshotRequestContext {
             account_key,
@@ -200,6 +239,7 @@ pub fn live_position_snapshot_request(
             source,
             read_data_provider_generation,
             hydromancer_key_generation,
+            coverage,
             trade_start_ms,
             trade_end_ms: now_ms,
             is_open: true,
@@ -218,6 +258,7 @@ pub fn live_position_snapshot_request_for_timeframe(
     source: ChartBackfillSource,
     read_data_provider_generation: u64,
     hydromancer_key_generation: u64,
+    coverage: JournalSnapshotCoverage,
     now_ms: u64,
     timeframe: Timeframe,
 ) -> Result<JournalTradeSnapshotRequest, String> {
@@ -240,6 +281,7 @@ pub fn live_position_snapshot_request_for_timeframe(
             source,
             read_data_provider_generation,
             hydromancer_key_generation,
+            coverage,
             trade_start_ms,
             trade_end_ms: now_ms,
             is_open: true,
@@ -259,6 +301,7 @@ pub fn snapshot_request_for_timeframe(
     source: ChartBackfillSource,
     read_data_provider_generation: u64,
     hydromancer_key_generation: u64,
+    coverage: JournalSnapshotCoverage,
     now_ms: u64,
     timeframe: Timeframe,
 ) -> Result<JournalTradeSnapshotRequest, String> {
@@ -283,6 +326,7 @@ pub fn snapshot_request_for_timeframe(
             source,
             read_data_provider_generation,
             hydromancer_key_generation,
+            coverage,
             trade_start_ms: trade.start_time,
             trade_end_ms,
             is_open: trade.end_time.is_none(),
@@ -298,6 +342,7 @@ struct SnapshotRequestContext {
     source: ChartBackfillSource,
     read_data_provider_generation: u64,
     hydromancer_key_generation: u64,
+    coverage: JournalSnapshotCoverage,
     trade_start_ms: u64,
     trade_end_ms: u64,
     is_open: bool,
@@ -312,7 +357,7 @@ fn snapshot_request_for_ladder_index(
         .get(ladder_index)
         .ok_or_else(|| "No candle timeframe available for snapshot.".to_string())?;
     let duration = context.trade_end_ms.saturating_sub(context.trade_start_ms);
-    let padding = snapshot_padding_ms(duration, timeframe);
+    let padding = snapshot_padding_ms(duration, timeframe, context.coverage);
 
     Ok(JournalTradeSnapshotRequest {
         account_key: context.account_key,
@@ -322,6 +367,7 @@ fn snapshot_request_for_ladder_index(
         source: context.source,
         read_data_provider_generation: context.read_data_provider_generation,
         hydromancer_key_generation: context.hydromancer_key_generation,
+        coverage: context.coverage,
         timeframe,
         ladder_index,
         trade_start_ms: context.trade_start_ms,
@@ -342,7 +388,7 @@ pub fn next_snapshot_request(
     let next_ladder_index = request.ladder_index.saturating_add(1);
     let timeframe = *SNAPSHOT_LADDER.get(next_ladder_index)?;
     let duration = request.trade_end_ms.saturating_sub(request.trade_start_ms);
-    let padding = snapshot_padding_ms(duration, timeframe);
+    let padding = snapshot_padding_ms(duration, timeframe, request.coverage);
 
     Some(JournalTradeSnapshotRequest {
         account_key: request.account_key.clone(),
@@ -352,6 +398,7 @@ pub fn next_snapshot_request(
         source: request.source,
         read_data_provider_generation: request.read_data_provider_generation,
         hydromancer_key_generation: request.hydromancer_key_generation,
+        coverage: request.coverage,
         timeframe,
         ladder_index: next_ladder_index,
         trade_start_ms: request.trade_start_ms,
@@ -385,6 +432,7 @@ pub fn build_journal_trade_snapshot(
         trade_id: request.trade_id.clone(),
         coin: request.coin.clone(),
         source: request.source,
+        coverage: request.coverage,
         timeframe: request.timeframe,
         trade_start_ms: request.trade_start_ms,
         trade_end_ms: request.trade_end_ms,
@@ -410,6 +458,7 @@ pub fn unavailable_snapshot(
         trade_id: trade.id.clone(),
         coin: trade.coin.clone(),
         source,
+        coverage: JournalSnapshotCoverage::default(),
         timeframe: Timeframe::M1,
         trade_start_ms: trade.start_time,
         trade_end_ms,
@@ -459,22 +508,31 @@ pub fn snapshot_markers_for_details(details: &JournalTradeDetails) -> Vec<TradeM
     markers
 }
 
-fn initial_ladder_index(trade_start_ms: u64, trade_end_ms: u64) -> usize {
+fn initial_ladder_index(
+    trade_start_ms: u64,
+    trade_end_ms: u64,
+    coverage: JournalSnapshotCoverage,
+) -> usize {
     let duration = trade_end_ms.saturating_sub(trade_start_ms);
     SNAPSHOT_LADDER
         .iter()
         .position(|timeframe| {
-            let padding = snapshot_padding_ms(duration, *timeframe);
+            let padding = snapshot_padding_ms(duration, *timeframe, coverage);
             let padded = duration.saturating_add(padding.saturating_mul(2));
             padded.div_ceil(timeframe.duration_ms().max(1)) <= SNAPSHOT_MAX_CANDLES
         })
         .unwrap_or(SNAPSHOT_LADDER.len().saturating_sub(1))
 }
 
-fn snapshot_padding_ms(duration_ms: u64, timeframe: Timeframe) -> u64 {
+fn snapshot_padding_ms(
+    duration_ms: u64,
+    timeframe: Timeframe,
+    coverage: JournalSnapshotCoverage,
+) -> u64 {
     (duration_ms.saturating_mul(3) / 4)
         .max(timeframe.duration_ms().saturating_mul(12))
         .max(MIN_PADDING_MS)
+        .saturating_mul(coverage.padding_multiplier())
 }
 
 fn journal_snapshot_metrics(
@@ -669,6 +727,7 @@ mod tests {
             source: ChartBackfillSource::Hyperliquid,
             read_data_provider_generation: 0,
             hydromancer_key_generation: 0,
+            coverage: JournalSnapshotCoverage::default(),
             timeframe: Timeframe::M1,
             ladder_index: 0,
             trade_start_ms: 1_000,
@@ -721,8 +780,70 @@ mod tests {
 
     #[test]
     fn planner_chooses_one_minute_for_short_trades() {
-        let idx = initial_ladder_index(1_000, 61_000);
+        let idx = initial_ladder_index(1_000, 61_000, JournalSnapshotCoverage::default());
         assert_eq!(SNAPSHOT_LADDER[idx], Timeframe::M1);
+    }
+
+    #[test]
+    fn default_coverage_doubles_snapshot_padding() {
+        let mut trade = trade(true);
+        trade.start_time = 10_000_000;
+        trade.end_time = Some(10_060_000);
+
+        let request = initial_snapshot_request(
+            Some("acct".to_string()),
+            "0xabc".to_string(),
+            &trade,
+            ChartBackfillSource::Hyperliquid,
+            0,
+            0,
+            JournalSnapshotCoverage::default(),
+            10_060_000,
+        )
+        .expect("snapshot request");
+
+        let expected_padding = MIN_PADDING_MS * 2;
+        assert_eq!(request.coverage, JournalSnapshotCoverage::TwoX);
+        assert_eq!(request.start_ms, trade.start_time - expected_padding);
+        assert_eq!(
+            request.end_ms,
+            trade.end_time.expect("end") + expected_padding
+        );
+    }
+
+    #[test]
+    fn higher_coverage_widens_fixed_timeframe_requests() {
+        let mut trade = trade(true);
+        trade.start_time = 20_000_000;
+        trade.end_time = Some(20_060_000);
+
+        let two_x = snapshot_request_for_timeframe(
+            None,
+            "0xabc".to_string(),
+            &trade,
+            ChartBackfillSource::Hyperliquid,
+            0,
+            0,
+            JournalSnapshotCoverage::TwoX,
+            20_060_000,
+            Timeframe::M1,
+        )
+        .expect("2x request");
+        let four_x = snapshot_request_for_timeframe(
+            None,
+            "0xabc".to_string(),
+            &trade,
+            ChartBackfillSource::Hyperliquid,
+            0,
+            0,
+            JournalSnapshotCoverage::FourX,
+            20_060_000,
+            Timeframe::M1,
+        )
+        .expect("4x request");
+
+        assert_eq!(four_x.start_ms, two_x.start_ms - MIN_PADDING_MS * 2);
+        assert_eq!(four_x.end_ms, two_x.end_ms + MIN_PADDING_MS * 2);
     }
 
     #[test]
@@ -751,6 +872,7 @@ mod tests {
             ChartBackfillSource::Hyperliquid,
             0,
             0,
+            JournalSnapshotCoverage::default(),
             now,
         )
         .expect("live request");
@@ -769,22 +891,49 @@ mod tests {
 
         // A closed trade is not a live position.
         assert!(
-            live_position_snapshot_request(None, "a".to_string(), &trade(true), source, 0, 0, now)
-                .is_err()
+            live_position_snapshot_request(
+                None,
+                "a".to_string(),
+                &trade(true),
+                source,
+                0,
+                0,
+                JournalSnapshotCoverage::default(),
+                now,
+            )
+            .is_err()
         );
 
         let mut spot = live_trade();
         spot.coin = "PURR/USDC".to_string();
         assert!(
-            live_position_snapshot_request(None, "a".to_string(), &spot, source, 0, 0, now)
-                .is_err()
+            live_position_snapshot_request(
+                None,
+                "a".to_string(),
+                &spot,
+                source,
+                0,
+                0,
+                JournalSnapshotCoverage::default(),
+                now,
+            )
+            .is_err()
         );
 
         let mut no_entry = live_trade();
         no_entry.avg_entry_price = 0.0;
         assert!(
-            live_position_snapshot_request(None, "a".to_string(), &no_entry, source, 0, 0, now)
-                .is_err()
+            live_position_snapshot_request(
+                None,
+                "a".to_string(),
+                &no_entry,
+                source,
+                0,
+                0,
+                JournalSnapshotCoverage::default(),
+                now,
+            )
+            .is_err()
         );
     }
 
