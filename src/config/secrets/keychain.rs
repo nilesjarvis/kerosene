@@ -1,5 +1,6 @@
 use super::super::{AccountProfile, new_secret_id};
 use super::model::{SECRET_PAYLOAD_SCHEMA, SecretPayload, redacted_secret_payload_parse_error};
+use crate::config::in_memory_config_mode;
 use crate::helpers::redact_sensitive_response_text;
 use zeroize::Zeroizing;
 
@@ -84,6 +85,10 @@ fn load_legacy_keychain_field(
 }
 
 pub fn load_keychain_secret_payload() -> Result<Option<SecretPayload>, String> {
+    if in_memory_config_mode() {
+        return Ok(None);
+    }
+
     let Some(json) = keychain_get(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD)? else {
         return Ok(None);
     };
@@ -99,6 +104,10 @@ pub fn load_keychain_secret_payload() -> Result<Option<SecretPayload>, String> {
 }
 
 pub fn store_secret_payload(payload: &SecretPayload) -> Result<(), String> {
+    if in_memory_config_mode() {
+        return Ok(());
+    }
+
     if payload.is_empty() {
         return keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, "");
     }
@@ -131,6 +140,10 @@ pub fn store_keychain_secrets_with_profile_removals(
     hyperdash_api_key: &str,
     removed_profile_secret_ids: &[String],
 ) -> Result<Option<String>, String> {
+    if in_memory_config_mode() {
+        return Ok(None);
+    }
+
     store_keychain_secrets_with_profile_removals_with(
         profiles,
         hydromancer_api_key,
@@ -245,6 +258,9 @@ pub fn load_profile_secrets(profile: &mut AccountProfile) -> Result<(), String> 
     if profile.secret_id.is_empty() {
         profile.secret_id = new_secret_id();
     }
+    if in_memory_config_mode() {
+        return Ok(());
+    }
 
     let mut errors = Vec::new();
     load_legacy_keychain_field(
@@ -273,6 +289,10 @@ pub fn load_global_secrets(
     hydromancer_api_key: &mut Zeroizing<String>,
     hyperdash_api_key: &mut Zeroizing<String>,
 ) -> Result<(), String> {
+    if in_memory_config_mode() {
+        return Ok(());
+    }
+
     let mut errors = Vec::new();
     load_legacy_keychain_field(
         GLOBAL_SECRET_ID,
@@ -297,6 +317,10 @@ pub fn load_global_secrets(
 }
 
 pub fn clear_profile_secrets(profile: &AccountProfile) -> Result<(), String> {
+    if in_memory_config_mode() {
+        return Ok(());
+    }
+
     clear_profile_secrets_with(
         profile,
         load_keychain_secret_payload,
@@ -437,6 +461,10 @@ fn clear_secret_payload_entry() -> Result<(), String> {
 }
 
 pub fn clear_keychain_secret_payload() -> Result<(), String> {
+    if in_memory_config_mode() {
+        return Ok(());
+    }
+
     clear_secret_payload_entry()
 }
 
@@ -460,6 +488,10 @@ fn combined_keychain_cleanup_warning(
 }
 
 pub fn clear_legacy_keychain_entries_for_payload(payload: &SecretPayload) -> Result<(), String> {
+    if in_memory_config_mode() {
+        return Ok(());
+    }
+
     clear_legacy_keychain_entries_for_payload_with(
         payload,
         clear_legacy_profile_secret_entries_by_id,
@@ -518,6 +550,10 @@ fn clear_legacy_keychain_entries_after_bundle_store(payload: &SecretPayload) -> 
 }
 
 pub fn clear_all_keychain_secrets(profiles: &[AccountProfile]) -> Result<(), String> {
+    if in_memory_config_mode() {
+        return Ok(());
+    }
+
     let mut errors = Vec::new();
     for profile in profiles {
         if profile.secret_id.trim().is_empty() {

@@ -1,5 +1,16 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static IN_MEMORY_CONFIG_MODE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn set_in_memory_config_mode(enabled: bool) {
+    IN_MEMORY_CONFIG_MODE.store(enabled, Ordering::Relaxed);
+}
+
+pub(crate) fn in_memory_config_mode() -> bool {
+    IN_MEMORY_CONFIG_MODE.load(Ordering::Relaxed)
+}
 
 /// Platform-appropriate config file path.
 /// Linux: ~/.config/kerosene/config.json
@@ -12,6 +23,9 @@ pub(in crate::config) fn config_path() -> Option<PathBuf> {
 
 #[cfg(not(test))]
 pub(in crate::config) fn config_path() -> Option<PathBuf> {
+    if in_memory_config_mode() {
+        return None;
+    }
     dirs::config_dir().map(|d| d.join("kerosene").join("config.json"))
 }
 
@@ -79,6 +93,9 @@ pub(super) fn replacement_rollback_path(path: &Path) -> PathBuf {
 }
 
 pub fn journal_cache_path(address: &str) -> Option<PathBuf> {
+    if in_memory_config_mode() {
+        return None;
+    }
     dirs::config_dir().map(|d| {
         d.join("kerosene")
             .join(format!("journal_cache_{}.json", address))
@@ -94,10 +111,16 @@ pub fn api_cache_dir() -> Option<PathBuf> {
 
 #[cfg(not(test))]
 pub fn api_cache_dir() -> Option<PathBuf> {
+    if in_memory_config_mode() {
+        return None;
+    }
     dirs::config_dir().map(|d| d.join("kerosene").join("cache").join("v1"))
 }
 
 pub fn font_storage_dir() -> Option<PathBuf> {
+    if in_memory_config_mode() {
+        return None;
+    }
     dirs::config_dir().map(|d| d.join("kerosene").join("fonts"))
 }
 
@@ -111,6 +134,9 @@ pub fn custom_font_path(file_name: &str) -> Option<PathBuf> {
 }
 
 pub fn sound_storage_dir() -> Option<PathBuf> {
+    if in_memory_config_mode() {
+        return None;
+    }
     dirs::config_dir().map(|d| d.join("kerosene").join("sounds"))
 }
 

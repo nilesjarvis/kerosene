@@ -135,6 +135,7 @@ pub fn main() -> iced::Result {
 
 fn startup_config() -> config::KeroseneConfig {
     if in_memory_test_mode_requested(std::env::args_os()) {
+        config::set_in_memory_config_mode(true);
         config::KeroseneConfig::default()
     } else {
         config::load_config()
