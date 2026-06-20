@@ -91,7 +91,7 @@ pub(super) fn thyp_daily_flows(history: &[ThypValuation]) -> Vec<HypeEtfDailyFlo
     flows
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub(super) struct ThypResponse {
     pub(super) success: bool,
     #[serde(default)]
@@ -100,7 +100,7 @@ pub(super) struct ThypResponse {
     pub(super) last_updated: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub(super) struct ThypValuation {
     pub(super) valuation_date: String,
     nav_per_share: Option<f64>,

@@ -11,12 +11,12 @@ const BHYP_CHART_LABEL: &str = r#""Bitwise (BHYP)""#;
 // Farside BHYP Flow Scraping
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct WpPage {
     content: WpContent,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct WpContent {
     rendered: String,
 }

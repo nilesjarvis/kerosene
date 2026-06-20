@@ -84,3 +84,41 @@ Source prompt: `audit/codex-refactor-tech-debt-long-running-prompt.md`
   diagnostics; tests cover the new summary fields.
 - Next candidate: continue scanning lower-risk API payload Debug derives or
   re-rank strict persisted enum candidates.
+
+## Batch 2 — Drop HYPE ETF Raw Response Debug Derives
+
+- Status: validated
+- Scope: `src/api/hype_etfs/bhyp.rs`, `src/api/hype_etfs/thyp.rs`, and
+  `src/api/hype_etfs/farside.rs`.
+- Motivation: remove unnecessary derived `Debug` from private API response
+  carriers after prior work already redacted the public HYPE ETF state Debug
+  output. This keeps accidental diagnostic dumps smaller without changing
+  parsing or mapped state.
+- Behavior invariant: BHYP, THYP, and Farside response deserialization,
+  validation, ETF fund mapping, daily-flow calculation, and UI state updates
+  remain unchanged. Only the private raw response structs stop implementing
+  `Debug`.
+- Evidence: private raw response structs derive `Debug` in
+  `src/api/hype_etfs/bhyp.rs`, `src/api/hype_etfs/thyp.rs`, and
+  `src/api/hype_etfs/farside.rs`; `rg` found no formatting or trait-bound
+  dependence on those Debug impls.
+- Change summary: removed `Debug` from the private BHYP, THYP, and Farside
+  response/row structs while keeping their `Deserialize` implementations and
+  mapping logic unchanged.
+- Tests/checks run:
+  - `cargo fmt` passed.
+  - `rg -n "derive\\([^\\n]*Debug|Debug" src/api/hype_etfs src/api/hype_etfs.rs`
+    returned no matches.
+  - `cargo test --package kerosene --bin kerosene api::hype_etfs` passed (23
+    tests).
+  - `cargo test --package kerosene --bin kerosene market_update::hype_etfs::tests`
+    passed (6 tests).
+  - `cargo check` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed.
+- Compatibility impact: expected none for persisted data, UI, trading behavior,
+  and secrets. Response parsing and mapped state are unchanged.
+- Residual risk: downstream code cannot format these private raw response rows
+  with `Debug`; current search and compile checks show no such dependency.
+- Next candidate: continue scanning HyperDash raw response Debug derives or
+  re-rank strict persisted enum candidates.

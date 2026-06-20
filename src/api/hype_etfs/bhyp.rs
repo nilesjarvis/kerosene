@@ -78,7 +78,7 @@ pub(super) fn bhyp_fund_from_response(response: BhypResponse) -> HypeEtfFund {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub(super) struct BhypResponse {
     #[serde(default, rename = "fundDetails")]
     fund_details: Option<BhypFundDetails>,
@@ -92,7 +92,7 @@ pub(super) struct BhypResponse {
     updated_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct BhypFundDetails {
     #[serde(default, rename = "netAssets")]
     net_assets: Option<f64>,
@@ -104,7 +104,7 @@ struct BhypFundDetails {
     staking_metrics: Option<BhypStakingMetrics>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct BhypStakingMetrics {
     #[serde(default, rename = "netStakingRewardRate")]
     net_staking_reward_rate: Option<f64>,
@@ -112,13 +112,13 @@ struct BhypStakingMetrics {
     current_percentage_of_assets_staked: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct BhypHoldings {
     #[serde(default)]
     basket: Vec<BhypHolding>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct BhypHolding {
     #[serde(default)]
     shares: Option<f64>,
@@ -126,7 +126,7 @@ struct BhypHolding {
     market_value: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct BhypPremiumDiscount {
     nav: Option<f64>,
     #[serde(default, rename = "marketPrice")]
@@ -138,7 +138,7 @@ struct BhypPremiumDiscount {
     volume: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct BhypNavAndMarketPrice {
     nav: Option<f64>,
     #[serde(default, rename = "marketPrice")]
@@ -151,7 +151,7 @@ struct BhypNavAndMarketPrice {
     thirty_day_median_bid_ask_spread: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct BhypChange {
     #[serde(default, rename = "percentageChange")]
     percentage_change: Option<f64>,
