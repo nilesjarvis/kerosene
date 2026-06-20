@@ -117,7 +117,7 @@ mod positions_funding_tests;
 // ---------------------------------------------------------------------------
 
 pub fn main() -> iced::Result {
-    let config = config::load_config();
+    let config = startup_config();
     let settings = app_fonts::settings_from_config(&config);
 
     iced::daemon(
@@ -131,4 +131,39 @@ pub fn main() -> iced::Result {
     .theme(TradingTerminal::window_theme)
     .scale_factor(TradingTerminal::window_scale_factor)
     .run()
+}
+
+fn startup_config() -> config::KeroseneConfig {
+    if in_memory_test_mode_requested(std::env::args_os()) {
+        config::KeroseneConfig::default()
+    } else {
+        config::load_config()
+    }
+}
+
+fn in_memory_test_mode_requested<I, S>(args: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let test_flag = std::ffi::OsStr::new("--test");
+    args.into_iter()
+        .skip(1)
+        .any(|arg| arg.as_ref() == test_flag)
+}
+
+#[cfg(test)]
+mod startup_args_tests {
+    use super::in_memory_test_mode_requested;
+
+    #[test]
+    fn in_memory_test_mode_detects_binary_flag() {
+        assert!(in_memory_test_mode_requested(["kerosene", "--test"]));
+    }
+
+    #[test]
+    fn in_memory_test_mode_ignores_absent_flag() {
+        assert!(!in_memory_test_mode_requested(["kerosene"]));
+        assert!(!in_memory_test_mode_requested(["kerosene", "--release"]));
+    }
 }
