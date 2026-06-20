@@ -164,3 +164,38 @@ Source prompt: `audit/codex-refactor-tech-debt-long-running-prompt.md`
   dependency.
 - Next candidate: re-rank remaining public API/model Debug derives versus
   strict persisted enum candidates.
+
+## Batch 4 — Drop Outcome Metadata Helper Debug Derives
+
+- Status: validated
+- Scope: `src/api/exchange_symbols/outcomes.rs` and
+  `src/api/exchange_symbols/outcomes/questions.rs`.
+- Motivation: continue the private metadata cleanup for outcome-market symbol
+  loading. Raw outcome entries and derived question helpers carry full names,
+  descriptions, and threshold strings that do not need ad hoc Debug output now
+  that the public exchange-symbol Debug output is summarized.
+- Behavior invariant: outcome metadata deserialization, question-to-outcome
+  mapping, symbol construction, keywords, display labels, orderability, and
+  quote-token handling remain unchanged. `Clone` is preserved where the helper
+  map needs it.
+- Evidence: `OutcomeMetaResponse`, raw outcome/question rows, and
+  `OutcomeQuestionInfo` derive `Debug`; `rg` found no formatting or trait-bound
+  dependence on those Debug impls.
+- Change summary: removed `Debug` from raw outcome metadata response rows and
+  the internal question-info helper while preserving `Clone` and `Deserialize`
+  where required by parsing and map construction.
+- Tests/checks run:
+  - `cargo fmt` passed.
+  - `rg -n "derive\\([^\\n]*Debug|#\\[derive\\([^\\]]*Debug|Debug" src/api/exchange_symbols/outcomes.rs src/api/exchange_symbols/outcomes/questions.rs`
+    returned no matches.
+  - `cargo test --package kerosene --bin kerosene api::exchange_symbols` passed
+    (16 tests).
+  - `cargo check` passed.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed.
+- Compatibility impact: expected none for persisted data, UI, trading behavior,
+  and secrets. Outcome symbol construction and display metadata are unchanged.
+- Residual risk: downstream code cannot format these private metadata helpers
+  with `Debug`; current search and compile checks show no such dependency.
+- Next candidate: re-rank remaining public API/model Debug derives versus
+  strict persisted enum candidates.

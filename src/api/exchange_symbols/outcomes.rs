@@ -10,7 +10,7 @@ use encoding::{outcome_asset_index, outcome_coin_key, outcome_encoding};
 use questions::questions_by_outcome;
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub(super) struct OutcomeMetaResponse {
     #[serde(default)]
     outcomes: Vec<OutcomeMetaEntry>,
@@ -18,7 +18,7 @@ pub(super) struct OutcomeMetaResponse {
     questions: Vec<OutcomeQuestionEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct OutcomeMetaEntry {
     outcome: u32,
     name: String,
@@ -30,12 +30,12 @@ struct OutcomeMetaEntry {
     quote_token: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct OutcomeSideSpec {
     name: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct OutcomeQuestionEntry {
     question: u32,
     name: String,

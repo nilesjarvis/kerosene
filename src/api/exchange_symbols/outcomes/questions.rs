@@ -3,7 +3,7 @@ use super::description::parse_outcome_description;
 
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct OutcomeQuestionInfo {
     pub(super) question_id: u32,
     pub(super) name: String,
