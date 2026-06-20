@@ -260,3 +260,40 @@ Source prompt: `audit/codex-refactor-tech-debt-long-running-prompt.md`
   compile checks covered all local call sites.
 - Next candidate: resume the ranked public API/model Debug derive scan and
   separate true leak risk from already-redacted model Debug implementations.
+
+## Batch 6 — Drop SEC Raw Response Debug Derives
+
+- Status: validated
+- Scope: `src/api/sec.rs`.
+- Motivation: continue removing unused full-payload Debug implementations from
+  private deserialize-only API response structs. SEC raw submissions can include
+  large company filing vectors, and local code only needs them for parsing.
+- Behavior invariant: SEC ticker lookup, company submission parsing, earnings
+  event extraction, sorting, chart-marker conversion, and error handling remain
+  unchanged.
+- Evidence: `SecTickerEntry`, `SecCompanySubmissions`, `SecCompanyFilings`, and
+  `SecRecentFilings` were private raw response helpers deriving `Debug`; `rg`
+  found no formatting or trait-bound dependence on those Debug impls. The
+  public `SecEarningsEvent` keeps `Debug` because chart state/messages can carry
+  event values.
+- Change summary: removed `Debug` from the private SEC raw response helpers
+  while preserving `Clone`, `Default`, and `Deserialize` where the parser needs
+  them.
+- Tests/checks run:
+  - `cargo fmt` passed.
+  - `cargo test --package kerosene --bin kerosene api::sec` passed (3 tests).
+  - `cargo test --package kerosene --bin kerosene chart_update::earnings`
+    passed (11 tests).
+  - `cargo check` passed.
+  - `rg -n "#\\[derive\\([^\\]]*Debug|Debug" src/api/sec.rs` now only reports
+    public `SecEarningsEvent`.
+  - `cargo fmt -- --check` passed.
+  - `git diff --check` passed.
+- Compatibility impact: expected none for persisted data, UI, trading behavior,
+  and secrets. SEC parsing output and public event shape are unchanged.
+- Residual risk: downstream code cannot format these private raw SEC helper
+  structs with `Debug`; current search and compile checks show no such
+  dependency.
+- Next candidate: continue the ranked Debug derive scan, prioritizing private
+  raw response helpers before public model/value types that already have
+  redaction or harmless summary output.

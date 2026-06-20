@@ -29,27 +29,27 @@ pub(crate) struct SecEarningsEvent {
     pub(crate) primary_document: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct SecTickerEntry {
     cik_str: u64,
     ticker: String,
     title: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct SecCompanySubmissions {
     #[serde(default)]
     name: String,
     filings: SecCompanyFilings,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 struct SecCompanyFilings {
     #[serde(default)]
     recent: SecRecentFilings,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 struct SecRecentFilings {
     #[serde(default)]
     form: Vec<String>,
