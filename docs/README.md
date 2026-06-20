@@ -44,6 +44,7 @@ separate. The docs below describe where each concern belongs.
 | --- | --- |
 | [Layouts, Panes, And Windows](components/layouts-windows-and-panes.md) | `PaneKind`, pane grid routing, detached windows, saved layouts, add-widget flow. |
 | [Market Data And Symbols](components/market-data-and-symbols.md) | Symbol universe, mids, books, watchlists, ticker tape, positioning info, session data, HYPE widgets. |
+| [Volatility Metrics](components/volatility-metrics.md) | Realized volatility, ATR/NATR, ATR-distance, and proposed chart/watchlist/screener integration. |
 | [Charting And Canvas](components/charting-and-canvas.md) | Chart instances, candle/funding data, canvas rendering, viewport, overlays, screenshots, spaghetti charts. |
 | [Trading And Order Execution](components/trading-and-order-execution.md) | Order entry, quick/HUD orders, Chase, TWAP, close/nuke, move-order, signing boundaries. |
 | [Account, Wallet, And Portfolio](components/account-wallet-portfolio.md) | Account profiles, REST/user-stream data, positions, balances, wallet tracker, portfolio and income views. |
