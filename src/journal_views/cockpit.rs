@@ -59,7 +59,6 @@ impl TradingTerminal {
         let header = row![
             text("Performance Overview")
                 .size(20)
-                .font(crate::app_fonts::serif_font())
                 .color(theme.palette().text),
             Space::new().width(16.0),
             cockpit_timeframe_row(self.journal.portfolio_window),

@@ -67,7 +67,6 @@ impl TradingTerminal {
             monogram,
             text(self.display_coin_for_journal(&trade.coin))
                 .size(20)
-                .font(crate::app_fonts::serif_font())
                 .color(theme.palette().text),
             journal_chip(side.0, side.1),
             journal_chip(trade.status.clone(), status_tint),

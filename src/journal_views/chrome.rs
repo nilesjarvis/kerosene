@@ -24,26 +24,18 @@ impl TradingTerminal {
         let theme = self.theme();
         let mode = self.journal_account_mode();
 
-        let logo = container(
-            text("K")
-                .size(16)
-                .font(crate::app_fonts::serif_font())
-                .color(theme.palette().background),
-        )
-        .center(Length::Fixed(26.0))
-        .style(|theme: &Theme| container_style::Style {
-            background: Some(theme.palette().primary.into()),
-            border: Border {
-                radius: 6.0.into(),
+        let logo = container(text("K").size(16).color(theme.palette().background))
+            .center(Length::Fixed(26.0))
+            .style(|theme: &Theme| container_style::Style {
+                background: Some(theme.palette().primary.into()),
+                border: Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        });
+            });
 
-        let title = text("Trading Journal")
-            .size(19)
-            .font(crate::app_fonts::serif_font())
-            .color(theme.palette().text);
+        let title = text("Trading Journal").size(19).color(theme.palette().text);
 
         let badge = container(
             text(mode.label())

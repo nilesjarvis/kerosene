@@ -62,8 +62,7 @@ impl TradingTerminal {
                 move |text| Message::JournalBufferChanged(id.clone(), true, text)
             })
             .size(13)
-            .padding(8)
-            .font(crate::app_fonts::sans_font());
+            .padding(8);
 
         let close_input = text_input("How did it play out? What did you learn?", &note.close)
             .style(journal_text_input_style)
@@ -72,8 +71,7 @@ impl TradingTerminal {
                 move |text| Message::JournalBufferChanged(id.clone(), false, text)
             })
             .size(13)
-            .padding(8)
-            .font(crate::app_fonts::sans_font());
+            .padding(8);
 
         let cause_of_error_input = text_input("What caused the error?", &note.cause_of_error)
             .style(journal_text_input_style)
@@ -82,8 +80,7 @@ impl TradingTerminal {
                 move |text| Message::JournalCauseOfErrorChanged(id.clone(), text)
             })
             .size(13)
-            .padding(8)
-            .font(crate::app_fonts::sans_font());
+            .padding(8);
 
         let tag_input = text_input("breakout momentum trend ...", &tag_raw)
             .style(journal_text_input_style)
@@ -98,18 +95,14 @@ impl TradingTerminal {
 
         let actions = row![
             Space::new().width(Fill),
-            button(text("Cancel").size(11).font(crate::app_fonts::sans_font()))
+            button(text("Cancel").size(11))
                 .on_press(Message::JournalEditCancel(trade.id.clone()))
                 .padding([6, 12])
                 .style(journal_ghost_button_style),
-            button(
-                text("Save reflection")
-                    .size(11)
-                    .font(crate::app_fonts::sans_font())
-            )
-            .on_press(Message::JournalEditSave(trade.id.clone()))
-            .padding([6, 14])
-            .style(journal_primary_button_style),
+            button(text("Save reflection").size(11))
+                .on_press(Message::JournalEditSave(trade.id.clone()))
+                .padding([6, 14])
+                .style(journal_primary_button_style),
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center);
@@ -155,7 +148,6 @@ impl TradingTerminal {
             content = content.push(
                 text("No reflection recorded for this trade yet.")
                     .size(12)
-                    .font(crate::app_fonts::sans_font())
                     .color(journal_muted(theme)),
             );
         }
@@ -168,7 +160,7 @@ impl TradingTerminal {
         content = content.push(
             row![
                 Space::new().width(Fill),
-                button(text(label).size(11).font(crate::app_fonts::sans_font()))
+                button(text(label).size(11))
                     .on_press(Message::JournalEditStart(trade.id.clone(), note_key))
                     .padding([6, 12])
                     .style(journal_ghost_button_style),

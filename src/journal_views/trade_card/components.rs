@@ -10,7 +10,7 @@ use iced::{Border, Color, Element, Fill, Theme};
 // Trade Card / Detail Components
 // ---------------------------------------------------------------------------
 
-/// Reflection block: an orange-soft mono uppercase label over Inter body copy,
+/// Reflection block: an orange-soft mono uppercase label over body copy,
 /// seated in a sunken well with a hairline accent edge.
 pub(in crate::journal_views) fn journal_note_block<'a>(
     label: &'static str,
@@ -21,11 +21,7 @@ pub(in crate::journal_views) fn journal_note_block<'a>(
     let body: Element<'a, Message> = if body.trim().is_empty() {
         text("—").size(13).color(journal_dim(theme)).into()
     } else {
-        text(body)
-            .size(13)
-            .font(crate::app_fonts::sans_font())
-            .color(theme.palette().text)
-            .into()
+        text(body).size(13).color(theme.palette().text).into()
     };
 
     container(
