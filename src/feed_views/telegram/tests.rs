@@ -208,6 +208,19 @@ fn telegram_screens_build_across_states_and_widths() {
         crate::telegram_feed::TelegramFastAuthStage::PasswordRequired;
     let _ = terminal.view_telegram_sign_in_code(colors, now);
 
+    // Enough channels to make the chip list collapsible; render both states.
+    terminal.telegram_feed.channels = vec![
+        "marketfeed".to_string(),
+        "walterbloomberg".to_string(),
+        "cryptoadee".to_string(),
+        "hl_alpha".to_string(),
+        "defidegens".to_string(),
+        "hyperliquid".to_string(),
+    ];
+    terminal.telegram_feed.channels_expanded = false;
+    let _ = terminal.view_telegram_live_feed(colors, now, 440.0);
+    terminal.telegram_feed.channels_expanded = true;
+
     // Live feed in both Fast and public flavours, wide and narrow.
     terminal.telegram_feed.fast_connected = true;
     terminal.telegram_feed.fast_mode_enabled = true;

@@ -51,6 +51,7 @@ impl TradingTerminal {
             | Message::TelegramFeedAddPrivateChannel(_)
             | Message::ToggleTelegramPrivateChannelCandidatesExpanded
             | Message::TelegramFeedRemoveChannel(_)
+            | Message::ToggleTelegramFeedChannelsExpanded
             | Message::ToggleTelegramFeedNotifications
             | Message::ToggleTelegramFeedOutcomeMarkets) => {
                 return self.update_telegram_feed(message);

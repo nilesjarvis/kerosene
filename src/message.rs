@@ -769,6 +769,7 @@ pub(crate) enum Message {
     TelegramFeedAddPrivateChannel(i64),
     ToggleTelegramPrivateChannelCandidatesExpanded,
     TelegramFeedRemoveChannel(RedactedTelegramChannelKey),
+    ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
     ToggleTelegramFeedOutcomeMarkets,
     // Drawing tools

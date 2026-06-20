@@ -430,6 +430,9 @@ pub(crate) struct TelegramFeedState {
     pub(crate) fast_password_hint: Option<String>,
     pub(crate) fast_reconnect_nonce: u64,
     pub(crate) fast_last_event_ms: Option<u64>,
+    // Whether the live-feed channel chip list is expanded. Runtime-only; defaults
+    // to collapsed so a long channel list does not dominate the pane.
+    pub(crate) channels_expanded: bool,
     pub(crate) channel_input: String,
     pub(crate) channel_profiles: HashMap<String, TelegramChannelProfile>,
     pub(crate) posts: Vec<TelegramFeedPost>,
@@ -494,6 +497,7 @@ impl fmt::Debug for TelegramFeedState {
             )
             .field("fast_reconnect_nonce", &self.fast_reconnect_nonce)
             .field("fast_last_event_ms", &self.fast_last_event_ms)
+            .field("channels_expanded", &self.channels_expanded)
             .field(
                 "channel_input",
                 &redacted_telegram_channel_debug_value(&self.channel_input),
@@ -678,6 +682,7 @@ impl TelegramFeedState {
             fast_password_hint: None,
             fast_reconnect_nonce: 0,
             fast_last_event_ms: None,
+            channels_expanded: false,
             channel_input: String::new(),
             channel_profiles: HashMap::new(),
             posts: Vec::new(),

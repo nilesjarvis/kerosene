@@ -136,6 +136,10 @@ impl TradingTerminal {
                 self.remove_telegram_feed_channel(&channel);
                 Task::none()
             }
+            Message::ToggleTelegramFeedChannelsExpanded => {
+                self.telegram_feed.channels_expanded = !self.telegram_feed.channels_expanded;
+                Task::none()
+            }
             Message::ToggleTelegramFeedNotifications => {
                 self.telegram_feed.notifications_enabled =
                     !self.telegram_feed.notifications_enabled;
@@ -3296,5 +3300,17 @@ mod tests {
         let _ = terminal.update_telegram_feed(Message::TelegramFastCodeChanged("12 34 567".into()));
 
         assert_eq!(terminal.telegram_feed.fast_code_input.as_str(), "12345");
+    }
+
+    #[test]
+    fn telegram_channel_list_expansion_is_runtime_only() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        assert!(!terminal.telegram_feed.channels_expanded);
+
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFeedChannelsExpanded);
+        assert!(terminal.telegram_feed.channels_expanded);
+
+        let _task = terminal.update_telegram_feed(Message::ToggleTelegramFeedChannelsExpanded);
+        assert!(!terminal.telegram_feed.channels_expanded);
     }
 }

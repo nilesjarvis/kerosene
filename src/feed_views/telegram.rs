@@ -23,6 +23,9 @@ use iced::{
 
 // ---- Layout constants ----
 const TELEGRAM_COMPACT_CONTROLS_WIDTH: f32 = 360.0;
+// Past this many subscribed channels the chip list collapses by default so a
+// long list does not dominate the pane.
+const TELEGRAM_CHANNEL_COLLAPSE_THRESHOLD: usize = 4;
 const TELEGRAM_MEDIA_MAX_HEIGHT: f32 = 240.0;
 const TELEGRAM_MEDIA_PLACEHOLDER_HEIGHT: f32 = 56.0;
 const TELEGRAM_PRIVATE_CANDIDATE_LIST_HEIGHT: f32 = 150.0;
@@ -782,6 +785,17 @@ impl TradingTerminal {
     }
 
     fn view_telegram_channel_chips(&self, colors: TelegramColors) -> Element<'_, Message> {
+        let count = self.telegram_feed.selected_channel_count();
+        let collapsible = count > TELEGRAM_CHANNEL_COLLAPSE_THRESHOLD;
+        let expanded = self.telegram_feed.channels_expanded;
+
+        // Collapsed: show only a compact toggle so a long channel list does not
+        // take over the pane. The add bar above still adds, the meta strip below
+        // still shows the count.
+        if collapsible && !expanded {
+            return telegram_channels_collapse_header(count, false, colors);
+        }
+
         let mut chips = row![].spacing(7).align_y(Alignment::Center);
         for channel in &self.telegram_feed.channels {
             let active = self
@@ -818,8 +832,19 @@ impl TradingTerminal {
             .padding([5, 10])
             .style(move |_t: &Theme| telegram_add_pill_style(colors)),
         );
+        let chips = chips.wrap().vertical_spacing(7);
 
-        chips.wrap().vertical_spacing(7).into()
+        if collapsible {
+            column![
+                telegram_channels_collapse_header(count, true, colors),
+                chips
+            ]
+            .spacing(7)
+            .width(Fill)
+            .into()
+        } else {
+            chips.into()
+        }
     }
 
     fn view_telegram_meta_strip(&self, colors: TelegramColors) -> Element<'_, Message> {
@@ -1335,6 +1360,42 @@ fn telegram_channel_chip(
     )
     .padding([3, 8])
     .style(move |_t: &Theme| telegram_pill_style(colors))
+    .into()
+}
+
+/// Compact toggle for the channel chip list. Collapsed it stands alone; expanded
+/// it sits above the chips. Clicking either form flips `channels_expanded`.
+fn telegram_channels_collapse_header(
+    count: usize,
+    expanded: bool,
+    colors: TelegramColors,
+) -> Element<'static, Message> {
+    let chevron = if expanded { "⌄" } else { "›" };
+    let toggle = if expanded { "Hide" } else { "Show" };
+    button(
+        row![
+            text(chevron)
+                .size(12)
+                .font(crate::app_fonts::monospace_font())
+                .color(colors.dim),
+            text(format!("{count} channels"))
+                .size(11)
+                .font(crate::app_fonts::monospace_font())
+                .color(colors.muted),
+            Space::new().width(Fill),
+            text(toggle)
+                .size(10)
+                .font(crate::app_fonts::monospace_font())
+                .color(colors.orange_soft),
+        ]
+        .spacing(7)
+        .align_y(Alignment::Center)
+        .width(Fill),
+    )
+    .on_press(Message::ToggleTelegramFeedChannelsExpanded)
+    .padding([5, 9])
+    .width(Fill)
+    .style(move |_t: &Theme, status| telegram_icon_button(colors, status))
     .into()
 }
 

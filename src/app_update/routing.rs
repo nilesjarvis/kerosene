@@ -564,6 +564,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::TelegramFeedAddPrivateChannel(_)
         | Message::ToggleTelegramPrivateChannelCandidatesExpanded
         | Message::TelegramFeedRemoveChannel(_)
+        | Message::ToggleTelegramFeedChannelsExpanded
         | Message::ToggleTelegramFeedNotifications
         | Message::ToggleTelegramFeedOutcomeMarkets => UpdateRoute::Feed,
 
