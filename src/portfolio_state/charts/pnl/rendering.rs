@@ -33,6 +33,12 @@ struct PnlAreaSegment {
     points: Vec<Point>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PnlAreaGradientExtents {
+    positive_top_y: f32,
+    negative_bottom_y: f32,
+}
+
 pub(super) fn draw_portfolio_pnl_chart(
     points: &[(u64, f64)],
     value_mode: PnlValueDisplayMode,
@@ -178,16 +184,18 @@ fn draw_pnl_area(
 
     let width = frame.width();
     let height = frame.height();
+    let gradient_extents = pnl_area_gradient_extents(&segments, zero_y);
 
     for segment in segments {
         let area = area_segment_path(&segment, zero_y);
 
         match segment.side {
             PnlAreaSide::Positive if zero_y > 0.0 => {
-                let gradient = segment_area_gradient(
+                let gradient = side_area_gradient(
                     positive_color,
-                    &segment,
+                    PnlAreaSide::Positive,
                     zero_y,
+                    gradient_extents,
                     AREA_POSITIVE_MAX_ALPHA,
                 );
                 frame.with_clip(
@@ -201,10 +209,11 @@ fn draw_pnl_area(
                 );
             }
             PnlAreaSide::Negative if zero_y < height => {
-                let gradient = segment_area_gradient(
+                let gradient = side_area_gradient(
                     negative_color,
-                    &segment,
+                    PnlAreaSide::Negative,
                     zero_y,
+                    gradient_extents,
                     AREA_NEGATIVE_MAX_ALPHA,
                 );
                 frame.with_clip(
@@ -253,6 +262,26 @@ fn pnl_area_segments(points: &[PnlChartPoint], zero_y: f32) -> Vec<PnlAreaSegmen
 
     push_area_segment(&mut segments, current_side, &mut current_points, zero_y);
     segments
+}
+
+fn pnl_area_gradient_extents(segments: &[PnlAreaSegment], zero_y: f32) -> PnlAreaGradientExtents {
+    let positive_top_y = segments
+        .iter()
+        .filter(|segment| segment.side == PnlAreaSide::Positive)
+        .flat_map(|segment| segment.points.iter())
+        .fold(zero_y, |top, point| top.min(point.y))
+        .min(zero_y - 1.0);
+    let negative_bottom_y = segments
+        .iter()
+        .filter(|segment| segment.side == PnlAreaSide::Negative)
+        .flat_map(|segment| segment.points.iter())
+        .fold(zero_y, |bottom, point| bottom.max(point.y))
+        .max(zero_y + 1.0);
+
+    PnlAreaGradientExtents {
+        positive_top_y,
+        negative_bottom_y,
+    }
 }
 
 fn push_area_segment(
@@ -393,10 +422,11 @@ fn draw_end_dot(
     );
 }
 
-fn segment_area_gradient(
+fn side_area_gradient(
     color: Color,
-    segment: &PnlAreaSegment,
+    side: PnlAreaSide,
     zero_y: f32,
+    extents: PnlAreaGradientExtents,
     max_alpha: f32,
 ) -> canvas::gradient::Linear {
     let strong = Color {
@@ -413,31 +443,23 @@ fn segment_area_gradient(
     };
     let clear = Color { a: 0.0, ..color };
 
-    match segment.side {
-        PnlAreaSide::Positive => {
-            let top_y = segment
-                .points
-                .iter()
-                .fold(zero_y, |top, point| top.min(point.y))
-                .min(zero_y - 1.0);
-            canvas::gradient::Linear::new(Point::new(0.0, top_y), Point::new(0.0, zero_y))
-                .add_stop(0.0, strong)
-                .add_stop(0.70, mid)
-                .add_stop(0.92, edge)
-                .add_stop(1.0, clear)
-        }
-        PnlAreaSide::Negative => {
-            let bottom_y = segment
-                .points
-                .iter()
-                .fold(zero_y, |bottom, point| bottom.max(point.y))
-                .max(zero_y + 1.0);
-            canvas::gradient::Linear::new(Point::new(0.0, zero_y), Point::new(0.0, bottom_y))
-                .add_stop(0.0, clear)
-                .add_stop(0.08, edge)
-                .add_stop(0.30, mid)
-                .add_stop(1.0, strong)
-        }
+    match side {
+        PnlAreaSide::Positive => canvas::gradient::Linear::new(
+            Point::new(0.0, extents.positive_top_y),
+            Point::new(0.0, zero_y),
+        )
+        .add_stop(0.0, strong)
+        .add_stop(0.70, mid)
+        .add_stop(0.92, edge)
+        .add_stop(1.0, clear),
+        PnlAreaSide::Negative => canvas::gradient::Linear::new(
+            Point::new(0.0, zero_y),
+            Point::new(0.0, extents.negative_bottom_y),
+        )
+        .add_stop(0.0, clear)
+        .add_stop(0.08, edge)
+        .add_stop(0.30, mid)
+        .add_stop(1.0, strong),
     }
 }
 
@@ -501,38 +523,51 @@ mod tests {
     }
 
     #[test]
-    fn segment_gradients_use_local_vertical_extents() {
+    fn side_gradients_use_shared_vertical_extents() {
         let zero_y = 50.0;
-        let points = [
-            chart_point(0.0, 45.0, 1.0),
-            chart_point(50.0, 10.0, 8.0),
-            chart_point(100.0, 70.0, -2.0),
+        let segments = vec![
+            PnlAreaSegment {
+                side: PnlAreaSide::Positive,
+                points: vec![chart_point(0.0, 45.0, 1.0).point],
+            },
+            PnlAreaSegment {
+                side: PnlAreaSide::Negative,
+                points: vec![chart_point(25.0, 70.0, -2.0).point],
+            },
+            PnlAreaSegment {
+                side: PnlAreaSide::Positive,
+                points: vec![
+                    chart_point(50.0, 30.0, 4.0).point,
+                    chart_point(75.0, 10.0, 8.0).point,
+                ],
+            },
+            PnlAreaSegment {
+                side: PnlAreaSide::Negative,
+                points: vec![chart_point(100.0, 82.0, -5.0).point],
+            },
         ];
-        let positive_segment = PnlAreaSegment {
-            side: PnlAreaSide::Positive,
-            points: vec![points[0].point, points[1].point],
-        };
-        let negative_segment = PnlAreaSegment {
-            side: PnlAreaSide::Negative,
-            points: vec![points[2].point],
-        };
+        let extents = pnl_area_gradient_extents(&segments, zero_y);
 
-        let positive_gradient = segment_area_gradient(
+        let positive_gradient = side_area_gradient(
             Color::WHITE,
-            &positive_segment,
+            PnlAreaSide::Positive,
             zero_y,
+            extents,
             AREA_POSITIVE_MAX_ALPHA,
         );
-        let negative_gradient = segment_area_gradient(
+        let negative_gradient = side_area_gradient(
             Color::WHITE,
-            &negative_segment,
+            PnlAreaSide::Negative,
             zero_y,
+            extents,
             AREA_NEGATIVE_MAX_ALPHA,
         );
 
+        assert_near(extents.positive_top_y, 10.0);
+        assert_near(extents.negative_bottom_y, 82.0);
         assert_near(positive_gradient.start.y, 10.0);
         assert_near(positive_gradient.end.y, zero_y);
         assert_near(negative_gradient.start.y, zero_y);
-        assert_near(negative_gradient.end.y, 70.0);
+        assert_near(negative_gradient.end.y, 82.0);
     }
 }
