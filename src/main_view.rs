@@ -1,4 +1,5 @@
 mod grid;
+mod onboarding;
 mod panes;
 mod title_bar;
 mod unlock;

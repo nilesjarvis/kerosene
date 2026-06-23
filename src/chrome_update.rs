@@ -120,6 +120,7 @@ impl TradingTerminal {
             }
             Message::SpinnerTick => {
                 self.spinner_phase = (self.spinner_phase + 0.35).rem_euclid(std::f32::consts::TAU);
+                self.advance_onboarding_phase();
                 for instance in self.charts.values_mut() {
                     instance.advance_quick_order_limit_line();
                     instance.advance_order_line_animation();
@@ -153,9 +154,30 @@ impl TradingTerminal {
                 self.hide_pnl = !self.hide_pnl;
                 self.persist_config();
             }
+            Message::EnterApplication if !self.app_onboarding_dismissed => {
+                self.app_onboarding_dismissed = true;
+                self.persist_config();
+            }
             _ => {}
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enter_application_dismisses_onboarding_and_persists() {
+        let (mut terminal, _) = TradingTerminal::boot();
+
+        assert!(!terminal.app_onboarding_dismissed);
+
+        let _task = terminal.update_chrome(Message::EnterApplication);
+
+        assert!(terminal.app_onboarding_dismissed);
+        assert!(terminal.config_save_due_at.is_some());
     }
 }

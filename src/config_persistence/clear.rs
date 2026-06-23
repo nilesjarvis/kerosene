@@ -203,6 +203,7 @@ impl TradingTerminal {
         self.config_cleared_this_session = true;
         self.saved_layouts.clear();
         self.active_layout_name = None;
+        self.app_onboarding_dismissed = defaults.app_onboarding_dismissed;
         self.layout_input.clear();
         self.layout_menu_open = false;
         self.layout_rename_index = None;

@@ -59,6 +59,7 @@ impl TradingTerminal {
         let mut state = Self {
             saved_layouts: cfg.saved_layouts.clone(),
             active_layout_name: cfg.active_layout_name.clone(),
+            app_onboarding_dismissed: cfg.app_onboarding_dismissed,
             layout_input: String::new(),
             preserved_loaded_pane_layout: cfg.pane_layout.clone(),
             live_watchlist_ctxs: HashMap::new(),
@@ -381,6 +382,7 @@ impl TradingTerminal {
                 journal
             },
             spinner_phase: 0.0,
+            onboarding_phase: 0.0,
             status_bar_now_ms: Self::now_ms(),
             status_bar_now: Instant::now(),
             candle_data_cache: HashMap::new(),

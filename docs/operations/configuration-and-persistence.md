@@ -41,6 +41,7 @@ Related storage:
 `KeroseneConfig` is the durable contract for the app. It stores:
 
 - saved layouts and active layout name
+- first-run app onboarding dismissal
 - pane layout and legacy layout ratios
 - widget configs
 - detached chart windows
@@ -86,6 +87,8 @@ Config saves are debounced and run off the main update path:
 
 - `persist_config()` schedules a save.
 - save lifecycle tracks due time, in-flight status, and exit-requested state.
+- the app onboarding dismissal flag defaults to visible only for brand-new
+  default configs; older serialized configs without the field load as dismissed.
 - final-save-before-exit behavior prevents losing recent changes.
 - file writes use temporary files and backup paths for resilience.
 

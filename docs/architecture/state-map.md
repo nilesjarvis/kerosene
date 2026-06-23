@@ -24,6 +24,7 @@ Representative fields:
 - `panes: pane_grid::State<PaneKind>`
 - `focus`, `dragging_pane`
 - `saved_layouts`, `active_layout_name`, `layout_input`
+- `app_onboarding_dismissed`, which gates the first-run welcome screen
 - `add_widget_menu_open`, `layout_menu_open`, `add_widget_placement`
 - `main_window_id`, window size/position fields, auxiliary window IDs
 - pane chrome settings such as border thickness, corner radius, widget padding,
@@ -46,6 +47,7 @@ Persisted through:
 - `config::PaneLayoutConfig`
 - widget config snapshots in `layout_persistence/`
 - window size/position fields in `KeroseneConfig`
+- first-run app onboarding dismissal in `KeroseneConfig`
 
 ## Theme, Preferences, And Chrome State
 

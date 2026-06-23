@@ -75,6 +75,9 @@ pub struct KeroseneConfig {
     pub saved_layouts: Vec<SavedLayout>,
     #[serde(default)]
     pub active_layout_name: Option<String>,
+    /// Whether the first-run application welcome screen has been dismissed.
+    #[serde(default = "default_legacy_app_onboarding_dismissed")]
+    pub app_onboarding_dismissed: bool,
     #[serde(default)]
     pub credential_storage_mode: CredentialStorageMode,
     #[serde(default)]
@@ -388,6 +391,10 @@ pub struct KeroseneConfig {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn default_legacy_app_onboarding_dismissed() -> bool {
+    true
 }
 
 fn deserialize_hotkeys<'de, D>(deserializer: D) -> Result<Vec<HotkeyConfig>, D::Error>

@@ -99,6 +99,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ConfigSaved(_)
         | Message::CalendarImpactFilterChanged(_)
         | Message::CalendarWindowFilterChanged(_)
+        | Message::EnterApplication
         | Message::ToggleSound
         | Message::ToggleDesktopNotifications => UpdateRoute::Chrome,
 

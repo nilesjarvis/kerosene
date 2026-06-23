@@ -14,6 +14,7 @@ use crate::config::{ReadDataProvider, take_config_warnings};
 #[test]
 fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     let config = KeroseneConfig {
+        app_onboarding_dismissed: true,
         ui_scale: 0.85,
         chart_dotted_background: true,
         chart_dotted_background_opacity: 0.27,
@@ -52,6 +53,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
 
     let json = json_string(&config, "config should serialize");
     let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert!(decoded.app_onboarding_dismissed);
     assert_eq!(decoded.ui_scale, 0.85);
     assert!(decoded.chart_dotted_background);
     assert_eq!(decoded.chart_dotted_background_opacity, 0.27);
@@ -99,6 +101,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
 
     let mut legacy = default_config_value();
     let object = object_mut(&mut legacy, "config should serialize to object");
+    object.remove("app_onboarding_dismissed");
     object.remove("ui_scale");
     object.remove("chart_dotted_background");
     object.remove("chart_dotted_background_opacity");
@@ -126,6 +129,8 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
 
     let decoded_legacy: KeroseneConfig =
         value_from_json(legacy, "legacy config should deserialize");
+    assert!(!KeroseneConfig::default().app_onboarding_dismissed);
+    assert!(decoded_legacy.app_onboarding_dismissed);
     assert_eq!(decoded_legacy.ui_scale, default_ui_scale());
     assert!(!decoded_legacy.chart_dotted_background);
     assert_eq!(

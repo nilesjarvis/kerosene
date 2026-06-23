@@ -781,6 +781,7 @@ pub(crate) enum Message {
     RestyleAnnotation(ChartId, AnnotationId, AnnotationStyle),
     ClearDrawingTool(ChartId, ChartSurfaceId),
     // Notifications
+    EnterApplication,
     DismissToast(u64),
     ToastPositionChanged(config::ToastPosition),
     ToggleToastAnimations(bool),

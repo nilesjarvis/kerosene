@@ -228,6 +228,25 @@ fn config_save_snapshot_persists_valid_fallback_book_tick_size() {
 }
 
 #[test]
+fn config_save_snapshot_persists_app_onboarding_dismissal() {
+    let cfg = KeroseneConfig {
+        app_onboarding_dismissed: true,
+        ..KeroseneConfig::default()
+    };
+    let mut terminal = TradingTerminal::boot_from_config(cfg).0;
+    let mut persisted_dismissed = None;
+
+    terminal
+        .persist_config_immediately_with(|cfg| {
+            persisted_dismissed = Some(cfg.app_onboarding_dismissed);
+            Ok(())
+        })
+        .expect("config snapshot should save");
+
+    assert_eq!(persisted_dismissed, Some(true));
+}
+
+#[test]
 fn config_save_snapshot_clears_account_secret_fields_without_mutating_runtime() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.accounts = vec![AccountProfile {

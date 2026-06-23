@@ -260,6 +260,7 @@ impl Default for KeroseneConfig {
         Self {
             saved_layouts: Vec::new(),
             active_layout_name: None,
+            app_onboarding_dismissed: false,
             credential_storage_mode: CredentialStorageMode::default(),
             encrypted_secrets: None,
             secret_migration_save_blocked: false,

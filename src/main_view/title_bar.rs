@@ -118,7 +118,20 @@ impl TradingTerminal {
     #[cfg(target_os = "linux")]
     pub(crate) fn view_main_window(&self, window_id: window::Id) -> Element<'_, Message> {
         if !self.custom_window_chrome_active {
+            if !self.app_onboarding_dismissed {
+                return self.view_onboarding();
+            }
             return self.view_main();
+        }
+
+        if !self.app_onboarding_dismissed {
+            return stack![
+                self.view_onboarding_with_top_bar(self.view_window_title_bar(window_id, false)),
+                self.view_window_resize_handles(window_id)
+            ]
+            .width(Fill)
+            .height(Fill)
+            .into();
         }
 
         let content = self.view_main_with_top_bar(self.view_main_chrome_header(window_id));
@@ -132,7 +145,14 @@ impl TradingTerminal {
     #[cfg(target_os = "macos")]
     pub(crate) fn view_main_window(&self, window_id: window::Id) -> Element<'_, Message> {
         if !self.custom_window_chrome_active {
+            if !self.app_onboarding_dismissed {
+                return self.view_onboarding();
+            }
             return self.view_main();
+        }
+
+        if !self.app_onboarding_dismissed {
+            return self.view_onboarding_with_top_bar(self.view_window_title_bar(window_id, false));
         }
 
         self.view_main_with_top_bar(self.view_main_chrome_header(window_id))
@@ -140,6 +160,10 @@ impl TradingTerminal {
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     pub(crate) fn view_main_window(&self, _window_id: window::Id) -> Element<'_, Message> {
+        if !self.app_onboarding_dismissed {
+            return self.view_onboarding();
+        }
+
         self.view_main()
     }
 

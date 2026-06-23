@@ -56,8 +56,8 @@ impl canvas::Program<Message> for LoadingSpinner {
 
 impl TradingTerminal {
     pub(crate) fn has_loading_activity(&self) -> bool {
-        let _theme = self.theme();
-        self.symbols_loading
+        !self.app_onboarding_dismissed
+            || self.symbols_loading
             || self.order_books.values().any(|b| b.book_loading)
             || self.account_loading
             || self.portfolio.loading
