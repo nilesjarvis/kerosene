@@ -69,8 +69,12 @@ pub(in crate::market_views::positioning_info) fn positioning_table_header(
         ));
 
     if columns.show_entry {
-        header = header.push(header_cell(
+        header = header.push(sort_header_cell(
             "Entry",
+            PositioningInfoSortField::EntryPrice,
+            id,
+            sort_field,
+            sort_direction,
             Length::Fixed(columns.entry_width),
             muted,
         ));

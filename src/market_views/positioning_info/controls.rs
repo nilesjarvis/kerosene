@@ -1,4 +1,5 @@
 use crate::app_state::TradingTerminal;
+use crate::helpers;
 use crate::message::Message;
 use crate::positioning_state::{
     PositioningInfoChangeTimeframe, PositioningInfoInstance, PositioningInfoPage,
@@ -8,7 +9,7 @@ use crate::positioning_state::{
 use buttons::{
     positioning_clear_filters_button, positioning_control_button, positioning_navigation_button,
 };
-use iced::widget::{Row, Space, container, row, text};
+use iced::widget::{Column, Row, Space, container, row, text, text_input};
 use iced::{Alignment, Element, Fill, Length};
 
 mod buttons;
@@ -37,10 +38,10 @@ impl TradingTerminal {
         container(nav).width(Fill).padding([8, 10]).into()
     }
 
-    pub(super) fn view_positioning_info_controls(
-        &self,
-        instance: &PositioningInfoInstance,
-    ) -> Element<'static, Message> {
+    pub(super) fn view_positioning_info_controls<'a>(
+        &'a self,
+        instance: &'a PositioningInfoInstance,
+    ) -> Element<'a, Message> {
         let muted = self.theme().extended_palette().background.weak.text;
         let can_clear = instance.has_active_filters() || instance.error.is_some();
         let side_row = PositioningInfoSide::ALL
@@ -52,7 +53,7 @@ impl TradingTerminal {
                     Message::PositioningInfoSideChanged(instance.id, side),
                 ))
             });
-        row![
+        let side_controls = row![
             text("Side")
                 .size(10)
                 .color(muted)
@@ -63,8 +64,49 @@ impl TradingTerminal {
         ]
         .spacing(6)
         .align_y(Alignment::Center)
-        .width(Fill)
-        .into()
+        .width(Fill);
+
+        let has_entry_range = !instance.entry_min_input.trim().is_empty()
+            || !instance.entry_max_input.trim().is_empty();
+        let entry_min = text_input("Min", &instance.entry_min_input)
+            .style(helpers::text_input_style)
+            .on_input(move |value| Message::PositioningInfoEntryMinChanged(instance.id, value))
+            .on_submit(Message::ApplyPositioningInfoEntryRange(instance.id))
+            .size(10)
+            .padding([2, 6])
+            .width(Length::Fixed(72.0));
+        let entry_max = text_input("Max", &instance.entry_max_input)
+            .style(helpers::text_input_style)
+            .on_input(move |value| Message::PositioningInfoEntryMaxChanged(instance.id, value))
+            .on_submit(Message::ApplyPositioningInfoEntryRange(instance.id))
+            .size(10)
+            .padding([2, 6])
+            .width(Length::Fixed(72.0));
+        let entry_controls = row![
+            text("Entry")
+                .size(10)
+                .color(muted)
+                .width(Length::Fixed(34.0)),
+            entry_min,
+            text("-").size(10).color(muted),
+            entry_max,
+            positioning_control_button(
+                "Apply",
+                has_entry_range,
+                Message::ApplyPositioningInfoEntryRange(instance.id),
+            ),
+            Space::new().width(Fill),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .width(Fill);
+
+        Column::new()
+            .spacing(5)
+            .push(side_controls)
+            .push(entry_controls)
+            .width(Fill)
+            .into()
     }
 
     pub(super) fn view_positioning_info_change_controls(

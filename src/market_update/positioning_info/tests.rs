@@ -9,20 +9,31 @@ use crate::positioning_state::PositioningInfoInstance;
 #[test]
 fn request_key_scopes_positioning_fetch_parameters() {
     assert_eq!(
-        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc"),
-        "HYPE:all:unrealizedPnl:desc:30:0"
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None),
+        "HYPE:all:unrealizedPnl:desc:-:-:30:0"
     );
     assert_ne!(
-        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc"),
-        positioning_info_request_key("HYPE", "long", "unrealizedPnl", "desc")
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None),
+        positioning_info_request_key("HYPE", "long", "unrealizedPnl", "desc", None, None)
     );
     assert_ne!(
-        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc"),
-        positioning_info_request_key("HYPE", "all", "notionalSize", "desc")
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None),
+        positioning_info_request_key("HYPE", "all", "notionalSize", "desc", None, None)
     );
     assert_ne!(
-        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc"),
-        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "asc")
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None),
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "asc", None, None)
+    );
+    assert_ne!(
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None),
+        positioning_info_request_key(
+            "HYPE",
+            "all",
+            "unrealizedPnl",
+            "desc",
+            Some(20.0),
+            Some(30.5),
+        )
     );
 }
 
@@ -46,7 +57,8 @@ fn request_key_scopes_positioning_change_fetch_parameters() {
 fn stale_hyperdash_generation_positioning_result_does_not_remove_current_pending_request() {
     let mut terminal = TradingTerminal::boot().0;
     let id = 1;
-    let request_key = positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc");
+    let request_key =
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None);
     terminal.hyperdash_key_generation = 2;
     terminal
         .positioning_infos
@@ -94,7 +106,8 @@ fn stale_hyperdash_generation_positioning_result_does_not_remove_current_pending
 fn current_positioning_error_redacts_widget_error() {
     let mut terminal = TradingTerminal::boot().0;
     let id = 1;
-    let request_key = positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc");
+    let request_key =
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None);
     terminal.hyperdash_key_generation = 2;
     terminal
         .positioning_infos
@@ -122,6 +135,68 @@ fn current_positioning_error_redacts_widget_error() {
     assert!(error.contains("signature=<redacted>"));
     assert!(!error.contains("key-secret"));
     assert!(!error.contains("sig-secret"));
+}
+
+#[test]
+fn apply_positioning_entry_range_queues_request_with_bounds() {
+    let mut terminal = TradingTerminal::boot().0;
+    let id = 1;
+    terminal.hyperdash_api_key = crate::app_state::sensitive_string("hyperdash-key");
+    terminal
+        .positioning_infos
+        .insert(id, PositioningInfoInstance::new(id, "HYPE".to_string()));
+    if let Some(instance) = terminal.positioning_infos.get_mut(&id) {
+        instance.entry_min_input = "20".to_string();
+        instance.entry_max_input = "30.5".to_string();
+    }
+
+    let _task =
+        terminal.update_positioning_info_market(Message::ApplyPositioningInfoEntryRange(id));
+
+    let request_key = positioning_info_request_key(
+        "HYPE",
+        "all",
+        "unrealizedPnl",
+        "desc",
+        Some(20.0),
+        Some(30.5),
+    );
+    assert_eq!(
+        terminal.positioning_info_pending.get(&request_key),
+        Some(&vec![id])
+    );
+    let instance = terminal.positioning_infos.get(&id).expect("instance");
+    assert!(instance.loading);
+    assert_eq!(instance.pending_key.as_deref(), Some(request_key.as_str()));
+    assert!(instance.error.is_none());
+}
+
+#[test]
+fn apply_positioning_entry_range_rejects_inverted_bounds() {
+    let mut terminal = TradingTerminal::boot().0;
+    let id = 1;
+    terminal.hyperdash_api_key = crate::app_state::sensitive_string("hyperdash-key");
+    terminal
+        .positioning_infos
+        .insert(id, PositioningInfoInstance::new(id, "HYPE".to_string()));
+    if let Some(instance) = terminal.positioning_infos.get_mut(&id) {
+        instance.entry_min_input = "30".to_string();
+        instance.entry_max_input = "20".to_string();
+        instance.data = Some(ticker_positions("HYPE"));
+    }
+
+    let _task =
+        terminal.update_positioning_info_market(Message::ApplyPositioningInfoEntryRange(id));
+
+    let instance = terminal.positioning_infos.get(&id).expect("instance");
+    assert!(terminal.positioning_info_pending.is_empty());
+    assert!(!instance.loading);
+    assert!(instance.pending_key.is_none());
+    assert!(instance.data.is_none());
+    assert_eq!(
+        instance.error.as_deref(),
+        Some("Entry range minimum must be less than or equal to maximum")
+    );
 }
 
 #[test]
@@ -216,7 +291,8 @@ fn current_positioning_change_error_redacts_widget_error() {
 fn hyperdash_generation_bump_invalidates_pending_positioning_requests() {
     let mut terminal = TradingTerminal::boot().0;
     let id = 1;
-    let positions_key = positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc");
+    let positions_key =
+        positioning_info_request_key("HYPE", "all", "unrealizedPnl", "desc", None, None);
     let change_key = positioning_info_change_request_key("HYPE", "FIFTEEN_MINUTES");
     terminal
         .positioning_infos

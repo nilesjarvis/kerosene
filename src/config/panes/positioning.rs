@@ -21,6 +21,10 @@ pub struct PositioningInfoConfig {
     #[serde(default = "default_positioning_info_sort_direction")]
     pub sort_direction: SortDirection,
     #[serde(default)]
+    pub entry_min: String,
+    #[serde(default)]
+    pub entry_max: String,
+    #[serde(default)]
     pub change_timeframe: PositioningInfoChangeTimeframe,
     #[serde(default)]
     pub change_sort_field: PositioningInfoChangeSortField,

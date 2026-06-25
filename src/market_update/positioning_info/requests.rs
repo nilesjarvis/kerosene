@@ -67,6 +67,8 @@ impl TradingTerminal {
                 side,
                 sort_field,
                 sort_order,
+                entry_min,
+                entry_max,
             } => self.queue_positioning_info_fetch(
                 id,
                 request_key,
@@ -74,6 +76,8 @@ impl TradingTerminal {
                 side,
                 sort_field,
                 sort_order,
+                entry_min,
+                entry_max,
             ),
             PositioningInfoRequestPlan::Status(message, is_error) => {
                 if let Some(instance) = self.positioning_infos.get_mut(&id) {
@@ -130,13 +134,33 @@ pub(super) fn positioning_info_request_key(
     side: &str,
     sort_field: &str,
     sort_order: &str,
+    entry_min: Option<f64>,
+    entry_max: Option<f64>,
 ) -> String {
     format!(
-        "{coin}:{side}:{sort_field}:{sort_order}:{}:{}",
-        POSITIONING_INFO_LIMIT, POSITIONING_INFO_OFFSET
+        "{coin}:{side}:{sort_field}:{sort_order}:{}:{}:{}:{}",
+        positioning_entry_bound_key(entry_min),
+        positioning_entry_bound_key(entry_max),
+        POSITIONING_INFO_LIMIT,
+        POSITIONING_INFO_OFFSET
     )
 }
 
 pub(super) fn positioning_info_change_request_key(market: &str, timeframe: &str) -> String {
     format!("change:{market}:{timeframe}")
+}
+
+fn positioning_entry_bound_key(value: Option<f64>) -> String {
+    let Some(value) = value else {
+        return "-".to_string();
+    };
+
+    let mut text = format!("{value:.12}");
+    while text.contains('.') && text.ends_with('0') {
+        text.pop();
+    }
+    if text.ends_with('.') {
+        text.pop();
+    }
+    text
 }

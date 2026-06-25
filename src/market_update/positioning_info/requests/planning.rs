@@ -1,13 +1,14 @@
 use super::{positioning_info_change_request_key, positioning_info_request_key};
 use crate::app_state::TradingTerminal;
 use crate::config::SortDirection;
+use crate::helpers::parse_positive_number;
 use crate::positioning_state::PositioningInfoId;
 
 // ---------------------------------------------------------------------------
 // Request Planning
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) enum PositioningInfoRequestPlan {
     Fetch {
         request_key: String,
@@ -15,6 +16,8 @@ pub(super) enum PositioningInfoRequestPlan {
         side: String,
         sort_field: String,
         sort_order: String,
+        entry_min: Option<f64>,
+        entry_max: Option<f64>,
     },
     Status(String, bool),
 }
@@ -67,13 +70,29 @@ impl TradingTerminal {
         let side = instance.side.api_value().to_string();
         let sort_field = instance.sort_field.api_field().to_string();
         let sort_order = positioning_info_sort_order(instance.sort_direction).to_string();
-        let request_key = positioning_info_request_key(&coin, &side, &sort_field, &sort_order);
+        let entry_range = match positioning_entry_range_filter(
+            &instance.entry_min_input,
+            &instance.entry_max_input,
+        ) {
+            Ok(range) => range,
+            Err(message) => return Some(PositioningInfoRequestPlan::Status(message, true)),
+        };
+        let request_key = positioning_info_request_key(
+            &coin,
+            &side,
+            &sort_field,
+            &sort_order,
+            entry_range.min,
+            entry_range.max,
+        );
         Some(PositioningInfoRequestPlan::Fetch {
             request_key,
             coin,
             side,
             sort_field,
             sort_order,
+            entry_min: entry_range.min,
+            entry_max: entry_range.max,
         })
     }
 
@@ -126,4 +145,36 @@ fn positioning_info_sort_order(direction: SortDirection) -> &'static str {
         SortDirection::Ascending => "asc",
         SortDirection::Descending => "desc",
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct PositioningEntryRangeFilter {
+    pub(super) min: Option<f64>,
+    pub(super) max: Option<f64>,
+}
+
+fn positioning_entry_range_filter(
+    min_input: &str,
+    max_input: &str,
+) -> Result<PositioningEntryRangeFilter, String> {
+    let min = parse_entry_range_bound(min_input, "minimum")?;
+    let max = parse_entry_range_bound(max_input, "maximum")?;
+    if let (Some(min), Some(max)) = (min, max)
+        && min > max
+    {
+        return Err("Entry range minimum must be less than or equal to maximum".to_string());
+    }
+
+    Ok(PositioningEntryRangeFilter { min, max })
+}
+
+fn parse_entry_range_bound(input: &str, label: &str) -> Result<Option<f64>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    parse_positive_number(trimmed)
+        .map(Some)
+        .ok_or_else(|| format!("Entry range {label} must be a positive number"))
 }

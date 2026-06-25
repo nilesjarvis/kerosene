@@ -205,6 +205,7 @@ They show:
 
 - position distribution for a market
 - side filters
+- entry-price range filters
 - search/symbol picker
 - sort fields
 - change timeframes

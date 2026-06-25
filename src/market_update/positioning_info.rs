@@ -92,6 +92,29 @@ impl TradingTerminal {
                 self.persist_config();
                 self.request_positioning_info_positions_refresh(id, true)
             }
+            Message::PositioningInfoEntryMinChanged(id, value) => {
+                if let Some(instance) = self.positioning_infos.get_mut(&id) {
+                    instance.entry_min_input = value;
+                }
+                Task::none()
+            }
+            Message::PositioningInfoEntryMaxChanged(id, value) => {
+                if let Some(instance) = self.positioning_infos.get_mut(&id) {
+                    instance.entry_max_input = value;
+                }
+                Task::none()
+            }
+            Message::ApplyPositioningInfoEntryRange(id) => {
+                if let Some(instance) = self.positioning_infos.get_mut(&id) {
+                    instance.error = None;
+                    instance.data = None;
+                    instance.pending_key = None;
+                } else {
+                    return Task::none();
+                }
+                self.persist_config();
+                self.request_positioning_info_positions_refresh(id, true)
+            }
             Message::PositioningInfoChangeTimeframeChanged(id, timeframe) => {
                 if let Some(instance) = self.positioning_infos.get_mut(&id) {
                     if instance.change_timeframe == timeframe {

@@ -18,6 +18,15 @@ fn positioning_info_filters_track_side_and_sort_changes() {
     instance.reset_filters();
     instance.sort_direction = config::SortDirection::Ascending;
     assert!(instance.has_active_filters());
+
+    instance.reset_filters();
+    instance.entry_min_input = "20".to_string();
+    assert!(instance.has_active_filters());
+    instance.entry_max_input = "30".to_string();
+    instance.reset_filters();
+    assert!(!instance.has_active_filters());
+    assert!(instance.entry_min_input.is_empty());
+    assert!(instance.entry_max_input.is_empty());
 }
 
 #[test]
@@ -41,6 +50,14 @@ fn positioning_notional_and_size_sorts_use_hyperdash_notional_enum_name() {
         "notional"
     );
     assert_eq!(PositioningInfoSortField::Size.api_field(), "notional");
+}
+
+#[test]
+fn positioning_entry_sort_uses_hyperdash_entry_price_field() {
+    assert_eq!(
+        PositioningInfoSortField::EntryPrice.api_field(),
+        "entryPrice"
+    );
 }
 
 #[test]

@@ -72,6 +72,8 @@ impl TradingTerminal {
                 side: instance.side,
                 sort_field: instance.sort_field,
                 sort_direction: instance.sort_direction,
+                entry_min: instance.entry_min_input.clone(),
+                entry_max: instance.entry_max_input.clone(),
                 change_timeframe: instance.change_timeframe,
                 change_sort_field: instance.change_sort_field,
                 change_sort_direction: instance.change_sort_direction,

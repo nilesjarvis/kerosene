@@ -56,6 +56,7 @@ pub(crate) enum PositioningInfoSortField {
     #[default]
     UnrealizedPnl,
     NotionalSize,
+    EntryPrice,
     AccountValue,
     CopyScore,
     Size,
@@ -66,6 +67,7 @@ impl PositioningInfoSortField {
         match self {
             Self::UnrealizedPnl => "unrealizedPnl",
             Self::NotionalSize => "notional",
+            Self::EntryPrice => "entryPrice",
             Self::AccountValue => "accountValue",
             Self::CopyScore => "copyScore",
             Self::Size => "notional",

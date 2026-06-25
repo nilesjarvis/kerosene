@@ -86,6 +86,8 @@ fn positioning_info_config_defaults_to_descending_sort() {
     assert_eq!(config.sort_direction, SortDirection::Descending);
     assert_eq!(config.change_sort_direction, SortDirection::Descending);
     assert_eq!(config.page, PositioningInfoPage::Positions);
+    assert!(config.entry_min.is_empty());
+    assert!(config.entry_max.is_empty());
 }
 
 #[test]
@@ -96,4 +98,23 @@ fn positioning_info_config_round_trips_active_page() {
     assert_eq!(config.page, PositioningInfoPage::Change);
     let rendered = serde_json::to_string(&config).expect("json");
     assert!(rendered.contains(r#""page":"Change""#));
+}
+
+#[test]
+fn positioning_info_config_round_trips_entry_range() {
+    let config: PositioningInfoConfig = serde_json::from_str(
+        r#"{
+            "id": 7,
+            "symbol": "HYPE",
+            "entry_min": "20",
+            "entry_max": "30.5"
+        }"#,
+    )
+    .expect("config");
+
+    assert_eq!(config.entry_min, "20");
+    assert_eq!(config.entry_max, "30.5");
+    let rendered = serde_json::to_string(&config).expect("json");
+    assert!(rendered.contains(r#""entry_min":"20""#));
+    assert!(rendered.contains(r#""entry_max":"30.5""#));
 }

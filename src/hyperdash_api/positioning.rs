@@ -23,6 +23,8 @@ pub async fn fetch_ticker_positions(
     side: String,
     sort_field: String,
     sort_order: String,
+    entry_min: Option<f64>,
+    entry_max: Option<f64>,
     api_key: Zeroizing<String>,
 ) -> Result<TickerPositions, String> {
     let api_key = Zeroizing::new(api_key.trim().to_string());
@@ -71,18 +73,25 @@ pub async fn fetch_ticker_positions(
   }
 }"#;
 
+    let mut variables = serde_json::json!({
+        "coin": coin,
+        "limit": limit,
+        "offset": offset,
+        "side": side,
+        "sortBy": {
+            "field": sort_field,
+            "order": sort_order,
+        },
+    });
+    if let Some(filters) = positioning_entry_range_filters(entry_min, entry_max)
+        && let Some(variables) = variables.as_object_mut()
+    {
+        variables.insert("filters".to_string(), filters);
+    }
+
     let body = serde_json::json!({
         "operationName": "GetTickerPositions",
-        "variables": {
-            "coin": coin,
-            "limit": limit,
-            "offset": offset,
-            "side": side,
-            "sortBy": {
-                "field": sort_field,
-                "order": sort_order,
-            },
-        },
+        "variables": variables,
         "query": query,
     });
 
@@ -107,6 +116,20 @@ pub async fn fetch_ticker_positions(
     }
 
     parse_ticker_positions_response(&text)
+}
+
+fn positioning_entry_range_filters(
+    entry_min: Option<f64>,
+    entry_max: Option<f64>,
+) -> Option<serde_json::Value> {
+    let mut filters = serde_json::Map::new();
+    if let Some(entry_min) = entry_min {
+        filters.insert("minEntry".to_string(), serde_json::json!(entry_min));
+    }
+    if let Some(entry_max) = entry_max {
+        filters.insert("maxEntry".to_string(), serde_json::json!(entry_max));
+    }
+    (!filters.is_empty()).then(|| serde_json::Value::Object(filters))
 }
 
 /// Fetch wallet-level position-size changes for one HyperDash perp market.

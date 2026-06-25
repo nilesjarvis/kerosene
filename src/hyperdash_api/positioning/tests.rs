@@ -1,3 +1,4 @@
+use super::positioning_entry_range_filters;
 use super::response::{
     PERP_DELTAS_ENTRY_LIMIT, PERP_DELTAS_RESPONSE_MAX_BYTES, append_perp_deltas_response_chunk,
     parse_perp_deltas_response, parse_ticker_positions_response,
@@ -5,6 +6,24 @@ use super::response::{
 
 mod perp_deltas;
 mod ticker_positions;
+
+#[test]
+fn positioning_entry_range_filters_use_hyperdash_field_names() {
+    assert_eq!(
+        positioning_entry_range_filters(Some(20.0), Some(30.5)),
+        Some(serde_json::json!({
+            "minEntry": 20.0,
+            "maxEntry": 30.5,
+        }))
+    );
+    assert_eq!(
+        positioning_entry_range_filters(None, Some(30.5)),
+        Some(serde_json::json!({
+            "maxEntry": 30.5,
+        }))
+    );
+    assert_eq!(positioning_entry_range_filters(None, None), None);
+}
 
 fn ticker_positions_or_panic(text: &str) -> crate::hyperdash_api::models::TickerPositions {
     match parse_ticker_positions_response(text) {

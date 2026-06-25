@@ -20,6 +20,8 @@ impl TradingTerminal {
         side: String,
         sort_field: String,
         sort_order: String,
+        entry_min: Option<f64>,
+        entry_max: Option<f64>,
     ) -> Task<Message> {
         if let Some(waiting) = self.positioning_info_pending.get_mut(&request_key) {
             if !waiting.contains(&id) {
@@ -51,6 +53,8 @@ impl TradingTerminal {
                 side,
                 sort_field,
                 sort_order,
+                entry_min,
+                entry_max,
                 api_key,
             ),
             move |result| {

@@ -22,6 +22,8 @@ pub(crate) struct PositioningInfoInstance {
     pub(crate) side: PositioningInfoSide,
     pub(crate) sort_field: PositioningInfoSortField,
     pub(crate) sort_direction: config::SortDirection,
+    pub(crate) entry_min_input: String,
+    pub(crate) entry_max_input: String,
     pub(crate) loading: bool,
     pub(crate) error: Option<String>,
     pub(crate) data: Option<TickerPositions>,
@@ -50,6 +52,8 @@ impl PositioningInfoInstance {
             side: PositioningInfoSide::default(),
             sort_field: PositioningInfoSortField::default(),
             sort_direction: default_positioning_sort_direction(),
+            entry_min_input: String::new(),
+            entry_max_input: String::new(),
             loading: false,
             error: None,
             data: None,
@@ -72,12 +76,16 @@ impl PositioningInfoInstance {
         self.side != PositioningInfoSide::default()
             || self.sort_field != PositioningInfoSortField::default()
             || self.sort_direction != default_positioning_sort_direction()
+            || !self.entry_min_input.trim().is_empty()
+            || !self.entry_max_input.trim().is_empty()
     }
 
     pub(crate) fn reset_filters(&mut self) {
         self.side = PositioningInfoSide::default();
         self.sort_field = PositioningInfoSortField::default();
         self.sort_direction = default_positioning_sort_direction();
+        self.entry_min_input.clear();
+        self.entry_max_input.clear();
     }
 
     pub(crate) fn normalize_removed_filters(&mut self) {

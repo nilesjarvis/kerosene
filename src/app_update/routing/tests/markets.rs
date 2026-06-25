@@ -82,6 +82,18 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::PositioningInfoWsAssetCtxLagged("BTC".to_string(), source_context, 9),
         UpdateRoute::Market,
     );
+    assert_route(
+        Message::PositioningInfoEntryMinChanged(7, "20".to_string()),
+        UpdateRoute::Market,
+    );
+    assert_route(
+        Message::PositioningInfoEntryMaxChanged(7, "30".to_string()),
+        UpdateRoute::Market,
+    );
+    assert_route(
+        Message::ApplyPositioningInfoEntryRange(7),
+        UpdateRoute::Market,
+    );
     assert_route(Message::AddSessionDataPane, UpdateRoute::Market);
     assert_route(Message::RefreshSessionData(3), UpdateRoute::Market);
     assert_route(
