@@ -2,7 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::config::ReadDataProvider;
 use crate::helpers;
 use crate::message::Message;
-use iced::widget::{button, column, pick_list, row, rule, text, text_input};
+use iced::widget::{button, checkbox, column, pick_list, row, rule, text, text_input};
 use iced::{Alignment, Element, Fill, Length};
 
 impl TradingTerminal {
@@ -42,6 +42,14 @@ impl TradingTerminal {
             }
             ReadDataProvider::Hydromancer => current_theme.palette().success,
         };
+        let hydromancer_key_configured = !self.hydromancer_api_key.trim().is_empty();
+        let realtime_position_pnl_status = if hydromancer_key_configured {
+            "Uses Hydromancer activeAssetCtx ticks for open-position mark, value, uPnL, and total PnL."
+        } else {
+            "Save a Hydromancer API key to enable real-time open-position PnL ticks."
+        };
+        let realtime_position_pnl_toggle = hydromancer_key_configured
+            .then_some(Message::ToggleHydromancerRealtimePositionPnl as fn(bool) -> Message);
 
         column![
             text("Integrations")
@@ -96,6 +104,19 @@ impl TradingTerminal {
                 text(read_provider_status)
                     .size(11)
                     .color(read_provider_status_color),
+                checkbox(self.hydromancer_realtime_position_pnl_enabled)
+                    .label("Real-time position PnL from Hydromancer ticks")
+                    .on_toggle_maybe(realtime_position_pnl_toggle)
+                    .size(12)
+                    .spacing(8)
+                    .text_size(12),
+                text(realtime_position_pnl_status)
+                    .size(11)
+                    .color(if hydromancer_key_configured {
+                        current_theme.extended_palette().background.weak.text
+                    } else {
+                        current_theme.palette().warning
+                    }),
             ]
             .spacing(8),
             rule::horizontal(1),

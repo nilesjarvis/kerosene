@@ -21,6 +21,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::ReadDataProviderChanged(crate::config::ReadDataProvider::Hydromancer),
         UpdateRoute::Preferences,
     );
+    assert_route(
+        Message::ToggleHydromancerRealtimePositionPnl(true),
+        UpdateRoute::Preferences,
+    );
     assert_route(Message::OpenDetachedChart(7), UpdateRoute::Chart);
     assert_route(
         Message::ChartWsAssetCtxLagged(7, "BTC".to_string(), source_context, 9),

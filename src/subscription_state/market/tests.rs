@@ -1,4 +1,5 @@
 use super::chart::chart_asset_ctx_stream_event_message;
+use super::position_pnl::position_pnl_asset_ctx_stream_event_message;
 use super::positioning_info::positioning_asset_ctx_stream_event_message;
 use super::*;
 use crate::api::{ExchangeSymbol, MarketType};
@@ -14,6 +15,7 @@ use iced::widget::pane_grid;
 
 mod charts;
 mod order_books;
+mod position_pnl;
 mod positioning_info;
 mod spaghetti;
 

@@ -83,6 +83,7 @@ Hydromancer is optional and authenticated. It provides:
 - liquidation websocket feed
 - tracked-trade websocket feed
 - alternative candle/book/asset-context streams when selected as read provider
+- optional real-time open-position PnL ticks for the positions widget
 
 Hydromancer state appears in:
 
@@ -92,6 +93,7 @@ Hydromancer state appears in:
 - `feed_update/connection.rs`
 - `subscription_state/hydromancer.rs`
 - `subscription_state/market/`
+- `account_update/position_pnl.rs`
 
 The Hydromancer key is secret-bearing. Key rotation should evict old websocket
 managers so stale key tasks do not keep running.

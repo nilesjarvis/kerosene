@@ -476,6 +476,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) market_slippage_pct: f64,
     pub(crate) market_slippage_input: String,
     pub(crate) optimistic_account_updates: bool,
+    pub(crate) hydromancer_realtime_position_pnl_enabled: bool,
     pub(crate) tracked_trade_alerts_enabled: bool,
     // Multi-window IDs
     pub(crate) main_window_id: Option<window::Id>,

@@ -12,6 +12,7 @@ use iced::Subscription;
 mod chart;
 mod chase;
 mod order_book;
+mod position_pnl;
 mod positioning_info;
 mod spaghetti;
 mod twap;
@@ -52,6 +53,7 @@ impl TradingTerminal {
         self.push_chart_market_subscriptions(subs);
         self.push_spaghetti_market_subscriptions(subs);
         self.push_order_book_subscriptions(subs);
+        self.push_position_pnl_market_subscriptions(subs);
         self.push_positioning_info_market_subscriptions(subs);
         self.push_chase_market_subscriptions(subs);
         self.push_twap_market_subscriptions(subs);

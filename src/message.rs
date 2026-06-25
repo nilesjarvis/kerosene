@@ -600,6 +600,7 @@ pub(crate) enum Message {
     TestChartHudOrderSound,
     ToggleChartHudUiSounds(bool),
     ReadDataProviderChanged(config::ReadDataProvider),
+    ToggleHydromancerRealtimePositionPnl(bool),
     AlfredPopupScaleChanged(f32),
     DisplayFontChanged(config::DisplayFontConfig),
     MonospaceFontChanged(config::DisplayFontConfig),
@@ -1196,6 +1197,8 @@ pub(crate) enum Message {
     WalletAddressInputChanged(RedactedAddress),
     HydromancerKeyInputChanged(SecretInput),
     SaveHydromancerKey,
+    PositionPnlWsAssetCtxUpdate(String, MarketDataSourceContext, AssetContext),
+    PositionPnlWsAssetCtxLagged(String, MarketDataSourceContext, u64),
     ReconnectLiquidations,
     ReconnectTrackedTrades,
     WsHydromancerLiquidation {

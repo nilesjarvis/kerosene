@@ -383,6 +383,8 @@ impl TradingTerminal {
         self.market_slippage_pct = defaults.market_slippage_pct;
         self.market_slippage_input = defaults.market_slippage_pct.to_string();
         self.optimistic_account_updates = defaults.optimistic_account_updates;
+        self.hydromancer_realtime_position_pnl_enabled =
+            defaults.hydromancer_realtime_position_pnl_enabled;
         self.tracked_trade_alerts_enabled = defaults.tracked_trade_alerts_enabled;
         self.tracked_trade_aggregation_enabled = defaults.tracked_trade_aggregation_enabled;
         self.liquidation_feed_aggregation_enabled = defaults.liquidation_feed_aggregation_enabled;

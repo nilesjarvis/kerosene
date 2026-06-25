@@ -32,6 +32,15 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
     assert_route(Message::PnlCardCopied(Ok(())), UpdateRoute::Account);
     assert_route(Message::SavePnlCard(window_id), UpdateRoute::Account);
     assert_route(Message::PnlCardSaved(Ok(None)), UpdateRoute::Account);
+    let source_context = crate::read_data_provider::MarketDataSourceContext {
+        provider: crate::config::ReadDataProvider::Hyperliquid,
+        read_data_provider_generation: 0,
+        hydromancer_key_generation: Some(7),
+    };
+    assert_route(
+        Message::PositionPnlWsAssetCtxLagged("BTC".to_string(), source_context, 9),
+        UpdateRoute::Account,
+    );
     assert_route(Message::AccountPickerRenameToggled(0), UpdateRoute::Account);
     assert_route(
         Message::AccountPickerLabelChanged(0, "Main".to_string()),

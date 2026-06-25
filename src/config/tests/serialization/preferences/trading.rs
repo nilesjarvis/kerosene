@@ -60,3 +60,25 @@ fn optimistic_account_updates_round_trips_and_legacy_defaults_off() {
         value_from_json(legacy, "legacy config should deserialize");
     assert!(!decoded_legacy.optimistic_account_updates);
 }
+
+#[test]
+fn hydromancer_realtime_position_pnl_round_trips_and_legacy_defaults_off() {
+    let config = KeroseneConfig {
+        hydromancer_realtime_position_pnl_enabled: true,
+        ..KeroseneConfig::default()
+    };
+
+    let json = json_string(&config, "config should serialize");
+    let decoded: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert!(decoded.hydromancer_realtime_position_pnl_enabled);
+
+    let mut legacy = default_config_value();
+    remove_field(
+        &mut legacy,
+        "hydromancer_realtime_position_pnl_enabled",
+        "config should serialize to object",
+    );
+    let decoded_legacy: KeroseneConfig =
+        value_from_json(legacy, "legacy config should deserialize");
+    assert!(!decoded_legacy.hydromancer_realtime_position_pnl_enabled);
+}

@@ -1,4 +1,5 @@
 mod connection;
+mod position_pnl;
 mod profile;
 mod stream;
 
@@ -60,6 +61,12 @@ impl TradingTerminal {
                 self.handle_account_refresh_backoff_elapsed(due_ms)
             }
             Message::AllMidsBootstrapLoaded(_dex, Ok(mids)) => self.handle_mids_update(mids),
+            Message::PositionPnlWsAssetCtxUpdate(symbol, source_context, ctx) => {
+                self.apply_position_pnl_asset_ctx_update(symbol, source_context, ctx)
+            }
+            Message::PositionPnlWsAssetCtxLagged(symbol, source_context, skipped) => {
+                self.apply_position_pnl_asset_ctx_lag(symbol, source_context, skipped)
+            }
             Message::WsUserDataUpdate(source_address, ws_data) => self.apply_ws_user_data_update(
                 source_address.map(|address| address.into_string()),
                 *ws_data,

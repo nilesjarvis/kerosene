@@ -322,6 +322,9 @@ pub struct KeroseneConfig {
     /// before the exchange confirms them.
     #[serde(default)]
     pub optimistic_account_updates: bool,
+    /// Use Hydromancer activeAssetCtx ticks to update open-position PnL in real time.
+    #[serde(default)]
+    pub hydromancer_realtime_position_pnl_enabled: bool,
     #[serde(default)]
     pub tracked_trade_alerts_enabled: bool,
     #[serde(default)]

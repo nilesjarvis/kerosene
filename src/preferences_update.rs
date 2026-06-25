@@ -167,6 +167,19 @@ impl TradingTerminal {
                 self.optimistic_account_updates = enabled;
                 self.persist_config();
             }
+            Message::ToggleHydromancerRealtimePositionPnl(enabled)
+                if self.hydromancer_realtime_position_pnl_enabled != enabled =>
+            {
+                self.hydromancer_realtime_position_pnl_enabled = enabled;
+                self.persist_config();
+                if enabled && self.hydromancer_api_key.trim().is_empty() {
+                    self.push_toast(
+                        "Real-time position PnL will start after a Hydromancer API key is saved"
+                            .to_string(),
+                        true,
+                    );
+                }
+            }
             Message::ChartHudReadoutToggled(element, enabled)
                 if self.chart_hud_readout.enabled(element) != enabled =>
             {

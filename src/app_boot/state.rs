@@ -332,6 +332,8 @@ impl TradingTerminal {
             market_slippage_pct: cfg.market_slippage_pct,
             market_slippage_input: cfg.market_slippage_pct.to_string(),
             optimistic_account_updates: cfg.optimistic_account_updates,
+            hydromancer_realtime_position_pnl_enabled: cfg
+                .hydromancer_realtime_position_pnl_enabled,
             tracked_trade_alerts_enabled: cfg.tracked_trade_alerts_enabled,
             main_window_id: None,
             settings_window_id: None,
