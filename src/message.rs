@@ -51,6 +51,7 @@ use crate::telegram_feed::{
     TelegramPrivateChannelCandidate, telegram_private_channel_peer_id_from_key,
 };
 use crate::timeframe::Timeframe;
+use crate::wallet_cluster_state::WalletClusterCloseSide;
 use crate::ws::WsUserData;
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
@@ -627,6 +628,51 @@ pub(crate) enum Message {
     AlfredSubmit,
     AlfredCommandSelected(AlfredCommandId),
     OpenWalletTrackerWindow,
+    OpenWalletClustersWindow,
+    WalletClusterNameInputChanged(String),
+    WalletClusterCreate,
+    WalletClusterSelected(String),
+    WalletClusterRenamed(String, String),
+    WalletClusterDeleted(String),
+    WalletClusterAddMember(String),
+    WalletClusterRemoveMember(String, RedactedAccountKey),
+    WalletClusterMemberWeightChanged(String, RedactedAccountKey, RedactedOrderInput),
+    WalletClusterRefresh,
+    WalletClusterMemberLoaded(
+        String,
+        RedactedAccountKey,
+        RedactedAddress,
+        ReadDataRequestContext,
+        Box<Result<WalletDetailsData, String>>,
+    ),
+    WalletClusterWsUpdate(Option<RedactedAddress>, Box<WsUserData>),
+    WalletClusterOrderPriceChanged(RedactedOrderInput),
+    WalletClusterOrderQuantityChanged(RedactedOrderInput),
+    WalletClusterToggleOrderDenomination,
+    WalletClusterSetOrderKind(OrderKind),
+    WalletClusterToggleReduceOnly,
+    WalletClusterSetMidPrice,
+    WalletClusterSubmitOrder {
+        is_buy: bool,
+    },
+    WalletClusterClosePosition {
+        symbol: String,
+        side: WalletClusterCloseSide,
+        fraction: f64,
+        use_market: bool,
+    },
+    WalletClusterOrderResult {
+        execution_id: u64,
+        member_key: RedactedAccountKey,
+        context: OneShotPlacementContext,
+        result: Box<Result<ExchangeResponse, String>>,
+    },
+    WalletClusterOrderStatusLoaded {
+        execution_id: u64,
+        member_key: RedactedAccountKey,
+        context: OneShotPlacementContext,
+        result: Box<Result<api::OrderStatusResult, String>>,
+    },
     OpenWalletDetailsWindow(RedactedAddress),
     RefreshWalletDetails(window::Id),
     WalletDetailsLoaded(

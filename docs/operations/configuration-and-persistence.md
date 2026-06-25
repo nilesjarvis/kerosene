@@ -48,7 +48,7 @@ Related storage:
 - active symbol and order defaults
 - UI scale, pane chrome, fonts, themes, chart display preferences
 - accounts, active account index, hidden positions
-- wallet tracker and address book
+- wallet tracker, wallet clusters, and address book
 - favourites, muted tickers, market universe, denomination
 - feed and notification preferences
 - Telegram/X channel/source lists
@@ -74,6 +74,8 @@ Important snapshot behavior:
   appropriate.
 - Secret fields such as `agent_key`, `hydromancer_api_key`, and
   `hyperdash_api_key` are written as empty values.
+- Wallet cluster config stores cluster names, selected cluster/window state, and
+  account profile secret-id references, not private agent keys.
 - Read-data provider controls the persisted chart backfill source.
 - Widget configs come from layout/widget snapshot helpers, not direct runtime
   maps.

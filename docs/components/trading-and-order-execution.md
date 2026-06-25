@@ -3,7 +3,8 @@
 Kerosene's trading system turns UI intent into signed Hyperliquid exchange
 actions. It supports standard ticket orders, presets, chart quick orders, chart
 HUD orders, drag-to-move orders, close-position actions, NUKE, Chase, TWAP, and
-leverage updates.
+leverage updates. Wallet cluster orders reuse the same execution boundary to
+submit one order leg per saved profile in the selected cluster.
 
 This is one of the highest-risk parts of the app. Changes must preserve account
 identity, key handling, stale-account checks, market-type restrictions,
@@ -17,6 +18,7 @@ reduce-only semantics, and order-status verification.
 | Order views | `src/order_views.rs`, `src/order_views/` | Order ticket, inputs, presets, advanced orders, quick order card, detail windows. |
 | Order updates | `src/order_update.rs`, `src/order_update/` | Form handling, submit/cancel results, Chase/TWAP lifecycle, close/nuke, move order. |
 | Execution boundary | `src/order_execution.rs`, `src/order_execution/` | Validation, sizing, prepared orders, task wrappers, advanced order lifecycle. |
+| Wallet cluster execution | `src/wallet_cluster_update.rs` | Split order intents, per-wallet signing tasks, ambiguous leg status checks, aggregate close actions. |
 | Signing | `src/signing.rs`, `src/signing/` | Hyperliquid action payloads, nonces, action hash, EIP-712 signing, exchange POSTs. |
 | Market symbol helpers | `src/order_execution/symbols/` | Market lookup, outcome handling, fees, display labels, orderability. |
 | Risk filters | `src/risk_state/` | Hidden-symbol and market-universe checks that affect routing and order eligibility. |
@@ -33,6 +35,7 @@ Orders can originate from several surfaces:
 - chart/open-order cancel controls
 - positions table close menu
 - NUKE button
+- wallet cluster window
 - Alfred command palette
 - Chase/TWAP advanced orders
 
@@ -96,6 +99,16 @@ This layer centralizes:
 
 Feature-specific surfaces should build intents and let this layer prepare the
 wire action.
+
+Wallet clusters add two order surfaces:
+
+- `OrderSurface::Cluster` for standard split entries across member profiles.
+- `OrderSurface::ClusterClose` for reduce-only perpetual closes derived from
+  fresh member snapshots.
+
+Each cluster leg receives its own CLOID and result/status row. Ambiguous or
+transport-unknown legs query `orderStatus` by CLOID before being marked
+confirmed, failed, or uncertain.
 
 ## Signing
 

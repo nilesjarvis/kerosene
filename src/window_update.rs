@@ -13,6 +13,10 @@ impl TradingTerminal {
                     self.wallet_tracker.x = Some(point.x);
                     self.wallet_tracker.y = Some(point.y);
                     self.persist_config();
+                } else if Some(id) == self.wallet_clusters.window_id {
+                    self.wallet_clusters.x = Some(point.x);
+                    self.wallet_clusters.y = Some(point.y);
+                    self.persist_config();
                 } else if let Some(state) = self.wallet_detail_windows.get_mut(&id) {
                     state.x = Some(point.x);
                     state.y = Some(point.y);
@@ -52,6 +56,11 @@ impl TradingTerminal {
                     self.wallet_tracker.open = false;
                     self.persist_config();
                 }
+                if Some(id) == self.wallet_clusters.window_id {
+                    self.wallet_clusters.window_id = None;
+                    self.wallet_clusters.open = false;
+                    self.persist_config();
+                }
                 self.wallet_detail_windows.remove(&id);
                 if Some(id) == self.journal.window_id {
                     self.journal.window_id = None;
@@ -69,6 +78,11 @@ impl TradingTerminal {
                 if Some(id) == self.wallet_tracker.window_id {
                     self.wallet_tracker.width = size.width;
                     self.wallet_tracker.height = size.height;
+                    self.persist_config();
+                }
+                if Some(id) == self.wallet_clusters.window_id {
+                    self.wallet_clusters.width = size.width;
+                    self.wallet_clusters.height = size.height;
                     self.persist_config();
                 }
                 if Some(id) == self.main_window_id {

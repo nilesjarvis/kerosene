@@ -315,7 +315,10 @@ impl TradingTerminal {
             .keys()
             .copied()
             .collect::<Vec<_>>();
+        let wallet_clusters_window_id = self.wallet_clusters.window_id;
         self.wallet_detail_windows.clear();
+        self.wallet_clusters =
+            crate::wallet_cluster_state::WalletClusterState::from_config(&defaults.wallet_clusters);
         self.wallet_tracker.add_input.clear();
         self.wallet_tracker.add_label_input.clear();
         self.wallet_tracker.tracked_addresses.clear();
@@ -442,6 +445,11 @@ impl TradingTerminal {
                 )
                 .chain(
                     advanced_order_history_window_ids
+                        .into_iter()
+                        .map(iced::window::close),
+                )
+                .chain(
+                    wallet_clusters_window_id
                         .into_iter()
                         .map(iced::window::close),
                 ),

@@ -29,6 +29,8 @@ pub(crate) enum OrderSurface {
     QuickOrder,
     Hud,
     ClosePosition,
+    Cluster,
+    ClusterClose,
     Nuke,
     Chase,
     Twap,
@@ -485,10 +487,13 @@ impl OrderSurface {
             OrderOperation::UpdateLeverage => market_type == MarketType::Perp,
             OrderOperation::Place => match self {
                 Self::Ticket | Self::Preset => true,
-                Self::QuickOrder | Self::Hud | Self::ClosePosition | Self::Chase | Self::Twap => {
-                    market_type != MarketType::Outcome
-                }
-                Self::Nuke => market_type == MarketType::Perp,
+                Self::QuickOrder
+                | Self::Hud
+                | Self::ClosePosition
+                | Self::Cluster
+                | Self::Chase
+                | Self::Twap => market_type != MarketType::Outcome,
+                Self::ClusterClose | Self::Nuke => market_type == MarketType::Perp,
                 Self::Move | Self::Cancel => true,
             },
         }
@@ -501,6 +506,8 @@ impl OrderSurface {
             Self::QuickOrder => "Quick order",
             Self::Hud => "HUD order",
             Self::ClosePosition => "Position close",
+            Self::Cluster => "Wallet cluster",
+            Self::ClusterClose => "Cluster close",
             Self::Nuke => "NUKE",
             Self::Chase => "Chase",
             Self::Twap => "TWAP",
@@ -514,6 +521,7 @@ impl OrderSurface {
             (Self::QuickOrder, OrderOperation::Place) => "trading",
             (Self::Hud, OrderOperation::Place) => "HUD trading",
             (Self::ClosePosition, OrderOperation::Place) => "position closing",
+            (Self::ClusterClose, OrderOperation::Place) => "cluster position closing",
             (Self::Chase, OrderOperation::Place) => "chase trading",
             (Self::Twap, OrderOperation::Place) => "TWAP trading",
             _ => operation.label(),
@@ -523,8 +531,9 @@ impl OrderSurface {
     pub(crate) fn orderability_context_label(self) -> &'static str {
         match self {
             Self::Ticket | Self::Preset | Self::Chase | Self::Twap => "Active",
+            Self::Cluster => "Cluster",
             Self::QuickOrder | Self::Hud => "Chart",
-            Self::ClosePosition | Self::Nuke => "Position",
+            Self::ClosePosition | Self::ClusterClose | Self::Nuke => "Position",
             Self::Move | Self::Cancel => "Order",
         }
     }
@@ -534,6 +543,8 @@ impl OrderSurface {
             Self::QuickOrder
             | Self::Hud
             | Self::ClosePosition
+            | Self::Cluster
+            | Self::ClusterClose
             | Self::Nuke
             | Self::Move
             | Self::Cancel => {
@@ -616,6 +627,8 @@ impl OrderSurface {
             Self::QuickOrder => "quick",
             Self::Hud => "hud",
             Self::ClosePosition => "close",
+            Self::Cluster => "cluster",
+            Self::ClusterClose => "cluster_close",
             Self::Nuke => "nuke",
             Self::Chase => "chase",
             Self::Twap => "twap",
@@ -1116,11 +1129,35 @@ mod tests {
             OrderSurface::QuickOrder,
             OrderSurface::Hud,
             OrderSurface::ClosePosition,
+            OrderSurface::Cluster,
             OrderSurface::Chase,
             OrderSurface::Twap,
         ] {
             assert!(!surface.allows_market_type(OrderOperation::Place, MarketType::Outcome));
         }
+    }
+
+    #[test]
+    fn cluster_surfaces_match_perp_and_spot_but_not_outcome() {
+        // Standard cluster orders mirror the ticket across wallets for perp and
+        // spot, but must exclude prediction (Outcome) markets like every other
+        // secondary surface.
+        assert!(OrderSurface::Cluster.allows_market_type(OrderOperation::Place, MarketType::Perp));
+        assert!(OrderSurface::Cluster.allows_market_type(OrderOperation::Place, MarketType::Spot));
+        assert!(
+            !OrderSurface::Cluster.allows_market_type(OrderOperation::Place, MarketType::Outcome)
+        );
+        // Cluster closes are reduce-only perp closes only.
+        assert!(
+            OrderSurface::ClusterClose.allows_market_type(OrderOperation::Place, MarketType::Perp)
+        );
+        assert!(
+            !OrderSurface::ClusterClose.allows_market_type(OrderOperation::Place, MarketType::Spot)
+        );
+        assert!(
+            !OrderSurface::ClusterClose
+                .allows_market_type(OrderOperation::Place, MarketType::Outcome)
+        );
     }
 
     #[test]

@@ -146,6 +146,124 @@ pub fn default_wallet_tracker_height() -> f32 {
     680.0
 }
 
+/// Persisted member of a tradable wallet cluster.
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct WalletClusterMemberConfig {
+    /// Stable account profile secret id. This references an existing saved
+    /// account profile; it never contains the agent key itself.
+    ///
+    /// Defaulted so a single malformed/legacy member entry deserializes to an
+    /// empty id (then dropped by `WalletCluster::from_config`) instead of
+    /// failing the whole `KeroseneConfig` parse and resetting every setting.
+    #[serde(default)]
+    pub profile_secret_id: String,
+    /// Relative allocation weight for aggregate orders.
+    #[serde(default = "default_wallet_cluster_member_weight")]
+    pub weight: f64,
+}
+
+impl fmt::Debug for WalletClusterMemberConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletClusterMemberConfig")
+            .field("profile_secret_id", &"<redacted>")
+            .field("weight", &self.weight)
+            .finish()
+    }
+}
+
+/// Persisted tradable wallet cluster.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct WalletClusterConfig {
+    /// Stable id for the cluster.
+    ///
+    /// Defaulted so a single malformed/legacy cluster entry deserializes to an
+    /// empty id (then dropped by `WalletClusterState::from_config`) instead of
+    /// failing the whole `KeroseneConfig` parse and resetting every setting.
+    #[serde(default)]
+    pub id: String,
+    /// User-facing name.
+    #[serde(default)]
+    pub name: String,
+    /// Account profile references.
+    #[serde(default)]
+    pub members: Vec<WalletClusterMemberConfig>,
+}
+
+impl fmt::Debug for WalletClusterConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletClusterConfig")
+            .field("id", &"<redacted>")
+            .field("name", &redact_wallet_address_debug_value(self.name.trim()))
+            .field("members", &RedactedWalletClusterMembers(self.members.len()))
+            .finish()
+    }
+}
+
+/// Persisted wallet cluster window and cluster definitions.
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct WalletClustersConfig {
+    #[serde(default)]
+    pub clusters: Vec<WalletClusterConfig>,
+    #[serde(default)]
+    pub selected_cluster_id: Option<String>,
+    #[serde(default)]
+    pub open: bool,
+    #[serde(default = "default_wallet_clusters_width")]
+    pub width: f32,
+    #[serde(default = "default_wallet_clusters_height")]
+    pub height: f32,
+    #[serde(default)]
+    pub x: Option<f32>,
+    #[serde(default)]
+    pub y: Option<f32>,
+}
+
+impl Default for WalletClustersConfig {
+    fn default() -> Self {
+        Self {
+            clusters: Vec::new(),
+            selected_cluster_id: None,
+            open: false,
+            width: default_wallet_clusters_width(),
+            height: default_wallet_clusters_height(),
+            x: None,
+            y: None,
+        }
+    }
+}
+
+impl fmt::Debug for WalletClustersConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletClustersConfig")
+            .field(
+                "clusters",
+                &RedactedWalletClusterMembers(self.clusters.len()),
+            )
+            .field(
+                "selected_cluster_id",
+                &self.selected_cluster_id.as_ref().map(|_| "<redacted>"),
+            )
+            .field("open", &self.open)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .finish()
+    }
+}
+
+pub fn default_wallet_cluster_member_weight() -> f64 {
+    1.0
+}
+
+pub fn default_wallet_clusters_width() -> f32 {
+    1180.0
+}
+
+pub fn default_wallet_clusters_height() -> f32 {
+    760.0
+}
+
 struct RedactedWalletAddressList(usize);
 
 impl fmt::Debug for RedactedWalletAddressList {
@@ -162,11 +280,19 @@ impl fmt::Debug for RedactedWalletTags {
     }
 }
 
+struct RedactedWalletClusterMembers(usize);
+
+impl fmt::Debug for RedactedWalletClusterMembers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{} redacted>", self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         AddressBookEntryConfig, TrackedWalletConfig, WALLET_LABELS_EXPORT_SCHEMA,
-        WalletLabelsExport, WalletTrackerConfig,
+        WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
     };
 
     const ADDRESS_A: &str = "0x1111111111111111111111111111111111111111";
@@ -198,6 +324,30 @@ mod tests {
         assert!(rendered.contains("muted_addresses: <1 redacted>"));
         assert!(rendered.contains("Whale"));
         assert!(rendered.contains("open: true"));
+    }
+
+    #[test]
+    fn malformed_cluster_entries_deserialize_without_failing_whole_config() {
+        // A cluster missing `id` and a member missing `profile_secret_id` must
+        // not abort deserialization (which load_config turns into a full reset
+        // to defaults). They should default to empty strings and survive parse.
+        let json = r#"{
+            "clusters": [
+                { "name": "No Id", "members": [ { "weight": 2.0 } ] },
+                { "id": "good", "name": "Good", "members": [] }
+            ],
+            "open": true
+        }"#;
+
+        let config: WalletClustersConfig =
+            serde_json::from_str(json).expect("malformed cluster entries must still parse");
+
+        assert_eq!(config.clusters.len(), 2);
+        assert_eq!(config.clusters[0].id, "");
+        assert_eq!(config.clusters[0].members[0].profile_secret_id, "");
+        assert_eq!(config.clusters[0].members[0].weight, 2.0);
+        assert_eq!(config.clusters[1].id, "good");
+        assert!(config.open);
     }
 
     #[test]

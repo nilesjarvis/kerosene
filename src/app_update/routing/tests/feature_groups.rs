@@ -69,6 +69,15 @@ fn journal_spaghetti_and_wallet_tracker_routes_stay_on_feature_modules() {
 
     assert_route(Message::OpenWalletTrackerWindow, UpdateRoute::WalletTracker);
     assert_route(
+        Message::OpenWalletClustersWindow,
+        UpdateRoute::WalletCluster,
+    );
+    assert_route(Message::WalletClusterRefresh, UpdateRoute::WalletCluster);
+    assert_route(
+        Message::WalletClusterSubmitOrder { is_buy: true },
+        UpdateRoute::WalletCluster,
+    );
+    assert_route(
         Message::OpenWalletDetailsWindow("0xabc".into()),
         UpdateRoute::WalletTracker,
     );

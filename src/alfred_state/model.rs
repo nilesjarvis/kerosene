@@ -48,6 +48,7 @@ pub(crate) enum AlfredCommandId {
     AddAdvancedOrdersPane,
     OpenTradingJournal,
     OpenWalletTrackerWindow,
+    OpenWalletClustersWindow,
     OpenScreenerWindow,
     OpenSettingsWindow,
     NaturalLanguageTrading,

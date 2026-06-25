@@ -11,6 +11,7 @@ use crate::pane_state::PaneKind;
 use crate::portfolio_state::{IncomeState, PortfolioState};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
 use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
+use crate::wallet_cluster_state::WalletClusterState;
 use crate::wallet_state::{AddressBookEntry, WalletTrackerState};
 
 use iced::widget::pane_grid;
@@ -357,6 +358,7 @@ impl TradingTerminal {
                 .zip(cfg.main_window_y)
                 .map(|(x, y)| iced::Point::new(x, y)),
             wallet_tracker: parts.wallet_tracker,
+            wallet_clusters: WalletClusterState::from_config(&cfg.wallet_clusters),
             wallet_detail_windows: HashMap::new(),
             address_book: parts.address_book,
             hovered_wallet_address_actions: None,

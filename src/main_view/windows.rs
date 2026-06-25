@@ -15,6 +15,8 @@ impl TradingTerminal {
 
         let content = if Some(window_id) == self.wallet_tracker.window_id {
             self.view_wallet_tracker()
+        } else if Some(window_id) == self.wallet_clusters.window_id {
+            self.view_wallet_clusters()
         } else if self.wallet_detail_windows.contains_key(&window_id) {
             self.view_wallet_details(window_id)
         } else if self
@@ -47,6 +49,8 @@ impl TradingTerminal {
     pub(crate) fn window_title(&self, window_id: window::Id) -> String {
         if Some(window_id) == self.wallet_tracker.window_id {
             "Kerosene Wallet Tracker".to_string()
+        } else if Some(window_id) == self.wallet_clusters.window_id {
+            "Kerosene Wallet Clusters".to_string()
         } else if let Some(state) = self.wallet_detail_windows.get(&window_id) {
             let display = self.wallet_display(&state.address);
             format!("Kerosene Wallet Details - {}", display.primary)

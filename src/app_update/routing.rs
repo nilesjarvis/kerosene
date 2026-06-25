@@ -26,6 +26,7 @@ pub(super) enum UpdateRoute {
     Screener,
     Settings,
     Spaghetti,
+    WalletCluster,
     WalletTracker,
     Window,
 }
@@ -406,6 +407,29 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleSpaghettiLabels(_)
         | Message::SpaghettiSetColorMode(_, _)
         | Message::PairSetCandleMode(_, _) => UpdateRoute::Spaghetti,
+
+        Message::OpenWalletClustersWindow
+        | Message::WalletClusterNameInputChanged(_)
+        | Message::WalletClusterCreate
+        | Message::WalletClusterSelected(_)
+        | Message::WalletClusterRenamed(_, _)
+        | Message::WalletClusterDeleted(_)
+        | Message::WalletClusterAddMember(_)
+        | Message::WalletClusterRemoveMember(_, _)
+        | Message::WalletClusterMemberWeightChanged(_, _, _)
+        | Message::WalletClusterRefresh
+        | Message::WalletClusterMemberLoaded(_, _, _, _, _)
+        | Message::WalletClusterWsUpdate(_, _)
+        | Message::WalletClusterOrderPriceChanged(_)
+        | Message::WalletClusterOrderQuantityChanged(_)
+        | Message::WalletClusterToggleOrderDenomination
+        | Message::WalletClusterSetOrderKind(_)
+        | Message::WalletClusterToggleReduceOnly
+        | Message::WalletClusterSetMidPrice
+        | Message::WalletClusterSubmitOrder { .. }
+        | Message::WalletClusterClosePosition { .. }
+        | Message::WalletClusterOrderResult { .. }
+        | Message::WalletClusterOrderStatusLoaded { .. } => UpdateRoute::WalletCluster,
 
         Message::OpenWalletTrackerWindow
         | Message::OpenWalletDetailsWindow(_)

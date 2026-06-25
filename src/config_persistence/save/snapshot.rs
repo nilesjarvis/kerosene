@@ -150,6 +150,7 @@ impl TradingTerminal {
 
             spaghetti_charts: layout_snapshot.spaghetti_charts,
             wallet_tracker: self.wallet_tracker.to_config(&self.address_book),
+            wallet_clusters: self.wallet_clusters.to_config(),
             address_book: self.address_book_config(),
             active_theme: layout_snapshot.active_theme,
             custom_themes: layout_snapshot.custom_themes,

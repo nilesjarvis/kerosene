@@ -328,6 +328,7 @@ impl TradingTerminal {
             || self.pending_leverage_update.is_some()
             || self.pending_one_shot_status_request.is_some()
             || !self.pending_move_order_contexts.is_empty()
+            || self.wallet_clusters.has_pending_execution()
             || self.has_pending_order_indicator_for_connected_account()
     }
 

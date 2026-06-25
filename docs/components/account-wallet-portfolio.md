@@ -13,6 +13,7 @@ views.
 | Account runtime | `src/account_state.rs`, `src/account_update/` | Active profile, connect/disconnect, account refresh, user stream application, profile picker. |
 | Account views | `src/account_views/` | Summary bar, positions, open orders, balances, history, account picker, income. |
 | Wallet tracker | `src/wallet_state/`, `src/wallet_update/`, `src/wallet_views/` | Watch-only tracked wallets, address book, detail windows, snapshot refreshes. |
+| Wallet clusters | `src/wallet_cluster_state.rs`, `src/wallet_cluster_update.rs`, `src/wallet_cluster_views.rs` | Saved groups of trading profiles, aggregate positions, and split order submission. |
 | Portfolio | `src/portfolio_state/`, `src/portfolio_update.rs` | Portfolio history, PnL charts, income state and refreshes. |
 | Analytics and metrics | `src/account_analytics/`, `src/account_metrics.rs`, `src/pnl_card/` | Portfolio/income HTTP fetches, position metrics, exportable PnL cards. |
 | User streams | `src/ws/user_streams/`, `src/subscription_state/user_data.rs` | Mids, fills, orders, positions, balances, and account updates. |
@@ -91,6 +92,7 @@ data.
 - connected account private data
 - all-mids across visible dexes
 - wallet detail windows that need independent watch-only updates
+- selected wallet cluster member addresses, without duplicate all-mids streams
 
 `account_update/stream.rs` applies:
 
@@ -190,6 +192,33 @@ grid. They can subscribe to user-data streams for their own address and show:
 
 The detail window should not mutate the connected trading account unless a
 message explicitly targets account profile state.
+
+## Wallet Clusters
+
+Wallet clusters are persisted groups of saved account profiles. They let a user
+open a dedicated window, add saved trading profiles to a cluster, assign
+relative order weights, view aggregate loaded positions, and submit one-shot
+orders or reduce-only close actions across the selected members.
+
+Cluster membership references account profile secret IDs. The cluster config
+does not store private agent keys; placement captures each member's committed
+profile key into a zeroizing task at submission time. Ghost/watch-only accounts
+are not eligible for cluster signing.
+
+Key behavior:
+
+- `wallet_cluster_state.rs` owns runtime cluster form state, member snapshots,
+  aggregate position summaries, and recent execution legs.
+- `wallet_cluster_update.rs` handles create/select/member edits, snapshot
+  refresh, websocket updates, order splitting, result classification, and
+  orderStatus checks for ambiguous legs.
+- `wallet_cluster_views.rs` renders the auxiliary window opened from the add
+  widget menu.
+- Cluster member streams are generated in
+  `subscription_state/user_data.rs` for the selected cluster only.
+
+Cluster close actions require fresh member snapshots and route through the
+shared order preparation boundary with `OrderSurface::ClusterClose`.
 
 ## Portfolio And Income
 

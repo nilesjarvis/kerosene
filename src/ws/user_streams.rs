@@ -17,11 +17,29 @@ use subscriptions::build_user_stream_subscriptions;
 
 pub use model::{KeyedUserData, WsUserData};
 
+/// Identifies which feature consumes a user-data stream.
+///
+/// This is part of the stream's subscription identity (it is included in
+/// `Hash`/`Eq`) so that two features watching the SAME address — e.g. a
+/// wallet-detail window and a wallet-cluster member — produce distinct iced
+/// subscriptions instead of colliding on a single recipe hash. `Subscription::map`
+/// does not change a subscription's identity, so without this discriminant iced
+/// would treat the two `without_mids` streams as one recipe and silently drop
+/// one consumer's updates. The purpose is NOT sent over the wire; the actual
+/// topic subscription is deduplicated by the ws manager.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum WsUserDataStreamPurpose {
+    Account,
+    WalletDetail,
+    WalletCluster,
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct WsUserDataStreamParams {
     pub address: Option<String>,
     pub dexes: Vec<String>,
     pub include_mids: bool,
+    pub purpose: WsUserDataStreamPurpose,
 }
 
 impl fmt::Debug for WsUserDataStreamParams {
@@ -30,6 +48,7 @@ impl fmt::Debug for WsUserDataStreamParams {
             .field("address", &self.address.as_ref().map(|_| "<redacted>"))
             .field("dexes", &self.dexes)
             .field("include_mids", &self.include_mids)
+            .field("purpose", &self.purpose)
             .finish()
     }
 }
@@ -40,6 +59,7 @@ impl WsUserDataStreamParams {
             address,
             dexes,
             include_mids: true,
+            purpose: WsUserDataStreamPurpose::Account,
         }
     }
 
@@ -48,7 +68,15 @@ impl WsUserDataStreamParams {
             address,
             dexes,
             include_mids: false,
+            purpose: WsUserDataStreamPurpose::Account,
         }
+    }
+
+    /// Sets the consuming feature, distinguishing otherwise-identical streams
+    /// (same address/dexes/mids) so iced keeps both alive.
+    pub fn with_purpose(mut self, purpose: WsUserDataStreamPurpose) -> Self {
+        self.purpose = purpose;
+        self
     }
 }
 

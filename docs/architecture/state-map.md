@@ -168,6 +168,7 @@ Representative fields:
 - `twap_orders`, `next_twap_id`, `selected_twap_id`, `twap_form`
 - `advanced_order_history`
 - close-menu, nuke confirmation, pending nuke execution
+- wallet cluster execution legs, which block account changes while pending
 
 Primary modules:
 
@@ -200,6 +201,7 @@ Representative fields:
 - account loading/error/backoff/reconciliation status
 - hidden positions, positions sorting, PnL privacy, account picker state
 - wallet tracker and wallet detail windows
+- `wallet_clusters` runtime/window state and selected cluster member snapshots
 - portfolio and income state
 - account analytics snapshots
 
@@ -212,6 +214,9 @@ Primary modules:
 - `wallet_state/`
 - `wallet_update/`
 - `wallet_views/`
+- `wallet_cluster_state.rs`
+- `wallet_cluster_update.rs`
+- `wallet_cluster_views.rs`
 - `portfolio_state/`
 - `portfolio_update.rs`
 - `account_analytics/`
@@ -221,7 +226,7 @@ Primary modules:
 Persisted through:
 
 - account profile metadata and secret IDs
-- wallet address, labels, tracker entries, hidden positions
+- wallet address, labels, tracker entries, wallet cluster definitions, hidden positions
 - portfolio/income alert toggles
 - PnL card preferences per window where applicable
 

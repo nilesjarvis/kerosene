@@ -2,6 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartSurfaceId, DetachedChartWindowState};
 use crate::config::KeroseneConfig;
 use crate::message::Message;
+use crate::wallet_cluster_state::wallet_cluster_window_settings;
 use iced::{Point, Size, Task, window};
 
 impl TradingTerminal {
@@ -42,6 +43,17 @@ impl TradingTerminal {
             boot_tasks.push(wallet_open_task.map(Message::WindowOpened));
             self.queue_wallet_tracker_core_refresh_all();
             boot_tasks.push(self.refresh_next_wallet_tracker_core());
+        }
+
+        if self.wallet_clusters.open {
+            let settings = wallet_cluster_window_settings(
+                &self.wallet_clusters,
+                self.custom_window_chrome_active,
+            );
+            let (wallet_clusters_id, wallet_clusters_open_task) = window::open(settings);
+            self.wallet_clusters.window_id = Some(wallet_clusters_id);
+            boot_tasks.push(wallet_clusters_open_task.map(Message::WindowOpened));
+            boot_tasks.push(self.refresh_selected_wallet_cluster());
         }
 
         for detached_cfg in &cfg.detached_chart_windows {

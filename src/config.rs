@@ -101,8 +101,10 @@ pub(crate) use secrets::{load_keychain_secret_payload, store_secret_payload};
 pub(crate) use themes::default_custom_themes;
 pub use themes::{CustomThemeConfig, default_theme};
 pub use wallets::{
-    AddressBookEntryConfig, TrackedWalletConfig, WALLET_LABELS_EXPORT_SCHEMA, WalletLabelsExport,
-    WalletTrackerConfig,
+    AddressBookEntryConfig, TrackedWalletConfig, WALLET_LABELS_EXPORT_SCHEMA, WalletClusterConfig,
+    WalletClusterMemberConfig, WalletClustersConfig, WalletLabelsExport, WalletTrackerConfig,
+    default_wallet_cluster_member_weight, default_wallet_clusters_height,
+    default_wallet_clusters_width,
 };
 
 use files::{backup_config_path, config_path, config_sidecar_prefix};

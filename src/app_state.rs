@@ -36,6 +36,7 @@ use crate::spaghetti_state::{SpaghettiChartId, SpaghettiChartInstance};
 use crate::telegram_feed::TelegramFeedState;
 use crate::timeframe::Timeframe;
 use crate::twap_state::{TwapOrder, TwapOrderForm};
+use crate::wallet_cluster_state::WalletClusterState;
 use crate::wallet_state::{AddressBookEntry, WalletDetailsWindowState, WalletTrackerState};
 use crate::{config, journal, ws};
 use iced::widget::pane_grid;
@@ -496,6 +497,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) main_window_size: Option<iced::Size>,
     pub(crate) main_window_pos: Option<iced::Point>,
     pub(crate) wallet_tracker: WalletTrackerState,
+    pub(crate) wallet_clusters: WalletClusterState,
     pub(crate) wallet_detail_windows: HashMap<window::Id, WalletDetailsWindowState>,
     pub(crate) address_book: HashMap<String, AddressBookEntry>,
     pub(crate) hovered_wallet_address_actions: Option<String>,
