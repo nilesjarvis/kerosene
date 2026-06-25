@@ -276,6 +276,17 @@ impl TradingTerminal {
             );
             return Task::none();
         }
+        // Likewise require a committed agent key (the add-row UI hides keyless
+        // profiles); without one the member could never sign a leg.
+        if self.accounts.iter().any(|profile| {
+            profile.secret_id == profile_secret_id && profile.agent_key.trim().is_empty()
+        }) {
+            self.set_wallet_cluster_status(
+                "Account needs a committed agent key to join a trading cluster",
+                true,
+            );
+            return Task::none();
+        }
 
         let Some(cluster) = self.wallet_clusters.selected_cluster_mut() else {
             self.set_wallet_cluster_status("Create or select a cluster first", true);
@@ -1789,5 +1800,40 @@ mod tests {
         let state = &terminal.wallet_clusters.member_data["member-profile"];
         assert_eq!(state.positions_refreshed_ms, None);
         assert!(!cluster_member_snapshot_is_fresh(state, 1_000_000));
+    }
+
+    #[test]
+    fn add_member_rejects_profile_without_agent_key() {
+        use crate::config::AccountProfile;
+        use crate::wallet_cluster_state::WalletCluster;
+
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.accounts = vec![AccountProfile {
+            secret_id: "keyless".to_string(),
+            name: "Keyless".to_string(),
+            wallet_address: ADDRESS.to_string(),
+            agent_key: String::new().into(),
+            hydromancer_api_key: String::new().into(),
+        }];
+        terminal.wallet_clusters.clusters = vec![WalletCluster {
+            id: "cluster".to_string(),
+            name: "Cluster".to_string(),
+            members: Vec::new(),
+        }];
+        terminal.wallet_clusters.selected_cluster_id = Some("cluster".to_string());
+
+        let _ = terminal.add_wallet_cluster_member("keyless".to_string());
+
+        assert!(
+            terminal.wallet_clusters.clusters[0].members.is_empty(),
+            "keyless profile must not be added"
+        );
+        let (message, is_error) = terminal
+            .wallet_clusters
+            .status
+            .as_ref()
+            .expect("a rejection status should be set");
+        assert!(is_error);
+        assert!(message.contains("agent key"));
     }
 }

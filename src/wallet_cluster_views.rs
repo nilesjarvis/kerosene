@@ -193,8 +193,11 @@ impl TradingTerminal {
             .align_y(Alignment::Center);
         let mut available_count = 0usize;
         for profile in &self.accounts {
+            // Only offer profiles that can actually sign a cluster leg: not
+            // already a member, not watch-only, and with a committed agent key.
             if member_ids.contains(profile.secret_id.as_str())
                 || self.ghost_account_secret_ids.contains(&profile.secret_id)
+                || profile.agent_key.trim().is_empty()
             {
                 continue;
             }
