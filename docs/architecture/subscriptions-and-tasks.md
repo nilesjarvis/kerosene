@@ -82,8 +82,8 @@ Hydromancer subscriptions:
 - `ws_hydromancer_liquidations`
 - `ws_hydromancer_tracked_trades`
 - Hydromancer candle/book/asset-context streams when selected as read provider
-- Hydromancer `activeAssetCtx` streams for visible open perp positions when
-  real-time position PnL is enabled and a Hydromancer key is configured
+- Hydromancer `l2Book` streams for visible open perp positions when real-time
+  position PnL is enabled and a Hydromancer key is configured
 
 Telegram subscriptions:
 

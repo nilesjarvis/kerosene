@@ -1,6 +1,6 @@
-use crate::account::AssetContext;
+use crate::api::OrderBook;
 use crate::app_state::TradingTerminal;
-use crate::helpers::parse_finite_number;
+use crate::helpers::{parse_finite_number, positive_finite_value};
 use crate::message::Message;
 use crate::read_data_provider::MarketDataSourceContext;
 
@@ -48,53 +48,58 @@ impl TradingTerminal {
         symbols.into_iter().collect()
     }
 
-    pub(super) fn apply_position_pnl_asset_ctx_update(
+    pub(super) fn apply_position_pnl_book_update(
         &mut self,
-        symbol: String,
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
         source_context: MarketDataSourceContext,
-        ctx: AssetContext,
+        book: OrderBook,
     ) -> Task<Message> {
         if !self.hydromancer_keyed_market_stream_source_is_current(source_context)
+            || sigfigs != self.canonical_l2_book_sigfigs(&coin)
             || !self
                 .hydromancer_realtime_position_pnl_symbols()
-                .contains(&symbol)
+                .contains(&coin)
         {
             return Task::none();
         }
 
-        let Some(price) = ctx.live_price() else {
+        let Some(price) = positive_finite_value(book.mid_price()) else {
             return Task::none();
         };
 
         let now_ms = Self::now_ms();
-        if let Some(&old_price) = self.all_mids.get(&symbol)
+        if let Some(&old_price) = self.all_mids.get(&coin)
             && (price - old_price).abs() > f64::EPSILON
         {
             let direction = if price > old_price { 1 } else { -1 };
             self.live_watchlist_flashes
-                .insert(symbol.clone(), (now_ms, direction));
+                .insert(coin.clone(), (now_ms, direction));
         }
-        self.all_mids.insert(symbol.clone(), price);
-        self.all_mids_updated_at_ms.insert(symbol, now_ms);
+        self.all_mids.insert(coin.clone(), price);
+        self.all_mids_updated_at_ms.insert(coin, now_ms);
 
         Task::none()
     }
 
-    pub(super) fn apply_position_pnl_asset_ctx_lag(
+    pub(super) fn apply_position_pnl_book_lag(
         &mut self,
-        symbol: String,
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
         source_context: MarketDataSourceContext,
         _skipped: u64,
     ) -> Task<Message> {
-        if !self.hydromancer_keyed_market_stream_source_is_current(source_context) {
+        if !self.hydromancer_keyed_market_stream_source_is_current(source_context)
+            || sigfigs != self.canonical_l2_book_sigfigs(&coin)
+        {
             return Task::none();
         }
 
         if self
             .hydromancer_realtime_position_pnl_symbols()
-            .contains(&symbol)
+            .contains(&coin)
         {
-            self.all_mids_updated_at_ms.remove(&symbol);
+            self.all_mids_updated_at_ms.remove(&coin);
         }
 
         Task::none()
@@ -108,21 +113,20 @@ mod tests {
         AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
         Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
     };
-    use crate::api::{ExchangeSymbol, MarketType};
+    use crate::api::{BookLevel, ExchangeSymbol, MarketType};
 
     const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 
-    fn asset_ctx(mid_px: Option<&str>, mark_px: Option<&str>) -> AssetContext {
-        AssetContext {
-            funding: None,
-            open_interest: None,
-            oracle_px: None,
-            mark_px: mark_px.map(str::to_string),
-            mid_px: mid_px.map(str::to_string),
-            prev_day_px: None,
-            day_ntl_vlm: None,
-            day_base_vlm: None,
-            impact_pxs: None,
+    fn book(best_bid: f64, best_ask: f64) -> OrderBook {
+        OrderBook {
+            bids: vec![BookLevel {
+                px: best_bid,
+                sz: 1.0,
+            }],
+            asks: vec![BookLevel {
+                px: best_ask,
+                sz: 1.0,
+            }],
         }
     }
 
@@ -252,10 +256,12 @@ mod tests {
         terminal.hydromancer_key_generation = 2;
         connect_with_positions(&mut terminal, vec![position("BTC", "2")]);
 
-        let _task = terminal.apply_position_pnl_asset_ctx_update(
+        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+        let _task = terminal.apply_position_pnl_book_update(
             "BTC".to_string(),
+            sigfigs,
             source_context(&terminal, Some(2)),
-            asset_ctx(Some("101.5"), None),
+            book(101.0, 102.0),
         );
 
         assert_eq!(terminal.resolve_mid_for_symbol("BTC"), Some(101.5));
@@ -287,10 +293,12 @@ mod tests {
         terminal.hydromancer_key_generation = 2;
         connect_with_positions(&mut terminal, vec![position("BTC", "2")]);
 
-        let _task = terminal.apply_position_pnl_asset_ctx_update(
+        let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
+        let _task = terminal.apply_position_pnl_book_update(
             "BTC".to_string(),
+            sigfigs,
             source_context(&terminal, Some(1)),
-            asset_ctx(Some("101.5"), None),
+            book(101.0, 102.0),
         );
 
         assert!(!terminal.all_mids.contains_key("BTC"));

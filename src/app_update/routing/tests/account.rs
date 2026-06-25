@@ -38,7 +38,12 @@ fn account_and_order_routes_cover_overlapping_user_actions() {
         hydromancer_key_generation: Some(7),
     };
     assert_route(
-        Message::PositionPnlWsAssetCtxLagged("BTC".to_string(), source_context, 9),
+        Message::PositionPnlWsBookLagged {
+            coin: "BTC".to_string(),
+            sigfigs: (None, None),
+            source_context,
+            skipped: 9,
+        },
         UpdateRoute::Account,
     );
     assert_route(Message::AccountPickerRenameToggled(0), UpdateRoute::Account);

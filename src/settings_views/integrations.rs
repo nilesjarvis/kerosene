@@ -44,7 +44,7 @@ impl TradingTerminal {
         };
         let hydromancer_key_configured = !self.hydromancer_api_key.trim().is_empty();
         let realtime_position_pnl_status = if hydromancer_key_configured {
-            "Uses Hydromancer activeAssetCtx ticks for open-position mark, value, uPnL, and total PnL."
+            "Uses Hydromancer l2Book ticks, matching Tick chart book-mid prices for open-position mark, value, uPnL, and total PnL."
         } else {
             "Save a Hydromancer API key to enable real-time open-position PnL ticks."
         };

@@ -188,9 +188,10 @@ This setting is a runtime behavior change, not just a cosmetic preference.
 
 The integrations settings also include `hydromancer_realtime_position_pnl_enabled`.
 When enabled and a Hydromancer API key is saved, Kerosene subscribes to
-Hydromancer `activeAssetCtx` ticks for currently visible open perp positions and
-uses those prices for the positions widget's mark, value, uPnL, and total PnL.
-This is independent of the global read-data provider selection.
+Hydromancer `l2Book` ticks for currently visible open perp positions and uses
+the same book-mid prices as Tick candles for the positions widget's mark, value,
+uPnL, and total PnL. This is independent of the global read-data provider
+selection.
 
 ## Storage Settings
 

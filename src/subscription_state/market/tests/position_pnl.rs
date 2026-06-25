@@ -83,27 +83,36 @@ fn position_pnl_subscriptions_require_toggle_key_and_open_positions() {
 }
 
 #[test]
-fn position_pnl_asset_context_lagged_event_maps_to_account_message() {
+fn position_pnl_book_lagged_event_maps_to_account_message() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.hydromancer_api_key = "hydro-key".to_string().into();
     terminal.hydromancer_key_generation = 7;
     let source_context = terminal.hydromancer_keyed_market_data_source_context();
+    let sigfigs = terminal.canonical_l2_book_sigfigs("BTC");
 
-    let message = position_pnl_asset_ctx_stream_event_message((
+    let message = position_pnl_book_stream_event_message((
         source_context,
-        crate::ws::SymbolAssetContextStreamEvent::Lagged {
-            symbol: "BTC".to_string(),
+        crate::ws::KeyedBookStreamEvent::Lagged {
+            id: 0,
+            coin: "BTC".to_string(),
+            sigfigs,
             hydromancer_key_generation: source_context.hydromancer_key_generation,
             skipped: 9,
         },
     ));
 
     match message {
-        Message::PositionPnlWsAssetCtxLagged(symbol, mapped_context, skipped) => {
-            assert_eq!(symbol, "BTC");
+        Message::PositionPnlWsBookLagged {
+            coin,
+            sigfigs: mapped_sigfigs,
+            source_context: mapped_context,
+            skipped,
+        } => {
+            assert_eq!(coin, "BTC");
+            assert_eq!(mapped_sigfigs, sigfigs);
             assert_eq!(mapped_context, source_context);
             assert_eq!(skipped, 9);
         }
-        other => panic!("expected position PnL asset-context lagged message, got {other:?}"),
+        other => panic!("expected position PnL book lagged message, got {other:?}"),
     }
 }

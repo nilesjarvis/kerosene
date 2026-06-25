@@ -83,7 +83,8 @@ Hydromancer is optional and authenticated. It provides:
 - liquidation websocket feed
 - tracked-trade websocket feed
 - alternative candle/book/asset-context streams when selected as read provider
-- optional real-time open-position PnL ticks for the positions widget
+- optional real-time open-position PnL from Hydromancer `l2Book` ticks,
+  matching Tick candle book-mid prices
 
 Hydromancer state appears in:
 

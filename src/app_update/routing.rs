@@ -553,8 +553,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::RefreshAccountData
         | Message::AccountRefreshBackoffElapsed(_)
         | Message::AllMidsBootstrapLoaded(_, _)
-        | Message::PositionPnlWsAssetCtxUpdate(_, _, _)
-        | Message::PositionPnlWsAssetCtxLagged(_, _, _)
+        | Message::PositionPnlWsBookUpdate { .. }
+        | Message::PositionPnlWsBookLagged { .. }
         | Message::WsUserDataUpdate(_, _) => UpdateRoute::Account,
 
         Message::HydromancerKeyInputChanged(_)

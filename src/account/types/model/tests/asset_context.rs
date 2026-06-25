@@ -14,27 +14,6 @@ fn asset_ctx(impact_pxs: Option<Vec<&str>>) -> AssetContext {
     }
 }
 
-fn asset_ctx_with_prices(mid_px: Option<&str>, mark_px: Option<&str>) -> AssetContext {
-    AssetContext {
-        mid_px: mid_px.map(str::to_string),
-        mark_px: mark_px.map(str::to_string),
-        ..asset_ctx(None)
-    }
-}
-
-#[test]
-fn live_price_prefers_mid_px_and_falls_back_to_mark_px() {
-    assert_eq!(
-        asset_ctx_with_prices(Some("101.25"), Some("99.5")).live_price(),
-        Some(101.25)
-    );
-    assert_eq!(
-        asset_ctx_with_prices(Some("bad"), Some("99.5")).live_price(),
-        Some(99.5)
-    );
-    assert_eq!(asset_ctx_with_prices(None, Some("NaN")).live_price(), None);
-}
-
 #[test]
 fn impact_spread_uses_ask_minus_bid() {
     let ctx = asset_ctx(Some(vec!["100.25", "100.75"]));

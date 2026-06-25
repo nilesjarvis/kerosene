@@ -1197,8 +1197,18 @@ pub(crate) enum Message {
     WalletAddressInputChanged(RedactedAddress),
     HydromancerKeyInputChanged(SecretInput),
     SaveHydromancerKey,
-    PositionPnlWsAssetCtxUpdate(String, MarketDataSourceContext, AssetContext),
-    PositionPnlWsAssetCtxLagged(String, MarketDataSourceContext, u64),
+    PositionPnlWsBookUpdate {
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
+        book: OrderBook,
+    },
+    PositionPnlWsBookLagged {
+        coin: String,
+        sigfigs: (Option<u8>, Option<u8>),
+        source_context: MarketDataSourceContext,
+        skipped: u64,
+    },
     ReconnectLiquidations,
     ReconnectTrackedTrades,
     WsHydromancerLiquidation {

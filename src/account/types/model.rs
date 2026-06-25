@@ -2,8 +2,6 @@ use serde::Deserialize;
 
 use std::{collections::HashSet, fmt};
 
-use crate::helpers::parse_positive_finite_number;
-
 #[cfg(test)]
 mod tests;
 
@@ -213,20 +211,6 @@ impl fmt::Debug for AssetContext {
 }
 
 impl AssetContext {
-    /// Live tradable price for account-side mark-to-market calculations.
-    /// Hydromancer tick payloads normally carry `midPx`; `markPx` is retained
-    /// as a fallback for compatible asset-context payloads.
-    pub(crate) fn live_price(&self) -> Option<f64> {
-        self.mid_px
-            .as_deref()
-            .and_then(parse_positive_finite_number)
-            .or_else(|| {
-                self.mark_px
-                    .as_deref()
-                    .and_then(parse_positive_finite_number)
-            })
-    }
-
     /// Bid/ask spread derived from `impact_pxs` (`[bid, ask]`).
     /// Returns `None` when impact prices are missing, unparseable, or crossed.
     pub(crate) fn impact_spread(&self) -> Option<f64> {

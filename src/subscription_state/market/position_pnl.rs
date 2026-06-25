@@ -1,7 +1,7 @@
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::ws::{
-    HydromancerStreamKey, SymbolAssetContextStreamEvent, ws_hydromancer_asset_ctx_stream_symbol,
+    HydromancerStreamKey, KeyedBookStreamEvent, ws_hydromancer_book_stream_keyed_events,
 };
 
 use super::source_context_for_stream_event;
@@ -10,6 +10,8 @@ use iced::Subscription;
 // ---------------------------------------------------------------------------
 // Real-Time Position PnL Streams
 // ---------------------------------------------------------------------------
+
+const POSITION_PNL_BOOK_STREAM_ID: u64 = 0;
 
 impl TradingTerminal {
     pub(in crate::subscription_state::market) fn push_position_pnl_market_subscriptions(
@@ -27,38 +29,56 @@ impl TradingTerminal {
         );
         let source_context = self.hydromancer_keyed_market_data_source_context();
         for symbol in symbols {
+            let sigfigs = self.canonical_l2_book_sigfigs(&symbol);
             subs.push(
                 Subscription::run_with(
-                    (stream_key.clone(), symbol),
-                    ws_hydromancer_asset_ctx_stream_symbol,
+                    (
+                        stream_key.clone(),
+                        POSITION_PNL_BOOK_STREAM_ID,
+                        symbol,
+                        sigfigs,
+                    ),
+                    ws_hydromancer_book_stream_keyed_events,
                 )
                 .with(source_context)
-                .map(position_pnl_asset_ctx_stream_event_message),
+                .map(position_pnl_book_stream_event_message),
             );
         }
     }
 }
 
-pub(super) fn position_pnl_asset_ctx_stream_event_message(
+pub(super) fn position_pnl_book_stream_event_message(
     (source_context, event): (
         crate::read_data_provider::MarketDataSourceContext,
-        SymbolAssetContextStreamEvent,
+        KeyedBookStreamEvent,
     ),
 ) -> Message {
     match event {
-        SymbolAssetContextStreamEvent::Item(symbol, hydromancer_key_generation, ctx) => {
+        KeyedBookStreamEvent::Item(_id, coin, sigfigs, hydromancer_key_generation, book) => {
             let source_context =
                 source_context_for_stream_event(source_context, hydromancer_key_generation);
-            Message::PositionPnlWsAssetCtxUpdate(symbol, source_context, *ctx)
+            Message::PositionPnlWsBookUpdate {
+                coin,
+                sigfigs,
+                source_context,
+                book,
+            }
         }
-        SymbolAssetContextStreamEvent::Lagged {
-            symbol,
+        KeyedBookStreamEvent::Lagged {
+            id: _,
+            coin,
+            sigfigs,
             hydromancer_key_generation,
             skipped,
         } => {
             let source_context =
                 source_context_for_stream_event(source_context, hydromancer_key_generation);
-            Message::PositionPnlWsAssetCtxLagged(symbol, source_context, skipped)
+            Message::PositionPnlWsBookLagged {
+                coin,
+                sigfigs,
+                source_context,
+                skipped,
+            }
         }
     }
 }
