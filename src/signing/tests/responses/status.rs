@@ -47,6 +47,7 @@ fn exchange_response_error_status_drives_error_transition() {
     );
     assert_eq!(response.order_oid(), None);
     assert!(response.is_error());
+    assert!(!response.has_potential_order_effect());
     assert!(!response.is_fully_filled());
     assert!(!response.is_ambiguous_order_result());
     assert!(!response.is_confirmed_modify_result());
@@ -118,6 +119,7 @@ fn exchange_response_later_error_status_drives_error_transition() {
         "Resting (oid 42); Error: Second order rejected"
     );
     assert!(response.is_error());
+    assert!(response.has_potential_order_effect());
     assert!(!response.is_fully_filled());
 }
 

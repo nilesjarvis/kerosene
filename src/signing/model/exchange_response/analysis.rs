@@ -97,6 +97,23 @@ impl ExchangeResponse {
         false
     }
 
+    /// Whether any status may have committed exchange state even if another
+    /// status made the overall response erroneous.
+    pub fn has_potential_order_effect(&self) -> bool {
+        if self.status != "ok" || self.raw_response.is_some() {
+            return false;
+        }
+        let Some(inner) = &self.response else {
+            return false;
+        };
+        let Some(data) = &inner.data else {
+            return false;
+        };
+        data.statuses
+            .iter()
+            .any(|status| potential_order_effect_status(status, &inner.response_type))
+    }
+
     /// Whether an order placement response is too ambiguous to continue automation safely.
     pub fn is_ambiguous_order_result(&self) -> bool {
         if self.status != "ok" {
@@ -238,6 +255,16 @@ fn ambiguous_order_status(status: &Value) -> bool {
         return filled_status_size(status).is_none();
     }
     true
+}
+
+fn potential_order_effect_status(status: &Value, response_type: &str) -> bool {
+    if status.get("resting").is_some() || status.get("filled").is_some() {
+        return true;
+    }
+    if response_type == "cancel" && status.as_str() == Some("success") {
+        return true;
+    }
+    status.get("error").is_none()
 }
 
 fn confirmed_modify_status(status: &Value) -> bool {

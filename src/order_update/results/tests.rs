@@ -325,10 +325,16 @@ fn successful_exchange_results_require_account_refresh() {
 }
 
 #[test]
-fn exchange_error_responses_do_not_require_account_refresh() {
+fn pure_exchange_error_responses_do_not_require_account_refresh() {
     let exchange_error = exchange_response(vec![serde_json::json!({
         "error": "Order rejected"
     })]);
+
+    assert!(!result_requires_account_refresh(&Ok(exchange_error)));
+}
+
+#[test]
+fn mixed_exchange_error_responses_require_account_refresh() {
     let later_exchange_error = exchange_response(vec![
         serde_json::json!({
             "resting": {
@@ -340,8 +346,7 @@ fn exchange_error_responses_do_not_require_account_refresh() {
         }),
     ]);
 
-    assert!(!result_requires_account_refresh(&Ok(exchange_error)));
-    assert!(!result_requires_account_refresh(&Ok(later_exchange_error)));
+    assert!(result_requires_account_refresh(&Ok(later_exchange_error)));
 }
 
 #[test]
@@ -406,6 +411,22 @@ fn execution_result_classifier_separates_rejected_ambiguous_and_transport_unknow
     assert!(rejected.is_error);
     assert!(!rejected.refresh_account);
 
+    let mixed = classify_execution_result(Ok(exchange_response(vec![
+        serde_json::json!({
+            "resting": {
+                "oid": 42_u64
+            }
+        }),
+        serde_json::json!({
+            "error": "Second order rejected"
+        }),
+    ])));
+    assert_eq!(mixed.kind, ExecutionOutcomeKind::Ambiguous);
+    assert!(mixed.status.contains("Resting (oid 42)"));
+    assert!(mixed.status.contains("Error: Second order rejected"));
+    assert!(mixed.is_error);
+    assert!(mixed.refresh_account);
+
     let ambiguous = classify_execution_result(Ok(malformed_ok_response()));
     assert_eq!(ambiguous.kind, ExecutionOutcomeKind::Ambiguous);
     assert_eq!(ambiguous.status, "No response body");
@@ -458,6 +479,35 @@ fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
     assert!(message.contains("Ticket placement status unknown for BTC"));
     assert!(message.contains("exchange request failed"));
     assert!(message.contains("checking 0x00000000000000000000000000000000"));
+}
+
+#[test]
+fn one_shot_mixed_exchange_error_starts_cloid_reconciliation() {
+    let mut terminal = terminal_with_connected_account();
+
+    let _task = terminal.handle_order_result(
+        None,
+        one_shot_context(),
+        Ok(exchange_response(vec![
+            serde_json::json!({
+                "resting": {
+                    "oid": 42_u64
+                }
+            }),
+            serde_json::json!({
+                "error": "Second order rejected"
+            }),
+        ])),
+    );
+
+    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.account_loading);
+    assert!(terminal.account_reconciliation_required);
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("Ticket placement status unknown for BTC"));
+    assert!(message.contains("Resting (oid 42)"));
+    assert!(message.contains("Error: Second order rejected"));
 }
 
 #[test]

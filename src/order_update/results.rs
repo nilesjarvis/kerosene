@@ -74,13 +74,18 @@ pub(crate) fn classify_execution_result(
         Ok(response) => {
             let status = response.summary();
             let response_is_error = response.is_error();
+            let response_may_have_committed_order = response.has_potential_order_effect();
             let status = if response_is_error {
                 redact_sensitive_response_text(&status)
             } else {
                 status
             };
             let kind = if response_is_error {
-                ExecutionOutcomeKind::Rejected
+                if response_may_have_committed_order {
+                    ExecutionOutcomeKind::Ambiguous
+                } else {
+                    ExecutionOutcomeKind::Rejected
+                }
             } else if status == "Cancelled" {
                 ExecutionOutcomeKind::Cancelled
             } else if response.is_ambiguous_order_result() {
@@ -95,7 +100,7 @@ pub(crate) fn classify_execution_result(
                 kind,
                 status,
                 is_error,
-                refresh_account: !response_is_error,
+                refresh_account: !response_is_error || response_may_have_committed_order,
             }
         }
         Err(error) => ExecutionOutcome {
@@ -701,7 +706,7 @@ pub(in crate::order_update) fn result_requires_account_refresh(
     result: &Result<ExchangeResponse, String>,
 ) -> bool {
     match result {
-        Ok(response) => !response.is_error(),
+        Ok(response) => !response.is_error() || response.has_potential_order_effect(),
         // Signed exchange requests can fail locally after the exchange has
         // already accepted the action. Reconcile account state on transport,
         // response-body, or parse failures so basic order paths fail closed
