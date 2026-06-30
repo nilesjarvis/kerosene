@@ -66,7 +66,7 @@ impl ExchangeResponse {
         !statuses.is_empty()
             && statuses
                 .iter()
-                .all(|st| st.get("filled").is_some() && st.get("resting").is_none())
+                .all(|st| confirmed_filled_status(st) && st.get("resting").is_none())
             && !self.is_error()
     }
 
@@ -252,7 +252,7 @@ fn ambiguous_order_status(status: &Value) -> bool {
             .is_none();
     }
     if status.get("filled").is_some() {
-        return filled_status_size(status).is_none();
+        return !confirmed_filled_status(status);
     }
     true
 }
@@ -277,11 +277,19 @@ fn confirmed_modify_status(status: &Value) -> bool {
             .and_then(|value| value.as_u64())
             .is_some();
     }
-    if let Some(filled) = status.get("filled") {
-        return filled.get("oid").and_then(|value| value.as_u64()).is_some()
-            && filled_status_size(status).is_some();
+    if status.get("filled").is_some() {
+        return confirmed_filled_status(status);
     }
     false
+}
+
+fn confirmed_filled_status(status: &Value) -> bool {
+    status
+        .get("filled")
+        .and_then(|filled| filled.get("oid"))
+        .and_then(|value| value.as_u64())
+        .is_some()
+        && filled_status_size(status).is_some()
 }
 
 fn filled_status_size(status: &Value) -> Option<f64> {
@@ -311,11 +319,19 @@ fn status_summary(st: &Value, response_type: &str) -> String {
             .and_then(|v| v.as_str())
             .unwrap_or("?");
         let px = filled.get("avgPx").and_then(|v| v.as_str()).unwrap_or("?");
-        let oid = filled.get("oid").and_then(|v| v.as_u64()).unwrap_or(0);
+        let oid = filled
+            .get("oid")
+            .and_then(|v| v.as_u64())
+            .map(|oid| oid.to_string())
+            .unwrap_or_else(|| "?".to_string());
         return format!("Filled {sz} @ ${px} (oid {oid})");
     }
     if let Some(resting) = st.get("resting") {
-        let oid = resting.get("oid").and_then(|v| v.as_u64()).unwrap_or(0);
+        let oid = resting
+            .get("oid")
+            .and_then(|v| v.as_u64())
+            .map(|oid| oid.to_string())
+            .unwrap_or_else(|| "?".to_string());
         return format!("Resting (oid {oid})");
     }
     if st.as_str() == Some("success") {

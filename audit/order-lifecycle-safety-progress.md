@@ -9,6 +9,7 @@
   - Move status checks are armed only after ambiguous or transport-unknown modify results.
   - Account changes and disconnects are blocked while these status checks are pending.
   - Complete account refresh clears pending cancel/move status checks for that account.
+- Treated filled order responses without an oid as ambiguous instead of fully settled, and displayed malformed status oids as `?` instead of `0`.
 
 ## Validation
 
@@ -18,6 +19,5 @@
 
 ## Remaining Findings
 
-- Filled placement responses without an oid are still treated as non-ambiguous.
 - Advanced Chase history can hide overfills when fill metrics are unavailable.
 - TWAP account-change blocking could explicitly include reconciliation deadlines for defense in depth.

@@ -409,6 +409,18 @@ fn execution_result_classifier_normalizes_successful_outcomes() {
     assert!(!filled.is_error);
     assert!(filled.refresh_account);
 
+    let filled_without_oid =
+        classify_execution_result(Ok(exchange_response(vec![serde_json::json!({
+            "filled": {
+                "totalSz": "1",
+                "avgPx": "100"
+            }
+        })])));
+    assert_eq!(filled_without_oid.kind, ExecutionOutcomeKind::Ambiguous);
+    assert_eq!(filled_without_oid.status, "Filled 1 @ $100 (oid ?)");
+    assert!(filled_without_oid.is_error);
+    assert!(filled_without_oid.refresh_account);
+
     let cancelled =
         classify_execution_result(Ok(cancel_exchange_response(vec![serde_json::json!(
             "success"

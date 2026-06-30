@@ -22,8 +22,24 @@ fn exchange_response_ambiguous_ok_body_requires_reconciliation() {
     let missing_resting_oid = exchange_response(serde_json::json!({
         "resting": {}
     }));
+    assert_eq!(missing_resting_oid.summary(), "Resting (oid ?)");
     assert!(!missing_resting_oid.is_error());
     assert!(missing_resting_oid.is_ambiguous_order_result());
+
+    let missing_filled_oid = exchange_response(serde_json::json!({
+        "filled": {
+            "totalSz": "1.25",
+            "avgPx": "100"
+        }
+    }));
+    assert_eq!(missing_filled_oid.summary(), "Filled 1.25 @ $100 (oid ?)");
+    assert_eq!(missing_filled_oid.order_oid(), None);
+    assert_eq!(missing_filled_oid.filled_total_size(), Some(1.25));
+    assert!(!missing_filled_oid.is_error());
+    assert!(missing_filled_oid.has_potential_order_effect());
+    assert!(!missing_filled_oid.is_fully_filled());
+    assert!(missing_filled_oid.is_ambiguous_order_result());
+    assert!(!missing_filled_oid.is_confirmed_modify_result());
 
     let invalid_filled_size = exchange_response(serde_json::json!({
         "filled": {
