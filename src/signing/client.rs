@@ -5,6 +5,7 @@ use crate::app_time::now_ms;
 use crate::helpers::sensitive_response_snippet;
 
 use serde_json::Value;
+use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
 
@@ -12,7 +13,7 @@ const EXCHANGE_URL: &str = "https://api.hyperliquid.xyz/exchange";
 const EXCHANGE_EXPIRES_AFTER_MS: u64 = 30_000;
 static LAST_EXCHANGE_NONCE_MS: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PlaceOrderRequest {
     pub asset: u32,
     pub is_buy: bool,
@@ -21,6 +22,20 @@ pub struct PlaceOrderRequest {
     pub order_kind: ExchangeOrderKind,
     pub reduce_only: bool,
     pub cloid: Option<String>,
+}
+
+impl fmt::Debug for PlaceOrderRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PlaceOrderRequest")
+            .field("asset", &self.asset)
+            .field("is_buy", &self.is_buy)
+            .field("price", &"<redacted>")
+            .field("size", &"<redacted>")
+            .field("order_kind", &self.order_kind)
+            .field("reduce_only", &self.reduce_only)
+            .field("has_cloid", &self.cloid.is_some())
+            .finish()
+    }
 }
 
 fn allocate_exchange_nonce_from(last_nonce_ms: &AtomicU64, now_ms: u64) -> u64 {

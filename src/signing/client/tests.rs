@@ -1,6 +1,7 @@
 use super::super::actions::HyperliquidL1Action;
+use super::super::model::ExchangeOrderKind;
 use super::{
-    EXCHANGE_EXPIRES_AFTER_MS, allocate_exchange_nonce_from,
+    EXCHANGE_EXPIRES_AFTER_MS, PlaceOrderRequest, allocate_exchange_nonce_from,
     build_signed_exchange_payload_with_nonce, exchange_payload_action,
     exchange_payload_contains_private_key, exchange_payload_expires_after, exchange_payload_nonce,
     exchange_payload_signature, exchange_payload_vault_address, parse_exchange_response,
@@ -98,6 +99,36 @@ fn signed_exchange_payload_error_does_not_echo_private_key() {
     assert!(error.contains("Invalid private key hex"));
     assert!(!error.contains(&invalid_key));
     assert!(!error.contains(TEST_PRIVATE_KEY));
+}
+
+#[test]
+fn place_order_request_debug_redacts_order_values_and_cloid() {
+    let request = PlaceOrderRequest {
+        asset: 110_003,
+        is_buy: true,
+        price: "price-secret".to_string(),
+        size: "size-secret".to_string(),
+        order_kind: ExchangeOrderKind::Limit,
+        reduce_only: true,
+        cloid: Some("0x11111111111111111111111111111111".to_string()),
+    };
+
+    let rendered = format!("{request:?}");
+
+    assert!(rendered.contains("PlaceOrderRequest"));
+    assert!(rendered.contains("asset: 110003"));
+    assert!(rendered.contains("is_buy: true"));
+    assert!(rendered.contains("order_kind: Limit"));
+    assert!(rendered.contains("reduce_only: true"));
+    assert!(rendered.contains("has_cloid: true"));
+    assert!(rendered.contains("<redacted>"));
+    for secret in [
+        "price-secret",
+        "size-secret",
+        "0x11111111111111111111111111111111",
+    ] {
+        assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
+    }
 }
 
 #[test]
