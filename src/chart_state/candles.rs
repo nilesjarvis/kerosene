@@ -1,6 +1,6 @@
 use super::{
     CandleFetchMode, CandleFetchRequest, ChartBackfillFetchContext, ChartBackfillRequestContext,
-    ChartId,
+    ChartId, ChartInstance,
 };
 use crate::api::{self, Candle};
 use crate::app_state::TradingTerminal;
@@ -19,6 +19,29 @@ pub(crate) const CANDLE_FETCH_MAX_ATTEMPTS: u8 = 4;
 pub(crate) const CANDLE_BACKFILL_MAX_CANDLES_PER_REQUEST: u64 = 4_000;
 
 impl TradingTerminal {
+    fn clear_chart_for_backfill_source_change(instance: &mut ChartInstance, status: ChartStatus) {
+        instance.chart.candles.clear();
+        instance.chart.status = status;
+        instance.chart.candle_cache.clear();
+        instance.candle_fetch_request = None;
+        instance.candle_fetch_error = None;
+        instance.candle_backfill_exhausted = false;
+        if instance.secondary_symbol.is_some() {
+            instance.chart.set_secondary_candles(Vec::new());
+        }
+        instance.secondary_candle_fetch_request = None;
+        instance.secondary_candle_fetch_error = None;
+        instance.secondary_candle_backfill_exhausted = false;
+        instance.heatmap_last_fetch = None;
+        instance.heatmap_viewport = None;
+        instance.heatmap_status = None;
+        instance.heatmap_fetching = false;
+        instance.last_price_flash = None;
+        Self::clear_heatmap_display(instance);
+        Self::clear_liquidation_display(instance);
+        Self::clear_funding_display(instance);
+    }
+
     /// Fetch hourly/daily/weekly/monthly candles for macro indicators, tagged with
     /// the chart ID and symbol that requested them.
     pub(crate) fn fetch_macro_candles_tasks(
@@ -379,25 +402,26 @@ impl TradingTerminal {
                     })
             })
             .collect();
+        let tick_chart_ids: Vec<_> = self
+            .charts
+            .iter()
+            .filter(|(_, instance)| instance.interval.uses_orderbook_tick_candles())
+            .map(|(chart_id, _)| *chart_id)
+            .collect();
 
         for request in &chart_requests {
             self.clear_chart_heatmap_pending_request_state(request.chart_id);
             self.clear_chart_liquidation_pending_request_state(request.chart_id);
             if let Some(instance) = self.charts.get_mut(&request.chart_id) {
-                instance.chart.candles.clear();
-                instance.chart.status = ChartStatus::Loading;
-                instance.chart.candle_cache.clear();
+                Self::clear_chart_for_backfill_source_change(instance, ChartStatus::Loading);
                 instance.candle_fetch_request = Some(request.clone());
-                instance.candle_fetch_error = None;
-                instance.candle_backfill_exhausted = false;
-                instance.heatmap_last_fetch = None;
-                instance.heatmap_viewport = None;
-                instance.heatmap_status = None;
-                instance.heatmap_fetching = false;
-                instance.last_price_flash = None;
-                Self::clear_heatmap_display(instance);
-                Self::clear_liquidation_display(instance);
-                Self::clear_funding_display(instance);
+            }
+        }
+        for chart_id in tick_chart_ids {
+            self.clear_chart_heatmap_pending_request_state(chart_id);
+            self.clear_chart_liquidation_pending_request_state(chart_id);
+            if let Some(instance) = self.charts.get_mut(&chart_id) {
+                Self::clear_chart_for_backfill_source_change(instance, ChartStatus::Loaded);
             }
         }
         for request in &secondary_chart_requests {
@@ -523,5 +547,53 @@ impl TradingTerminal {
             .retain(|existing| existing != &key);
         let source = self.chart_backfill_source_for_timeframe(tf);
         let _ = crate::api_cache::remove_candles(source, symbol, tf);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+
+    #[test]
+    fn source_change_clears_tick_chart_candles_without_backfill_request() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.charts.clear();
+
+        let mut tick_chart = ChartInstance::new(1, "BTC".to_string(), Timeframe::Tick);
+        tick_chart.chart.status = ChartStatus::Loaded;
+        tick_chart
+            .chart
+            .set_candles(vec![Candle::test_price(1_000, 100.0)]);
+        tick_chart.secondary_symbol = Some("ETH".to_string());
+        tick_chart.secondary_symbol_display = Some("ETH".to_string());
+        tick_chart
+            .chart
+            .set_secondary_series_identity("ETH".to_string(), "ETH".to_string());
+        tick_chart
+            .chart
+            .set_secondary_candles(vec![Candle::test_price(1_000, 50.0)]);
+        tick_chart.candle_fetch_error = Some("old provider error".to_string());
+        tick_chart.secondary_candle_fetch_error = Some("old secondary error".to_string());
+        terminal.charts.insert(1, tick_chart);
+
+        let _task = terminal.reload_chart_backfills_for_source_change();
+
+        let tick_chart = terminal.charts.get(&1).expect("tick chart should remain");
+        assert!(tick_chart.chart.candles.is_empty());
+        assert!(matches!(tick_chart.chart.status, ChartStatus::Loaded));
+        assert!(tick_chart.candle_fetch_request.is_none());
+        assert!(tick_chart.candle_fetch_error.is_none());
+        assert!(
+            tick_chart
+                .chart
+                .secondary_series
+                .as_ref()
+                .expect("secondary series should remain configured")
+                .candles
+                .is_empty()
+        );
+        assert!(tick_chart.secondary_candle_fetch_request.is_none());
+        assert!(tick_chart.secondary_candle_fetch_error.is_none());
     }
 }
