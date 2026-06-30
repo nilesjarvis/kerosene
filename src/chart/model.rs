@@ -341,6 +341,7 @@ pub struct TradeMarker {
 pub struct EarningsMarker {
     pub time_ms: u64,
     pub cik: u64,
+    pub form: String,
     pub filing_date: String,
     pub accession_number: String,
     pub primary_document: String,

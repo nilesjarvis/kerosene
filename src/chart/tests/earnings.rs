@@ -7,6 +7,7 @@ fn chart_with_earnings_marker() -> CandlestickChart {
     chart.set_earnings_markers(vec![EarningsMarker {
         time_ms: 2_000,
         cik: 1_652_044,
+        form: "8-K".to_string(),
         filing_date: "2026-04-29".to_string(),
         accession_number: "0001652044-26-000043".to_string(),
         primary_document: "goog-20260429.htm".to_string(),

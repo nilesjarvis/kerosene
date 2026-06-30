@@ -362,6 +362,7 @@ fn earnings_markers_from_events(events: &[SecEarningsEvent]) -> Vec<EarningsMark
         .map(|event| EarningsMarker {
             time_ms: event.filing_time_ms,
             cik: event.cik,
+            form: event.form.clone(),
             filing_date: event.filing_date.clone(),
             accession_number: event.accession_number.clone(),
             primary_document: event.primary_document.clone(),
@@ -521,6 +522,7 @@ mod tests {
         assert_eq!(markers.len(), 1);
         assert_eq!(markers[0].time_ms, 1_777_420_800_000);
         assert_eq!(markers[0].cik, 1_652_044);
+        assert_eq!(markers[0].form, "8-K");
         assert_eq!(markers[0].filing_date, "2026-04-29");
         assert_eq!(markers[0].accession_number, "0001652044-26-000043");
         assert_eq!(markers[0].primary_document, "goog-20260429.htm");

@@ -1,18 +1,20 @@
 use super::CandleLayerContext;
 use crate::chart::model::{CandlestickChart, EarningsMarker};
 use crate::chart::state::ChartState;
+use crate::helpers::text_color_for_bg;
 use iced::widget::canvas;
-use iced::{Color, Point};
+use iced::{Color, Point, alignment};
 
 // ---------------------------------------------------------------------------
 // Earnings Marker Rendering
 // ---------------------------------------------------------------------------
 
-const EARNINGS_LINE_ALPHA: f32 = 0.12;
-const EARNINGS_DOT_ALPHA: f32 = 0.72;
-pub(in crate::chart) const EARNINGS_DOT_RADIUS: f32 = 2.75;
-const EARNINGS_DOT_BOTTOM_PADDING: f32 = 5.0;
-const EARNINGS_DOT_HIT_RADIUS: f32 = 8.0;
+const EARNINGS_LINE_ALPHA: f32 = 0.2;
+const EARNINGS_DOT_ALPHA: f32 = 0.88;
+pub(in crate::chart) const EARNINGS_DOT_RADIUS: f32 = 9.5;
+const EARNINGS_DOT_BOTTOM_PADDING: f32 = 11.0;
+const EARNINGS_DOT_HIT_RADIUS: f32 = 12.0;
+const EARNINGS_DOT_LABEL_SIZE: f32 = 7.0;
 
 impl CandlestickChart {
     pub(super) fn draw_earnings_markers<IdxToCx, PriceToY>(
@@ -46,21 +48,42 @@ impl CandlestickChart {
         };
         let dot_y = earnings_marker_dot_y(ctx.price_h);
 
-        for (x, _) in positions {
+        for (x, marker) in positions {
             ctx.fisheye.stroke_projected_line_without_edge_blur(
                 frame,
                 Point::new(x, 0.0),
                 Point::new(x, ctx.price_h),
                 canvas::Stroke::default()
                     .with_color(line_color)
+                    .with_width(1.0),
+            );
+            let marker_center = Point::new(x, dot_y);
+            ctx.fisheye
+                .fill_projected_circle(frame, marker_center, EARNINGS_DOT_RADIUS, dot_color);
+            ctx.fisheye.stroke_projected_circle(
+                frame,
+                marker_center,
+                EARNINGS_DOT_RADIUS,
+                canvas::Stroke::default()
+                    .with_color(Color {
+                        a: 0.34,
+                        ..ctx.theme.palette().text
+                    })
                     .with_width(0.75),
             );
-            ctx.fisheye.fill_projected_circle(
-                frame,
-                Point::new(x, dot_y),
-                EARNINGS_DOT_RADIUS,
-                dot_color,
-            );
+            if let Some(label) = compact_earnings_form_label(&marker.form) {
+                let visual_center = ctx.fisheye.project(marker_center);
+                frame.fill_text(canvas::Text {
+                    content: label,
+                    position: visual_center,
+                    color: text_color_for_bg(dot_color),
+                    size: iced::Pixels(EARNINGS_DOT_LABEL_SIZE),
+                    align_x: alignment::Horizontal::Center.into(),
+                    align_y: alignment::Vertical::Center,
+                    font: crate::app_fonts::monospace_font(),
+                    ..canvas::Text::default()
+                });
+            }
         }
     }
 
@@ -107,6 +130,21 @@ pub(in crate::chart) fn earnings_marker_dot_y(price_h: f32) -> f32 {
     (price_h - EARNINGS_DOT_BOTTOM_PADDING).max(EARNINGS_DOT_RADIUS)
 }
 
+fn compact_earnings_form_label(form: &str) -> Option<String> {
+    let form = form
+        .trim()
+        .split_once('/')
+        .map_or(form.trim(), |(base, _)| base);
+    let compact = form
+        .trim()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .take(4)
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect::<String>();
+    (!compact.is_empty()).then_some(compact)
+}
+
 fn visible_earnings_marker_xs<F>(
     markers: &[EarningsMarker],
     chart_w: f32,
@@ -136,6 +174,7 @@ mod tests {
         EarningsMarker {
             time_ms,
             cik: 1_652_044,
+            form: "8-K".to_string(),
             filing_date: String::new(),
             accession_number: String::new(),
             primary_document: String::new(),
@@ -199,7 +238,7 @@ mod tests {
         assert_eq!(
             chart.hit_test_earnings_marker_at(
                 &state,
-                Point::new(marker_x + 6.0, marker_y),
+                Point::new(marker_x + 10.0, marker_y),
                 chart_w,
                 price_h,
             ),
@@ -208,11 +247,22 @@ mod tests {
         assert_eq!(
             chart.hit_test_earnings_marker_at(
                 &state,
-                Point::new(marker_x + 12.0, marker_y),
+                Point::new(marker_x + 15.0, marker_y),
                 chart_w,
                 price_h,
             ),
             None
         );
+    }
+
+    #[test]
+    fn compact_earnings_form_label_fits_common_sec_forms() {
+        assert_eq!(compact_earnings_form_label("8-K").as_deref(), Some("8K"));
+        assert_eq!(compact_earnings_form_label("10-Q").as_deref(), Some("10Q"));
+        assert_eq!(
+            compact_earnings_form_label("10-K/A").as_deref(),
+            Some("10K")
+        );
+        assert_eq!(compact_earnings_form_label(" ").as_deref(), None);
     }
 }

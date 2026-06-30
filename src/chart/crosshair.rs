@@ -49,7 +49,7 @@ const HUD_MARKET_TARGET_RADIUS: f32 = 11.5;
 const HUD_MARKET_TARGET_LINE_GAP: f32 = HUD_MARKET_TARGET_RADIUS + 6.0;
 const HUD_JET_TAPE_GAP: f32 = 46.0;
 const HUD_JET_TAPE_TEXT_SIZE: f32 = 11.0;
-const EARNINGS_HOVER_RADIUS: f32 = 8.5;
+const EARNINGS_HOVER_RADIUS: f32 = 12.5;
 
 pub(super) struct CrosshairOverlayContext<'a, PriceToY>
 where
@@ -340,7 +340,7 @@ impl CandlestickChart {
                 .with_width(0.75 + 0.35 * hover),
         );
 
-        let mut lines = Vec::with_capacity(4);
+        let mut lines = Vec::with_capacity(5);
         lines.push(TooltipLine {
             content: format!(
                 "EARN {}",
@@ -355,6 +355,15 @@ impl CandlestickChart {
             lines.push(TooltipLine {
                 content: format!("Filing # {}", marker.accession_number),
                 color: accent,
+            });
+        }
+        if !marker.form.is_empty() {
+            lines.push(TooltipLine {
+                content: format!("Form {}", marker.form),
+                color: Color {
+                    a: 0.68,
+                    ..ctx.theme.palette().text
+                },
             });
         }
         if !marker.filing_date.is_empty() {
