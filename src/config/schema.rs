@@ -299,6 +299,14 @@ pub struct KeroseneConfig {
     #[serde(default)]
     #[serde(skip_serializing)]
     pub x_access_token: Zeroizing<String>,
+    /// X OAuth 2.0 Client ID used to refresh the X Feed access token.
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    pub x_oauth_client_id: Zeroizing<String>,
+    /// X OAuth 2.0 refresh token for the X Feed integration.
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    pub x_refresh_token: Zeroizing<String>,
     /// Sound notifications enabled.
     #[serde(default)]
     pub sound_enabled: bool,

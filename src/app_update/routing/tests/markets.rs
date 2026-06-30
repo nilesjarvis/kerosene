@@ -16,7 +16,26 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::HydromancerKeyInputChanged(String::new().into()),
         UpdateRoute::Feed,
     );
+    assert_route(
+        Message::XFeedAccessTokenChanged(String::new().into()),
+        UpdateRoute::Feed,
+    );
+    assert_route(
+        Message::XFeedOAuthClientIdChanged(String::new().into()),
+        UpdateRoute::Feed,
+    );
+    assert_route(
+        Message::XFeedRefreshTokenChanged(String::new().into()),
+        UpdateRoute::Feed,
+    );
     assert_route(Message::XFeedConnect, UpdateRoute::Feed);
+    assert_route(
+        Message::XAccessTokenRefreshed(
+            1,
+            crate::message::XAccessTokenRefreshMessageResult::new(Err(String::new())),
+        ),
+        UpdateRoute::Feed,
+    );
     assert_route(Message::RefreshXFeed(0), UpdateRoute::Feed);
     assert_route(
         Message::XProfileImageLoaded(

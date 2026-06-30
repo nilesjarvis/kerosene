@@ -91,7 +91,7 @@ pub(crate) use secrets::push_secret_warning;
 pub use secrets::{
     EncryptedSecretsConfig, SecretPayload, clear_all_keychain_secrets,
     clear_keychain_secret_payload, clear_profile_secrets, decrypt_secrets, encrypt_secrets,
-    store_keychain_secrets_with_profile_removals_with_x, store_keychain_secrets_with_x,
+    store_keychain_secrets_with_profile_removals_with_x_oauth, store_keychain_secrets_with_x_oauth,
     take_secret_warnings,
 };
 pub(crate) use secrets::{

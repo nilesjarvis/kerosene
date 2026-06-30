@@ -46,6 +46,8 @@ impl TradingTerminal {
         let palette = theme.palette();
         let (label, color) = if self.x_feed.auth_user.is_some() {
             ("X · AUTH", palette.success)
+        } else if self.x_feed.has_refresh_credentials() {
+            ("X · REFRESH", palette.primary)
         } else if self.x_feed.has_access_token() {
             ("X · TOKEN", palette.primary)
         } else {
@@ -118,8 +120,26 @@ impl TradingTerminal {
         .padding([6, 8])
         .size(11)
         .width(Fill);
+        let client_id_input =
+            text_input("X OAuth 2.0 Client ID", &self.x_feed.oauth_client_id_input)
+                .on_input(|value| Message::XFeedOAuthClientIdChanged(value.into()))
+                .on_submit(Message::XFeedConnect)
+                .secure(true)
+                .padding([6, 8])
+                .size(11)
+                .width(Length::FillPortion(1));
+        let refresh_token_input = text_input(
+            "X OAuth 2.0 refresh token",
+            &self.x_feed.refresh_token_input,
+        )
+        .on_input(|value| Message::XFeedRefreshTokenChanged(value.into()))
+        .on_submit(Message::XFeedConnect)
+        .secure(true)
+        .padding([6, 8])
+        .size(11)
+        .width(Length::FillPortion(2));
         let connect = button(
-            text(if self.x_feed.connecting {
+            text(if self.x_feed.connecting || self.x_feed.token_refreshing {
                 "Connecting"
             } else {
                 "Connect"
@@ -135,6 +155,9 @@ impl TradingTerminal {
         column![
             top,
             row![token_input, connect, clear]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            row![client_id_input, refresh_token_input]
                 .spacing(8)
                 .align_y(Alignment::Center),
         ]

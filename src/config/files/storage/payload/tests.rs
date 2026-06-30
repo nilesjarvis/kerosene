@@ -35,6 +35,8 @@ fn merge_plaintext_secrets_prefers_existing_payload_values() {
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
         x_access_token: "x-token".to_string().into(),
+        x_oauth_client_id: "x-client".to_string().into(),
+        x_refresh_token: "x-refresh".to_string().into(),
         ..KeroseneConfig::default()
     };
     let mut payload = SecretPayload::from_credentials(
@@ -53,6 +55,8 @@ fn merge_plaintext_secrets_prefers_existing_payload_values() {
     assert_eq!(payload.global_hydromancer_api_key(), "existing-hydro");
     assert_eq!(payload.global_hyperdash_api_key(), "global-hyper");
     assert_eq!(payload.global_x_access_token(), "x-token");
+    assert_eq!(payload.global_x_oauth_client_id(), "x-client");
+    assert_eq!(payload.global_x_refresh_token(), "x-refresh");
 }
 
 #[test]
@@ -125,13 +129,17 @@ fn apply_secret_payload_replaces_plaintext_and_clears_profile_integrations() {
         hydromancer_api_key: "old-global-hydro".to_string().into(),
         hyperdash_api_key: "old-global-hyper".to_string().into(),
         x_access_token: "old-x-token".to_string().into(),
+        x_oauth_client_id: "old-x-client".to_string().into(),
+        x_refresh_token: "old-x-refresh".to_string().into(),
         ..KeroseneConfig::default()
     };
-    let payload = SecretPayload::from_credentials_with_x(
+    let payload = SecretPayload::from_credentials_with_x_oauth(
         &[test_profile("one", "new-agent", "")],
         "new-global-hydro",
         "new-global-hyper",
         "new-x-token",
+        "new-x-client",
+        "new-x-refresh",
     );
 
     apply_secret_payload(&mut config, &payload);
@@ -143,12 +151,16 @@ fn apply_secret_payload_replaces_plaintext_and_clears_profile_integrations() {
     assert_eq!(config.hydromancer_api_key.as_str(), "new-global-hydro");
     assert_eq!(config.hyperdash_api_key.as_str(), "new-global-hyper");
     assert_eq!(config.x_access_token.as_str(), "new-x-token");
+    assert_eq!(config.x_oauth_client_id.as_str(), "new-x-client");
+    assert_eq!(config.x_refresh_token.as_str(), "new-x-refresh");
 }
 
 #[test]
-fn apply_secret_payload_preserving_plaintext_only_replaces_present_x_token() {
+fn apply_secret_payload_preserving_plaintext_only_replaces_present_x_credentials() {
     let mut config = KeroseneConfig {
         x_access_token: "old-x-token".to_string().into(),
+        x_oauth_client_id: "old-x-client".to_string().into(),
+        x_refresh_token: "old-x-refresh".to_string().into(),
         ..KeroseneConfig::default()
     };
     let empty_payload = SecretPayload::from_credentials(&[], "", "");
@@ -156,11 +168,22 @@ fn apply_secret_payload_preserving_plaintext_only_replaces_present_x_token() {
     apply_secret_payload_preserving_missing_plaintext(&mut config, &empty_payload);
 
     assert_eq!(config.x_access_token.as_str(), "old-x-token");
+    assert_eq!(config.x_oauth_client_id.as_str(), "old-x-client");
+    assert_eq!(config.x_refresh_token.as_str(), "old-x-refresh");
 
-    let stored_payload = SecretPayload::from_credentials_with_x(&[], "", "", "stored-x-token");
+    let stored_payload = SecretPayload::from_credentials_with_x_oauth(
+        &[],
+        "",
+        "",
+        "stored-x-token",
+        "stored-x-client",
+        "stored-x-refresh",
+    );
     apply_secret_payload_preserving_missing_plaintext(&mut config, &stored_payload);
 
     assert_eq!(config.x_access_token.as_str(), "stored-x-token");
+    assert_eq!(config.x_oauth_client_id.as_str(), "stored-x-client");
+    assert_eq!(config.x_refresh_token.as_str(), "stored-x-refresh");
 }
 
 #[test]

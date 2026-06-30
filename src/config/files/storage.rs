@@ -258,11 +258,13 @@ fn load_os_keychain_secrets_with(
         return;
     }
 
-    let payload = SecretPayload::from_credentials_with_x(
+    let payload = SecretPayload::from_credentials_with_x_oauth(
         &config.accounts,
         &config.hydromancer_api_key,
         &config.hyperdash_api_key,
         &config.x_access_token,
+        &config.x_oauth_client_id,
+        &config.x_refresh_token,
     );
     if !payload.is_empty() {
         match store_payload(&payload) {
@@ -456,6 +458,10 @@ fn normalize_legacy_plaintext_secrets(config: &mut KeroseneConfig) -> Result<(),
     config.hyperdash_api_key = legacy_hyperdash_key.to_string().into();
     let legacy_x_access_token = std::mem::take(&mut config.x_access_token);
     config.x_access_token = legacy_x_access_token.to_string().into();
+    let legacy_x_oauth_client_id = std::mem::take(&mut config.x_oauth_client_id);
+    config.x_oauth_client_id = legacy_x_oauth_client_id.to_string().into();
+    let legacy_x_refresh_token = std::mem::take(&mut config.x_refresh_token);
+    config.x_refresh_token = legacy_x_refresh_token.to_string().into();
     Ok(())
 }
 
@@ -464,6 +470,8 @@ fn has_legacy_plaintext_secrets(config: &KeroseneConfig) -> bool {
         || !config.hydromancer_api_key.trim().is_empty()
         || !config.hyperdash_api_key.trim().is_empty()
         || !config.x_access_token.trim().is_empty()
+        || !config.x_oauth_client_id.trim().is_empty()
+        || !config.x_refresh_token.trim().is_empty()
         || config.accounts.iter().any(|profile| {
             !profile.agent_key.trim().is_empty() || !profile.hydromancer_api_key.trim().is_empty()
         })
@@ -493,6 +501,8 @@ fn clear_plaintext_secret_fields(config: &mut KeroseneConfig) {
     config.hydromancer_api_key.zeroize();
     config.hyperdash_api_key.zeroize();
     config.x_access_token.zeroize();
+    config.x_oauth_client_id.zeroize();
+    config.x_refresh_token.zeroize();
 }
 
 fn lock_encrypted_config_secrets_with(

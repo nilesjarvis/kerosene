@@ -62,6 +62,8 @@ fn serialized_config_keeps_raw_credentials_out_of_json() {
         hydromancer_api_key: "hydro-secret".to_string().into(),
         hyperdash_api_key: "hyper-secret".to_string().into(),
         x_access_token: "x-secret".to_string().into(),
+        x_oauth_client_id: "x-client-secret".to_string().into(),
+        x_refresh_token: "x-refresh-secret".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -73,6 +75,8 @@ fn serialized_config_keeps_raw_credentials_out_of_json() {
     assert!(!json.contains("hydro-secret"));
     assert!(!json.contains("hyper-secret"));
     assert!(!json.contains("x-secret"));
+    assert!(!json.contains("x-client-secret"));
+    assert!(!json.contains("x-refresh-secret"));
 }
 
 #[test]

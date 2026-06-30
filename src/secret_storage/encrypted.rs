@@ -12,12 +12,15 @@ use zeroize::{Zeroize, Zeroizing};
 impl TradingTerminal {
     pub(crate) fn current_secret_payload(&self) -> config::SecretPayload {
         let accounts = self.persisted_accounts_snapshot();
-        let x_access_token = self.x_feed.access_token_for_secret();
-        config::SecretPayload::from_credentials_with_x(
+        let (x_access_token, x_oauth_client_id, x_refresh_token) =
+            self.x_feed.oauth_credentials_for_secret();
+        config::SecretPayload::from_credentials_with_x_oauth(
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
             x_access_token.as_str(),
+            x_oauth_client_id.as_str(),
+            x_refresh_token.as_str(),
         )
     }
 
@@ -188,6 +191,9 @@ impl TradingTerminal {
             .unwrap_or_default()
             .into();
         let x_access_token = Zeroizing::new(payload.global_x_access_token().trim().to_string());
+        let x_oauth_client_id =
+            Zeroizing::new(payload.global_x_oauth_client_id().trim().to_string());
+        let x_refresh_token = Zeroizing::new(payload.global_x_refresh_token().trim().to_string());
         let previous_hydromancer_key = Zeroizing::new(self.hydromancer_api_key.trim().to_string());
         let previous_hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_key_changed =
@@ -218,8 +224,12 @@ impl TradingTerminal {
         if hyperdash_key_changed {
             self.bump_hyperdash_key_generation();
         }
-        self.x_feed
-            .set_access_token_from_secret(x_access_token.as_str());
+        self.x_feed.set_oauth_credentials_from_secret(
+            x_access_token.as_str(),
+            x_oauth_client_id.as_str(),
+            x_refresh_token.as_str(),
+            None,
+        );
 
         if hydromancer_key_changed {
             self.liquidations_last_rx_ms = None;
@@ -522,28 +532,51 @@ mod tests {
     }
 
     #[test]
-    fn current_secret_payload_includes_x_access_token() {
+    fn current_secret_payload_includes_x_oauth_credentials() {
         let mut terminal = TradingTerminal::boot().0;
         terminal.hydromancer_api_key = sensitive_string("hydro-secret");
         terminal.hyperdash_api_key = sensitive_string("hyper-secret");
-        terminal.x_feed.set_access_token_from_secret("x-secret");
+        terminal.x_feed.set_oauth_credentials_from_secret(
+            "x-secret",
+            "x-client",
+            "x-refresh",
+            None,
+        );
 
         let payload = terminal.current_secret_payload();
 
         assert_eq!(payload.global_hydromancer_api_key(), "hydro-secret");
         assert_eq!(payload.global_hyperdash_api_key(), "hyper-secret");
         assert_eq!(payload.global_x_access_token(), "x-secret");
+        assert_eq!(payload.global_x_oauth_client_id(), "x-client");
+        assert_eq!(payload.global_x_refresh_token(), "x-refresh");
     }
 
     #[test]
-    fn encrypted_payload_apply_hydrates_x_access_token() {
+    fn encrypted_payload_apply_hydrates_x_oauth_credentials() {
         let mut terminal = TradingTerminal::boot().0;
-        terminal.x_feed.set_access_token_from_secret("old-x");
-        let payload = SecretPayload::from_credentials_with_x(&[], "", "", "new-x");
+        terminal.x_feed.set_oauth_credentials_from_secret(
+            "old-x",
+            "old-client",
+            "old-refresh",
+            None,
+        );
+        let payload = SecretPayload::from_credentials_with_x_oauth(
+            &[],
+            "",
+            "",
+            "new-x",
+            "new-client",
+            "new-refresh",
+        );
 
         let _skipped = terminal.apply_secret_payload(payload);
 
-        assert_eq!(terminal.x_feed.access_token_for_secret().as_str(), "new-x");
+        let (access_token, client_id, refresh_token) =
+            terminal.x_feed.oauth_credentials_for_secret();
+        assert_eq!(access_token.as_str(), "new-x");
+        assert_eq!(client_id.as_str(), "new-client");
+        assert_eq!(refresh_token.as_str(), "new-refresh");
     }
 
     #[test]

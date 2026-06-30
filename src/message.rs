@@ -55,7 +55,7 @@ use crate::wallet_cluster_state::WalletClusterCloseSide;
 use crate::ws::WsUserData;
 use crate::x_feed::{
     XAuthenticatedUser, XFeedId, XFeedPage, XFeedRequestError, XFeedSource, XFeedSourceOption,
-    XListsFetchOutcome,
+    XListsFetchOutcome, XOAuthTokenRefresh,
 };
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
@@ -412,6 +412,34 @@ impl fmt::Debug for XAuthContextMessageResult {
                 .finish(),
             Err(error) => f
                 .debug_tuple("XAuthContextMessageResult")
+                .field(&crate::helpers::redact_sensitive_response_text(error))
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct XAccessTokenRefreshMessageResult(Box<Result<XOAuthTokenRefresh, String>>);
+
+impl XAccessTokenRefreshMessageResult {
+    pub(crate) fn new(result: Result<XOAuthTokenRefresh, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<XOAuthTokenRefresh, String> {
+        *self.0
+    }
+}
+
+impl fmt::Debug for XAccessTokenRefreshMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(refresh) => f
+                .debug_struct("XAccessTokenRefreshMessageResult")
+                .field("refresh", refresh)
+                .finish(),
+            Err(error) => f
+                .debug_tuple("XAccessTokenRefreshMessageResult")
                 .field(&crate::helpers::redact_sensitive_response_text(error))
                 .finish(),
         }
@@ -943,7 +971,10 @@ pub(crate) enum Message {
     ToggleTelegramFeedNotifications,
     ToggleTelegramFeedOutcomeMarkets,
     XFeedAccessTokenChanged(SecretInput),
+    XFeedOAuthClientIdChanged(SecretInput),
+    XFeedRefreshTokenChanged(SecretInput),
     XFeedConnect,
+    XAccessTokenRefreshed(u64, XAccessTokenRefreshMessageResult),
     XFeedAuthLoaded(u64, XAuthContextMessageResult),
     XFeedClearAccessToken,
     XFeedListsRefresh,
@@ -1394,8 +1425,9 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedOrderInput, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
-        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAuthContextMessageResult,
-        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
+        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
+        XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
+        XProfileImageMessageResult,
     };
     use crate::api::{ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo};
     use crate::chart_state::ChartSurfaceId;
@@ -1464,6 +1496,20 @@ mod tests {
                 })),
             ),
             Message::XFeedAccessTokenChanged("sentinel-secret".into()),
+            Message::XFeedOAuthClientIdChanged("sentinel-secret".into()),
+            Message::XFeedRefreshTokenChanged("sentinel-secret".into()),
+            Message::XAccessTokenRefreshed(
+                1,
+                XAccessTokenRefreshMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::XAccessTokenRefreshed(
+                2,
+                XAccessTokenRefreshMessageResult::new(Ok(crate::x_feed::XOAuthTokenRefresh {
+                    access_token: "sentinel-secret".to_string().into(),
+                    refresh_token: Some("sentinel-secret".to_string().into()),
+                    expires_in_secs: Some(7_200),
+                })),
+            ),
             Message::XFeedAuthLoaded(
                 1,
                 XAuthContextMessageResult::new(Err("sentinel-secret".to_string())),

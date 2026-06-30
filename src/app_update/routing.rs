@@ -601,7 +601,10 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleTelegramFeedNotifications
         | Message::ToggleTelegramFeedOutcomeMarkets
         | Message::XFeedAccessTokenChanged(_)
+        | Message::XFeedOAuthClientIdChanged(_)
+        | Message::XFeedRefreshTokenChanged(_)
         | Message::XFeedConnect
+        | Message::XAccessTokenRefreshed(_, _)
         | Message::XFeedAuthLoaded(_, _)
         | Message::XFeedClearAccessToken
         | Message::XFeedListsRefresh

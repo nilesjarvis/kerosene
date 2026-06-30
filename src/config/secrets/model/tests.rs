@@ -183,6 +183,12 @@ fn secret_payload_mutators_keep_bundle_compact() {
     assert!(payload.set_global_x_access_token("x-token"));
     assert!(!payload.set_global_x_access_token("x-token"));
     assert_eq!(payload.global_x_access_token(), "x-token");
+    assert!(payload.set_global_x_oauth_client_id("x-client"));
+    assert!(!payload.set_global_x_oauth_client_id("x-client"));
+    assert_eq!(payload.global_x_oauth_client_id(), "x-client");
+    assert!(payload.set_global_x_refresh_token("x-refresh"));
+    assert!(!payload.set_global_x_refresh_token("x-refresh"));
+    assert_eq!(payload.global_x_refresh_token(), "x-refresh");
     assert!(!payload.is_empty());
 }
 
@@ -193,24 +199,41 @@ fn global_secret_payload_defaults_missing_integration_keys() {
     assert_eq!(payload.hydromancer_api_key.as_str(), "");
     assert_eq!(payload.hyperdash_api_key.as_str(), "");
     assert_eq!(payload.x_access_token.as_str(), "");
+    assert_eq!(payload.x_oauth_client_id.as_str(), "");
+    assert_eq!(payload.x_refresh_token.as_str(), "");
 
     let payload: GlobalSecretPayload =
         serde_json::from_str(r#"{"hydromancer_api_key":"hydro"}"#).unwrap();
     assert_eq!(payload.hydromancer_api_key.as_str(), "hydro");
     assert_eq!(payload.hyperdash_api_key.as_str(), "");
     assert_eq!(payload.x_access_token.as_str(), "");
+    assert_eq!(payload.x_oauth_client_id.as_str(), "");
+    assert_eq!(payload.x_refresh_token.as_str(), "");
 
     let payload: GlobalSecretPayload =
         serde_json::from_str(r#"{"hyperdash_api_key":"hyper"}"#).unwrap();
     assert_eq!(payload.hydromancer_api_key.as_str(), "");
     assert_eq!(payload.hyperdash_api_key.as_str(), "hyper");
     assert_eq!(payload.x_access_token.as_str(), "");
+    assert_eq!(payload.x_oauth_client_id.as_str(), "");
+    assert_eq!(payload.x_refresh_token.as_str(), "");
 
     let payload: GlobalSecretPayload =
         serde_json::from_str(r#"{"x_access_token":"x-token"}"#).unwrap();
     assert_eq!(payload.hydromancer_api_key.as_str(), "");
     assert_eq!(payload.hyperdash_api_key.as_str(), "");
     assert_eq!(payload.x_access_token.as_str(), "x-token");
+    assert_eq!(payload.x_oauth_client_id.as_str(), "");
+    assert_eq!(payload.x_refresh_token.as_str(), "");
+
+    let payload: GlobalSecretPayload =
+        serde_json::from_str(r#"{"x_oauth_client_id":"x-client","x_refresh_token":"x-refresh"}"#)
+            .unwrap();
+    assert_eq!(payload.hydromancer_api_key.as_str(), "");
+    assert_eq!(payload.hyperdash_api_key.as_str(), "");
+    assert_eq!(payload.x_access_token.as_str(), "");
+    assert_eq!(payload.x_oauth_client_id.as_str(), "x-client");
+    assert_eq!(payload.x_refresh_token.as_str(), "x-refresh");
 }
 
 #[test]
@@ -226,6 +249,8 @@ fn secret_payload_defaults_missing_global_bundle() {
     assert_eq!(payload.global_hydromancer_api_key(), "");
     assert_eq!(payload.global_hyperdash_api_key(), "");
     assert_eq!(payload.global_x_access_token(), "");
+    assert_eq!(payload.global_x_oauth_client_id(), "");
+    assert_eq!(payload.global_x_refresh_token(), "");
 }
 
 #[test]
@@ -241,6 +266,8 @@ fn secret_payload_defaults_missing_profiles_bundle() {
     assert_eq!(payload.global_hydromancer_api_key(), "hydro");
     assert_eq!(payload.global_hyperdash_api_key(), "");
     assert_eq!(payload.global_x_access_token(), "");
+    assert_eq!(payload.global_x_oauth_client_id(), "");
+    assert_eq!(payload.global_x_refresh_token(), "");
 }
 
 #[test]
@@ -250,11 +277,13 @@ fn secret_payload_debug_redacts_secret_values() {
         "0xABCDEFabcdefABCDEFabcdefABCDEFabcdefabcd",
         "agent-secret",
     )];
-    let payload = SecretPayload::from_credentials_with_x(
+    let payload = SecretPayload::from_credentials_with_x_oauth(
         &profiles,
         "hydro-secret",
         "hyper-secret",
         "x-secret",
+        "x-client-secret",
+        "x-refresh-secret",
     );
 
     let rendered = format!("{payload:?}");
@@ -267,6 +296,8 @@ fn secret_payload_debug_redacts_secret_values() {
         "hydro-secret",
         "hyper-secret",
         "x-secret",
+        "x-client-secret",
+        "x-refresh-secret",
     ] {
         assert!(!rendered.contains(secret), "debug output leaked {secret}");
     }

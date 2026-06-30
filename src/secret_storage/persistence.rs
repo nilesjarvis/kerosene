@@ -12,6 +12,8 @@ struct SecretPersistenceValues<'a> {
     hydromancer_api_key: &'a str,
     hyperdash_api_key: &'a str,
     x_access_token: &'a str,
+    x_oauth_client_id: &'a str,
+    x_refresh_token: &'a str,
     removed_profile_secret_ids: &'a [String],
 }
 
@@ -29,11 +31,13 @@ impl TradingTerminal {
         success_message: &str,
         failure_prefix: &str,
     ) -> bool {
-        match config::store_keychain_secrets_with_profile_removals_with_x(
+        match config::store_keychain_secrets_with_profile_removals_with_x_oauth(
             values.accounts,
             values.hydromancer_api_key,
             values.hyperdash_api_key,
             values.x_access_token,
+            values.x_oauth_client_id,
+            values.x_refresh_token,
             values.removed_profile_secret_ids,
         ) {
             Ok(cleanup_warning) => {
@@ -74,13 +78,16 @@ impl TradingTerminal {
     ) -> bool {
         let hydromancer_api_key = Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
         let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
-        let x_access_token = self.x_feed.access_token_for_secret();
+        let (x_access_token, x_oauth_client_id, x_refresh_token) =
+            self.x_feed.oauth_credentials_for_secret();
         self.persist_keychain_credentials_from_values(
             SecretPersistenceValues {
                 accounts,
                 hydromancer_api_key: hydromancer_api_key.as_str(),
                 hyperdash_api_key: hyperdash_api_key.as_str(),
                 x_access_token: x_access_token.as_str(),
+                x_oauth_client_id: x_oauth_client_id.as_str(),
+                x_refresh_token: x_refresh_token.as_str(),
                 removed_profile_secret_ids,
             },
             success_message,
@@ -103,12 +110,15 @@ impl TradingTerminal {
                     &removed_profile_secret_ids,
                 ),
             config::CredentialStorageMode::EncryptedConfig => {
-                let x_access_token = self.x_feed.access_token_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x(
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
+                let payload = config::SecretPayload::from_credentials_with_x_oauth(
                     accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
                     x_access_token.as_str(),
+                    x_oauth_client_id.as_str(),
+                    x_refresh_token.as_str(),
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
@@ -143,12 +153,15 @@ impl TradingTerminal {
                     &[],
                 ),
             config::CredentialStorageMode::EncryptedConfig => {
-                let x_access_token = self.x_feed.access_token_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x(
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
+                let payload = config::SecretPayload::from_credentials_with_x_oauth(
                     accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
                     x_access_token.as_str(),
+                    x_oauth_client_id.as_str(),
+                    x_refresh_token.as_str(),
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
@@ -168,13 +181,16 @@ impl TradingTerminal {
             config::CredentialStorageMode::OsKeychain => {
                 let accounts = self.persisted_accounts_snapshot();
                 let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
-                let x_access_token = self.x_feed.access_token_for_secret();
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
                 self.persist_keychain_credentials_from_values(
                     SecretPersistenceValues {
                         accounts: &accounts,
                         hydromancer_api_key,
                         hyperdash_api_key: hyperdash_api_key.as_str(),
                         x_access_token: x_access_token.as_str(),
+                        x_oauth_client_id: x_oauth_client_id.as_str(),
+                        x_refresh_token: x_refresh_token.as_str(),
                         removed_profile_secret_ids: &[],
                     },
                     "Hydromancer key saved to OS keychain",
@@ -183,12 +199,15 @@ impl TradingTerminal {
             }
             config::CredentialStorageMode::EncryptedConfig => {
                 let accounts = self.persisted_accounts_snapshot();
-                let x_access_token = self.x_feed.access_token_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x(
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
+                let payload = config::SecretPayload::from_credentials_with_x_oauth(
                     &accounts,
                     hydromancer_api_key,
                     &self.hyperdash_api_key,
                     x_access_token.as_str(),
+                    x_oauth_client_id.as_str(),
+                    x_refresh_token.as_str(),
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
@@ -206,13 +225,16 @@ impl TradingTerminal {
                 let accounts = self.persisted_accounts_snapshot();
                 let hydromancer_api_key =
                     Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
-                let x_access_token = self.x_feed.access_token_for_secret();
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
                 self.persist_keychain_credentials_from_values(
                     SecretPersistenceValues {
                         accounts: &accounts,
                         hydromancer_api_key: hydromancer_api_key.as_str(),
                         hyperdash_api_key,
                         x_access_token: x_access_token.as_str(),
+                        x_oauth_client_id: x_oauth_client_id.as_str(),
+                        x_refresh_token: x_refresh_token.as_str(),
                         removed_profile_secret_ids: &[],
                     },
                     "HyperDash key saved to OS keychain",
@@ -221,12 +243,15 @@ impl TradingTerminal {
             }
             config::CredentialStorageMode::EncryptedConfig => {
                 let accounts = self.persisted_accounts_snapshot();
-                let x_access_token = self.x_feed.access_token_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x(
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
+                let payload = config::SecretPayload::from_credentials_with_x_oauth(
                     &accounts,
                     &self.hydromancer_api_key,
                     hyperdash_api_key,
                     x_access_token.as_str(),
+                    x_oauth_client_id.as_str(),
+                    x_refresh_token.as_str(),
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
@@ -238,7 +263,12 @@ impl TradingTerminal {
         }
     }
 
-    pub(crate) fn persist_x_access_token_secret_from_key(&mut self, x_access_token: &str) -> bool {
+    pub(crate) fn persist_x_oauth_credentials_secret_from_keys(
+        &mut self,
+        x_access_token: &str,
+        x_oauth_client_id: &str,
+        x_refresh_token: &str,
+    ) -> bool {
         match self.secret_storage_mode {
             config::CredentialStorageMode::OsKeychain => {
                 let accounts = self.persisted_accounts_snapshot();
@@ -251,23 +281,27 @@ impl TradingTerminal {
                         hydromancer_api_key: hydromancer_api_key.as_str(),
                         hyperdash_api_key: hyperdash_api_key.as_str(),
                         x_access_token,
+                        x_oauth_client_id,
+                        x_refresh_token,
                         removed_profile_secret_ids: &[],
                     },
-                    "X access token saved to OS keychain",
-                    "X access token keychain save failed; token was not committed",
+                    "X credentials saved to OS keychain",
+                    "X credential keychain save failed; credentials were not committed",
                 )
             }
             config::CredentialStorageMode::EncryptedConfig => {
                 let accounts = self.persisted_accounts_snapshot();
-                let payload = config::SecretPayload::from_credentials_with_x(
+                let payload = config::SecretPayload::from_credentials_with_x_oauth(
                     &accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
                     x_access_token,
+                    x_oauth_client_id,
+                    x_refresh_token,
                 );
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
-                    "X access token saved to encrypted config",
+                    "X credentials saved to encrypted config",
                 );
                 self.secret_migration_save_blocked = !persisted;
                 persisted

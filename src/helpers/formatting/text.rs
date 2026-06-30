@@ -115,6 +115,12 @@ fn redact_sensitive_key_values(text: &str) -> String {
         "client_secret",
         "clientsecret",
         "client-secret",
+        "client_id",
+        "clientid",
+        "client-id",
+        "x_oauth_client_id",
+        "xoauthclientid",
+        "x-oauth-client-id",
         "private_key",
         "privatekey",
         "secret_key",
@@ -521,15 +527,17 @@ mod tests {
     #[test]
     fn sensitive_response_excerpt_redacts_client_secret_and_signatures() {
         let text = concat!(
-            r#"{"client_secret":"client-secret","clientSecret":"camel-client-secret"}"#,
+            r#"{"client_secret":"client-secret","clientSecret":"camel-client-secret","client_id":"client-id-secret","clientId":"camel-client-id-secret"}"#,
             " signature=signature-secret sig=sig-secret"
         );
         let rendered = sensitive_response_excerpt(text, 360);
 
-        assert_eq!(rendered.matches("<redacted>").count(), 4);
+        assert_eq!(rendered.matches("<redacted>").count(), 6);
         for secret in [
             "client-secret",
             "camel-client-secret",
+            "client-id-secret",
+            "camel-client-id-secret",
             "signature-secret",
             "sig-secret",
         ] {

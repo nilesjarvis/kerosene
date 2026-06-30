@@ -84,12 +84,15 @@ impl TradingTerminal {
             .into_iter()
             .filter(|profile| profile.secret_id != removed_secret_id)
             .collect();
-        let x_access_token = self.x_feed.access_token_for_secret();
-        config::SecretPayload::from_credentials_with_x(
+        let (x_access_token, x_oauth_client_id, x_refresh_token) =
+            self.x_feed.oauth_credentials_for_secret();
+        config::SecretPayload::from_credentials_with_x_oauth(
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
             x_access_token.as_str(),
+            x_oauth_client_id.as_str(),
+            x_refresh_token.as_str(),
         )
     }
 

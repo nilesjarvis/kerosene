@@ -1,8 +1,8 @@
 # X Feed
 
 X Feed is a pane widget for authenticated X timeline monitoring. It is designed
-for BYOK: the user supplies an OAuth 2.0 user-context access token locally, and
-Kerosene uses it to read the authenticated account's following timeline and X
+for BYOK: the user supplies OAuth 2.0 user-context credentials locally, and
+Kerosene uses them to read the authenticated account's following timeline and X
 Lists.
 
 The first implementation uses REST polling because the X endpoints that cover
@@ -28,21 +28,26 @@ one REST response updates every matching widget.
 
 ## Authentication
 
-The BYOK path accepts a user access token in the widget. The token is staged in
-runtime state as `SensitiveString`, authenticated against X, then saved through
-the selected credential store: OS keychain or encrypted config. It is not written
-as plaintext to `config.json`. Persisted config stores widget IDs and selected
-non-secret sources in `x_feeds`; private List selections fall back to
-`Following` before persistence.
+The BYOK path accepts either a user access token or a Client ID plus refresh
+token in the widget. Pasted values are staged in runtime state as
+`SensitiveString`. Refresh credentials are exchanged through
+`POST /2/oauth2/token` before the app authenticates against X; if X rotates the
+refresh token, the rotated value replaces the stored one. Credentials are saved
+through the selected credential store: OS keychain or encrypted config. They are
+not written as plaintext to `config.json`. Persisted config stores widget IDs
+and selected non-secret sources in `x_feeds`; private List selections fall back
+to `Following` before persistence.
 
-On startup, a saved token is restored from the secret payload and the app starts
-an auth/list refresh for any open X Feed widgets. Clearing the token removes it
-from the selected secret store before clearing runtime state.
+On startup, saved X credentials are restored from the secret payload. If a
+refresh token is available, the first X request refreshes the access token before
+auth/list/feed calls. Clearing X credentials removes the access token, Client
+ID, and refresh token from the selected secret store before clearing runtime
+state.
 
 Production OAuth should use X OAuth 2.0 Authorization Code Flow with PKCE and
 scopes such as `tweet.read`, `users.read`, `list.read`, and `offline.access`
-when refresh tokens are needed. Access tokens and refresh tokens must remain
-local and redacted in debug output.
+when refresh tokens are needed. Access tokens, Client IDs, and refresh tokens
+must remain local and redacted in debug output.
 
 ## Latency
 

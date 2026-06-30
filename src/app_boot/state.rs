@@ -420,7 +420,12 @@ impl TradingTerminal {
                 cfg.telegram_feed_include_outcome_markets,
                 cfg.telegram_feed_onboarding_dismissed,
             ),
-            x_feed: crate::x_feed::XFeedState::new(&cfg.x_feeds, &cfg.x_access_token),
+            x_feed: crate::x_feed::XFeedState::new(
+                &cfg.x_feeds,
+                &cfg.x_access_token,
+                &cfg.x_oauth_client_id,
+                &cfg.x_refresh_token,
+            ),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg
                 .chart_timeframe_hotkey_prefix

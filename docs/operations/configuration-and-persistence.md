@@ -73,7 +73,8 @@ Important snapshot behavior:
 - Journal entries are scoped by account and omit ghost account data where
   appropriate.
 - Secret fields such as `agent_key`, `hydromancer_api_key`,
-  `hyperdash_api_key`, and `x_access_token` are written as empty values.
+  `hyperdash_api_key`, `x_access_token`, `x_oauth_client_id`, and
+  `x_refresh_token` are written as empty values.
 - Wallet cluster config stores cluster names, selected cluster/window state, and
   account profile secret-id references, not private agent keys.
 - Read-data provider controls the persisted chart backfill source.

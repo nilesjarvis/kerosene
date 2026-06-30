@@ -150,7 +150,9 @@ fn encrypted_account_delete_rewrites_blob_without_deleted_profile_secret() {
     terminal.encrypted_secret_password = sensitive_string(password);
     terminal.hydromancer_api_key = sensitive_string("hydro-key");
     terminal.hyperdash_api_key = sensitive_string("hyper-key");
-    terminal.x_feed.set_access_token_from_secret("x-token");
+    terminal
+        .x_feed
+        .set_oauth_credentials_from_secret("x-token", "x-client", "x-refresh", None);
 
     let _task = terminal.delete_saved_account_task_with_hooks(
         1,
@@ -176,6 +178,8 @@ fn encrypted_account_delete_rewrites_blob_without_deleted_profile_secret() {
     assert_eq!(payload.global_hydromancer_api_key(), "hydro-key");
     assert_eq!(payload.global_hyperdash_api_key(), "hyper-key");
     assert_eq!(payload.global_x_access_token(), "x-token");
+    assert_eq!(payload.global_x_oauth_client_id(), "x-client");
+    assert_eq!(payload.global_x_refresh_token(), "x-refresh");
 }
 
 #[test]

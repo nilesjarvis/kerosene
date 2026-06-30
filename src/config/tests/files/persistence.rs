@@ -373,6 +373,14 @@ fn config_save_sanitizes_legacy_plaintext_secrets_before_backup() {
         serde_json::json!("x-runtime-secret"),
     );
     object.insert(
+        "x_oauth_client_id".to_string(),
+        serde_json::json!("x-client-secret"),
+    );
+    object.insert(
+        "x_refresh_token".to_string(),
+        serde_json::json!("x-refresh-secret"),
+    );
+    object.insert(
         "x_bearer_token".to_string(),
         serde_json::json!("x-legacy-secret"),
     );
@@ -393,6 +401,8 @@ fn config_save_sanitizes_legacy_plaintext_secrets_before_backup() {
         "hydro-secret",
         "hyper-secret",
         "x-runtime-secret",
+        "x-client-secret",
+        "x-refresh-secret",
         "x-legacy-secret",
     ] {
         assert!(!primary.contains(secret), "primary leaked {secret}");

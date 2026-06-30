@@ -103,6 +103,10 @@ pub struct GlobalSecretPayload {
     pub hyperdash_api_key: Zeroizing<String>,
     #[serde(default)]
     pub x_access_token: Zeroizing<String>,
+    #[serde(default)]
+    pub x_oauth_client_id: Zeroizing<String>,
+    #[serde(default)]
+    pub x_refresh_token: Zeroizing<String>,
 }
 
 impl fmt::Debug for GlobalSecretPayload {
@@ -111,6 +115,8 @@ impl fmt::Debug for GlobalSecretPayload {
             .field("hydromancer_api_key", &"<redacted>")
             .field("hyperdash_api_key", &"<redacted>")
             .field("x_access_token", &"<redacted>")
+            .field("x_oauth_client_id", &"<redacted>")
+            .field("x_refresh_token", &"<redacted>")
             .finish()
     }
 }
@@ -141,6 +147,7 @@ impl SecretPayload {
         (hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(address)
     }
 
+    #[cfg(test)]
     pub fn from_credentials(
         profiles: &[AccountProfile],
         hydromancer_api_key: &str,
@@ -149,11 +156,30 @@ impl SecretPayload {
         Self::from_credentials_with_x(profiles, hydromancer_api_key, hyperdash_api_key, "")
     }
 
+    #[cfg(test)]
     pub fn from_credentials_with_x(
         profiles: &[AccountProfile],
         hydromancer_api_key: &str,
         hyperdash_api_key: &str,
         x_access_token: &str,
+    ) -> Self {
+        Self::from_credentials_with_x_oauth(
+            profiles,
+            hydromancer_api_key,
+            hyperdash_api_key,
+            x_access_token,
+            "",
+            "",
+        )
+    }
+
+    pub fn from_credentials_with_x_oauth(
+        profiles: &[AccountProfile],
+        hydromancer_api_key: &str,
+        hyperdash_api_key: &str,
+        x_access_token: &str,
+        x_oauth_client_id: &str,
+        x_refresh_token: &str,
     ) -> Self {
         Self {
             schema: SECRET_PAYLOAD_SCHEMA.to_string(),
@@ -172,6 +198,8 @@ impl SecretPayload {
                 hydromancer_api_key: hydromancer_api_key.to_string().into(),
                 hyperdash_api_key: hyperdash_api_key.to_string().into(),
                 x_access_token: x_access_token.to_string().into(),
+                x_oauth_client_id: x_oauth_client_id.to_string().into(),
+                x_refresh_token: x_refresh_token.to_string().into(),
             },
         }
     }
@@ -181,6 +209,8 @@ impl SecretPayload {
             && self.global.hydromancer_api_key.trim().is_empty()
             && self.global.hyperdash_api_key.trim().is_empty()
             && self.global.x_access_token.trim().is_empty()
+            && self.global.x_oauth_client_id.trim().is_empty()
+            && self.global.x_refresh_token.trim().is_empty()
     }
 
     #[cfg(test)]
@@ -243,6 +273,14 @@ impl SecretPayload {
 
     pub fn global_x_access_token(&self) -> &str {
         &self.global.x_access_token
+    }
+
+    pub fn global_x_oauth_client_id(&self) -> &str {
+        &self.global.x_oauth_client_id
+    }
+
+    pub fn global_x_refresh_token(&self) -> &str {
+        &self.global.x_refresh_token
     }
 
     #[cfg(test)]
@@ -349,6 +387,22 @@ impl SecretPayload {
             return false;
         }
         self.global.x_access_token = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_x_oauth_client_id(&mut self, value: &str) -> bool {
+        if self.global.x_oauth_client_id.as_str() == value {
+            return false;
+        }
+        self.global.x_oauth_client_id = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_x_refresh_token(&mut self, value: &str) -> bool {
+        if self.global.x_refresh_token.as_str() == value {
+            return false;
+        }
+        self.global.x_refresh_token = value.to_string().into();
         true
     }
 }

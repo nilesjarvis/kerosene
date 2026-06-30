@@ -337,6 +337,8 @@ impl Default for KeroseneConfig {
             hydromancer_api_key: String::new().into(),
             hyperdash_api_key: String::new().into(),
             x_access_token: String::new().into(),
+            x_oauth_client_id: String::new().into(),
+            x_refresh_token: String::new().into(),
             sound_enabled: false,
             desktop_notifications: false,
             toast_position: Default::default(),

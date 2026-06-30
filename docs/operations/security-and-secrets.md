@@ -11,7 +11,7 @@ Secret-bearing values include:
 - Hyperliquid agent private keys
 - Hydromancer API key
 - HyperDash API key
-- X OAuth access token
+- X OAuth access token, Client ID, and refresh token
 - Telegram fast-mode login code/password/API hash while in memory
 - Telegram API hash embedded at build time through
   `KEROSENE_TELEGRAM_API_HASH`
@@ -38,7 +38,7 @@ Secret-bearing state includes:
 - `hydromancer_api_key`
 - `hydromancer_key_input`
 - encrypted secret password/confirmation buffers
-- X OAuth token input/runtime state
+- X OAuth token/client/refresh input and runtime state
 - profile secret payloads
 
 Do not clone secrets unnecessarily. When a task must own a key, keep the
@@ -70,6 +70,8 @@ Plain config snapshots intentionally write empty secret fields:
 - `hydromancer_api_key`
 - `hyperdash_api_key`
 - `x_access_token`
+- `x_oauth_client_id`
+- `x_refresh_token`
 
 Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys and global integration

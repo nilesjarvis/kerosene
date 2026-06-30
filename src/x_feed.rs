@@ -185,6 +185,26 @@ impl XListOwnerKind {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+pub(crate) struct XOAuthTokenRefresh {
+    pub(crate) access_token: Zeroizing<String>,
+    pub(crate) refresh_token: Option<Zeroizing<String>>,
+    pub(crate) expires_in_secs: Option<u64>,
+}
+
+impl fmt::Debug for XOAuthTokenRefresh {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XOAuthTokenRefresh")
+            .field("access_token", &"<redacted>")
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("expires_in_secs", &self.expires_in_secs)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct XFeedPost {
     pub(crate) id: String,
     pub(crate) author_id: Option<String>,
@@ -358,16 +378,25 @@ impl XAuthorProfile {
 #[derive(Clone)]
 pub(crate) struct XFeedState {
     pub(crate) access_token_input: SensitiveString,
+    pub(crate) oauth_client_id_input: SensitiveString,
+    pub(crate) refresh_token_input: SensitiveString,
     pending_access_token: SensitiveString,
+    pending_oauth_client_id: SensitiveString,
+    pending_refresh_token: SensitiveString,
     access_token: SensitiveString,
+    oauth_client_id: SensitiveString,
+    refresh_token: SensitiveString,
+    access_token_expires_at_ms: Option<u64>,
     pub(crate) auth_user: Option<XAuthenticatedUser>,
     pub(crate) lists: Vec<XListSummary>,
     pub(crate) connect_request_id: u64,
+    pub(crate) token_refresh_request_id: u64,
     pub(crate) lists_request_id: u64,
     pub(crate) refresh_request_id: u64,
     source_refresh_request_ids: HashMap<String, u64>,
     source_rate_limit_reset_ms: HashMap<String, u64>,
     pub(crate) connecting: bool,
+    pub(crate) token_refreshing: bool,
     pub(crate) lists_loading: bool,
     pub(crate) status: Option<(String, bool)>,
     pub(crate) instances: HashMap<XFeedId, XFeedInstance>,
@@ -379,11 +408,22 @@ impl fmt::Debug for XFeedState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("XFeedState")
             .field("access_token_input", &"<redacted>")
+            .field("oauth_client_id_input", &"<redacted>")
+            .field("refresh_token_input", &"<redacted>")
             .field("pending_access_token", &"<redacted>")
+            .field("pending_oauth_client_id", &"<redacted>")
+            .field("pending_refresh_token", &"<redacted>")
             .field("access_token", &"<redacted>")
+            .field("oauth_client_id", &"<redacted>")
+            .field("refresh_token", &"<redacted>")
+            .field(
+                "access_token_expires_at_ms",
+                &self.access_token_expires_at_ms,
+            )
             .field("auth_user", &self.auth_user)
             .field("lists", &self.lists.len())
             .field("connect_request_id", &self.connect_request_id)
+            .field("token_refresh_request_id", &self.token_refresh_request_id)
             .field("lists_request_id", &self.lists_request_id)
             .field("refresh_request_id", &self.refresh_request_id)
             .field(
@@ -395,6 +435,7 @@ impl fmt::Debug for XFeedState {
                 &self.source_rate_limit_reset_ms.len(),
             )
             .field("connecting", &self.connecting)
+            .field("token_refreshing", &self.token_refreshing)
             .field("lists_loading", &self.lists_loading)
             .field(
                 "status",
@@ -414,7 +455,12 @@ impl fmt::Debug for XFeedState {
 }
 
 impl XFeedState {
-    pub(crate) fn new(configs: &[crate::config::XFeedConfig], access_token: &str) -> Self {
+    pub(crate) fn new(
+        configs: &[crate::config::XFeedConfig],
+        access_token: &str,
+        oauth_client_id: &str,
+        refresh_token: &str,
+    ) -> Self {
         let mut instances = HashMap::new();
         for config in configs {
             instances.insert(
@@ -426,16 +472,25 @@ impl XFeedState {
 
         Self {
             access_token_input: sensitive_string(String::new()),
+            oauth_client_id_input: sensitive_string(String::new()),
+            refresh_token_input: sensitive_string(String::new()),
             pending_access_token: sensitive_string(String::new()),
+            pending_oauth_client_id: sensitive_string(String::new()),
+            pending_refresh_token: sensitive_string(String::new()),
             access_token: sensitive_string(access_token),
+            oauth_client_id: sensitive_string(oauth_client_id.trim().to_string()),
+            refresh_token: sensitive_string(refresh_token.trim().to_string()),
+            access_token_expires_at_ms: None,
             auth_user: None,
             lists: Vec::new(),
             connect_request_id: 0,
+            token_refresh_request_id: 0,
             lists_request_id: 0,
             refresh_request_id: 0,
             source_refresh_request_ids: HashMap::new(),
             source_rate_limit_reset_ms: HashMap::new(),
             connecting: false,
+            token_refreshing: false,
             lists_loading: false,
             status: None,
             instances,
@@ -448,16 +503,41 @@ impl XFeedState {
         !self.access_token.trim().is_empty()
     }
 
+    pub(crate) fn has_refresh_credentials(&self) -> bool {
+        !self.oauth_client_id.trim().is_empty() && !self.refresh_token.trim().is_empty()
+    }
+
+    pub(crate) fn has_refresh_credential_input(&self) -> bool {
+        !self.oauth_client_id_input.trim().is_empty() || !self.refresh_token_input.trim().is_empty()
+    }
+
     pub(crate) fn loading(&self) -> bool {
-        self.connecting || self.lists_loading || !self.source_refresh_request_ids.is_empty()
+        self.connecting
+            || self.token_refreshing
+            || self.lists_loading
+            || !self.source_refresh_request_ids.is_empty()
     }
 
     pub(crate) fn access_token_for_task(&self) -> Zeroizing<String> {
         Zeroizing::new(self.access_token.trim().to_string())
     }
 
-    pub(crate) fn access_token_for_secret(&self) -> Zeroizing<String> {
-        Zeroizing::new(self.access_token.trim().to_string())
+    pub(crate) fn oauth_client_id_for_task(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.oauth_client_id.trim().to_string())
+    }
+
+    pub(crate) fn refresh_token_for_task(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.refresh_token.trim().to_string())
+    }
+
+    pub(crate) fn oauth_credentials_for_secret(
+        &self,
+    ) -> (Zeroizing<String>, Zeroizing<String>, Zeroizing<String>) {
+        (
+            Zeroizing::new(self.access_token.trim().to_string()),
+            Zeroizing::new(self.oauth_client_id.trim().to_string()),
+            Zeroizing::new(self.refresh_token.trim().to_string()),
+        )
     }
 
     pub(crate) fn access_token_candidate_from_input(&mut self) -> Option<Zeroizing<String>> {
@@ -473,10 +553,58 @@ impl XFeedState {
         Some(Zeroizing::new(token))
     }
 
+    pub(crate) fn refresh_credentials_candidate_from_input(
+        &mut self,
+    ) -> Option<(Zeroizing<String>, Zeroizing<String>)> {
+        let client_id = self.oauth_client_id_input.trim().to_string();
+        let refresh_token = self.refresh_token_input.trim().to_string();
+        if client_id.is_empty() || refresh_token.is_empty() {
+            self.status = Some((
+                "Paste both an X OAuth 2.0 Client ID and refresh token".to_string(),
+                true,
+            ));
+            return None;
+        }
+
+        self.pending_oauth_client_id.zeroize();
+        self.pending_refresh_token.zeroize();
+        self.pending_oauth_client_id = sensitive_string(client_id.clone());
+        self.pending_refresh_token = sensitive_string(refresh_token.clone());
+        self.oauth_client_id_input.zeroize();
+        self.refresh_token_input.zeroize();
+        Some((Zeroizing::new(client_id), Zeroizing::new(refresh_token)))
+    }
+
     pub(crate) fn commit_access_token(&mut self, token: &str) -> bool {
-        let changed = self.set_access_token_from_secret(token);
+        let changed = self.set_oauth_credentials_from_secret(token, "", "", None);
         self.access_token_input.zeroize();
         self.pending_access_token.zeroize();
+        self.oauth_client_id_input.zeroize();
+        self.refresh_token_input.zeroize();
+        self.pending_oauth_client_id.zeroize();
+        self.pending_refresh_token.zeroize();
+        changed
+    }
+
+    pub(crate) fn commit_oauth_credentials(
+        &mut self,
+        access_token: &str,
+        oauth_client_id: &str,
+        refresh_token: &str,
+        expires_at_ms: Option<u64>,
+    ) -> bool {
+        let changed = self.set_oauth_credentials_from_secret(
+            access_token,
+            oauth_client_id,
+            refresh_token,
+            expires_at_ms,
+        );
+        self.access_token_input.zeroize();
+        self.oauth_client_id_input.zeroize();
+        self.refresh_token_input.zeroize();
+        self.pending_access_token.zeroize();
+        self.pending_oauth_client_id.zeroize();
+        self.pending_refresh_token.zeroize();
         changed
     }
 
@@ -485,22 +613,47 @@ impl XFeedState {
         (!token.is_empty()).then(|| Zeroizing::new(token))
     }
 
+    pub(crate) fn pending_oauth_credentials_for_secret(
+        &self,
+    ) -> Option<(Zeroizing<String>, Zeroizing<String>)> {
+        let client_id = self.pending_oauth_client_id.trim().to_string();
+        let refresh_token = self.pending_refresh_token.trim().to_string();
+        (!client_id.is_empty() && !refresh_token.is_empty())
+            .then(|| (Zeroizing::new(client_id), Zeroizing::new(refresh_token)))
+    }
+
     pub(crate) fn clear_pending_access_token(&mut self) {
         self.pending_access_token.zeroize();
     }
 
-    pub(crate) fn set_access_token_from_secret(&mut self, token: &str) -> bool {
-        let token = token.trim();
-        let changed = self.access_token.trim() != token;
+    pub(crate) fn clear_pending_oauth_credentials(&mut self) {
+        self.pending_oauth_client_id.zeroize();
+        self.pending_refresh_token.zeroize();
+    }
+
+    pub(crate) fn set_oauth_credentials_from_secret(
+        &mut self,
+        access_token: &str,
+        oauth_client_id: &str,
+        refresh_token: &str,
+        expires_at_ms: Option<u64>,
+    ) -> bool {
+        let access_token = access_token.trim();
+        let oauth_client_id = oauth_client_id.trim();
+        let refresh_token = refresh_token.trim();
+        let changed = self.access_token.trim() != access_token
+            || self.oauth_client_id.trim() != oauth_client_id
+            || self.refresh_token.trim() != refresh_token;
         if changed {
             self.invalidate_requests();
             self.auth_user = None;
             self.lists.clear();
             self.author_profiles.clear();
             self.connecting = false;
+            self.token_refreshing = false;
             self.lists_loading = false;
             for instance in self.instances.values_mut() {
-                if token.is_empty() || instance.source.is_private() {
+                if access_token.is_empty() || instance.source.is_private() {
                     instance.source = XFeedSource::Following;
                 }
                 instance.last_error = None;
@@ -510,21 +663,43 @@ impl XFeedState {
         }
 
         self.access_token.zeroize();
-        self.access_token = sensitive_string(token.to_string());
+        self.oauth_client_id.zeroize();
+        self.refresh_token.zeroize();
+        self.access_token = sensitive_string(access_token.to_string());
+        self.oauth_client_id = sensitive_string(oauth_client_id.to_string());
+        self.refresh_token = sensitive_string(refresh_token.to_string());
+        self.access_token_expires_at_ms = expires_at_ms;
         changed
+    }
+
+    pub(crate) fn access_token_refresh_due(&self, now_ms: u64) -> bool {
+        if !self.has_refresh_credentials() {
+            return false;
+        }
+        match self.access_token_expires_at_ms {
+            Some(expires_at_ms) => expires_at_ms.saturating_sub(now_ms) <= 60_000,
+            None => true,
+        }
     }
 
     pub(crate) fn clear_access_token(&mut self) {
         self.access_token_input.zeroize();
+        self.oauth_client_id_input.zeroize();
+        self.refresh_token_input.zeroize();
         self.pending_access_token.zeroize();
-        self.set_access_token_from_secret("");
+        self.pending_oauth_client_id.zeroize();
+        self.pending_refresh_token.zeroize();
+        self.invalidate_requests();
+        self.set_oauth_credentials_from_secret("", "", "", None);
         self.status = Some(("X token cleared".to_string(), false));
     }
 
     pub(crate) fn invalidate_requests(&mut self) {
         self.connect_request_id = self.connect_request_id.saturating_add(1);
+        self.token_refresh_request_id = self.token_refresh_request_id.saturating_add(1);
         self.lists_request_id = self.lists_request_id.saturating_add(1);
         self.refresh_request_id = self.refresh_request_id.saturating_add(1);
+        self.token_refreshing = false;
         self.source_refresh_request_ids.clear();
         self.source_rate_limit_reset_ms.clear();
     }
@@ -532,6 +707,11 @@ impl XFeedState {
     pub(crate) fn next_connect_request_id(&mut self) -> u64 {
         self.connect_request_id = self.connect_request_id.saturating_add(1);
         self.connect_request_id
+    }
+
+    pub(crate) fn next_token_refresh_request_id(&mut self) -> u64 {
+        self.token_refresh_request_id = self.token_refresh_request_id.saturating_add(1);
+        self.token_refresh_request_id
     }
 
     pub(crate) fn next_lists_request_id(&mut self) -> u64 {
@@ -793,6 +973,38 @@ pub(crate) async fn fetch_x_profile_image_bytes(image_url: String) -> Result<Vec
     Ok(body)
 }
 
+pub(crate) async fn refresh_x_access_token(
+    oauth_client_id: Zeroizing<String>,
+    refresh_token: Zeroizing<String>,
+) -> Result<XOAuthTokenRefresh, String> {
+    let response = CLIENT
+        .post(format!("{X_API_BASE}/oauth2/token"))
+        .timeout(X_FEED_REQUEST_TIMEOUT)
+        .header(USER_AGENT, KEROSENE_USER_AGENT)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("client_id", oauth_client_id.as_str()),
+            ("refresh_token", refresh_token.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("X token refresh failed: {e}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(x_error_message("X token refresh", status.as_u16(), response).await);
+    }
+
+    response
+        .json::<XOAuthTokenPayload>()
+        .await
+        .map(|payload| XOAuthTokenRefresh {
+            access_token: payload.access_token.into(),
+            refresh_token: payload.refresh_token.map(Into::into),
+            expires_in_secs: payload.expires_in,
+        })
+        .map_err(|e| format!("X token refresh response was invalid: {e}"))
+}
+
 fn is_supported_x_profile_image(bytes: &[u8]) -> bool {
     bytes.starts_with(&[0xFF, 0xD8, 0xFF])
         || bytes.starts_with(b"\x89PNG\r\n\x1A\n")
@@ -1051,6 +1263,15 @@ struct XListsResponse {
     data: Option<Vec<XListPayload>>,
 }
 
+#[derive(Deserialize)]
+struct XOAuthTokenPayload {
+    access_token: String,
+    #[serde(default)]
+    refresh_token: Option<String>,
+    #[serde(default)]
+    expires_in: Option<u64>,
+}
+
 #[derive(Debug, Deserialize)]
 struct XListPayload {
     id: String,
@@ -1097,16 +1318,60 @@ mod tests {
 
     #[test]
     fn x_feed_state_debug_redacts_tokens_and_status() {
-        let mut state = XFeedState::new(&[], "");
+        let mut state = XFeedState::new(&[], "", "", "");
         state.access_token_input = sensitive_string("token-input");
+        state.oauth_client_id_input = sensitive_string("client-input");
+        state.refresh_token_input = sensitive_string("refresh-input");
         state.access_token = sensitive_string("saved-token");
-        state.status = Some(("token-input failed".to_string(), true));
+        state.oauth_client_id = sensitive_string("saved-client");
+        state.refresh_token = sensitive_string("saved-refresh");
+        state.status = Some(("auth_token=token-input failed".to_string(), true));
 
         let rendered = format!("{state:?}");
 
         assert!(!rendered.contains("token-input"));
+        assert!(!rendered.contains("client-input"));
+        assert!(!rendered.contains("refresh-input"));
         assert!(!rendered.contains("saved-token"));
+        assert!(!rendered.contains("saved-client"));
+        assert!(!rendered.contains("saved-refresh"));
         assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
+    fn direct_access_token_commit_clears_refresh_credentials() {
+        let mut state = XFeedState::new(&[], "old-access", "old-client", "old-refresh");
+        state.token_refreshing = true;
+        let previous_refresh_request_id = state.token_refresh_request_id;
+
+        assert!(state.commit_access_token("new-access"));
+
+        let (access_token, client_id, refresh_token) = state.oauth_credentials_for_secret();
+        assert_eq!(access_token.as_str(), "new-access");
+        assert_eq!(client_id.as_str(), "");
+        assert_eq!(refresh_token.as_str(), "");
+        assert!(!state.has_refresh_credentials());
+        assert!(!state.token_refreshing);
+        assert!(state.token_refresh_request_id > previous_refresh_request_id);
+    }
+
+    #[test]
+    fn clear_access_token_invalidates_pending_refresh_request() {
+        let mut state = XFeedState::new(&[], "", "", "");
+        state.pending_oauth_client_id = sensitive_string("pending-client");
+        state.pending_refresh_token = sensitive_string("pending-refresh");
+        state.token_refreshing = true;
+        let previous_refresh_request_id = state.token_refresh_request_id;
+
+        state.clear_access_token();
+
+        let (access_token, client_id, refresh_token) = state.oauth_credentials_for_secret();
+        assert_eq!(access_token.as_str(), "");
+        assert_eq!(client_id.as_str(), "");
+        assert_eq!(refresh_token.as_str(), "");
+        assert!(state.pending_oauth_credentials_for_secret().is_none());
+        assert!(!state.token_refreshing);
+        assert!(state.token_refresh_request_id > previous_refresh_request_id);
     }
 
     #[test]
@@ -1132,7 +1397,7 @@ mod tests {
 
     #[test]
     fn x_feed_source_options_dedupe_lists() {
-        let mut state = XFeedState::new(&[], "");
+        let mut state = XFeedState::new(&[], "", "", "");
         state.lists = vec![
             XListSummary {
                 id: "10".to_string(),

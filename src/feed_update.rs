@@ -59,7 +59,10 @@ impl TradingTerminal {
                 return self.update_telegram_feed(message);
             }
             message @ (Message::XFeedAccessTokenChanged(_)
+            | Message::XFeedOAuthClientIdChanged(_)
+            | Message::XFeedRefreshTokenChanged(_)
             | Message::XFeedConnect
+            | Message::XAccessTokenRefreshed(_, _)
             | Message::XFeedAuthLoaded(_, _)
             | Message::XFeedClearAccessToken
             | Message::XFeedListsRefresh
