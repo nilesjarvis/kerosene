@@ -35,6 +35,8 @@ impl TradingTerminal {
         self.account_data = None;
         self.account_data_address = None;
         self.pending_order_indicators.clear();
+        self.pending_cancel_status_request = None;
+        self.pending_move_status_request = None;
         self.clear_pending_move_order_state();
         self.pending_leverage_update = None;
         self.order_leverage_dropdown_open = false;

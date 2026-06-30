@@ -80,6 +80,12 @@ impl TradingTerminal {
         };
         let pending_indicator_id =
             self.add_pending_order_cancellation_indicator(account_address.clone(), &order);
+        self.pending_cancel_status_request =
+            Some(crate::order_update::PendingCancelStatusRequest::new(
+                account_address.clone(),
+                order.oid,
+                order.coin.clone(),
+            ));
 
         self.order_status = Some(("Cancelling order...".into(), false));
         cancel_order_task(key, prepared.asset, prepared.oid, move |result| {
@@ -105,7 +111,7 @@ mod tests {
         MoveOrderKey, OneShotPlacementContext, OrderSurface, PendingLeverageUpdateContext,
         PendingMoveOrderContext, PendingNukeExecution, PendingOrderAction,
     };
-    use crate::order_update::PendingOneShotStatusRequest;
+    use crate::order_update::{PendingCancelStatusRequest, PendingOneShotStatusRequest};
     use crate::signing::ExchangeOrderKind;
 
     const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
@@ -254,6 +260,7 @@ mod tests {
         let _task = terminal.execute_cancel("BTC", 42);
 
         assert!(terminal.has_pending_cancel_indicator(42));
+        assert!(terminal.pending_cancel_status_request.is_some());
         let indicator = terminal
             .pending_order_indicators
             .values()
@@ -316,6 +323,30 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_cancel_is_gated_after_indicator_expires() {
+        let mut terminal = terminal_with_cancelable_order();
+
+        let _task = terminal.execute_cancel("BTC", 42);
+        terminal.pending_order_indicators.clear();
+        assert!(terminal.pending_cancel_status_request.is_some());
+
+        let _task = terminal.execute_cancel("BTC", 42);
+
+        assert!(terminal.pending_order_indicators.is_empty());
+        assert!(terminal.pending_cancel_status_request.is_some());
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some((
+                "Wait for pending trading requests to finish before cancelling orders",
+                true
+            ))
+        );
+    }
+
+    #[test]
     fn execute_cancel_waits_for_pending_order_action() {
         let mut terminal = terminal_with_cancelable_order();
         terminal.pending_order_action = Some(PendingOrderAction::Buy);
@@ -328,6 +359,18 @@ mod tests {
         let mut terminal = terminal_with_cancelable_order();
         terminal.pending_one_shot_status_request =
             Some(PendingOneShotStatusRequest::new(7, &one_shot_context()));
+
+        assert_cancel_waits_for_pending_trading_request(terminal);
+    }
+
+    #[test]
+    fn execute_cancel_waits_for_pending_cancel_status() {
+        let mut terminal = terminal_with_cancelable_order();
+        terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+            TEST_ACCOUNT.to_string(),
+            42,
+            "BTC".to_string(),
+        ));
 
         assert_cancel_waits_for_pending_trading_request(terminal);
     }

@@ -67,6 +67,98 @@ impl PendingOneShotStatusRequest {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct PendingCancelStatusRequest {
+    account_address: String,
+    oid: u64,
+    symbol: String,
+}
+
+impl fmt::Debug for PendingCancelStatusRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingCancelStatusRequest")
+            .field("account_address", &"<redacted>")
+            .field("oid", &"<redacted>")
+            .field("symbol", &self.symbol)
+            .finish()
+    }
+}
+
+impl PendingCancelStatusRequest {
+    pub(crate) fn new(account_address: String, oid: u64, symbol: String) -> Self {
+        Self {
+            account_address,
+            oid,
+            symbol,
+        }
+    }
+
+    pub(crate) fn oid(&self) -> u64 {
+        self.oid
+    }
+
+    pub(crate) fn symbol(&self) -> &str {
+        &self.symbol
+    }
+
+    fn matches(&self, account_address: &str, oid: u64, symbol: &str) -> bool {
+        crate::order_execution::order_account_addresses_match(
+            &self.account_address,
+            account_address,
+        ) && self.oid == oid
+            && self.symbol == symbol
+    }
+
+    fn is_for_account(&self, account_address: &str) -> bool {
+        crate::order_execution::order_account_addresses_match(
+            &self.account_address,
+            account_address,
+        )
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct PendingMoveStatusRequest {
+    account_address: String,
+    oid: u64,
+    symbol: String,
+}
+
+impl fmt::Debug for PendingMoveStatusRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PendingMoveStatusRequest")
+            .field("account_address", &"<redacted>")
+            .field("oid", &"<redacted>")
+            .field("symbol", &self.symbol)
+            .finish()
+    }
+}
+
+impl PendingMoveStatusRequest {
+    pub(crate) fn new(account_address: String, oid: u64, symbol: String) -> Self {
+        Self {
+            account_address,
+            oid,
+            symbol,
+        }
+    }
+
+    pub(crate) fn matches(&self, account_address: &str, oid: u64, symbol: &str) -> bool {
+        crate::order_execution::order_account_addresses_match(
+            &self.account_address,
+            account_address,
+        ) && self.oid == oid
+            && self.symbol == symbol
+    }
+
+    fn is_for_account(&self, account_address: &str) -> bool {
+        crate::order_execution::order_account_addresses_match(
+            &self.account_address,
+            account_address,
+        )
+    }
+}
+
 pub(crate) fn classify_execution_result(
     result: Result<ExchangeResponse, String>,
 ) -> ExecutionOutcome {
@@ -187,9 +279,23 @@ impl TradingTerminal {
         pending_indicator_id: Option<u64>,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        let cancelled_order = self.pending_cancel_indicator_order(pending_indicator_id);
+        let cancelled_order = self
+            .pending_cancel_indicator_order(pending_indicator_id)
+            .or_else(|| {
+                self.pending_cancel_status_request
+                    .as_ref()
+                    .filter(|pending| pending.is_for_account(&account_address))
+                    .map(|pending| (pending.oid(), pending.symbol().to_string()))
+            });
         self.clear_pending_order_indicator(pending_indicator_id);
         if !self.connected_order_account_matches(&account_address) {
+            if self
+                .pending_cancel_status_request
+                .as_ref()
+                .is_some_and(|pending| pending.is_for_account(&account_address))
+            {
+                self.pending_cancel_status_request = None;
+            }
             return Task::none();
         }
         let cancelled_oid = cancelled_order.as_ref().map(|(oid, _)| *oid);
@@ -235,6 +341,7 @@ impl TradingTerminal {
             );
             return Task::batch([self.refresh_account_data(), status_task]);
         }
+        self.pending_cancel_status_request = None;
         // Drop the order from the local snapshot on a confirmed cancel so the
         // ack does not resurrect an interactive line for an order the exchange
         // has already removed; the next authoritative update wins regardless.
@@ -253,7 +360,16 @@ impl TradingTerminal {
         symbol: String,
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
+        let request_matches = self
+            .pending_cancel_status_request
+            .as_ref()
+            .is_some_and(|pending| pending.matches(&account_address, oid, &symbol));
+        if !request_matches {
+            return Task::none();
+        }
+
         if !self.connected_order_account_matches(&account_address) {
+            self.pending_cancel_status_request = None;
             return Task::none();
         }
 
@@ -268,6 +384,7 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_filled() => {
+                self.pending_cancel_status_request = None;
                 self.remove_local_open_order(&account_address, oid, &symbol);
                 self.set_order_status(
                     format!(
@@ -278,6 +395,7 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_no_fill_terminal() => {
+                self.pending_cancel_status_request = None;
                 self.remove_local_open_order(&account_address, oid, &symbol);
                 self.set_order_status(
                     format!(
@@ -435,6 +553,33 @@ impl TradingTerminal {
             .is_some_and(|pending| pending.is_for_account(account_address))
         {
             self.pending_one_shot_status_request = None;
+        }
+    }
+
+    pub(crate) fn clear_pending_order_status_requests_for_account_after_refresh(
+        &mut self,
+        account_address: &str,
+    ) {
+        let open_orders_complete = self
+            .account_data_for_order_account(account_address)
+            .is_some_and(|data| data.completeness.open_orders_complete);
+        if !open_orders_complete {
+            return;
+        }
+
+        if self
+            .pending_cancel_status_request
+            .as_ref()
+            .is_some_and(|pending| pending.is_for_account(account_address))
+        {
+            self.pending_cancel_status_request = None;
+        }
+        if self
+            .pending_move_status_request
+            .as_ref()
+            .is_some_and(|pending| pending.is_for_account(account_address))
+        {
+            self.pending_move_status_request = None;
         }
     }
 

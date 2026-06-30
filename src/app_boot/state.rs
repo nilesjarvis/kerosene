@@ -140,6 +140,8 @@ impl TradingTerminal {
             order_status: None,
             next_one_shot_status_request_id: 0,
             pending_one_shot_status_request: None,
+            pending_cancel_status_request: None,
+            pending_move_status_request: None,
             pending_order_action: None,
             pending_move_order_contexts: HashMap::new(),
             pending_order_indicators: BTreeMap::new(),

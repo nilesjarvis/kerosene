@@ -6,7 +6,7 @@ use crate::order_execution::MoveOrderKey;
 use crate::signing::ExchangeResponse;
 use iced::Task;
 
-use super::results::{ExecutionOutcomeKind, classify_execution_result};
+use super::results::{ExecutionOutcomeKind, PendingMoveStatusRequest, classify_execution_result};
 
 impl TradingTerminal {
     fn move_order_status_task(account_address: String, coin: String, oid: u64) -> Task<Message> {
@@ -85,6 +85,11 @@ impl TradingTerminal {
                 outcome.status = format!("Move failed: {}", outcome.status);
             }
             ExecutionOutcomeKind::Ambiguous => {
+                self.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+                    account_address.clone(),
+                    oid,
+                    move_key.coin().to_string(),
+                ));
                 self.set_order_status(
                     format!(
                         "Move modify status unknown for order {oid}: {}; checking orderStatus and refreshing account data",
@@ -98,6 +103,11 @@ impl TradingTerminal {
                 ]);
             }
             ExecutionOutcomeKind::TransportUnknown => {
+                self.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+                    account_address.clone(),
+                    oid,
+                    move_key.coin().to_string(),
+                ));
                 self.set_order_status(
                     format!(
                         "Move modify status unknown for order {oid}: {}; checking orderStatus and refreshing account data",
@@ -120,11 +130,21 @@ impl TradingTerminal {
     pub(crate) fn handle_move_order_status_result(
         &mut self,
         account_address: String,
-        _coin: String,
+        coin: String,
         oid: u64,
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
+        let request_matches = self
+            .pending_move_status_request
+            .as_ref()
+            .is_some_and(|pending| pending.matches(&account_address, oid, &coin));
+        if !request_matches {
+            self.sync_all_chart_orders();
+            return Task::none();
+        }
+
         if !self.connected_order_account_matches(&account_address) {
+            self.pending_move_status_request = None;
             self.sync_all_chart_orders();
             return Task::none();
         }
@@ -140,6 +160,7 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_filled() => {
+                self.pending_move_status_request = None;
                 self.set_order_status(
                     format!(
                         "Move modify resolved by fill for order {oid}: {}; refreshing account data",
@@ -149,6 +170,7 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_no_fill_terminal() => {
+                self.pending_move_status_request = None;
                 self.set_order_status(
                     format!(
                         "Move modify resolved without an open order for {oid}: {}; refreshing account data",
@@ -298,6 +320,28 @@ mod tests {
         }
     }
 
+    fn arm_pending_move_status_request(
+        terminal: &mut TradingTerminal,
+        account_address: &str,
+        oid: u64,
+        symbol: &str,
+    ) {
+        terminal.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+            account_address.to_string(),
+            oid,
+            symbol.to_string(),
+        ));
+    }
+
+    fn finish_current_account_refresh(terminal: &mut TradingTerminal) {
+        let context = terminal.current_account_data_request_context();
+        let _task = terminal.apply_account_data_loaded(
+            TEST_ACCOUNT.to_string(),
+            context,
+            Ok(account_data_with_orders(Vec::new())),
+        );
+    }
+
     fn terminal_with_pending_move() -> (TradingTerminal, Option<u64>) {
         let (mut terminal, _) = TradingTerminal::boot();
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
@@ -341,6 +385,8 @@ mod tests {
 
         assert!(terminal.pending_order_indicators.is_empty());
         assert!(terminal.pending_move_order_contexts.is_empty());
+        assert!(terminal.pending_move_status_request.is_none());
+        assert!(!terminal.has_pending_trading_request());
         let data = terminal.account_data.as_ref().expect("account data");
         assert_eq!(data.open_orders[0].limit_px, "111");
         let chart = &terminal.charts.get(&1).expect("chart").chart;
@@ -456,6 +502,8 @@ mod tests {
 
         assert!(terminal.pending_order_indicators.is_empty());
         assert!(terminal.pending_move_order_contexts.is_empty());
+        assert!(terminal.pending_move_status_request.is_none());
+        assert!(!terminal.has_pending_trading_request());
         let data = terminal.account_data.as_ref().expect("account data");
         assert_eq!(data.open_orders[0].oid, 42);
         assert_eq!(data.open_orders[0].limit_px, "100");
@@ -475,6 +523,8 @@ mod tests {
 
         assert!(terminal.pending_order_indicators.is_empty());
         assert!(terminal.pending_move_order_contexts.is_empty());
+        assert!(terminal.pending_move_status_request.is_some());
+        assert!(terminal.has_pending_trading_request());
         let data = terminal.account_data.as_ref().expect("account data");
         assert_eq!(data.open_orders[0].limit_px, "100");
         let (message, is_error) = terminal.order_status.expect("status should be set");
@@ -482,6 +532,11 @@ mod tests {
         assert!(message.starts_with("Move modify status unknown"));
         assert!(message.contains("token=<redacted>"));
         assert!(!message.contains("super-secret"));
+
+        finish_current_account_refresh(&mut terminal);
+
+        assert!(terminal.pending_move_status_request.is_none());
+        assert!(!terminal.has_pending_trading_request());
     }
 
     #[test]
@@ -498,6 +553,8 @@ mod tests {
 
         assert!(terminal.pending_order_indicators.is_empty());
         assert!(terminal.pending_move_order_contexts.is_empty());
+        assert!(terminal.pending_move_status_request.is_some());
+        assert!(terminal.has_pending_trading_request());
         let data = terminal.account_data.as_ref().expect("account data");
         assert_eq!(data.open_orders[0].limit_px, "100");
         assert!(terminal.account_loading);
@@ -506,11 +563,17 @@ mod tests {
         assert!(is_error);
         assert!(message.contains("Move modify status unknown"));
         assert!(message.contains("refreshing account data"));
+
+        finish_current_account_refresh(&mut terminal);
+
+        assert!(terminal.pending_move_status_request.is_none());
+        assert!(!terminal.has_pending_trading_request());
     }
 
     #[test]
     fn move_order_status_open_keeps_modify_uncertain() {
         let (mut terminal, _pending_id) = terminal_with_pending_move();
+        arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
         let _task = terminal.handle_move_order_status_result(
             TEST_ACCOUNT.to_string(),
@@ -521,17 +584,25 @@ mod tests {
 
         let data = terminal.account_data.as_ref().expect("account data");
         assert_eq!(data.open_orders[0].limit_px, "100");
+        assert!(terminal.pending_move_status_request.is_some());
+        assert!(terminal.has_pending_trading_request());
         assert!(terminal.account_loading);
         assert!(terminal.account_reconciliation_required);
         let (message, is_error) = terminal.order_status.expect("status should be set");
         assert!(is_error);
         assert!(message.contains("still uncertain"));
         assert!(message.contains("reports open"));
+
+        finish_current_account_refresh(&mut terminal);
+
+        assert!(terminal.pending_move_status_request.is_none());
+        assert!(!terminal.has_pending_trading_request());
     }
 
     #[test]
     fn move_order_status_error_redacts_sensitive_text() {
         let (mut terminal, _pending_id) = terminal_with_pending_move();
+        arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
         let _task = terminal.handle_move_order_status_result(
             TEST_ACCOUNT.to_string(),
@@ -540,6 +611,8 @@ mod tests {
             Err("orderStatus request failed: api_key=super-secret".to_string()),
         );
 
+        assert!(terminal.pending_move_status_request.is_some());
+        assert!(terminal.has_pending_trading_request());
         assert!(terminal.account_loading);
         assert!(terminal.account_reconciliation_required);
         let (message, is_error) = terminal.order_status.expect("status should be set");
@@ -547,11 +620,53 @@ mod tests {
         assert!(message.contains("Move modify status still uncertain"));
         assert!(message.contains("api_key=<redacted>"));
         assert!(!message.contains("super-secret"));
+
+        finish_current_account_refresh(&mut terminal);
+
+        assert!(terminal.pending_move_status_request.is_none());
+        assert!(!terminal.has_pending_trading_request());
+    }
+
+    #[test]
+    fn move_order_status_without_matching_pending_request_is_ignored() {
+        let (mut terminal, _pending_id) = terminal_with_pending_move();
+        arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
+
+        let _task = terminal.handle_move_order_status_result(
+            TEST_ACCOUNT.to_string(),
+            "ETH".to_string(),
+            42,
+            Ok(order_status("filled")),
+        );
+
+        assert!(terminal.pending_move_status_request.is_some());
+        assert!(terminal.order_status.is_none());
+        assert!(!terminal.account_loading);
+    }
+
+    #[test]
+    fn move_order_status_terminal_clears_pending_request() {
+        let (mut terminal, _pending_id) = terminal_with_pending_move();
+        arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
+
+        let _task = terminal.handle_move_order_status_result(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            42,
+            Ok(order_status("filled")),
+        );
+
+        assert!(terminal.pending_move_status_request.is_none());
+        assert!(terminal.account_loading);
+        let (message, is_error) = terminal.order_status.expect("status should be set");
+        assert!(!is_error);
+        assert!(message.contains("Move modify resolved by fill"));
     }
 
     #[test]
     fn move_order_status_after_account_switch_skips_status() {
         let (mut terminal, _pending_id) = terminal_with_pending_move();
+        arm_pending_move_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
         terminal.connected_address = Some(OTHER_ACCOUNT.to_string());
         terminal.order_status = None;
 
@@ -563,6 +678,7 @@ mod tests {
         );
 
         assert!(terminal.order_status.is_none());
+        assert!(terminal.pending_move_status_request.is_none());
         let data = terminal.account_data.as_ref().expect("account data");
         assert_eq!(data.open_orders[0].limit_px, "100");
     }

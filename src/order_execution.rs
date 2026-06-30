@@ -327,6 +327,8 @@ impl TradingTerminal {
             || self.pending_nuke_execution.is_some()
             || self.pending_leverage_update.is_some()
             || self.pending_one_shot_status_request.is_some()
+            || self.pending_cancel_status_request.is_some()
+            || self.pending_move_status_request.is_some()
             || !self.pending_move_order_contexts.is_empty()
             || self.wallet_clusters.has_pending_execution()
             || self.has_pending_order_indicator_for_connected_account()
@@ -397,7 +399,9 @@ mod tests {
     use crate::app_state::{TradingTerminal, sensitive_string};
     use crate::chart_state::ChartSurfaceId;
     use crate::config::AccountProfile;
-    use crate::order_update::PendingOneShotStatusRequest;
+    use crate::order_update::{
+        PendingCancelStatusRequest, PendingMoveStatusRequest, PendingOneShotStatusRequest,
+    };
     use crate::signing::ExchangeOrderKind;
 
     const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
@@ -603,6 +607,22 @@ mod tests {
         ));
         assert!(terminal.has_pending_trading_request());
         terminal.pending_one_shot_status_request = None;
+
+        terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+            account.to_string(),
+            42,
+            "BTC".to_string(),
+        ));
+        assert!(terminal.has_pending_trading_request());
+        terminal.pending_cancel_status_request = None;
+
+        terminal.pending_move_status_request = Some(PendingMoveStatusRequest::new(
+            account.to_string(),
+            42,
+            "BTC".to_string(),
+        ));
+        assert!(terminal.has_pending_trading_request());
+        terminal.pending_move_status_request = None;
 
         terminal.pending_move_order_contexts.insert(
             MoveOrderKey::new("BTC", 42),

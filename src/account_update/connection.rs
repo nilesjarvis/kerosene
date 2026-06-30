@@ -66,6 +66,8 @@ impl TradingTerminal {
                 self.account_data_address = None;
                 self.pending_order_indicators.clear();
                 self.pending_one_shot_status_request = None;
+                self.pending_cancel_status_request = None;
+                self.pending_move_status_request = None;
                 self.clear_pending_move_order_state();
                 self.pending_leverage_update = None;
                 self.order_leverage_dropdown_open = false;
@@ -258,6 +260,8 @@ impl TradingTerminal {
         self.account_data_address = None;
         self.pending_order_indicators.clear();
         self.pending_one_shot_status_request = None;
+        self.pending_cancel_status_request = None;
+        self.pending_move_status_request = None;
         self.clear_pending_move_order_state();
         self.pending_leverage_update = None;
         self.order_leverage_dropdown_open = false;
@@ -348,6 +352,8 @@ impl TradingTerminal {
         self.account_data_address = None;
         self.pending_order_indicators.clear();
         self.pending_one_shot_status_request = None;
+        self.pending_cancel_status_request = None;
+        self.pending_move_status_request = None;
         self.clear_pending_move_order_state();
         self.pending_leverage_update = None;
         self.order_leverage_dropdown_open = false;
@@ -380,7 +386,9 @@ mod tests {
         MoveOrderKey, OneShotPlacementContext, OrderSurface, PendingLeverageUpdateContext,
         PendingMoveOrderContext, PendingOrderAction, QuickOrderForm,
     };
-    use crate::order_update::PendingOneShotStatusRequest;
+    use crate::order_update::{
+        PendingCancelStatusRequest, PendingMoveStatusRequest, PendingOneShotStatusRequest,
+    };
     use crate::signing::ExchangeOrderKind;
     use crate::signing::{ChaseLifecycle, ChaseOrder};
     use crate::timeframe::Timeframe;
@@ -443,6 +451,14 @@ mod tests {
                 order_kind: ExchangeOrderKind::Limit,
             },
         )
+    }
+
+    fn pending_cancel_status_request(account_address: &str) -> PendingCancelStatusRequest {
+        PendingCancelStatusRequest::new(account_address.to_string(), 42, "BTC".to_string())
+    }
+
+    fn pending_move_status_request(account_address: &str) -> PendingMoveStatusRequest {
+        PendingMoveStatusRequest::new(account_address.to_string(), 42, "BTC".to_string())
     }
 
     fn chase_order(account_address: &str) -> ChaseOrder {
@@ -1252,6 +1268,52 @@ mod tests {
 
         assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
         assert!(terminal.pending_one_shot_status_request.is_some());
+        let toast = terminal
+            .toasts
+            .last()
+            .expect("blocked disconnect should toast");
+        assert!(toast.is_error);
+        assert!(
+            toast
+                .message
+                .contains("pending trading requests to finish before disconnecting wallet")
+        );
+    }
+
+    #[test]
+    fn disconnect_blocks_pending_cancel_status_request() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        terminal.pending_cancel_status_request = Some(pending_cancel_status_request(TEST_ACCOUNT));
+
+        let _task = terminal.disconnect_wallet();
+
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert!(terminal.pending_cancel_status_request.is_some());
+        let toast = terminal
+            .toasts
+            .last()
+            .expect("blocked disconnect should toast");
+        assert!(toast.is_error);
+        assert!(
+            toast
+                .message
+                .contains("pending trading requests to finish before disconnecting wallet")
+        );
+    }
+
+    #[test]
+    fn disconnect_blocks_pending_move_status_request() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = TEST_ACCOUNT.to_string();
+        terminal.pending_move_status_request = Some(pending_move_status_request(TEST_ACCOUNT));
+
+        let _task = terminal.disconnect_wallet();
+
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert!(terminal.pending_move_status_request.is_some());
         let toast = terminal
             .toasts
             .last()

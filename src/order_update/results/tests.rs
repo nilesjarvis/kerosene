@@ -183,6 +183,30 @@ fn pending_one_shot_status_request_debug_redacts_account_address() {
     assert!(rendered.contains("0x00000000000000000000000000000000"));
 }
 
+#[test]
+fn pending_cancel_status_request_debug_redacts_account_and_oid() {
+    let request = PendingCancelStatusRequest::new(TEST_ACCOUNT.to_string(), 42, "BTC".to_string());
+
+    let rendered = format!("{request:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(TEST_ACCOUNT));
+    assert!(!rendered.contains("42"));
+    assert!(rendered.contains("BTC"));
+}
+
+#[test]
+fn pending_move_status_request_debug_redacts_account_and_oid() {
+    let request = PendingMoveStatusRequest::new(TEST_ACCOUNT.to_string(), 42, "BTC".to_string());
+
+    let rendered = format!("{request:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(TEST_ACCOUNT));
+    assert!(!rendered.contains("42"));
+    assert!(rendered.contains("BTC"));
+}
+
 fn quick_order_form() -> QuickOrderForm {
     QuickOrderForm {
         price: 100.0,
@@ -1026,6 +1050,19 @@ fn account_data_with_open_orders(
     }
 }
 
+fn arm_pending_cancel_status_request(
+    terminal: &mut TradingTerminal,
+    account_address: &str,
+    oid: u64,
+    symbol: &str,
+) {
+    terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
+        account_address.to_string(),
+        oid,
+        symbol.to_string(),
+    ));
+}
+
 fn terminal_with_pending_cancel() -> (TradingTerminal, Option<u64>) {
     let mut terminal = terminal_with_connected_account();
     terminal.charts.clear();
@@ -1039,6 +1076,7 @@ fn terminal_with_pending_cancel() -> (TradingTerminal, Option<u64>) {
     );
     let pending_id =
         terminal.add_pending_order_cancellation_indicator(TEST_ACCOUNT.to_string(), &order);
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, order.oid, &order.coin);
     assert!(pending_id.is_some());
     (terminal, pending_id)
 }
@@ -1054,6 +1092,7 @@ fn cancel_result_success_clears_indicator_and_removes_order_locally() {
     );
 
     assert!(terminal.pending_order_indicators.is_empty());
+    assert!(terminal.pending_cancel_status_request.is_none());
     let data = terminal.account_data.as_ref().expect("account data");
     assert!(data.open_orders.is_empty());
     assert!(
@@ -1083,6 +1122,8 @@ fn cancel_result_terminal_error_checks_status_and_keeps_local_order_until_refres
     );
 
     assert!(terminal.pending_order_indicators.is_empty());
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
     assert!(terminal.account_loading);
@@ -1092,6 +1133,11 @@ fn cancel_result_terminal_error_checks_status_and_keeps_local_order_until_refres
     assert!(message.contains("Cancel may have already resolved"));
     assert!(message.contains("checking orderStatus"));
     assert!(message.contains("refreshing account data"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_cancel_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
 }
 
 #[test]
@@ -1105,6 +1151,8 @@ fn cancel_result_ambiguous_ack_is_uncertain_and_keeps_local_order() {
     );
 
     assert!(terminal.pending_order_indicators.is_empty());
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
     assert!(terminal.account_loading);
@@ -1113,6 +1161,36 @@ fn cancel_result_ambiguous_ack_is_uncertain_and_keeps_local_order() {
     assert!(is_error);
     assert!(message.contains("Cancel status unknown"));
     assert!(message.contains("refreshing account data"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_cancel_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
+}
+
+#[test]
+fn cancel_result_ambiguous_ack_uses_pending_request_after_indicator_expires() {
+    let (mut terminal, pending_id) = terminal_with_pending_cancel();
+    terminal.pending_order_indicators.clear();
+
+    let _task = terminal.handle_cancel_result(
+        TEST_ACCOUNT.to_string(),
+        pending_id,
+        Ok(malformed_ok_response()),
+    );
+
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
+    assert!(terminal.account_loading);
+    let (message, is_error) = terminal.order_status.expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("Cancel status unknown for order 42"));
+    assert!(message.contains("checking orderStatus"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_cancel_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
 }
 
 #[test]
@@ -1128,17 +1206,25 @@ fn cancel_order_status_open_keeps_cancel_uncertain_and_local_order() {
 
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
     let (message, is_error) = terminal.order_status.expect("status should be set");
     assert!(is_error);
     assert!(message.contains("still uncertain"));
     assert!(message.contains("reports open"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_cancel_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
 }
 
 #[test]
 fn cancel_order_status_error_redacts_sensitive_text() {
     let mut terminal = terminal_with_connected_account();
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, "BTC");
 
     let _task = terminal.handle_cancel_order_status_result(
         TEST_ACCOUNT.to_string(),
@@ -1147,11 +1233,36 @@ fn cancel_order_status_error_redacts_sensitive_text() {
         Err("orderStatus request failed: api_key=super-secret".to_string()),
     );
 
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.has_pending_trading_request());
     let (message, is_error) = terminal.order_status.expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Cancel status still uncertain for order 42"));
     assert!(message.contains("api_key=<redacted>"));
     assert!(!message.contains("super-secret"));
+
+    finish_current_account_refresh(&mut terminal);
+
+    assert!(terminal.pending_cancel_status_request.is_none());
+    assert!(!terminal.has_pending_trading_request());
+}
+
+#[test]
+fn cancel_order_status_without_matching_pending_request_is_ignored() {
+    let (mut terminal, _pending_id) = terminal_with_pending_cancel();
+
+    let _task = terminal.handle_cancel_order_status_result(
+        TEST_ACCOUNT.to_string(),
+        42,
+        "ETH".to_string(),
+        Ok(order_status("canceled")),
+    );
+
+    let data = terminal.account_data.as_ref().expect("account data");
+    assert_eq!(data.open_orders.len(), 1);
+    assert!(terminal.pending_cancel_status_request.is_some());
+    assert!(terminal.order_status.is_none());
+    assert!(!terminal.account_loading);
 }
 
 #[test]
@@ -1167,6 +1278,7 @@ fn cancel_order_status_terminal_removes_local_order() {
 
     let data = terminal.account_data.as_ref().expect("account data");
     assert!(data.open_orders.is_empty());
+    assert!(terminal.pending_cancel_status_request.is_none());
     assert!(
         terminal
             .charts
@@ -1194,6 +1306,7 @@ fn cancel_result_after_account_switch_clears_indicator_without_status() {
     );
 
     assert!(terminal.pending_order_indicators.is_empty());
+    assert!(terminal.pending_cancel_status_request.is_none());
     assert!(terminal.order_status.is_none());
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
@@ -1222,6 +1335,7 @@ fn cancel_result_success_removes_only_matching_symbol_for_same_oid() {
     assert_eq!(data.open_orders.len(), 1);
     assert_eq!(data.open_orders[0].coin, other_order.coin);
     assert_eq!(data.open_orders[0].oid, 42);
+    assert!(terminal.pending_cancel_status_request.is_none());
 }
 
 #[test]
@@ -1239,6 +1353,7 @@ fn cancel_result_success_ignores_open_orders_from_stale_account_snapshot() {
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
     assert_eq!(data.open_orders[0].oid, 42);
+    assert!(terminal.pending_cancel_status_request.is_none());
 }
 
 #[test]
@@ -1250,6 +1365,7 @@ fn cancel_status_terminal_removes_only_matching_symbol_for_same_oid() {
         TEST_ACCOUNT,
         account_data_with_open_orders(vec![target_order.clone(), other_order.clone()]),
     );
+    arm_pending_cancel_status_request(&mut terminal, TEST_ACCOUNT, 42, &target_order.coin);
 
     let _task = terminal.handle_cancel_order_status_result(
         TEST_ACCOUNT.to_string(),
@@ -1262,6 +1378,7 @@ fn cancel_status_terminal_removes_only_matching_symbol_for_same_oid() {
     assert_eq!(data.open_orders.len(), 1);
     assert_eq!(data.open_orders[0].coin, other_order.coin);
     assert_eq!(data.open_orders[0].oid, 42);
+    assert!(terminal.pending_cancel_status_request.is_none());
 }
 
 #[test]
@@ -1279,6 +1396,7 @@ fn cancel_status_terminal_ignores_open_orders_from_stale_account_snapshot() {
     let data = terminal.account_data.as_ref().expect("account data");
     assert_eq!(data.open_orders.len(), 1);
     assert_eq!(data.open_orders[0].oid, 42);
+    assert!(terminal.pending_cancel_status_request.is_none());
 }
 
 #[test]

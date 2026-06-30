@@ -20,7 +20,8 @@ use quick_order::QuickOrderOpenRequest;
 pub(crate) use form::OrderQuantityProvenance;
 pub(crate) use nuke::{NukeConfirmation, nuke_confirmation_is_armed};
 pub(crate) use results::{
-    ExecutionOutcomeKind, PendingOneShotStatusRequest, classify_execution_result,
+    ExecutionOutcomeKind, PendingCancelStatusRequest, PendingMoveStatusRequest,
+    PendingOneShotStatusRequest, classify_execution_result,
 };
 
 impl TradingTerminal {

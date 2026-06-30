@@ -22,7 +22,10 @@ use crate::order_execution::{
     PendingOrderAction,
 };
 use crate::order_pending_indicators::PendingOrderIndicator;
-use crate::order_update::{NukeConfirmation, OrderQuantityProvenance, PendingOneShotStatusRequest};
+use crate::order_update::{
+    NukeConfirmation, OrderQuantityProvenance, PendingCancelStatusRequest,
+    PendingMoveStatusRequest, PendingOneShotStatusRequest,
+};
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
@@ -275,6 +278,8 @@ pub(crate) struct TradingTerminal {
     pub(crate) order_status: Option<(String, bool)>,
     pub(crate) next_one_shot_status_request_id: u64,
     pub(crate) pending_one_shot_status_request: Option<PendingOneShotStatusRequest>,
+    pub(crate) pending_cancel_status_request: Option<PendingCancelStatusRequest>,
+    pub(crate) pending_move_status_request: Option<PendingMoveStatusRequest>,
     pub(crate) pending_order_action: Option<PendingOrderAction>,
     pub(crate) pending_move_order_contexts: HashMap<MoveOrderKey, PendingMoveOrderContext>,
     pub(crate) pending_order_indicators: BTreeMap<u64, PendingOrderIndicator>,
