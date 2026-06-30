@@ -180,6 +180,7 @@ fn spot_position_without_cost_basis(coin: &str) -> crate::account::AssetPosition
 fn position_row_symbol_label_resolves_outcome_coins_without_synthetic_ticker() {
     let mut terminal = crate::app_state::TradingTerminal::boot().0;
     terminal.exchange_symbols.push(outcome_symbol("#950"));
+    terminal.exchange_symbols.push(spot_symbol("@107", "HYPE"));
     terminal
         .outcome_display_labels
         .insert("#960".to_string(), "NO: Will ETH close red?".to_string());
@@ -194,6 +195,7 @@ fn position_row_symbol_label_resolves_outcome_coins_without_synthetic_ticker() {
         terminal.position_row_symbol_label("#960"),
         "NO: Will ETH close red?"
     );
+    assert_eq!(terminal.position_row_symbol_label("@107"), "HYPE/USDC");
     assert_eq!(terminal.position_row_symbol_label("BTC"), "BTC");
 }
 

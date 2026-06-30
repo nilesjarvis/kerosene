@@ -289,6 +289,9 @@ impl TradingTerminal {
             }
             return self.display_name_for_symbol(coin);
         }
+        if self.is_spot_coin(coin) {
+            return self.display_name_for_symbol(coin);
+        }
 
         coin.to_string()
     }
