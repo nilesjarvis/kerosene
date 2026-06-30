@@ -37,6 +37,14 @@ impl TradingTerminal {
                         "tf_ema_200" => {
                             inst.macro_indicators.tf_ema_200 = !inst.macro_indicators.tf_ema_200
                         }
+                        "sma_50h" => inst.macro_indicators.sma_50h = !inst.macro_indicators.sma_50h,
+                        "ema_50h" => inst.macro_indicators.ema_50h = !inst.macro_indicators.ema_50h,
+                        "sma_200h" => {
+                            inst.macro_indicators.sma_200h = !inst.macro_indicators.sma_200h
+                        }
+                        "ema_200h" => {
+                            inst.macro_indicators.ema_200h = !inst.macro_indicators.ema_200h
+                        }
                         "sma_50d" => inst.macro_indicators.sma_50d = !inst.macro_indicators.sma_50d,
                         "ema_50d" => inst.macro_indicators.ema_50d = !inst.macro_indicators.ema_50d,
                         "sma_200d" => {
@@ -99,6 +107,9 @@ impl TradingTerminal {
                     && let Ok(candles) = result
                 {
                     match tf {
+                        Timeframe::H1 => {
+                            inst.chart.hourly_candles = candles;
+                        }
                         Timeframe::D1 => {
                             inst.chart.daily_candles = candles;
                         }
@@ -197,5 +208,28 @@ mod tests {
         assert_eq!(instance.chart.weekly_candles.len(), 1);
         assert_eq!(instance.chart.weekly_candles[0].open_time, 3_000);
         assert_eq!(instance.chart.weekly_candles[0].close, 300.0);
+    }
+
+    #[test]
+    fn current_hourly_macro_candle_result_updates_hourly_batch() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+
+        let mut instance = ChartInstance::new(7, "BTC".to_string(), Timeframe::H4);
+        instance.macro_candles_request_id = 2;
+        terminal.charts.insert(7, instance);
+
+        let _task = terminal.update_chart_macro_indicators(Message::MacroCandlesLoaded(
+            7,
+            2,
+            "BTC".to_string(),
+            Timeframe::H1,
+            Ok(vec![Candle::test_flat(4_000, 400.0)]),
+        ));
+
+        let instance = terminal.charts.get(&7).expect("chart instance");
+        assert_eq!(instance.chart.hourly_candles.len(), 1);
+        assert_eq!(instance.chart.hourly_candles[0].open_time, 4_000);
+        assert_eq!(instance.chart.hourly_candles[0].close, 400.0);
     }
 }

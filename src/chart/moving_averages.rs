@@ -64,6 +64,54 @@ impl CandlestickChart {
                 show_labels,
             );
         }
+        if self.macro_indicators.sma_50h {
+            layer.draw_average(
+                &self.candles,
+                MovingAverageSpec::sma(
+                    &self.hourly_candles,
+                    50,
+                    MovingAverageColorRole::Fast,
+                    "50h SMA",
+                ),
+                show_labels,
+            );
+        }
+        if self.macro_indicators.ema_50h {
+            layer.draw_average(
+                &self.candles,
+                MovingAverageSpec::ema(
+                    &self.hourly_candles,
+                    50,
+                    MovingAverageColorRole::Fast,
+                    "50h EMA",
+                ),
+                show_labels,
+            );
+        }
+        if self.macro_indicators.sma_200h {
+            layer.draw_average(
+                &self.candles,
+                MovingAverageSpec::sma(
+                    &self.hourly_candles,
+                    200,
+                    MovingAverageColorRole::Slow,
+                    "200h SMA",
+                ),
+                show_labels,
+            );
+        }
+        if self.macro_indicators.ema_200h {
+            layer.draw_average(
+                &self.candles,
+                MovingAverageSpec::ema(
+                    &self.hourly_candles,
+                    200,
+                    MovingAverageColorRole::Slow,
+                    "200h EMA",
+                ),
+                show_labels,
+            );
+        }
         if self.macro_indicators.sma_50d {
             layer.draw_average(
                 &self.candles,

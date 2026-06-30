@@ -146,6 +146,7 @@ pub struct CandlestickChart {
     pub funding_annualized: bool,
     // Macro MAs
     pub macro_indicators: crate::config::MacroIndicatorsConfig,
+    pub hourly_candles: Vec<crate::api::Candle>,
     pub daily_candles: Vec<crate::api::Candle>,
     pub weekly_candles: Vec<crate::api::Candle>,
     pub monthly_candles: Vec<crate::api::Candle>,

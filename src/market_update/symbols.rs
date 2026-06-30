@@ -790,6 +790,7 @@ mod tests {
         canonical.ticker = "BTC".to_string();
 
         let mut chart = ChartInstance::new(7, "BTC".to_string(), Timeframe::H1);
+        chart.chart.hourly_candles = vec![Candle::test_flat(500, 50.0)];
         chart.chart.daily_candles = vec![Candle::test_flat(1_000, 100.0)];
         chart.chart.weekly_candles = vec![Candle::test_flat(2_000, 200.0)];
         chart.chart.monthly_candles = vec![Candle::test_flat(3_000, 300.0)];
@@ -799,6 +800,7 @@ mod tests {
 
         let chart = terminal.charts.get(&7).expect("chart");
         assert_eq!(chart.symbol, "xyz:BTC");
+        assert!(chart.chart.hourly_candles.is_empty());
         assert!(chart.chart.daily_candles.is_empty());
         assert!(chart.chart.weekly_candles.is_empty());
         assert!(chart.chart.monthly_candles.is_empty());

@@ -19,7 +19,7 @@ pub(crate) const CANDLE_FETCH_MAX_ATTEMPTS: u8 = 4;
 pub(crate) const CANDLE_BACKFILL_MAX_CANDLES_PER_REQUEST: u64 = 4_000;
 
 impl TradingTerminal {
-    /// Fetch daily/weekly/monthly candles for macro indicators, tagged with
+    /// Fetch hourly/daily/weekly/monthly candles for macro indicators, tagged with
     /// the chart ID and symbol that requested them.
     pub(crate) fn fetch_macro_candles_tasks(
         chart_id: ChartId,
@@ -32,42 +32,55 @@ impl TradingTerminal {
         let c1 = coin.to_string();
         let c2 = coin.to_string();
         let c3 = coin.to_string();
+        let c4 = coin.to_string();
         let s1 = c1.clone();
         let s2 = c2.clone();
         let s3 = c3.clone();
+        let s4 = c4.clone();
 
         vec![
             Task::perform(
                 api::fetch_candles(
                     c1,
-                    "1d".to_string(),
-                    now_ms.saturating_sub(Timeframe::D1.lookback_ms()),
+                    "1h".to_string(),
+                    now_ms.saturating_sub(Timeframe::H1.lookback_ms()),
                     now_ms,
                 ),
                 move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s1.clone(), Timeframe::D1, result)
+                    Message::MacroCandlesLoaded(id, request_id, s1.clone(), Timeframe::H1, result)
                 },
             ),
             Task::perform(
                 api::fetch_candles(
                     c2,
-                    "1w".to_string(),
-                    now_ms.saturating_sub(Timeframe::W1.lookback_ms()),
+                    "1d".to_string(),
+                    now_ms.saturating_sub(Timeframe::D1.lookback_ms()),
                     now_ms,
                 ),
                 move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s2.clone(), Timeframe::W1, result)
+                    Message::MacroCandlesLoaded(id, request_id, s2.clone(), Timeframe::D1, result)
                 },
             ),
             Task::perform(
                 api::fetch_candles(
                     c3,
+                    "1w".to_string(),
+                    now_ms.saturating_sub(Timeframe::W1.lookback_ms()),
+                    now_ms,
+                ),
+                move |result| {
+                    Message::MacroCandlesLoaded(id, request_id, s3.clone(), Timeframe::W1, result)
+                },
+            ),
+            Task::perform(
+                api::fetch_candles(
+                    c4,
                     "1M".to_string(),
                     now_ms.saturating_sub(Timeframe::Mo1.lookback_ms()),
                     now_ms,
                 ),
                 move |result| {
-                    Message::MacroCandlesLoaded(id, request_id, s3.clone(), Timeframe::Mo1, result)
+                    Message::MacroCandlesLoaded(id, request_id, s4.clone(), Timeframe::Mo1, result)
                 },
             ),
         ]

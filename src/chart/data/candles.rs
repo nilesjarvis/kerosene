@@ -118,6 +118,7 @@ impl CandlestickChart {
     }
 
     pub(crate) fn clear_macro_candles(&mut self) {
+        self.hourly_candles.clear();
         self.daily_candles.clear();
         self.weekly_candles.clear();
         self.monthly_candles.clear();

@@ -5,6 +5,7 @@ use crate::config::MacroIndicatorsConfig;
 fn indicator_menu_options_preserve_keys_and_checked_states() {
     let indicators = MacroIndicatorsConfig {
         tf_sma_50: true,
+        sma_50h: true,
         sma_200d: true,
         show_funding_rate: true,
         show_session_indicator: true,
@@ -22,6 +23,10 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "tf_ema_50",
             "tf_sma_200",
             "tf_ema_200",
+            "sma_50h",
+            "ema_50h",
+            "sma_200h",
+            "ema_200h",
             "sma_50d",
             "ema_50d",
             "sma_200d",
@@ -48,6 +53,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
         checked,
         vec![
             "tf_sma_50",
+            "sma_50h",
             "sma_200d",
             "show_funding_rate",
             "show_session_indicator",

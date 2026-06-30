@@ -30,6 +30,31 @@ pub(super) fn timeframe_options(indicators: &MacroIndicatorsConfig) -> [Indicato
     ]
 }
 
+pub(super) fn hourly_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 4] {
+    [
+        IndicatorOption {
+            label: "50 SMA",
+            key: "sma_50h",
+            checked: indicators.sma_50h,
+        },
+        IndicatorOption {
+            label: "50 EMA",
+            key: "ema_50h",
+            checked: indicators.ema_50h,
+        },
+        IndicatorOption {
+            label: "200 SMA",
+            key: "sma_200h",
+            checked: indicators.sma_200h,
+        },
+        IndicatorOption {
+            label: "200 EMA",
+            key: "ema_200h",
+            checked: indicators.ema_200h,
+        },
+    ]
+}
+
 pub(super) fn daily_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 4] {
     [
         IndicatorOption {
@@ -127,6 +152,7 @@ pub(super) fn volume_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
 pub(super) fn all_indicator_options(indicators: &MacroIndicatorsConfig) -> Vec<IndicatorOption> {
     let mut options = Vec::new();
     options.extend(timeframe_options(indicators));
+    options.extend(hourly_options(indicators));
     options.extend(daily_options(indicators));
     options.extend(weekly_options(indicators));
     options.extend(monthly_options(indicators));

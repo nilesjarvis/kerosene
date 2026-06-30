@@ -10,6 +10,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
     assert!(active_chart_indicators(&instance, &Theme::Dark).is_empty());
 
     instance.macro_indicators.tf_sma_50 = true;
+    instance.macro_indicators.sma_50h = true;
     instance.macro_indicators.sma_200d = true;
     instance.macro_indicators.show_funding_rate = true;
     instance.macro_indicators.show_session_indicator = true;
@@ -25,6 +26,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
         labels_and_keys,
         vec![
             ("TF 50 SMA", "tf_sma_50"),
+            ("50h SMA", "sma_50h"),
             ("200d SMA", "sma_200d"),
             ("Funding", "show_funding_rate"),
             ("Sessions", "show_session_indicator"),

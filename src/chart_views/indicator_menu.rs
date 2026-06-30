@@ -1,7 +1,7 @@
 use components::{compact_separator, indicator_footer, indicator_group};
 use options::{
-    daily_options, footer_options, monthly_options, timeframe_options, volume_options,
-    weekly_options,
+    daily_options, footer_options, hourly_options, monthly_options, timeframe_options,
+    volume_options, weekly_options,
 };
 use overlays::overlay_group;
 
@@ -46,6 +46,12 @@ impl TradingTerminal {
                 chart_id,
                 "TF",
                 timeframe_options(indicator_options),
+            ))
+            .push(separator())
+            .push(indicator_group(
+                chart_id,
+                "1H",
+                hourly_options(indicator_options),
             ))
             .push(separator())
             .push(indicator_group(

@@ -82,6 +82,38 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
     );
     push_indicator(
         &mut active,
+        indicators.sma_50h,
+        "50h SMA",
+        "sma_50h",
+        IndicatorColorRole::Fast,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.ema_50h,
+        "50h EMA",
+        "ema_50h",
+        IndicatorColorRole::Fast,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.sma_200h,
+        "200h SMA",
+        "sma_200h",
+        IndicatorColorRole::Slow,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.ema_200h,
+        "200h EMA",
+        "ema_200h",
+        IndicatorColorRole::Slow,
+        theme,
+    );
+    push_indicator(
+        &mut active,
         indicators.sma_50d,
         "50d SMA",
         "sma_50d",

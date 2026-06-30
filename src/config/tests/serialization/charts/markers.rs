@@ -6,6 +6,7 @@ use super::{
 #[test]
 fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     let macro_indicators = MacroIndicatorsConfig {
+        sma_50h: true,
         show_volume_profile: true,
         show_session_indicator: true,
         ..MacroIndicatorsConfig::default()
@@ -44,6 +45,7 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     assert!(decoded.charts[0].open_interest_as_notional);
     assert!(!decoded.charts[0].asset_volume_as_notional);
     assert!(decoded.charts[0].outcome_volume_as_notional);
+    assert!(decoded.charts[0].macro_indicators.sma_50h);
     assert!(decoded.charts[0].macro_indicators.show_volume_profile);
     assert!(decoded.charts[0].macro_indicators.show_session_indicator);
 
@@ -135,4 +137,14 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         value_from_json(legacy_macro, "legacy macro indicators should deserialize");
 
     assert!(!decoded_macro.show_session_indicator);
+
+    let mut legacy_macro = json_value(
+        &config.charts[0].macro_indicators,
+        "macro indicators serialize",
+    );
+    object_mut(&mut legacy_macro, "macro indicators config is an object").remove("sma_50h");
+    let decoded_macro: MacroIndicatorsConfig =
+        value_from_json(legacy_macro, "legacy macro indicators should deserialize");
+
+    assert!(!decoded_macro.sma_50h);
 }

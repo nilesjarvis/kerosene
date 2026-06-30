@@ -211,8 +211,9 @@ SEC earnings markers are optional chart overlays:
 - rendered as chart markers and hover tooltips
 
 Macro indicators are configured per chart and include candle/funding-derived
-series. Their menu and active badges live in `chart_views/indicator_menu/` and
-`chart_views/indicator_badges/`.
+series. The candle-backed moving averages support active-timeframe, 1-hour,
+daily, weekly, and monthly source series. Their menu and active badges live in
+`chart_views/indicator_menu/` and `chart_views/indicator_badges/`.
 
 ## Detached Charts
 

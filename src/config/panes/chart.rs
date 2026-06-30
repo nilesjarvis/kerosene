@@ -14,6 +14,14 @@ pub struct MacroIndicatorsConfig {
     #[serde(default)]
     pub tf_ema_200: bool,
     #[serde(default)]
+    pub sma_50h: bool,
+    #[serde(default)]
+    pub ema_50h: bool,
+    #[serde(default)]
+    pub sma_200h: bool,
+    #[serde(default)]
+    pub ema_200h: bool,
+    #[serde(default)]
     pub sma_50d: bool,
     #[serde(default)]
     pub ema_50d: bool,
@@ -50,6 +58,10 @@ impl Default for MacroIndicatorsConfig {
             tf_ema_50: false,
             tf_sma_200: false,
             tf_ema_200: false,
+            sma_50h: false,
+            ema_50h: false,
+            sma_200h: false,
+            ema_200h: false,
             sma_50d: false,
             ema_50d: false,
             sma_200d: false,
