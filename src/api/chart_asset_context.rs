@@ -9,22 +9,25 @@ use serde_json::Value;
 // The chart header's 24h-volume and open-interest metrics are populated from a
 // chart's `asset_ctx`, which normally arrives over the `activeAssetCtx`
 // WebSocket stream. When that stream does not deliver context for a symbol
-// (notably HIP-3 builder-deployed perps, keyed `dex:coin`, when a relaying
-// proxy does not forward their `activeAssetCtx`, or during reconnect gaps),
+// (notably HIP-3 builder-deployed perps, spot `@` symbols, or reconnect gaps),
 // the header silently blanks because — unlike candles — there was no REST
-// fallback. This module provides one, reusing the same per-dex
-// `metaAndAssetCtxs` request the watchlist/screener already rely on.
+// fallback. This module provides one, reusing the same `metaAndAssetCtxs` and
+// `spotMetaAndAssetCtxs` requests the watchlist/screener already rely on.
 
-/// Fetch the live [`AssetContext`] for a single chart symbol via the REST
-/// `metaAndAssetCtxs` endpoint.
+/// Fetch the live [`AssetContext`] for a single chart symbol via REST metadata
+/// endpoints.
 ///
 /// For a HIP-3 `dex:coin` symbol the `dex` is split out and sent as the
-/// `metaAndAssetCtxs` `dex` parameter (the main perp dex omits it). Returns
-/// `Ok(None)` for symbols that have no perp asset context here (spot `@`,
-/// composite `#`, or a coin absent from the universe).
+/// `metaAndAssetCtxs` `dex` parameter (the main perp dex omits it). Spot
+/// symbols are looked up in `spotMetaAndAssetCtxs`. Returns `Ok(None)` for
+/// symbols that have no asset context here (composite `#`, or a coin absent
+/// from the universe).
 pub async fn fetch_chart_asset_context(symbol: String) -> Result<Option<AssetContext>, String> {
-    if symbol.is_empty() || symbol.starts_with('@') || symbol.starts_with('#') {
+    if symbol.is_empty() || symbol.starts_with('#') {
         return Ok(None);
+    }
+    if symbol.starts_with('@') {
+        return fetch_spot_chart_asset_context(symbol).await;
     }
 
     let dex = symbol.split_once(':').map(|(dex, _)| dex.to_string());
@@ -48,6 +51,23 @@ pub async fn fetch_chart_asset_context(symbol: String) -> Result<Option<AssetCon
         .map_err(|e| format!("metaAndAssetCtxs parse failed: {e}"))?;
 
     Ok(parse_chart_asset_context(&resp, &symbol, dex.as_deref()))
+}
+
+async fn fetch_spot_chart_asset_context(symbol: String) -> Result<Option<AssetContext>, String> {
+    let resp: Value = CLIENT
+        .clone()
+        .post(API_URL)
+        .json(&serde_json::json!({ "type": "spotMetaAndAssetCtxs" }))
+        .send()
+        .await
+        .map_err(|e| format!("spotMetaAndAssetCtxs request failed: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("spotMetaAndAssetCtxs HTTP error: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("spotMetaAndAssetCtxs parse failed: {e}"))?;
+
+    Ok(parse_spot_chart_asset_context(&resp, &symbol))
 }
 
 /// Locate `symbol` within a `metaAndAssetCtxs` `[meta, contexts]` response and
@@ -89,9 +109,33 @@ pub(crate) fn parse_chart_asset_context(
     None
 }
 
+/// Locate a spot `@index` symbol within a `spotMetaAndAssetCtxs`
+/// `[meta, contexts]` response and deserialize its parallel context object.
+pub(crate) fn parse_spot_chart_asset_context(resp: &Value, symbol: &str) -> Option<AssetContext> {
+    let arr = resp.as_array()?;
+    if arr.len() != 2 {
+        return None;
+    }
+    let universe = arr[0].as_object()?.get("universe")?.as_array()?;
+    let ctxs = arr[1].as_array()?;
+
+    for (i, coin_meta) in universe.iter().enumerate() {
+        let Some(spot_index) = coin_meta.get("index").and_then(Value::as_u64) else {
+            continue;
+        };
+        if format!("@{spot_index}") != symbol {
+            continue;
+        }
+        let ctx_val = ctxs.get(i)?;
+        return serde_json::from_value::<AssetContext>(ctx_val.clone()).ok();
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_chart_asset_context;
+    use super::{parse_chart_asset_context, parse_spot_chart_asset_context};
     use serde_json::json;
 
     fn hip3_response() -> serde_json::Value {
@@ -163,5 +207,43 @@ mod tests {
     fn returns_none_for_malformed_response() {
         assert!(parse_chart_asset_context(&json!({}), "BTC", None).is_none());
         assert!(parse_chart_asset_context(&json!([{}]), "BTC", None).is_none());
+    }
+
+    #[test]
+    fn parses_spot_context_by_at_index() {
+        let resp = json!([
+            {
+                "universe": [
+                    { "name": "PURR/USDC", "index": 0 },
+                    { "name": "HYPE/USDC", "index": 107 }
+                ]
+            },
+            [
+                { "midPx": "1.0", "prevDayPx": "0.9", "dayNtlVlm": "1234.0",
+                  "dayBaseVlm": "567.0" },
+                { "midPx": "62.1", "prevDayPx": "60.0", "dayNtlVlm": "987654.0",
+                  "dayBaseVlm": "15555.0" }
+            ]
+        ]);
+
+        let ctx = parse_spot_chart_asset_context(&resp, "@107").expect("spot context");
+
+        assert_eq!(ctx.mid_px.as_deref(), Some("62.1"));
+        assert_eq!(ctx.day_ntl_vlm.as_deref(), Some("987654.0"));
+        assert_eq!(ctx.day_base_vlm.as_deref(), Some("15555.0"));
+        assert!(ctx.funding.is_none());
+        assert!(ctx.open_interest.is_none());
+    }
+
+    #[test]
+    fn spot_context_returns_none_when_symbol_absent_or_malformed() {
+        let resp = json!([
+            { "universe": [ { "name": "PURR/USDC", "index": 0 } ] },
+            [ { "midPx": "1.0" } ]
+        ]);
+
+        assert!(parse_spot_chart_asset_context(&resp, "@107").is_none());
+        assert!(parse_spot_chart_asset_context(&json!({}), "@107").is_none());
+        assert!(parse_spot_chart_asset_context(&json!([{}]), "@107").is_none());
     }
 }
