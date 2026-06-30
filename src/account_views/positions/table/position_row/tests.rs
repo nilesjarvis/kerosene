@@ -200,6 +200,19 @@ fn position_row_symbol_label_resolves_outcome_coins_without_synthetic_ticker() {
 }
 
 #[test]
+fn position_row_symbol_label_splits_hip3_exchange_from_asset() {
+    let terminal = crate::app_state::TradingTerminal::boot().0;
+
+    assert_eq!(terminal.position_row_symbol_label("xyz:NVDA"), "NVDA");
+    assert_eq!(
+        terminal.position_row_symbol_exchange_label("xyz:NVDA"),
+        Some("xyz".to_string())
+    );
+    assert_eq!(terminal.position_row_symbol_exchange_label("BTC"), None);
+    assert_eq!(terminal.position_row_symbol_exchange_label("@107"), None);
+}
+
+#[test]
 fn spot_position_without_cost_basis_displays_unavailable_pnl() {
     let mut terminal = crate::app_state::TradingTerminal::boot().0;
     terminal.exchange_symbols.push(spot_symbol("@142", "UBTC"));

@@ -3,7 +3,7 @@ use crate::message::Message;
 use crate::pnl_card::PnlCardTarget;
 
 use iced::widget::text::Wrapping;
-use iced::widget::{Space, button, row, text};
+use iced::widget::{Space, button, container, row, text, tooltip};
 use iced::{Color, Element, Theme};
 
 // ---------------------------------------------------------------------------
@@ -13,6 +13,7 @@ use iced::{Color, Element, Theme};
 pub(super) fn position_symbol_button(
     coin: &str,
     label: String,
+    exchange_label: Option<String>,
     theme: &Theme,
 ) -> Element<'static, Message> {
     let coin_key = coin.to_string();
@@ -24,7 +25,16 @@ pub(super) fn position_symbol_button(
         .push(text(label).size(12).wrapping(Wrapping::None))
         .align_y(iced::Alignment::Center);
 
-    button(coin_content)
+    let tooltip_label = exchange_label
+        .as_ref()
+        .map(|exchange| format!("HIP-3 exchange: {exchange}"));
+    if let Some(exchange) = exchange_label {
+        coin_content = coin_content
+            .push(Space::new().width(3.0))
+            .push(position_exchange_chip(exchange, theme));
+    }
+
+    let button = button(coin_content)
         .on_press(Message::SymbolSelected(coin_key))
         .padding(0)
         .style(|theme: &Theme, status| {
@@ -37,8 +47,46 @@ pub(super) fn position_symbol_button(
                 text_color,
                 ..Default::default()
             }
-        })
-        .into()
+        });
+
+    if let Some(label) = tooltip_label {
+        tooltip(button, text(label).size(10), tooltip::Position::Top).into()
+    } else {
+        button.into()
+    }
+}
+
+fn position_exchange_chip(exchange: String, theme: &Theme) -> Element<'static, Message> {
+    container(
+        text(exchange)
+            .size(10)
+            .font(crate::app_fonts::monospace_font())
+            .color(theme.extended_palette().background.weak.text)
+            .wrapping(Wrapping::None),
+    )
+    .padding([1, 5])
+    .style(|theme: &Theme| {
+        let weak_text = theme.extended_palette().background.weak.text;
+        iced::widget::container::Style {
+            background: Some(
+                Color {
+                    a: 0.06,
+                    ..weak_text
+                }
+                .into(),
+            ),
+            border: iced::Border {
+                radius: 3.0.into(),
+                width: 1.0,
+                color: Color {
+                    a: 0.28,
+                    ..weak_text
+                },
+            },
+            ..Default::default()
+        }
+    })
+    .into()
 }
 
 pub(super) fn position_upnl_cell(

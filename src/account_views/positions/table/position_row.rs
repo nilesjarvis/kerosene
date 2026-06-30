@@ -5,7 +5,7 @@ mod formatting;
 mod tests;
 
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_price, format_size};
+use crate::helpers::{format_price, format_size, hip3_dex};
 use crate::message::Message;
 
 use super::super::{
@@ -103,8 +103,12 @@ impl TradingTerminal {
         let close_cell =
             self.view_position_close_cell(pos.coin.clone(), row_can_close, is_hidden, theme);
         let pnl_displays = self.position_row_pnl_displays(&data, &denomination, number_mode);
-        let symbol_btn =
-            position_symbol_button(&pos.coin, self.position_row_symbol_label(&pos.coin), theme);
+        let symbol_btn = position_symbol_button(
+            &pos.coin,
+            self.position_row_symbol_label(&pos.coin),
+            self.position_row_symbol_exchange_label(&pos.coin),
+            theme,
+        );
         let upnl_cell = position_upnl_cell(&pos.coin, pnl_displays.upnl, pnl_color);
 
         // Optimistic account updates: annotate the size with the projected
@@ -292,7 +296,18 @@ impl TradingTerminal {
         if self.is_spot_coin(coin) {
             return self.display_name_for_symbol(coin);
         }
+        if hip3_dex(coin).is_some() {
+            return self.display_name_for_symbol(coin);
+        }
 
         coin.to_string()
+    }
+
+    fn position_row_symbol_exchange_label(&self, coin: &str) -> Option<String> {
+        if self.is_outcome_coin(coin) || self.is_spot_coin(coin) {
+            return None;
+        }
+
+        hip3_dex(coin).map(str::to_string)
     }
 }
