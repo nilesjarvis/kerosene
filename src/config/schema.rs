@@ -141,6 +141,9 @@ pub struct KeroseneConfig {
     /// Opacity for dotted chart plot backgrounds.
     #[serde(default = "default_chart_dotted_background_opacity")]
     pub chart_dotted_background_opacity: f32,
+    /// Apply a theme-aware gradient to chart plot backgrounds.
+    #[serde(default)]
+    pub chart_gradient_background: bool,
     /// Legacy toggle for hollow bullish candle bodies.
     #[serde(default)]
     #[serde(skip_serializing)]

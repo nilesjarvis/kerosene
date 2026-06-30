@@ -76,6 +76,7 @@ charts and market widgets.
 Chart preferences include:
 
 - dotted background and opacity
+- theme-aware gradient background
 - hollow candle mode
 - fisheye effect and strength
 - chromatic aberration and strength

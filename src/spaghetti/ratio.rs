@@ -8,7 +8,7 @@ use self::series::{draw_ratio_candles, draw_ratio_line};
 use super::helpers::has_positive_finite_prices;
 use super::{PRICE_PADDING_PCT, Series, SpaghettiCanvas, SpaghettiChartState};
 use crate::api::Candle;
-use crate::chart_background::draw_dotted_background;
+use crate::chart_background::{draw_dotted_background, draw_gradient_background};
 use iced::alignment;
 use iced::widget::canvas;
 use iced::{Point, Rectangle, Renderer, Theme};
@@ -99,6 +99,9 @@ impl SpaghettiCanvas {
         let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
         frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), iced::Color::TRANSPARENT);
 
+        if self.gradient_background {
+            draw_gradient_background(&mut frame, ctx.theme, ctx.chart_w, ctx.chart_h);
+        }
         if self.dotted_background {
             draw_dotted_background(
                 &mut frame,

@@ -18,6 +18,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         ui_scale: 0.85,
         chart_dotted_background: true,
         chart_dotted_background_opacity: 0.27,
+        chart_gradient_background: true,
         chart_hollow_candle_mode: ChartHollowCandleMode::Both,
         chart_series_style: ChartSeriesStyle::Line,
         chart_fisheye_enabled: true,
@@ -57,6 +58,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.ui_scale, 0.85);
     assert!(decoded.chart_dotted_background);
     assert_eq!(decoded.chart_dotted_background_opacity, 0.27);
+    assert!(decoded.chart_gradient_background);
     assert_eq!(
         decoded.chart_hollow_candle_mode,
         ChartHollowCandleMode::Both
@@ -105,6 +107,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("ui_scale");
     object.remove("chart_dotted_background");
     object.remove("chart_dotted_background_opacity");
+    object.remove("chart_gradient_background");
     object.remove("chart_hollow_candle_mode");
     object.remove("chart_series_style");
     object.remove("chart_fisheye_enabled");
@@ -137,6 +140,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         decoded_legacy.chart_dotted_background_opacity,
         default_chart_dotted_background_opacity()
     );
+    assert!(!decoded_legacy.chart_gradient_background);
     assert!(!decoded_legacy.chart_hollow_candles);
     assert_eq!(
         decoded_legacy.chart_hollow_candle_mode,

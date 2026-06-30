@@ -286,6 +286,7 @@ impl Default for KeroseneConfig {
             ui_scale: default_ui_scale(),
             chart_dotted_background: false,
             chart_dotted_background_opacity: default_chart_dotted_background_opacity(),
+            chart_gradient_background: false,
             chart_hollow_candles: false,
             chart_hollow_candle_mode: Default::default(),
             chart_series_style: Default::default(),

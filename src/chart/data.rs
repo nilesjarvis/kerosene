@@ -44,6 +44,7 @@ impl CandlestickChart {
             show_trade_markers: false,
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
+            gradient_background: false,
             hollow_candle_mode: Default::default(),
             series_style: Default::default(),
             fisheye_enabled: false,
@@ -124,6 +125,7 @@ impl CandlestickChart {
             show_trade_markers: self.show_trade_markers,
             dotted_background: self.dotted_background,
             dotted_background_opacity: self.dotted_background_opacity,
+            gradient_background: self.gradient_background,
             hollow_candle_mode: self.hollow_candle_mode,
             series_style: self.series_style,
             fisheye_enabled: self.fisheye_enabled,
@@ -316,6 +318,13 @@ impl CandlestickChart {
         {
             self.dotted_background = enabled;
             self.dotted_background_opacity = opacity;
+            self.candle_cache.clear();
+        }
+    }
+
+    pub(crate) fn set_gradient_background(&mut self, enabled: bool) {
+        if self.gradient_background != enabled {
+            self.gradient_background = enabled;
             self.candle_cache.clear();
         }
     }

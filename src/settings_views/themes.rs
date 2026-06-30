@@ -45,6 +45,11 @@ impl TradingTerminal {
         } else {
             "dots off"
         };
+        let gradient = if self.chart_gradient_background {
+            "gradient on"
+        } else {
+            "gradient off"
+        };
         let lens = if self.chart_fisheye_enabled {
             "lens on"
         } else {
@@ -73,7 +78,7 @@ impl TradingTerminal {
         };
         let series_style = self.chart_series_style.label().to_lowercase();
         let chrome_summary = format!(
-            "{:.0}% scale, {:.0}px divider, {series_style}, {dots}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}, {os_bar}",
+            "{:.0}% scale, {:.0}px divider, {series_style}, {dots}, {gradient}, hollow {hollow}, {lens}, {fringe}, {blur}, {border}, {os_bar}",
             self.ui_scale * 100.0,
             self.pane_border_thickness
         );

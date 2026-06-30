@@ -159,6 +159,7 @@ impl TradingTerminal {
         boot_tasks.push(state.request_ticker_tape_context_refresh(true));
         state.apply_chart_theme_colors();
         state.sync_chart_dotted_background();
+        state.sync_chart_gradient_background();
         state.sync_chart_hollow_candles();
         state.sync_chart_series_style();
         state.sync_chart_fisheye();

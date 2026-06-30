@@ -1,6 +1,6 @@
 use super::helpers::find_candle_at;
 use super::{PRICE_PADDING_PCT, Series, SpaghettiCanvas, SpaghettiChartState};
-use crate::chart_background::draw_dotted_background;
+use crate::chart_background::{draw_dotted_background, draw_gradient_background};
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Renderer, Theme};
 
@@ -93,6 +93,9 @@ impl SpaghettiCanvas {
         let mut frame = canvas::Frame::new(ctx.renderer, ctx.bounds.size());
         frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), Color::TRANSPARENT);
 
+        if self.gradient_background {
+            draw_gradient_background(&mut frame, ctx.theme, ctx.chart_w, ctx.chart_h);
+        }
         if self.dotted_background {
             draw_dotted_background(
                 &mut frame,

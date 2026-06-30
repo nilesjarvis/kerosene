@@ -98,6 +98,7 @@ impl TradingTerminal {
         boot_tasks.push(self.sync_main_window_min_size());
         self.apply_chart_theme_colors();
         self.sync_chart_dotted_background();
+        self.sync_chart_gradient_background();
         self.sync_chart_hollow_candles();
         self.sync_chart_series_style();
         self.sync_chart_fisheye();

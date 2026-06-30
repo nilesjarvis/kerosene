@@ -80,6 +80,13 @@ impl TradingTerminal {
                 .spacing(8)
                 .text_size(12)
                 .font(crate::app_fonts::monospace_font()),
+            checkbox(self.chart_gradient_background)
+                .label("Gradient chart background")
+                .on_toggle(Message::ToggleChartGradientBackground)
+                .size(12)
+                .spacing(8)
+                .text_size(12)
+                .font(crate::app_fonts::monospace_font()),
             row![
                 text("Chart style").size(12).color(theme.palette().text),
                 pick_list(

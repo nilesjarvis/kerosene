@@ -77,6 +77,13 @@ impl TradingTerminal {
                     self.persist_config();
                 }
             }
+            Message::ToggleChartGradientBackground(enabled)
+                if self.chart_gradient_background != enabled =>
+            {
+                self.chart_gradient_background = enabled;
+                self.sync_chart_gradient_background();
+                self.persist_config();
+            }
             Message::ChartHollowCandleModeChanged(mode)
                 if self.chart_hollow_candle_mode != mode =>
             {

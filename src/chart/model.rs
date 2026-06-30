@@ -90,6 +90,8 @@ pub struct CandlestickChart {
     pub(crate) dotted_background: bool,
     /// Opacity applied to dotted chart plot backgrounds.
     pub(crate) dotted_background_opacity: f32,
+    /// Whether chart plot backgrounds use a theme-aware gradient.
+    pub(crate) gradient_background: bool,
     /// Which candle bodies render hollow instead of filled.
     pub(crate) hollow_candle_mode: crate::config::ChartHollowCandleMode,
     /// Whether the main price series renders as candlesticks or a line + area fill.

@@ -44,6 +44,7 @@ mod tests {
         let (terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig {
             chart_series_style: ChartSeriesStyle::Line,
             chart_hollow_candle_mode: ChartHollowCandleMode::Both,
+            chart_gradient_background: true,
             ..KeroseneConfig::default()
         });
 
@@ -52,5 +53,6 @@ mod tests {
 
         assert_eq!(chart.series_style, ChartSeriesStyle::Line);
         assert_eq!(chart.hollow_candle_mode, ChartHollowCandleMode::Both);
+        assert!(chart.gradient_background);
     }
 }

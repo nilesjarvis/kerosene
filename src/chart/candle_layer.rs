@@ -15,7 +15,7 @@ use super::fisheye::ChartFisheye;
 use super::model::CandlestickChart;
 use super::moving_averages::MovingAverageLayer;
 use super::state::ChartState;
-use crate::chart_background::draw_dotted_background;
+use crate::chart_background::{draw_dotted_background, draw_gradient_background};
 use iced::widget::canvas;
 use iced::{Color, Point, Rectangle, Renderer, Theme};
 
@@ -75,6 +75,9 @@ impl CandlestickChart {
                     height: ctx.chart_h,
                 };
                 frame.with_clip(chart_region, |frame| {
+                    if self.gradient_background {
+                        draw_gradient_background(frame, ctx.theme, ctx.chart_w, ctx.chart_h);
+                    }
                     self.draw_session_chart_context(ctx, frame);
                     if self.dotted_background {
                         draw_dotted_background(

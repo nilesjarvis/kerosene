@@ -48,6 +48,10 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Preferences,
     );
     assert_route(
+        Message::ToggleChartGradientBackground(true),
+        UpdateRoute::Preferences,
+    );
+    assert_route(
         Message::OpenChartScreenshot(7, crate::chart_state::ChartSurfaceId::Docked(7)),
         UpdateRoute::ChartScreenshot,
     );

@@ -54,8 +54,8 @@ Persisted through:
 Representative fields:
 
 - `active_theme`, `custom_themes`
-- chart visual preferences: dotted background, hollow candles, fisheye,
-  chromatic aberration, edge blur, crosshair style/guides/scale
+- chart visual preferences: dotted and gradient backgrounds, hollow candles,
+  fisheye, chromatic aberration, edge blur, crosshair style/guides/scale
 - chart HUD preferences: sound, volume, readout elements, UI sounds
 - font preferences and imported custom fonts
 - `hotkeys`, `chart_timeframe_hotkey_prefix`, `recording_hotkey_for`

@@ -36,6 +36,65 @@ pub(crate) fn draw_dotted_background(
     }
 }
 
+pub(crate) fn draw_gradient_background(
+    frame: &mut canvas::Frame,
+    theme: &Theme,
+    width: f32,
+    height: f32,
+) {
+    if width <= 0.0 || height <= 0.0 || !width.is_finite() || !height.is_finite() {
+        return;
+    }
+
+    let (start, middle, anchor, end) = chart_gradient_colors(theme);
+    let gradient = canvas::gradient::Linear::new(Point::ORIGIN, Point::new(width, height))
+        .add_stop(0.0, start)
+        .add_stop(0.42, middle)
+        .add_stop(0.72, anchor)
+        .add_stop(1.0, end);
+    let path = canvas::Path::rectangle(Point::ORIGIN, Size::new(width, height));
+    frame.fill(&path, gradient);
+}
+
+fn chart_gradient_colors(theme: &Theme) -> (Color, Color, Color, Color) {
+    let palette = theme.extended_palette();
+    let base = palette.background.base.color;
+    let accent = if palette.is_dark {
+        palette.primary.strong.color
+    } else {
+        palette.primary.base.color
+    };
+    let secondary = if palette.is_dark {
+        palette.secondary.base.color
+    } else {
+        palette.primary.strong.color
+    };
+    let contrast = palette.background.base.text;
+
+    let (accent_tint, middle_tint, contrast_tint, secondary_tint) = if palette.is_dark {
+        (0.11, 0.10, 0.035, 0.075)
+    } else {
+        (0.055, 0.045, 0.025, 0.05)
+    };
+
+    (
+        mix_color(base, accent, accent_tint),
+        mix_color(base, palette.background.strong.color, middle_tint),
+        mix_color(base, contrast, contrast_tint),
+        mix_color(base, secondary, secondary_tint),
+    )
+}
+
+fn mix_color(base: Color, target: Color, amount: f32) -> Color {
+    let amount = amount.clamp(0.0, 1.0);
+    Color {
+        r: base.r + (target.r - base.r) * amount,
+        g: base.g + (target.g - base.g) * amount,
+        b: base.b + (target.b - base.b) * amount,
+        a: base.a + (target.a - base.a) * amount,
+    }
+}
+
 fn draw_projected_dotted_background(
     frame: &mut canvas::Frame,
     width: f32,
@@ -121,6 +180,7 @@ impl TradingTerminal {
             self.chart_dotted_background,
             self.chart_dotted_background_opacity,
         );
+        chart.set_gradient_background(self.chart_gradient_background);
         chart.set_hollow_candle_mode(self.chart_hollow_candle_mode);
         chart.set_series_style(self.chart_series_style);
         chart.set_fisheye(self.chart_fisheye_enabled, self.chart_fisheye_strength);
@@ -143,6 +203,16 @@ impl TradingTerminal {
         }
         for instance in self.spaghetti_charts.values_mut() {
             instance.canvas.set_dotted_background(enabled, opacity);
+        }
+    }
+
+    pub(crate) fn sync_chart_gradient_background(&mut self) {
+        let enabled = self.chart_gradient_background;
+        for instance in self.charts.values_mut() {
+            instance.chart.set_gradient_background(enabled);
+        }
+        for instance in self.spaghetti_charts.values_mut() {
+            instance.canvas.set_gradient_background(enabled);
         }
     }
 
