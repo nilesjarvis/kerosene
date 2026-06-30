@@ -6,7 +6,7 @@ use crate::hyperdash_api::{HeatmapFetchParams, LiquidationHeatmap};
 // Heatmap Cache And Display
 // ---------------------------------------------------------------------------
 
-const HEATMAP_CACHE_MAX_ENTRIES: usize = 24;
+const HEATMAP_CACHE_MAX_ENTRIES: usize = 8;
 
 impl TradingTerminal {
     pub(crate) fn cache_heatmap_data(&mut self, cache_key: String, data: LiquidationHeatmap) {
@@ -54,7 +54,10 @@ impl TradingTerminal {
 
             instance.chart.heatmap_rects = data.rects.clone();
             instance.chart.heatmap_max_usd = data.max_abs_usd;
-            instance.heatmap_data = Some(data.clone());
+            instance.heatmap_data = Some(LiquidationHeatmap {
+                rects: Vec::new(),
+                max_abs_usd: data.max_abs_usd,
+            });
             instance.heatmap_fetching = false;
             instance.heatmap_status = Some((
                 if data.rects.is_empty() {
@@ -68,5 +71,58 @@ impl TradingTerminal {
             ));
             instance.chart.candle_cache.clear();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::hyperdash_api::HeatmapRect;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn applied_heatmap_keeps_full_rects_only_on_chart() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        let chart_id = 1;
+        let request = HeatmapFetchParams {
+            coin: "BTC".to_string(),
+            min_price: 10.0,
+            max_price: 20.0,
+            start_time: 100,
+            end_time: 200,
+        };
+        let cache_key = request.cache_key();
+        let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+        instance.show_heatmap = true;
+        instance.heatmap_last_fetch = Some(request);
+        terminal.charts.insert(chart_id, instance);
+
+        let data = LiquidationHeatmap {
+            rects: vec![HeatmapRect {
+                timestamp_ms: 100_000,
+                duration_ms: 3_600_000,
+                price_lo: 10.0,
+                price_hi: 20.0,
+                amount_coins: 1.0,
+                amount_usd: 15.0,
+            }],
+            max_abs_usd: 15.0,
+        };
+
+        terminal.apply_heatmap_data_to_chart(chart_id, &cache_key, &data, false);
+
+        let instance = terminal.charts.get(&chart_id).expect("chart should exist");
+        assert_eq!(instance.chart.heatmap_rects.len(), 1);
+        assert_eq!(
+            instance
+                .heatmap_data
+                .as_ref()
+                .expect("loaded marker should be set")
+                .rects
+                .len(),
+            0
+        );
+        assert_eq!(instance.chart.heatmap_max_usd, 15.0);
     }
 }

@@ -1,8 +1,9 @@
 use super::{
-    HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, HYPERDASH_HEATMAP_MAX_LOOKBACK_SECS,
-    infer_heatmap_bucket_duration_ms, normalize_heatmap_time_range, parse_heatmap_timestamp,
+    HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, HYPERDASH_HEATMAP_MAX_CELLS,
+    HYPERDASH_HEATMAP_MAX_LOOKBACK_SECS, cap_heatmap_rects, infer_heatmap_bucket_duration_ms,
+    normalize_heatmap_time_range, parse_heatmap_timestamp,
 };
-use crate::hyperdash_api::HeatmapFetchParams;
+use crate::hyperdash_api::{HeatmapFetchParams, HeatmapRect};
 
 #[test]
 fn heatmap_timestamp_parser_uses_utc_epoch_millis() {
@@ -21,6 +22,35 @@ fn heatmap_bucket_duration_infers_smallest_positive_gap() {
             1_777_644_000_000,
         ]),
         HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS * 1000
+    );
+}
+
+#[test]
+fn heatmap_cell_cap_keeps_high_notional_cells_in_time_order() {
+    let mut rects: Vec<_> = (0..HYPERDASH_HEATMAP_MAX_CELLS + 10)
+        .rev()
+        .map(|idx| HeatmapRect {
+            timestamp_ms: idx as u64,
+            duration_ms: 3_600_000,
+            price_lo: idx as f64,
+            price_hi: idx as f64 + 1.0,
+            amount_coins: idx as f64,
+            amount_usd: idx as f64,
+        })
+        .collect();
+    rects[0].amount_usd = 2_000_000.0;
+    rects[1].amount_usd = -1_000_000.0;
+
+    cap_heatmap_rects(&mut rects);
+
+    assert_eq!(rects.len(), HYPERDASH_HEATMAP_MAX_CELLS);
+    assert!(rects.iter().any(|rect| rect.amount_usd == 2_000_000.0));
+    assert!(rects.iter().any(|rect| rect.amount_usd == -1_000_000.0));
+    assert!(!rects.iter().any(|rect| rect.amount_usd == 0.0));
+    assert!(
+        rects
+            .windows(2)
+            .all(|pair| pair[0].timestamp_ms <= pair[1].timestamp_ms)
     );
 }
 

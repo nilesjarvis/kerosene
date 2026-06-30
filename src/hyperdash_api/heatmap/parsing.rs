@@ -8,6 +8,8 @@ use super::super::{HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, response_snippet};
 // Heatmap Response Parsing
 // ---------------------------------------------------------------------------
 
+pub(super) const HYPERDASH_HEATMAP_MAX_CELLS: usize = 60_000;
+
 #[derive(Deserialize)]
 struct GqlHeatmapResponse {
     data: Option<GqlHeatmapData>,
@@ -76,16 +78,19 @@ pub(super) fn parse_heatmap_response(text: &str) -> Result<LiquidationHeatmap, S
     let bucket_duration_ms = infer_heatmap_bucket_duration_ms(&timestamps_ms);
 
     let mut rects = Vec::new();
-    let mut max_abs_usd: f64 = 0.0;
-
     for band in &lev.bands {
+        if !band.min_price.is_finite() || !band.max_price.is_finite() {
+            continue;
+        }
         let mid_price = (band.min_price + band.max_price) * 0.5;
         for cell in &band.historical_data {
             let Some(ts_ms) = parse_heatmap_timestamp(&cell.timestamp) else {
                 continue;
             };
             let usd = cell.total_amount.abs() * mid_price;
-            max_abs_usd = max_abs_usd.max(usd);
+            if !usd.is_finite() {
+                continue;
+            }
             rects.push(HeatmapRect {
                 timestamp_ms: ts_ms,
                 duration_ms: bucket_duration_ms,
@@ -96,8 +101,30 @@ pub(super) fn parse_heatmap_response(text: &str) -> Result<LiquidationHeatmap, S
             });
         }
     }
+    cap_heatmap_rects(&mut rects);
+    let max_abs_usd = rects
+        .iter()
+        .map(|rect| rect.amount_usd.abs())
+        .fold(0.0, f64::max);
 
     Ok(LiquidationHeatmap { rects, max_abs_usd })
+}
+
+pub(super) fn cap_heatmap_rects(rects: &mut Vec<HeatmapRect>) {
+    if rects.len() <= HYPERDASH_HEATMAP_MAX_CELLS {
+        return;
+    }
+
+    rects.select_nth_unstable_by(HYPERDASH_HEATMAP_MAX_CELLS, |left, right| {
+        right.amount_usd.abs().total_cmp(&left.amount_usd.abs())
+    });
+    rects.truncate(HYPERDASH_HEATMAP_MAX_CELLS);
+    rects.sort_unstable_by(|left, right| {
+        left.timestamp_ms
+            .cmp(&right.timestamp_ms)
+            .then_with(|| left.price_lo.total_cmp(&right.price_lo))
+            .then_with(|| left.price_hi.total_cmp(&right.price_hi))
+    });
 }
 
 /// Parse a "YYYY-MM-DD HH:MM:SS" UTC string to epoch milliseconds.
