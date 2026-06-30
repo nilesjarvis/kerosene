@@ -418,7 +418,7 @@ impl TradingTerminal {
                 cfg.telegram_feed_include_outcome_markets,
                 cfg.telegram_feed_onboarding_dismissed,
             ),
-            x_feed: crate::x_feed::XFeedState::new(&cfg.x_feeds),
+            x_feed: crate::x_feed::XFeedState::new(&cfg.x_feeds, &cfg.x_access_token),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg
                 .chart_timeframe_hotkey_prefix

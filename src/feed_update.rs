@@ -67,7 +67,8 @@ impl TradingTerminal {
             | Message::XFeedSourceSelected(_, _)
             | Message::RefreshXFeed(_)
             | Message::XFeedRefreshTick
-            | Message::XFeedLoaded(_, _, _)) => return self.update_x_feed(message),
+            | Message::XFeedLoaded(_, _, _)
+            | Message::XProfileImageLoaded(_, _)) => return self.update_x_feed(message),
             _ => {}
         }
 

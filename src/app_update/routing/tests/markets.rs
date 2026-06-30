@@ -18,6 +18,13 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
     );
     assert_route(Message::XFeedConnect, UpdateRoute::Feed);
     assert_route(Message::RefreshXFeed(0), UpdateRoute::Feed);
+    assert_route(
+        Message::XProfileImageLoaded(
+            1,
+            crate::message::XProfileImageMessageResult::new(Ok(Vec::new())),
+        ),
+        UpdateRoute::Feed,
+    );
     assert_route(Message::RefreshHeatmap, UpdateRoute::Hyperdash);
     assert_route(
         Message::ReadDataProviderChanged(crate::config::ReadDataProvider::Hydromancer),

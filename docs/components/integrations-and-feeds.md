@@ -189,8 +189,9 @@ following timeline and Lists. Runtime state lives in `x_feed.rs`, update logic
 in `feed_update/x.rs`, and rendering in `feed_views/x.rs`.
 
 The pane is multi-instance through `PaneKind::XFeed(XFeedId)`. Persisted layout
-config stores widget IDs and selected non-secret sources in `x_feeds`; raw X
-access tokens are runtime-only in the current implementation.
+config stores widget IDs and selected non-secret sources in `x_feeds`. Raw X
+access tokens are stored only in the selected credential store (OS keychain or
+encrypted config) and are omitted from plaintext config snapshots.
 
 Low-latency behavior is REST polling while an X Feed pane is open. Following and
 List timelines are user-context REST endpoints, so X Filtered Stream is not a

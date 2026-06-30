@@ -49,6 +49,10 @@ pub(super) fn merge_missing_plaintext_secrets_into_payload(
     {
         changed |= payload.set_global_hyperdash_api_key(&config.hyperdash_api_key);
     }
+    if payload.global_x_access_token().trim().is_empty() && !config.x_access_token.trim().is_empty()
+    {
+        changed |= payload.set_global_x_access_token(&config.x_access_token);
+    }
 
     changed
 }
@@ -99,6 +103,8 @@ pub(super) fn apply_secret_payload(config: &mut KeroseneConfig, payload: &Secret
     config.hydromancer_api_key = payload.global_hydromancer_api_key().to_string().into();
     config.hyperdash_api_key.zeroize();
     config.hyperdash_api_key = payload.global_hyperdash_api_key().to_string().into();
+    config.x_access_token.zeroize();
+    config.x_access_token = payload.global_x_access_token().to_string().into();
 }
 
 pub(super) fn apply_secret_payload_preserving_missing_plaintext(
@@ -132,6 +138,10 @@ pub(super) fn apply_secret_payload_preserving_missing_plaintext(
     if !payload.global_hyperdash_api_key().trim().is_empty() {
         config.hyperdash_api_key.zeroize();
         config.hyperdash_api_key = payload.global_hyperdash_api_key().to_string().into();
+    }
+    if !payload.global_x_access_token().trim().is_empty() {
+        config.x_access_token.zeroize();
+        config.x_access_token = payload.global_x_access_token().to_string().into();
     }
 }
 

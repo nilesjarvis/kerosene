@@ -336,6 +336,7 @@ impl Default for KeroseneConfig {
             outcome_display_labels: HashMap::new(),
             hydromancer_api_key: String::new().into(),
             hyperdash_api_key: String::new().into(),
+            x_access_token: String::new().into(),
             sound_enabled: false,
             desktop_notifications: false,
             toast_position: Default::default(),

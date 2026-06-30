@@ -295,6 +295,10 @@ pub struct KeroseneConfig {
     #[serde(default)]
     #[serde(skip_serializing)]
     pub hyperdash_api_key: Zeroizing<String>,
+    /// X OAuth 2.0 user access token for the X Feed integration.
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    pub x_access_token: Zeroizing<String>,
     /// Sound notifications enabled.
     #[serde(default)]
     pub sound_enabled: bool,

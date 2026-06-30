@@ -609,7 +609,8 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::XFeedSourceSelected(_, _)
         | Message::RefreshXFeed(_)
         | Message::XFeedRefreshTick
-        | Message::XFeedLoaded(_, _, _) => UpdateRoute::Feed,
+        | Message::XFeedLoaded(_, _, _)
+        | Message::XProfileImageLoaded(_, _) => UpdateRoute::Feed,
 
         Message::HyperdashKeyInputChanged(_)
         | Message::SaveHyperdashKey

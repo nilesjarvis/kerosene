@@ -472,6 +472,34 @@ impl fmt::Debug for XFeedPageMessageResult {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct XProfileImageMessageResult(Box<Result<Vec<u8>, String>>);
+
+impl XProfileImageMessageResult {
+    pub(crate) fn new(result: Result<Vec<u8>, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<Vec<u8>, String> {
+        *self.0
+    }
+}
+
+impl fmt::Debug for XProfileImageMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(bytes) => f
+                .debug_struct("XProfileImageMessageResult")
+                .field("bytes", &bytes.len())
+                .finish(),
+            Err(error) => f
+                .debug_tuple("XProfileImageMessageResult")
+                .field(&crate::helpers::redact_sensitive_response_text(error))
+                .finish(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
     SaveLayout(String),
@@ -924,6 +952,7 @@ pub(crate) enum Message {
     RefreshXFeed(XFeedId),
     XFeedRefreshTick,
     XFeedLoaded(XFeedSource, u64, XFeedPageMessageResult),
+    XProfileImageLoaded(u64, XProfileImageMessageResult),
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
@@ -1366,7 +1395,7 @@ mod tests {
     use super::{
         Message, RedactedOrderInput, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
         TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAuthContextMessageResult,
-        XFeedPageMessageResult, XListsMessageResult,
+        XFeedPageMessageResult, XListsMessageResult, XProfileImageMessageResult,
     };
     use crate::api::{ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo};
     use crate::chart_state::ChartSurfaceId;
@@ -1468,6 +1497,10 @@ mod tests {
                 XFeedPageMessageResult::new(Err(crate::x_feed::XFeedRequestError::plain(
                     "sentinel-secret",
                 ))),
+            ),
+            Message::XProfileImageLoaded(
+                5,
+                XProfileImageMessageResult::new(Err("sentinel-secret".to_string())),
             ),
             Message::WalletKeyInputChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),

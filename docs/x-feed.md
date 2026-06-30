@@ -28,10 +28,16 @@ one REST response updates every matching widget.
 
 ## Authentication
 
-The current BYOK path accepts a user access token in the widget. The token is
-kept in runtime state as `SensitiveString` and is not written to `config.json`.
-Persisted config stores widget IDs and selected non-secret sources in `x_feeds`;
-private List selections fall back to `Following` before persistence.
+The BYOK path accepts a user access token in the widget. The token is staged in
+runtime state as `SensitiveString`, authenticated against X, then saved through
+the selected credential store: OS keychain or encrypted config. It is not written
+as plaintext to `config.json`. Persisted config stores widget IDs and selected
+non-secret sources in `x_feeds`; private List selections fall back to
+`Following` before persistence.
+
+On startup, a saved token is restored from the secret payload and the app starts
+an auth/list refresh for any open X Feed widgets. Clearing the token removes it
+from the selected secret store before clearing runtime state.
 
 Production OAuth should use X OAuth 2.0 Authorization Code Flow with PKCE and
 scopes such as `tweet.read`, `users.read`, `list.read`, and `offline.access`

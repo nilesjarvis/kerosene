@@ -368,7 +368,14 @@ fn config_save_sanitizes_legacy_plaintext_secrets_before_backup() {
         "hyperdash_api_key".to_string(),
         serde_json::json!("hyper-secret"),
     );
-    object.insert("x_bearer_token".to_string(), serde_json::json!("x-secret"));
+    object.insert(
+        "x_access_token".to_string(),
+        serde_json::json!("x-runtime-secret"),
+    );
+    object.insert(
+        "x_bearer_token".to_string(),
+        serde_json::json!("x-legacy-secret"),
+    );
     write_file(
         &path,
         serde_json::to_string_pretty(&legacy).expect("legacy config should encode"),
@@ -385,7 +392,8 @@ fn config_save_sanitizes_legacy_plaintext_secrets_before_backup() {
         "legacy-agent-secret",
         "hydro-secret",
         "hyper-secret",
-        "x-secret",
+        "x-runtime-secret",
+        "x-legacy-secret",
     ] {
         assert!(!primary.contains(secret), "primary leaked {secret}");
         assert!(!backup.contains(secret), "backup leaked {secret}");

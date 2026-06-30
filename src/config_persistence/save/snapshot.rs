@@ -127,6 +127,7 @@ impl TradingTerminal {
             outcome_display_labels: self.outcome_display_labels.clone(),
             hydromancer_api_key: String::new().into(),
             hyperdash_api_key: String::new().into(),
+            x_access_token: String::new().into(),
             sound_enabled: layout_snapshot.sound_enabled,
             desktop_notifications: layout_snapshot.desktop_notifications,
             toast_position: self.toast_position,

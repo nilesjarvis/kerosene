@@ -1335,6 +1335,7 @@ fn encrypted_config_lock_clears_all_plaintext_secret_fields() {
         }],
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
+        x_access_token: "x-token".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -1344,6 +1345,7 @@ fn encrypted_config_lock_clears_all_plaintext_secret_fields() {
     assert_eq!(config.accounts[0].hydromancer_api_key.as_str(), "");
     assert_eq!(config.hydromancer_api_key.as_str(), "");
     assert_eq!(config.hyperdash_api_key.as_str(), "");
+    assert_eq!(config.x_access_token.as_str(), "");
 }
 
 #[test]
@@ -1364,6 +1366,7 @@ fn encrypted_config_with_invalid_blob_locks_plaintext_and_blocks_save() {
         }],
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
+        x_access_token: "x-token".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -1375,6 +1378,7 @@ fn encrypted_config_with_invalid_blob_locks_plaintext_and_blocks_save() {
     assert_eq!(config.accounts[0].hydromancer_api_key.as_str(), "");
     assert_eq!(config.hydromancer_api_key.as_str(), "");
     assert_eq!(config.hyperdash_api_key.as_str(), "");
+    assert_eq!(config.x_access_token.as_str(), "");
     assert!(
         crate::config::secrets::take_secret_warnings()
             .iter()
@@ -1402,6 +1406,7 @@ fn encrypted_config_without_blob_locks_plaintext_and_blocks_save() {
         }],
         hydromancer_api_key: "global-hydro".to_string().into(),
         hyperdash_api_key: "global-hyper".to_string().into(),
+        x_access_token: "x-token".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -1413,6 +1418,7 @@ fn encrypted_config_without_blob_locks_plaintext_and_blocks_save() {
     assert_eq!(config.accounts[0].hydromancer_api_key.as_str(), "");
     assert_eq!(config.hydromancer_api_key.as_str(), "");
     assert_eq!(config.hyperdash_api_key.as_str(), "");
+    assert_eq!(config.x_access_token.as_str(), "");
     assert!(
         crate::config::secrets::take_secret_warnings()
             .iter()

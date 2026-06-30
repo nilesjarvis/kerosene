@@ -1,11 +1,13 @@
 use crate::app_state::TradingTerminal;
 use crate::helpers::{format_relative_time, format_seen_latency_label, format_timestamp_exact};
 use crate::message::Message;
-use crate::x_feed::{XFeedId, XFeedInstance, XFeedSourceOption};
+use crate::x_feed::{XAuthorProfile, XFeedId, XFeedInstance, XFeedSourceOption};
 use iced::widget::{
-    Space, button, column, container, pick_list, row, rule, scrollable, text, text_input,
+    Space, button, column, container, image, pick_list, row, rule, scrollable, text, text_input,
 };
-use iced::{Alignment, Element, Fill, Length, Theme};
+use iced::{Alignment, ContentFit, Element, Fill, Length, Theme};
+
+const X_PROFILE_IMAGE_SIZE: f32 = 32.0;
 
 impl TradingTerminal {
     pub(crate) fn view_x_feed(&self, id: XFeedId) -> Element<'_, Message> {
@@ -189,7 +191,12 @@ impl TradingTerminal {
         let now_ms = self.status_bar_now_ms;
         let mut posts = column![].spacing(8).width(Fill);
         for post in &instance.posts {
-            posts = posts.push(x_post_card(post, now_ms, &theme));
+            posts = posts.push(x_post_card(
+                post,
+                self.x_feed.author_profile_for_post(post),
+                now_ms,
+                &theme,
+            ));
         }
 
         scrollable(posts).height(Fill).into()
@@ -198,6 +205,7 @@ impl TradingTerminal {
 
 fn x_post_card<'a>(
     post: &'a crate::x_feed::XFeedPost,
+    profile: Option<&'a XAuthorProfile>,
     now_ms: u64,
     theme: &Theme,
 ) -> Element<'a, Message> {
@@ -205,16 +213,28 @@ fn x_post_card<'a>(
     let latency =
         format_seen_latency_label(post.created_at_ms, post.received_at_ms, post.received_at_ms)
             .unwrap_or_else(|| format_relative_time(post.created_at_ms, now_ms));
-    let header = row![
-        text(format!("@{}", post.author_username))
-            .size(12)
-            .color(theme.palette().text),
-        text(post.author_name.as_str()).size(11).color(muted),
-        Space::new().width(Fill),
+
+    let identity = column![
+        row![
+            text(format!("@{}", post.author_username))
+                .size(12)
+                .color(theme.palette().text),
+            text(post.author_name.as_str()).size(11).color(muted),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
         text(latency).size(10).color(muted),
     ]
-    .spacing(6)
-    .align_y(Alignment::Center);
+    .spacing(1)
+    .width(Fill);
+
+    let header = row![
+        x_author_avatar(profile, post, X_PROFILE_IMAGE_SIZE, theme),
+        identity,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Start)
+    .width(Fill);
 
     let copy = button(text("Copy").size(10))
         .on_press(Message::CopyToClipboard(post.url.clone().into()))
@@ -247,6 +267,55 @@ fn x_post_card<'a>(
             },
             width: 1.0,
             radius: 6.0.into(),
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn x_author_avatar(
+    profile: Option<&XAuthorProfile>,
+    post: &crate::x_feed::XFeedPost,
+    size: f32,
+    theme: &Theme,
+) -> Element<'static, Message> {
+    if let Some(handle) = profile.and_then(|profile| profile.image_handle.as_ref()) {
+        return container(
+            image(handle.clone())
+                .width(size)
+                .height(size)
+                .content_fit(ContentFit::Cover)
+                .border_radius(size / 2.0),
+        )
+        .width(size)
+        .height(size)
+        .clip(true)
+        .into();
+    }
+
+    let initials = profile
+        .map(|profile| profile.initials.clone())
+        .filter(|initials| !initials.trim().is_empty())
+        .unwrap_or_else(|| post.author_initials());
+    let bg = theme.extended_palette().background.weak.color;
+    let text_color = theme.palette().text;
+    container(
+        text(initials)
+            .size(size * 0.4)
+            .font(crate::app_fonts::monospace_font())
+            .color(text_color)
+            .center(),
+    )
+    .center(size)
+    .style(move |_theme: &Theme| iced::widget::container::Style {
+        background: Some(bg.into()),
+        border: iced::Border {
+            color: iced::Color {
+                a: 0.16,
+                ..text_color
+            },
+            width: 1.0,
+            radius: (size / 2.0).into(),
         },
         ..Default::default()
     })

@@ -61,6 +61,7 @@ fn serialized_config_keeps_raw_credentials_out_of_json() {
         agent_key: "legacy-agent-secret".to_string().into(),
         hydromancer_api_key: "hydro-secret".to_string().into(),
         hyperdash_api_key: "hyper-secret".to_string().into(),
+        x_access_token: "x-secret".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -71,6 +72,7 @@ fn serialized_config_keeps_raw_credentials_out_of_json() {
     assert!(!json.contains("legacy-agent-secret"));
     assert!(!json.contains("hydro-secret"));
     assert!(!json.contains("hyper-secret"));
+    assert!(!json.contains("x-secret"));
 }
 
 #[test]

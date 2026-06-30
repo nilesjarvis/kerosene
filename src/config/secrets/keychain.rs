@@ -121,23 +121,26 @@ pub fn store_secret_payload(payload: &SecretPayload) -> Result<(), String> {
     keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, json.as_str())
 }
 
-pub fn store_keychain_secrets(
+pub fn store_keychain_secrets_with_x(
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
+    x_access_token: &str,
 ) -> Result<Option<String>, String> {
-    store_keychain_secrets_with_profile_removals(
+    store_keychain_secrets_with_profile_removals_with_x(
         profiles,
         hydromancer_api_key,
         hyperdash_api_key,
+        x_access_token,
         &[],
     )
 }
 
-pub fn store_keychain_secrets_with_profile_removals(
+pub fn store_keychain_secrets_with_profile_removals_with_x(
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
+    x_access_token: &str,
     removed_profile_secret_ids: &[String],
 ) -> Result<Option<String>, String> {
     if in_memory_config_mode() {
@@ -148,6 +151,7 @@ pub fn store_keychain_secrets_with_profile_removals(
         profiles,
         hydromancer_api_key,
         hyperdash_api_key,
+        x_access_token,
         removed_profile_secret_ids,
         KeychainProfileRemovalStoreHooks {
             load_payload: load_keychain_secret_payload,
@@ -183,6 +187,7 @@ fn store_keychain_secrets_with_profile_removals_with<
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
+    x_access_token: &str,
     removed_profile_secret_ids: &[String],
     mut hooks: KeychainProfileRemovalStoreHooks<
         LoadPayload,
@@ -199,7 +204,12 @@ where
     ClearBundleLegacy: FnMut(&SecretPayload) -> Result<(), String>,
     ClearRemovedProfile: FnMut(&str) -> Result<(), String>,
 {
-    let payload = SecretPayload::from_credentials(profiles, hydromancer_api_key, hyperdash_api_key);
+    let payload = SecretPayload::from_credentials_with_x(
+        profiles,
+        hydromancer_api_key,
+        hyperdash_api_key,
+        x_access_token,
+    );
     let requires_removed_profile_cleanup = removed_profile_secret_ids
         .iter()
         .any(|secret_id| removed_profile_legacy_cleanup_required(secret_id, &payload));
@@ -752,6 +762,7 @@ mod tests {
             &[kept_profile.clone(), removed_profile.clone()],
             "",
             "",
+            "",
             &[removed_profile.secret_id.clone()],
             KeychainProfileRemovalStoreHooks {
                 load_payload: || Ok(Some(SecretPayload::from_credentials(&[], "", ""))),
@@ -805,6 +816,7 @@ mod tests {
 
         let result = store_keychain_secrets_with_profile_removals_with(
             &[kept_profile, removed_profile.clone()],
+            "",
             "",
             "",
             &[removed_profile.secret_id.clone()],

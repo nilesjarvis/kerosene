@@ -101,6 +101,8 @@ pub struct GlobalSecretPayload {
     pub hydromancer_api_key: Zeroizing<String>,
     #[serde(default)]
     pub hyperdash_api_key: Zeroizing<String>,
+    #[serde(default)]
+    pub x_access_token: Zeroizing<String>,
 }
 
 impl fmt::Debug for GlobalSecretPayload {
@@ -108,6 +110,7 @@ impl fmt::Debug for GlobalSecretPayload {
         f.debug_struct("GlobalSecretPayload")
             .field("hydromancer_api_key", &"<redacted>")
             .field("hyperdash_api_key", &"<redacted>")
+            .field("x_access_token", &"<redacted>")
             .finish()
     }
 }
@@ -143,6 +146,15 @@ impl SecretPayload {
         hydromancer_api_key: &str,
         hyperdash_api_key: &str,
     ) -> Self {
+        Self::from_credentials_with_x(profiles, hydromancer_api_key, hyperdash_api_key, "")
+    }
+
+    pub fn from_credentials_with_x(
+        profiles: &[AccountProfile],
+        hydromancer_api_key: &str,
+        hyperdash_api_key: &str,
+        x_access_token: &str,
+    ) -> Self {
         Self {
             schema: SECRET_PAYLOAD_SCHEMA.to_string(),
             profiles: profiles
@@ -159,6 +171,7 @@ impl SecretPayload {
             global: GlobalSecretPayload {
                 hydromancer_api_key: hydromancer_api_key.to_string().into(),
                 hyperdash_api_key: hyperdash_api_key.to_string().into(),
+                x_access_token: x_access_token.to_string().into(),
             },
         }
     }
@@ -167,6 +180,7 @@ impl SecretPayload {
         self.profiles.is_empty()
             && self.global.hydromancer_api_key.trim().is_empty()
             && self.global.hyperdash_api_key.trim().is_empty()
+            && self.global.x_access_token.trim().is_empty()
     }
 
     #[cfg(test)]
@@ -225,6 +239,10 @@ impl SecretPayload {
 
     pub fn global_hyperdash_api_key(&self) -> &str {
         &self.global.hyperdash_api_key
+    }
+
+    pub fn global_x_access_token(&self) -> &str {
+        &self.global.x_access_token
     }
 
     #[cfg(test)]
@@ -323,6 +341,14 @@ impl SecretPayload {
             return false;
         }
         self.global.hyperdash_api_key = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_x_access_token(&mut self, value: &str) -> bool {
+        if self.global.x_access_token.as_str() == value {
+            return false;
+        }
+        self.global.x_access_token = value.to_string().into();
         true
     }
 }

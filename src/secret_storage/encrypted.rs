@@ -12,10 +12,12 @@ use zeroize::{Zeroize, Zeroizing};
 impl TradingTerminal {
     pub(crate) fn current_secret_payload(&self) -> config::SecretPayload {
         let accounts = self.persisted_accounts_snapshot();
-        config::SecretPayload::from_credentials(
+        let x_access_token = self.x_feed.access_token_for_secret();
+        config::SecretPayload::from_credentials_with_x(
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
+            x_access_token.as_str(),
         )
     }
 
@@ -185,6 +187,7 @@ impl TradingTerminal {
             .map(|profile| profile.agent_key.clone())
             .unwrap_or_default()
             .into();
+        let x_access_token = Zeroizing::new(payload.global_x_access_token().trim().to_string());
         let previous_hydromancer_key = Zeroizing::new(self.hydromancer_api_key.trim().to_string());
         let previous_hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_key_changed =
@@ -215,6 +218,8 @@ impl TradingTerminal {
         if hyperdash_key_changed {
             self.bump_hyperdash_key_generation();
         }
+        self.x_feed
+            .set_access_token_from_secret(x_access_token.as_str());
 
         if hydromancer_key_changed {
             self.liquidations_last_rx_ms = None;
@@ -352,10 +357,12 @@ impl TradingTerminal {
                 };
                 self.encrypted_secret_password.zeroize();
                 self.encrypted_secret_confirm.zeroize();
+                let mut unlock_tasks = Vec::new();
                 if self.hydromancer_key_generation != hydromancer_generation_before {
-                    return self.refresh_hydromancer_dependent_data();
+                    unlock_tasks.push(self.refresh_hydromancer_dependent_data());
                 }
-                return Task::none();
+                unlock_tasks.push(self.request_x_feed_auth_refresh());
+                return Task::batch(unlock_tasks);
             }
             Err(error) => {
                 self.encrypted_secrets_unlocked = false;
@@ -512,6 +519,31 @@ mod tests {
             terminal.hydromancer_api_key_for_task(),
             terminal.hydromancer_key_generation,
         )
+    }
+
+    #[test]
+    fn current_secret_payload_includes_x_access_token() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.hydromancer_api_key = sensitive_string("hydro-secret");
+        terminal.hyperdash_api_key = sensitive_string("hyper-secret");
+        terminal.x_feed.set_access_token_from_secret("x-secret");
+
+        let payload = terminal.current_secret_payload();
+
+        assert_eq!(payload.global_hydromancer_api_key(), "hydro-secret");
+        assert_eq!(payload.global_hyperdash_api_key(), "hyper-secret");
+        assert_eq!(payload.global_x_access_token(), "x-secret");
+    }
+
+    #[test]
+    fn encrypted_payload_apply_hydrates_x_access_token() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.x_feed.set_access_token_from_secret("old-x");
+        let payload = SecretPayload::from_credentials_with_x(&[], "", "", "new-x");
+
+        let _skipped = terminal.apply_secret_payload(payload);
+
+        assert_eq!(terminal.x_feed.access_token_for_secret().as_str(), "new-x");
     }
 
     #[test]

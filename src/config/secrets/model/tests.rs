@@ -180,6 +180,9 @@ fn secret_payload_mutators_keep_bundle_compact() {
     assert_eq!(payload.profile_agent_key("acct-a"), None);
     assert!(payload.set_global_hydromancer_api_key("hydro"));
     assert!(!payload.set_global_hydromancer_api_key("hydro"));
+    assert!(payload.set_global_x_access_token("x-token"));
+    assert!(!payload.set_global_x_access_token("x-token"));
+    assert_eq!(payload.global_x_access_token(), "x-token");
     assert!(!payload.is_empty());
 }
 
@@ -189,16 +192,25 @@ fn global_secret_payload_defaults_missing_integration_keys() {
 
     assert_eq!(payload.hydromancer_api_key.as_str(), "");
     assert_eq!(payload.hyperdash_api_key.as_str(), "");
+    assert_eq!(payload.x_access_token.as_str(), "");
 
     let payload: GlobalSecretPayload =
         serde_json::from_str(r#"{"hydromancer_api_key":"hydro"}"#).unwrap();
     assert_eq!(payload.hydromancer_api_key.as_str(), "hydro");
     assert_eq!(payload.hyperdash_api_key.as_str(), "");
+    assert_eq!(payload.x_access_token.as_str(), "");
 
     let payload: GlobalSecretPayload =
         serde_json::from_str(r#"{"hyperdash_api_key":"hyper"}"#).unwrap();
     assert_eq!(payload.hydromancer_api_key.as_str(), "");
     assert_eq!(payload.hyperdash_api_key.as_str(), "hyper");
+    assert_eq!(payload.x_access_token.as_str(), "");
+
+    let payload: GlobalSecretPayload =
+        serde_json::from_str(r#"{"x_access_token":"x-token"}"#).unwrap();
+    assert_eq!(payload.hydromancer_api_key.as_str(), "");
+    assert_eq!(payload.hyperdash_api_key.as_str(), "");
+    assert_eq!(payload.x_access_token.as_str(), "x-token");
 }
 
 #[test]
@@ -213,6 +225,7 @@ fn secret_payload_defaults_missing_global_bundle() {
     assert_eq!(payload.profile_agent_key("acct-a"), Some("agent-a"));
     assert_eq!(payload.global_hydromancer_api_key(), "");
     assert_eq!(payload.global_hyperdash_api_key(), "");
+    assert_eq!(payload.global_x_access_token(), "");
 }
 
 #[test]
@@ -227,6 +240,7 @@ fn secret_payload_defaults_missing_profiles_bundle() {
     assert!(payload.profiles.is_empty());
     assert_eq!(payload.global_hydromancer_api_key(), "hydro");
     assert_eq!(payload.global_hyperdash_api_key(), "");
+    assert_eq!(payload.global_x_access_token(), "");
 }
 
 #[test]
@@ -236,7 +250,12 @@ fn secret_payload_debug_redacts_secret_values() {
         "0xABCDEFabcdefABCDEFabcdefABCDEFabcdefabcd",
         "agent-secret",
     )];
-    let payload = SecretPayload::from_credentials(&profiles, "hydro-secret", "hyper-secret");
+    let payload = SecretPayload::from_credentials_with_x(
+        &profiles,
+        "hydro-secret",
+        "hyper-secret",
+        "x-secret",
+    );
 
     let rendered = format!("{payload:?}");
 
@@ -247,6 +266,7 @@ fn secret_payload_debug_redacts_secret_values() {
         "agent-secret",
         "hydro-secret",
         "hyper-secret",
+        "x-secret",
     ] {
         assert!(!rendered.contains(secret), "debug output leaked {secret}");
     }

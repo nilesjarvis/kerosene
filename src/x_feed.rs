@@ -1,8 +1,9 @@
 use crate::api::{CLIENT, KEROSENE_USER_AGENT};
 use crate::app_state::{SensitiveString, sensitive_string};
-use crate::helpers::redact_sensitive_response_text;
+use crate::helpers::{fallback_initials, redact_sensitive_response_text};
 use chrono::{DateTime, Utc};
-use reqwest::header::USER_AGENT;
+use iced::widget::image::Handle as ImageHandle;
+use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -14,6 +15,8 @@ const X_FEED_REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
 pub(crate) const X_FEED_REFRESH_INTERVAL_SECS: u64 = 10;
 pub(crate) const X_FEED_POST_LIMIT: usize = 100;
 const X_FEED_FETCH_LIMIT: usize = 50;
+const X_PROFILE_IMAGE_MAX_BODY_BYTES: usize = 512 * 1024;
+pub(crate) const X_PROFILE_IMAGE_RETRY_BACKOFF_MS: u64 = 300_000;
 
 pub(crate) type XFeedId = u64;
 
@@ -186,6 +189,7 @@ pub(crate) struct XFeedPost {
     pub(crate) author_id: Option<String>,
     pub(crate) author_name: String,
     pub(crate) author_username: String,
+    pub(crate) author_profile_image_url: Option<String>,
     pub(crate) text: String,
     pub(crate) created_at_ms: u64,
     pub(crate) received_at_ms: u64,
@@ -199,11 +203,25 @@ impl fmt::Debug for XFeedPost {
             .field("author_id", &self.author_id.as_ref().map(|_| "<redacted>"))
             .field("author_name", &"<redacted>")
             .field("author_username", &"<redacted>")
+            .field(
+                "author_profile_image_url",
+                &self.author_profile_image_url.as_ref().map(|_| "<url>"),
+            )
             .field("text", &"<redacted>")
             .field("created_at_ms", &self.created_at_ms)
             .field("received_at_ms", &self.received_at_ms)
             .field("url", &"<redacted>")
             .finish()
+    }
+}
+
+impl XFeedPost {
+    pub(crate) fn author_profile_key(&self) -> String {
+        x_author_profile_key(self.author_id.as_deref(), &self.author_username)
+    }
+
+    pub(crate) fn author_initials(&self) -> String {
+        fallback_initials(&self.author_name, &self.author_username)
     }
 }
 
@@ -282,9 +300,64 @@ impl fmt::Debug for XFeedInstance {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct XAuthorProfile {
+    pub(crate) author_id: Option<String>,
+    pub(crate) username: String,
+    pub(crate) name: String,
+    pub(crate) initials: String,
+    pub(crate) profile_image_url: Option<String>,
+    pub(crate) image_handle: Option<ImageHandle>,
+    pub(crate) image_loading_url: Option<String>,
+    pub(crate) image_request_id: u64,
+    pub(crate) image_failed_at_ms: Option<u64>,
+}
+
+impl fmt::Debug for XAuthorProfile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XAuthorProfile")
+            .field("author_id", &self.author_id.as_ref().map(|_| "<redacted>"))
+            .field("username", &"<redacted>")
+            .field("name", &"<redacted>")
+            .field("initials", &"<redacted>")
+            .field(
+                "profile_image_url",
+                &self.profile_image_url.as_ref().map(|_| "<url>"),
+            )
+            .field(
+                "image_handle",
+                &self.image_handle.as_ref().map(|_| "<image>"),
+            )
+            .field(
+                "image_loading_url",
+                &self.image_loading_url.as_ref().map(|_| "<url>"),
+            )
+            .field("image_request_id", &self.image_request_id)
+            .field("image_failed_at_ms", &self.image_failed_at_ms)
+            .finish()
+    }
+}
+
+impl XAuthorProfile {
+    pub(crate) fn from_post(post: &XFeedPost) -> Self {
+        Self {
+            author_id: post.author_id.clone(),
+            username: post.author_username.clone(),
+            name: post.author_name.clone(),
+            initials: post.author_initials(),
+            profile_image_url: post.author_profile_image_url.clone(),
+            image_handle: None,
+            image_loading_url: None,
+            image_request_id: 0,
+            image_failed_at_ms: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct XFeedState {
     pub(crate) access_token_input: SensitiveString,
+    pending_access_token: SensitiveString,
     access_token: SensitiveString,
     pub(crate) auth_user: Option<XAuthenticatedUser>,
     pub(crate) lists: Vec<XListSummary>,
@@ -297,12 +370,15 @@ pub(crate) struct XFeedState {
     pub(crate) lists_loading: bool,
     pub(crate) status: Option<(String, bool)>,
     pub(crate) instances: HashMap<XFeedId, XFeedInstance>,
+    pub(crate) author_profiles: HashMap<String, XAuthorProfile>,
+    pub(crate) next_profile_image_request_id: u64,
 }
 
 impl fmt::Debug for XFeedState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("XFeedState")
             .field("access_token_input", &"<redacted>")
+            .field("pending_access_token", &"<redacted>")
             .field("access_token", &"<redacted>")
             .field("auth_user", &self.auth_user)
             .field("lists", &self.lists.len())
@@ -327,12 +403,17 @@ impl fmt::Debug for XFeedState {
                     .map(|(message, is_error)| (redact_sensitive_response_text(message), is_error)),
             )
             .field("instances", &self.instances.len())
+            .field("author_profiles", &self.author_profiles.len())
+            .field(
+                "next_profile_image_request_id",
+                &self.next_profile_image_request_id,
+            )
             .finish()
     }
 }
 
 impl XFeedState {
-    pub(crate) fn new(configs: &[crate::config::XFeedConfig]) -> Self {
+    pub(crate) fn new(configs: &[crate::config::XFeedConfig], access_token: &str) -> Self {
         let mut instances = HashMap::new();
         for config in configs {
             instances.insert(
@@ -340,10 +421,12 @@ impl XFeedState {
                 XFeedInstance::new(config.id, config.source.clone()),
             );
         }
+        let access_token = access_token.trim().to_string();
 
         Self {
             access_token_input: sensitive_string(String::new()),
-            access_token: sensitive_string(String::new()),
+            pending_access_token: sensitive_string(String::new()),
+            access_token: sensitive_string(access_token),
             auth_user: None,
             lists: Vec::new(),
             connect_request_id: 0,
@@ -355,6 +438,8 @@ impl XFeedState {
             lists_loading: false,
             status: None,
             instances,
+            author_profiles: HashMap::new(),
+            next_profile_image_request_id: 0,
         }
     }
 
@@ -370,37 +455,69 @@ impl XFeedState {
         Zeroizing::new(self.access_token.trim().to_string())
     }
 
-    pub(crate) fn save_access_token_from_input(&mut self) -> Option<Zeroizing<String>> {
+    pub(crate) fn access_token_for_secret(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.access_token.trim().to_string())
+    }
+
+    pub(crate) fn access_token_candidate_from_input(&mut self) -> Option<Zeroizing<String>> {
         let token = self.access_token_input.trim().to_string();
         if token.is_empty() {
             self.status = Some(("Paste an X OAuth 2.0 user access token".to_string(), true));
             return None;
         }
 
-        self.invalidate_requests();
-        self.access_token.zeroize();
-        self.access_token = sensitive_string(token.clone());
+        self.pending_access_token.zeroize();
+        self.pending_access_token = sensitive_string(token.clone());
         self.access_token_input.zeroize();
         Some(Zeroizing::new(token))
     }
 
+    pub(crate) fn commit_access_token(&mut self, token: &str) -> bool {
+        let changed = self.set_access_token_from_secret(token);
+        self.access_token_input.zeroize();
+        self.pending_access_token.zeroize();
+        changed
+    }
+
+    pub(crate) fn pending_access_token_for_secret(&self) -> Option<Zeroizing<String>> {
+        let token = self.pending_access_token.trim().to_string();
+        (!token.is_empty()).then(|| Zeroizing::new(token))
+    }
+
+    pub(crate) fn clear_pending_access_token(&mut self) {
+        self.pending_access_token.zeroize();
+    }
+
+    pub(crate) fn set_access_token_from_secret(&mut self, token: &str) -> bool {
+        let token = token.trim();
+        let changed = self.access_token.trim() != token;
+        if changed {
+            self.invalidate_requests();
+            self.auth_user = None;
+            self.lists.clear();
+            self.author_profiles.clear();
+            self.connecting = false;
+            self.lists_loading = false;
+            for instance in self.instances.values_mut() {
+                if token.is_empty() || instance.source.is_private() {
+                    instance.source = XFeedSource::Following;
+                }
+                instance.last_error = None;
+                instance.posts.clear();
+                instance.last_refresh_ms = None;
+            }
+        }
+
+        self.access_token.zeroize();
+        self.access_token = sensitive_string(token.to_string());
+        changed
+    }
+
     pub(crate) fn clear_access_token(&mut self) {
         self.access_token_input.zeroize();
-        self.access_token.zeroize();
-        self.invalidate_requests();
-        self.auth_user = None;
-        self.lists.clear();
-        self.connecting = false;
-        self.lists_loading = false;
+        self.pending_access_token.zeroize();
+        self.set_access_token_from_secret("");
         self.status = Some(("X token cleared".to_string(), false));
-        for instance in self.instances.values_mut() {
-            if instance.source.is_private() {
-                instance.source = XFeedSource::Following;
-            }
-            instance.last_error = None;
-            instance.posts.clear();
-            instance.last_refresh_ms = None;
-        }
     }
 
     pub(crate) fn invalidate_requests(&mut self) {
@@ -496,6 +613,10 @@ impl XFeedState {
             }
         }
         options
+    }
+
+    pub(crate) fn author_profile_for_post(&self, post: &XFeedPost) -> Option<&XAuthorProfile> {
+        self.author_profiles.get(&post.author_profile_key())
     }
 }
 
@@ -642,6 +763,44 @@ pub(crate) async fn fetch_x_feed_page(
     Ok(page)
 }
 
+pub(crate) async fn fetch_x_profile_image_bytes(image_url: String) -> Result<Vec<u8>, String> {
+    let response = CLIENT
+        .get(&image_url)
+        .timeout(X_FEED_REQUEST_TIMEOUT)
+        .header(USER_AGENT, KEROSENE_USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("X profile image request failed: {e}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("X profile image request failed with HTTP {status}"));
+    }
+    let content_type = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+
+    let body = read_x_response_body_limited(response, X_PROFILE_IMAGE_MAX_BODY_BYTES).await?;
+    if !is_supported_x_profile_image(&body) {
+        let content_type = content_type.unwrap_or_else(|| "unknown content type".to_string());
+        return Err(format!(
+            "X profile image response was not a supported image: {content_type}"
+        ));
+    }
+
+    Ok(body)
+}
+
+fn is_supported_x_profile_image(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xFF, 0xD8, 0xFF])
+        || bytes.starts_with(b"\x89PNG\r\n\x1A\n")
+        || bytes.starts_with(b"GIF87a")
+        || bytes.starts_with(b"GIF89a")
+        || (bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP")
+        || bytes.starts_with(b"BM")
+}
+
 async fn fetch_x_me(access_token: Zeroizing<String>) -> Result<XAuthenticatedUser, String> {
     let response = CLIENT
         .get(format!("{X_API_BASE}/users/me"))
@@ -770,6 +929,35 @@ fn dedup_x_lists(lists: Vec<XListSummary>) -> Vec<XListSummary> {
     output
 }
 
+async fn read_x_response_body_limited(
+    mut response: reqwest::Response,
+    max_body_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    if response
+        .content_length()
+        .is_some_and(|len| len > max_body_bytes as u64)
+    {
+        return Err(format!(
+            "X profile image response was too large: more than {max_body_bytes} bytes"
+        ));
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("X profile image response read failed: {e}"))?
+    {
+        if body.len() + chunk.len() > max_body_bytes {
+            return Err(format!(
+                "X profile image response was too large: more than {max_body_bytes} bytes"
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 fn page_from_timeline_response(
     source: XFeedSource,
     response: XTimelineResponse,
@@ -830,10 +1018,19 @@ fn post_from_tweet(
         author_id: tweet.author_id,
         author_name,
         author_username,
+        author_profile_image_url: author.and_then(|author| author.profile_image_url.clone()),
         text: tweet.text,
         created_at_ms,
         received_at_ms: fetched_at_ms,
     }
+}
+
+fn x_author_profile_key(author_id: Option<&str>, username: &str) -> String {
+    author_id
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(|id| format!("id:{id}"))
+        .unwrap_or_else(|| format!("username:{}", username.to_ascii_lowercase()))
 }
 
 fn parse_x_timestamp_ms(value: &str) -> Option<u64> {
@@ -890,6 +1087,7 @@ struct XUserPayload {
     id: String,
     username: String,
     name: String,
+    profile_image_url: Option<String>,
 }
 
 #[cfg(test)]
@@ -898,7 +1096,7 @@ mod tests {
 
     #[test]
     fn x_feed_state_debug_redacts_tokens_and_status() {
-        let mut state = XFeedState::new(&[]);
+        let mut state = XFeedState::new(&[], "");
         state.access_token_input = sensitive_string("token-input");
         state.access_token = sensitive_string("saved-token");
         state.status = Some(("token-input failed".to_string(), true));
@@ -933,7 +1131,7 @@ mod tests {
 
     #[test]
     fn x_feed_source_options_dedupe_lists() {
-        let mut state = XFeedState::new(&[]);
+        let mut state = XFeedState::new(&[], "");
         state.lists = vec![
             XListSummary {
                 id: "10".to_string(),
@@ -956,12 +1154,44 @@ mod tests {
         assert_eq!(options[1].source.key(), "list:10");
     }
 
+    #[test]
+    fn timeline_response_carries_author_profile_image_urls() {
+        let page = page_from_timeline_response(
+            XFeedSource::Following,
+            XTimelineResponse {
+                data: Some(vec![XTweetPayload {
+                    id: "99".to_string(),
+                    text: "hello".to_string(),
+                    author_id: Some("42".to_string()),
+                    created_at: Some("2026-06-30T12:00:00.000Z".to_string()),
+                }]),
+                includes: Some(XTimelineIncludes {
+                    users: Some(vec![XUserPayload {
+                        id: "42".to_string(),
+                        username: "alice".to_string(),
+                        name: "Alice".to_string(),
+                        profile_image_url: Some("https://example.com/alice.jpg".to_string()),
+                    }]),
+                }),
+                meta: None,
+            },
+            1_000,
+        );
+
+        assert_eq!(
+            page.posts[0].author_profile_image_url.as_deref(),
+            Some("https://example.com/alice.jpg")
+        );
+        assert_eq!(page.posts[0].author_profile_key(), "id:42");
+    }
+
     fn test_post(id: &str, created_at_ms: u64) -> XFeedPost {
         XFeedPost {
             id: id.to_string(),
             author_id: Some("42".to_string()),
             author_name: "Alice".to_string(),
             author_username: "alice".to_string(),
+            author_profile_image_url: Some("https://example.com/alice.jpg".to_string()),
             text: "hello".to_string(),
             created_at_ms,
             received_at_ms: created_at_ms,
