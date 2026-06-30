@@ -4,6 +4,7 @@ use crate::market_state::{LiveWatchlistId, OrderBookId};
 use crate::positioning_state::PositioningInfoId;
 use crate::session_data_state::SessionDataId;
 use crate::spaghetti_state::SpaghettiChartId;
+use crate::x_feed::XFeedId;
 
 pub(crate) const DEFAULT_PANE_BORDER_THICKNESS: f32 = 4.0;
 pub(crate) const DEFAULT_PANE_CORNER_RADIUS: f32 = 6.0;
@@ -17,6 +18,7 @@ pub(crate) enum PaneKind {
     LiveWatchlist(LiveWatchlistId),
     PositioningInfo(PositioningInfoId),
     SessionData(SessionDataId),
+    XFeed(XFeedId),
 
     Portfolio,
     Income,

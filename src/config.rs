@@ -48,7 +48,7 @@ pub use order_presets::{OrderPreset, OrderPresetsConfig};
 pub use panes::{
     ChartConfig, DetachedChartWindowConfig, MacroIndicatorsConfig, OrderBookConfig,
     OrderBookDisplayModeConfig, OrderBookSymbolModeConfig, PositioningInfoConfig,
-    SessionDataConfig, SpaghettiChartConfig, default_detached_chart_window_height,
+    SessionDataConfig, SpaghettiChartConfig, XFeedConfig, default_detached_chart_window_height,
     default_detached_chart_window_width,
 };
 #[cfg(test)]

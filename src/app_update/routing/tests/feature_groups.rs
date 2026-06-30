@@ -13,6 +13,7 @@ fn alfred_screener_settings_and_window_routes_stay_on_feature_modules() {
         Message::AlfredCommandSelected(crate::alfred_state::AlfredCommandId::OpenSettingsWindow),
         UpdateRoute::Alfred,
     );
+    assert_route(Message::AddXFeedPane, UpdateRoute::Panes);
 
     assert_route(Message::OpenScreenerWindow, UpdateRoute::Screener);
     assert_route(

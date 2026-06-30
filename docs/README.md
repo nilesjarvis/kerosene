@@ -68,6 +68,7 @@ These documents remain useful when working in their specific feature areas:
 
 - [Alfred](alfred.md)
 - [Telegram Feed](telegram-feed.md)
+- [X Feed](x-feed.md)
 - [Trading Journal](journal.md)
 - [Chase Orders](advanced-orders/chase-orders.md)
 - [TWAP Orders](advanced-orders/twap-orders.md)

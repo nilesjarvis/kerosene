@@ -3,6 +3,7 @@ mod order_book;
 mod positioning;
 mod session_data;
 mod spaghetti;
+mod x_feed;
 
 pub use chart::{
     ChartConfig, DetachedChartWindowConfig, MacroIndicatorsConfig,
@@ -12,6 +13,7 @@ pub use order_book::{OrderBookConfig, OrderBookDisplayModeConfig, OrderBookSymbo
 pub use positioning::PositioningInfoConfig;
 pub use session_data::SessionDataConfig;
 pub use spaghetti::SpaghettiChartConfig;
+pub use x_feed::XFeedConfig;
 
 #[cfg(test)]
 mod tests;

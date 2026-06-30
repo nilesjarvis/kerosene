@@ -176,6 +176,7 @@ struct NonChartWidgetIds {
     live_watchlists: BTreeSet<u64>,
     positioning_infos: BTreeSet<u64>,
     session_data: BTreeSet<u64>,
+    x_feeds: BTreeSet<u64>,
 }
 
 fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
@@ -184,6 +185,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
         &mut config.live_watchlists,
         &mut config.positioning_infos,
         &mut config.session_data,
+        &mut config.x_feeds,
         config.pane_layout.as_mut(),
     );
 
@@ -193,6 +195,7 @@ fn repair_duplicate_non_chart_widget_ids(config: &mut KeroseneConfig) {
             &mut layout.live_watchlists,
             &mut layout.positioning_infos,
             &mut layout.session_data,
+            &mut layout.x_feeds,
             layout.pane_layout.as_mut(),
         );
     }
@@ -210,6 +213,7 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
     live_watchlists: &mut [crate::config::LiveWatchlistConfig],
     positioning_infos: &mut [crate::config::PositioningInfoConfig],
     session_data: &mut [crate::config::SessionDataConfig],
+    x_feeds: &mut [crate::config::XFeedConfig],
     pane_layout: Option<&mut PaneLayoutConfig>,
 ) -> bool {
     let (order_books_repaired, order_book_ids) =
@@ -220,11 +224,13 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
         repair_duplicate_ids(positioning_infos, |config| &mut config.id);
     let (session_data_repaired, session_data_ids) =
         repair_duplicate_ids(session_data, |config| &mut config.id);
+    let (x_feeds_repaired, x_feed_ids) = repair_duplicate_ids(x_feeds, |config| &mut config.id);
 
     let mut repaired_any = order_books_repaired
         || live_watchlists_repaired
         || positioning_infos_repaired
-        || session_data_repaired;
+        || session_data_repaired
+        || x_feeds_repaired;
 
     if let Some(pane_layout) = pane_layout {
         let mut seen = NonChartWidgetIds::default();
@@ -233,6 +239,7 @@ fn repair_duplicate_non_chart_widget_ids_for_layout(
             live_watchlists: live_watchlist_ids,
             positioning_infos: positioning_info_ids,
             session_data: session_data_ids,
+            x_feeds: x_feed_ids,
         };
         repaired_any |= repair_duplicate_non_chart_pane_ids(pane_layout, &mut seen, &mut reserved);
     }
@@ -292,6 +299,9 @@ fn repair_duplicate_non_chart_leaf_id(
         ),
         PaneKindConfig::SessionData { id } => {
             repair_duplicate_leaf_id(id, &mut seen.session_data, &mut reserved.session_data)
+        }
+        PaneKindConfig::XFeed { id } => {
+            repair_duplicate_leaf_id(id, &mut seen.x_feeds, &mut reserved.x_feeds)
         }
         _ => false,
     }

@@ -73,6 +73,8 @@ impl TradingTerminal {
                 row![pane_refresh_button(), close_btn]
             } else if matches!(kind, PaneKind::TelegramFeed) {
                 row![self.view_telegram_status_chip(), close_btn]
+            } else if let PaneKind::XFeed(id) = kind {
+                row![self.view_x_feed_status_chip(*id), close_btn]
             } else {
                 row![close_btn]
             }

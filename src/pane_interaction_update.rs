@@ -127,6 +127,9 @@ impl TradingTerminal {
                         PaneKind::SessionData(id) => {
                             self.session_data.remove(&id);
                         }
+                        PaneKind::XFeed(id) => {
+                            self.x_feed.instances.remove(&id);
+                        }
                         _ => {}
                     }
                     self.persist_config();

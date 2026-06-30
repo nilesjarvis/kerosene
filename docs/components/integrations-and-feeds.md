@@ -182,6 +182,21 @@ Fast-feed subscriptions require:
 Credentials used during login should not be persisted as plaintext input
 buffers.
 
+## X Feed
+
+X Feed uses local BYOK user-context access for the authenticated account's
+following timeline and Lists. Runtime state lives in `x_feed.rs`, update logic
+in `feed_update/x.rs`, and rendering in `feed_views/x.rs`.
+
+The pane is multi-instance through `PaneKind::XFeed(XFeedId)`. Persisted layout
+config stores widget IDs and selected non-secret sources in `x_feeds`; raw X
+access tokens are runtime-only in the current implementation.
+
+Low-latency behavior is REST polling while an X Feed pane is open. Following and
+List timelines are user-context REST endpoints, so X Filtered Stream is not a
+drop-in replacement for these sources; it is app-context public filtering and
+should only be added as an optional public watch source.
+
 ## Calendar
 
 Calendar state covers economic events, impact/window filters, loading/error

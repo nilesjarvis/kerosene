@@ -109,6 +109,7 @@ mod widget_padding;
 mod window_chrome;
 mod window_update;
 mod ws;
+mod x_feed;
 
 use app_state::TradingTerminal;
 

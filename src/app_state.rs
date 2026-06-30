@@ -38,6 +38,7 @@ use crate::timeframe::Timeframe;
 use crate::twap_state::{TwapOrder, TwapOrderForm};
 use crate::wallet_cluster_state::WalletClusterState;
 use crate::wallet_state::{AddressBookEntry, WalletDetailsWindowState, WalletTrackerState};
+use crate::x_feed::XFeedState;
 use crate::{config, journal, ws};
 use iced::widget::pane_grid;
 use iced::window;
@@ -558,6 +559,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
     pub(crate) liquidation_distribution: LiquidationDistributionState,
     pub(crate) telegram_feed: TelegramFeedState,
+    pub(crate) x_feed: XFeedState,
 }
 
 #[cfg(test)]

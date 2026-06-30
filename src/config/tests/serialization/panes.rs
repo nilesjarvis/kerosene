@@ -27,6 +27,26 @@ fn legacy_x_feed_pane_deserializes_as_unsupported() {
 }
 
 #[test]
+fn x_feed_pane_round_trips_with_instance_id() {
+    let layout = PaneLayoutConfig::Leaf(PaneKindConfig::XFeed { id: 42 });
+
+    let json = serde_json::to_value(&layout).expect("x feed pane should serialize");
+    let decoded: PaneLayoutConfig = value_from_json(json.clone(), "x feed pane should deserialize");
+
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "Leaf": {
+                "XFeed": {
+                    "id": 42
+                }
+            }
+        })
+    );
+    assert_eq!(decoded, layout);
+}
+
+#[test]
 fn unknown_future_pane_round_trips_raw_json() {
     let raw_pane = serde_json::json!({
         "FuturePane": {
@@ -158,6 +178,10 @@ fn known_pane_variants_keep_existing_wire_shape() {
         (
             PaneKindConfig::SessionData { id: 11 },
             serde_json::json!({ "SessionData": { "id": 11 } }),
+        ),
+        (
+            PaneKindConfig::XFeed { id: 13 },
+            serde_json::json!({ "XFeed": { "id": 13 } }),
         ),
         (PaneKindConfig::Portfolio, serde_json::json!("Portfolio")),
         (PaneKindConfig::Income, serde_json::json!("Income")),

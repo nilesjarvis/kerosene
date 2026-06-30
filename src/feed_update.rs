@@ -6,6 +6,7 @@ mod connection;
 mod liquidations;
 mod telegram;
 mod tracked_trades;
+mod x;
 
 impl TradingTerminal {
     pub(crate) fn update_feed(&mut self, message: Message) -> Task<Message> {
@@ -27,6 +28,7 @@ impl TradingTerminal {
             | Message::TelegramFeedRefreshTick
             | Message::TelegramFeedLoaded(_, _, _)
             | Message::TelegramAvatarLoaded(_, _, _, _)
+            | Message::TelegramMediaLoaded(_, _, _, _, _)
             | Message::ToggleTelegramFastFeed
             | Message::TelegramFeedDismissOnboarding
             | Message::TelegramFeedShowOnboarding
@@ -56,6 +58,16 @@ impl TradingTerminal {
             | Message::ToggleTelegramFeedOutcomeMarkets) => {
                 return self.update_telegram_feed(message);
             }
+            message @ (Message::XFeedAccessTokenChanged(_)
+            | Message::XFeedConnect
+            | Message::XFeedAuthLoaded(_, _)
+            | Message::XFeedClearAccessToken
+            | Message::XFeedListsRefresh
+            | Message::XFeedListsLoaded(_, _)
+            | Message::XFeedSourceSelected(_, _)
+            | Message::RefreshXFeed(_)
+            | Message::XFeedRefreshTick
+            | Message::XFeedLoaded(_, _, _)) => return self.update_x_feed(message),
             _ => {}
         }
 

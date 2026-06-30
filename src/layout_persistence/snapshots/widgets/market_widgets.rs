@@ -97,4 +97,16 @@ impl TradingTerminal {
             })
             .collect()
     }
+
+    pub(crate) fn x_feed_configs_snapshot(&self) -> Vec<config::XFeedConfig> {
+        let mut instances: Vec<_> = self.x_feed.instances.values().collect();
+        instances.sort_by_key(|instance| instance.id);
+        instances
+            .into_iter()
+            .map(|instance| config::XFeedConfig {
+                id: instance.id,
+                source: self.x_feed.persistable_source(&instance.source),
+            })
+            .collect()
+    }
 }

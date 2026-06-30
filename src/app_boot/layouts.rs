@@ -53,6 +53,7 @@ impl TradingTerminal {
             live_watchlists: cfg.live_watchlists.clone(),
             positioning_infos: cfg.positioning_infos.clone(),
             session_data: cfg.session_data.clone(),
+            x_feeds: cfg.x_feeds.clone(),
             spaghetti_charts: cfg.spaghetti_charts.clone(),
             widget_padding: cfg.widget_padding.clone().normalized(),
             active_symbol: cfg.active_symbol.clone(),

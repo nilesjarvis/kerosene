@@ -123,6 +123,21 @@ impl TradingTerminal {
             state.persist_config();
         }
 
+        let missing_x_feed_ids = state
+            .panes
+            .iter()
+            .filter_map(|(_, kind)| match kind {
+                PaneKind::XFeed(id) if !state.x_feed.instances.contains_key(id) => Some(*id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for id in missing_x_feed_ids {
+            state.x_feed.instances.insert(
+                id,
+                crate::x_feed::XFeedInstance::new(id, crate::x_feed::XFeedSource::Following),
+            );
+        }
+
         state.ensure_boot_layout_chart_panes(first_chart_id, &detached_chart_ids);
         state.boot_order_book_instances(&cfg, &muted_tickers);
         state.boot_positioning_info_instances(&cfg, &muted_tickers);
@@ -152,6 +167,7 @@ impl TradingTerminal {
         if state.pane_is_open(|kind| matches!(kind, PaneKind::TelegramFeed)) {
             boot_tasks.push(state.request_telegram_feed_refresh());
         }
+        boot_tasks.push(state.request_x_feed_open_refresh(false));
         boot_tasks.push(state.request_hype_etfs_boot_refresh());
         boot_tasks.push(state.request_hype_unstaking_queue_boot_refresh());
 

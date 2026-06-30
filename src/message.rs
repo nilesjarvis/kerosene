@@ -53,6 +53,10 @@ use crate::telegram_feed::{
 use crate::timeframe::Timeframe;
 use crate::wallet_cluster_state::WalletClusterCloseSide;
 use crate::ws::WsUserData;
+use crate::x_feed::{
+    XAuthenticatedUser, XFeedId, XFeedPage, XFeedRequestError, XFeedSource, XFeedSourceOption,
+    XListSummary,
+};
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
 use std::collections::HashMap;
@@ -382,6 +386,90 @@ impl fmt::Debug for TelegramFastAuthMessageResult {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct XAuthContextMessageResult(
+    Box<Result<(XAuthenticatedUser, Vec<XListSummary>), String>>,
+);
+
+impl XAuthContextMessageResult {
+    pub(crate) fn new(result: Result<(XAuthenticatedUser, Vec<XListSummary>), String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<(XAuthenticatedUser, Vec<XListSummary>), String> {
+        *self.0
+    }
+}
+
+impl fmt::Debug for XAuthContextMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok((user, lists)) => f
+                .debug_struct("XAuthContextMessageResult")
+                .field("user", user)
+                .field("lists", &lists.len())
+                .finish(),
+            Err(error) => f
+                .debug_tuple("XAuthContextMessageResult")
+                .field(&crate::helpers::redact_sensitive_response_text(error))
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct XListsMessageResult(Box<Result<Vec<XListSummary>, String>>);
+
+impl XListsMessageResult {
+    pub(crate) fn new(result: Result<Vec<XListSummary>, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<Vec<XListSummary>, String> {
+        *self.0
+    }
+}
+
+impl fmt::Debug for XListsMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(lists) => f
+                .debug_struct("XListsMessageResult")
+                .field("lists", &lists.len())
+                .finish(),
+            Err(error) => f
+                .debug_tuple("XListsMessageResult")
+                .field(&crate::helpers::redact_sensitive_response_text(error))
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct XFeedPageMessageResult(Box<Result<XFeedPage, XFeedRequestError>>);
+
+impl XFeedPageMessageResult {
+    pub(crate) fn new(result: Result<XFeedPage, XFeedRequestError>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<XFeedPage, XFeedRequestError> {
+        *self.0
+    }
+}
+
+impl fmt::Debug for XFeedPageMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(page) => page.fmt(f),
+            Err(error) => f
+                .debug_tuple("XFeedPageMessageResult")
+                .field(error)
+                .finish(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Message {
     SaveLayout(String),
@@ -549,6 +637,7 @@ pub(crate) enum Message {
     AddLiquidationsDistributionPane,
     AddTrackedTradesPane,
     AddTelegramFeedPane,
+    AddXFeedPane,
     AddOutcomesPane,
     AddHypeEtfsPane,
     AddHypeUnstakingQueuePane,
@@ -823,6 +912,16 @@ pub(crate) enum Message {
     ToggleTelegramFeedChannelsExpanded,
     ToggleTelegramFeedNotifications,
     ToggleTelegramFeedOutcomeMarkets,
+    XFeedAccessTokenChanged(SecretInput),
+    XFeedConnect,
+    XFeedAuthLoaded(u64, XAuthContextMessageResult),
+    XFeedClearAccessToken,
+    XFeedListsRefresh,
+    XFeedListsLoaded(u64, XListsMessageResult),
+    XFeedSourceSelected(XFeedId, XFeedSourceOption),
+    RefreshXFeed(XFeedId),
+    XFeedRefreshTick,
+    XFeedLoaded(XFeedSource, u64, XFeedPageMessageResult),
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
@@ -1264,7 +1363,8 @@ pub(crate) enum Message {
 mod tests {
     use super::{
         Message, RedactedOrderInput, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
-        TelegramFastAuthMessageResult, TelegramFastAuthOutcome,
+        TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAuthContextMessageResult,
+        XFeedPageMessageResult, XListsMessageResult,
     };
     use crate::api::{ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo};
     use crate::chart_state::ChartSurfaceId;
@@ -1276,6 +1376,7 @@ mod tests {
     use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
     use crate::timeframe::Timeframe;
     use crate::ws::{HydromancerWsMessage, TrackedTradeEvent, WsUserData};
+    use crate::x_feed::{XAuthenticatedUser, XListOwnerKind, XListSummary};
 
     #[test]
     fn secret_input_debug_redacts_value() {
@@ -1330,6 +1431,38 @@ mod tests {
                 TelegramFastAuthMessageResult::new(Ok(TelegramFastAuthOutcome::SignedIn {
                     display_name: "sentinel-secret".to_string(),
                 })),
+            ),
+            Message::XFeedAccessTokenChanged("sentinel-secret".into()),
+            Message::XFeedAuthLoaded(
+                1,
+                XAuthContextMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::XFeedAuthLoaded(
+                2,
+                XAuthContextMessageResult::new(Ok((
+                    XAuthenticatedUser {
+                        id: "sentinel-secret".to_string(),
+                        username: "alice".to_string(),
+                        name: "sentinel-secret".to_string(),
+                    },
+                    vec![XListSummary {
+                        id: "10".to_string(),
+                        name: "sentinel-secret".to_string(),
+                        private: false,
+                        owner: XListOwnerKind::Owned,
+                    }],
+                ))),
+            ),
+            Message::XFeedListsLoaded(
+                3,
+                XListsMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::XFeedLoaded(
+                crate::x_feed::XFeedSource::Following,
+                4,
+                XFeedPageMessageResult::new(Err(crate::x_feed::XFeedRequestError::plain(
+                    "sentinel-secret",
+                ))),
             ),
             Message::WalletKeyInputChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),

@@ -43,10 +43,16 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         outer_widget_border_enabled: true,
         widget_padding: WidgetPaddingConfig {
             default_px: 6.0,
-            overrides: vec![WidgetPaddingOverrideConfig {
-                target: WidgetPaddingTargetConfig::Watchlist,
-                padding_px: 14.0,
-            }],
+            overrides: vec![
+                WidgetPaddingOverrideConfig {
+                    target: WidgetPaddingTargetConfig::Watchlist,
+                    padding_px: 14.0,
+                },
+                WidgetPaddingOverrideConfig {
+                    target: WidgetPaddingTargetConfig::XFeed { id: 4 },
+                    padding_px: 9.0,
+                },
+            ],
         },
         custom_window_chrome_enabled: false,
         ..KeroseneConfig::default()
@@ -93,12 +99,17 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert_eq!(decoded.pane_corner_radius, 12.0);
     assert!(decoded.outer_widget_border_enabled);
     assert_eq!(decoded.widget_padding.default_px, 6.0);
-    assert_eq!(decoded.widget_padding.overrides.len(), 1);
+    assert_eq!(decoded.widget_padding.overrides.len(), 2);
     assert_eq!(
         decoded.widget_padding.overrides[0].target,
         WidgetPaddingTargetConfig::Watchlist
     );
     assert_eq!(decoded.widget_padding.overrides[0].padding_px, 14.0);
+    assert_eq!(
+        decoded.widget_padding.overrides[1].target,
+        WidgetPaddingTargetConfig::XFeed { id: 4 }
+    );
+    assert_eq!(decoded.widget_padding.overrides[1].padding_px, 9.0);
     assert!(!decoded.custom_window_chrome_enabled);
 
     let mut legacy = default_config_value();

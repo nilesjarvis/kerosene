@@ -11,6 +11,7 @@ enum KnownPaneKindConfig {
     LiveWatchlist { id: u64 },
     PositioningInfo { id: u64 },
     SessionData { id: u64 },
+    XFeed { id: u64 },
 
     Portfolio,
     Income,
@@ -46,6 +47,7 @@ impl From<KnownPaneKindConfig> for PaneKindConfig {
             KnownPaneKindConfig::LiveWatchlist { id } => Self::LiveWatchlist { id },
             KnownPaneKindConfig::PositioningInfo { id } => Self::PositioningInfo { id },
             KnownPaneKindConfig::SessionData { id } => Self::SessionData { id },
+            KnownPaneKindConfig::XFeed { id } => Self::XFeed { id },
             KnownPaneKindConfig::Portfolio => Self::Portfolio,
             KnownPaneKindConfig::Income => Self::Income,
             KnownPaneKindConfig::BottomTabs { active_tab } => Self::BottomTabs { active_tab },
@@ -125,6 +127,12 @@ impl Serialize for PaneKindConfig {
             PaneKindConfig::SessionData { id } => {
                 let mut variant =
                     serializer.serialize_struct_variant("PaneKindConfig", 6, "SessionData", 1)?;
+                variant.serialize_field("id", id)?;
+                variant.end()
+            }
+            PaneKindConfig::XFeed { id } => {
+                let mut variant =
+                    serializer.serialize_struct_variant("PaneKindConfig", 24, "XFeed", 1)?;
                 variant.serialize_field("id", id)?;
                 variant.end()
             }

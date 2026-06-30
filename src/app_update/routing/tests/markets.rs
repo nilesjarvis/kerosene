@@ -16,6 +16,8 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         Message::HydromancerKeyInputChanged(String::new().into()),
         UpdateRoute::Feed,
     );
+    assert_route(Message::XFeedConnect, UpdateRoute::Feed);
+    assert_route(Message::RefreshXFeed(0), UpdateRoute::Feed);
     assert_route(Message::RefreshHeatmap, UpdateRoute::Hyperdash);
     assert_route(
         Message::ReadDataProviderChanged(crate::config::ReadDataProvider::Hydromancer),

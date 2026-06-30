@@ -400,6 +400,7 @@ impl TradingTerminal {
             defaults.telegram_feed_include_outcome_markets,
             defaults.telegram_feed_onboarding_dismissed,
         );
+        self.x_feed = crate::x_feed::XFeedState::new(&defaults.x_feeds);
         self.order_presets = defaults.order_presets;
         self.order_quantity_is_usd = defaults.order_quantity_is_usd;
         self.preset_is_usd = defaults.preset_is_usd;

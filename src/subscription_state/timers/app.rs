@@ -154,6 +154,15 @@ impl TradingTerminal {
             );
         }
 
+        if self.pane_is_open(|kind| matches!(kind, PaneKind::XFeed(_))) {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(
+                    crate::x_feed::X_FEED_REFRESH_INTERVAL_SECS,
+                ))
+                .map(|_| Message::XFeedRefreshTick),
+            );
+        }
+
         if !self.hydromancer_api_key.trim().is_empty()
             && self
                 .charts

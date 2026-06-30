@@ -23,6 +23,7 @@ impl TradingTerminal {
             | Message::AddLiquidationsDistributionPane
             | Message::AddTrackedTradesPane
             | Message::AddTelegramFeedPane
+            | Message::AddXFeedPane
             | Message::AddAdvancedOrdersPane
             | Message::AddOutcomesPane
             | Message::AddHypeEtfsPane

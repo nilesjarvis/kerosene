@@ -2,6 +2,7 @@ use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_management::AddPaneOutcome;
 use crate::pane_state::PaneKind;
+use crate::x_feed::{XFeedInstance, XFeedSource};
 use iced::Task;
 
 impl TradingTerminal {
@@ -125,6 +126,28 @@ impl TradingTerminal {
                 if !matches!(outcome, AddPaneOutcome::Failed) && self.telegram_feed.posts.is_empty()
                 {
                     return self.request_telegram_feed_refresh();
+                }
+            }
+            Message::AddXFeedPane => {
+                self.add_widget_menu_open = false;
+                let mut id = 0;
+                while self.x_feed.instances.contains_key(&id)
+                    || self.panes.iter().any(
+                        |(_, kind)| matches!(kind, PaneKind::XFeed(existing) if *existing == id),
+                    )
+                {
+                    id = id.saturating_add(1);
+                }
+
+                if self
+                    .add_pane_next_to_focus(self.add_widget_axis(), PaneKind::XFeed(id), "X Feed")
+                    .is_some()
+                {
+                    self.x_feed
+                        .instances
+                        .insert(id, XFeedInstance::new(id, XFeedSource::Following));
+                    self.persist_config();
+                    return self.request_x_feed_refresh(id, true);
                 }
             }
             Message::AddOutcomesPane => {

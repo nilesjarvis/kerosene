@@ -124,6 +124,9 @@ pub enum PaneKindConfig {
     SessionData {
         id: u64,
     },
+    XFeed {
+        id: u64,
+    },
 
     Portfolio,
     Income,
@@ -159,6 +162,7 @@ pub enum WidgetPaddingTargetConfig {
     LiveWatchlist { id: u64 },
     PositioningInfo { id: u64 },
     SessionData { id: u64 },
+    XFeed { id: u64 },
 
     Portfolio,
     Income,
@@ -313,6 +317,8 @@ pub struct SavedLayout {
     pub positioning_infos: Vec<PositioningInfoConfig>,
     #[serde(default)]
     pub session_data: Vec<super::SessionDataConfig>,
+    #[serde(default)]
+    pub x_feeds: Vec<super::XFeedConfig>,
     #[serde(default)]
     pub spaghetti_charts: Vec<SpaghettiChartConfig>,
     #[serde(default)]

@@ -188,6 +188,25 @@ impl TradingTerminal {
             )
             .disabled_if(!can_add_pane, no_pane_reason),
             AlfredCommand::new(
+                AlfredCommandId::AddXFeedPane,
+                "X Feed",
+                "Following and Lists feed pane",
+                "Pane",
+                AlfredCommandKind::AddWidget,
+                Some(Message::AddXFeedPane),
+                &[
+                    "x",
+                    "twitter",
+                    "tweets",
+                    "following",
+                    "lists",
+                    "feed",
+                    "widget",
+                    "add",
+                ],
+            )
+            .disabled_if(!can_add_pane, no_pane_reason),
+            AlfredCommand::new(
                 AlfredCommandId::AddCalendarPane,
                 "Calendar",
                 "Economic calendar pane",

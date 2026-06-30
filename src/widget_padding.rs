@@ -21,6 +21,7 @@ impl WidgetPaddingTargetConfig {
             PaneKind::LiveWatchlist(id) => Self::LiveWatchlist { id: *id },
             PaneKind::PositioningInfo(id) => Self::PositioningInfo { id: *id },
             PaneKind::SessionData(id) => Self::SessionData { id: *id },
+            PaneKind::XFeed(id) => Self::XFeed { id: *id },
             PaneKind::Portfolio => Self::Portfolio,
             PaneKind::Income => Self::Income,
             PaneKind::BottomTabs { .. } => Self::BottomTabs,

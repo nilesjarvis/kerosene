@@ -11,6 +11,7 @@ mod positioning_info;
 mod session_data;
 mod snapshots;
 mod widget_configs;
+mod x_feeds;
 
 pub(crate) use widget_configs::LayoutWidgetConfigs;
 
@@ -88,10 +89,12 @@ impl TradingTerminal {
         self.restore_layout_live_watchlists(&layout);
         boot_tasks.push(self.restore_layout_positioning_infos(&layout));
         boot_tasks.push(self.restore_layout_session_data(&layout));
+        self.restore_layout_x_feeds(&layout);
 
         if self.is_calendar_open() {
             boot_tasks.push(self.request_calendar_refresh(false));
         }
+        boot_tasks.push(self.request_x_feed_open_refresh(false));
 
         boot_tasks.push(self.request_ticker_tape_context_refresh(true));
         boot_tasks.push(self.request_live_watchlist_refresh(true));

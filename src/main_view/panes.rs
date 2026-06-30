@@ -21,6 +21,7 @@ impl TradingTerminal {
             PaneKind::LiveWatchlist(id) => self.view_live_watchlist(*id),
             PaneKind::PositioningInfo(id) => self.view_positioning_info(*id),
             PaneKind::SessionData(id) => self.view_session_data(*id),
+            PaneKind::XFeed(id) => self.view_x_feed(*id),
             PaneKind::Watchlist => self.view_watchlist(),
             PaneKind::Portfolio => self.view_portfolio(),
             PaneKind::Income => self.view_income(),

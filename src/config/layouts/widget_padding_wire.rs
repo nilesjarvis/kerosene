@@ -55,7 +55,7 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
             "HypeEtfs" => Ok(known(WidgetPaddingTargetConfig::HypeEtfs)),
             "HypeUnstakingQueue" => Ok(known(WidgetPaddingTargetConfig::HypeUnstakingQueue)),
             "Chart" | "OrderBook" | "LiveWatchlist" | "PositioningInfo" | "SessionData"
-            | "SpaghettiChart" => Err(E::custom(format!(
+            | "XFeed" | "SpaghettiChart" => Err(E::custom(format!(
                 "widget padding target '{value}' requires a payload"
             ))),
             _ => Ok(WidgetPaddingTargetConfigWire::Unknown),
@@ -112,6 +112,14 @@ impl<'de> Visitor<'de> for WidgetPaddingTargetVisitor {
                 }
                 let payload = map.next_value::<Payload>()?;
                 known(WidgetPaddingTargetConfig::SessionData { id: payload.id })
+            }
+            "XFeed" => {
+                #[derive(Deserialize)]
+                struct Payload {
+                    id: u64,
+                }
+                let payload = map.next_value::<Payload>()?;
+                known(WidgetPaddingTargetConfig::XFeed { id: payload.id })
             }
             "SpaghettiChart" => {
                 #[derive(Deserialize)]
