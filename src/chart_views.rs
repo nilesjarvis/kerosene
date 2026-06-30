@@ -8,7 +8,7 @@ mod toolbar;
 use self::skeleton::chart_skeleton_overlay;
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
-use crate::chart_state::{ChartId, ChartSurfaceId};
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
 use iced::widget::{button, canvas, column, container, rule, stack, text};
 use iced::{Color, Element, Fill, Theme};
@@ -156,6 +156,9 @@ impl TradingTerminal {
             if let Some(indicator_badges) = self.view_chart_indicator_badges(chart_id, instance) {
                 canvas_layers.push(indicator_badges);
             }
+            if let Some(surface_status) = view_chart_surface_status_badge(instance, &theme) {
+                canvas_layers.push(surface_status);
+            }
             let chart_surface: Element<'_, Message> =
                 stack(canvas_layers).width(Fill).height(Fill).into();
 
@@ -236,4 +239,162 @@ fn chart_header_separator() -> Element<'static, Message> {
             snap: true,
         })
         .into()
+}
+
+fn view_chart_surface_status_badge(
+    instance: &ChartInstance,
+    theme: &Theme,
+) -> Option<Element<'static, Message>> {
+    let (label, is_error) = chart_surface_status_label(instance)?;
+    let text_color = if is_error {
+        theme.palette().danger
+    } else {
+        theme.palette().warning
+    };
+    let badge = container(
+        text(label)
+            .size(10)
+            .font(crate::app_fonts::monospace_font())
+            .color(text_color),
+    )
+    .padding([4, 8])
+    .style(move |theme: &Theme| {
+        let accent = if is_error {
+            theme.palette().danger
+        } else {
+            theme.palette().warning
+        };
+        container::Style {
+            background: Some(
+                Color {
+                    a: 0.90,
+                    ..theme.extended_palette().background.base.color
+                }
+                .into(),
+            ),
+            text_color: Some(accent),
+            border: iced::Border {
+                radius: 4.0.into(),
+                width: 1.0,
+                color: Color { a: 0.55, ..accent },
+            },
+            ..Default::default()
+        }
+    });
+
+    Some(
+        container(badge)
+            .width(Fill)
+            .height(Fill)
+            .padding(8)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .into(),
+    )
+}
+
+fn chart_surface_status_label(instance: &ChartInstance) -> Option<(String, bool)> {
+    let mut parts = Vec::new();
+    let mut is_error = false;
+
+    collect_chart_surface_status(
+        &mut parts,
+        &mut is_error,
+        instance.show_liquidations,
+        instance.liquidation_fetching,
+        "LIQ loading",
+        &instance.liquidation_status,
+    );
+    collect_chart_surface_status(
+        &mut parts,
+        &mut is_error,
+        instance.show_heatmap,
+        instance.heatmap_fetching,
+        "HEAT loading",
+        &instance.heatmap_status,
+    );
+    collect_chart_surface_status(
+        &mut parts,
+        &mut is_error,
+        instance.show_earnings_markers,
+        instance.earnings_fetching,
+        "EARN loading",
+        &instance.earnings_status,
+    );
+    collect_chart_surface_status(
+        &mut parts,
+        &mut is_error,
+        instance.macro_indicators.show_funding_rate,
+        instance.funding_fetch_request.is_some(),
+        "Funding loading",
+        &instance.chart.funding_status,
+    );
+
+    (!parts.is_empty()).then(|| (parts.join(" / "), is_error))
+}
+
+fn collect_chart_surface_status(
+    parts: &mut Vec<String>,
+    is_error: &mut bool,
+    enabled: bool,
+    fetching: bool,
+    loading_label: &str,
+    status: &Option<(String, bool)>,
+) {
+    if !enabled {
+        return;
+    }
+    if fetching {
+        parts.push(loading_label.to_string());
+    } else if let Some((label, true)) = status {
+        parts.push(label.clone());
+        *is_error = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chart_state::ChartInstance;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn chart_surface_status_label_includes_enabled_overlay_errors() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance.show_heatmap = true;
+        instance.heatmap_status = Some(("HEAT no recent data".to_string(), true));
+        instance.show_liquidations = false;
+        instance.liquidation_status = Some(("LIQ stale".to_string(), true));
+
+        let (label, is_error) = chart_surface_status_label(&instance).expect("status label");
+
+        assert!(is_error);
+        assert_eq!(label, "HEAT no recent data");
+    }
+
+    #[test]
+    fn chart_surface_status_label_includes_funding_failures_with_visible_points() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance.macro_indicators.show_funding_rate = true;
+        instance
+            .chart
+            .set_funding_status("Funding fetch failed".to_string(), true);
+
+        let (label, is_error) = chart_surface_status_label(&instance).expect("status label");
+
+        assert!(is_error);
+        assert_eq!(label, "Funding fetch failed");
+    }
+
+    #[test]
+    fn chart_surface_status_label_uses_loading_without_marking_error() {
+        let mut instance = ChartInstance::new(1, "BTC".to_string(), Timeframe::H1);
+        instance.show_earnings_markers = true;
+        instance.earnings_fetching = true;
+
+        let (label, is_error) = chart_surface_status_label(&instance).expect("status label");
+
+        assert!(!is_error);
+        assert_eq!(label, "EARN loading");
+    }
 }
