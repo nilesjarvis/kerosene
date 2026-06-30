@@ -64,7 +64,7 @@ fn load_fresh_candles_from_dir(
     let Some(last_time) = candles.last().map(|candle| candle.open_time) else {
         return Ok(None);
     };
-    if now_ms.saturating_sub(last_time) > timeframe.lookback_ms() {
+    if now_ms.saturating_sub(last_time) > timeframe.cache_display_max_age_ms() {
         return Ok(None);
     }
     // Never surface a snapshot across an interior gap: a stale block stitched to
@@ -958,6 +958,35 @@ mod tests {
         assert_eq!(served.len(), 3);
         assert_eq!(served[0].open_time, now_ms - 180_000);
         assert!(served.iter().all(|candle| candle.close == 70.0));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn load_fresh_candles_rejects_tail_older_than_display_window() {
+        let root = test_cache_dir("fresh-stale-tail");
+        let timeframe = Timeframe::H1;
+        let last_time = 1_000_000;
+        let now_ms = last_time + timeframe.cache_display_max_age_ms() + 1;
+        save_candle_snapshot(
+            root.clone(),
+            ChartBackfillSource::Hyperliquid,
+            "BTC",
+            timeframe.api_str(),
+            vec![Candle::test_flat(last_time, 100.0)],
+        )
+        .expect("snapshot save succeeds");
+
+        let served = load_fresh_candles_from_dir(
+            &root,
+            ChartBackfillSource::Hyperliquid,
+            "BTC",
+            timeframe,
+            now_ms,
+        )
+        .expect("load succeeds");
+
+        assert!(served.is_none());
 
         let _ = fs::remove_dir_all(root);
     }

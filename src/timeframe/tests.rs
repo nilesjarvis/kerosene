@@ -18,7 +18,19 @@ fn timeframe_arrays_round_trip_config_strings() {
         assert_eq!(timeframe.duration_ms(), DURATIONS_MS[idx]);
         assert_eq!(timeframe.lookback_ms(), LOOKBACKS_MS[idx]);
         assert!(timeframe.lookback_ms() >= timeframe.duration_ms());
+        assert!(timeframe.cache_display_max_age_ms() <= timeframe.lookback_ms());
+        assert!(timeframe.cache_display_max_age_ms() >= timeframe.duration_ms());
     }
+}
+
+#[test]
+fn cache_display_freshness_is_shorter_than_historical_lookback() {
+    assert_eq!(Timeframe::M1.cache_display_max_age_ms(), 5 * 60 * 1000);
+    assert_eq!(
+        Timeframe::H1.cache_display_max_age_ms(),
+        3 * Timeframe::H1.duration_ms()
+    );
+    assert!(Timeframe::D1.cache_display_max_age_ms() < Timeframe::D1.lookback_ms());
 }
 
 #[test]

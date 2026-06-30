@@ -10,7 +10,7 @@ fn get_fresh_cached_candles_refreshes_lru_order() {
         cache_key("BTC", Timeframe::M1),
         cache_key("ETH", Timeframe::M1),
     ]);
-    let now_ms = Timeframe::M1.lookback_ms();
+    let now_ms = 1_000 + Timeframe::M1.cache_display_max_age_ms();
 
     let candles = fresh_candles_or_panic(&mut cache, &mut order, "BTC", Timeframe::M1, now_ms);
 
@@ -51,7 +51,7 @@ fn get_fresh_cached_candles_returns_only_trailing_run_across_gap() {
 fn get_fresh_cached_candles_evicts_stale_entries() {
     let mut cache = HashMap::from([(cache_key("BTC", Timeframe::M1), vec![candle(0, 100.0)])]);
     let mut order = VecDeque::from([cache_key("BTC", Timeframe::M1)]);
-    let now_ms = Timeframe::M1.lookback_ms() + 1;
+    let now_ms = Timeframe::M1.cache_display_max_age_ms() + 1;
 
     let candles = get_fresh_cached_candles(&mut cache, &mut order, "BTC", Timeframe::M1, now_ms);
 

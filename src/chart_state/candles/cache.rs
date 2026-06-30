@@ -48,7 +48,7 @@ pub(super) fn get_fresh_cached_candles(
     let candles = cache.get(&key)?;
     let last_time = candles.last().map(|candle| candle.open_time).unwrap_or(0);
 
-    if now_ms.saturating_sub(last_time) > timeframe.lookback_ms() {
+    if now_ms.saturating_sub(last_time) > timeframe.cache_display_max_age_ms() {
         cache.remove(&key);
         order.retain(|existing| existing != &key);
         return None;

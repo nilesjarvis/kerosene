@@ -9,6 +9,9 @@ mod tests;
 
 use metadata::{ALL_TIMEFRAMES, API_STRS, CONFIG_STRS, DURATIONS_MS, LABELS, LOOKBACKS_MS};
 
+const CANDLE_CACHE_DISPLAY_INTERVALS: u64 = 3;
+const MIN_CANDLE_CACHE_DISPLAY_AGE_MS: u64 = 5 * 60 * 1000;
+
 /// Supported candlestick intervals from the chart data providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(usize)]
@@ -77,6 +80,16 @@ impl Timeframe {
     /// Aims for roughly 200-500 candles worth of history.
     pub(crate) fn lookback_ms(self) -> u64 {
         LOOKBACKS_MS[self.index()]
+    }
+
+    /// Maximum age of the last candle before cached data is too stale to render
+    /// as the immediate chart body. This is intentionally much shorter than the
+    /// history lookback, which controls fetch range rather than display freshness.
+    pub(crate) fn cache_display_max_age_ms(self) -> u64 {
+        self.duration_ms()
+            .saturating_mul(CANDLE_CACHE_DISPLAY_INTERVALS)
+            .max(MIN_CANDLE_CACHE_DISPLAY_AGE_MS)
+            .min(self.lookback_ms())
     }
 
     fn index(self) -> usize {
