@@ -33,10 +33,7 @@ pub(super) fn chart_skeleton_overlay(
         .macro_indicators
         .show_funding_rate
         .then_some(chart.funding_panel_height);
-    let session_panel_height = chart
-        .macro_indicators
-        .show_session_indicator
-        .then_some(chart.session_panel_height);
+    let session_panel_height = skeleton_session_panel_height(chart);
 
     container(
         iced::widget::canvas(ChartSkeleton {
@@ -63,11 +60,38 @@ pub(super) fn chart_skeleton_overlay(
     .into()
 }
 
+fn skeleton_session_panel_height(chart: &CandlestickChart) -> Option<f32> {
+    chart
+        .session_indicator_visible()
+        .then_some(chart.session_panel_height)
+}
+
 struct ChartSkeleton {
     phase: f32,
     price_axis_width: f32,
     funding_panel_height: Option<f32>,
     session_panel_height: Option<f32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn skeleton_session_panel_matches_chart_timeframe_visibility() {
+        let mut chart = CandlestickChart::new(1);
+        chart.macro_indicators.show_session_indicator = true;
+
+        chart.set_timeframe(Timeframe::H1);
+        assert_eq!(
+            skeleton_session_panel_height(&chart),
+            Some(chart.session_panel_height)
+        );
+
+        chart.set_timeframe(Timeframe::D1);
+        assert_eq!(skeleton_session_panel_height(&chart), None);
+    }
 }
 
 impl canvas::Program<Message> for ChartSkeleton {

@@ -10,7 +10,7 @@ use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::message::Message;
-use iced::widget::{button, canvas, column, container, rule, stack, text};
+use iced::widget::{button, canvas, column, container, rule, stack, text, text::Wrapping};
 use iced::{Color, Element, Fill, Theme};
 
 impl TradingTerminal {
@@ -133,11 +133,14 @@ impl TradingTerminal {
                 container(
                     text(format!("Error: {err}"))
                         .size(14)
+                        .width(Fill)
+                        .wrapping(Wrapping::Word)
                         .color(theme.palette().danger),
                 )
                 .width(Fill)
                 .height(Fill)
                 .center(Fill)
+                .padding(12)
                 .into(),
             ),
             _ => None,

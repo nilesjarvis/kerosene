@@ -67,7 +67,7 @@ impl CandlestickChart {
             .min(max_panel_h)
     }
 
-    fn session_indicator_visible(&self) -> bool {
+    pub(crate) fn session_indicator_visible(&self) -> bool {
         self.macro_indicators.show_session_indicator
             && self.timeframe.duration_ms() < Timeframe::D1.duration_ms()
     }
