@@ -81,12 +81,8 @@ impl CandlestickChart {
         let candle_w = state.candle_width;
         let gap = candle_w * CANDLE_GAP_RATIO;
         let step = candle_w + gap;
-        let rect_budget = heatmap_rect_budget(fisheye.distorts_geometry(), state.is_view_panning());
-        let heatmap_stride = if self.heatmap_rects.len() > rect_budget {
-            self.heatmap_rects.len().div_ceil(rect_budget)
-        } else {
-            1
-        };
+        let heatmap_rect_budget =
+            heatmap_rect_budget(fisheye.distorts_geometry(), state.is_view_panning());
 
         let Some(visible_range) = self.visible_candle_range(state, chart_w) else {
             return vec![];
@@ -131,7 +127,7 @@ impl CandlestickChart {
             volume_h,
             candle_w,
             step,
-            heatmap_stride,
+            heatmap_rect_budget,
             first_vis,
             last_vis,
             right_idx,
@@ -209,7 +205,6 @@ impl CandlestickChart {
             price_h,
             price_hi,
             price_range,
-            heatmap_stride,
             step,
             fisheye,
             price_to_y: &price_to_y,

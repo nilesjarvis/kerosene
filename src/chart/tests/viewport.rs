@@ -132,7 +132,7 @@ fn hud_follow_keeps_manual_zoom_range_centered_on_latest_close() {
 fn heatmap_budget_drops_while_panning() {
     use crate::chart::model::{
         HEATMAP_MAX_RECTS, HEATMAP_MAX_RECTS_WHILE_PANNING, HEATMAP_MAX_RECTS_WITH_FISHEYE,
-        heatmap_rect_budget,
+        heatmap_rect_budget, heatmap_stride_for_visible_count,
     };
 
     assert_eq!(heatmap_rect_budget(false, false), HEATMAP_MAX_RECTS);
@@ -148,6 +148,11 @@ fn heatmap_budget_drops_while_panning() {
         heatmap_rect_budget(true, true),
         HEATMAP_MAX_RECTS_WHILE_PANNING.min(HEATMAP_MAX_RECTS_WITH_FISHEYE)
     );
+
+    assert_eq!(heatmap_stride_for_visible_count(10, 20), 1);
+    assert_eq!(heatmap_stride_for_visible_count(21, 20), 2);
+    assert_eq!(heatmap_stride_for_visible_count(0, 20), 1);
+    assert_eq!(heatmap_stride_for_visible_count(20, 0), 1);
 }
 
 #[test]

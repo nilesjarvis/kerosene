@@ -9,7 +9,6 @@ impl TooltipSurface<'_> {
     pub(in crate::chart) fn draw_heatmap_hover<X, Y>(
         &mut self,
         rects: &[HeatmapRect],
-        stride: usize,
         max_usd: f64,
         mut rect_x_bounds: X,
         price_to_y: &Y,
@@ -23,7 +22,7 @@ impl TooltipSurface<'_> {
 
         let mut best: Option<&HeatmapRect> = None;
         let mut best_dist = f32::INFINITY;
-        for rect in rects.iter().step_by(stride) {
+        for rect in rects {
             let Some((x_left, x_right)) = rect_x_bounds(rect) else {
                 continue;
             };

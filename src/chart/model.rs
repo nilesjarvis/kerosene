@@ -61,6 +61,14 @@ pub(super) fn heatmap_rect_budget(fisheye_distorts: bool, view_panning: bool) ->
     budget
 }
 
+pub(super) fn heatmap_stride_for_visible_count(visible_count: usize, budget: usize) -> usize {
+    if budget == 0 || visible_count <= budget {
+        1
+    } else {
+        visible_count.div_ceil(budget)
+    }
+}
+
 pub struct CandlestickChart {
     pub id: u64,
     pub(in crate::chart) surface_id: ChartSurfaceId,

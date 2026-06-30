@@ -1,5 +1,7 @@
 use super::super::CandleLayerContext;
 use crate::chart::model::CandlestickChart;
+use crate::chart::model::heatmap_stride_for_visible_count;
+use crate::hyperdash_api::HeatmapRect;
 use iced::widget::canvas;
 use iced::{Color, Point, Size};
 
@@ -20,26 +22,26 @@ impl CandlestickChart {
             return;
         }
 
-        for rect in self.heatmap_rects.iter().step_by(ctx.heatmap_stride) {
-            let Some((x_left, x_right)) =
-                self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step)
+        let visible_count = self
+            .heatmap_rects
+            .iter()
+            .filter(|rect| self.clipped_heatmap_rect_bounds(rect, ctx).is_some())
+            .count();
+        let stride = heatmap_stride_for_visible_count(visible_count, ctx.heatmap_rect_budget);
+
+        let mut visible_index = 0;
+        for rect in &self.heatmap_rects {
+            let Some((x_left, x_right, y_top, y_bot)) = self.clipped_heatmap_rect_bounds(rect, ctx)
             else {
                 continue;
             };
-            if x_right < 0.0 || x_left > ctx.chart_w {
+            let should_draw = visible_index % stride == 0;
+            visible_index += 1;
+            if !should_draw {
                 continue;
             }
 
-            let x_left = x_left.max(0.0);
-            let x_right = x_right.min(ctx.chart_w);
             let cell_w = (x_right - x_left).max(1.0);
-            let y_top = (ctx.price_to_y)(rect.price_hi);
-            let y_bot = (ctx.price_to_y)(rect.price_lo);
-            if y_top > ctx.price_h || y_bot < 0.0 {
-                continue;
-            }
-            let y_top = y_top.max(0.0);
-            let y_bot = y_bot.min(ctx.price_h);
             let cell_h = (y_bot - y_top).max(1.0);
 
             let intensity = (rect.amount_usd.abs() / self.heatmap_max_usd) as f32;
@@ -67,5 +69,33 @@ impl CandlestickChart {
                 color,
             );
         }
+    }
+
+    fn clipped_heatmap_rect_bounds<IdxToCx, PriceToY>(
+        &self,
+        rect: &HeatmapRect,
+        ctx: &CandleLayerContext<'_, IdxToCx, PriceToY>,
+    ) -> Option<(f32, f32, f32, f32)>
+    where
+        IdxToCx: Fn(usize) -> f32,
+        PriceToY: Fn(f64) -> f32,
+    {
+        let (x_left, x_right) = self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step)?;
+        if x_right < 0.0 || x_left > ctx.chart_w {
+            return None;
+        }
+
+        let y_top = (ctx.price_to_y)(rect.price_hi);
+        let y_bot = (ctx.price_to_y)(rect.price_lo);
+        if y_top > ctx.price_h || y_bot < 0.0 {
+            return None;
+        }
+
+        Some((
+            x_left.max(0.0),
+            x_right.min(ctx.chart_w),
+            y_top.max(0.0),
+            y_bot.min(ctx.price_h),
+        ))
     }
 }

@@ -65,7 +65,6 @@ where
     pub(super) price_h: f32,
     pub(super) price_hi: f64,
     pub(super) price_range: f64,
-    pub(super) heatmap_stride: usize,
     pub(super) step: f32,
     pub(super) fisheye: ChartFisheye,
     pub(super) price_to_y: &'a PriceToY,
@@ -255,7 +254,6 @@ impl CandlestickChart {
         );
         tooltip_surface.draw_heatmap_hover(
             &self.heatmap_rects,
-            ctx.heatmap_stride,
             self.heatmap_max_usd,
             |rect| {
                 self.heatmap_x_bounds(rect, ctx.state, ctx.chart_w, ctx.step)

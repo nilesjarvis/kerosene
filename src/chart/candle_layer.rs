@@ -40,7 +40,7 @@ where
     pub(super) volume_h: f32,
     pub(super) candle_w: f32,
     pub(super) step: f32,
-    pub(super) heatmap_stride: usize,
+    pub(super) heatmap_rect_budget: usize,
     pub(super) first_vis: usize,
     pub(super) last_vis: usize,
     pub(super) right_idx: isize,
