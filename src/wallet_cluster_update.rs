@@ -1534,6 +1534,7 @@ mod tests {
             },
             positions: Vec::new(),
             open_orders: Vec::new(),
+            fills: Vec::new(),
             warnings: Vec::new(),
             fetched_at_ms: 0,
         }

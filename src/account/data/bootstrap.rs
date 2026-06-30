@@ -23,7 +23,7 @@ mod tests;
 pub(crate) use hydromancer::{
     HydromancerPortfolioState, fetch_hydromancer_frontend_open_orders_scoped,
     fetch_hydromancer_portfolio_state, fetch_hydromancer_portfolio_states,
-    hydromancer_portfolio_chunk_size,
+    fetch_hydromancer_user_fills, hydromancer_portfolio_chunk_size,
 };
 
 const FUNDING_HISTORY_LOOKBACK_MS: u64 = 7 * 24 * 60 * 60 * 1000;

@@ -378,6 +378,13 @@ pub(crate) async fn fetch_hydromancer_frontend_open_orders_scoped(
     }
 }
 
+pub(crate) async fn fetch_hydromancer_user_fills(
+    address: String,
+    api_key: Zeroizing<String>,
+) -> Result<Vec<UserFill>, String> {
+    post_hydromancer_vec("userFills", user_fills_payload(&address), api_key).await
+}
+
 async fn send_hydromancer_info(
     payload: Value,
     api_key: &str,

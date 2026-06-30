@@ -287,6 +287,8 @@ pub struct UserFill {
     pub dir: String, // "Open Long", "Close Short", etc.
     pub closed_pnl: String,
     pub fee: String,
+    #[serde(default, rename = "feeToken")]
+    pub fee_token: Option<String>,
 }
 
 impl fmt::Debug for UserFill {
@@ -303,6 +305,7 @@ impl fmt::Debug for UserFill {
             .field("dir", &self.dir)
             .field("closed_pnl", &"<redacted>")
             .field("fee", &"<redacted>")
+            .field("has_fee_token", &self.fee_token.is_some())
             .finish()
     }
 }

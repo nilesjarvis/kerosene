@@ -2,8 +2,8 @@ use super::model::{
     WALLET_DETAILS_DEFAULT_HEIGHT, WALLET_DETAILS_DEFAULT_WIDTH, WalletDetailsWindowState,
 };
 use crate::account::{
-    AccountDataFetchScope, WalletOpenOrderDetail, fetch_wallet_details_scoped_with_provider,
-    normalize_dex_open_order_coins,
+    AccountDataFetchScope, UserFill, WalletOpenOrderDetail,
+    fetch_wallet_details_scoped_with_provider, normalize_dex_open_order_coins,
 };
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -195,7 +195,20 @@ impl TradingTerminal {
             WsUserData::AllMids(mids) => {
                 return self.handle_mids_update(mids);
             }
-            WsUserData::Fills { .. } => {}
+            WsUserData::Fills { fills, is_snapshot } => {
+                for state in self
+                    .wallet_detail_windows
+                    .values_mut()
+                    .filter(|state| state.address == address)
+                {
+                    if let Some(details) = state.data.as_mut() {
+                        merge_wallet_detail_fills(&mut details.fills, &fills, is_snapshot);
+                        details.fetched_at_ms = now_ms;
+                    }
+                    state.last_refresh_ms = Some(now_ms);
+                    state.error = None;
+                }
+            }
             WsUserData::Lagged { skipped } => {
                 let mut refreshes = Vec::new();
                 let read_context = self.read_data_request_context();
@@ -233,5 +246,65 @@ impl TradingTerminal {
             }
         }
         Task::none()
+    }
+}
+
+fn merge_wallet_detail_fills(
+    existing: &mut Vec<UserFill>,
+    incoming: &[UserFill],
+    is_snapshot: bool,
+) {
+    if is_snapshot {
+        existing.clear();
+    }
+    let mut seen: std::collections::HashSet<String> =
+        existing.iter().map(UserFill::dedup_key).collect();
+    for fill in incoming {
+        if seen.insert(fill.dedup_key()) {
+            existing.push(fill.clone());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wallet_detail_fill_snapshot_replaces_existing_fills() {
+        let mut existing = vec![fill(1)];
+
+        merge_wallet_detail_fills(&mut existing, &[fill(2)], true);
+
+        assert_eq!(existing.len(), 1);
+        assert_eq!(existing[0].tid, Some(2));
+    }
+
+    #[test]
+    fn wallet_detail_incremental_fills_are_deduplicated() {
+        let mut existing = vec![fill(1)];
+
+        merge_wallet_detail_fills(&mut existing, &[fill(1), fill(2)], false);
+
+        assert_eq!(existing.len(), 2);
+        assert_eq!(existing[0].tid, Some(1));
+        assert_eq!(existing[1].tid, Some(2));
+    }
+
+    fn fill(tid: u64) -> UserFill {
+        UserFill {
+            coin: "BTC".to_string(),
+            px: "100".to_string(),
+            sz: "0.1".to_string(),
+            side: "B".to_string(),
+            time: tid,
+            hash: None,
+            tid: Some(tid),
+            oid: Some(tid),
+            dir: "Open Long".to_string(),
+            closed_pnl: "0".to_string(),
+            fee: "0".to_string(),
+            fee_token: None,
+        }
     }
 }

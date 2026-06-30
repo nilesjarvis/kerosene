@@ -1,4 +1,4 @@
-use super::{AssetPosition, ClearinghouseState, OpenOrder, SpotClearinghouseState};
+use super::{AssetPosition, ClearinghouseState, OpenOrder, SpotClearinghouseState, UserFill};
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -74,6 +74,7 @@ pub struct WalletDetailsData {
     pub spot: SpotClearinghouseState,
     pub positions: Vec<WalletPositionDetail>,
     pub open_orders: Vec<WalletOpenOrderDetail>,
+    pub fills: Vec<UserFill>,
     pub warnings: Vec<String>,
     pub fetched_at_ms: u64,
 }
@@ -94,6 +95,7 @@ impl fmt::Debug for WalletDetailsData {
                 "open_orders",
                 &format_args!("len={}", self.open_orders.len()),
             )
+            .field("fills", &format_args!("len={}", self.fills.len()))
             .field("warnings", &format_args!("len={}", self.warnings.len()))
             .field("fetched_at_ms", &self.fetched_at_ms)
             .finish()
@@ -107,8 +109,8 @@ fn redacted_presence<T>(value: &Option<T>) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AssetPosition, ClearinghouseState, OpenOrder, SpotClearinghouseState, WalletDetailsData,
-        WalletOpenOrderDetail, WalletPositionDetail, WalletTrackerSnapshot,
+        AssetPosition, ClearinghouseState, OpenOrder, SpotClearinghouseState, UserFill,
+        WalletDetailsData, WalletOpenOrderDetail, WalletPositionDetail, WalletTrackerSnapshot,
     };
     use crate::account::{MarginSummary, Position, PositionLeverage, SpotBalance};
 
@@ -192,6 +194,7 @@ mod tests {
                 dex: "xyz".to_string(),
                 order: open_order("ORDERSECRET", "order-secret-price"),
             }],
+            fills: vec![user_fill("FILLSECRET", "fill-secret-price")],
             warnings: vec!["wallet-secret-warning".to_string()],
             fetched_at_ms: 42,
         };
@@ -202,6 +205,7 @@ mod tests {
         assert!(rendered.contains("spot: balances_len=1"));
         assert!(rendered.contains("positions: len=1"));
         assert!(rendered.contains("open_orders: len=1"));
+        assert!(rendered.contains("fills: len=1"));
         assert!(rendered.contains("warnings: len=1"));
         for secret in [
             "wallet-secret-equity",
@@ -214,6 +218,8 @@ mod tests {
             "detail-secret-value",
             "ORDERSECRET",
             "order-secret-price",
+            "FILLSECRET",
+            "fill-secret-price",
             "wallet-secret-warning",
         ] {
             assert!(!rendered.contains(secret), "{secret} leaked in {rendered}");
@@ -253,6 +259,23 @@ mod tests {
             order_type: None,
             tif: None,
             trigger_px: None,
+        }
+    }
+
+    fn user_fill(coin: &str, px: &str) -> UserFill {
+        UserFill {
+            coin: coin.to_string(),
+            px: px.to_string(),
+            sz: "1".to_string(),
+            side: "B".to_string(),
+            time: 1,
+            hash: None,
+            tid: None,
+            oid: None,
+            dir: "Buy".to_string(),
+            closed_pnl: "0".to_string(),
+            fee: "0".to_string(),
+            fee_token: None,
         }
     }
 }

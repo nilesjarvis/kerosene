@@ -23,12 +23,11 @@ pub(in crate::wallet_views) fn wallet_signed_value_color(
 }
 
 pub(in crate::wallet_views) fn wallet_symbol_button(
+    label: String,
     symbol: String,
     width: f32,
     theme: &Theme,
 ) -> Element<'static, Message> {
-    let label = symbol.clone();
-
     button(
         text(label)
             .size(11)

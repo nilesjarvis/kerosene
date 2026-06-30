@@ -53,5 +53,6 @@ pub(in crate::order_execution::twap::tests) fn user_fill(
         dir: "Open Long".to_string(),
         closed_pnl: "0".to_string(),
         fee: "0.01".to_string(),
+        fee_token: None,
     }
 }

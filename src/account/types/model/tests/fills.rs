@@ -43,6 +43,19 @@ fn user_fill_accepts_optional_stable_identity_metadata() {
 }
 
 #[test]
+fn user_fill_preserves_optional_fee_token_metadata() {
+    let mut raw = user_fill_value_with_oid(Some(42));
+    let Some(raw_obj) = raw.as_object_mut() else {
+        panic!("test fill should serialize as object");
+    };
+    raw_obj.insert("feeToken".to_string(), serde_json::json!("UBTC"));
+
+    let fill = user_fill_or_panic(raw);
+
+    assert_eq!(fill.fee_token.as_deref(), Some("UBTC"));
+}
+
+#[test]
 fn user_fill_debug_redacts_trade_payload() {
     let fill = UserFill {
         coin: "SECRETFILLCOIN".to_string(),
@@ -56,6 +69,7 @@ fn user_fill_debug_redacts_trade_payload() {
         dir: "Close Long".to_string(),
         closed_pnl: "fill-pnl-secret".to_string(),
         fee: "fill-fee-secret".to_string(),
+        fee_token: Some("fill-fee-token-secret".to_string()),
     };
 
     let rendered = format!("{fill:?}");
@@ -67,6 +81,7 @@ fn user_fill_debug_redacts_trade_payload() {
     assert!(rendered.contains("has_tid: true"));
     assert!(rendered.contains("has_oid: true"));
     assert!(rendered.contains("dir: \"Close Long\""));
+    assert!(rendered.contains("has_fee_token: true"));
     for secret in [
         "SECRETFILLCOIN",
         "fill-price-secret",
@@ -76,6 +91,7 @@ fn user_fill_debug_redacts_trade_payload() {
         "424242",
         "fill-pnl-secret",
         "fill-fee-secret",
+        "fill-fee-token-secret",
     ] {
         assert!(
             !rendered.contains(secret),
@@ -93,4 +109,16 @@ fn user_fill_hash_dedup_key_includes_fill_fields_without_tid() {
     second.px = "101".to_string();
 
     assert_ne!(first.dedup_key(), second.dedup_key());
+}
+
+#[test]
+fn user_fill_dedup_key_ignores_optional_fee_token_metadata() {
+    let mut first = user_fill_or_panic(user_fill_value_with_identity(123, "0xabc"));
+    let mut second = first.clone();
+    first.tid = None;
+    second.tid = None;
+    first.fee_token = Some("UBTC".to_string());
+    second.fee_token = None;
+
+    assert_eq!(first.dedup_key(), second.dedup_key());
 }

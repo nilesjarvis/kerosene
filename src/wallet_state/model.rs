@@ -255,6 +255,7 @@ mod tests {
             },
             positions: Vec::new(),
             open_orders: Vec::new(),
+            fills: Vec::new(),
             warnings: vec!["wallet-detail-secret-warning".to_string()],
             fetched_at_ms: 42,
         });

@@ -1,4 +1,7 @@
-use crate::account::{AssetPosition, Position, PositionLeverage, SpotBalance};
+use crate::account::{
+    AssetPosition, Position, PositionLeverage, SpotBalance, UserFill,
+    derive_spot_cost_basis_from_fills,
+};
 use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::helpers::parse_finite_number;
@@ -28,17 +31,38 @@ impl TradingTerminal {
             outcome_asset_position_from_balance(balance, trade_coin, mark_px)
         }));
         if self.account_view_includes_spot_balances(data) {
-            positions.extend(data.spot.balances.iter().filter_map(|balance| {
-                let trade_coin = self.spot_trade_coin_for_balance(balance)?;
-                let mark_px = self.resolve_mid_for_symbol(&trade_coin);
-                spot_asset_position_from_balance(balance, trade_coin, mark_px)
-            }));
+            positions.extend(
+                data.spot.balances.iter().filter_map(|balance| {
+                    self.spot_asset_position_for_balance(balance, &data.fills)
+                }),
+            );
         }
 
         positions
     }
 
-    fn spot_trade_coin_for_balance(&self, balance: &SpotBalance) -> Option<String> {
+    pub(crate) fn spot_asset_position_for_balance(
+        &self,
+        balance: &SpotBalance,
+        fills: &[UserFill],
+    ) -> Option<AssetPosition> {
+        let trade_coins = self.spot_trade_coins_for_balance(balance)?;
+        let trade_coin = if spot_balance_entry_notional(balance).is_some() {
+            trade_coins.first()?.clone()
+        } else {
+            trade_coins
+                .iter()
+                .find(|trade_coin| {
+                    derive_spot_cost_basis_from_fills(balance, trade_coin, fills).is_some()
+                })
+                .cloned()
+                .unwrap_or_else(|| trade_coins[0].clone())
+        };
+        let mark_px = self.resolve_mid_for_symbol(&trade_coin);
+        spot_asset_position_from_balance(balance, trade_coin, mark_px, fills)
+    }
+
+    fn spot_trade_coins_for_balance(&self, balance: &SpotBalance) -> Option<Vec<String>> {
         if Self::outcome_balance_coin_to_trade_coin(&balance.coin).is_some()
             || spot_balance_is_stable(&balance.coin)
         {
@@ -49,14 +73,25 @@ impl TradingTerminal {
             return None;
         }
 
-        self.exchange_symbols
+        let mut trade_coins: Vec<(u32, String)> = self
+            .exchange_symbols
             .iter()
             .filter(|symbol| {
                 symbol.market_type == MarketType::Spot
                     && symbol.ticker.eq_ignore_ascii_case(&balance.coin)
             })
-            .min_by_key(|symbol| symbol.asset_index)
-            .map(|symbol| symbol.key.clone())
+            .map(|symbol| (symbol.asset_index, symbol.key.clone()))
+            .collect();
+        if trade_coins.is_empty() {
+            return None;
+        }
+        trade_coins.sort_by_key(|(asset_index, _)| *asset_index);
+        Some(
+            trade_coins
+                .into_iter()
+                .map(|(_, trade_coin)| trade_coin)
+                .collect(),
+        )
     }
 }
 
@@ -106,6 +141,7 @@ fn spot_asset_position_from_balance(
     balance: &SpotBalance,
     trade_coin: String,
     mark_px: Option<f64>,
+    fills: &[UserFill],
 ) -> Option<AssetPosition> {
     let total = parse_finite_number(&balance.total)?;
     if total.abs() <= POSITION_EPSILON {
@@ -113,9 +149,10 @@ fn spot_asset_position_from_balance(
     }
 
     let size = total.abs();
-    let entry_notional = parse_finite_number(&balance.entry_ntl)
-        .filter(|entry_notional| entry_notional.abs() > POSITION_EPSILON)
-        .map(f64::abs);
+    let entry_notional = spot_balance_entry_notional(balance).or_else(|| {
+        derive_spot_cost_basis_from_fills(balance, &trade_coin, fills)
+            .map(|basis| basis.entry_notional)
+    });
     let entry_px = entry_notional.map(|entry_notional| entry_notional / size);
     let position_value = mark_px
         .map(|mark_px| size * mark_px)
@@ -145,6 +182,12 @@ fn spot_asset_position_from_balance(
         },
         liquidation_px: None,
     })
+}
+
+fn spot_balance_entry_notional(balance: &SpotBalance) -> Option<f64> {
+    parse_finite_number(&balance.entry_ntl)
+        .filter(|entry_notional| entry_notional.abs() > POSITION_EPSILON)
+        .map(f64::abs)
 }
 
 fn spot_balance_is_stable(coin: &str) -> bool {
@@ -222,6 +265,36 @@ mod tests {
         }
     }
 
+    fn account_data_with_fills(balances: Vec<SpotBalance>, fills: Vec<UserFill>) -> AccountData {
+        let mut data = account_data(balances);
+        data.fills = fills;
+        data
+    }
+
+    fn spot_fill(
+        coin: &str,
+        px: &str,
+        sz: &str,
+        fee: &str,
+        fee_token: &str,
+        time: u64,
+    ) -> UserFill {
+        UserFill {
+            coin: coin.to_string(),
+            px: px.to_string(),
+            sz: sz.to_string(),
+            side: "B".to_string(),
+            time,
+            hash: None,
+            tid: Some(time),
+            oid: None,
+            dir: "Buy".to_string(),
+            closed_pnl: "0".to_string(),
+            fee: fee.to_string(),
+            fee_token: Some(fee_token.to_string()),
+        }
+    }
+
     fn set_connected_account_data(terminal: &mut TradingTerminal, data: AccountData) {
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
@@ -288,6 +361,61 @@ mod tests {
             6.7491729032 * 58_358.0,
         );
         assert_eq!(positions[0].position.unrealized_pnl, "");
+    }
+
+    #[test]
+    fn spot_balances_use_reconciled_fill_cost_basis_when_entry_notional_is_missing() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![spot_symbol("@142", "UBTC", 10_142)];
+        set_mid(&mut terminal, "@142", 58_358.0);
+        set_connected_account_data(
+            &mut terminal,
+            account_data_with_fills(
+                vec![spot_balance("UBTC", "6.7491729032", "0.0")],
+                vec![
+                    spot_fill("@142", "60191", "1.0", "0.0004", "UBTC", 1),
+                    spot_fill("@142", "58395", "5.753", "0.0034270968", "UBTC", 2),
+                ],
+            ),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "@142");
+        assert_wire_close(
+            &positions[0].position.entry_px,
+            (60_191.0 + 58_395.0 * 5.753) / 6.7491729032,
+        );
+        assert_wire_close(
+            &positions[0].position.unrealized_pnl,
+            6.7491729032 * 58_358.0 - (60_191.0 + 58_395.0 * 5.753),
+        );
+    }
+
+    #[test]
+    fn spot_balances_choose_fill_reconciled_candidate_when_ticker_is_duplicated() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![
+            spot_symbol("@142", "UBTC", 10_142),
+            spot_symbol("@234", "UBTC", 10_234),
+        ];
+        set_mid(&mut terminal, "@142", 58_000.0);
+        set_mid(&mut terminal, "@234", 58_358.0);
+        set_connected_account_data(
+            &mut terminal,
+            account_data_with_fills(
+                vec![spot_balance("UBTC", "1", "0")],
+                vec![spot_fill("@234", "60191", "1", "0", "USDC", 1)],
+            ),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "@234");
+        assert_wire_close(&positions[0].position.entry_px, 60_191.0);
+        assert_wire_close(&positions[0].position.unrealized_pnl, 58_358.0 - 60_191.0);
     }
 
     #[test]

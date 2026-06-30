@@ -17,10 +17,11 @@ use iced::{Color, Element, Theme};
 mod tests;
 
 impl TradingTerminal {
-    pub(super) fn view_wallet_position_row<'a>(
-        &'a self,
-        detail: &'a WalletPositionDetail,
-    ) -> Element<'a, Message> {
+    pub(super) fn view_wallet_position_row(
+        &self,
+        detail: &WalletPositionDetail,
+        symbol_label: String,
+    ) -> Element<'static, Message> {
         let theme = self.theme();
         let denomination = self.display_denomination_context();
         let pos = &detail.asset_position.position;
@@ -39,7 +40,7 @@ impl TradingTerminal {
         let invalid_color = theme.palette().warning;
         let weak_color = theme.extended_palette().background.weak.text;
         let liq_px = Self::parse_liquidation_px(&detail.asset_position);
-        let symbol_button = wallet_symbol_button(symbol, 95.0, &theme);
+        let symbol_button = wallet_symbol_button(symbol_label, symbol, 95.0, &theme);
 
         row![
             symbol_button,

@@ -26,7 +26,7 @@ impl TradingTerminal {
         let mut short_exposure = Some(0.0);
         let mut unrealized_pnl = Some(0.0);
         let mut active_position_count = 0usize;
-        for detail in &data.positions {
+        for detail in self.wallet_position_details_with_spot(data) {
             let pos = &detail.asset_position.position;
             let Some(symbol) = self.visible_wallet_detail_symbol(&detail.dex, &pos.coin) else {
                 continue;

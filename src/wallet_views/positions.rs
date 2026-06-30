@@ -1,4 +1,4 @@
-use crate::account::WalletPositionDetail;
+use crate::account::{WalletDetailsData, WalletPositionDetail};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use iced::widget::container as container_style;
@@ -14,13 +14,39 @@ mod position_row;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    pub(crate) fn wallet_position_details_with_spot(
+        &self,
+        data: &WalletDetailsData,
+    ) -> Vec<WalletPositionDetail> {
+        let mut positions = data.positions.clone();
+        positions.extend(data.spot.balances.iter().filter_map(|balance| {
+            self.spot_asset_position_for_balance(balance, &data.fills)
+                .map(|asset_position| WalletPositionDetail {
+                    dex: String::new(),
+                    asset_position,
+                })
+        }));
+        positions
+    }
+
+    /// Outcome and spot position coins resolve to their human labels; perp and
+    /// HIP-3 coins keep the dex-qualified key.
+    fn wallet_position_symbol_label(&self, dex: &str, coin: &str) -> String {
+        if self.is_outcome_coin(coin) || self.is_spot_coin(coin) {
+            self.display_name_for_symbol(coin)
+        } else {
+            Self::wallet_detail_symbol(dex, coin)
+        }
+    }
+
     pub(super) fn view_wallet_positions_table<'a>(
         &'a self,
-        positions: &'a [WalletPositionDetail],
+        data: &'a WalletDetailsData,
     ) -> Element<'a, Message> {
         let theme = self.theme();
-        let mut position_rows: Vec<&WalletPositionDetail> = positions
-            .iter()
+        let mut position_rows: Vec<WalletPositionDetail> = self
+            .wallet_position_details_with_spot(data)
+            .into_iter()
             .filter(|detail| {
                 let pos = &detail.asset_position.position;
                 wallet_has_visible_nonzero(&pos.szi)
@@ -57,13 +83,18 @@ impl TradingTerminal {
 
         if position_rows.is_empty() {
             positions_table = positions_table.push(
-                text("No open perp positions")
+                text("No open positions")
                     .size(11)
                     .color(theme.extended_palette().background.weak.text),
             );
         } else {
-            for detail in position_rows {
-                positions_table = positions_table.push(self.view_wallet_position_row(detail));
+            for detail in &position_rows {
+                let symbol_label = self.wallet_position_symbol_label(
+                    &detail.dex,
+                    &detail.asset_position.position.coin,
+                );
+                positions_table =
+                    positions_table.push(self.view_wallet_position_row(detail, symbol_label));
             }
         }
 

@@ -982,6 +982,7 @@ mod tests {
             dir: "Open Long".to_string(),
             closed_pnl: "0".to_string(),
             fee: "0".to_string(),
+            fee_token: None,
         }
     }
 

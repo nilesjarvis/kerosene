@@ -180,6 +180,7 @@ mod tests {
                         dir: "Open Long".to_string(),
                         closed_pnl: "1234.56".to_string(),
                         fee: "10.00".to_string(),
+                        fee_token: None,
                     }],
                     is_snapshot: true,
                 }

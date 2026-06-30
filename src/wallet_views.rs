@@ -85,7 +85,7 @@ impl TradingTerminal {
 
         content = content.push(self.view_wallet_details_summary(data, &theme));
 
-        content = content.push(self.view_wallet_positions_table(&data.positions));
+        content = content.push(self.view_wallet_positions_table(data));
 
         content = content.push(self.view_wallet_orders_table(&data.open_orders, now_ms));
 

@@ -48,6 +48,7 @@ fn user_fill_for(coin: &str, side: &str, oid: u64, size: &str, price: &str) -> U
         dir: "Open Long".to_string(),
         closed_pnl: "0".to_string(),
         fee: "0.01".to_string(),
+        fee_token: None,
     }
 }
 

@@ -139,6 +139,7 @@ fn account_data_debug_summarizes_account_payloads() {
         dir: "Open Long".to_string(),
         closed_pnl: "fill-secret-pnl".to_string(),
         fee: "fill-secret-fee".to_string(),
+        fee_token: Some("fill-secret-fee-token".to_string()),
     });
     data.funding_history.push(FundingEntry {
         delta: FundingDelta {
@@ -171,6 +172,8 @@ fn account_data_debug_summarizes_account_payloads() {
         "SECRETFILL",
         "fill-secret-hash",
         "fill-secret-pnl",
+        "fill-secret-fee",
+        "fill-secret-fee-token",
         "SECRETFUND",
         "funding-secret-rate",
         "fee-secret-rate",
