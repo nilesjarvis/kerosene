@@ -46,8 +46,9 @@ local and redacted in debug output.
 
 ## Latency
 
-Polling interval defaults to 10 seconds while any X Feed pane is open. Requests
-use `since_id` based on the newest post already seen for the selected source.
+Polling interval defaults to 10 seconds while any X Feed pane is open. Polls
+request up to 10 posts to keep X API usage cost-sensitive. Requests use
+`since_id` based on the newest post already seen for the selected source.
 
 X Filtered Stream is not used for this initial widget because it is app-context,
 public-content filtering and does not represent the authenticated user's private

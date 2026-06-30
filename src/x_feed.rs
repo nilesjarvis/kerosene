@@ -14,7 +14,8 @@ const X_API_BASE: &str = "https://api.x.com/2";
 const X_FEED_REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
 pub(crate) const X_FEED_REFRESH_INTERVAL_SECS: u64 = 10;
 pub(crate) const X_FEED_POST_LIMIT: usize = 100;
-const X_FEED_FETCH_LIMIT: usize = 50;
+// Keep poll payloads small because X API usage is cost-sensitive.
+const X_FEED_FETCH_LIMIT: usize = 10;
 const X_PROFILE_IMAGE_MAX_BODY_BYTES: usize = 512 * 1024;
 pub(crate) const X_PROFILE_IMAGE_RETRY_BACKOFF_MS: u64 = 300_000;
 
