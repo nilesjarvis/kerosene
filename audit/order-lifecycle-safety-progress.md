@@ -10,6 +10,7 @@
   - Account changes and disconnects are blocked while these status checks are pending.
   - Complete account refresh clears pending cancel/move status checks for that account.
 - Treated filled order responses without an oid as ambiguous instead of fully settled, and displayed malformed status oids as `?` instead of `0`.
+- Preserved Chase history overfills when authoritative fill metrics are unavailable, so archived filled size can exceed target size instead of being capped.
 
 ## Validation
 
@@ -19,5 +20,4 @@
 
 ## Remaining Findings
 
-- Advanced Chase history can hide overfills when fill metrics are unavailable.
 - TWAP account-change blocking could explicitly include reconciliation deadlines for defense in depth.

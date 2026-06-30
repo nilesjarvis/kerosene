@@ -89,6 +89,27 @@ fn chase_history_does_not_guess_average_without_authoritative_fills() {
     assert_eq!(entry.gross_notional, 0.0);
 }
 
+#[test]
+fn chase_history_preserves_overfill_without_authoritative_fills() {
+    let mut chase = chase_order();
+    chase.target_size = 1.0;
+    chase.filled_size = 1.2;
+    chase.remaining_size = 0.0;
+
+    let entry = AdvancedOrderHistoryEntry::from_chase_with_fill_metrics(
+        &chase,
+        "BTC".to_string(),
+        10_000,
+        "Done".to_string(),
+        None,
+    );
+
+    assert_eq!(entry.target_size, 1.0);
+    assert_eq!(entry.filled_size, 1.2);
+    assert_eq!(entry.remaining_size, 0.0);
+    assert_eq!(entry.average_price, None);
+}
+
 fn account_data(fills: Vec<UserFill>) -> AccountData {
     AccountData {
         fetch_scope: Default::default(),

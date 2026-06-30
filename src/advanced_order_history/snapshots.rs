@@ -164,12 +164,8 @@ impl AdvancedOrderHistoryEntry {
         let target_size = finite_or_zero(chase.target_size);
         let filled_size = if let Some(metrics) = fill_metrics {
             finite_non_negative_or_zero(metrics.filled_size)
-        } else if let Some(filled_size) = positive_finite_value(chase.filled_size) {
-            if target_size > 0.0 {
-                filled_size.min(target_size)
-            } else {
-                filled_size
-            }
+        } else if chase.filled_size.is_finite() && chase.filled_size >= 0.0 {
+            chase.filled_size
         } else if target_size > 0.0
             && let Some(remaining_size) = positive_finite_value(chase.remaining_size)
         {
