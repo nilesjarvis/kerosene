@@ -1,4 +1,7 @@
-use crate::api::{ExchangeSymbol, MarketType, SecEarningsEvent, fetch_sec_earnings_events};
+use crate::api::{
+    ExchangeSymbol, MarketType, SecEarningsEvent, fetch_sec_earnings_events,
+    sec_filing_document_url,
+};
 use crate::app_state::TradingTerminal;
 use crate::chart::EarningsMarker;
 use crate::chart_state::{ChartId, ChartInstance};
@@ -6,6 +9,7 @@ use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
 use iced::Task;
+use std::process::Command;
 
 // ---------------------------------------------------------------------------
 // SEC Earnings Markers
@@ -22,6 +26,15 @@ impl TradingTerminal {
             }
             Message::ChartEarningsEventsLoaded(ticker, request_id, result) => {
                 self.apply_sec_earnings_loaded(ticker, request_id, *result);
+                Task::none()
+            }
+            Message::OpenChartEarningsFiling(chart_id, surface_id, time_ms) => {
+                self.open_chart_earnings_filing(chart_id, surface_id, time_ms)
+            }
+            Message::ChartEarningsFilingOpenResult(result) => {
+                if let Err(error) = result {
+                    self.push_toast(format!("SEC filing open failed: {error}"), true);
+                }
                 Task::none()
             }
             _ => Task::none(),
@@ -298,6 +311,39 @@ impl TradingTerminal {
         }
         self.sec_earnings_ticker_for_symbol(&instance.symbol)
     }
+
+    fn open_chart_earnings_filing(
+        &mut self,
+        chart_id: ChartId,
+        surface_id: crate::chart_state::ChartSurfaceId,
+        time_ms: u64,
+    ) -> Task<Message> {
+        let url = self
+            .charts
+            .get(&chart_id)
+            .filter(|instance| instance.chart.surface_id() == surface_id)
+            .and_then(|instance| {
+                instance
+                    .chart
+                    .earnings_markers
+                    .iter()
+                    .find(|marker| marker.time_ms == time_ms)
+            })
+            .and_then(earnings_marker_filing_url);
+
+        let Some(url) = url else {
+            self.push_toast(
+                "SEC filing link unavailable for this earnings marker".to_string(),
+                true,
+            );
+            return Task::none();
+        };
+
+        Task::perform(
+            open_external_url(url),
+            Message::ChartEarningsFilingOpenResult,
+        )
+    }
 }
 
 fn earnings_error_status(error: &str) -> String {
@@ -315,11 +361,52 @@ fn earnings_markers_from_events(events: &[SecEarningsEvent]) -> Vec<EarningsMark
         .iter()
         .map(|event| EarningsMarker {
             time_ms: event.filing_time_ms,
+            cik: event.cik,
             filing_date: event.filing_date.clone(),
             accession_number: event.accession_number.clone(),
+            primary_document: event.primary_document.clone(),
             quarter_label: earnings_quarter_label(&event.filing_date),
         })
         .collect()
+}
+
+fn earnings_marker_filing_url(marker: &EarningsMarker) -> Option<String> {
+    sec_filing_document_url(
+        marker.cik,
+        &marker.accession_number,
+        &marker.primary_document,
+    )
+}
+
+async fn open_external_url(url: String) -> Result<(), String> {
+    open_external_url_with_system(&url)
+}
+
+#[cfg(target_os = "macos")]
+fn open_external_url_with_system(url: &str) -> Result<(), String> {
+    Command::new("open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("open command failed: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn open_external_url_with_system(url: &str) -> Result<(), String> {
+    Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("start command failed: {e}"))
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn open_external_url_with_system(url: &str) -> Result<(), String> {
+    Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("xdg-open command failed: {e}"))
 }
 
 fn earnings_quarter_label(filing_date: &str) -> Option<String> {
@@ -433,8 +520,10 @@ mod tests {
 
         assert_eq!(markers.len(), 1);
         assert_eq!(markers[0].time_ms, 1_777_420_800_000);
+        assert_eq!(markers[0].cik, 1_652_044);
         assert_eq!(markers[0].filing_date, "2026-04-29");
         assert_eq!(markers[0].accession_number, "0001652044-26-000043");
+        assert_eq!(markers[0].primary_document, "goog-20260429.htm");
         assert_eq!(markers[0].quarter_label.as_deref(), Some("Q1 2026"));
     }
 

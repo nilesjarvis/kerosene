@@ -209,6 +209,7 @@ SEC earnings markers are optional chart overlays:
 - toggled by `ToggleChartEarningsMarkers`
 - fetched through `api::fetch_sec_earnings_events`
 - rendered as chart markers and hover tooltips
+- clicked through `OpenChartEarningsFiling` to open the public SEC filing
 
 Macro indicators are configured per chart and include candle/funding-derived
 series. The candle-backed moving averages support active-timeframe, 1-hour,

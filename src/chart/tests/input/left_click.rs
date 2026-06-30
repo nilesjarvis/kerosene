@@ -3,6 +3,7 @@ use super::{
     chart_with_input_candles, message_or_panic, pending_btc_buy_order,
 };
 use crate::chart::ChartState;
+use crate::chart::EarningsMarker;
 use crate::chart::fisheye::ChartFisheye;
 use crate::chart::interaction::{InteractionLayout, ProjectedCursor};
 use crate::chart::order_labels;
@@ -44,6 +45,48 @@ fn normal_left_click_marks_chart_focused_without_capturing_event() {
     assert!(matches!(message, Some(Message::ChartFocused(7))));
     assert_eq!(status, iced::event::Status::Ignored);
     assert!(matches!(state.drag, Some(DragKind::PanX)));
+}
+
+#[test]
+fn earnings_marker_left_click_opens_filing_without_panning() {
+    let mut chart = chart_with_input_candles();
+    chart.set_earnings_markers(vec![EarningsMarker {
+        time_ms: 2_000,
+        cik: 1_652_044,
+        filing_date: "2026-04-29".to_string(),
+        accession_number: "0001652044-26-000043".to_string(),
+        primary_document: "goog-20260429.htm".to_string(),
+        quarter_label: Some("Q1 2026".to_string()),
+    }]);
+    let mut state = ChartState::default();
+    let marker_x = chart
+        .timestamp_to_x(2_000, &state, CHART_W)
+        .expect("marker x");
+    let price_h = CHART_H * (1.0 - crate::chart::VOLUME_REGION_RATIO);
+    let marker_y = price_h - 5.0;
+
+    let action = action_or_panic(
+        chart.handle_left_press(
+            &mut state,
+            Point::new(marker_x, marker_y),
+            CHART_W,
+            CHART_H,
+            260.0,
+        ),
+        "left click on earnings marker should open filing",
+    );
+    let (message, _, status) = action.into_inner();
+
+    match message_or_panic(message, "open earnings filing message") {
+        Message::OpenChartEarningsFiling(id, surface_id, time_ms) => {
+            assert_eq!(id, chart.id);
+            assert_eq!(surface_id, chart.surface_id);
+            assert_eq!(time_ms, 2_000);
+        }
+        other => panic!("expected OpenChartEarningsFiling, got {other:?}"),
+    }
+    assert_eq!(status, iced::event::Status::Captured);
+    assert!(state.drag.is_none());
 }
 
 #[test]

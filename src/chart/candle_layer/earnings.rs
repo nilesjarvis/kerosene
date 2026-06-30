@@ -135,8 +135,10 @@ mod tests {
     fn marker(time_ms: u64) -> EarningsMarker {
         EarningsMarker {
             time_ms,
+            cik: 1_652_044,
             filing_date: String::new(),
             accession_number: String::new(),
+            primary_document: String::new(),
             quarter_label: None,
         }
     }

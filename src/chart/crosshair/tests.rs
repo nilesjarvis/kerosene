@@ -146,8 +146,10 @@ fn earnings_marker_hover_overlay_is_active_only_for_visible_hovered_markers() {
     chart.set_candles(vec![candle_at(1_000, 100.0), candle_at(2_000, 101.0)]);
     chart.set_earnings_markers(vec![EarningsMarker {
         time_ms: 2_000,
+        cik: 1_652_044,
         filing_date: "2026-04-29".to_string(),
         accession_number: "0001652044-26-000043".to_string(),
+        primary_document: "goog-20260429.htm".to_string(),
         quarter_label: Some("Q1 2026".to_string()),
     }]);
     let state = ChartState::default();

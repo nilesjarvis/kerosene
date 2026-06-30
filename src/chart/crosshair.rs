@@ -340,7 +340,7 @@ impl CandlestickChart {
                 .with_width(0.75 + 0.35 * hover),
         );
 
-        let mut lines = Vec::with_capacity(3);
+        let mut lines = Vec::with_capacity(4);
         lines.push(TooltipLine {
             content: format!(
                 "EARN {}",
@@ -364,6 +364,15 @@ impl CandlestickChart {
                     a: 0.62,
                     ..ctx.theme.palette().text
                 },
+            });
+        }
+        if marker.cik != 0
+            && !marker.accession_number.is_empty()
+            && !marker.primary_document.is_empty()
+        {
+            lines.push(TooltipLine {
+                content: "Click to open filing".to_string(),
+                color: Color { a: 0.78, ..accent },
             });
         }
 

@@ -654,6 +654,8 @@ pub(crate) enum Message {
     ToggleMacroIndicator(ChartId, String),
     ToggleChartEarningsMarkers(ChartId),
     ChartEarningsEventsLoaded(String, u64, Box<Result<Vec<api::SecEarningsEvent>, String>>),
+    OpenChartEarningsFiling(ChartId, ChartSurfaceId, u64),
+    ChartEarningsFilingOpenResult(Result<(), String>),
     CloseAllMenus,
     AddPositionsHistoryPane,
     AddPortfolioPane,

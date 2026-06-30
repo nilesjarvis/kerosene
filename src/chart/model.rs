@@ -340,8 +340,10 @@ pub struct TradeMarker {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EarningsMarker {
     pub time_ms: u64,
+    pub cik: u64,
     pub filing_date: String,
     pub accession_number: String,
+    pub primary_document: String,
     pub quarter_label: Option<String>,
 }
 

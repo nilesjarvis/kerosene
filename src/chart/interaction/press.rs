@@ -1,5 +1,5 @@
 use super::super::state::DragKind;
-use super::super::{CandlestickChart, ChartState};
+use super::super::{CandlestickChart, ChartState, VOLUME_REGION_RATIO};
 use super::{InteractionLayout, ProjectedCursor};
 use crate::chart::fisheye::ChartFisheye;
 use crate::message::Message;
@@ -108,6 +108,20 @@ impl CandlestickChart {
                 return self.handle_select_press(state, pos, chart_w, chart_h);
             }
             return self.handle_drawing_tool_press(state, pos, chart_w, chart_h, tool);
+        }
+
+        if visual_pos.x < chart_w && visual_pos.y < chart_h {
+            let price_h = chart_h * (1.0 - VOLUME_REGION_RATIO);
+            if let Some(time_ms) = self.hit_test_earnings_marker_at(state, pos, chart_w, price_h) {
+                return Some(
+                    canvas::Action::publish(Message::OpenChartEarningsFiling(
+                        self.id,
+                        self.surface_id,
+                        time_ms,
+                    ))
+                    .and_capture(),
+                );
+            }
         }
 
         if let Some(hit) =

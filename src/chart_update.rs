@@ -44,7 +44,9 @@ impl TradingTerminal {
                 return self.update_chart_macro_indicators(message);
             }
             message @ (Message::ToggleChartEarningsMarkers(_)
-            | Message::ChartEarningsEventsLoaded(_, _, _)) => {
+            | Message::ChartEarningsEventsLoaded(_, _, _)
+            | Message::OpenChartEarningsFiling(_, _, _)
+            | Message::ChartEarningsFilingOpenResult(_)) => {
                 return self.update_chart_earnings(message);
             }
             message @ (Message::ChartSymbolSelected(_, _)

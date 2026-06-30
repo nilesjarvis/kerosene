@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 const SEC_TICKER_MAP_URL: &str = "https://www.sec.gov/files/company_tickers.json";
 const SEC_SUBMISSIONS_BASE_URL: &str = "https://data.sec.gov/submissions";
+const SEC_ARCHIVES_BASE_URL: &str = "https://www.sec.gov/Archives/edgar/data";
 const DEFAULT_SEC_USER_AGENT: &str = concat!(
     "Kerosene/",
     env!("CARGO_PKG_VERSION"),
@@ -76,6 +77,34 @@ pub(crate) async fn fetch_sec_earnings_events(
         &ticker,
         &company,
         &submissions,
+    ))
+}
+
+pub(crate) fn sec_filing_document_url(
+    cik: u64,
+    accession_number: &str,
+    primary_document: &str,
+) -> Option<String> {
+    if cik == 0 {
+        return None;
+    }
+
+    let accession_digits = accession_number
+        .chars()
+        .filter(char::is_ascii_digit)
+        .collect::<String>();
+    let primary_document = primary_document.trim().trim_start_matches('/');
+    if accession_digits.is_empty()
+        || primary_document.is_empty()
+        || primary_document.contains("://")
+        || primary_document.contains('\\')
+        || primary_document.contains("..")
+    {
+        return None;
+    }
+
+    Some(format!(
+        "{SEC_ARCHIVES_BASE_URL}/{cik}/{accession_digits}/{primary_document}"
     ))
 }
 
@@ -319,5 +348,26 @@ mod tests {
     fn sec_date_to_unix_ms_parses_utc_midnight() {
         assert_eq!(sec_date_to_unix_ms("1970-01-02"), Some(86_400_000));
         assert_eq!(sec_date_to_unix_ms("not-a-date"), None);
+    }
+
+    #[test]
+    fn sec_filing_document_url_uses_archive_document_path() {
+        assert_eq!(
+            sec_filing_document_url(1_652_044, "0001652044-26-000043", "goog-20260429.htm")
+                .as_deref(),
+            Some(
+                "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000043/goog-20260429.htm"
+            )
+        );
+    }
+
+    #[test]
+    fn sec_filing_document_url_rejects_incomplete_or_unsafe_inputs() {
+        assert!(sec_filing_document_url(0, "0001652044-26-000043", "goog.htm").is_none());
+        assert!(sec_filing_document_url(1, "", "goog.htm").is_none());
+        assert!(sec_filing_document_url(1, "0001", "").is_none());
+        assert!(sec_filing_document_url(1, "0001", "../index.htm").is_none());
+        assert!(sec_filing_document_url(1, "0001", "https://example.com").is_none());
+        assert!(sec_filing_document_url(1, "0001", "nested\\file.htm").is_none());
     }
 }
