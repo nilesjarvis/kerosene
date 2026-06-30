@@ -160,6 +160,12 @@ impl Default for ChartState {
 }
 
 impl ChartState {
+    pub(super) fn reset_for_epoch(reset_epoch: u64) -> Self {
+        let mut state = Self::default();
+        state.reset_view(reset_epoch);
+        state
+    }
+
     /// True while the user is dragging the viewport (X pan, price-axis pan,
     /// or funding-panel pan). Used to pick cheaper tessellation budgets for
     /// drag frames.

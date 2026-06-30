@@ -63,3 +63,32 @@ fn reset_request_preserves_chart_content() {
     assert_eq!(chart.annotations.len(), 1);
     assert!(matches!(chart.status, ChartStatus::Loaded));
 }
+
+#[test]
+fn pending_reset_draw_state_uses_default_viewport_without_canvas_event() {
+    let mut chart = CandlestickChart::new(1);
+    let state = ChartState {
+        scroll_offset: 42.0,
+        candle_width: 18.0,
+        y_auto: false,
+        y_offset: 123.0,
+        y_scale: 4.0,
+        reset_epoch_seen: 0,
+        ..ChartState::default()
+    };
+
+    chart.request_view_reset();
+    let draw_state = chart.chart_state_for_draw(&state);
+    let effective = draw_state.as_ref();
+
+    assert_eq!(effective.scroll_offset, 0.0);
+    assert_eq!(effective.candle_width, DEFAULT_CANDLE_WIDTH);
+    assert!(effective.y_auto);
+    assert_eq!(effective.y_offset, 0.0);
+    assert_eq!(effective.y_scale, 1.0);
+    assert_eq!(effective.reset_epoch_seen, chart.reset_epoch);
+
+    assert_eq!(state.scroll_offset, 42.0);
+    assert_eq!(state.candle_width, 18.0);
+    assert_eq!(state.reset_epoch_seen, 0);
+}

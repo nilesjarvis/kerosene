@@ -15,7 +15,29 @@ use iced::{Rectangle, Renderer, Theme};
 // Canvas Program
 // ---------------------------------------------------------------------------
 
+pub(super) enum ChartDrawState<'a> {
+    Current(&'a ChartState),
+    PendingReset(ChartState),
+}
+
+impl ChartDrawState<'_> {
+    pub(super) fn as_ref(&self) -> &ChartState {
+        match self {
+            Self::Current(state) => state,
+            Self::PendingReset(state) => state,
+        }
+    }
+}
+
 impl CandlestickChart {
+    pub(super) fn chart_state_for_draw<'a>(&self, state: &'a ChartState) -> ChartDrawState<'a> {
+        if state.reset_epoch_seen == self.reset_epoch {
+            ChartDrawState::Current(state)
+        } else {
+            ChartDrawState::PendingReset(ChartState::reset_for_epoch(self.reset_epoch))
+        }
+    }
+
     pub(crate) fn draw_with_state(
         &self,
         state: &ChartState,
@@ -27,6 +49,9 @@ impl CandlestickChart {
         if self.candles.is_empty() {
             return vec![];
         }
+
+        let draw_state = self.chart_state_for_draw(state);
+        let state = draw_state.as_ref();
 
         let chart_w = bounds.width - self.price_axis_width();
         let (chart_h, funding_panel_h, session_panel_h) = self.chart_area_heights(bounds.height);
