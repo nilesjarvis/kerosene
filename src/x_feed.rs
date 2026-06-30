@@ -144,6 +144,43 @@ pub(crate) enum XListOwnerKind {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+pub(crate) struct XListsFetchOutcome {
+    pub(crate) lists: Vec<XListSummary>,
+    pub(crate) unavailable_sources: Vec<XListOwnerKind>,
+}
+
+impl fmt::Debug for XListsFetchOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("XListsFetchOutcome")
+            .field("lists", &self.lists.len())
+            .field("unavailable_sources", &self.unavailable_sources)
+            .finish()
+    }
+}
+
+impl XListsFetchOutcome {
+    pub(crate) fn status_suffix(&self) -> String {
+        match self.unavailable_sources.len() {
+            0 => String::new(),
+            1 => format!(
+                "; {} List source unavailable",
+                self.unavailable_sources[0].label()
+            ),
+            count => format!("; {count} List sources unavailable"),
+        }
+    }
+}
+
+impl XListOwnerKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Owned => "owned",
+            Self::Followed => "followed",
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct XFeedPost {
     pub(crate) id: String,
     pub(crate) author_id: Option<String>,
@@ -509,7 +546,7 @@ impl XFeedInstance {
 
 pub(crate) async fn fetch_x_auth_context(
     access_token: Zeroizing<String>,
-) -> Result<(XAuthenticatedUser, Vec<XListSummary>), String> {
+) -> Result<(XAuthenticatedUser, XListsFetchOutcome), String> {
     let user = fetch_x_me(access_token.clone()).await?;
     let lists = fetch_x_lists(access_token, user.id.clone()).await?;
     Ok((user, lists))
@@ -518,11 +555,33 @@ pub(crate) async fn fetch_x_auth_context(
 pub(crate) async fn fetch_x_lists(
     access_token: Zeroizing<String>,
     user_id: String,
-) -> Result<Vec<XListSummary>, String> {
+) -> Result<XListsFetchOutcome, String> {
     let mut lists = Vec::new();
-    lists.extend(fetch_x_list_page(&access_token, &user_id, XListOwnerKind::Owned).await?);
-    lists.extend(fetch_x_list_page(&access_token, &user_id, XListOwnerKind::Followed).await?);
-    Ok(dedup_x_lists(lists))
+    let mut unavailable_sources = Vec::new();
+    let mut errors = Vec::new();
+    let mut successful_sources = 0;
+
+    for owner in [XListOwnerKind::Owned, XListOwnerKind::Followed] {
+        match fetch_x_list_page(&access_token, &user_id, owner).await {
+            Ok(page) => {
+                successful_sources += 1;
+                lists.extend(page);
+            }
+            Err(error) => {
+                unavailable_sources.push(owner);
+                errors.push(error);
+            }
+        }
+    }
+
+    if successful_sources == 0 {
+        return Err(errors.join("; "));
+    }
+
+    Ok(XListsFetchOutcome {
+        lists: dedup_x_lists(lists),
+        unavailable_sources,
+    })
 }
 
 pub(crate) async fn fetch_x_feed_page(

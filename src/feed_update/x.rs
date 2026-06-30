@@ -5,7 +5,7 @@ use crate::message::{
 use crate::pane_state::PaneKind;
 use crate::x_feed::{
     XAuthenticatedUser, XFeedId, XFeedInstance, XFeedPage, XFeedRequestError, XFeedSource,
-    XListSummary, fetch_x_auth_context, fetch_x_feed_page, fetch_x_lists,
+    XListsFetchOutcome, fetch_x_auth_context, fetch_x_feed_page, fetch_x_lists,
 };
 use iced::Task;
 use zeroize::Zeroize;
@@ -67,20 +67,21 @@ impl TradingTerminal {
     fn handle_x_feed_auth_loaded(
         &mut self,
         request_id: u64,
-        result: Result<(XAuthenticatedUser, Vec<XListSummary>), String>,
+        result: Result<(XAuthenticatedUser, XListsFetchOutcome), String>,
     ) -> Task<Message> {
         if request_id != self.x_feed.connect_request_id {
             return Task::none();
         }
         self.x_feed.connecting = false;
         match result {
-            Ok((user, lists)) => {
+            Ok((user, outcome)) => {
                 let username = user.username.clone();
-                let list_count = lists.len();
+                let list_count = outcome.lists.len();
+                let status_suffix = outcome.status_suffix();
                 self.x_feed.auth_user = Some(user);
-                self.x_feed.lists = lists;
+                self.x_feed.lists = outcome.lists;
                 self.x_feed.status = Some((
-                    format!("Connected @{username}; {list_count} Lists available"),
+                    format!("Connected @{username}; {list_count} Lists available{status_suffix}"),
                     false,
                 ));
                 self.request_x_feed_open_refresh(true)
@@ -114,17 +115,20 @@ impl TradingTerminal {
     fn handle_x_feed_lists_loaded(
         &mut self,
         request_id: u64,
-        result: Result<Vec<XListSummary>, String>,
+        result: Result<XListsFetchOutcome, String>,
     ) {
         if request_id != self.x_feed.lists_request_id {
             return;
         }
         self.x_feed.lists_loading = false;
         match result {
-            Ok(lists) => {
-                let count = lists.len();
-                self.x_feed.lists = lists;
-                self.x_feed.status = Some((format!("Loaded {count} X Lists"), false));
+            Ok(outcome) => {
+                let count = outcome.lists.len();
+                let status_suffix = outcome.status_suffix();
+                self.x_feed.lists = outcome.lists;
+                self.x_feed
+                    .status
+                    .replace((format!("Loaded {count} X Lists{status_suffix}"), false));
             }
             Err(err) => self.x_feed.status = Some((err, true)),
         }

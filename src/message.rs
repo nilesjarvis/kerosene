@@ -55,7 +55,7 @@ use crate::wallet_cluster_state::WalletClusterCloseSide;
 use crate::ws::WsUserData;
 use crate::x_feed::{
     XAuthenticatedUser, XFeedId, XFeedPage, XFeedRequestError, XFeedSource, XFeedSourceOption,
-    XListSummary,
+    XListsFetchOutcome,
 };
 use iced::widget::pane_grid;
 use iced::{Point, Size, window};
@@ -388,15 +388,15 @@ impl fmt::Debug for TelegramFastAuthMessageResult {
 
 #[derive(Clone)]
 pub(crate) struct XAuthContextMessageResult(
-    Box<Result<(XAuthenticatedUser, Vec<XListSummary>), String>>,
+    Box<Result<(XAuthenticatedUser, XListsFetchOutcome), String>>,
 );
 
 impl XAuthContextMessageResult {
-    pub(crate) fn new(result: Result<(XAuthenticatedUser, Vec<XListSummary>), String>) -> Self {
+    pub(crate) fn new(result: Result<(XAuthenticatedUser, XListsFetchOutcome), String>) -> Self {
         Self(Box::new(result))
     }
 
-    pub(crate) fn into_result(self) -> Result<(XAuthenticatedUser, Vec<XListSummary>), String> {
+    pub(crate) fn into_result(self) -> Result<(XAuthenticatedUser, XListsFetchOutcome), String> {
         *self.0
     }
 }
@@ -404,10 +404,11 @@ impl XAuthContextMessageResult {
 impl fmt::Debug for XAuthContextMessageResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.as_ref() {
-            Ok((user, lists)) => f
+            Ok((user, outcome)) => f
                 .debug_struct("XAuthContextMessageResult")
                 .field("user", user)
-                .field("lists", &lists.len())
+                .field("lists", &outcome.lists.len())
+                .field("unavailable_sources", &outcome.unavailable_sources)
                 .finish(),
             Err(error) => f
                 .debug_tuple("XAuthContextMessageResult")
@@ -418,14 +419,14 @@ impl fmt::Debug for XAuthContextMessageResult {
 }
 
 #[derive(Clone)]
-pub(crate) struct XListsMessageResult(Box<Result<Vec<XListSummary>, String>>);
+pub(crate) struct XListsMessageResult(Box<Result<XListsFetchOutcome, String>>);
 
 impl XListsMessageResult {
-    pub(crate) fn new(result: Result<Vec<XListSummary>, String>) -> Self {
+    pub(crate) fn new(result: Result<XListsFetchOutcome, String>) -> Self {
         Self(Box::new(result))
     }
 
-    pub(crate) fn into_result(self) -> Result<Vec<XListSummary>, String> {
+    pub(crate) fn into_result(self) -> Result<XListsFetchOutcome, String> {
         *self.0
     }
 }
@@ -433,9 +434,10 @@ impl XListsMessageResult {
 impl fmt::Debug for XListsMessageResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.as_ref() {
-            Ok(lists) => f
+            Ok(outcome) => f
                 .debug_struct("XListsMessageResult")
-                .field("lists", &lists.len())
+                .field("lists", &outcome.lists.len())
+                .field("unavailable_sources", &outcome.unavailable_sources)
                 .finish(),
             Err(error) => f
                 .debug_tuple("XListsMessageResult")
@@ -1376,7 +1378,7 @@ mod tests {
     use crate::read_data_provider::{AccountDataRequestContext, ReadDataRequestContext};
     use crate::timeframe::Timeframe;
     use crate::ws::{HydromancerWsMessage, TrackedTradeEvent, WsUserData};
-    use crate::x_feed::{XAuthenticatedUser, XListOwnerKind, XListSummary};
+    use crate::x_feed::{XAuthenticatedUser, XListOwnerKind, XListSummary, XListsFetchOutcome};
 
     #[test]
     fn secret_input_debug_redacts_value() {
@@ -1445,12 +1447,15 @@ mod tests {
                         username: "alice".to_string(),
                         name: "sentinel-secret".to_string(),
                     },
-                    vec![XListSummary {
-                        id: "10".to_string(),
-                        name: "sentinel-secret".to_string(),
-                        private: false,
-                        owner: XListOwnerKind::Owned,
-                    }],
+                    XListsFetchOutcome {
+                        lists: vec![XListSummary {
+                            id: "10".to_string(),
+                            name: "sentinel-secret".to_string(),
+                            private: false,
+                            owner: XListOwnerKind::Owned,
+                        }],
+                        unavailable_sources: vec![XListOwnerKind::Followed],
+                    },
                 ))),
             ),
             Message::XFeedListsLoaded(
