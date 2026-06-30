@@ -16,7 +16,7 @@ impl TradingTerminal {
         theme: &Theme,
     ) -> Element<'static, Message> {
         let hide_button = button::view_position_hide_button(coin.clone(), is_hidden, theme);
-        let can_close_position = can_close && !self.is_outcome_coin(&coin);
+        let can_close_position = can_close && self.is_perp_coin(&coin);
         if !can_close_position {
             return hide_button;
         }

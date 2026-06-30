@@ -35,7 +35,10 @@ impl TradingTerminal {
         let ap = &data.ap;
         let pos = &ap.position;
         let denomination = self.display_denomination_context();
+        let is_spot_position = self.is_spot_coin(&pos.coin);
+        let weak_text = theme.extended_palette().background.weak.text;
         let (side, side_color) = match data.is_long {
+            _ if is_spot_position => ("Spot", weak_text),
             Some(true) => ("\u{2191} Long", theme.palette().success),
             Some(false) => ("\u{2193} Short", theme.palette().danger),
             None => ("Invalid", theme.palette().warning),
@@ -45,7 +48,12 @@ impl TradingTerminal {
             .mark_px
             .map(format_price)
             .unwrap_or_else(|| "\u{2014}".to_string());
-        let entry_str = format_position_entry_price(data.entry_px, &pos.entry_px);
+        let entry_str =
+            if is_spot_position && data.entry_px.is_none() && pos.entry_px.trim().is_empty() {
+                "-".to_string()
+            } else {
+                format_position_entry_price(data.entry_px, &pos.entry_px)
+            };
         let size_str = data
             .szi
             .map(|szi| self.display_position_size(&pos.coin, szi.abs(), number_mode))
@@ -54,7 +62,13 @@ impl TradingTerminal {
         let pnl_color = data
             .upnl
             .map(|upnl| self.direction_color(theme, upnl))
-            .unwrap_or_else(|| theme.palette().warning);
+            .unwrap_or_else(|| {
+                if is_spot_position {
+                    weak_text
+                } else {
+                    theme.palette().warning
+                }
+            });
         let lev_str = format!("{}x {}", pos.leverage.value, pos.leverage.leverage_type);
         let liq_element: Element<'a, Message> = text(
             data.liq_px
@@ -76,7 +90,13 @@ impl TradingTerminal {
         let total_pnl_color = data
             .total_pnl
             .map(|total_pnl| self.direction_color(theme, total_pnl))
-            .unwrap_or_else(|| theme.palette().warning);
+            .unwrap_or_else(|| {
+                if is_spot_position {
+                    weak_text
+                } else {
+                    theme.palette().warning
+                }
+            });
 
         let row_can_close = can_close && data.szi.is_some_and(|szi| szi.abs() > 1e-12);
         let is_hidden = self.position_is_hidden(&pos.coin);

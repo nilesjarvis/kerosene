@@ -139,6 +139,43 @@ fn outcome_symbol(key: &str) -> crate::api::ExchangeSymbol {
     }
 }
 
+fn spot_symbol(key: &str, ticker: &str) -> crate::api::ExchangeSymbol {
+    crate::api::ExchangeSymbol {
+        key: key.to_string(),
+        ticker: ticker.to_string(),
+        category: "spot".to_string(),
+        display_name: Some(format!("{ticker}/USDC")),
+        keywords: Vec::new(),
+        asset_index: 10_000,
+        collateral_token: None,
+        sz_decimals: 5,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: crate::api::MarketType::Spot,
+        outcome: None,
+    }
+}
+
+fn spot_position_without_cost_basis(coin: &str) -> crate::account::AssetPosition {
+    crate::account::AssetPosition {
+        position: crate::account::Position {
+            coin: coin.to_string(),
+            szi: "2".to_string(),
+            entry_px: String::new(),
+            position_value: "200".to_string(),
+            unrealized_pnl: String::new(),
+            liquidation_px: None,
+            leverage: crate::account::PositionLeverage {
+                leverage_type: "spot".to_string(),
+                value: 1,
+            },
+            margin_used: String::new(),
+            cum_funding: None,
+        },
+        liquidation_px: None,
+    }
+}
+
 #[test]
 fn position_row_symbol_label_resolves_outcome_coins_without_synthetic_ticker() {
     let mut terminal = crate::app_state::TradingTerminal::boot().0;
@@ -158,6 +195,27 @@ fn position_row_symbol_label_resolves_outcome_coins_without_synthetic_ticker() {
         "NO: Will ETH close red?"
     );
     assert_eq!(terminal.position_row_symbol_label("BTC"), "BTC");
+}
+
+#[test]
+fn spot_position_without_cost_basis_displays_unavailable_pnl() {
+    let mut terminal = crate::app_state::TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(spot_symbol("@142", "UBTC"));
+    terminal.all_mids.insert("@142".to_string(), 100.0);
+    terminal.all_mids_updated_at_ms.insert(
+        "@142".to_string(),
+        crate::app_state::TradingTerminal::now_ms(),
+    );
+    let data = terminal.position_row_data(&spot_position_without_cost_basis("@142"));
+    let denomination = crate::denomination::DisplayDenominationContext::default();
+
+    let displays =
+        terminal.position_row_pnl_displays(&data, &denomination, PositionNumberMode::Full);
+
+    assert_eq!(displays.value, "$200.00");
+    assert_eq!(displays.upnl, "-");
+    assert_eq!(displays.funding, "-");
+    assert_eq!(displays.total, "-");
 }
 
 #[test]

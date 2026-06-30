@@ -22,21 +22,25 @@ impl TradingTerminal {
         denomination: &DisplayDenominationContext,
         number_mode: PositionNumberMode,
     ) -> PositionRowPnlDisplays {
+        let spot_value_unavailable =
+            self.is_spot_coin(&data.coin) && data.ap.position.position_value.trim().is_empty();
+        let spot_pnl_unavailable =
+            self.is_spot_coin(&data.coin) && data.ap.position.unrealized_pnl.trim().is_empty();
         if self.hide_pnl {
             return PositionRowPnlDisplays {
                 value: data
                     .position_value
                     .map(|_| self.display_pnl_mask())
-                    .unwrap_or_else(|| "Invalid".to_string()),
+                    .unwrap_or_else(|| unavailable_or_invalid(spot_value_unavailable)),
                 upnl: data
                     .upnl
                     .map(|_| self.display_pnl_mask())
-                    .unwrap_or_else(|| "Invalid".to_string()),
+                    .unwrap_or_else(|| unavailable_or_invalid(spot_pnl_unavailable)),
                 funding: "***".to_string(),
                 total: data
                     .total_pnl
                     .map(|_| self.display_pnl_mask())
-                    .unwrap_or_else(|| "Invalid".to_string()),
+                    .unwrap_or_else(|| unavailable_or_invalid(spot_pnl_unavailable)),
             };
         }
 
@@ -44,11 +48,11 @@ impl TradingTerminal {
             value: data
                 .position_value
                 .map(|value| format_position_display_value(denomination, value, number_mode))
-                .unwrap_or_else(|| "Invalid".to_string()),
+                .unwrap_or_else(|| unavailable_or_invalid(spot_value_unavailable)),
             upnl: data
                 .upnl
                 .map(|upnl| format_position_display_value(denomination, upnl, number_mode))
-                .unwrap_or_else(|| "Invalid".to_string()),
+                .unwrap_or_else(|| unavailable_or_invalid(spot_pnl_unavailable)),
             funding: data
                 .funding_since_open
                 .map(|funding| format_position_signed_amount(denomination, funding, number_mode))
@@ -58,7 +62,15 @@ impl TradingTerminal {
                 .map(|total_pnl| {
                     format_position_display_value(denomination, total_pnl, number_mode)
                 })
-                .unwrap_or_else(|| "Invalid".to_string()),
+                .unwrap_or_else(|| unavailable_or_invalid(spot_pnl_unavailable)),
         }
+    }
+}
+
+fn unavailable_or_invalid(unavailable: bool) -> String {
+    if unavailable {
+        "-".to_string()
+    } else {
+        "Invalid".to_string()
     }
 }

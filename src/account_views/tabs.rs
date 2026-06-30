@@ -345,6 +345,27 @@ mod tests {
         }
     }
 
+    fn spot_symbol(key: &str, ticker: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: ticker.to_string(),
+            category: "spot".to_string(),
+            display_name: Some(format!("{ticker}/USDC")),
+            keywords: Vec::new(),
+            asset_index: key
+                .strip_prefix('@')
+                .and_then(|index| index.parse::<u32>().ok())
+                .map(|index| 10_000 + index)
+                .unwrap_or(10_000),
+            collateral_token: None,
+            sz_decimals: 5,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: MarketType::Spot,
+            outcome: None,
+        }
+    }
+
     fn outcome_symbol(key: &str) -> ExchangeSymbol {
         ExchangeSymbol {
             key: key.to_string(),
@@ -426,6 +447,17 @@ mod tests {
         terminal.exchange_symbols = vec![outcome_symbol("#950")];
         let mut data = account_data(Vec::new(), Vec::new());
         data.spot.balances = vec![spot_balance("+950", "30")];
+        set_connected_account_data(&mut terminal, data);
+
+        assert_eq!(terminal.open_position_tab_count(), 1);
+    }
+
+    #[test]
+    fn bottom_tab_counts_include_regular_spot_positions() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![spot_symbol("@107", "HYPE")];
+        let mut data = account_data(Vec::new(), Vec::new());
+        data.spot.balances = vec![spot_balance("HYPE", "0.00310065")];
         set_connected_account_data(&mut terminal, data);
 
         assert_eq!(terminal.open_position_tab_count(), 1);

@@ -163,8 +163,7 @@ impl TradingTerminal {
             .collect();
         let has_nuke_positions = can_close
             && account_positions.iter().any(|ap| {
-                position_size_is_nonzero(&ap.position.szi)
-                    && !self.is_outcome_coin(&ap.position.coin)
+                position_size_is_nonzero(&ap.position.szi) && self.is_perp_coin(&ap.position.coin)
             });
         let symbol_hidden_count = account_positions
             .iter()
@@ -271,10 +270,13 @@ impl TradingTerminal {
         number_mode: PositionNumberMode,
     ) -> Column<'a, Message> {
         let mut perp_positions = Vec::new();
+        let mut spot_positions = Vec::new();
         let mut outcome_positions = Vec::new();
         for position in positions {
             if self.is_outcome_coin(&position.position.coin) {
                 outcome_positions.push(position.clone());
+            } else if self.is_spot_coin(&position.position.coin) {
+                spot_positions.push(position.clone());
             } else {
                 perp_positions.push(position.clone());
             }
@@ -291,8 +293,23 @@ impl TradingTerminal {
             ));
         }
 
-        if !outcome_positions.is_empty() {
+        if !spot_positions.is_empty() {
             if !perp_positions.is_empty() {
+                content = content.push(rule::horizontal(1));
+            }
+            content = content
+                .push(position_section_header("Spot", spot_positions.len(), theme))
+                .push(self.view_position_rows(
+                    &spot_positions,
+                    can_close,
+                    theme,
+                    columns,
+                    number_mode,
+                ));
+        }
+
+        if !outcome_positions.is_empty() {
+            if !perp_positions.is_empty() || !spot_positions.is_empty() {
                 content = content.push(rule::horizontal(1));
             }
             content = content
