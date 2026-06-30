@@ -61,6 +61,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleLayoutMenu
         | Message::ToggleTickerTape
         | Message::SetAddWidgetPlacement(_)
+        | Message::AddPositionsHistoryPane
         | Message::AddPortfolioPane
         | Message::AddIncomePane
         | Message::AddTradingJournal

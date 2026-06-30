@@ -16,7 +16,8 @@ impl TradingTerminal {
             | Message::ToggleTickerTape
             | Message::SetAddWidgetPlacement(_) => self.update_pane_menu(message),
             Message::AddTradingJournal => self.add_trading_journal_window(),
-            Message::AddPortfolioPane
+            Message::AddPositionsHistoryPane
+            | Message::AddPortfolioPane
             | Message::AddIncomePane
             | Message::AddCalendarPane
             | Message::AddLiquidationsPane
@@ -77,6 +78,26 @@ mod tests {
             completeness: AccountDataCompleteness::default(),
             fetched_at_ms: TradingTerminal::now_ms(),
         }
+    }
+
+    #[test]
+    fn positions_history_add_message_reopens_bottom_tabs_pane() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let bottom_tabs = terminal
+            .find_pane_matching(|kind| matches!(kind, PaneKind::BottomTabs { .. }))
+            .expect("default bottom tabs pane");
+        terminal.update_pane_interactions(Message::ClosePane(bottom_tabs));
+        terminal.add_widget_menu_open = true;
+
+        let _task = terminal.update_panes(Message::AddPositionsHistoryPane);
+
+        assert!(!terminal.add_widget_menu_open);
+        assert!(terminal.pane_is_open(|kind| matches!(
+            kind,
+            PaneKind::BottomTabs {
+                active_tab: crate::account_state::BottomTab::Positions
+            }
+        )));
     }
 
     #[test]

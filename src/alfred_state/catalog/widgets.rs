@@ -18,6 +18,8 @@ impl TradingTerminal {
             .connected_order_account_snapshot()
             .is_some_and(|(_, data)| data.is_portfolio_margin());
 
+        let positions_history_open =
+            self.pane_is_open(|kind| matches!(kind, PaneKind::BottomTabs { .. }));
         let portfolio_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio));
         let income_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Income));
         let outcomes_open = self.pane_is_open(|kind| matches!(kind, PaneKind::Outcomes));
@@ -71,6 +73,26 @@ impl TradingTerminal {
                 Some(Message::AddSessionDataPane),
                 &[
                     "session", "data", "returns", "market", "hours", "widget", "add",
+                ],
+            )
+            .disabled_if(!can_add_pane, no_pane_reason),
+            AlfredCommand::new(
+                AlfredCommandId::AddPositionsHistoryPane,
+                "Positions / History",
+                "Positions, orders, balances, trade history, and funding pane",
+                open_tag(positions_history_open, "Pane"),
+                AlfredCommandKind::AddWidget,
+                Some(Message::AddPositionsHistoryPane),
+                &[
+                    "positions",
+                    "orders",
+                    "balances",
+                    "trades",
+                    "history",
+                    "funding",
+                    "account",
+                    "widget",
+                    "add",
                 ],
             )
             .disabled_if(!can_add_pane, no_pane_reason),

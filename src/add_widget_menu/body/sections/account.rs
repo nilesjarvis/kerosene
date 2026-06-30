@@ -13,6 +13,17 @@ pub(in crate::add_widget_menu::body) fn add_account_section(
     menu.push(rule::horizontal(1))
         .push(section_label("Account Panes", theme))
         .push(menu_item(
+            "Positions / History",
+            if context.positions_history_open {
+                "Open"
+            } else {
+                "Pane"
+            },
+            Some(Message::AddPositionsHistoryPane),
+            context.can_add_pane,
+            theme,
+        ))
+        .push(menu_item(
             "Portfolio",
             if context.portfolio_open {
                 "Open"

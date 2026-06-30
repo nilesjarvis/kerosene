@@ -10,6 +10,7 @@ pub(super) struct AddWidgetMenuContext {
     pub(super) can_add_pane: bool,
     pub(super) can_add_income: bool,
     pub(super) placement: AddWidgetPlacement,
+    pub(super) positions_history_open: bool,
     pub(super) portfolio_open: bool,
     pub(super) income_open: bool,
     pub(super) calendar_open: bool,
@@ -38,6 +39,8 @@ impl AddWidgetMenuContext {
             can_add_pane: target.is_some(),
             can_add_income,
             placement: terminal.add_widget_placement,
+            positions_history_open: terminal
+                .pane_is_open(|kind| matches!(kind, PaneKind::BottomTabs { .. })),
             portfolio_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Portfolio)),
             income_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Income)),
             calendar_open: terminal.pane_is_open(|kind| matches!(kind, PaneKind::Calendar)),

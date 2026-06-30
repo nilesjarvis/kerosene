@@ -96,6 +96,10 @@ The add-widget menu uses:
 - `AddWidgetPlacement` to control where a new pane is inserted relative to the
   active pane.
 
+Singleton panes such as `BottomTabs` should still be exposed here so users can
+restore them after closing them. `BottomTabs` is presented to users as
+Positions / History.
+
 Adding a multi-instance pane usually allocates an ID, creates an instance in the
 feature map, inserts the pane, optionally queues initial fetch tasks, and then
 persists config.

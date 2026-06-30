@@ -655,6 +655,7 @@ pub(crate) enum Message {
     ToggleChartEarningsMarkers(ChartId),
     ChartEarningsEventsLoaded(String, u64, Box<Result<Vec<api::SecEarningsEvent>, String>>),
     CloseAllMenus,
+    AddPositionsHistoryPane,
     AddPortfolioPane,
     AddIncomePane,
     AddComparisonChart,

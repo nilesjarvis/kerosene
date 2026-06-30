@@ -1,3 +1,4 @@
+use crate::account_state::BottomTab;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::pane_management::AddPaneOutcome;
@@ -8,6 +9,17 @@ use iced::Task;
 impl TradingTerminal {
     pub(super) fn add_widget_pane(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::AddPositionsHistoryPane => {
+                self.add_widget_menu_open = false;
+                self.add_or_focus_singleton_pane(
+                    self.add_widget_axis(),
+                    PaneKind::BottomTabs {
+                        active_tab: BottomTab::Positions,
+                    },
+                    "Positions / History",
+                    |kind| matches!(kind, PaneKind::BottomTabs { .. }),
+                );
+            }
             Message::AddPortfolioPane => {
                 self.add_widget_menu_open = false;
                 let outcome = self.add_or_focus_singleton_pane(

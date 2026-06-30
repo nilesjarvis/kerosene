@@ -145,6 +145,21 @@ fn alfred_catalog_includes_session_data_widget() {
 }
 
 #[test]
+fn alfred_catalog_includes_positions_history_widget() {
+    let terminal = TradingTerminal::boot().0;
+
+    let command = terminal
+        .alfred_filtered_commands()
+        .into_iter()
+        .find(|command| command.id == AlfredCommandId::AddPositionsHistoryPane)
+        .expect("Positions / History should be an Alfred add-widget command");
+
+    assert_eq!(command.title, "Positions / History");
+    assert_eq!(command.kind, AlfredCommandKind::AddWidget);
+    assert!(command.message.is_some());
+}
+
+#[test]
 fn alfred_shows_only_trade_draft_for_trade_queries() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.alfred.query = "buy btc".to_string();
