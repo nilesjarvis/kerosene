@@ -269,6 +269,10 @@ impl TradingTerminal {
         size: f64,
         number_mode: PositionNumberMode,
     ) -> String {
+        if self.is_spot_coin(coin) && !self.spot_position_is_bitcoin(coin) {
+            return format_spot_position_size(size);
+        }
+
         if !number_mode.is_compact() {
             return self.display_size_for_symbol(coin, size);
         }
@@ -310,4 +314,19 @@ impl TradingTerminal {
 
         hip3_dex(coin).map(str::to_string)
     }
+
+    fn spot_position_is_bitcoin(&self, coin: &str) -> bool {
+        self.exchange_symbols
+            .iter()
+            .find(|symbol| symbol.key == coin)
+            .is_some_and(|symbol| {
+                symbol.market_type == crate::api::MarketType::Spot
+                    && (symbol.ticker.eq_ignore_ascii_case("BTC")
+                        || symbol.ticker.eq_ignore_ascii_case("UBTC"))
+            })
+    }
+}
+
+fn format_spot_position_size(size: f64) -> String {
+    trim_decimal_zeros(format!("{size:.2}"))
 }

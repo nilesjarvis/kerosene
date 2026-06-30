@@ -95,6 +95,63 @@ fn compact_position_size_trims_unneeded_zeroes() {
     assert_eq!(format_position_compact_number(532_023.0), "500k");
 }
 
+#[test]
+fn non_bitcoin_spot_position_size_rounds_to_two_decimals() {
+    let mut terminal = crate::app_state::TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(spot_symbol("@107", "HYPE"));
+
+    assert_eq!(
+        terminal.display_position_size("@107", 6.7491729032, PositionNumberMode::Full),
+        "6.75"
+    );
+    assert_eq!(
+        terminal.display_position_size("@107", 6.7491729032, PositionNumberMode::Compact),
+        "6.75"
+    );
+    assert_eq!(
+        terminal.display_position_size("@107", 2.0, PositionNumberMode::Full),
+        "2"
+    );
+}
+
+#[test]
+fn bitcoin_spot_position_size_keeps_existing_precision() {
+    let mut terminal = crate::app_state::TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(spot_symbol("@142", "UBTC"));
+
+    assert_eq!(
+        terminal.display_position_size("@142", 0.12345678, PositionNumberMode::Full),
+        "0.1235"
+    );
+    assert_eq!(
+        terminal.display_position_size("@142", 0.12345678, PositionNumberMode::Compact),
+        "0.1235"
+    );
+}
+
+#[test]
+fn spot_size_rounding_does_not_change_perps_or_hip4_outcomes() {
+    let mut terminal = crate::app_state::TradingTerminal::boot().0;
+    terminal.exchange_symbols.push(outcome_symbol("#950"));
+
+    assert_eq!(
+        terminal.display_position_size("ETH", 6.7491729032, PositionNumberMode::Full),
+        "6.7492"
+    );
+    assert_eq!(
+        terminal.display_position_size("ETH", 6.7491729032, PositionNumberMode::Compact),
+        "6.7492"
+    );
+    assert_eq!(
+        terminal.display_position_size("#950", 6.7491729032, PositionNumberMode::Full),
+        "7"
+    );
+    assert_eq!(
+        terminal.display_position_size("#950", 6.7491729032, PositionNumberMode::Compact),
+        "7"
+    );
+}
+
 fn outcome_symbol(key: &str) -> crate::api::ExchangeSymbol {
     crate::api::ExchangeSymbol {
         key: key.to_string(),
