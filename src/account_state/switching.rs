@@ -256,6 +256,7 @@ impl TradingTerminal {
             !twap.status.is_terminal()
                 && (twap.pending_op.is_some()
                     || twap.status_check_cloid.is_some()
+                    || twap.reconciliation_deadline.is_some()
                     || twap.has_status_unknown_child())
         })
     }

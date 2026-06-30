@@ -11,6 +11,7 @@
   - Complete account refresh clears pending cancel/move status checks for that account.
 - Treated filled order responses without an oid as ambiguous instead of fully settled, and displayed malformed status oids as `?` instead of `0`.
 - Preserved Chase history overfills when authoritative fill metrics are unavailable, so archived filled size can exceed target size instead of being capped.
+- Blocked account changes while a non-terminal TWAP has a reconciliation deadline, even if no status-check CLOID or child status marker is present.
 
 ## Validation
 
@@ -20,4 +21,4 @@
 
 ## Remaining Findings
 
-- TWAP account-change blocking could explicitly include reconciliation deadlines for defense in depth.
+- No remaining findings from the completed order-lifecycle audit passes.

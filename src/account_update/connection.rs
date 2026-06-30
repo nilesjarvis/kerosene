@@ -548,6 +548,12 @@ mod tests {
         twap
     }
 
+    fn deadline_only_reconciliation_twap(id: u64, account_address: &str) -> TwapOrder {
+        let mut twap = twap_order(id, account_address);
+        twap.reconciliation_deadline = Some(Instant::now() + std::time::Duration::from_secs(30));
+        twap
+    }
+
     fn quick_order_form() -> QuickOrderForm {
         QuickOrderForm {
             price: 100.0,
@@ -1117,6 +1123,35 @@ mod tests {
         let twap = terminal.twap_orders.get(&7).expect("twap");
         assert!(!twap.stop_requested);
         assert!(twap.status_check_cloid.is_some());
+        assert!(!terminal.account_loading);
+        let toast = terminal
+            .toasts
+            .last()
+            .expect("blocked connect should toast");
+        assert!(toast.is_error);
+        assert!(
+            toast
+                .message
+                .contains("TWAP order status and fill reconciliation")
+        );
+    }
+
+    #[test]
+    fn connect_wallet_blocks_account_change_while_twap_reconciliation_deadline_is_pending() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+        terminal.wallet_address_input = OTHER_ACCOUNT.to_string();
+        terminal
+            .twap_orders
+            .insert(7, deadline_only_reconciliation_twap(7, TEST_ACCOUNT));
+
+        let _task = terminal.connect_wallet();
+
+        assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
+        assert_eq!(terminal.wallet_address_input, OTHER_ACCOUNT);
+        let twap = terminal.twap_orders.get(&7).expect("twap");
+        assert!(!twap.stop_requested);
+        assert!(twap.reconciliation_deadline.is_some());
         assert!(!terminal.account_loading);
         let toast = terminal
             .toasts
