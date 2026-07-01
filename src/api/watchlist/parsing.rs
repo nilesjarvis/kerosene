@@ -95,17 +95,35 @@ pub(super) fn append_spot_contexts(
         return Err("contexts array shorter than universe".to_string());
     }
 
+    let mut ctxs_by_coin = HashMap::new();
+    for ctx_value in ctxs {
+        let Some(ctx) = ctx_value.as_object() else {
+            continue;
+        };
+        if let Some(coin) = ctx.get("coin").and_then(|v| v.as_str()) {
+            ctxs_by_coin.entry(coin).or_insert(ctx);
+        }
+    }
+
     let mut parsed = Vec::new();
     for (i, coin_meta) in universe.iter().enumerate() {
         if let Some(spot_index) = coin_meta.get("index").and_then(|v| v.as_u64()) {
-            let ctx = ctxs
-                .get(i)
-                .and_then(|v| v.as_object())
+            let symbol_key = format!("@{spot_index}");
+            let pair_name = coin_meta.get("name").and_then(|v| v.as_str());
+            let allow_unkeyed_fallback = ctxs_by_coin.is_empty();
+            let ctx = ctxs.get(i).and_then(|v| v.as_object()).filter(|ctx| {
+                spot_context_matches_symbol(ctx, &symbol_key, pair_name, allow_unkeyed_fallback)
+            });
+            let ctx = ctxs_by_coin
+                .get(symbol_key.as_str())
+                .copied()
+                .or_else(|| pair_name.and_then(|name| ctxs_by_coin.get(name).copied()))
+                .or(ctx)
                 .ok_or_else(|| format!("expected context object for @{spot_index}"))?;
             let prev_day_px = parse_optional_f64(ctx, "prevDayPx");
             let day_vlm = parse_optional_f64(ctx, "dayNtlVlm");
             parsed.push((
-                format!("@{}", spot_index),
+                symbol_key,
                 WatchlistContext {
                     funding: None,
                     prev_day_px,
@@ -119,6 +137,18 @@ pub(super) fn append_spot_contexts(
     map.extend(parsed);
 
     Ok(appended)
+}
+
+fn spot_context_matches_symbol(
+    ctx: &Map<String, Value>,
+    symbol_key: &str,
+    pair_name: Option<&str>,
+    allow_unkeyed_fallback: bool,
+) -> bool {
+    match ctx.get("coin").and_then(|v| v.as_str()) {
+        Some(coin) => coin == symbol_key || pair_name == Some(coin),
+        None => allow_unkeyed_fallback,
+    }
 }
 
 fn parse_optional_f64(ctx: &Map<String, Value>, key: &str) -> Option<f64> {

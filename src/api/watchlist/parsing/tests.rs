@@ -80,3 +80,60 @@ fn watchlist_context_parser_rejects_error_shaped_spot_payloads() {
     assert!(parsed.is_err());
     assert!(map.is_empty());
 }
+
+#[test]
+fn spot_context_parser_uses_context_coin_instead_of_universe_position() {
+    let raw = serde_json::json!([
+        { "universe": [{ "name": "@142", "index": 142 }] },
+        [
+            {
+                "coin": "@140",
+                "prevDayPx": "0.000037",
+                "dayNtlVlm": "0.0"
+            },
+            {
+                "coin": "@142",
+                "prevDayPx": "58322.0",
+                "dayNtlVlm": "321.25"
+            }
+        ]
+    ]);
+    let mut map = HashMap::new();
+
+    let parsed = append_spot_contexts(raw, &mut map);
+
+    assert_eq!(parsed, Ok(1));
+    let context = map.get("@142").expect("context");
+    assert_eq!(context.prev_day_px, Some(58322.0));
+    assert_eq!(context.day_vlm, Some(321.25));
+}
+
+#[test]
+fn spot_context_parser_keeps_positional_fallback_for_legacy_contexts_without_coin() {
+    let raw = serde_json::json!([
+        {
+            "universe": [
+                { "name": "PURR/USDC", "index": 0 },
+                { "name": "@107", "index": 107 }
+            ]
+        },
+        [
+            {
+                "prevDayPx": "0.9",
+                "dayNtlVlm": "1234.0"
+            },
+            {
+                "prevDayPx": "60.0",
+                "dayNtlVlm": "987654.0"
+            }
+        ]
+    ]);
+    let mut map = HashMap::new();
+
+    let parsed = append_spot_contexts(raw, &mut map);
+
+    assert_eq!(parsed, Ok(2));
+    let context = map.get("@107").expect("context");
+    assert_eq!(context.prev_day_px, Some(60.0));
+    assert_eq!(context.day_vlm, Some(987654.0));
+}

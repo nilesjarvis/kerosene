@@ -1,6 +1,7 @@
 use super::{API_URL, CLIENT};
 use crate::account::AssetContext;
 use serde_json::Value;
+use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Chart Asset Context REST Fallback
@@ -110,7 +111,7 @@ pub(crate) fn parse_chart_asset_context(
 }
 
 /// Locate a spot `@index` symbol within a `spotMetaAndAssetCtxs`
-/// `[meta, contexts]` response and deserialize its parallel context object.
+/// `[meta, contexts]` response and deserialize its context object.
 pub(crate) fn parse_spot_chart_asset_context(resp: &Value, symbol: &str) -> Option<AssetContext> {
     let arr = resp.as_array()?;
     if arr.len() != 2 {
@@ -118,6 +119,8 @@ pub(crate) fn parse_spot_chart_asset_context(resp: &Value, symbol: &str) -> Opti
     }
     let universe = arr[0].as_object()?.get("universe")?.as_array()?;
     let ctxs = arr[1].as_array()?;
+    let ctxs_by_coin = spot_contexts_by_coin(ctxs);
+    let allow_unkeyed_fallback = ctxs_by_coin.is_empty();
 
     for (i, coin_meta) in universe.iter().enumerate() {
         let Some(spot_index) = coin_meta.get("index").and_then(Value::as_u64) else {
@@ -126,11 +129,46 @@ pub(crate) fn parse_spot_chart_asset_context(resp: &Value, symbol: &str) -> Opti
         if format!("@{spot_index}") != symbol {
             continue;
         }
-        let ctx_val = ctxs.get(i)?;
+        let pair_name = coin_meta.get("name").and_then(Value::as_str);
+        let ctx_val = ctxs_by_coin
+            .get(symbol)
+            .copied()
+            .or_else(|| pair_name.and_then(|name| ctxs_by_coin.get(name).copied()))
+            .or_else(|| {
+                ctxs.get(i).filter(|ctx| {
+                    spot_context_value_matches_symbol(
+                        ctx,
+                        symbol,
+                        pair_name,
+                        allow_unkeyed_fallback,
+                    )
+                })
+            })?;
         return serde_json::from_value::<AssetContext>(ctx_val.clone()).ok();
     }
 
     None
+}
+
+fn spot_contexts_by_coin(ctxs: &[Value]) -> HashMap<&str, &Value> {
+    ctxs.iter()
+        .filter_map(|ctx| {
+            let coin = ctx.get("coin").and_then(Value::as_str)?;
+            Some((coin, ctx))
+        })
+        .collect()
+}
+
+fn spot_context_value_matches_symbol(
+    ctx: &Value,
+    symbol_key: &str,
+    pair_name: Option<&str>,
+    allow_unkeyed_fallback: bool,
+) -> bool {
+    match ctx.get("coin").and_then(Value::as_str) {
+        Some(coin) => coin == symbol_key || pair_name == Some(coin),
+        None => allow_unkeyed_fallback,
+    }
 }
 
 #[cfg(test)]
@@ -233,6 +271,29 @@ mod tests {
         assert_eq!(ctx.day_base_vlm.as_deref(), Some("15555.0"));
         assert!(ctx.funding.is_none());
         assert!(ctx.open_interest.is_none());
+    }
+
+    #[test]
+    fn parses_spot_context_by_context_coin_when_universe_position_differs_from_index() {
+        let resp = json!([
+            {
+                "universe": [
+                    { "name": "@142", "index": 142 }
+                ]
+            },
+            [
+                { "coin": "@140", "midPx": "0.000068", "prevDayPx": "0.000037" },
+                { "coin": "@142", "midPx": "60105.5", "prevDayPx": "58322.0",
+                  "dayNtlVlm": "32176298.0", "dayBaseVlm": "546.48611" }
+            ]
+        ]);
+
+        let ctx = parse_spot_chart_asset_context(&resp, "@142").expect("spot context");
+
+        assert_eq!(ctx.mid_px.as_deref(), Some("60105.5"));
+        assert_eq!(ctx.prev_day_px.as_deref(), Some("58322.0"));
+        assert_eq!(ctx.day_ntl_vlm.as_deref(), Some("32176298.0"));
+        assert_eq!(ctx.day_base_vlm.as_deref(), Some("546.48611"));
     }
 
     #[test]
