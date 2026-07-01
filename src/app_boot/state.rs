@@ -402,6 +402,11 @@ impl TradingTerminal {
             sec_earnings_request_id: 0,
             sec_earnings_pending_request_ids: HashMap::new(),
             sec_earnings_pending_charts: HashMap::new(),
+            sec_filing_summary_cache: HashMap::new(),
+            sec_filing_summary_cache_order: VecDeque::new(),
+            sec_filing_summary_request_id: 0,
+            sec_filing_summary_pending_request_ids: HashMap::new(),
+            sec_filing_summary_pending_charts: HashMap::new(),
             liquidation_pending_charts: HashMap::new(),
             liquidation_distribution: {
                 let symbol = cfg.liquidation_distribution_symbol.trim().to_string();

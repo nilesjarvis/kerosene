@@ -67,6 +67,14 @@ fn market_chart_feed_and_export_routes_stay_on_their_feature_modules() {
         UpdateRoute::Chart,
     );
     assert_route(
+        Message::ChartEarningsFilingSummaryLoaded(
+            "1045810:0001045810-26-000051:nvda-20260520.htm".to_string(),
+            1,
+            Box::new(Err(String::new())),
+        ),
+        UpdateRoute::Chart,
+    );
+    assert_route(
         Message::ChartEarningsFilingOpenResult(Ok(())),
         UpdateRoute::Chart,
     );

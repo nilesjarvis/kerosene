@@ -1,10 +1,10 @@
 use crate::api::{
-    ExchangeSymbol, MarketType, SecEarningsEvent, fetch_sec_earnings_events,
-    sec_filing_document_url,
+    ExchangeSymbol, MarketType, SecEarningsEvent, SecFilingSummary, SecFilingSummaryRequest,
+    fetch_sec_earnings_events, fetch_sec_filing_summary, sec_filing_document_url,
 };
 use crate::app_state::TradingTerminal;
 use crate::chart::EarningsMarker;
-use crate::chart_state::{ChartId, ChartInstance};
+use crate::chart_state::{ChartId, ChartInstance, ChartSurfaceId};
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
 
@@ -16,6 +16,7 @@ use std::process::Command;
 // ---------------------------------------------------------------------------
 
 const SEC_EARNINGS_CACHE_MAX_ENTRIES: usize = 32;
+const SEC_FILING_SUMMARY_CACHE_MAX_ENTRIES: usize = 64;
 const SEC_EARNINGS_STOCK_CATEGORY: &str = "stocks";
 
 impl TradingTerminal {
@@ -26,6 +27,10 @@ impl TradingTerminal {
             }
             Message::ChartEarningsEventsLoaded(ticker, request_id, result) => {
                 self.apply_sec_earnings_loaded(ticker, request_id, *result);
+                Task::none()
+            }
+            Message::ChartEarningsFilingSummaryLoaded(key, request_id, result) => {
+                self.apply_sec_filing_summary_loaded(key, request_id, *result);
                 Task::none()
             }
             Message::OpenChartEarningsFiling(chart_id, surface_id, time_ms) => {
@@ -283,8 +288,10 @@ impl TradingTerminal {
             return;
         }
 
+        let mut markers = earnings_markers_from_events(events);
+        self.apply_cached_filing_summaries_to_markers(&mut markers);
+
         if let Some(instance) = self.charts.get_mut(&chart_id) {
-            let markers = earnings_markers_from_events(events);
             instance.earnings_events = Some(events.to_vec());
             instance.earnings_fetching = false;
             instance.earnings_pending_ticker = None;
@@ -302,6 +309,179 @@ impl TradingTerminal {
         }
     }
 
+    pub(super) fn maybe_fetch_chart_earnings_filing_summary(
+        &mut self,
+        chart_id: ChartId,
+        surface_id: ChartSurfaceId,
+        time_ms: u64,
+    ) -> Task<Message> {
+        let marker = self
+            .charts
+            .get(&chart_id)
+            .filter(|instance| instance.chart.surface_id() == surface_id)
+            .and_then(|instance| {
+                instance
+                    .chart
+                    .earnings_markers
+                    .iter()
+                    .find(|marker| marker.time_ms == time_ms)
+            })
+            .cloned();
+
+        let Some(marker) = marker else {
+            return Task::none();
+        };
+        if marker.filing_summary.is_some()
+            || marker.filing_summary_loading
+            || marker.filing_summary_status.is_some()
+        {
+            return Task::none();
+        }
+
+        let Some(key) = earnings_marker_filing_key(&marker) else {
+            return Task::none();
+        };
+        if let Some(summary) = self.sec_filing_summary_cache.get(&key).cloned() {
+            self.apply_sec_filing_summary_to_chart(chart_id, &key, Some(summary), false, None);
+            return Task::none();
+        }
+
+        if let Some(waiting_charts) = self.sec_filing_summary_pending_charts.get_mut(&key) {
+            if !waiting_charts.contains(&chart_id) {
+                waiting_charts.push(chart_id);
+            }
+            self.apply_sec_filing_summary_to_chart(chart_id, &key, None, true, None);
+            return Task::none();
+        }
+
+        let Some(request) = filing_summary_request_from_marker(&marker) else {
+            self.apply_sec_filing_summary_to_chart(
+                chart_id,
+                &key,
+                None,
+                false,
+                Some("Summary link unavailable".to_string()),
+            );
+            return Task::none();
+        };
+
+        self.sec_filing_summary_request_id = self.sec_filing_summary_request_id.wrapping_add(1);
+        let request_id = self.sec_filing_summary_request_id;
+        self.sec_filing_summary_pending_request_ids
+            .insert(key.clone(), request_id);
+        self.sec_filing_summary_pending_charts
+            .insert(key.clone(), vec![chart_id]);
+        self.apply_sec_filing_summary_to_chart(chart_id, &key, None, true, None);
+
+        Task::perform(fetch_sec_filing_summary(request), move |result| {
+            Message::ChartEarningsFilingSummaryLoaded(key.clone(), request_id, Box::new(result))
+        })
+    }
+
+    fn apply_sec_filing_summary_loaded(
+        &mut self,
+        key: String,
+        request_id: u64,
+        result: Result<SecFilingSummary, String>,
+    ) {
+        let Some(pending_request_id) = self
+            .sec_filing_summary_pending_request_ids
+            .get(&key)
+            .copied()
+        else {
+            return;
+        };
+        if pending_request_id != request_id {
+            return;
+        }
+        self.sec_filing_summary_pending_request_ids.remove(&key);
+        let pending = self
+            .sec_filing_summary_pending_charts
+            .remove(&key)
+            .unwrap_or_default();
+
+        match result {
+            Ok(summary) => {
+                self.cache_sec_filing_summary(key.clone(), summary.clone());
+                for chart_id in pending {
+                    self.apply_sec_filing_summary_to_chart(
+                        chart_id,
+                        &key,
+                        Some(summary.clone()),
+                        false,
+                        None,
+                    );
+                }
+            }
+            Err(error) => {
+                let status = filing_summary_error_status(&error);
+                for chart_id in pending {
+                    self.apply_sec_filing_summary_to_chart(
+                        chart_id,
+                        &key,
+                        None,
+                        false,
+                        Some(status.clone()),
+                    );
+                }
+            }
+        }
+    }
+
+    fn cache_sec_filing_summary(&mut self, key: String, summary: SecFilingSummary) {
+        self.sec_filing_summary_cache_order
+            .retain(|cached_key| cached_key != &key);
+        self.sec_filing_summary_cache.insert(key.clone(), summary);
+        self.sec_filing_summary_cache_order.push_back(key);
+
+        while self.sec_filing_summary_cache_order.len() > SEC_FILING_SUMMARY_CACHE_MAX_ENTRIES {
+            if let Some(oldest) = self.sec_filing_summary_cache_order.pop_front() {
+                self.sec_filing_summary_cache.remove(&oldest);
+            }
+        }
+    }
+
+    fn apply_cached_filing_summaries_to_markers(&self, markers: &mut [EarningsMarker]) {
+        for marker in markers {
+            let Some(key) = earnings_marker_filing_key(marker) else {
+                continue;
+            };
+            if let Some(summary) = self.sec_filing_summary_cache.get(&key) {
+                marker.filing_summary = Some(summary.clone());
+                marker.filing_summary_status = None;
+                marker.filing_summary_loading = false;
+            }
+        }
+    }
+
+    fn apply_sec_filing_summary_to_chart(
+        &mut self,
+        chart_id: ChartId,
+        key: &str,
+        summary: Option<SecFilingSummary>,
+        loading: bool,
+        status: Option<String>,
+    ) -> bool {
+        let Some(instance) = self.charts.get_mut(&chart_id) else {
+            return false;
+        };
+
+        let mut updated = false;
+        for marker in &mut instance.chart.earnings_markers {
+            if earnings_marker_filing_key(marker).as_deref() == Some(key) {
+                marker.filing_summary = summary.clone();
+                marker.filing_summary_loading = loading;
+                marker.filing_summary_status = status.clone();
+                updated = true;
+            }
+        }
+
+        if updated {
+            instance.chart.candle_cache.clear();
+        }
+        updated
+    }
+
     fn chart_earnings_request_ticker_for_instance(
         &self,
         instance: &ChartInstance,
@@ -315,7 +495,7 @@ impl TradingTerminal {
     fn open_chart_earnings_filing(
         &mut self,
         chart_id: ChartId,
-        surface_id: crate::chart_state::ChartSurfaceId,
+        surface_id: ChartSurfaceId,
         time_ms: u64,
     ) -> Task<Message> {
         let url = self
@@ -346,6 +526,16 @@ impl TradingTerminal {
     }
 }
 
+fn filing_summary_error_status(error: &str) -> String {
+    if error.contains(" 403") {
+        "Summary SEC blocked".to_string()
+    } else if error.contains("no readable") || error.contains("text was empty") {
+        "Summary unavailable".to_string()
+    } else {
+        "Summary failed".to_string()
+    }
+}
+
 fn earnings_error_status(error: &str) -> String {
     if error.contains(" 403") {
         "EARN SEC blocked".to_string()
@@ -367,8 +557,54 @@ fn earnings_markers_from_events(events: &[SecEarningsEvent]) -> Vec<EarningsMark
             accession_number: event.accession_number.clone(),
             primary_document: event.primary_document.clone(),
             quarter_label: earnings_quarter_label(&event.filing_date),
+            filing_summary: None,
+            filing_summary_status: None,
+            filing_summary_loading: false,
         })
         .collect()
+}
+
+fn filing_summary_request_from_marker(marker: &EarningsMarker) -> Option<SecFilingSummaryRequest> {
+    earnings_marker_filing_key(marker)?;
+    Some(SecFilingSummaryRequest {
+        cik: marker.cik,
+        accession_number: marker.accession_number.trim().to_string(),
+        primary_document: marker
+            .primary_document
+            .trim()
+            .trim_start_matches('/')
+            .to_string(),
+        form: marker.form.clone(),
+        filing_date: marker.filing_date.clone(),
+    })
+}
+
+fn earnings_marker_filing_key(marker: &EarningsMarker) -> Option<String> {
+    if marker.cik == 0 {
+        return None;
+    }
+    let accession_number = marker.accession_number.trim();
+    if accession_number.is_empty()
+        || accession_number.contains("://")
+        || accession_number.contains('/')
+        || accession_number.contains('\\')
+        || accession_number.contains("..")
+    {
+        return None;
+    }
+    let primary_document = marker.primary_document.trim().trim_start_matches('/');
+    if primary_document.contains("://")
+        || primary_document.contains('\\')
+        || primary_document.contains("..")
+    {
+        return None;
+    }
+    Some(format!(
+        "{}:{}:{}",
+        marker.cik,
+        accession_number,
+        primary_document.to_ascii_lowercase()
+    ))
 }
 
 fn earnings_marker_filing_url(marker: &EarningsMarker) -> Option<String> {
@@ -463,6 +699,19 @@ mod tests {
         }
     }
 
+    fn filing_summary() -> SecFilingSummary {
+        SecFilingSummary {
+            form: "8-K".to_string(),
+            filing_date: "2026-05-28".to_string(),
+            source_documents: vec!["EX-99.1 q1fy27pr.htm".to_string()],
+            headline: Some("NVIDIA reports first quarter fiscal 2027 results".to_string()),
+            highlights: vec![
+                "Revenue was $44.1 billion, up 69% from a year ago".to_string(),
+                "GAAP diluted EPS was $0.76".to_string(),
+            ],
+        }
+    }
+
     #[test]
     fn sec_earnings_ticker_requires_hip3_stock_perp() {
         assert_eq!(
@@ -527,6 +776,9 @@ mod tests {
         assert_eq!(markers[0].accession_number, "0001652044-26-000043");
         assert_eq!(markers[0].primary_document, "goog-20260429.htm");
         assert_eq!(markers[0].quarter_label.as_deref(), Some("Q1 2026"));
+        assert!(markers[0].filing_summary.is_none());
+        assert!(markers[0].filing_summary_status.is_none());
+        assert!(!markers[0].filing_summary_loading);
     }
 
     #[test]
@@ -690,6 +942,98 @@ mod tests {
         assert!(!terminal.sec_earnings_pending_charts.contains_key("NVDA"));
         let events = terminal.sec_earnings_cache.get("NVDA").expect("cache");
         assert_eq!(events[0].accession_number, "accepted");
+    }
+
+    #[test]
+    fn current_filing_summary_result_applies_to_matching_marker_and_cache() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        terminal.charts.clear();
+        let mut instance = ChartInstance::new(1, "xyz:NVDA".to_string(), Timeframe::H1);
+        let events = vec![earnings_event("NVDA", "0001045810-26-000051")];
+        let mut markers = earnings_markers_from_events(&events);
+        let key = earnings_marker_filing_key(&markers[0]).expect("filing key");
+        markers[0].filing_summary_loading = true;
+        instance.chart.set_earnings_markers(markers);
+        terminal.charts.insert(1, instance);
+        terminal
+            .sec_filing_summary_pending_request_ids
+            .insert(key.clone(), 4);
+        terminal
+            .sec_filing_summary_pending_charts
+            .insert(key.clone(), vec![1]);
+
+        let summary = filing_summary();
+        terminal.apply_sec_filing_summary_loaded(key.clone(), 4, Ok(summary.clone()));
+
+        assert!(
+            !terminal
+                .sec_filing_summary_pending_request_ids
+                .contains_key(&key)
+        );
+        assert!(
+            !terminal
+                .sec_filing_summary_pending_charts
+                .contains_key(&key)
+        );
+        assert_eq!(terminal.sec_filing_summary_cache.get(&key), Some(&summary));
+        let marker = &terminal
+            .charts
+            .get(&1)
+            .expect("chart")
+            .chart
+            .earnings_markers[0];
+        assert_eq!(marker.filing_summary.as_ref(), Some(&summary));
+        assert!(!marker.filing_summary_loading);
+        assert!(marker.filing_summary_status.is_none());
+    }
+
+    #[test]
+    fn stale_filing_summary_result_does_not_clear_current_pending_request() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = "1045810:0001045810-26-000051:nvda-20260520.htm".to_string();
+        terminal
+            .sec_filing_summary_pending_request_ids
+            .insert(key.clone(), 5);
+        terminal
+            .sec_filing_summary_pending_charts
+            .insert(key.clone(), vec![1]);
+
+        terminal.apply_sec_filing_summary_loaded(key.clone(), 4, Ok(filing_summary()));
+
+        assert_eq!(
+            terminal.sec_filing_summary_pending_request_ids.get(&key),
+            Some(&5)
+        );
+        assert_eq!(
+            terminal.sec_filing_summary_pending_charts.get(&key),
+            Some(&vec![1])
+        );
+        assert!(!terminal.sec_filing_summary_cache.contains_key(&key));
+    }
+
+    #[test]
+    fn clearing_chart_earnings_pending_state_removes_filing_summary_waiter() {
+        let (mut terminal, _task) = TradingTerminal::boot_from_config(KeroseneConfig::default());
+        let key = "1045810:0001045810-26-000051:nvda-20260520.htm".to_string();
+        terminal
+            .sec_filing_summary_pending_request_ids
+            .insert(key.clone(), 7);
+        terminal
+            .sec_filing_summary_pending_charts
+            .insert(key.clone(), vec![1]);
+
+        terminal.clear_chart_earnings_pending_request_state(1);
+
+        assert!(
+            !terminal
+                .sec_filing_summary_pending_request_ids
+                .contains_key(&key)
+        );
+        assert!(
+            !terminal
+                .sec_filing_summary_pending_charts
+                .contains_key(&key)
+        );
     }
 
     #[test]

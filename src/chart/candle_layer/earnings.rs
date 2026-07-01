@@ -179,6 +179,9 @@ mod tests {
             accession_number: String::new(),
             primary_document: String::new(),
             quarter_label: None,
+            filing_summary: None,
+            filing_summary_status: None,
+            filing_summary_loading: false,
         }
     }
 

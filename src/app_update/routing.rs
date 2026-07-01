@@ -483,6 +483,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleMacroIndicator(_, _)
         | Message::ToggleChartEarningsMarkers(_)
         | Message::ChartEarningsEventsLoaded(_, _, _)
+        | Message::ChartEarningsFilingSummaryLoaded(_, _, _)
         | Message::OpenChartEarningsFiling(_, _, _)
         | Message::ChartEarningsFilingOpenResult(_)
         | Message::MacroCandlesLoaded(_, _, _, _, _)

@@ -560,6 +560,12 @@ pub(crate) struct TradingTerminal {
     pub(crate) sec_earnings_request_id: u64,
     pub(crate) sec_earnings_pending_request_ids: HashMap<String, u64>,
     pub(crate) sec_earnings_pending_charts: HashMap<String, Vec<ChartId>>,
+    // Shared cache/dedupe for SEC filing-summary requests
+    pub(crate) sec_filing_summary_cache: HashMap<String, api::SecFilingSummary>,
+    pub(crate) sec_filing_summary_cache_order: VecDeque<String>,
+    pub(crate) sec_filing_summary_request_id: u64,
+    pub(crate) sec_filing_summary_pending_request_ids: HashMap<String, u64>,
+    pub(crate) sec_filing_summary_pending_charts: HashMap<String, Vec<ChartId>>,
     // Shared in-flight dedupe for HyperDash liquidation level requests
     pub(crate) liquidation_pending_charts: HashMap<String, Vec<ChartId>>,
     pub(crate) liquidation_distribution: LiquidationDistributionState,

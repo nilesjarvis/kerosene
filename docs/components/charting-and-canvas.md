@@ -209,6 +209,8 @@ SEC earnings markers are optional chart overlays:
 - toggled by `ToggleChartEarningsMarkers`
 - fetched through `api::fetch_sec_earnings_events`
 - rendered as labeled chart markers and hover tooltips
+- lazily summarize hovered filings through `api::fetch_sec_filing_summary`,
+  using SEC complete-submission text and earnings exhibits such as `EX-99.1`
 - clicked through `OpenChartEarningsFiling` to open the public SEC filing
 
 Macro indicators are configured per chart and include candle/funding-derived

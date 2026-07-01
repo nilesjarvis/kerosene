@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 use crate::annotations::{Annotation, DrawingTool};
-use crate::api::Candle;
+use crate::api::{Candle, SecFilingSummary};
 use crate::chart_state::ChartSurfaceId;
 use crate::denomination::DisplayDenominationContext;
 use crate::hydromancer_api::FundingRatePoint;
@@ -346,6 +346,9 @@ pub struct EarningsMarker {
     pub accession_number: String,
     pub primary_document: String,
     pub quarter_label: Option<String>,
+    pub(crate) filing_summary: Option<SecFilingSummary>,
+    pub(crate) filing_summary_status: Option<String>,
+    pub(crate) filing_summary_loading: bool,
 }
 
 /// Status of chart data loading.

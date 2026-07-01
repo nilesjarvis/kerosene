@@ -121,6 +121,12 @@ impl TradingTerminal {
             self.sec_earnings_pending_charts.remove(&ticker);
             self.sec_earnings_pending_request_ids.remove(&ticker);
         }
+        let empty_filing_summary_keys =
+            remove_pending_chart_id(&mut self.sec_filing_summary_pending_charts, chart_id);
+        for key in empty_filing_summary_keys {
+            self.sec_filing_summary_pending_charts.remove(&key);
+            self.sec_filing_summary_pending_request_ids.remove(&key);
+        }
     }
 
     pub(crate) fn clear_all_chart_pending_request_state(&mut self) {
@@ -128,6 +134,8 @@ impl TradingTerminal {
         self.liquidation_pending_charts.clear();
         self.sec_earnings_pending_charts.clear();
         self.sec_earnings_pending_request_ids.clear();
+        self.sec_filing_summary_pending_charts.clear();
+        self.sec_filing_summary_pending_request_ids.clear();
     }
 
     pub(crate) fn remove_detached_chart_window_state(&mut self, window_id: window::Id) -> bool {

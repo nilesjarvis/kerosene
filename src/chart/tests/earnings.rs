@@ -12,6 +12,9 @@ fn chart_with_earnings_marker() -> CandlestickChart {
         accession_number: "0001652044-26-000043".to_string(),
         primary_document: "goog-20260429.htm".to_string(),
         quarter_label: Some("Q1 2026".to_string()),
+        filing_summary: None,
+        filing_summary_status: None,
+        filing_summary_loading: false,
     }]);
     chart
 }

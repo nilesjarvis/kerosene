@@ -1,7 +1,7 @@
 use super::candle_layer::{EARNINGS_DOT_RADIUS, earnings_marker_dot_y};
 use super::drawing::{AxisBadgeStyle, fill_right_axis_badge};
 use super::fisheye::ChartFisheye;
-use super::model::CandlestickChart;
+use super::model::{CandlestickChart, EarningsMarker};
 use super::price_badges::RIGHT_AXIS_PRIMARY_BADGE_HEIGHT;
 use super::state::{ChartState, HudMarketSide, HudOrderKind};
 use super::tooltips::{TooltipLine, TooltipSurface};
@@ -50,6 +50,7 @@ const HUD_MARKET_TARGET_LINE_GAP: f32 = HUD_MARKET_TARGET_RADIUS + 6.0;
 const HUD_JET_TAPE_GAP: f32 = 46.0;
 const HUD_JET_TAPE_TEXT_SIZE: f32 = 11.0;
 const EARNINGS_HOVER_RADIUS: f32 = 12.5;
+const EARNINGS_TOOLTIP_SUMMARY_MAX_CHARS: usize = 54;
 
 pub(super) struct CrosshairOverlayContext<'a, PriceToY>
 where
@@ -340,7 +341,7 @@ impl CandlestickChart {
                 .with_width(0.75 + 0.35 * hover),
         );
 
-        let mut lines = Vec::with_capacity(5);
+        let mut lines = Vec::with_capacity(9);
         lines.push(TooltipLine {
             content: format!(
                 "EARN {}",
@@ -375,6 +376,15 @@ impl CandlestickChart {
                 },
             });
         }
+        append_earnings_summary_lines(
+            marker,
+            &mut lines,
+            accent,
+            Color {
+                a: 0.7,
+                ..ctx.theme.palette().text
+            },
+        );
         if marker.cik != 0
             && !marker.accession_number.is_empty()
             && !marker.primary_document.is_empty()
@@ -385,7 +395,7 @@ impl CandlestickChart {
             });
         }
 
-        let card_size = TooltipSurface::card_size_for_lines(&lines, 150.0);
+        let card_size = TooltipSurface::card_size_for_lines(&lines, 220.0);
         let card_x = (visual_center.x + 12.0)
             .min(ctx.chart_w - card_size.width - 4.0)
             .max(4.0);
@@ -1277,6 +1287,83 @@ pub(super) fn format_crosshair_relative_time(timestamp_ms: u64, now_ms: u64) -> 
     } else {
         format!("{value} {unit}{suffix} ago")
     }
+}
+
+fn append_earnings_summary_lines(
+    marker: &EarningsMarker,
+    lines: &mut Vec<TooltipLine>,
+    accent: Color,
+    muted: Color,
+) {
+    if marker.filing_summary_loading {
+        lines.push(TooltipLine {
+            content: "Summary loading".to_string(),
+            color: muted,
+        });
+        return;
+    }
+
+    if let Some(summary) = &marker.filing_summary {
+        if let Some(headline) = summary
+            .headline
+            .as_deref()
+            .map(str::trim)
+            .filter(|headline| !headline.is_empty())
+        {
+            lines.push(TooltipLine {
+                content: compact_earnings_tooltip_text(
+                    headline,
+                    EARNINGS_TOOLTIP_SUMMARY_MAX_CHARS,
+                ),
+                color: accent,
+            });
+        }
+
+        for highlight in summary
+            .highlights
+            .iter()
+            .filter(|item| !item.trim().is_empty())
+            .take(2)
+        {
+            lines.push(TooltipLine {
+                content: format!(
+                    "- {}",
+                    compact_earnings_tooltip_text(highlight, EARNINGS_TOOLTIP_SUMMARY_MAX_CHARS)
+                ),
+                color: muted,
+            });
+        }
+        return;
+    }
+
+    if let Some(status) = marker
+        .filing_summary_status
+        .as_deref()
+        .map(str::trim)
+        .filter(|status| !status.is_empty())
+    {
+        lines.push(TooltipLine {
+            content: status.to_string(),
+            color: muted,
+        });
+    }
+}
+
+fn compact_earnings_tooltip_text(value: &str, max_chars: usize) -> String {
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= max_chars {
+        return normalized;
+    }
+
+    let mut out = normalized
+        .chars()
+        .take(max_chars.saturating_sub(3))
+        .collect::<String>();
+    while out.chars().last().is_some_and(char::is_whitespace) {
+        out.pop();
+    }
+    out.push_str("...");
+    out
 }
 
 /// Whole-unit markets (outcome contracts) read as whole counts below the

@@ -152,6 +152,9 @@ fn earnings_marker_hover_overlay_is_active_only_for_visible_hovered_markers() {
         accession_number: "0001652044-26-000043".to_string(),
         primary_document: "goog-20260429.htm".to_string(),
         quarter_label: Some("Q1 2026".to_string()),
+        filing_summary: None,
+        filing_summary_status: None,
+        filing_summary_loading: false,
     }]);
     let state = ChartState::default();
 

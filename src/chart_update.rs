@@ -45,6 +45,7 @@ impl TradingTerminal {
             }
             message @ (Message::ToggleChartEarningsMarkers(_)
             | Message::ChartEarningsEventsLoaded(_, _, _)
+            | Message::ChartEarningsFilingSummaryLoaded(_, _, _)
             | Message::OpenChartEarningsFiling(_, _, _)
             | Message::ChartEarningsFilingOpenResult(_)) => {
                 return self.update_chart_earnings(message);
@@ -185,6 +186,7 @@ impl TradingTerminal {
                 earnings_marker_time_ms,
             ) => {
                 let now_ms = Self::now_ms();
+                let mut summary_hover_time_ms = None;
                 if let Some(instance) = self.charts.get_mut(&id)
                     && instance.chart.surface_id() == surface_id
                 {
@@ -193,6 +195,10 @@ impl TradingTerminal {
                         .chart
                         .set_earnings_marker_hover(earnings_marker_time_ms);
                     instance.chart.record_hud_activity(now_ms, hovering_plot);
+                    summary_hover_time_ms = earnings_marker_time_ms;
+                }
+                if let Some(time_ms) = summary_hover_time_ms {
+                    return self.maybe_fetch_chart_earnings_filing_summary(id, surface_id, time_ms);
                 }
             }
             Message::ChartOrderCancelHoverAnimationTick => {
