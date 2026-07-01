@@ -527,7 +527,7 @@ mod tests {
         assert!(terminal.has_pending_trading_request());
         let data = terminal.account_data.as_ref().expect("account data");
         assert_eq!(data.open_orders[0].limit_px, "100");
-        let (message, is_error) = terminal.order_status.expect("status should be set");
+        let (message, is_error) = terminal.order_status.clone().expect("status should be set");
         assert!(is_error);
         assert!(message.starts_with("Move modify status unknown"));
         assert!(message.contains("token=<redacted>"));
@@ -559,7 +559,7 @@ mod tests {
         assert_eq!(data.open_orders[0].limit_px, "100");
         assert!(terminal.account_loading);
         assert!(terminal.account_reconciliation_required);
-        let (message, is_error) = terminal.order_status.expect("status should be set");
+        let (message, is_error) = terminal.order_status.clone().expect("status should be set");
         assert!(is_error);
         assert!(message.contains("Move modify status unknown"));
         assert!(message.contains("refreshing account data"));
@@ -588,7 +588,7 @@ mod tests {
         assert!(terminal.has_pending_trading_request());
         assert!(terminal.account_loading);
         assert!(terminal.account_reconciliation_required);
-        let (message, is_error) = terminal.order_status.expect("status should be set");
+        let (message, is_error) = terminal.order_status.clone().expect("status should be set");
         assert!(is_error);
         assert!(message.contains("still uncertain"));
         assert!(message.contains("reports open"));
@@ -615,7 +615,7 @@ mod tests {
         assert!(terminal.has_pending_trading_request());
         assert!(terminal.account_loading);
         assert!(terminal.account_reconciliation_required);
-        let (message, is_error) = terminal.order_status.expect("status should be set");
+        let (message, is_error) = terminal.order_status.clone().expect("status should be set");
         assert!(is_error);
         assert!(message.contains("Move modify status still uncertain"));
         assert!(message.contains("api_key=<redacted>"));
@@ -658,7 +658,7 @@ mod tests {
 
         assert!(terminal.pending_move_status_request.is_none());
         assert!(terminal.account_loading);
-        let (message, is_error) = terminal.order_status.expect("status should be set");
+        let (message, is_error) = terminal.order_status.clone().expect("status should be set");
         assert!(!is_error);
         assert!(message.contains("Move modify resolved by fill"));
     }

@@ -86,7 +86,7 @@ mod tests {
         let bottom_tabs = terminal
             .find_pane_matching(|kind| matches!(kind, PaneKind::BottomTabs { .. }))
             .expect("default bottom tabs pane");
-        terminal.update_pane_interactions(Message::ClosePane(bottom_tabs));
+        let _task = terminal.update_pane_interactions(Message::ClosePane(bottom_tabs));
         terminal.add_widget_menu_open = true;
 
         let _task = terminal.update_panes(Message::AddPositionsHistoryPane);

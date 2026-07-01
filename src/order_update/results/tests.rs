@@ -510,7 +510,7 @@ fn one_shot_ambiguous_outcome_sets_cloid_reconciliation_status() {
         },
     );
 
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Ticket placement status unknown for BTC"));
     assert!(message.contains("exchange request failed"));
@@ -539,7 +539,7 @@ fn one_shot_mixed_exchange_error_starts_cloid_reconciliation() {
     assert!(terminal.pending_one_shot_status_request.is_some());
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Ticket placement status unknown for BTC"));
     assert!(message.contains("Resting (oid 42)"));
@@ -569,7 +569,7 @@ fn one_shot_order_status_result_normalizes_terminal_statuses() {
         context,
         Ok(order_status("rejected")),
     );
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Ticket placement rejected according to orderStatus for BTC"));
     assert!(terminal.pending_one_shot_status_request.is_none());
@@ -737,7 +737,7 @@ fn one_shot_ioc_like_order_status_open_is_unexpected_resting_error() {
             Ok(order_status("open")),
         );
 
-        let (message, is_error) = terminal.order_status.expect("status should be set");
+        let (message, is_error) = terminal.order_status.clone().expect("status should be set");
         assert!(is_error);
         assert!(message.contains("Ticket"));
         assert!(message.contains(order_kind.label()));
@@ -760,7 +760,7 @@ fn one_shot_ioc_like_direct_resting_response_is_unexpected_resting_error() {
         })])),
     );
 
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Ticket market order unexpectedly rested for BTC"));
     assert!(message.contains("Resting (oid 42)"));
@@ -780,7 +780,7 @@ fn one_shot_limit_direct_resting_response_remains_successful() {
         })])),
     );
 
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
     assert_eq!(message, "Resting (oid 42)");
 }
@@ -808,7 +808,7 @@ fn one_shot_success_during_refresh_backoff_marks_reconciliation_required() {
             .as_deref()
             .is_some_and(|error| error.contains("rate limited"))
     );
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
     assert_eq!(message, "Resting (oid 42)");
 }
@@ -903,7 +903,7 @@ fn nuke_results_aggregate_until_all_children_settle() {
         })])),
     );
 
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert_eq!(
         message,
@@ -934,7 +934,7 @@ fn nuke_uncertain_child_waits_for_order_status_before_aggregating() {
         Ok(order_status("filled")),
     );
 
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
     assert_eq!(message, "NUKE completed: 1/1 confirmed");
     assert!(terminal.pending_nuke_execution.is_none());
@@ -955,7 +955,7 @@ fn nuke_direct_resting_market_child_is_uncertain_not_confirmed() {
         })])),
     );
 
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("NUKE market order unexpectedly rested for BTC"));
     assert!(terminal.pending_nuke_execution.is_none());
@@ -972,7 +972,7 @@ fn nuke_status_open_market_child_is_uncertain_not_confirmed() {
         Ok(order_status("open")),
     );
 
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("NUKE market order unexpectedly rested for BTC"));
     assert!(terminal.pending_nuke_execution.is_none());
@@ -1116,7 +1116,7 @@ fn cancel_result_success_clears_indicator_and_removes_order_locally() {
             .active_orders
             .is_empty()
     );
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert_eq!(message, "Cancelled");
     assert!(!is_error);
 }
@@ -1140,7 +1140,7 @@ fn cancel_result_terminal_error_checks_status_and_keeps_local_order_until_refres
     assert_eq!(data.open_orders.len(), 1);
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Cancel may have already resolved"));
     assert!(message.contains("checking orderStatus"));
@@ -1169,7 +1169,7 @@ fn cancel_result_ambiguous_ack_is_uncertain_and_keeps_local_order() {
     assert_eq!(data.open_orders.len(), 1);
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Cancel status unknown"));
     assert!(message.contains("refreshing account data"));
@@ -1194,7 +1194,7 @@ fn cancel_result_ambiguous_ack_uses_pending_request_after_indicator_expires() {
     assert!(terminal.pending_cancel_status_request.is_some());
     assert!(terminal.has_pending_trading_request());
     assert!(terminal.account_loading);
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Cancel status unknown for order 42"));
     assert!(message.contains("checking orderStatus"));
@@ -1222,7 +1222,7 @@ fn cancel_order_status_open_keeps_cancel_uncertain_and_local_order() {
     assert!(terminal.has_pending_trading_request());
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("still uncertain"));
     assert!(message.contains("reports open"));
@@ -1247,7 +1247,7 @@ fn cancel_order_status_error_redacts_sensitive_text() {
 
     assert!(terminal.pending_cancel_status_request.is_some());
     assert!(terminal.has_pending_trading_request());
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Cancel status still uncertain for order 42"));
     assert!(message.contains("api_key=<redacted>"));
@@ -1300,7 +1300,7 @@ fn cancel_order_status_terminal_removes_local_order() {
             .active_orders
             .is_empty()
     );
-    let (message, is_error) = terminal.order_status.expect("status should be set");
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
     assert!(message.contains("Cancel resolved"));
 }

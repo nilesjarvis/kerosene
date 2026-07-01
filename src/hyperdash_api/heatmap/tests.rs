@@ -1,7 +1,7 @@
+use super::parsing::{HYPERDASH_HEATMAP_MAX_CELLS, cap_heatmap_rects};
 use super::{
-    HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, HYPERDASH_HEATMAP_MAX_CELLS,
-    HYPERDASH_HEATMAP_MAX_LOOKBACK_SECS, cap_heatmap_rects, infer_heatmap_bucket_duration_ms,
-    normalize_heatmap_time_range, parse_heatmap_timestamp,
+    HYPERDASH_HEATMAP_DEFAULT_BUCKET_SECS, HYPERDASH_HEATMAP_MAX_LOOKBACK_SECS,
+    infer_heatmap_bucket_duration_ms, normalize_heatmap_time_range, parse_heatmap_timestamp,
 };
 use crate::hyperdash_api::{HeatmapFetchParams, HeatmapRect};
 
