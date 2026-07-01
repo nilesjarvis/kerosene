@@ -1,6 +1,6 @@
 use crate::account_views::invalid_account_data;
-use crate::helpers::format_price;
 pub(super) use crate::helpers::trim_decimal_zeros;
+use crate::helpers::{format_decimal_with_commas, format_price};
 
 use super::super::{PositionNumberMode, format_position_compact_number};
 
@@ -46,6 +46,12 @@ pub(super) fn format_position_entry_price(entry_px: Option<f64>, raw: &str) -> S
     }
 
     format_large_wire_price(raw).unwrap_or_else(|| format_price(entry_px))
+}
+
+pub(super) fn format_spot_position_entry_price(entry_px: Option<f64>) -> String {
+    entry_px
+        .map(|entry_px| format_decimal_with_commas(entry_px, 2))
+        .unwrap_or_else(|| "Invalid".to_string())
 }
 
 fn format_large_wire_price(raw: &str) -> Option<String> {

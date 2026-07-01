@@ -18,7 +18,9 @@ use super::sort::PositionRowData;
 use cells::{position_symbol_button, position_upnl_cell};
 #[cfg(test)]
 use formatting::format_position_signed_amount;
-use formatting::{format_position_entry_price, trim_decimal_zeros};
+use formatting::{
+    format_position_entry_price, format_spot_position_entry_price, trim_decimal_zeros,
+};
 use iced::widget::text::Wrapping;
 use iced::widget::{container, row, text};
 use iced::{Element, Fill, Theme, color};
@@ -51,6 +53,8 @@ impl TradingTerminal {
         let entry_str =
             if is_spot_position && data.entry_px.is_none() && pos.entry_px.trim().is_empty() {
                 "-".to_string()
+            } else if is_spot_position {
+                format_spot_position_entry_price(data.entry_px)
             } else {
                 format_position_entry_price(data.entry_px, &pos.entry_px)
             };

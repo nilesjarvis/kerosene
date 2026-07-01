@@ -23,6 +23,19 @@ fn position_entry_price_preserves_small_wire_values() {
 }
 
 #[test]
+fn spot_position_entry_price_rounds_to_two_decimals() {
+    assert_eq!(
+        format_spot_position_entry_price(Some(72.092843191)),
+        "72.09"
+    );
+    assert_eq!(
+        format_spot_position_entry_price(Some(60191.1234)),
+        "60,191.12"
+    );
+    assert_eq!(format_spot_position_entry_price(None), "Invalid");
+}
+
+#[test]
 fn compact_position_usd_rounds_to_whole_dollars() {
     assert_eq!(
         format_position_usd_value(1234.56, PositionNumberMode::Full),
