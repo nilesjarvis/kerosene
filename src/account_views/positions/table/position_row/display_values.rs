@@ -22,10 +22,9 @@ impl TradingTerminal {
         denomination: &DisplayDenominationContext,
         number_mode: PositionNumberMode,
     ) -> PositionRowPnlDisplays {
-        let spot_value_unavailable =
-            self.is_spot_coin(&data.coin) && data.ap.position.position_value.trim().is_empty();
-        let spot_pnl_unavailable =
-            self.is_spot_coin(&data.coin) && data.ap.position.unrealized_pnl.trim().is_empty();
+        let spot_like = self.is_spot_coin(&data.coin) || self.is_outcome_coin(&data.coin);
+        let spot_value_unavailable = spot_like && data.ap.position.position_value.trim().is_empty();
+        let spot_pnl_unavailable = spot_like && data.ap.position.unrealized_pnl.trim().is_empty();
         if self.hide_pnl {
             return PositionRowPnlDisplays {
                 value: data

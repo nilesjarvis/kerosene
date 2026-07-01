@@ -118,14 +118,9 @@ fn fill_fee_amounts(
 }
 
 fn is_quote_fee_token(fee_token: &str) -> bool {
-    if ["USDC", "USDE", "USDT0", "USDH"]
+    ["USDC", "USDE", "USDT0", "USDH"]
         .iter()
         .any(|stable| fee_token.eq_ignore_ascii_case(stable))
-    {
-        true
-    } else {
-        false
-    }
 }
 
 fn balances_match(derived: f64, live: f64) -> bool {

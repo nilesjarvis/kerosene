@@ -47,19 +47,36 @@ impl TradingTerminal {
         fills: &[UserFill],
     ) -> Option<AssetPosition> {
         let trade_coins = self.spot_trade_coins_for_balance(balance)?;
-        let trade_coin = if spot_balance_entry_notional(balance).is_some() {
-            trade_coins.first()?.clone()
-        } else {
-            trade_coins
-                .iter()
-                .find(|trade_coin| {
-                    derive_spot_cost_basis_from_fills(balance, trade_coin, fills).is_some()
-                })
-                .cloned()
-                .unwrap_or_else(|| trade_coins[0].clone())
-        };
+        let trade_coin = self.select_spot_trade_coin(&trade_coins, balance, fills)?;
         let mark_px = self.resolve_mid_for_symbol(&trade_coin);
         spot_asset_position_from_balance(balance, trade_coin, mark_px, fills)
+    }
+
+    fn select_spot_trade_coin(
+        &self,
+        trade_coins: &[String],
+        balance: &SpotBalance,
+        fills: &[UserFill],
+    ) -> Option<String> {
+        if trade_coins.len() <= 1 {
+            return trade_coins.first().cloned();
+        }
+        // Duplicated tickers: prefer the market whose fills reconcile to the
+        // live balance (the one the user actually traded), then any market
+        // with a live mark, so a stale or differently-quoted duplicate cannot
+        // misprice the position.
+        trade_coins
+            .iter()
+            .find(|trade_coin| {
+                derive_spot_cost_basis_from_fills(balance, trade_coin, fills).is_some()
+            })
+            .or_else(|| {
+                trade_coins
+                    .iter()
+                    .find(|trade_coin| self.resolve_mid_for_symbol(trade_coin).is_some())
+            })
+            .or_else(|| trade_coins.first())
+            .cloned()
     }
 
     fn spot_trade_coins_for_balance(&self, balance: &SpotBalance) -> Option<Vec<String>> {
@@ -106,25 +123,24 @@ fn outcome_asset_position_from_balance(
     }
 
     let size = total.abs();
-    let entry_notional = parse_finite_number(&balance.entry_ntl).unwrap_or(0.0).abs();
-    let entry_px = if entry_notional > POSITION_EPSILON {
-        entry_notional / size
-    } else {
-        mark_px.unwrap_or(0.0)
-    };
-    let position_value = mark_px
-        .map(|mark_px| size * mark_px)
-        .or_else(|| (entry_notional > POSITION_EPSILON).then_some(entry_notional))
-        .unwrap_or(0.0);
-    let unrealized_pnl = position_value - entry_notional;
+    let entry_notional = spot_balance_entry_notional(balance);
+    let entry_px = entry_notional.map(|entry_notional| entry_notional / size);
+    // Expired or settling outcome markets have no live mark; fall back to
+    // valuing the balance at cost so it stays visible with zero PnL.
+    let position_value = mark_px.map(|mark_px| size * mark_px).or(entry_notional);
+    // Without an entry notional (e.g. a transferred-in balance) PnL is
+    // unavailable — it must not report the full position value as profit.
+    let unrealized_pnl = entry_notional
+        .zip(position_value)
+        .map(|(entry_notional, position_value)| position_value - entry_notional);
 
     Some(AssetPosition {
         position: Position {
             coin: trade_coin,
             szi: float_to_wire(total),
-            entry_px: float_to_wire(entry_px),
-            position_value: float_to_wire(position_value),
-            unrealized_pnl: float_to_wire(unrealized_pnl),
+            entry_px: entry_px.map(float_to_wire).unwrap_or_default(),
+            position_value: position_value.map(float_to_wire).unwrap_or_default(),
+            unrealized_pnl: unrealized_pnl.map(float_to_wire).unwrap_or_default(),
             liquidation_px: None,
             leverage: PositionLeverage {
                 leverage_type: "outcome".to_string(),
@@ -416,6 +432,107 @@ mod tests {
         assert_eq!(positions[0].position.coin, "@234");
         assert_wire_close(&positions[0].position.entry_px, 60_191.0);
         assert_wire_close(&positions[0].position.unrealized_pnl, 58_358.0 - 60_191.0);
+    }
+
+    #[test]
+    fn spot_balances_with_entry_notional_choose_fill_reconciled_candidate_when_ticker_is_duplicated()
+     {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![
+            spot_symbol("@142", "UBTC", 10_142),
+            spot_symbol("@234", "UBTC", 10_234),
+        ];
+        set_mid(&mut terminal, "@142", 58_000.0);
+        set_mid(&mut terminal, "@234", 58_358.0);
+        set_connected_account_data(
+            &mut terminal,
+            account_data_with_fills(
+                vec![spot_balance("UBTC", "1", "60191")],
+                vec![spot_fill("@234", "60191", "1", "0", "USDC", 1)],
+            ),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "@234");
+        assert_wire_close(&positions[0].position.entry_px, 60_191.0);
+        assert_wire_close(&positions[0].position.unrealized_pnl, 58_358.0 - 60_191.0);
+    }
+
+    #[test]
+    fn spot_balances_with_entry_notional_prefer_live_mid_candidate_when_ticker_is_duplicated() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![
+            spot_symbol("@142", "UBTC", 10_142),
+            spot_symbol("@234", "UBTC", 10_234),
+        ];
+        set_mid(&mut terminal, "@234", 58_358.0);
+        set_connected_account_data(
+            &mut terminal,
+            account_data(vec![spot_balance("UBTC", "1", "60191")]),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "@234");
+        assert_wire_close(&positions[0].position.position_value, 58_358.0);
+        assert_wire_close(&positions[0].position.unrealized_pnl, 58_358.0 - 60_191.0);
+    }
+
+    #[test]
+    fn outcome_balances_with_entry_notional_report_cost_basis_pnl() {
+        let mut terminal = TradingTerminal::boot().0;
+        set_mid(&mut terminal, "#950", 0.6);
+        set_connected_account_data(
+            &mut terminal,
+            account_data(vec![spot_balance("+950", "30", "12")]),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "#950");
+        assert_eq!(positions[0].position.leverage.leverage_type, "outcome");
+        assert_wire_close(&positions[0].position.entry_px, 0.4);
+        assert_wire_close(&positions[0].position.position_value, 18.0);
+        assert_wire_close(&positions[0].position.unrealized_pnl, 6.0);
+    }
+
+    #[test]
+    fn outcome_balances_without_live_mark_are_valued_at_cost_with_zero_pnl() {
+        let mut terminal = TradingTerminal::boot().0;
+        set_connected_account_data(
+            &mut terminal,
+            account_data(vec![spot_balance("+950", "30", "12")]),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "#950");
+        assert_wire_close(&positions[0].position.entry_px, 0.4);
+        assert_wire_close(&positions[0].position.position_value, 12.0);
+        assert_wire_close(&positions[0].position.unrealized_pnl, 0.0);
+    }
+
+    #[test]
+    fn outcome_balances_without_entry_notional_keep_pnl_unavailable() {
+        let mut terminal = TradingTerminal::boot().0;
+        set_mid(&mut terminal, "#950", 0.6);
+        set_connected_account_data(
+            &mut terminal,
+            account_data(vec![spot_balance("+950", "30", "0")]),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "#950");
+        assert_eq!(positions[0].position.entry_px, "");
+        assert_wire_close(&positions[0].position.position_value, 18.0);
+        assert_eq!(positions[0].position.unrealized_pnl, "");
     }
 
     #[test]
