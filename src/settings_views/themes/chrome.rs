@@ -17,7 +17,10 @@ use crate::config::{
 };
 use crate::helpers::pane_title;
 use crate::message::Message;
-use iced::widget::{Column, Row, button, checkbox, column, pick_list, row, slider, text};
+use iced::widget::container as container_style;
+use iced::widget::{
+    Column, Row, Space, button, checkbox, column, container, pick_list, row, rule, slider, text,
+};
 use iced::{Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
 use std::ops::RangeInclusive;
 
@@ -29,7 +32,7 @@ impl TradingTerminal {
     pub(super) fn view_settings_widget_chrome_section(&self) -> Element<'_, Message> {
         let theme = self.theme();
 
-        let mut content = column![
+        let interface_controls = column![
             scale_slider_row(
                 &theme,
                 "Scale",
@@ -59,36 +62,60 @@ impl TradingTerminal {
                 Message::DefaultWidgetPaddingChanged,
             ),
             self.view_focused_widget_padding_controls(&theme),
-            checkbox(self.outer_widget_border_enabled)
-                .label("Outer widget border")
-                .on_toggle(Message::ToggleOuterWidgetBorder)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
-            checkbox(self.custom_window_chrome_enabled)
-                .label("Custom OS bar")
-                .on_toggle(Message::ToggleCustomWindowChrome)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
-            checkbox(self.chart_dotted_background)
-                .label("Dotted chart background")
-                .on_toggle(Message::ToggleChartDottedBackground)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
-            checkbox(self.chart_gradient_background)
-                .label("Gradient chart background")
-                .on_toggle(Message::ToggleChartGradientBackground)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
+        ]
+        .spacing(9);
+
+        let window_controls = column![
+            toggle_status_row(
+                &theme,
+                "Outer widget border",
+                self.outer_widget_border_enabled,
+                Message::ToggleOuterWidgetBorder,
+            ),
+            toggle_status_row(
+                &theme,
+                "Custom OS bar",
+                self.custom_window_chrome_enabled,
+                Message::ToggleCustomWindowChrome,
+            ),
+        ]
+        .spacing(8);
+
+        let mut background_controls = column![
+            toggle_status_row(
+                &theme,
+                "Dotted chart background",
+                self.chart_dotted_background,
+                Message::ToggleChartDottedBackground,
+            ),
+            toggle_status_row(
+                &theme,
+                "Gradient chart background",
+                self.chart_gradient_background,
+                Message::ToggleChartGradientBackground,
+            ),
+        ]
+        .spacing(8);
+
+        if self.chart_dotted_background {
+            background_controls = background_controls.push(opacity_slider_row(
+                &theme,
+                self.chart_dotted_background_opacity,
+                MIN_CHART_DOTTED_BACKGROUND_OPACITY..=MAX_CHART_DOTTED_BACKGROUND_OPACITY,
+                Message::ChartDottedBackgroundOpacityChanged,
+            ));
+        }
+
+        let chart_style_controls = column![
             row![
-                text("Chart style").size(12).color(theme.palette().text),
+                column![
+                    text("Chart style").size(12).color(theme.palette().text),
+                    text(self.chart_series_style.label())
+                        .size(11)
+                        .color(theme.extended_palette().background.weak.text),
+                ]
+                .spacing(2)
+                .width(Fill),
                 pick_list(
                     ChartSeriesStyle::ALL.to_vec(),
                     Some(self.chart_series_style),
@@ -101,7 +128,14 @@ impl TradingTerminal {
             .spacing(8)
             .align_y(Alignment::Center),
             row![
-                text("Hollow candles").size(12).color(theme.palette().text),
+                column![
+                    text("Hollow candles").size(12).color(theme.palette().text),
+                    text(self.chart_hollow_candle_mode.label())
+                        .size(11)
+                        .color(theme.extended_palette().background.weak.text),
+                ]
+                .spacing(2)
+                .width(Fill),
                 pick_list(
                     ChartHollowCandleMode::ALL.to_vec(),
                     Some(self.chart_hollow_candle_mode),
@@ -113,40 +147,33 @@ impl TradingTerminal {
             ]
             .spacing(8)
             .align_y(Alignment::Center),
-            checkbox(self.chart_fisheye_enabled)
-                .label("Chart fisheye lens")
-                .on_toggle(Message::ToggleChartFisheye)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
-            checkbox(self.chart_chromatic_aberration_enabled)
-                .label("Chart chromatic aberration")
-                .on_toggle(Message::ToggleChartChromaticAberration)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
-            checkbox(self.chart_edge_blur_enabled)
-                .label("Chart edge blur")
-                .on_toggle(Message::ToggleChartEdgeBlur)
-                .size(12)
-                .spacing(8)
-                .text_size(12)
-                .font(crate::app_fonts::monospace_font()),
-        ];
+        ]
+        .spacing(8);
 
-        if self.chart_dotted_background {
-            content = content.push(opacity_slider_row(
+        let mut effects_controls = column![
+            toggle_status_row(
                 &theme,
-                self.chart_dotted_background_opacity,
-                MIN_CHART_DOTTED_BACKGROUND_OPACITY..=MAX_CHART_DOTTED_BACKGROUND_OPACITY,
-                Message::ChartDottedBackgroundOpacityChanged,
-            ));
-        }
+                "Chart fisheye lens",
+                self.chart_fisheye_enabled,
+                Message::ToggleChartFisheye,
+            ),
+            toggle_status_row(
+                &theme,
+                "Chart chromatic aberration",
+                self.chart_chromatic_aberration_enabled,
+                Message::ToggleChartChromaticAberration,
+            ),
+            toggle_status_row(
+                &theme,
+                "Chart edge blur",
+                self.chart_edge_blur_enabled,
+                Message::ToggleChartEdgeBlur,
+            ),
+        ]
+        .spacing(8);
 
         if self.chart_fisheye_enabled {
-            content = content.push(scale_slider_row(
+            effects_controls = effects_controls.push(scale_slider_row(
                 &theme,
                 "Lens",
                 self.chart_fisheye_strength,
@@ -156,7 +183,7 @@ impl TradingTerminal {
         }
 
         if self.chart_chromatic_aberration_enabled {
-            content = content.push(scale_slider_row(
+            effects_controls = effects_controls.push(scale_slider_row(
                 &theme,
                 "Fringe",
                 self.chart_chromatic_aberration_strength,
@@ -166,7 +193,7 @@ impl TradingTerminal {
         }
 
         if self.chart_edge_blur_enabled {
-            content = content.push(scale_slider_row(
+            effects_controls = effects_controls.push(scale_slider_row(
                 &theme,
                 "Blur",
                 self.chart_edge_blur_strength,
@@ -175,24 +202,35 @@ impl TradingTerminal {
             ));
         }
 
-        content
-            .push(
-                text(format!(
-                    "Defaults: {:.0}% scale, {:.0}% dots, {:.0}% lens, {:.0}% fringe, {:.0}% blur, {:.0}px divider, {:.0}px corners, {:.0}px padding",
-                    DEFAULT_UI_SCALE * 100.0,
-                    DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY * 100.0,
-                    DEFAULT_CHART_FISHEYE_STRENGTH * 100.0,
-                    DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH * 100.0,
-                    DEFAULT_CHART_EDGE_BLUR_STRENGTH * 100.0,
-                    default_pane_border_thickness(),
-                    default_pane_corner_radius(),
-                    default_widget_padding()
-                ))
-                .size(11)
-                .color(theme.extended_palette().background.weak.text),
-            )
-            .spacing(10)
-            .into()
+        column![
+            appearance_preview(
+                &theme,
+                AppearancePreview {
+                    ui_scale: self.ui_scale,
+                    pane_border_thickness: self.pane_border_thickness,
+                    pane_corner_radius: self.pane_corner_radius,
+                    widget_padding: self.widget_padding_default,
+                    outer_widget_border_enabled: self.outer_widget_border_enabled,
+                    custom_window_chrome_enabled: self.custom_window_chrome_enabled,
+                    chart_dotted_background: self.chart_dotted_background,
+                    chart_dotted_background_opacity: self.chart_dotted_background_opacity,
+                    chart_gradient_background: self.chart_gradient_background,
+                    chart_series_style: self.chart_series_style,
+                    chart_hollow_candle_mode: self.chart_hollow_candle_mode,
+                    chart_fisheye_enabled: self.chart_fisheye_enabled,
+                    chart_chromatic_aberration_enabled: self.chart_chromatic_aberration_enabled,
+                    chart_edge_blur_enabled: self.chart_edge_blur_enabled,
+                },
+            ),
+            appearance_section(&theme, "Interface", interface_controls.into()),
+            appearance_section(&theme, "Window Chrome", window_controls.into()),
+            appearance_section(&theme, "Chart Background", background_controls.into()),
+            appearance_section(&theme, "Chart Style", chart_style_controls.into()),
+            appearance_section(&theme, "Chart Effects", effects_controls.into()),
+            default_settings_reference(&theme),
+        ]
+        .spacing(16)
+        .into()
     }
 
     fn view_focused_widget_padding_controls(&self, theme: &Theme) -> Element<'_, Message> {
@@ -319,6 +357,456 @@ impl TradingTerminal {
             )
             .spacing(10)
             .into()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AppearancePreview {
+    ui_scale: f32,
+    pane_border_thickness: f32,
+    pane_corner_radius: f32,
+    widget_padding: f32,
+    outer_widget_border_enabled: bool,
+    custom_window_chrome_enabled: bool,
+    chart_dotted_background: bool,
+    chart_dotted_background_opacity: f32,
+    chart_gradient_background: bool,
+    chart_series_style: ChartSeriesStyle,
+    chart_hollow_candle_mode: ChartHollowCandleMode,
+    chart_fisheye_enabled: bool,
+    chart_chromatic_aberration_enabled: bool,
+    chart_edge_blur_enabled: bool,
+}
+
+fn appearance_preview(theme: &Theme, preview: AppearancePreview) -> Element<'static, Message> {
+    column![
+        iced::widget::canvas(preview)
+            .width(Fill)
+            .height(Length::Fixed(132.0)),
+        row![
+            summary_chip(theme, "Scale", format!("{:.0}%", preview.ui_scale * 100.0)),
+            summary_chip(
+                theme,
+                "Divider",
+                format!("{:.0}px", preview.pane_border_thickness)
+            ),
+            summary_chip(
+                theme,
+                "Corners",
+                format!("{:.0}px", preview.pane_corner_radius)
+            ),
+        ]
+        .spacing(6),
+        row![
+            Space::new().width(Fill),
+            summary_chip(theme, "Padding", format!("{:.0}px", preview.widget_padding)),
+            summary_chip(
+                theme,
+                "Series",
+                preview.chart_series_style.label().to_string()
+            ),
+        ]
+        .spacing(6),
+    ]
+    .spacing(8)
+    .into()
+}
+
+fn appearance_section<'a>(
+    theme: &Theme,
+    title: &'static str,
+    content: Element<'a, Message>,
+) -> Element<'a, Message> {
+    column![
+        text(title).size(13).color(theme.palette().text).width(Fill),
+        rule::horizontal(1),
+        content,
+    ]
+    .spacing(8)
+    .into()
+}
+
+fn toggle_status_row(
+    theme: &Theme,
+    label: &'static str,
+    enabled: bool,
+    on_toggle: fn(bool) -> Message,
+) -> Element<'static, Message> {
+    let status_color = if enabled {
+        theme.palette().success
+    } else {
+        theme.extended_palette().background.weak.text
+    };
+
+    row![
+        checkbox(enabled)
+            .label(label)
+            .on_toggle(on_toggle)
+            .size(12)
+            .spacing(8)
+            .text_size(12)
+            .font(crate::app_fonts::monospace_font()),
+        Space::new().width(Fill),
+        text(if enabled { "On" } else { "Off" })
+            .size(11)
+            .color(status_color)
+            .width(Length::Fixed(34.0)),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn default_settings_reference(theme: &Theme) -> Element<'static, Message> {
+    column![
+        row![
+            text("Defaults")
+                .size(13)
+                .color(theme.extended_palette().background.weak.text)
+                .width(Fill),
+            default_chip(theme, format!("{:.0}% scale", DEFAULT_UI_SCALE * 100.0)),
+            default_chip(
+                theme,
+                format!("{:.0}px divider", default_pane_border_thickness())
+            ),
+            default_chip(
+                theme,
+                format!("{:.0}px corners", default_pane_corner_radius())
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+        row![
+            Space::new().width(Fill),
+            default_chip(theme, format!("{:.0}px padding", default_widget_padding())),
+            default_chip(
+                theme,
+                format!(
+                    "{:.0}% dots",
+                    DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY * 100.0
+                )
+            ),
+            default_chip(
+                theme,
+                format!("{:.0}% lens", DEFAULT_CHART_FISHEYE_STRENGTH * 100.0)
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+        row![
+            Space::new().width(Fill),
+            default_chip(
+                theme,
+                format!(
+                    "{:.0}% fringe",
+                    DEFAULT_CHART_CHROMATIC_ABERRATION_STRENGTH * 100.0
+                )
+            ),
+            default_chip(
+                theme,
+                format!("{:.0}% blur", DEFAULT_CHART_EDGE_BLUR_STRENGTH * 100.0)
+            ),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+    ]
+    .spacing(6)
+    .into()
+}
+
+fn summary_chip(theme: &Theme, label: &'static str, value: String) -> Element<'static, Message> {
+    let text_color = theme.palette().text;
+    let muted = theme.extended_palette().background.weak.text;
+
+    container(
+        row![
+            text(label).size(10).color(muted),
+            text(value).size(10).color(text_color),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center),
+    )
+    .padding([4, 7])
+    .style(chip_container_style)
+    .into()
+}
+
+fn default_chip(theme: &Theme, value: String) -> Element<'static, Message> {
+    container(
+        text(value)
+            .size(10)
+            .color(theme.extended_palette().background.weak.text),
+    )
+    .padding([4, 7])
+    .style(chip_container_style)
+    .into()
+}
+
+fn chip_container_style(theme: &Theme) -> container_style::Style {
+    let mut border_color = theme.extended_palette().background.weak.text;
+    border_color.a = 0.18;
+
+    container_style::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
+        border: iced::Border {
+            radius: 4.0.into(),
+            width: 1.0,
+            color: border_color,
+        },
+        ..Default::default()
+    }
+}
+
+impl iced::widget::canvas::Program<Message> for AppearancePreview {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        _cursor: iced::mouse::Cursor,
+    ) -> Vec<iced::widget::canvas::Geometry> {
+        let mut frame = iced::widget::canvas::Frame::new(renderer, bounds.size());
+        if bounds.width <= 0.0 || bounds.height <= 0.0 {
+            return vec![frame.into_geometry()];
+        }
+
+        let bg = theme.extended_palette().background.base.color;
+        let weak = theme.extended_palette().background.weak.color;
+        let strong = theme.extended_palette().background.strong.color;
+        let muted = theme.extended_palette().background.weak.text;
+        let primary = theme.palette().primary;
+        let success = theme.palette().success;
+        let danger = theme.palette().danger;
+
+        frame.fill_rectangle(Point::ORIGIN, bounds.size(), bg);
+
+        let margin = 9.0;
+        let chrome_h = if self.custom_window_chrome_enabled {
+            16.0
+        } else {
+            6.0
+        };
+        let x = margin;
+        let y = margin;
+        let w = (bounds.width - margin * 2.0).max(20.0);
+        let h = (bounds.height - margin * 2.0).max(20.0);
+        let outer = iced::widget::canvas::Path::rectangle(Point::new(x, y), Size::new(w, h));
+        frame.fill(&outer, strong);
+        if self.outer_widget_border_enabled {
+            frame.stroke(
+                &outer,
+                iced::widget::canvas::Stroke::default()
+                    .with_color(Color { a: 0.42, ..primary })
+                    .with_width(1.0),
+            );
+        }
+
+        if self.custom_window_chrome_enabled {
+            frame.fill_rectangle(Point::new(x, y), Size::new(w, chrome_h), weak);
+            for i in 0..3 {
+                frame.fill_rectangle(
+                    Point::new(x + 8.0 + i as f32 * 9.0, y + 5.0),
+                    Size::new(4.0, 4.0),
+                    Color { a: 0.75, ..muted },
+                );
+            }
+        }
+
+        let content_y = y + chrome_h;
+        let content_h = (h - chrome_h).max(8.0);
+        let divider = self.pane_border_thickness.clamp(1.0, 8.0);
+        let left_w = w * 0.34;
+        let chart_x = x + left_w + divider;
+        let chart_w = (w - left_w - divider).max(8.0);
+        frame.fill_rectangle(Point::new(x, content_y), Size::new(left_w, content_h), bg);
+        frame.fill_rectangle(
+            Point::new(x + left_w, content_y),
+            Size::new(divider, content_h),
+            muted,
+        );
+
+        let pad = self.widget_padding.clamp(2.0, 20.0);
+        let row_h = ((content_h - pad * 2.0 - 10.0) / 4.0).max(4.0);
+        for i in 0..4 {
+            let row_y = content_y + pad + i as f32 * (row_h + 3.0);
+            let row_w = (left_w - pad * 2.0 - i as f32 * 4.0).max(4.0);
+            frame.fill_rectangle(
+                Point::new(x + pad, row_y),
+                Size::new(row_w, row_h),
+                Color {
+                    a: if i == 0 { 0.50 } else { 0.26 },
+                    ..weak
+                },
+            );
+        }
+
+        let chart_rect = iced::widget::canvas::Path::rectangle(
+            Point::new(chart_x, content_y),
+            Size::new(chart_w, content_h),
+        );
+        frame.fill(&chart_rect, bg);
+        if self.chart_gradient_background {
+            frame.fill_rectangle(
+                Point::new(chart_x, content_y),
+                Size::new(chart_w, content_h * 0.55),
+                Color { a: 0.22, ..primary },
+            );
+        }
+        if self.chart_dotted_background {
+            let dot_alpha = self.chart_dotted_background_opacity.clamp(0.0, 1.0) * 0.55;
+            let mut dot_y = content_y + 9.0;
+            while dot_y < content_y + content_h - 4.0 {
+                let mut dot_x = chart_x + 9.0;
+                while dot_x < chart_x + chart_w - 4.0 {
+                    frame.fill_rectangle(
+                        Point::new(dot_x, dot_y),
+                        Size::new(1.6, 1.6),
+                        Color {
+                            a: dot_alpha,
+                            ..muted
+                        },
+                    );
+                    dot_x += 15.0;
+                }
+                dot_y += 15.0;
+            }
+        }
+
+        if self.chart_series_style.is_line() {
+            let line = iced::widget::canvas::Path::new(|p| {
+                p.move_to(Point::new(chart_x + 9.0, content_y + content_h * 0.70));
+                p.line_to(Point::new(
+                    chart_x + chart_w * 0.28,
+                    content_y + content_h * 0.45,
+                ));
+                p.line_to(Point::new(
+                    chart_x + chart_w * 0.48,
+                    content_y + content_h * 0.57,
+                ));
+                p.line_to(Point::new(
+                    chart_x + chart_w * 0.68,
+                    content_y + content_h * 0.31,
+                ));
+                p.line_to(Point::new(
+                    chart_x + chart_w - 9.0,
+                    content_y + content_h * 0.39,
+                ));
+            });
+            if self.chart_chromatic_aberration_enabled {
+                let fringe = iced::widget::canvas::Path::new(|p| {
+                    p.move_to(Point::new(chart_x + 11.0, content_y + content_h * 0.71));
+                    p.line_to(Point::new(
+                        chart_x + chart_w * 0.28 + 2.0,
+                        content_y + content_h * 0.46,
+                    ));
+                    p.line_to(Point::new(
+                        chart_x + chart_w * 0.48 + 2.0,
+                        content_y + content_h * 0.58,
+                    ));
+                    p.line_to(Point::new(
+                        chart_x + chart_w * 0.68 + 2.0,
+                        content_y + content_h * 0.32,
+                    ));
+                    p.line_to(Point::new(
+                        chart_x + chart_w - 7.0,
+                        content_y + content_h * 0.40,
+                    ));
+                });
+                frame.stroke(
+                    &fringe,
+                    iced::widget::canvas::Stroke::default()
+                        .with_color(Color { a: 0.5, ..danger })
+                        .with_width(1.0),
+                );
+            }
+            frame.stroke(
+                &line,
+                iced::widget::canvas::Stroke::default()
+                    .with_color(primary)
+                    .with_width(2.0),
+            );
+        } else {
+            for i in 0..6 {
+                let candle_x = chart_x + 12.0 + i as f32 * ((chart_w - 24.0) / 6.0);
+                let bullish = i % 2 == 0;
+                let color = if bullish { success } else { danger };
+                let body_h = 16.0 + (i % 3) as f32 * 4.0;
+                let body_y = content_y + content_h * 0.35 + (i % 2) as f32 * 8.0;
+                let wick_x = candle_x + 4.0;
+                let hollow = self.chart_hollow_candle_mode.applies_to(bullish);
+                let wick = iced::widget::canvas::Path::line(
+                    Point::new(wick_x, body_y - 8.0),
+                    Point::new(wick_x, body_y + body_h + 8.0),
+                );
+                frame.stroke(
+                    &wick,
+                    iced::widget::canvas::Stroke::default()
+                        .with_color(color)
+                        .with_width(1.0),
+                );
+                let body = iced::widget::canvas::Path::rectangle(
+                    Point::new(candle_x, body_y),
+                    Size::new(8.0, body_h),
+                );
+                if hollow {
+                    frame.stroke(
+                        &body,
+                        iced::widget::canvas::Stroke::default()
+                            .with_color(color)
+                            .with_width(1.2),
+                    );
+                } else {
+                    frame.fill(&body, color);
+                }
+            }
+        }
+
+        if self.chart_fisheye_enabled {
+            let lens = iced::widget::canvas::Path::rectangle(
+                Point::new(chart_x + chart_w * 0.43, content_y + content_h * 0.24),
+                Size::new(chart_w * 0.22, content_h * 0.42),
+            );
+            frame.stroke(
+                &lens,
+                iced::widget::canvas::Stroke::default()
+                    .with_color(Color { a: 0.36, ..primary })
+                    .with_width(1.0),
+            );
+        }
+
+        if self.chart_edge_blur_enabled {
+            frame.fill_rectangle(
+                Point::new(chart_x, content_y),
+                Size::new(chart_w, 8.0),
+                Color { a: 0.20, ..strong },
+            );
+            frame.fill_rectangle(
+                Point::new(chart_x, content_y + content_h - 8.0),
+                Size::new(chart_w, 8.0),
+                Color { a: 0.20, ..strong },
+            );
+        }
+
+        if self.pane_corner_radius > 0.0 {
+            let corner = self.pane_corner_radius.min(10.0);
+            for (cx, cy) in [
+                (x + 2.0, y + 2.0),
+                (x + w - corner - 2.0, y + 2.0),
+                (x + 2.0, y + h - corner - 2.0),
+                (x + w - corner - 2.0, y + h - corner - 2.0),
+            ] {
+                frame.fill_rectangle(
+                    Point::new(cx, cy),
+                    Size::new(corner, corner),
+                    Color { a: 0.16, ..primary },
+                );
+            }
+        }
+
+        vec![frame.into_geometry()]
     }
 }
 
