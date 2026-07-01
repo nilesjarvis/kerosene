@@ -207,7 +207,7 @@ pub struct KeroseneConfig {
     #[serde(skip_serializing)]
     pub chart_backfill_source: ChartBackfillSource,
     /// Global display font used by default UI text.
-    #[serde(default)]
+    #[serde(default = "crate::config::default_display_font_config")]
     pub display_font: DisplayFontConfig,
     /// Global font used where the terminal explicitly aligns text as monospace.
     #[serde(default)]

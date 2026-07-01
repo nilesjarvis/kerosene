@@ -30,8 +30,8 @@ pub(crate) use files::{config_save_installed_snapshot, user_config_dir, user_con
 pub(crate) use fonts::{
     BUNDLED_DISPLAY_FONT_FAMILIES, DM_SANS_FONT_FAMILY, INTER_FONT_FAMILY, QUANTICO_FONT_FAMILY,
     ROBOTO_FONT_FAMILY, ROBOTO_MONO_FONT_FAMILY, UBUNTU_SANS_FONT_FAMILY,
-    UBUNTU_SANS_MONO_FONT_FAMILY, bundled_display_font_family, normalize_custom_fonts,
-    normalize_display_font,
+    UBUNTU_SANS_MONO_FONT_FAMILY, bundled_display_font_family, default_display_font_config,
+    normalize_custom_fonts, normalize_display_font,
 };
 pub use fonts::{CustomFontConfig, DisplayFontConfig};
 pub use hotkeys::{HotkeyAction, HotkeyConfig, HotkeyPrefixConfig};

@@ -23,6 +23,12 @@ pub(crate) const BUNDLED_DISPLAY_FONT_FAMILIES: &[&str] = &[
     UBUNTU_SANS_MONO_FONT_FAMILY,
 ];
 
+pub(crate) fn default_display_font_config() -> DisplayFontConfig {
+    DisplayFontConfig::Custom {
+        family: QUANTICO_FONT_FAMILY.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomFontConfig {
     pub family: String,

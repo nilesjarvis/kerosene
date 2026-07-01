@@ -1,12 +1,12 @@
 use super::super::super::config_warning_guard;
 use super::{
-    CustomFontConfig, DisplayFontConfig, KeroseneConfig, default_config_value, json_string,
-    object_mut, value_from_json, value_from_str,
+    CustomFontConfig, DisplayFontConfig, KeroseneConfig, QUANTICO_FONT_FAMILY,
+    default_config_value, json_string, object_mut, value_from_json, value_from_str,
 };
 use crate::config::take_config_warnings;
 
 #[test]
-fn display_and_monospace_fonts_round_trip_and_legacy_default_system() {
+fn display_and_monospace_fonts_round_trip_and_legacy_defaults() {
     let config = KeroseneConfig {
         display_font: DisplayFontConfig::Custom {
             family: "Inter".to_string(),
@@ -35,7 +35,12 @@ fn display_and_monospace_fonts_round_trip_and_legacy_default_system() {
 
     let decoded_legacy: KeroseneConfig =
         value_from_json(legacy, "legacy config should deserialize");
-    assert_eq!(decoded_legacy.display_font, DisplayFontConfig::System);
+    assert_eq!(
+        decoded_legacy.display_font,
+        DisplayFontConfig::Custom {
+            family: QUANTICO_FONT_FAMILY.to_string()
+        }
+    );
     assert_eq!(decoded_legacy.monospace_font, DisplayFontConfig::System);
     assert!(decoded_legacy.custom_fonts.is_empty());
 }
