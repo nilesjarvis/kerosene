@@ -14,6 +14,10 @@ struct SecretPersistenceValues<'a> {
     x_access_token: &'a str,
     x_oauth_client_id: &'a str,
     x_refresh_token: &'a str,
+    schwab_client_id: &'a str,
+    schwab_client_secret: &'a str,
+    schwab_access_token: &'a str,
+    schwab_refresh_token: &'a str,
     removed_profile_secret_ids: &'a [String],
 }
 
@@ -31,13 +35,17 @@ impl TradingTerminal {
         success_message: &str,
         failure_prefix: &str,
     ) -> bool {
-        match config::store_keychain_secrets_with_profile_removals_with_x_oauth(
+        match config::store_keychain_secrets_with_profile_removals_with_integrations(
             values.accounts,
             values.hydromancer_api_key,
             values.hyperdash_api_key,
             values.x_access_token,
             values.x_oauth_client_id,
             values.x_refresh_token,
+            values.schwab_client_id,
+            values.schwab_client_secret,
+            values.schwab_access_token,
+            values.schwab_refresh_token,
             values.removed_profile_secret_ids,
         ) {
             Ok(cleanup_warning) => {
@@ -80,6 +88,8 @@ impl TradingTerminal {
         let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
         let (x_access_token, x_oauth_client_id, x_refresh_token) =
             self.x_feed.oauth_credentials_for_secret();
+        let (schwab_client_id, schwab_client_secret, schwab_access_token, schwab_refresh_token) =
+            self.schwab.oauth_credentials_for_secret();
         self.persist_keychain_credentials_from_values(
             SecretPersistenceValues {
                 accounts,
@@ -88,10 +98,39 @@ impl TradingTerminal {
                 x_access_token: x_access_token.as_str(),
                 x_oauth_client_id: x_oauth_client_id.as_str(),
                 x_refresh_token: x_refresh_token.as_str(),
+                schwab_client_id: schwab_client_id.as_str(),
+                schwab_client_secret: schwab_client_secret.as_str(),
+                schwab_access_token: schwab_access_token.as_str(),
+                schwab_refresh_token: schwab_refresh_token.as_str(),
                 removed_profile_secret_ids,
             },
             success_message,
             failure_prefix,
+        )
+    }
+
+    pub(crate) fn secret_payload_with_current_integrations(
+        &self,
+        accounts: &[config::AccountProfile],
+        hydromancer_api_key: &str,
+        hyperdash_api_key: &str,
+        x_access_token: &str,
+        x_oauth_client_id: &str,
+        x_refresh_token: &str,
+    ) -> config::SecretPayload {
+        let (schwab_client_id, schwab_client_secret, schwab_access_token, schwab_refresh_token) =
+            self.schwab.oauth_credentials_for_secret();
+        config::SecretPayload::from_credentials_with_integrations(
+            accounts,
+            hydromancer_api_key,
+            hyperdash_api_key,
+            x_access_token,
+            x_oauth_client_id,
+            x_refresh_token,
+            schwab_client_id.as_str(),
+            schwab_client_secret.as_str(),
+            schwab_access_token.as_str(),
+            schwab_refresh_token.as_str(),
         )
     }
 
@@ -112,7 +151,7 @@ impl TradingTerminal {
             config::CredentialStorageMode::EncryptedConfig => {
                 let (x_access_token, x_oauth_client_id, x_refresh_token) =
                     self.x_feed.oauth_credentials_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x_oauth(
+                let payload = self.secret_payload_with_current_integrations(
                     accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
@@ -155,7 +194,7 @@ impl TradingTerminal {
             config::CredentialStorageMode::EncryptedConfig => {
                 let (x_access_token, x_oauth_client_id, x_refresh_token) =
                     self.x_feed.oauth_credentials_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x_oauth(
+                let payload = self.secret_payload_with_current_integrations(
                     accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
@@ -183,6 +222,12 @@ impl TradingTerminal {
                 let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
                 let (x_access_token, x_oauth_client_id, x_refresh_token) =
                     self.x_feed.oauth_credentials_for_secret();
+                let (
+                    schwab_client_id,
+                    schwab_client_secret,
+                    schwab_access_token,
+                    schwab_refresh_token,
+                ) = self.schwab.oauth_credentials_for_secret();
                 self.persist_keychain_credentials_from_values(
                     SecretPersistenceValues {
                         accounts: &accounts,
@@ -191,6 +236,10 @@ impl TradingTerminal {
                         x_access_token: x_access_token.as_str(),
                         x_oauth_client_id: x_oauth_client_id.as_str(),
                         x_refresh_token: x_refresh_token.as_str(),
+                        schwab_client_id: schwab_client_id.as_str(),
+                        schwab_client_secret: schwab_client_secret.as_str(),
+                        schwab_access_token: schwab_access_token.as_str(),
+                        schwab_refresh_token: schwab_refresh_token.as_str(),
                         removed_profile_secret_ids: &[],
                     },
                     "Hydromancer key saved to OS keychain",
@@ -201,7 +250,7 @@ impl TradingTerminal {
                 let accounts = self.persisted_accounts_snapshot();
                 let (x_access_token, x_oauth_client_id, x_refresh_token) =
                     self.x_feed.oauth_credentials_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x_oauth(
+                let payload = self.secret_payload_with_current_integrations(
                     &accounts,
                     hydromancer_api_key,
                     &self.hyperdash_api_key,
@@ -227,6 +276,12 @@ impl TradingTerminal {
                     Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
                 let (x_access_token, x_oauth_client_id, x_refresh_token) =
                     self.x_feed.oauth_credentials_for_secret();
+                let (
+                    schwab_client_id,
+                    schwab_client_secret,
+                    schwab_access_token,
+                    schwab_refresh_token,
+                ) = self.schwab.oauth_credentials_for_secret();
                 self.persist_keychain_credentials_from_values(
                     SecretPersistenceValues {
                         accounts: &accounts,
@@ -235,6 +290,10 @@ impl TradingTerminal {
                         x_access_token: x_access_token.as_str(),
                         x_oauth_client_id: x_oauth_client_id.as_str(),
                         x_refresh_token: x_refresh_token.as_str(),
+                        schwab_client_id: schwab_client_id.as_str(),
+                        schwab_client_secret: schwab_client_secret.as_str(),
+                        schwab_access_token: schwab_access_token.as_str(),
+                        schwab_refresh_token: schwab_refresh_token.as_str(),
                         removed_profile_secret_ids: &[],
                     },
                     "HyperDash key saved to OS keychain",
@@ -245,7 +304,7 @@ impl TradingTerminal {
                 let accounts = self.persisted_accounts_snapshot();
                 let (x_access_token, x_oauth_client_id, x_refresh_token) =
                     self.x_feed.oauth_credentials_for_secret();
-                let payload = config::SecretPayload::from_credentials_with_x_oauth(
+                let payload = self.secret_payload_with_current_integrations(
                     &accounts,
                     &self.hydromancer_api_key,
                     hyperdash_api_key,
@@ -275,6 +334,12 @@ impl TradingTerminal {
                 let hydromancer_api_key =
                     Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
                 let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
+                let (
+                    schwab_client_id,
+                    schwab_client_secret,
+                    schwab_access_token,
+                    schwab_refresh_token,
+                ) = self.schwab.oauth_credentials_for_secret();
                 self.persist_keychain_credentials_from_values(
                     SecretPersistenceValues {
                         accounts: &accounts,
@@ -283,6 +348,10 @@ impl TradingTerminal {
                         x_access_token,
                         x_oauth_client_id,
                         x_refresh_token,
+                        schwab_client_id: schwab_client_id.as_str(),
+                        schwab_client_secret: schwab_client_secret.as_str(),
+                        schwab_access_token: schwab_access_token.as_str(),
+                        schwab_refresh_token: schwab_refresh_token.as_str(),
                         removed_profile_secret_ids: &[],
                     },
                     "X credentials saved to OS keychain",
@@ -291,7 +360,7 @@ impl TradingTerminal {
             }
             config::CredentialStorageMode::EncryptedConfig => {
                 let accounts = self.persisted_accounts_snapshot();
-                let payload = config::SecretPayload::from_credentials_with_x_oauth(
+                let payload = self.secret_payload_with_current_integrations(
                     &accounts,
                     &self.hydromancer_api_key,
                     &self.hyperdash_api_key,
@@ -302,6 +371,65 @@ impl TradingTerminal {
                 let persisted = self.persist_encrypted_secret_payload(
                     payload,
                     "X credentials saved to encrypted config",
+                );
+                self.secret_migration_save_blocked = !persisted;
+                persisted
+            }
+        }
+    }
+
+    pub(crate) fn persist_schwab_credentials_secret_from_keys(
+        &mut self,
+        schwab_client_id: &str,
+        schwab_client_secret: &str,
+        schwab_access_token: &str,
+        schwab_refresh_token: &str,
+    ) -> bool {
+        match self.secret_storage_mode {
+            config::CredentialStorageMode::OsKeychain => {
+                let accounts = self.persisted_accounts_snapshot();
+                let hydromancer_api_key =
+                    Zeroizing::new(self.hydromancer_api_key.as_str().to_string());
+                let hyperdash_api_key = Zeroizing::new(self.hyperdash_api_key.as_str().to_string());
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
+                self.persist_keychain_credentials_from_values(
+                    SecretPersistenceValues {
+                        accounts: &accounts,
+                        hydromancer_api_key: hydromancer_api_key.as_str(),
+                        hyperdash_api_key: hyperdash_api_key.as_str(),
+                        x_access_token: x_access_token.as_str(),
+                        x_oauth_client_id: x_oauth_client_id.as_str(),
+                        x_refresh_token: x_refresh_token.as_str(),
+                        schwab_client_id,
+                        schwab_client_secret,
+                        schwab_access_token,
+                        schwab_refresh_token,
+                        removed_profile_secret_ids: &[],
+                    },
+                    "Schwab credentials saved to OS keychain",
+                    "Schwab credential keychain save failed; credentials were not committed",
+                )
+            }
+            config::CredentialStorageMode::EncryptedConfig => {
+                let accounts = self.persisted_accounts_snapshot();
+                let (x_access_token, x_oauth_client_id, x_refresh_token) =
+                    self.x_feed.oauth_credentials_for_secret();
+                let payload = config::SecretPayload::from_credentials_with_integrations(
+                    &accounts,
+                    &self.hydromancer_api_key,
+                    &self.hyperdash_api_key,
+                    x_access_token.as_str(),
+                    x_oauth_client_id.as_str(),
+                    x_refresh_token.as_str(),
+                    schwab_client_id,
+                    schwab_client_secret,
+                    schwab_access_token,
+                    schwab_refresh_token,
+                );
+                let persisted = self.persist_encrypted_secret_payload(
+                    payload,
+                    "Schwab credentials saved to encrypted config",
                 );
                 self.secret_migration_save_blocked = !persisted;
                 persisted

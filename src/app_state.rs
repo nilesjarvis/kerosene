@@ -1,5 +1,5 @@
 use crate::account::AccountData;
-use crate::account_state::PositionsSortColumn;
+use crate::account_state::{ActiveAccountSource, PositionsSortColumn};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::alfred_state::AlfredState;
 use crate::annotations::DrawingTool;
@@ -31,6 +31,7 @@ use crate::pane_state::PaneKind;
 use crate::pnl_card::PnlCardWindowState;
 use crate::portfolio_state::{IncomeState, PortfolioState};
 use crate::positioning_state::{PositioningInfoId, PositioningInfoInstance};
+use crate::schwab::SchwabState;
 use crate::screener_state::ScreenerState;
 use crate::session_data_state::{SessionDataId, SessionDataInstance};
 use crate::settings_state::{SettingsTab, ThemeSettingsPage};
@@ -358,6 +359,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) pending_keychain_profile_deletions: Vec<String>,
     pub(crate) pending_keychain_cleanup_all: bool,
     pub(crate) active_account_index: usize,
+    pub(crate) active_account_source: ActiveAccountSource,
     pub(crate) ghost_account_secret_ids: HashSet<String>,
     pub(crate) last_persisted_active_account_secret_id: Option<String>,
     pub(crate) wallet_key_input: SensitiveString,
@@ -571,6 +573,7 @@ pub(crate) struct TradingTerminal {
     pub(crate) liquidation_distribution: LiquidationDistributionState,
     pub(crate) telegram_feed: TelegramFeedState,
     pub(crate) x_feed: XFeedState,
+    pub(crate) schwab: SchwabState,
 }
 
 #[cfg(test)]

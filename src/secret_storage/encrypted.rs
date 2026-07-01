@@ -14,13 +14,19 @@ impl TradingTerminal {
         let accounts = self.persisted_accounts_snapshot();
         let (x_access_token, x_oauth_client_id, x_refresh_token) =
             self.x_feed.oauth_credentials_for_secret();
-        config::SecretPayload::from_credentials_with_x_oauth(
+        let (schwab_client_id, schwab_client_secret, schwab_access_token, schwab_refresh_token) =
+            self.schwab.oauth_credentials_for_secret();
+        config::SecretPayload::from_credentials_with_integrations(
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,
             x_access_token.as_str(),
             x_oauth_client_id.as_str(),
             x_refresh_token.as_str(),
+            schwab_client_id.as_str(),
+            schwab_client_secret.as_str(),
+            schwab_access_token.as_str(),
+            schwab_refresh_token.as_str(),
         )
     }
 
@@ -194,6 +200,13 @@ impl TradingTerminal {
         let x_oauth_client_id =
             Zeroizing::new(payload.global_x_oauth_client_id().trim().to_string());
         let x_refresh_token = Zeroizing::new(payload.global_x_refresh_token().trim().to_string());
+        let schwab_client_id = Zeroizing::new(payload.global_schwab_client_id().trim().to_string());
+        let schwab_client_secret =
+            Zeroizing::new(payload.global_schwab_client_secret().trim().to_string());
+        let schwab_access_token =
+            Zeroizing::new(payload.global_schwab_access_token().trim().to_string());
+        let schwab_refresh_token =
+            Zeroizing::new(payload.global_schwab_refresh_token().trim().to_string());
         let previous_hydromancer_key = Zeroizing::new(self.hydromancer_api_key.trim().to_string());
         let previous_hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_key_changed =
@@ -228,6 +241,13 @@ impl TradingTerminal {
             x_access_token.as_str(),
             x_oauth_client_id.as_str(),
             x_refresh_token.as_str(),
+            None,
+        );
+        self.schwab.set_oauth_credentials_from_secret(
+            schwab_client_id.as_str(),
+            schwab_client_secret.as_str(),
+            schwab_access_token.as_str(),
+            schwab_refresh_token.as_str(),
             None,
         );
 

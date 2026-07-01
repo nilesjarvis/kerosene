@@ -107,6 +107,14 @@ pub struct GlobalSecretPayload {
     pub x_oauth_client_id: Zeroizing<String>,
     #[serde(default)]
     pub x_refresh_token: Zeroizing<String>,
+    #[serde(default)]
+    pub schwab_client_id: Zeroizing<String>,
+    #[serde(default)]
+    pub schwab_client_secret: Zeroizing<String>,
+    #[serde(default)]
+    pub schwab_access_token: Zeroizing<String>,
+    #[serde(default)]
+    pub schwab_refresh_token: Zeroizing<String>,
 }
 
 impl fmt::Debug for GlobalSecretPayload {
@@ -117,6 +125,10 @@ impl fmt::Debug for GlobalSecretPayload {
             .field("x_access_token", &"<redacted>")
             .field("x_oauth_client_id", &"<redacted>")
             .field("x_refresh_token", &"<redacted>")
+            .field("schwab_client_id", &"<redacted>")
+            .field("schwab_client_secret", &"<redacted>")
+            .field("schwab_access_token", &"<redacted>")
+            .field("schwab_refresh_token", &"<redacted>")
             .finish()
     }
 }
@@ -173,6 +185,7 @@ impl SecretPayload {
         )
     }
 
+    #[cfg(test)]
     pub fn from_credentials_with_x_oauth(
         profiles: &[AccountProfile],
         hydromancer_api_key: &str,
@@ -180,6 +193,33 @@ impl SecretPayload {
         x_access_token: &str,
         x_oauth_client_id: &str,
         x_refresh_token: &str,
+    ) -> Self {
+        Self::from_credentials_with_integrations(
+            profiles,
+            hydromancer_api_key,
+            hyperdash_api_key,
+            x_access_token,
+            x_oauth_client_id,
+            x_refresh_token,
+            "",
+            "",
+            "",
+            "",
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_credentials_with_integrations(
+        profiles: &[AccountProfile],
+        hydromancer_api_key: &str,
+        hyperdash_api_key: &str,
+        x_access_token: &str,
+        x_oauth_client_id: &str,
+        x_refresh_token: &str,
+        schwab_client_id: &str,
+        schwab_client_secret: &str,
+        schwab_access_token: &str,
+        schwab_refresh_token: &str,
     ) -> Self {
         Self {
             schema: SECRET_PAYLOAD_SCHEMA.to_string(),
@@ -200,6 +240,10 @@ impl SecretPayload {
                 x_access_token: x_access_token.to_string().into(),
                 x_oauth_client_id: x_oauth_client_id.to_string().into(),
                 x_refresh_token: x_refresh_token.to_string().into(),
+                schwab_client_id: schwab_client_id.to_string().into(),
+                schwab_client_secret: schwab_client_secret.to_string().into(),
+                schwab_access_token: schwab_access_token.to_string().into(),
+                schwab_refresh_token: schwab_refresh_token.to_string().into(),
             },
         }
     }
@@ -211,6 +255,10 @@ impl SecretPayload {
             && self.global.x_access_token.trim().is_empty()
             && self.global.x_oauth_client_id.trim().is_empty()
             && self.global.x_refresh_token.trim().is_empty()
+            && self.global.schwab_client_id.trim().is_empty()
+            && self.global.schwab_client_secret.trim().is_empty()
+            && self.global.schwab_access_token.trim().is_empty()
+            && self.global.schwab_refresh_token.trim().is_empty()
     }
 
     #[cfg(test)]
@@ -281,6 +329,22 @@ impl SecretPayload {
 
     pub fn global_x_refresh_token(&self) -> &str {
         &self.global.x_refresh_token
+    }
+
+    pub fn global_schwab_client_id(&self) -> &str {
+        &self.global.schwab_client_id
+    }
+
+    pub fn global_schwab_client_secret(&self) -> &str {
+        &self.global.schwab_client_secret
+    }
+
+    pub fn global_schwab_access_token(&self) -> &str {
+        &self.global.schwab_access_token
+    }
+
+    pub fn global_schwab_refresh_token(&self) -> &str {
+        &self.global.schwab_refresh_token
     }
 
     #[cfg(test)]
@@ -403,6 +467,38 @@ impl SecretPayload {
             return false;
         }
         self.global.x_refresh_token = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_schwab_client_id(&mut self, value: &str) -> bool {
+        if self.global.schwab_client_id.as_str() == value {
+            return false;
+        }
+        self.global.schwab_client_id = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_schwab_client_secret(&mut self, value: &str) -> bool {
+        if self.global.schwab_client_secret.as_str() == value {
+            return false;
+        }
+        self.global.schwab_client_secret = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_schwab_access_token(&mut self, value: &str) -> bool {
+        if self.global.schwab_access_token.as_str() == value {
+            return false;
+        }
+        self.global.schwab_access_token = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_schwab_refresh_token(&mut self, value: &str) -> bool {
+        if self.global.schwab_refresh_token.as_str() == value {
+            return false;
+        }
+        self.global.schwab_refresh_token = value.to_string().into();
         true
     }
 }

@@ -56,6 +56,29 @@ pub(super) fn add_account_button() -> Element<'static, Message> {
         .into()
 }
 
+pub(super) fn schwab_connect_button() -> Element<'static, Message> {
+    button(text("+ Schwab").size(11).center().width(Fill))
+        .on_press(Message::OpenIntegrationsSettings)
+        .padding([8, 10])
+        .width(Fill)
+        .style(|theme: &Theme, status| {
+            let bg = match status {
+                button::Status::Hovered => theme.extended_palette().background.strong.color,
+                _ => theme.extended_palette().background.weak.color,
+            };
+            button::Style {
+                background: Some(bg.into()),
+                text_color: theme.palette().primary,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
 pub(super) fn disconnect_account_button() -> Element<'static, Message> {
     button(text("Disconnect").size(11).center().width(Fill))
         .on_press(Message::DisconnectWallet)

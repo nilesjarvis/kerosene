@@ -210,6 +210,7 @@ impl TradingTerminal {
             pending_keychain_profile_deletions: cfg.pending_keychain_profile_deletions.clone(),
             pending_keychain_cleanup_all: cfg.pending_keychain_cleanup_all,
             active_account_index: boot_account.active_account_index,
+            active_account_source: crate::account_state::ActiveAccountSource::Hyperliquid,
             ghost_account_secret_ids: HashSet::new(),
             last_persisted_active_account_secret_id: boot_account.last_persisted_secret_id,
             wallet_key_input: boot_account.agent_key.into(),
@@ -430,6 +431,12 @@ impl TradingTerminal {
                 &cfg.x_access_token,
                 &cfg.x_oauth_client_id,
                 &cfg.x_refresh_token,
+            ),
+            schwab: crate::schwab::SchwabState::new(
+                &cfg.schwab_client_id,
+                &cfg.schwab_client_secret,
+                &cfg.schwab_access_token,
+                &cfg.schwab_refresh_token,
             ),
             hotkeys: cfg.hotkeys.clone(),
             chart_timeframe_hotkey_prefix: cfg

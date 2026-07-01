@@ -14,7 +14,9 @@ impl TradingTerminal {
         request: CandleFetchRequest,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
-        if request.source != self.chart_backfill_source_for_timeframe(request.timeframe) {
+        if request.source
+            != self.chart_backfill_source_for_symbol_timeframe(&request.symbol, request.timeframe)
+        {
             return Task::none();
         }
         if request.read_data_provider_generation != self.read_data_provider_generation {
@@ -141,7 +143,11 @@ impl TradingTerminal {
         }
 
         if let Some(request) = retry_request {
-            return Self::fetch_candles_task(request, self.hydromancer_api_key_for_task());
+            return Self::fetch_candles_task(
+                request,
+                self.hydromancer_api_key_for_task(),
+                self.schwab.access_token_for_task(),
+            );
         }
 
         if let Some((symbol, tf, new_cache)) = new_cache_data {
@@ -176,7 +182,9 @@ impl TradingTerminal {
         request: CandleFetchRequest,
         result: Result<Vec<Candle>, String>,
     ) -> Task<Message> {
-        if request.source != self.chart_backfill_source_for_timeframe(request.timeframe) {
+        if request.source
+            != self.chart_backfill_source_for_symbol_timeframe(&request.symbol, request.timeframe)
+        {
             return Task::none();
         }
         if request.read_data_provider_generation != self.read_data_provider_generation {
@@ -285,6 +293,7 @@ impl TradingTerminal {
             return Self::fetch_secondary_candles_task(
                 request,
                 self.hydromancer_api_key_for_task(),
+                self.schwab.access_token_for_task(),
             );
         }
 
@@ -306,8 +315,11 @@ impl TradingTerminal {
 }
 
 fn candle_fetch_error_is_retryable(request: &CandleFetchRequest, error: &str) -> bool {
-    request.source != ChartBackfillSource::Hydromancer
-        || !error.contains("Hydromancer API key required")
+    match request.source {
+        ChartBackfillSource::Hydromancer => !error.contains("Hydromancer API key required"),
+        ChartBackfillSource::Schwab => !error.contains("Schwab access token required"),
+        ChartBackfillSource::Hyperliquid => true,
+    }
 }
 
 #[cfg(test)]

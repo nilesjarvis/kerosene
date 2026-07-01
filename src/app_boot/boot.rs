@@ -56,12 +56,15 @@ impl TradingTerminal {
         let chart_backfill_source = cfg.read_data_provider.chart_backfill_source();
         let hydromancer_api_key =
             zeroize::Zeroizing::new(cfg.hydromancer_api_key.trim().to_string());
+        let schwab_access_token =
+            zeroize::Zeroizing::new(cfg.schwab_access_token.trim().to_string());
 
         let (charts, chart_tasks) = Self::boot_chart_instances(
             &chart_configs,
             &muted_tickers,
             chart_backfill_source,
             &hydromancer_api_key,
+            &schwab_access_token,
         );
         boot_tasks.extend(chart_tasks);
 
@@ -153,11 +156,18 @@ impl TradingTerminal {
             Task::none()
         };
 
+        let schwab_token_refresh_task = if state.schwab.has_refresh_credentials() {
+            Task::done(Message::SchwabTokenRefreshTick)
+        } else {
+            Task::none()
+        };
+
         boot_tasks.push(symbols_task);
         boot_tasks.push(book_task);
         boot_tasks.push(positioning_task);
         boot_tasks.push(state.request_session_data_refresh_all(false));
         boot_tasks.push(connect_task);
+        boot_tasks.push(schwab_token_refresh_task);
 
         boot_tasks.extend(state.boot_window_tasks(&cfg));
 

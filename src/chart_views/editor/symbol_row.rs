@@ -59,6 +59,48 @@ impl TradingTerminal {
         )
     }
 
+    pub(super) fn view_chart_editor_schwab_symbol_row<'a>(
+        &'a self,
+        chart_id: ChartId,
+        key: &str,
+        is_selected: bool,
+        is_keyboard_selected: bool,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        self.view_chart_editor_schwab_symbol_row_for(
+            chart_id,
+            key,
+            ChartEditorSymbolRowState {
+                is_fav: false,
+                is_selected,
+                is_keyboard_selected,
+                secondary: false,
+            },
+            theme,
+        )
+    }
+
+    pub(super) fn view_chart_secondary_editor_schwab_symbol_row<'a>(
+        &'a self,
+        chart_id: ChartId,
+        key: &str,
+        is_selected: bool,
+        is_keyboard_selected: bool,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        self.view_chart_editor_schwab_symbol_row_for(
+            chart_id,
+            key,
+            ChartEditorSymbolRowState {
+                is_fav: false,
+                is_selected,
+                is_keyboard_selected,
+                secondary: true,
+            },
+            theme,
+        )
+    }
+
     fn view_chart_editor_symbol_row_for<'a>(
         &'a self,
         chart_id: ChartId,
@@ -156,6 +198,80 @@ impl TradingTerminal {
             });
 
         row![star_btn, row_btn]
+            .spacing(2)
+            .align_y(iced::Alignment::Center)
+            .into()
+    }
+
+    fn view_chart_editor_schwab_symbol_row_for<'a>(
+        &'a self,
+        chart_id: ChartId,
+        key: &str,
+        row_state: ChartEditorSymbolRowState,
+        theme: &Theme,
+    ) -> Element<'a, Message> {
+        let ChartEditorSymbolRowState {
+            is_selected,
+            is_keyboard_selected,
+            secondary,
+            ..
+        } = row_state;
+        let display = crate::schwab::schwab_display_symbol(key).unwrap_or_else(|| key.to_string());
+        let key_owned = key.to_string();
+        let badge = text("SCHWAB").size(9).color(theme.palette().primary);
+        let coin_content = row![
+            text(display).size(12).width(Fill),
+            text("schwab").size(9).color(color!(0x666666)),
+            badge,
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center);
+
+        let row_btn = button(coin_content)
+            .on_press(if secondary {
+                Message::ChartSecondarySymbolSelected(chart_id, key_owned)
+            } else {
+                Message::ChartSymbolSelected(chart_id, key_owned)
+            })
+            .padding([3, 6])
+            .width(Fill)
+            .style(move |theme: &Theme, status| {
+                let bg = if is_selected || is_keyboard_selected {
+                    match status {
+                        button::Status::Hovered => theme.extended_palette().background.strong.color,
+                        _ => color!(0x2a2a4a),
+                    }
+                } else {
+                    match status {
+                        button::Status::Hovered => theme.extended_palette().background.weak.color,
+                        _ => theme.extended_palette().background.strong.color,
+                    }
+                };
+                let border_color = if is_selected || is_keyboard_selected {
+                    Color {
+                        a: 0.4,
+                        ..theme.palette().primary
+                    }
+                } else {
+                    Color::TRANSPARENT
+                };
+                button::Style {
+                    background: Some(bg.into()),
+                    text_color: theme.palette().text,
+                    border: iced::Border {
+                        radius: 2.0.into(),
+                        width: if is_selected || is_keyboard_selected {
+                            1.0
+                        } else {
+                            0.0
+                        },
+                        color: border_color,
+                    },
+                    ..Default::default()
+                }
+            });
+
+        row![Space::new().width(22.0), row_btn]
             .spacing(2)
             .align_y(iced::Alignment::Center)
             .into()

@@ -1,7 +1,7 @@
 # Integrations And Feeds
 
-Kerosene integrates with Hyperliquid, Hydromancer, HyperDash, Telegram, X,
-ForexFactory-style calendar data, SEC APIs, HYPE ETF endpoints, and
+Kerosene integrates with Hyperliquid, Hydromancer, HyperDash, Schwab, Telegram,
+X, ForexFactory-style calendar data, SEC APIs, HYPE ETF endpoints, and
 Hypurrscan-style unstaking data. Integrations enter the app as REST tasks,
 websocket subscriptions, timer-driven refreshes, or optional authenticated
 streams.
@@ -14,6 +14,7 @@ streams.
 | Hyperliquid websocket | `src/ws.rs`, `src/ws/manager.rs`, `src/ws/market_streams/`, `src/ws/user_streams/` | Singleton exchange websocket, subscriptions, coalescing, routed market/user streams. |
 | Hydromancer | `src/hydromancer_api.rs`, `src/ws/hydromancer/`, `src/feed_update/connection.rs` | Funding history, authenticated liquidation/tracked-trade feeds, optional read-data provider. |
 | HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
+| Schwab | `src/schwab.rs`, `src/account_update/schwab.rs`, `src/settings_views/integrations.rs`, chart backfill paths | User-supplied OAuth credentials, linked brokerage account summaries, and Schwab price-history candles. |
 | Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, aggregation, alerts, rendering. |
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
 | Calendar and screener | `src/calendar_*`, `src/screener_*` | Economic calendar, market screener contexts/history. |
@@ -120,6 +121,41 @@ HyperDash key clears relevant pending/cached overlay state and refreshes enabled
 views.
 
 The HyperDash key is secret-bearing.
+
+## Schwab
+
+Schwab is optional and authenticated through user-supplied Schwab developer app
+credentials or a pasted access token. The current integration is read-only:
+
+- OAuth refresh-token exchange and access-token persistence
+- automatic access-token refresh at boot and on a one-minute timer while
+  refresh credentials are stored (Schwab access tokens expire in ~30 minutes),
+  with a retry cooldown so a failing refresh cannot hammer the token endpoint
+- linked account discovery through the Schwab trader API
+- account summaries, balances, buying power, and position counts
+- `schwab:` chart symbols backed by Schwab price-history candles
+- account switcher entries that show Schwab details only while a Schwab account
+  is the active account source
+
+Schwab state appears in:
+
+- `src/schwab.rs`
+- `src/account_update/schwab.rs`
+- `src/account_views/picker/`
+- `src/account_views/summary.rs`
+- `src/settings_views/integrations.rs`
+- `src/api/candles.rs` and chart candle request paths
+
+Schwab app keys, app secrets, access tokens, refresh tokens, account numbers,
+and account hashes are secret or sensitive. They should be kept in
+`SensitiveString`, `Zeroizing`, redacted message wrappers, OS keychain, or
+encrypted-config paths. Do not write Schwab credentials or account identifiers
+to plaintext config snapshots or logs.
+
+Schwab order placement is intentionally disabled in the current build. Enabling
+trading should be handled as a separate high-risk order-execution project with
+request construction tests, stale-account guards, confirmation/error states, and
+approval for the relevant Schwab API scopes.
 
 ## Liquidation Feed
 

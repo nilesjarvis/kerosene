@@ -56,6 +56,25 @@ impl TradingTerminal {
             .into()
     }
 
+    pub(crate) fn account_integration_tag(
+        label: &'static str,
+        theme: &Theme,
+    ) -> Element<'static, Message> {
+        let color = theme.palette().primary;
+        container(text(label).size(9).color(color))
+            .padding([2, 6])
+            .style(move |_theme: &Theme| container_style::Style {
+                background: Some(Color { a: 0.14, ..color }.into()),
+                border: iced::Border {
+                    radius: 3.0.into(),
+                    width: 1.0,
+                    color: Color { a: 0.6, ..color },
+                },
+                ..Default::default()
+            })
+            .into()
+    }
+
     pub(crate) fn account_picker_label(option: &AccountPickerOption) -> String {
         let label = option.label.trim();
         if label.is_empty() {

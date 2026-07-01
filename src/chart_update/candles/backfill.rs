@@ -103,7 +103,10 @@ impl TradingTerminal {
             chart_id,
             &instance.symbol,
             instance.interval,
-            self.chart_backfill_request_context_for_timeframe(instance.interval),
+            self.chart_backfill_request_context_for_symbol_timeframe(
+                &instance.symbol,
+                instance.interval,
+            ),
             oldest_loaded_open_ms,
             MAX_CHART_CANDLES - candle_count,
         )
@@ -157,7 +160,7 @@ impl TradingTerminal {
             chart_id,
             symbol,
             instance.interval,
-            self.chart_backfill_request_context_for_timeframe(instance.interval),
+            self.chart_backfill_request_context_for_symbol_timeframe(symbol, instance.interval),
             oldest_loaded_open_ms,
             MAX_CHART_CANDLES - candle_count,
         )

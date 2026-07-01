@@ -1,4 +1,4 @@
-use crate::account_state::AccountPickerOption;
+use crate::account_state::{AccountPickerOption, ActiveAccountSource};
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 
@@ -35,14 +35,23 @@ impl TradingTerminal {
                 is_ghost: false,
             });
 
-        let label = Self::truncate_display_text(&Self::account_picker_label(&selected), 22);
-        let address = Self::account_picker_address_line(&selected);
+        let schwab_selected = self.active_account_source == ActiveAccountSource::Schwab;
+        let label = if schwab_selected {
+            Self::truncate_display_text(&self.schwab.selected_account_label(), 22)
+        } else {
+            Self::truncate_display_text(&Self::account_picker_label(&selected), 22)
+        };
+        let address = if schwab_selected {
+            self.schwab.selected_account_line()
+        } else {
+            Self::account_picker_address_line(&selected)
+        };
         let chevron = if self.account_picker_open {
             CHEVRON_UP
         } else {
             CHEVRON_DOWN
         };
-        let can_copy_address = !selected.address.trim().is_empty();
+        let can_copy_address = !schwab_selected && !selected.address.trim().is_empty();
         let copy_message =
             can_copy_address.then(|| Message::CopyToClipboard(selected.address.clone().into()));
         let inner_width = ACCOUNT_PICKER_WIDTH - ACCOUNT_PICKER_FRAME_PADDING * 2.0;
@@ -58,7 +67,11 @@ impl TradingTerminal {
                 ]
                 .spacing(2)
                 .width(Fill),
-                Self::account_mode_tag(selected.is_ghost, selected.can_trade, theme),
+                if schwab_selected {
+                    Self::account_integration_tag("SCHWAB", theme)
+                } else {
+                    Self::account_mode_tag(selected.is_ghost, selected.can_trade, theme)
+                },
             ]
             .spacing(10)
             .align_y(iced::Alignment::Center),

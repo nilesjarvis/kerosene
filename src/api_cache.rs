@@ -395,6 +395,7 @@ fn source_key(source: ChartBackfillSource) -> &'static str {
     match source {
         ChartBackfillSource::Hyperliquid => "hyperliquid",
         ChartBackfillSource::Hydromancer => "hydromancer",
+        ChartBackfillSource::Schwab => "schwab",
     }
 }
 

@@ -121,32 +121,18 @@ pub fn store_secret_payload(payload: &SecretPayload) -> Result<(), String> {
     keychain_set(GLOBAL_SECRET_ID, KEYCHAIN_PAYLOAD_FIELD, json.as_str())
 }
 
-pub fn store_keychain_secrets_with_x_oauth(
+#[allow(clippy::too_many_arguments)]
+pub fn store_keychain_secrets_with_profile_removals_with_integrations(
     profiles: &[AccountProfile],
     hydromancer_api_key: &str,
     hyperdash_api_key: &str,
     x_access_token: &str,
     x_oauth_client_id: &str,
     x_refresh_token: &str,
-) -> Result<Option<String>, String> {
-    store_keychain_secrets_with_profile_removals_with_x_oauth(
-        profiles,
-        hydromancer_api_key,
-        hyperdash_api_key,
-        x_access_token,
-        x_oauth_client_id,
-        x_refresh_token,
-        &[],
-    )
-}
-
-pub fn store_keychain_secrets_with_profile_removals_with_x_oauth(
-    profiles: &[AccountProfile],
-    hydromancer_api_key: &str,
-    hyperdash_api_key: &str,
-    x_access_token: &str,
-    x_oauth_client_id: &str,
-    x_refresh_token: &str,
+    schwab_client_id: &str,
+    schwab_client_secret: &str,
+    schwab_access_token: &str,
+    schwab_refresh_token: &str,
     removed_profile_secret_ids: &[String],
 ) -> Result<Option<String>, String> {
     if in_memory_config_mode() {
@@ -160,6 +146,10 @@ pub fn store_keychain_secrets_with_profile_removals_with_x_oauth(
         x_access_token,
         x_oauth_client_id,
         x_refresh_token,
+        schwab_client_id,
+        schwab_client_secret,
+        schwab_access_token,
+        schwab_refresh_token,
         removed_profile_secret_ids,
         KeychainProfileRemovalStoreHooks {
             load_payload: load_keychain_secret_payload,
@@ -185,6 +175,7 @@ struct KeychainProfileRemovalStoreHooks<
     clear_removed_profile: ClearRemovedProfile,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn store_keychain_secrets_with_profile_removals_with<
     LoadPayload,
     StorePayload,
@@ -198,6 +189,10 @@ fn store_keychain_secrets_with_profile_removals_with<
     x_access_token: &str,
     x_oauth_client_id: &str,
     x_refresh_token: &str,
+    schwab_client_id: &str,
+    schwab_client_secret: &str,
+    schwab_access_token: &str,
+    schwab_refresh_token: &str,
     removed_profile_secret_ids: &[String],
     mut hooks: KeychainProfileRemovalStoreHooks<
         LoadPayload,
@@ -214,13 +209,17 @@ where
     ClearBundleLegacy: FnMut(&SecretPayload) -> Result<(), String>,
     ClearRemovedProfile: FnMut(&str) -> Result<(), String>,
 {
-    let payload = SecretPayload::from_credentials_with_x_oauth(
+    let payload = SecretPayload::from_credentials_with_integrations(
         profiles,
         hydromancer_api_key,
         hyperdash_api_key,
         x_access_token,
         x_oauth_client_id,
         x_refresh_token,
+        schwab_client_id,
+        schwab_client_secret,
+        schwab_access_token,
+        schwab_refresh_token,
     );
     let requires_removed_profile_cleanup = removed_profile_secret_ids
         .iter()
@@ -777,6 +776,10 @@ mod tests {
             "",
             "",
             "",
+            "",
+            "",
+            "",
+            "",
             &[removed_profile.secret_id.clone()],
             KeychainProfileRemovalStoreHooks {
                 load_payload: || Ok(Some(SecretPayload::from_credentials(&[], "", ""))),
@@ -830,6 +833,10 @@ mod tests {
 
         let result = store_keychain_secrets_with_profile_removals_with(
             &[kept_profile, removed_profile.clone()],
+            "",
+            "",
+            "",
+            "",
             "",
             "",
             "",

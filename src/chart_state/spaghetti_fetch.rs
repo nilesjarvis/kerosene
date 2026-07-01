@@ -43,6 +43,7 @@ impl TradingTerminal {
             api::fetch_chart_backfill_candles(
                 backfill.source,
                 backfill.hydromancer_api_key,
+                zeroize::Zeroizing::new(String::new()),
                 coin_str.clone(),
                 api_tf.api_str().to_string(),
                 start,

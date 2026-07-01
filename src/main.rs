@@ -76,6 +76,7 @@ mod positioning_state;
 mod preferences_update;
 mod read_data_provider;
 mod risk_state;
+mod schwab;
 mod screener_state;
 mod screener_update;
 mod screener_views;

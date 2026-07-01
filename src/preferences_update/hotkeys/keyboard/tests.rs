@@ -1,7 +1,9 @@
 use super::{ChartEditorSelectionStep, next_chart_editor_selection};
+use crate::account_state::ActiveAccountSource;
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::chart_state::{ChartInstance, ChartSurfaceId, DetachedChartWindowState};
+use crate::schwab::SchwabState;
 use crate::timeframe::Timeframe;
 use crate::{config, message::Message};
 
@@ -189,4 +191,51 @@ fn configured_hotkey_ignores_auxiliary_window_keyboard_event() {
     ));
 
     assert!(!terminal.alfred.open);
+}
+
+#[test]
+fn chart_editor_keyboard_selection_counts_schwab_candidate_row() {
+    let mut terminal = TradingTerminal::boot().0;
+    let main_window_id = iced::window::Id::unique();
+    let detached_window_id = iced::window::Id::unique();
+    let chart_id = 9;
+    terminal.main_window_id = Some(main_window_id);
+    terminal.primary_chart_id = None;
+    terminal.charts.clear();
+    terminal.detached_chart_windows.clear();
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.active_account_source = ActiveAccountSource::Schwab;
+    terminal.schwab = SchwabState::new("", "", "schwab-access-token", "");
+
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance
+        .chart
+        .set_surface_id(ChartSurfaceId::Detached(detached_window_id));
+    instance.editor_open = true;
+    instance.editor_search_query = "btc".to_string();
+    terminal.charts.insert(chart_id, instance);
+    terminal
+        .detached_chart_windows
+        .insert(detached_window_id, DetachedChartWindowState::new(chart_id));
+
+    for _ in 0..2 {
+        let _ = terminal.handle_hotkey_keyboard_event(Message::KeyboardEvent(
+            detached_window_id,
+            key_pressed(
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::ArrowDown),
+                iced::keyboard::Modifiers::NONE,
+            ),
+            iced::event::Status::Captured,
+        ));
+    }
+
+    // Row 0 is the Schwab candidate; the lone exchange symbol sits at row 1 and
+    // must stay reachable by keyboard.
+    assert_eq!(
+        terminal
+            .charts
+            .get(&chart_id)
+            .and_then(|instance| instance.editor_selected_index),
+        Some(1)
+    );
 }

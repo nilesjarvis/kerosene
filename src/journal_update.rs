@@ -711,6 +711,7 @@ impl TradingTerminal {
             api::fetch_chart_backfill_candles(
                 fetch_request.source,
                 hydromancer_api_key,
+                zeroize::Zeroizing::new(String::new()),
                 fetch_request.coin,
                 fetch_request.timeframe.api_str().to_string(),
                 fetch_request.start_ms,

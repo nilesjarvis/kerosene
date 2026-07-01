@@ -288,7 +288,7 @@ impl XFeedRequestError {
 impl fmt::Debug for XFeedRequestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("XFeedRequestError")
-            .field("message", &redact_sensitive_response_text(&self.message))
+            .field("message", &"<redacted>")
             .field("rate_limited_until_ms", &self.rate_limited_until_ms)
             .finish()
     }

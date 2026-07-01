@@ -52,16 +52,42 @@ impl TradingTerminal {
 
     pub(crate) fn apply_secret_storage_selection(&mut self) {
         match self.secret_storage_selection {
-            config::CredentialStorageMode::OsKeychain => self
-                .apply_os_keychain_storage_selection_with(
+            config::CredentialStorageMode::OsKeychain => {
+                let (
+                    schwab_client_id,
+                    schwab_client_secret,
+                    schwab_access_token,
+                    schwab_refresh_token,
+                ) = self.schwab.oauth_credentials_for_secret();
+                self.apply_os_keychain_storage_selection_with(
                     config::save_config,
-                    config::store_keychain_secrets_with_x_oauth,
+                    move |profiles,
+                          hydromancer_api_key,
+                          hyperdash_api_key,
+                          x_access_token,
+                          x_oauth_client_id,
+                          x_refresh_token| {
+                        config::store_keychain_secrets_with_profile_removals_with_integrations(
+                            profiles,
+                            hydromancer_api_key,
+                            hyperdash_api_key,
+                            x_access_token,
+                            x_oauth_client_id,
+                            x_refresh_token,
+                            schwab_client_id.as_str(),
+                            schwab_client_secret.as_str(),
+                            schwab_access_token.as_str(),
+                            schwab_refresh_token.as_str(),
+                            &[],
+                        )
+                    },
                     config::load_keychain_secret_payload,
                     |payload| match payload {
                         Some(payload) => config::store_secret_payload(payload),
                         None => config::clear_keychain_secret_payload(),
                     },
-                ),
+                )
+            }
             config::CredentialStorageMode::EncryptedConfig => {
                 self.apply_encrypted_config_storage_selection_with(
                     config::save_config,
@@ -484,6 +510,35 @@ fn merge_missing_keychain_payload_secrets(
         && !keychain_payload.global_x_refresh_token().trim().is_empty()
     {
         payload.set_global_x_refresh_token(keychain_payload.global_x_refresh_token());
+    }
+    if payload.global_schwab_client_id().trim().is_empty()
+        && !keychain_payload.global_schwab_client_id().trim().is_empty()
+    {
+        payload.set_global_schwab_client_id(keychain_payload.global_schwab_client_id());
+    }
+    if payload.global_schwab_client_secret().trim().is_empty()
+        && !keychain_payload
+            .global_schwab_client_secret()
+            .trim()
+            .is_empty()
+    {
+        payload.set_global_schwab_client_secret(keychain_payload.global_schwab_client_secret());
+    }
+    if payload.global_schwab_access_token().trim().is_empty()
+        && !keychain_payload
+            .global_schwab_access_token()
+            .trim()
+            .is_empty()
+    {
+        payload.set_global_schwab_access_token(keychain_payload.global_schwab_access_token());
+    }
+    if payload.global_schwab_refresh_token().trim().is_empty()
+        && !keychain_payload
+            .global_schwab_refresh_token()
+            .trim()
+            .is_empty()
+    {
+        payload.set_global_schwab_refresh_token(keychain_payload.global_schwab_refresh_token());
     }
 }
 

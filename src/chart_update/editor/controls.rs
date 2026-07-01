@@ -59,11 +59,21 @@ impl TradingTerminal {
                     .unwrap_or_default();
 
                 let filtered = self.chart_editor_filtered_symbols(&query);
-                let selected_symbol = selected_index
-                    .and_then(|index| filtered.get(index))
-                    .or_else(|| (!query.is_empty()).then(|| filtered.first()).flatten());
+                let schwab_candidate = self.schwab_chart_symbol_candidate(&query);
+                let selected_key = match (schwab_candidate.as_ref(), selected_index) {
+                    (Some(key), Some(0)) => Some(key.clone()),
+                    (Some(key), None) if !query.is_empty() => Some(key.clone()),
+                    (Some(_), Some(index)) => filtered
+                        .get(index.saturating_sub(1))
+                        .map(|symbol| symbol.key.clone()),
+                    (None, Some(index)) => filtered.get(index).map(|symbol| symbol.key.clone()),
+                    (None, None) if !query.is_empty() => {
+                        filtered.first().map(|symbol| symbol.key.clone())
+                    }
+                    _ => None,
+                };
 
-                if let Some(key) = selected_symbol.map(|symbol| symbol.key.clone()) {
+                if let Some(key) = selected_key {
                     return self.update(Message::ChartSymbolSelected(id, key));
                 }
 
@@ -112,11 +122,21 @@ impl TradingTerminal {
                     .unwrap_or_default();
 
                 let filtered = self.chart_editor_filtered_symbols(&query);
-                let selected_symbol = selected_index
-                    .and_then(|index| filtered.get(index))
-                    .or_else(|| (!query.is_empty()).then(|| filtered.first()).flatten());
+                let schwab_candidate = self.schwab_chart_symbol_candidate(&query);
+                let selected_key = match (schwab_candidate.as_ref(), selected_index) {
+                    (Some(key), Some(0)) => Some(key.clone()),
+                    (Some(key), None) if !query.is_empty() => Some(key.clone()),
+                    (Some(_), Some(index)) => filtered
+                        .get(index.saturating_sub(1))
+                        .map(|symbol| symbol.key.clone()),
+                    (None, Some(index)) => filtered.get(index).map(|symbol| symbol.key.clone()),
+                    (None, None) if !query.is_empty() => {
+                        filtered.first().map(|symbol| symbol.key.clone())
+                    }
+                    _ => None,
+                };
 
-                if let Some(key) = selected_symbol.map(|symbol| symbol.key.clone()) {
+                if let Some(key) = selected_key {
                     return self.update(Message::ChartSecondarySymbolSelected(id, key));
                 }
 

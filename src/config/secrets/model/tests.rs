@@ -268,6 +268,29 @@ fn secret_payload_defaults_missing_profiles_bundle() {
     assert_eq!(payload.global_x_access_token(), "");
     assert_eq!(payload.global_x_oauth_client_id(), "");
     assert_eq!(payload.global_x_refresh_token(), "");
+    assert_eq!(payload.global_schwab_client_id(), "");
+    assert_eq!(payload.global_schwab_client_secret(), "");
+    assert_eq!(payload.global_schwab_access_token(), "");
+    assert_eq!(payload.global_schwab_refresh_token(), "");
+}
+
+#[test]
+fn secret_payload_with_only_schwab_credentials_is_not_empty() {
+    assert!(SecretPayload::from_credentials(&[], "", "").is_empty());
+
+    let payload = SecretPayload::from_credentials_with_integrations(
+        &[],
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "schwab-access",
+        "",
+    );
+    assert!(!payload.is_empty());
 }
 
 #[test]
@@ -277,13 +300,17 @@ fn secret_payload_debug_redacts_secret_values() {
         "0xABCDEFabcdefABCDEFabcdefABCDEFabcdefabcd",
         "agent-secret",
     )];
-    let payload = SecretPayload::from_credentials_with_x_oauth(
+    let payload = SecretPayload::from_credentials_with_integrations(
         &profiles,
         "hydro-secret",
         "hyper-secret",
         "x-secret",
         "x-client-secret",
         "x-refresh-secret",
+        "schwab-id-secret",
+        "schwab-app-secret",
+        "schwab-access-secret",
+        "schwab-refresh-secret",
     );
 
     let rendered = format!("{payload:?}");
@@ -298,6 +325,10 @@ fn secret_payload_debug_redacts_secret_values() {
         "x-secret",
         "x-client-secret",
         "x-refresh-secret",
+        "schwab-id-secret",
+        "schwab-app-secret",
+        "schwab-access-secret",
+        "schwab-refresh-secret",
     ] {
         assert!(!rendered.contains(secret), "debug output leaked {secret}");
     }

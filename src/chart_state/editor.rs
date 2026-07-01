@@ -1,6 +1,7 @@
 mod search;
 
 use super::ChartId;
+use crate::account_state::ActiveAccountSource;
 use crate::api::ExchangeSymbol;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
@@ -187,5 +188,15 @@ impl TradingTerminal {
         filtered.sort_by(|a, b| compare_chart_editor_symbols(a, b, &normalized_query, favs));
 
         filtered
+    }
+
+    pub(crate) fn schwab_chart_symbol_candidate(&self, query: &str) -> Option<String> {
+        if self.active_account_source != ActiveAccountSource::Schwab
+            || !self.schwab.has_access_token()
+        {
+            return None;
+        }
+
+        crate::schwab::schwab_symbol_key(query)
     }
 }

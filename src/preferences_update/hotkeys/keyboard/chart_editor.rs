@@ -97,7 +97,8 @@ impl TradingTerminal {
             return Task::none();
         };
 
-        let result_count = self.chart_editor_filtered_symbols(&query).len();
+        let result_count = self.chart_editor_filtered_symbols(&query).len()
+            + usize::from(self.schwab_chart_symbol_candidate(&query).is_some());
         let next_index = next_chart_editor_selection(current_index, result_count, step);
         if let Some(instance) = self.charts.get_mut(&editor_id) {
             if secondary {

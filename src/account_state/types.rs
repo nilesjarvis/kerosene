@@ -35,6 +35,13 @@ impl fmt::Display for AccountPickerOption {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ActiveAccountSource {
+    #[default]
+    Hyperliquid,
+    Schwab,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BottomTab {
     Positions,

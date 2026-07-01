@@ -163,6 +163,15 @@ impl TradingTerminal {
             );
         }
 
+        // Schwab access tokens are short-lived (~30 minutes); poll so charts and
+        // account data keep working without a manual reconnect.
+        if self.schwab.has_refresh_credentials() {
+            subs.push(
+                iced::time::every(std::time::Duration::from_secs(60))
+                    .map(|_| Message::SchwabTokenRefreshTick),
+            );
+        }
+
         if !self.hydromancer_api_key.trim().is_empty()
             && self
                 .charts

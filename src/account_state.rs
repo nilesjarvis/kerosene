@@ -4,4 +4,4 @@ mod picker;
 mod switching;
 mod types;
 
-pub(crate) use types::{AccountPickerOption, BottomTab, PositionsSortColumn};
+pub(crate) use types::{AccountPickerOption, ActiveAccountSource, BottomTab, PositionsSortColumn};

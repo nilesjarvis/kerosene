@@ -215,12 +215,25 @@ impl TradingTerminal {
         }
     }
 
-    pub(crate) fn chart_backfill_request_context_for_timeframe(
+    pub(crate) fn chart_backfill_source_for_symbol_timeframe(
         &self,
+        symbol: &str,
+        timeframe: Timeframe,
+    ) -> ChartBackfillSource {
+        if crate::schwab::is_schwab_symbol_key(symbol) {
+            ChartBackfillSource::Schwab
+        } else {
+            self.chart_backfill_source_for_timeframe(timeframe)
+        }
+    }
+
+    pub(crate) fn chart_backfill_request_context_for_symbol_timeframe(
+        &self,
+        symbol: &str,
         timeframe: Timeframe,
     ) -> ChartBackfillRequestContext {
         ChartBackfillRequestContext::new(
-            self.chart_backfill_source_for_timeframe(timeframe),
+            self.chart_backfill_source_for_symbol_timeframe(symbol, timeframe),
             self.read_data_provider_generation,
             self.hydromancer_key_generation,
         )
@@ -229,6 +242,7 @@ impl TradingTerminal {
     pub(crate) fn fetch_candles_task(
         request: CandleFetchRequest,
         hydromancer_api_key: Zeroizing<String>,
+        schwab_access_token: Zeroizing<String>,
     ) -> Task<Message> {
         let delay_ms = Self::candle_fetch_retry_delay_ms(request.attempt);
         let fetch_request = request.clone();
@@ -240,6 +254,7 @@ impl TradingTerminal {
                 api::fetch_chart_backfill_candles(
                     fetch_request.source,
                     hydromancer_api_key,
+                    schwab_access_token,
                     fetch_request.symbol,
                     fetch_request.timeframe.api_str().to_string(),
                     fetch_request.start_ms,
@@ -254,6 +269,7 @@ impl TradingTerminal {
     pub(crate) fn fetch_secondary_candles_task(
         request: CandleFetchRequest,
         hydromancer_api_key: Zeroizing<String>,
+        schwab_access_token: Zeroizing<String>,
     ) -> Task<Message> {
         let delay_ms = Self::candle_fetch_retry_delay_ms(request.attempt);
         let fetch_request = request.clone();
@@ -265,6 +281,7 @@ impl TradingTerminal {
                 api::fetch_chart_backfill_candles(
                     fetch_request.source,
                     hydromancer_api_key,
+                    schwab_access_token,
                     fetch_request.symbol,
                     fetch_request.timeframe.api_str().to_string(),
                     fetch_request.start_ms,
@@ -296,7 +313,11 @@ impl TradingTerminal {
                 instance.chart.status = ChartStatus::Loading;
             }
         }
-        Self::fetch_candles_task(request, self.hydromancer_api_key_for_task())
+        Self::fetch_candles_task(
+            request,
+            self.hydromancer_api_key_for_task(),
+            self.schwab.access_token_for_task(),
+        )
     }
 
     pub(crate) fn queue_candle_fetch_for(
@@ -310,7 +331,7 @@ impl TradingTerminal {
             chart_id,
             coin,
             tf,
-            self.chart_backfill_request_context_for_timeframe(tf),
+            self.chart_backfill_request_context_for_symbol_timeframe(coin, tf),
             cached_start_ms,
             0,
         );
@@ -336,7 +357,11 @@ impl TradingTerminal {
             instance.secondary_candle_fetch_request = Some(request.clone());
             instance.secondary_candle_fetch_error = None;
         }
-        Self::fetch_secondary_candles_task(request, self.hydromancer_api_key_for_task())
+        Self::fetch_secondary_candles_task(
+            request,
+            self.hydromancer_api_key_for_task(),
+            self.schwab.access_token_for_task(),
+        )
     }
 
     pub(crate) fn queue_secondary_candle_fetch_for(
@@ -350,7 +375,7 @@ impl TradingTerminal {
             chart_id,
             coin,
             tf,
-            self.chart_backfill_request_context_for_timeframe(tf),
+            self.chart_backfill_request_context_for_symbol_timeframe(coin, tf),
             cached_start_ms,
             0,
         );
@@ -365,6 +390,7 @@ impl TradingTerminal {
         let backfill_context = self.chart_backfill_request_context();
         let hydromancer_generation = self.hydromancer_key_generation;
         let hydromancer_key = self.hydromancer_api_key_for_task();
+        let schwab_access_token = self.schwab.access_token_for_task();
         let chart_requests: Vec<_> = self
             .charts
             .iter()
@@ -378,7 +404,10 @@ impl TradingTerminal {
                     *chart_id,
                     &instance.symbol,
                     instance.interval,
-                    self.chart_backfill_request_context_for_timeframe(instance.interval),
+                    self.chart_backfill_request_context_for_symbol_timeframe(
+                        &instance.symbol,
+                        instance.interval,
+                    ),
                     None,
                     0,
                 )
@@ -395,7 +424,10 @@ impl TradingTerminal {
                             *chart_id,
                             symbol,
                             instance.interval,
-                            self.chart_backfill_request_context_for_timeframe(instance.interval),
+                            self.chart_backfill_request_context_for_symbol_timeframe(
+                                symbol,
+                                instance.interval,
+                            ),
                             None,
                             0,
                         )
@@ -435,13 +467,21 @@ impl TradingTerminal {
 
         let mut tasks: Vec<Task<Message>> = chart_requests
             .into_iter()
-            .map(|request| Self::fetch_candles_task(request, hydromancer_key.clone()))
+            .map(|request| {
+                Self::fetch_candles_task(
+                    request,
+                    hydromancer_key.clone(),
+                    schwab_access_token.clone(),
+                )
+            })
             .collect();
-        tasks.extend(
-            secondary_chart_requests.into_iter().map(|request| {
-                Self::fetch_secondary_candles_task(request, hydromancer_key.clone())
-            }),
-        );
+        tasks.extend(secondary_chart_requests.into_iter().map(|request| {
+            Self::fetch_secondary_candles_task(
+                request,
+                hydromancer_key.clone(),
+                schwab_access_token.clone(),
+            )
+        }));
 
         let spaghetti_requests: Vec<_> = self
             .spaghetti_charts
@@ -503,7 +543,7 @@ impl TradingTerminal {
             tf,
             candles.clone(),
         );
-        let source = self.chart_backfill_source_for_timeframe(tf);
+        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
         let _ = crate::api_cache::save_candles_snapshot(source, symbol, tf, candles);
     }
 
@@ -523,7 +563,10 @@ impl TradingTerminal {
             return Some(candles);
         }
 
-        let source = self.chart_backfill_source_for_timeframe(tf);
+        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
+        if source == ChartBackfillSource::Schwab && !self.schwab.has_access_token() {
+            return None;
+        }
         if !crate::api_cache::cache_eligible(source, tf, &self.hydromancer_api_key) {
             return None;
         }
@@ -545,7 +588,7 @@ impl TradingTerminal {
         self.candle_data_cache.remove(&key);
         self.candle_data_cache_order
             .retain(|existing| existing != &key);
-        let source = self.chart_backfill_source_for_timeframe(tf);
+        let source = self.chart_backfill_source_for_symbol_timeframe(symbol, tf);
         let _ = crate::api_cache::remove_candles(source, symbol, tf);
     }
 }

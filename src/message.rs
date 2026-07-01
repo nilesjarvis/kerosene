@@ -37,6 +37,7 @@ use crate::positioning_state::{
 use crate::read_data_provider::{
     AccountDataRequestContext, MarketDataSourceContext, ReadDataRequestContext,
 };
+use crate::schwab::{SchwabAccountsSnapshot, SchwabOAuthTokenRefresh};
 use crate::screener_state::{ScreenerExchangeFilter, ScreenerSortColumn};
 use crate::session_data_state::{
     SessionDataCandles, SessionDataId, SessionDataLookback, SessionDataRequest,
@@ -410,10 +411,7 @@ impl fmt::Debug for XAuthContextMessageResult {
                 .field("lists", &outcome.lists.len())
                 .field("unavailable_sources", &outcome.unavailable_sources)
                 .finish(),
-            Err(error) => f
-                .debug_tuple("XAuthContextMessageResult")
-                .field(&crate::helpers::redact_sensitive_response_text(error))
-                .finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
         }
     }
 }
@@ -438,10 +436,7 @@ impl fmt::Debug for XAccessTokenRefreshMessageResult {
                 .debug_struct("XAccessTokenRefreshMessageResult")
                 .field("refresh", refresh)
                 .finish(),
-            Err(error) => f
-                .debug_tuple("XAccessTokenRefreshMessageResult")
-                .field(&crate::helpers::redact_sensitive_response_text(error))
-                .finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
         }
     }
 }
@@ -467,10 +462,7 @@ impl fmt::Debug for XListsMessageResult {
                 .field("lists", &outcome.lists.len())
                 .field("unavailable_sources", &outcome.unavailable_sources)
                 .finish(),
-            Err(error) => f
-                .debug_tuple("XListsMessageResult")
-                .field(&crate::helpers::redact_sensitive_response_text(error))
-                .finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
         }
     }
 }
@@ -520,10 +512,57 @@ impl fmt::Debug for XProfileImageMessageResult {
                 .debug_struct("XProfileImageMessageResult")
                 .field("bytes", &bytes.len())
                 .finish(),
-            Err(error) => f
-                .debug_tuple("XProfileImageMessageResult")
-                .field(&crate::helpers::redact_sensitive_response_text(error))
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct SchwabTokenRefreshMessageResult(Box<Result<SchwabOAuthTokenRefresh, String>>);
+
+impl SchwabTokenRefreshMessageResult {
+    pub(crate) fn new(result: Result<SchwabOAuthTokenRefresh, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<SchwabOAuthTokenRefresh, String> {
+        *self.0
+    }
+}
+
+impl fmt::Debug for SchwabTokenRefreshMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(refresh) => f
+                .debug_struct("SchwabTokenRefreshMessageResult")
+                .field("refresh", refresh)
                 .finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct SchwabAccountsMessageResult(Box<Result<SchwabAccountsSnapshot, String>>);
+
+impl SchwabAccountsMessageResult {
+    pub(crate) fn new(result: Result<SchwabAccountsSnapshot, String>) -> Self {
+        Self(Box::new(result))
+    }
+
+    pub(crate) fn into_result(self) -> Result<SchwabAccountsSnapshot, String> {
+        *self.0
+    }
+}
+
+impl fmt::Debug for SchwabAccountsMessageResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.as_ref() {
+            Ok(snapshot) => f
+                .debug_struct("SchwabAccountsMessageResult")
+                .field("snapshot", snapshot)
+                .finish(),
+            Err(_) => f.write_str("Err(<redacted>)"),
         }
     }
 }
@@ -664,6 +703,7 @@ pub(crate) enum Message {
     AddComparisonChart,
     AddPairRatioChart,
     OpenSettingsWindow,
+    OpenIntegrationsSettings,
     OpenScreenerWindow,
     RefreshScreener,
     ForceRefreshScreener,
@@ -988,6 +1028,17 @@ pub(crate) enum Message {
     XFeedRefreshTick,
     XFeedLoaded(XFeedSource, u64, XFeedPageMessageResult),
     XProfileImageLoaded(u64, XProfileImageMessageResult),
+    SchwabClientIdChanged(SecretInput),
+    SchwabClientSecretChanged(SecretInput),
+    SchwabAccessTokenChanged(SecretInput),
+    SchwabRefreshTokenChanged(SecretInput),
+    SchwabConnect,
+    SchwabAccessTokenRefreshed(u64, SchwabTokenRefreshMessageResult),
+    SchwabAccountsRefresh,
+    SchwabAccountsLoaded(u64, SchwabAccountsMessageResult),
+    SchwabAccountPickerSelected(RedactedAccountKey),
+    SchwabClearCredentials,
+    SchwabTokenRefreshTick,
     // Drawing tools
     SetDrawingTool(ChartId, ChartSurfaceId, Option<DrawingTool>),
     AddAnnotation(ChartId, Annotation),
@@ -1428,7 +1479,8 @@ pub(crate) enum Message {
 #[cfg(test)]
 mod tests {
     use super::{
-        Message, RedactedOrderInput, RedactedPhoneInput, RedactedTelegramChannelKey, SecretInput,
+        Message, RedactedOrderInput, RedactedPhoneInput, RedactedTelegramChannelKey,
+        SchwabAccountsMessageResult, SchwabTokenRefreshMessageResult, SecretInput,
         TelegramFastAuthMessageResult, TelegramFastAuthOutcome, XAccessTokenRefreshMessageResult,
         XAuthContextMessageResult, XFeedPageMessageResult, XListsMessageResult,
         XProfileImageMessageResult,
@@ -1555,12 +1607,61 @@ mod tests {
             Message::WalletKeyInputChanged("sentinel-secret".into()),
             Message::HydromancerKeyInputChanged("sentinel-secret".into()),
             Message::HyperdashKeyInputChanged("sentinel-secret".into()),
+            Message::SchwabClientIdChanged("sentinel-secret".into()),
+            Message::SchwabClientSecretChanged("sentinel-secret".into()),
+            Message::SchwabAccessTokenChanged("sentinel-secret".into()),
+            Message::SchwabRefreshTokenChanged("sentinel-secret".into()),
+            Message::SchwabAccessTokenRefreshed(
+                6,
+                SchwabTokenRefreshMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::SchwabAccessTokenRefreshed(
+                7,
+                SchwabTokenRefreshMessageResult::new(Ok(crate::schwab::SchwabOAuthTokenRefresh {
+                    access_token: "sentinel-secret".to_string().into(),
+                    refresh_token: Some("sentinel-secret".to_string().into()),
+                    expires_in_secs: Some(1_800),
+                })),
+            ),
+            Message::SchwabAccountsLoaded(
+                8,
+                SchwabAccountsMessageResult::new(Err("sentinel-secret".to_string())),
+            ),
+            Message::SchwabAccountsLoaded(
+                9,
+                SchwabAccountsMessageResult::new(Ok(crate::schwab::SchwabAccountsSnapshot {
+                    linked_accounts: vec![crate::schwab::SchwabLinkedAccount {
+                        account_number: Some("sentinel-secret".to_string()),
+                        hash_value: "sentinel-secret".to_string(),
+                    }],
+                    accounts: vec![crate::schwab::SchwabAccountSummary {
+                        account_number: Some("sentinel-secret".to_string()),
+                        account_hash: "sentinel-secret".to_string(),
+                        account_type: Some("BROKERAGE".to_string()),
+                        cash_balance: Some(1.0),
+                        buying_power: Some(2.0),
+                        liquidation_value: Some(3.0),
+                        positions: vec![crate::schwab::SchwabPositionSummary {
+                            symbol: "AAPL".to_string(),
+                            quantity: 4.0,
+                            market_value: Some(5.0),
+                        }],
+                    }],
+                })),
+            ),
+            Message::SchwabAccountPickerSelected(Some("sentinel-secret".to_string()).into()),
         ];
 
         for message in messages {
             let rendered = format!("{message:?}");
-            assert!(rendered.contains("<redacted>"));
-            assert!(!rendered.contains("sentinel-secret"));
+            assert!(
+                rendered.contains("<redacted>"),
+                "missing redaction marker: {rendered}"
+            );
+            assert!(
+                !rendered.contains("sentinel-secret"),
+                "debug output leaked a secret: {rendered}"
+            );
         }
     }
 

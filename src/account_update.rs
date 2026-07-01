@@ -1,6 +1,7 @@
 mod connection;
 mod position_pnl;
 mod profile;
+mod schwab;
 mod stream;
 
 use crate::app_state::TradingTerminal;
@@ -35,6 +36,17 @@ impl TradingTerminal {
             Message::WalletAddressInputChanged(value) => {
                 self.update_wallet_address_input(value.into_string())
             }
+            message @ (Message::SchwabClientIdChanged(_)
+            | Message::SchwabClientSecretChanged(_)
+            | Message::SchwabAccessTokenChanged(_)
+            | Message::SchwabRefreshTokenChanged(_)
+            | Message::SchwabConnect
+            | Message::SchwabAccessTokenRefreshed(_, _)
+            | Message::SchwabAccountsRefresh
+            | Message::SchwabAccountsLoaded(_, _)
+            | Message::SchwabAccountPickerSelected(_)
+            | Message::SchwabClearCredentials
+            | Message::SchwabTokenRefreshTick) => self.update_schwab(message),
             Message::ToggleAccountPicker => self.toggle_account_picker(),
             Message::AccountPickerSelected(index) => self.select_account_from_picker(index),
             Message::AccountPickerRenameToggled(index) => self.toggle_account_picker_rename(index),

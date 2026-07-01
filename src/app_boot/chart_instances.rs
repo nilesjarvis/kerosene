@@ -16,6 +16,7 @@ impl TradingTerminal {
         muted_tickers: &HashSet<String>,
         chart_backfill_source: ChartBackfillSource,
         hydromancer_api_key: &Zeroizing<String>,
+        schwab_access_token: &Zeroizing<String>,
     ) -> (HashMap<ChartId, ChartInstance>, Vec<Task<Message>>) {
         let mut boot_tasks = Vec::new();
         let mut charts = HashMap::new();
@@ -62,13 +63,16 @@ impl TradingTerminal {
                 && !Self::key_matches_muted_tickers(&[], muted_tickers, &chart_cfg.symbol)
             {
                 if tf.uses_candle_backfill() {
-                    let source = if tf.requires_hydromancer_backfill() {
+                    let source = if crate::schwab::is_schwab_symbol_key(&chart_cfg.symbol) {
+                        ChartBackfillSource::Schwab
+                    } else if tf.requires_hydromancer_backfill() {
                         ChartBackfillSource::Hydromancer
                     } else {
                         chart_backfill_source
                     };
-                    let can_load_cached_candles =
-                        crate::api_cache::cache_eligible(source, tf, hydromancer_api_key);
+                    let can_load_cached_candles = (source != ChartBackfillSource::Schwab
+                        || !schwab_access_token.trim().is_empty())
+                        && crate::api_cache::cache_eligible(source, tf, hydromancer_api_key);
                     let cached_candles = can_load_cached_candles
                         .then(|| {
                             crate::api_cache::load_fresh_candles(
@@ -99,6 +103,7 @@ impl TradingTerminal {
                     boot_tasks.push(Self::fetch_candles_task(
                         request,
                         hydromancer_api_key.clone(),
+                        schwab_access_token.clone(),
                     ));
                 } else {
                     instance.chart.status = crate::chart::ChartStatus::Loaded;
@@ -115,13 +120,16 @@ impl TradingTerminal {
             if let Some(symbol) = instance.secondary_symbol.clone()
                 && tf.uses_candle_backfill()
             {
-                let source = if tf.requires_hydromancer_backfill() {
+                let source = if crate::schwab::is_schwab_symbol_key(&symbol) {
+                    ChartBackfillSource::Schwab
+                } else if tf.requires_hydromancer_backfill() {
                     ChartBackfillSource::Hydromancer
                 } else {
                     chart_backfill_source
                 };
-                let can_load_cached_candles =
-                    crate::api_cache::cache_eligible(source, tf, hydromancer_api_key);
+                let can_load_cached_candles = (source != ChartBackfillSource::Schwab
+                    || !schwab_access_token.trim().is_empty())
+                    && crate::api_cache::cache_eligible(source, tf, hydromancer_api_key);
                 let cached_candles = can_load_cached_candles
                     .then(|| {
                         crate::api_cache::load_fresh_candles(source, &symbol, tf, now_ms)
@@ -147,6 +155,7 @@ impl TradingTerminal {
                 boot_tasks.push(Self::fetch_secondary_candles_task(
                     request,
                     hydromancer_api_key.clone(),
+                    schwab_access_token.clone(),
                 ));
             }
 

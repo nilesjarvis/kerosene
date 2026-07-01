@@ -86,7 +86,7 @@ impl TradingTerminal {
             .collect();
         let (x_access_token, x_oauth_client_id, x_refresh_token) =
             self.x_feed.oauth_credentials_for_secret();
-        config::SecretPayload::from_credentials_with_x_oauth(
+        self.secret_payload_with_current_integrations(
             &accounts,
             &self.hydromancer_api_key,
             &self.hyperdash_api_key,

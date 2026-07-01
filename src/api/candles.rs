@@ -1,5 +1,6 @@
 use super::{API_URL, CLIENT, KEROSENE_USER_AGENT};
 use crate::config::ChartBackfillSource;
+use crate::timeframe::Timeframe;
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use serde::Serialize;
 use zeroize::Zeroizing;
@@ -56,6 +57,7 @@ pub async fn fetch_candles(
 pub async fn fetch_chart_backfill_candles(
     source: ChartBackfillSource,
     hydromancer_api_key: Zeroizing<String>,
+    schwab_access_token: Zeroizing<String>,
     coin: String,
     interval: String,
     start_time: u64,
@@ -70,6 +72,16 @@ pub async fn fetch_chart_backfill_candles(
         }
         ChartBackfillSource::Hyperliquid => {
             fetch_hyperliquid_candles_with_cache(coin, interval, start_time, end_time).await
+        }
+        ChartBackfillSource::Schwab => {
+            fetch_schwab_candles_with_cache(
+                schwab_access_token,
+                coin,
+                interval,
+                start_time,
+                end_time,
+            )
+            .await
         }
         ChartBackfillSource::Hydromancer => {
             let api_key = Zeroizing::new(hydromancer_api_key.trim().to_string());
@@ -135,6 +147,66 @@ pub async fn fetch_chart_backfill_candles(
             Ok(candles)
         }
     }
+}
+
+async fn fetch_schwab_candles_with_cache(
+    access_token: Zeroizing<String>,
+    coin: String,
+    interval: String,
+    start_time: u64,
+    end_time: u64,
+) -> Result<Vec<Candle>, String> {
+    if access_token.trim().is_empty() {
+        return Err("Schwab access token required for Schwab charts".to_string());
+    }
+
+    if let Ok(Some(cached)) = crate::api_cache::load_candles_for_range(
+        ChartBackfillSource::Schwab,
+        &coin,
+        &interval,
+        start_time,
+        end_time,
+    ) {
+        return Ok(cached);
+    }
+
+    let timeframe = timeframe_from_api_interval(&interval)
+        .ok_or_else(|| format!("Unsupported Schwab chart interval {interval}"))?;
+    let candles = crate::schwab::fetch_schwab_price_history(
+        access_token,
+        coin.clone(),
+        timeframe,
+        start_time,
+        end_time,
+    )
+    .await?;
+    let _ = crate::api_cache::merge_candle_page(
+        ChartBackfillSource::Schwab,
+        &coin,
+        &interval,
+        candles.clone(),
+    );
+    Ok(candles)
+}
+
+fn timeframe_from_api_interval(interval: &str) -> Option<Timeframe> {
+    Some(match interval {
+        "1m" => Timeframe::M1,
+        "3m" => Timeframe::M3,
+        "5m" => Timeframe::M5,
+        "15m" => Timeframe::M15,
+        "30m" => Timeframe::M30,
+        "1h" => Timeframe::H1,
+        "2h" => Timeframe::H2,
+        "4h" => Timeframe::H4,
+        "8h" => Timeframe::H8,
+        "12h" => Timeframe::H12,
+        "1d" => Timeframe::D1,
+        "3d" => Timeframe::D3,
+        "1w" => Timeframe::W1,
+        "1M" => Timeframe::Mo1,
+        _ => return None,
+    })
 }
 
 async fn fetch_hyperliquid_candles_with_cache(

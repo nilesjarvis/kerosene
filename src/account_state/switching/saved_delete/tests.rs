@@ -879,3 +879,22 @@ fn os_keychain_account_delete_cleanup_failure_toast_redacts_account_identifiers(
     assert!(!toast.message.contains("account-b"));
     assert!(!toast.message.contains("Account B"));
 }
+
+#[test]
+fn saved_account_removal_payload_keeps_schwab_credentials() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.schwab.set_oauth_credentials_from_secret(
+        "schwab-app-key",
+        "schwab-app-secret",
+        "schwab-access",
+        "schwab-refresh",
+        None,
+    );
+
+    let payload = terminal.secret_payload_after_saved_account_removal("removed-account");
+
+    assert_eq!(payload.global_schwab_client_id(), "schwab-app-key");
+    assert_eq!(payload.global_schwab_client_secret(), "schwab-app-secret");
+    assert_eq!(payload.global_schwab_access_token(), "schwab-access");
+    assert_eq!(payload.global_schwab_refresh_token(), "schwab-refresh");
+}

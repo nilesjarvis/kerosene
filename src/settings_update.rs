@@ -28,6 +28,11 @@ impl TradingTerminal {
 
                 return task.map(Message::WindowOpened);
             }
+            Message::OpenIntegrationsSettings => {
+                self.settings_active_tab = SettingsTab::Integrations;
+                self.settings_theme_page = ThemeSettingsPage::Overview;
+                return self.update(Message::OpenSettingsWindow);
+            }
             Message::SettingsTabSelected(tab) => {
                 self.settings_active_tab = tab;
                 self.settings_theme_page = ThemeSettingsPage::Overview;
