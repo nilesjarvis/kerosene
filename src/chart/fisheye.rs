@@ -1203,20 +1203,25 @@ impl ChartFisheye {
     }
 
     fn chromatic_color(self, source: Color, channel: ChromaticChannel, alpha_scale: f32) -> Color {
-        let alpha = (source.a * alpha_scale * self.chromatic_strength).clamp(0.0, 0.38);
+        // Real lateral chromatic aberration separates the source's own color
+        // channels, so each fringe carries only its channel and fades with the
+        // energy the source has in it (a pure-green candle shows no red fringe).
+        let alpha = |channel_energy: f32| {
+            (source.a * alpha_scale * self.chromatic_strength * channel_energy).clamp(0.0, 0.38)
+        };
         match channel {
             ChromaticChannel::Main => source,
             ChromaticChannel::Red => Color {
-                r: 1.0,
-                g: 0.08,
-                b: 0.03,
-                a: alpha,
+                r: source.r,
+                g: 0.0,
+                b: 0.0,
+                a: alpha(source.r),
             },
             ChromaticChannel::Cyan => Color {
-                r: 0.05,
-                g: 0.68,
-                b: 1.0,
-                a: alpha,
+                r: 0.0,
+                g: source.g,
+                b: source.b,
+                a: alpha(source.g.max(source.b)),
             },
         }
     }
@@ -1450,8 +1455,8 @@ fn stroke_color(stroke: &canvas::Stroke<'_>) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::ChartFisheye;
-    use iced::{Point, Size};
+    use super::{ChartFisheye, ChromaticChannel};
+    use iced::{Color, Point, Size};
 
     #[test]
     fn disabled_projection_is_identity() {
@@ -1486,6 +1491,33 @@ mod tests {
         assert!(center_shift.abs() <= f32::EPSILON);
         assert!(near_center_shift > center_shift);
         assert!(near_edge_shift > near_center_shift);
+    }
+
+    #[test]
+    fn chromatic_fringes_carry_only_source_channels() {
+        let lens = ChartFisheye::new(false, 1.0, 800.0, 400.0).with_chromatic(true, 1.0);
+        let source = Color::from_rgb(0.9, 0.6, 0.3);
+
+        let red = lens.chromatic_color(source, ChromaticChannel::Red, 1.0);
+        assert_eq!((red.r, red.g, red.b), (source.r, 0.0, 0.0));
+        assert!(red.a > 0.0);
+
+        let cyan = lens.chromatic_color(source, ChromaticChannel::Cyan, 1.0);
+        assert_eq!((cyan.r, cyan.g, cyan.b), (0.0, source.g, source.b));
+        assert!(cyan.a > 0.0);
+    }
+
+    #[test]
+    fn chromatic_fringe_vanishes_when_source_lacks_the_channel() {
+        let lens = ChartFisheye::new(false, 1.0, 800.0, 400.0).with_chromatic(true, 1.0);
+
+        let green = Color::from_rgb(0.0, 0.85, 0.0);
+        let red_fringe = lens.chromatic_color(green, ChromaticChannel::Red, 1.0);
+        assert!(red_fringe.a <= f32::EPSILON);
+
+        let red = Color::from_rgb(0.85, 0.0, 0.0);
+        let cyan_fringe = lens.chromatic_color(red, ChromaticChannel::Cyan, 1.0);
+        assert!(cyan_fringe.a <= f32::EPSILON);
     }
 
     #[test]
