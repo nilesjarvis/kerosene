@@ -3,6 +3,33 @@ use serde_json::Value;
 use sha3::{Digest, Keccak256};
 use zeroize::Zeroizing;
 
+/// Parse an agent private key exactly the way order signing does, without
+/// signing anything. A key accepted here cannot fail key decoding later in
+/// `sign_l1_action`.
+pub(crate) fn validate_agent_key(private_key_hex: &str) -> Result<(), String> {
+    signing_key_from_hex(private_key_hex).map(|_| ())
+}
+
+/// Derive the agent wallet address for a private key so the user can
+/// cross-check a pasted key against the API wallet shown by Hyperliquid.
+pub(crate) fn agent_wallet_address_for_key(private_key_hex: &str) -> Result<String, String> {
+    let signing_key = signing_key_from_hex(private_key_hex)?;
+    let public_key = signing_key.verifying_key().to_encoded_point(false);
+    let hash = keccak256(&public_key.as_bytes()[1..]);
+    Ok(format!("0x{}", hex::encode(&hash[12..])))
+}
+
+fn signing_key_from_hex(private_key_hex: &str) -> Result<SigningKey, String> {
+    let trimmed = private_key_hex.trim();
+    let mut key_bytes = Zeroizing::new([0u8; 32]);
+    hex::decode_to_slice(
+        trimmed.strip_prefix("0x").unwrap_or(trimmed),
+        key_bytes.as_mut(),
+    )
+    .map_err(|e| format!("Invalid private key hex: {e}"))?;
+    SigningKey::from_bytes(key_bytes.as_slice().into()).map_err(|e| format!("Invalid key: {e}"))
+}
+
 /// Compute the action hash: keccak256(msgpack(action) ++ nonce_be_bytes ++ vault_flag
 /// [++ expires_after_marker ++ expires_after_be_bytes]).
 pub(super) fn action_hash_bytes(
@@ -99,16 +126,7 @@ pub(super) fn sign_l1_action(
     nonce: u64,
     expires_after: Option<u64>,
 ) -> Result<Value, String> {
-    let mut key_bytes = Zeroizing::new([0u8; 32]);
-    hex::decode_to_slice(
-        private_key_hex
-            .strip_prefix("0x")
-            .unwrap_or(private_key_hex),
-        key_bytes.as_mut(),
-    )
-    .map_err(|e| format!("Invalid private key hex: {e}"))?;
-    let signing_key = SigningKey::from_bytes(key_bytes.as_slice().into())
-        .map_err(|e| format!("Invalid key: {e}"))?;
+    let signing_key = signing_key_from_hex(private_key_hex)?;
 
     let hash = action_hash_bytes(msgpack_bytes, vault_address, nonce, expires_after)?;
     let phantom_agent_source = "a"; // mainnet
@@ -127,4 +145,51 @@ pub(super) fn sign_l1_action(
         "s": format!("0x{s}"),
         "v": v
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // secp256k1 private key 0x…01 has the well-known Ethereum address below.
+    const KEY_ONE: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
+    const KEY_ONE_ADDRESS: &str = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
+
+    #[test]
+    fn validate_agent_key_accepts_valid_key_with_and_without_prefix() {
+        assert!(validate_agent_key(KEY_ONE).is_ok());
+        assert!(validate_agent_key(KEY_ONE.strip_prefix("0x").unwrap()).is_ok());
+        assert!(validate_agent_key(&format!("  {KEY_ONE}  ")).is_ok());
+    }
+
+    #[test]
+    fn validate_agent_key_rejects_bad_hex_and_wrong_length() {
+        let error = validate_agent_key("0xzz").expect_err("bad hex should fail");
+        assert!(error.contains("Invalid private key hex"));
+
+        let error = validate_agent_key("0x1234").expect_err("short key should fail");
+        assert!(error.contains("Invalid private key hex"));
+
+        let error = validate_agent_key(&format!("{KEY_ONE}00")).expect_err("long key should fail");
+        assert!(error.contains("Invalid private key hex"));
+    }
+
+    #[test]
+    fn validate_agent_key_rejects_zero_scalar() {
+        let zero = format!("0x{}", "0".repeat(64));
+        let error = validate_agent_key(&zero).expect_err("zero key should fail");
+        assert!(error.contains("Invalid key"));
+    }
+
+    #[test]
+    fn agent_wallet_address_matches_known_vector() {
+        let address =
+            agent_wallet_address_for_key(KEY_ONE).expect("valid key should derive an address");
+        assert_eq!(address, KEY_ONE_ADDRESS);
+    }
+
+    #[test]
+    fn agent_wallet_address_rejects_invalid_key() {
+        assert!(agent_wallet_address_for_key("not-a-key").is_err());
+    }
 }

@@ -183,6 +183,13 @@ impl TradingTerminal {
             return true;
         }
 
+        self.persist_profile_secrets_from_accounts(accounts)
+    }
+
+    pub(crate) fn persist_profile_secrets_from_accounts(
+        &mut self,
+        accounts: &[config::AccountProfile],
+    ) -> bool {
         match self.secret_storage_mode {
             config::CredentialStorageMode::OsKeychain => self
                 .persist_keychain_credentials_from_accounts(

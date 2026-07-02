@@ -1,3 +1,4 @@
+mod add_window;
 mod connection;
 mod position_pnl;
 mod profile;
@@ -53,7 +54,15 @@ impl TradingTerminal {
             Message::AccountPickerLabelChanged(index, value) => {
                 self.update_account_picker_label(index, value)
             }
-            Message::AddAccount => self.add_account_from_picker(),
+            Message::OpenAddAccountWindow => self.open_add_account_window(),
+            Message::AddAccountNameChanged(value) => self.update_add_account_name(value),
+            Message::AddAccountAddressChanged(value) => {
+                self.update_add_account_address(value.into_string())
+            }
+            Message::AddAccountKeyChanged(value) => self.update_add_account_key(value),
+            Message::AddAccountSwitchToggled(value) => self.toggle_add_account_switch(value),
+            Message::AddAccountSubmit => self.submit_add_account(),
+            Message::AddAccountCancel => self.cancel_add_account_window(),
             Message::GhostWallet(address) => {
                 self.add_ghost_wallet_from_picker(address.into_string())
             }

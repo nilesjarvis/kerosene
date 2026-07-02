@@ -8,6 +8,7 @@ pub use client::{
     PlaceOrderRequest, cancel_order, cancel_order_by_cloid, modify_order, place_order_with_cloid,
     update_leverage,
 };
+pub(crate) use crypto::{agent_wallet_address_for_key, validate_agent_key};
 pub(crate) use model::CapturedAgentKey;
 pub use model::{
     CHASE_RETRY_COOLDOWN, ChaseLifecycle, ChaseOrder, ChaseQueuedAction, ChaseStopPhase,

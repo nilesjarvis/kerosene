@@ -341,6 +341,7 @@ impl TradingTerminal {
             tracked_trade_alerts_enabled: cfg.tracked_trade_alerts_enabled,
             main_window_id: None,
             settings_window_id: None,
+            add_account_window: None,
             screener: crate::screener_state::ScreenerState::default(),
             chart_screenshot_window_id: None,
             pnl_card_windows: HashMap::new(),

@@ -1,3 +1,4 @@
+mod add_window;
 mod balances;
 mod history;
 mod history_tables;

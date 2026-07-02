@@ -559,7 +559,13 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::SchwabTokenRefreshTick
         | Message::AccountPickerRenameToggled(_)
         | Message::AccountPickerLabelChanged(_, _)
-        | Message::AddAccount
+        | Message::OpenAddAccountWindow
+        | Message::AddAccountNameChanged(_)
+        | Message::AddAccountAddressChanged(_)
+        | Message::AddAccountKeyChanged(_)
+        | Message::AddAccountSwitchToggled(_)
+        | Message::AddAccountSubmit
+        | Message::AddAccountCancel
         | Message::GhostWallet(_)
         | Message::ForgetGhostAccount(_)
         | Message::DeleteSavedAccount(_)

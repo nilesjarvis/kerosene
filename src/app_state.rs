@@ -1,5 +1,5 @@
 use crate::account::AccountData;
-use crate::account_state::{ActiveAccountSource, PositionsSortColumn};
+use crate::account_state::{ActiveAccountSource, AddAccountWindowState, PositionsSortColumn};
 use crate::advanced_order_history::AdvancedOrderHistoryEntry;
 use crate::alfred_state::AlfredState;
 use crate::annotations::DrawingTool;
@@ -490,6 +490,7 @@ pub(crate) struct TradingTerminal {
     // Multi-window IDs
     pub(crate) main_window_id: Option<window::Id>,
     pub(crate) settings_window_id: Option<window::Id>,
+    pub(crate) add_account_window: Option<AddAccountWindowState>,
     pub(crate) screener: ScreenerState,
     pub(crate) chart_screenshot_window_id: Option<window::Id>,
     pub(crate) pnl_card_windows: HashMap<window::Id, PnlCardWindowState>,

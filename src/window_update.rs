@@ -36,6 +36,13 @@ impl TradingTerminal {
                 if Some(id) == self.settings_window_id {
                     self.settings_window_id = None;
                 }
+                if self
+                    .add_account_window
+                    .as_ref()
+                    .is_some_and(|state| state.window_id == id)
+                {
+                    self.add_account_window = None;
+                }
                 if Some(id) == self.screener.window_id {
                     self.screener.window_id = None;
                     self.screener.invalidate_refreshes();

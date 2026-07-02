@@ -31,6 +31,12 @@ impl TradingTerminal {
             self.view_journal()
         } else if Some(window_id) == self.settings_window_id {
             self.view_settings()
+        } else if self
+            .add_account_window
+            .as_ref()
+            .is_some_and(|state| state.window_id == window_id)
+        {
+            self.view_add_account_window()
         } else if Some(window_id) == self.screener.window_id {
             self.view_screener_window()
         } else if Some(window_id) == self.chart_screenshot_window_id {
@@ -76,6 +82,12 @@ impl TradingTerminal {
             "Kerosene Trading Journal".to_string()
         } else if Some(window_id) == self.settings_window_id {
             "Kerosene Settings".to_string()
+        } else if self
+            .add_account_window
+            .as_ref()
+            .is_some_and(|state| state.window_id == window_id)
+        {
+            "Kerosene Add Account".to_string()
         } else if Some(window_id) == self.screener.window_id {
             "Kerosene Screener".to_string()
         } else if Some(window_id) == self.chart_screenshot_window_id {

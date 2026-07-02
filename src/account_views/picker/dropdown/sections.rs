@@ -35,7 +35,7 @@ pub(super) fn empty_saved_profiles(theme: &Theme) -> Element<'static, Message> {
 
 pub(super) fn add_account_button() -> Element<'static, Message> {
     button(text("+ Account").size(11).center().width(Fill))
-        .on_press(Message::AddAccount)
+        .on_press(Message::OpenAddAccountWindow)
         .padding([8, 10])
         .width(Fill)
         .style(|theme: &Theme, status| {

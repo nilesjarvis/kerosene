@@ -312,32 +312,6 @@ impl TradingTerminal {
         self.update_account_label_at_index(index, value)
     }
 
-    pub(super) fn add_account_from_picker(&mut self) -> Task<Message> {
-        self.account_picker_open = false;
-        self.account_picker_rename_index = None;
-        if self.account_change_blocked_by_pending_trading_request("adding an account") {
-            return Task::none();
-        }
-        if self.account_change_blocked_by_active_chase("adding an account") {
-            return Task::none();
-        }
-        if self.account_change_blocked_by_uncertain_twap("adding an account") {
-            return Task::none();
-        }
-        let persisted_account_count = self.persisted_accounts_snapshot().len();
-        let profile = config::AccountProfile {
-            secret_id: config::new_secret_id(),
-            name: format!("Account {}", persisted_account_count + 1),
-            wallet_address: String::new(),
-            agent_key: String::new().into(),
-            hydromancer_api_key: String::new().into(),
-        };
-        let secret_id = profile.secret_id.clone();
-        self.accounts.push(profile);
-        self.last_persisted_active_account_secret_id = Some(secret_id);
-        self.switch_account_task(self.accounts.len() - 1)
-    }
-
     pub(super) fn add_ghost_wallet_from_picker(&mut self, address: String) -> Task<Message> {
         self.account_picker_open = false;
         self.account_picker_rename_index = None;
@@ -392,7 +366,7 @@ mod tests {
     use crate::config::{self, AccountProfile};
     use crate::order_execution::PendingOrderAction;
     use crate::signing::{ChaseLifecycle, ChaseOrder};
-    use crate::twap_state::{TwapOrder, TwapOrderInit, TwapPauseReason, TwapStatus};
+    use crate::twap_state::{TwapOrder, TwapOrderInit, TwapStatus};
 
     use std::cell::{Cell, RefCell};
     use std::time::{Duration, Instant};
@@ -487,79 +461,6 @@ mod tests {
             now,
             started_at_ms: TradingTerminal::now_ms(),
         })
-    }
-
-    fn status_check_twap(id: u64, account_address: &str) -> TwapOrder {
-        let mut twap = twap_order(id, account_address);
-        twap.status_check_cloid = Some("0xabc".to_string());
-        twap.pause_reason = Some(TwapPauseReason::StatusUnknown);
-        twap
-    }
-
-    #[test]
-    fn add_account_from_picker_does_not_create_profile_when_chase_blocks_switch() {
-        let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
-        terminal.account_picker_open = true;
-        terminal.account_picker_rename_index = Some(0);
-        terminal.connected_address = Some(ADDRESS_A.to_string());
-        terminal.last_persisted_active_account_secret_id = Some("acct-a".to_string());
-        terminal.chase_orders.insert(42, chase_order(ADDRESS_A));
-
-        let _task = terminal.add_account_from_picker();
-
-        assert_eq!(terminal.accounts.len(), 1);
-        assert_eq!(terminal.active_account_index, 0);
-        assert_eq!(
-            terminal.last_persisted_active_account_secret_id.as_deref(),
-            Some("acct-a")
-        );
-        assert_eq!(terminal.wallet_address_input, ADDRESS_A);
-        assert!(terminal.chase_orders.contains_key(&42));
-        assert!(!terminal.account_picker_open);
-        assert_eq!(terminal.account_picker_rename_index, None);
-        let toast = terminal
-            .toasts
-            .last()
-            .expect("blocked account add should toast");
-        assert!(toast.is_error);
-        assert!(toast.message.contains("Stop active chase orders"));
-        assert!(toast.message.contains("adding an account"));
-    }
-
-    #[test]
-    fn add_account_from_picker_does_not_create_profile_when_twap_status_is_uncertain() {
-        let mut terminal = terminal_with_active_account(ADDRESS_A, "agent-key");
-        terminal.account_picker_open = true;
-        terminal.account_picker_rename_index = Some(0);
-        terminal.connected_address = Some(ADDRESS_A.to_string());
-        terminal.last_persisted_active_account_secret_id = Some("acct-a".to_string());
-        terminal
-            .twap_orders
-            .insert(7, status_check_twap(7, ADDRESS_A));
-
-        let _task = terminal.add_account_from_picker();
-
-        assert_eq!(terminal.accounts.len(), 1);
-        assert_eq!(terminal.active_account_index, 0);
-        assert_eq!(
-            terminal.last_persisted_active_account_secret_id.as_deref(),
-            Some("acct-a")
-        );
-        assert_eq!(terminal.wallet_address_input, ADDRESS_A);
-        assert!(terminal.twap_orders.contains_key(&7));
-        assert!(!terminal.account_picker_open);
-        assert_eq!(terminal.account_picker_rename_index, None);
-        let toast = terminal
-            .toasts
-            .last()
-            .expect("blocked account add should toast");
-        assert!(toast.is_error);
-        assert!(
-            toast
-                .message
-                .contains("TWAP order status and fill reconciliation")
-        );
-        assert!(toast.message.contains("adding an account"));
     }
 
     #[test]
