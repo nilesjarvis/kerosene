@@ -328,9 +328,17 @@ impl TradingTerminal {
             Message::SubmitHudOrder(request) => return self.handle_submit_hud_order(request),
             Message::HudOrderResult {
                 pending_indicator_id,
+                inflight_id,
                 context,
                 result,
-            } => return self.handle_hud_order_result(pending_indicator_id, context, *result),
+            } => {
+                return self.handle_hud_order_result(
+                    pending_indicator_id,
+                    inflight_id,
+                    context,
+                    *result,
+                );
+            }
             Message::EscapePressed(window_id) => self.handle_order_escape_pressed(window_id),
             Message::MoveOrderDragStarted { coin, oid } => {
                 self.active_move_order_drag =

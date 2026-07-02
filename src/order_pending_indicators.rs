@@ -313,6 +313,19 @@ impl TradingTerminal {
         })
     }
 
+    /// Indicators don't record which surface created them; concurrent HUD
+    /// limit placements are identified by the in-flight tracker holding their
+    /// indicator ids, and everything else still gates HUD clicks.
+    pub(crate) fn has_non_hud_pending_order_indicator_for_connected_account(&self) -> bool {
+        let account_address = self.connected_order_account_address();
+        self.pending_order_indicators
+            .iter()
+            .any(|(pending_id, indicator)| {
+                pending_indicator_is_for_connected_account(indicator, account_address.as_deref())
+                    && !self.hud_placements.contains_indicator(*pending_id)
+            })
+    }
+
     /// Authoritative fills consume in-flight market-order projections so the
     /// optimistic position delta does not double-count a fill the websocket
     /// has already delivered (the REST ack that clears the indicator can lag

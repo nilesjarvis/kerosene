@@ -18,8 +18,8 @@ use crate::market_state::{
 };
 use crate::notification_state::Toast;
 use crate::order_execution::{
-    MoveOrderKey, PendingLeverageUpdateContext, PendingMoveOrderContext, PendingNukeExecution,
-    PendingOrderAction,
+    HudPlacementTracker, MoveOrderKey, PendingLeverageUpdateContext, PendingMoveOrderContext,
+    PendingNukeExecution, PendingOrderAction,
 };
 use crate::order_pending_indicators::PendingOrderIndicator;
 use crate::order_update::{
@@ -278,12 +278,13 @@ pub(crate) struct TradingTerminal {
     // Order status feedback (message, is_error)
     pub(crate) order_status: Option<(String, bool)>,
     pub(crate) next_one_shot_status_request_id: u64,
-    pub(crate) pending_one_shot_status_request: Option<PendingOneShotStatusRequest>,
+    pub(crate) pending_one_shot_status_requests: BTreeMap<u64, PendingOneShotStatusRequest>,
     pub(crate) pending_cancel_status_request: Option<PendingCancelStatusRequest>,
     pub(crate) pending_move_status_request: Option<PendingMoveStatusRequest>,
     pub(crate) pending_order_action: Option<PendingOrderAction>,
     pub(crate) pending_move_order_contexts: HashMap<MoveOrderKey, PendingMoveOrderContext>,
     pub(crate) pending_order_indicators: BTreeMap<u64, PendingOrderIndicator>,
+    pub(crate) hud_placements: HudPlacementTracker,
     pub(crate) active_move_order_drag: Option<MoveOrderKey>,
     // Order presets
     pub(crate) order_presets: crate::config::OrderPresetsConfig,

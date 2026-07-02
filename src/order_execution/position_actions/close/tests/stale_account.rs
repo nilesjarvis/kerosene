@@ -23,7 +23,7 @@ fn close_position_rejects_while_order_action_pending() {
 #[test]
 fn close_position_rejects_while_one_shot_status_pending() {
     let mut terminal = TradingTerminal::boot().0;
-    terminal.pending_one_shot_status_request = Some(pending_one_shot_status_request());
+    terminal.insert_pending_one_shot_status_request(pending_one_shot_status_request());
 
     let _task = terminal.execute_close_position("BTC", 0.5, true);
 
@@ -34,7 +34,7 @@ fn close_position_rejects_while_one_shot_status_pending() {
         "Wait for pending trading requests to finish before closing positions"
     );
     assert!(terminal.pending_order_action.is_none());
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     assert!(terminal.pending_order_indicators.is_empty());
 }
 

@@ -74,15 +74,31 @@ impl TradingTerminal {
             }
         };
 
-        // Chart clicks can queue faster than results return; serialize HUD
-        // submissions through the same pending-request gate as ticket orders.
-        if self.reject_if_pending_trading_request("placing a HUD order") {
-            self.toast_order_status();
-            return Task::none();
-        }
-        if self.reject_if_account_reconciliation_required("placing a HUD order", "account data") {
-            self.toast_order_status();
-            return Task::none();
+        // HUD limit clicks may overlap each other (rapid click-trading), so
+        // they only gate on non-HUD trading requests plus an in-flight cap.
+        // Market clicks move position immediately at whatever the book gives,
+        // so they keep the fully-serialized path: one at a time, and only on
+        // fresh account data.
+        if is_market_order {
+            if self.reject_if_pending_trading_request("placing a HUD order") {
+                self.toast_order_status();
+                return Task::none();
+            }
+            if self.reject_if_account_reconciliation_required("placing a HUD order", "account data")
+            {
+                self.toast_order_status();
+                return Task::none();
+            }
+        } else {
+            if self.reject_if_pending_trading_request_blocking_hud_placement("placing a HUD order")
+            {
+                self.toast_order_status();
+                return Task::none();
+            }
+            if self.reject_if_hud_placement_limit_reached() {
+                self.toast_order_status();
+                return Task::none();
+            }
         }
 
         let Some((key, account_address)) = self.order_signing_context() else {
@@ -145,11 +161,15 @@ impl TradingTerminal {
             ),
             false,
         ));
-        self.pending_order_action = Some(if prepared.is_buy {
-            PendingOrderAction::Buy
-        } else {
-            PendingOrderAction::Sell
-        });
+        // Only the serialized market path owns the global pending flag;
+        // concurrent limit placements are tracked per order below.
+        if is_market_order {
+            self.pending_order_action = Some(if prepared.is_buy {
+                PendingOrderAction::Buy
+            } else {
+                PendingOrderAction::Sell
+            });
+        }
         self.start_hud_order_animation(&request, prepared.is_buy, !is_market_order);
         self.push_hud_feed_entry(&request, &prepared);
         if self.sound_enabled {
@@ -178,9 +198,18 @@ impl TradingTerminal {
             )
         };
 
+        let inflight_id = (!is_market_order).then(|| {
+            self.hud_placements.begin(
+                account_address.clone(),
+                pending_indicator_id,
+                Self::now_ms(),
+            )
+        });
+
         let (request, context) = prepared.place_request_with_context(&account_address);
         place_order_task(key, request, move |result| Message::HudOrderResult {
             pending_indicator_id,
+            inflight_id,
             context,
             result: Box::new(result),
         })
@@ -189,10 +218,18 @@ impl TradingTerminal {
     pub(crate) fn handle_hud_order_result(
         &mut self,
         pending_indicator_id: Option<u64>,
+        inflight_id: Option<u64>,
         context: OneShotPlacementContext,
         result: Result<ExchangeResponse, String>,
     ) -> Task<Message> {
-        self.pending_order_action = None;
+        if let Some(inflight_id) = inflight_id {
+            self.hud_placements.finish(inflight_id);
+        }
+        // Only serialized market placements set the global flag; a limit
+        // result must not clobber another surface's in-flight state.
+        if context.order_kind == ExchangeOrderKind::Market {
+            self.pending_order_action = None;
+        }
         self.clear_pending_order_indicator(pending_indicator_id);
         let outcome = classify_execution_result(result);
         self.apply_one_shot_placement_outcome(context, outcome)
@@ -250,7 +287,7 @@ mod tests {
     use crate::app_state::sensitive_string;
     use crate::chart_state::{ChartInstance, ChartSurfaceId};
     use crate::config::{AccountProfile, ChartCrosshairStyle};
-    use crate::order_execution::{HudOrderSide, PendingOrderAction};
+    use crate::order_execution::{HudOrderSide, MAX_INFLIGHT_HUD_PLACEMENTS, PendingOrderAction};
     use crate::order_update::PendingOneShotStatusRequest;
     use crate::timeframe::Timeframe;
 
@@ -319,17 +356,32 @@ mod tests {
         }
     }
 
-    fn pending_one_shot_status_request() -> PendingOneShotStatusRequest {
+    fn pending_one_shot_status_request(surface: OrderSurface) -> PendingOneShotStatusRequest {
         PendingOneShotStatusRequest::new(
             7,
             &OneShotPlacementContext {
                 account_address: TEST_ACCOUNT.to_string(),
                 cloid: "0x00000000000000000000000000000003".to_string(),
-                surface: OrderSurface::Hud,
+                surface,
                 symbol_key: "BTC".to_string(),
                 order_kind: ExchangeOrderKind::Limit,
             },
         )
+    }
+
+    fn make_btc_tradeable(terminal: &mut TradingTerminal) {
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        terminal.all_mids.insert("BTC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("BTC".to_string(), TradingTerminal::now_ms());
+    }
+
+    fn order_status_of(terminal: &TradingTerminal) -> Option<(&str, bool)> {
+        terminal
+            .order_status
+            .as_ref()
+            .map(|(message, is_error)| (message.as_str(), *is_error))
     }
 
     fn error_toast_messages(terminal: &TradingTerminal) -> Vec<&str> {
@@ -424,15 +476,12 @@ mod tests {
 
         let _task = terminal.handle_submit_hud_order(request);
 
+        // Limit placements track in-flight state per order instead of the
+        // global pending flag, so overlapping clicks stay possible.
+        assert!(terminal.pending_order_action.is_none());
+        assert_eq!(terminal.hud_placements.count_for_account(TEST_ACCOUNT), 1);
         assert_eq!(
-            terminal.pending_order_action,
-            Some(PendingOrderAction::Sell)
-        );
-        assert_eq!(
-            terminal
-                .order_status
-                .as_ref()
-                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            order_status_of(&terminal),
             Some(("Placing HUD limit SELL 1 HYPE/USDC...", false))
         );
     }
@@ -505,39 +554,58 @@ mod tests {
     }
 
     #[test]
-    fn hud_order_submission_rejects_while_one_shot_status_pending() {
+    fn hud_limit_submission_rejects_while_non_hud_one_shot_status_pending() {
         let mut terminal = terminal_with_hud_chart(true);
-        terminal.pending_one_shot_status_request = Some(pending_one_shot_status_request());
+        terminal.insert_pending_one_shot_status_request(pending_one_shot_status_request(
+            OrderSurface::Ticket,
+        ));
 
         let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
 
         assert_eq!(
-            terminal
-                .order_status
-                .as_ref()
-                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            order_status_of(&terminal),
             Some((
                 "Wait for pending trading requests to finish before placing a HUD order",
                 true
             ))
         );
         assert!(terminal.pending_order_action.is_none());
-        assert!(terminal.pending_one_shot_status_request.is_some());
+        assert!(terminal.has_pending_one_shot_status_requests_for_test());
         assert!(terminal.pending_order_indicators.is_empty());
     }
 
     #[test]
-    fn hud_order_submission_rejects_while_account_reconciliation_is_pending() {
+    fn hud_limit_submission_allowed_while_hud_one_shot_status_pending() {
+        // An earlier HUD click whose ack came back ambiguous resolves via its
+        // own one-shot status check; that check must not block further limit
+        // clicks (each cloid resolves independently).
         let mut terminal = terminal_with_hud_chart(true);
-        terminal.account_reconciliation_required = true;
+        make_btc_tradeable(&mut terminal);
+        terminal.insert_pending_one_shot_status_request(pending_one_shot_status_request(
+            OrderSurface::Hud,
+        ));
 
         let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
 
         assert_eq!(
-            terminal
-                .order_status
-                .as_ref()
-                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            order_status_of(&terminal),
+            Some(("Placing HUD limit LONG 1 BTC...", false))
+        );
+        assert_eq!(terminal.pending_order_indicators.len(), 1);
+        assert_eq!(terminal.hud_placements.count_for_account(TEST_ACCOUNT), 1);
+    }
+
+    #[test]
+    fn hud_market_submission_rejects_while_account_reconciliation_is_pending() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.account_reconciliation_required = true;
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.order_type = HudOrderType::Market;
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            order_status_of(&terminal),
             Some((
                 "Account refresh pending; wait for fresh account data before placing a HUD order",
                 true
@@ -548,11 +616,30 @@ mod tests {
     }
 
     #[test]
-    fn hud_order_result_clears_pending_order_action() {
+    fn hud_limit_submission_allowed_while_account_reconciliation_is_pending() {
+        // Rapid limit clicking would otherwise stall on the account refresh
+        // that follows every ack; the exchange stays authoritative for
+        // margin, so limits skip the reconciliation gate.
+        let mut terminal = terminal_with_hud_chart(true);
+        make_btc_tradeable(&mut terminal);
+        terminal.account_reconciliation_required = true;
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            order_status_of(&terminal),
+            Some(("Placing HUD limit LONG 1 BTC...", false))
+        );
+        assert_eq!(terminal.pending_order_indicators.len(), 1);
+    }
+
+    #[test]
+    fn hud_market_order_result_clears_pending_order_action() {
         let mut terminal = terminal_with_hud_chart(true);
         terminal.pending_order_action = Some(PendingOrderAction::Buy);
 
         let _task = terminal.handle_hud_order_result(
+            None,
             None,
             OneShotPlacementContext {
                 account_address: "0xabc".to_string(),
@@ -565,6 +652,36 @@ mod tests {
         );
 
         assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn hud_limit_order_result_releases_inflight_slot_and_keeps_pending_action() {
+        let mut terminal = terminal_with_hud_chart(true);
+        // Limit placements never own the global flag, so a returning limit
+        // result must not clobber another surface's in-flight state.
+        terminal.pending_order_action = Some(PendingOrderAction::Sell);
+        let inflight_id = terminal
+            .hud_placements
+            .begin(TEST_ACCOUNT.to_string(), None, 1_000);
+
+        let _task = terminal.handle_hud_order_result(
+            None,
+            Some(inflight_id),
+            OneShotPlacementContext {
+                account_address: TEST_ACCOUNT.to_string(),
+                cloid: "0x00000000000000000000000000000000".to_string(),
+                surface: OrderSurface::Hud,
+                symbol_key: "BTC".to_string(),
+                order_kind: ExchangeOrderKind::Limit,
+            },
+            Err("exchange request failed".into()),
+        );
+
+        assert_eq!(
+            terminal.pending_order_action,
+            Some(PendingOrderAction::Sell)
+        );
+        assert!(!terminal.hud_placements.has_any_for_account(TEST_ACCOUNT));
     }
 
     #[test]
@@ -601,12 +718,10 @@ mod tests {
 
         let _task = terminal.handle_submit_hud_order(request);
 
-        assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+        assert!(terminal.pending_order_action.is_none());
+        assert_eq!(terminal.hud_placements.count_for_account(TEST_ACCOUNT), 1);
         assert_eq!(
-            terminal
-                .order_status
-                .as_ref()
-                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            order_status_of(&terminal),
             Some(("Placing HUD limit LONG 1 BTC...", false))
         );
         let indicator = terminal
@@ -631,15 +746,9 @@ mod tests {
 
         let _task = terminal.handle_submit_hud_order(request);
 
+        assert!(terminal.pending_order_action.is_none());
         assert_eq!(
-            terminal.pending_order_action,
-            Some(PendingOrderAction::Sell)
-        );
-        assert_eq!(
-            terminal
-                .order_status
-                .as_ref()
-                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            order_status_of(&terminal),
             Some(("Placing HUD limit SHORT 1 BTC...", false))
         );
     }
@@ -716,5 +825,117 @@ mod tests {
         );
         assert!(terminal.pending_order_action.is_none());
         assert!(terminal.pending_order_indicators.is_empty());
+    }
+
+    // ---- Concurrent limit placement ----
+
+    #[test]
+    fn hud_limit_submissions_can_overlap() {
+        let mut terminal = terminal_with_hud_chart(true);
+        make_btc_tradeable(&mut terminal);
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(terminal.hud_placements.count_for_account(TEST_ACCOUNT), 2);
+        assert_eq!(terminal.pending_order_indicators.len(), 2);
+        assert_eq!(error_toast_messages(&terminal), Vec::<&str>::new());
+        assert_eq!(
+            order_status_of(&terminal),
+            Some(("Placing HUD limit LONG 1 BTC...", false))
+        );
+    }
+
+    #[test]
+    fn hud_limit_submission_rejects_at_inflight_cap() {
+        let mut terminal = terminal_with_hud_chart(true);
+        make_btc_tradeable(&mut terminal);
+        for _ in 0..MAX_INFLIGHT_HUD_PLACEMENTS {
+            terminal
+                .hud_placements
+                .begin(TEST_ACCOUNT.to_string(), None, 1_000);
+        }
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            order_status_of(&terminal),
+            Some((
+                "Too many HUD orders in flight; wait for confirmations",
+                true
+            ))
+        );
+        assert_eq!(
+            error_toast_messages(&terminal),
+            vec!["Too many HUD orders in flight; wait for confirmations"]
+        );
+        assert!(terminal.pending_order_indicators.is_empty());
+        assert_eq!(
+            terminal.hud_placements.count_for_account(TEST_ACCOUNT),
+            MAX_INFLIGHT_HUD_PLACEMENTS
+        );
+    }
+
+    #[test]
+    fn hud_market_submission_rejects_while_hud_limit_inflight() {
+        // Market clicks keep the fully-serialized path: an in-flight limit
+        // burst must finish before a market order fires.
+        let mut terminal = terminal_with_hud_chart(true);
+        make_btc_tradeable(&mut terminal);
+        terminal
+            .hud_placements
+            .begin(TEST_ACCOUNT.to_string(), None, 1_000);
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.order_type = HudOrderType::Market;
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            order_status_of(&terminal),
+            Some((
+                "Wait for pending trading requests to finish before placing a HUD order",
+                true
+            ))
+        );
+        assert!(terminal.pending_order_action.is_none());
+        assert!(terminal.pending_order_indicators.is_empty());
+    }
+
+    #[test]
+    fn inflight_hud_placement_blocks_other_trading_surfaces() {
+        let mut terminal = terminal_with_hud_chart(true);
+        assert!(!terminal.has_pending_trading_request());
+
+        terminal
+            .hud_placements
+            .begin(TEST_ACCOUNT.to_string(), None, 1_000);
+
+        assert!(terminal.has_pending_trading_request());
+    }
+
+    #[test]
+    fn hud_limit_submission_rejects_while_non_hud_indicator_pending() {
+        // A placement indicator the HUD tracker does not own (e.g. a ticket
+        // order still awaiting its ack) keeps gating HUD clicks.
+        let mut terminal = terminal_with_hud_chart(true);
+        make_btc_tradeable(&mut terminal);
+        terminal.add_pending_order_placement_indicator(
+            TEST_ACCOUNT.to_string(),
+            "BTC".to_string(),
+            true,
+            "1".to_string(),
+            "100".to_string(),
+        );
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            order_status_of(&terminal),
+            Some((
+                "Wait for pending trading requests to finish before placing a HUD order",
+                true
+            ))
+        );
+        assert!(terminal.hud_placements.count_for_account(TEST_ACCOUNT) == 0);
     }
 }

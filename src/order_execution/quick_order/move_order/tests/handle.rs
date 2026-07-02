@@ -179,8 +179,10 @@ fn handle_move_order_waits_for_pending_order_action() {
 #[test]
 fn handle_move_order_waits_for_pending_one_shot_status() {
     let mut terminal = terminal_with_move_order("BTC", "BTC", 100.0);
-    terminal.pending_one_shot_status_request =
-        Some(PendingOneShotStatusRequest::new(7, &one_shot_context()));
+    terminal.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
+        7,
+        &one_shot_context(),
+    ));
 
     assert_move_waits_for_pending_trading_request(terminal);
 }

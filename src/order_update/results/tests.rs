@@ -536,7 +536,7 @@ fn one_shot_mixed_exchange_error_starts_cloid_reconciliation() {
         ])),
     );
 
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
     let (message, is_error) = terminal.order_status.clone().expect("status should be set");
@@ -560,7 +560,7 @@ fn one_shot_order_status_result_normalizes_terminal_statuses() {
     let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(!is_error);
     assert!(message.contains("Ticket placement confirmed by orderStatus for BTC"));
-    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
 
     let context = one_shot_context();
     let request_id = begin_one_shot_status_request(&mut terminal, &context);
@@ -572,7 +572,7 @@ fn one_shot_order_status_result_normalizes_terminal_statuses() {
     let (message, is_error) = terminal.order_status.clone().expect("status should be set");
     assert!(is_error);
     assert!(message.contains("Ticket placement rejected according to orderStatus for BTC"));
-    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
 }
 
 #[test]
@@ -587,7 +587,7 @@ fn one_shot_missing_status_stays_pending_until_account_refresh() {
         Ok(order_status("unknownOid")),
     );
 
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     assert!(terminal.has_pending_trading_request());
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
@@ -597,7 +597,7 @@ fn one_shot_missing_status_stays_pending_until_account_refresh() {
 
     finish_current_account_refresh(&mut terminal);
 
-    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
     assert!(!terminal.has_pending_trading_request());
 }
 
@@ -613,7 +613,7 @@ fn one_shot_canceled_status_stays_pending_until_account_refresh() {
         Ok(order_status("canceled")),
     );
 
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     assert!(terminal.has_pending_trading_request());
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
@@ -624,7 +624,7 @@ fn one_shot_canceled_status_stays_pending_until_account_refresh() {
 
     finish_current_account_refresh(&mut terminal);
 
-    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
     assert!(!terminal.has_pending_trading_request());
 }
 
@@ -640,7 +640,7 @@ fn one_shot_status_error_stays_pending_until_account_refresh() {
         Err("orderStatus request failed: private_key=super-secret".to_string()),
     );
 
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     assert!(terminal.has_pending_trading_request());
     assert!(terminal.account_loading);
     assert!(terminal.account_reconciliation_required);
@@ -653,7 +653,7 @@ fn one_shot_status_error_stays_pending_until_account_refresh() {
 
     finish_current_account_refresh(&mut terminal);
 
-    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
     assert!(!terminal.has_pending_trading_request());
 }
 
@@ -672,15 +672,19 @@ fn one_shot_status_result_with_stale_request_id_is_ignored() {
     assert!(terminal.order_status.is_none());
     assert_eq!(
         terminal
-            .pending_one_shot_status_request
-            .as_ref()
+            .pending_one_shot_status_requests
+            .values()
+            .next()
             .map(|request| request.request_id),
         Some(request_id)
     );
 }
 
 #[test]
-fn stale_one_shot_status_after_newer_outcome_is_ignored() {
+fn older_status_request_survives_newer_unrelated_outcome() {
+    // Regression: with one shared slot, a second placement outcome used to
+    // clobber the first placement's ambiguity check and its orderStatus
+    // response was silently dropped. Each cloid must resolve independently.
     let mut terminal = terminal_with_connected_account();
     let old_context = one_shot_context_with_kind(ExchangeOrderKind::Market);
     let _task = terminal.apply_one_shot_placement_outcome(
@@ -693,8 +697,9 @@ fn stale_one_shot_status_after_newer_outcome_is_ignored() {
         },
     );
     let old_request_id = terminal
-        .pending_one_shot_status_request
-        .as_ref()
+        .pending_one_shot_status_requests
+        .values()
+        .next()
         .expect("status request should be pending")
         .request_id;
 
@@ -711,8 +716,10 @@ fn stale_one_shot_status_after_newer_outcome_is_ignored() {
             refresh_account: false,
         },
     );
-    let current_status = terminal.order_status.clone();
-    assert!(terminal.pending_one_shot_status_request.is_none());
+    assert!(
+        terminal.has_pending_one_shot_status_requests_for_test(),
+        "unrelated outcome must not clear the older ambiguity check"
+    );
 
     let _task = terminal.handle_one_shot_placement_status_result(
         old_request_id,
@@ -720,8 +727,10 @@ fn stale_one_shot_status_after_newer_outcome_is_ignored() {
         Ok(order_status("open")),
     );
 
-    assert_eq!(terminal.order_status, current_status);
-    assert!(!terminal.account_loading);
+    let (message, is_error) = terminal.order_status.clone().expect("status should be set");
+    assert!(is_error);
+    assert!(message.contains("unexpectedly rested"));
+    assert!(terminal.pending_one_shot_status_requests.is_empty());
 }
 
 #[test]

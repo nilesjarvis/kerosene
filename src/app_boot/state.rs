@@ -6,6 +6,7 @@ use crate::chart_state::{ChartId, ChartInstance};
 use crate::config::{self, KeroseneConfig};
 use crate::journal;
 use crate::market_state::{SymbolSearchMarketFilter, SymbolSearchSortMode};
+use crate::order_execution::HudPlacementTracker;
 use crate::pane_management::AddWidgetPlacement;
 use crate::pane_state::PaneKind;
 use crate::portfolio_state::{IncomeState, PortfolioState};
@@ -139,12 +140,13 @@ impl TradingTerminal {
             pending_leverage_update: None,
             order_status: None,
             next_one_shot_status_request_id: 0,
-            pending_one_shot_status_request: None,
+            pending_one_shot_status_requests: BTreeMap::new(),
             pending_cancel_status_request: None,
             pending_move_status_request: None,
             pending_order_action: None,
             pending_move_order_contexts: HashMap::new(),
             pending_order_indicators: BTreeMap::new(),
+            hud_placements: HudPlacementTracker::default(),
             active_move_order_drag: None,
             order_presets: cfg.order_presets.clone(),
             preset_is_usd: cfg.preset_is_usd,

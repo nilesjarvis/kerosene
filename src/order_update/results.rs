@@ -2,7 +2,7 @@ use crate::api::{OrderStatusResult, fetch_order_status_by_cloid, fetch_order_sta
 use crate::app_state::TradingTerminal;
 use crate::helpers::redact_sensitive_response_text;
 use crate::message::Message;
-use crate::order_execution::OneShotPlacementContext;
+use crate::order_execution::{OneShotPlacementContext, OrderSurface};
 use crate::signing::ExchangeResponse;
 use iced::Task;
 use std::fmt;
@@ -35,6 +35,7 @@ pub(crate) struct PendingOneShotStatusRequest {
     pub(crate) request_id: u64,
     account_address: String,
     cloid: String,
+    surface: OrderSurface,
 }
 
 impl fmt::Debug for PendingOneShotStatusRequest {
@@ -43,6 +44,7 @@ impl fmt::Debug for PendingOneShotStatusRequest {
             .field("request_id", &self.request_id)
             .field("account_address", &"<redacted>")
             .field("cloid", &self.cloid)
+            .field("surface", &self.surface)
             .finish()
     }
 }
@@ -53,6 +55,7 @@ impl PendingOneShotStatusRequest {
             request_id,
             account_address: context.account_address.clone(),
             cloid: context.cloid.clone(),
+            surface: context.surface,
         }
     }
 
@@ -62,8 +65,16 @@ impl PendingOneShotStatusRequest {
             && self.cloid == context.cloid
     }
 
+    fn is_for_context(&self, context: &OneShotPlacementContext) -> bool {
+        self.account_address == context.account_address && self.cloid == context.cloid
+    }
+
     pub(crate) fn is_for_account(&self, account_address: &str) -> bool {
         self.account_address == account_address
+    }
+
+    pub(crate) fn surface(&self) -> OrderSurface {
+        self.surface
     }
 }
 
@@ -538,22 +549,31 @@ impl TradingTerminal {
     fn begin_one_shot_status_request(&mut self, context: &OneShotPlacementContext) -> u64 {
         let request_id = self.next_one_shot_status_request_id;
         self.next_one_shot_status_request_id = self.next_one_shot_status_request_id.wrapping_add(1);
-        self.pending_one_shot_status_request =
-            Some(PendingOneShotStatusRequest::new(request_id, context));
+        self.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
+            request_id, context,
+        ));
         request_id
+    }
+
+    pub(crate) fn insert_pending_one_shot_status_request(
+        &mut self,
+        request: PendingOneShotStatusRequest,
+    ) {
+        self.pending_one_shot_status_requests
+            .insert(request.request_id, request);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_pending_one_shot_status_requests_for_test(&self) -> bool {
+        !self.pending_one_shot_status_requests.is_empty()
     }
 
     pub(crate) fn clear_pending_one_shot_status_request_for_account(
         &mut self,
         account_address: &str,
     ) {
-        if self
-            .pending_one_shot_status_request
-            .as_ref()
-            .is_some_and(|pending| pending.is_for_account(account_address))
-        {
-            self.pending_one_shot_status_request = None;
-        }
+        self.pending_one_shot_status_requests
+            .retain(|_, pending| !pending.is_for_account(account_address));
     }
 
     pub(crate) fn clear_pending_order_status_requests_for_account_after_refresh(
@@ -601,7 +621,8 @@ impl TradingTerminal {
         if !self.one_shot_context_matches_current_account(&context) {
             return Task::none();
         }
-        self.pending_one_shot_status_request = None;
+        self.pending_one_shot_status_requests
+            .retain(|_, pending| !pending.is_for_context(&context));
 
         if matches!(
             outcome.kind,
@@ -651,22 +672,22 @@ impl TradingTerminal {
         result: Result<OrderStatusResult, String>,
     ) -> Task<Message> {
         let request_matches = self
-            .pending_one_shot_status_request
-            .as_ref()
+            .pending_one_shot_status_requests
+            .get(&request_id)
             .is_some_and(|pending| pending.matches(request_id, &context));
         if !request_matches {
             return Task::none();
         }
 
         if !self.one_shot_context_matches_current_account(&context) {
-            self.pending_one_shot_status_request = None;
+            self.pending_one_shot_status_requests.remove(&request_id);
             return Task::none();
         }
 
         let display = self.display_name_for_symbol(&context.symbol_key);
         match result {
             Ok(status) if status.is_open() && context.order_kind.allows_resting_response() => {
-                self.pending_one_shot_status_request = None;
+                self.pending_one_shot_status_requests.remove(&request_id);
                 self.set_order_status(
                     format!(
                         "{} placement confirmed by orderStatus for {}: {}",
@@ -678,12 +699,12 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_open() => {
-                self.pending_one_shot_status_request = None;
+                self.pending_one_shot_status_requests.remove(&request_id);
                 return self
                     .handle_unexpected_one_shot_resting_order(&context, &status.raw_summary);
             }
             Ok(status) if status.is_filled() => {
-                self.pending_one_shot_status_request = None;
+                self.pending_one_shot_status_requests.remove(&request_id);
                 self.set_order_status(
                     format!(
                         "{} placement filled according to orderStatus for {}: {}",
@@ -695,7 +716,7 @@ impl TradingTerminal {
                 );
             }
             Ok(status) if status.is_definitive_no_fill_terminal() => {
-                self.pending_one_shot_status_request = None;
+                self.pending_one_shot_status_requests.remove(&request_id);
                 self.set_order_status(
                     format!(
                         "{} placement rejected according to orderStatus for {}: {}",

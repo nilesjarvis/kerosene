@@ -509,7 +509,7 @@ fn handle_submit_quick_order_rejects_while_one_shot_status_pending() {
     let chart_id = 42;
     let mut terminal = terminal_with_quick_order(chart_id, "BTC");
     terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
-    terminal.pending_one_shot_status_request = Some(pending_one_shot_status_request());
+    terminal.insert_pending_one_shot_status_request(pending_one_shot_status_request());
 
     let _task = terminal.handle_submit_quick_order(chart_id, true);
 
@@ -520,7 +520,7 @@ fn handle_submit_quick_order_rejects_while_one_shot_status_pending() {
         "Wait for pending trading requests to finish before placing a quick order"
     );
     assert!(terminal.pending_order_action.is_none());
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     let instance = chart_instance_or_panic(&terminal, chart_id);
     assert!(instance.quick_order.is_some());
     assert!(terminal.pending_order_indicators.is_empty());
@@ -807,7 +807,7 @@ fn transport_unknown_quick_order_result_does_not_restore_form_or_surface_mapping
 
     assert!(terminal.pending_order_action.is_none());
     assert_quick_order_recovery_absent(&terminal, chart_id);
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     let (message, is_error) = order_status_or_panic(&terminal);
     assert!(is_error);
     assert!(message.contains("placement status unknown"));

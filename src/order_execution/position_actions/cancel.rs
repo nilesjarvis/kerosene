@@ -357,8 +357,10 @@ mod tests {
     #[test]
     fn execute_cancel_waits_for_pending_one_shot_status() {
         let mut terminal = terminal_with_cancelable_order();
-        terminal.pending_one_shot_status_request =
-            Some(PendingOneShotStatusRequest::new(7, &one_shot_context()));
+        terminal.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
+            7,
+            &one_shot_context(),
+        ));
 
         assert_cancel_waits_for_pending_trading_request(terminal);
     }

@@ -289,7 +289,7 @@ fn account_switch_is_blocked_while_one_shot_status_is_pending() {
     terminal.wallet_address_input = terminal.accounts[0].wallet_address.clone();
     terminal.wallet_key_input = terminal.accounts[0].agent_key.clone().into();
     terminal.connected_address = Some(terminal.accounts[0].wallet_address.clone());
-    terminal.pending_one_shot_status_request = Some(pending_one_shot_status_request(
+    terminal.insert_pending_one_shot_status_request(pending_one_shot_status_request(
         &terminal.accounts[0].wallet_address,
     ));
 
@@ -300,7 +300,7 @@ fn account_switch_is_blocked_while_one_shot_status_is_pending() {
         terminal.wallet_address_input,
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
     let toast = terminal.toasts.last().expect("blocked switch should toast");
     assert!(toast.is_error);
     assert!(

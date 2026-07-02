@@ -129,7 +129,7 @@ fn execute_nuke_refuses_pending_status_reconciliation_before_signing() {
     let mut terminal = terminal_with_stale_account();
     make_nuke_ready(&mut terminal, vec![("BTC", "1")]);
     set_mid(&mut terminal, "BTC", 100.0);
-    terminal.pending_one_shot_status_request = Some(PendingOneShotStatusRequest::new(
+    terminal.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
         7,
         &OneShotPlacementContext {
             account_address: super::TEST_ACCOUNT.to_string(),

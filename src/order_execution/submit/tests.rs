@@ -194,7 +194,7 @@ fn execute_order_rejects_while_order_action_pending() {
 fn execute_order_rejects_while_one_shot_status_pending() {
     let mut terminal = TradingTerminal::boot().0;
     terminal.order_kind = OrderKind::Market;
-    terminal.pending_one_shot_status_request = Some(pending_one_shot_status_request());
+    terminal.insert_pending_one_shot_status_request(pending_one_shot_status_request());
 
     let _task = terminal.execute_order(true);
 
@@ -206,7 +206,7 @@ fn execute_order_rejects_while_one_shot_status_pending() {
     );
     assert!(terminal.pending_order_action.is_none());
     assert!(terminal.pending_order_indicators.is_empty());
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
 }
 
 #[test]

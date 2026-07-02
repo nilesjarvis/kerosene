@@ -19,7 +19,9 @@ pub(crate) use core::{
     cancel_order_by_cloid_task, cancel_order_task, modify_order_task, place_order_task,
     validate_surface_market_type,
 };
-pub(crate) use hud::{HudOrderRequest, HudOrderSide, HudOrderType};
+pub(crate) use hud::{
+    HudOrderRequest, HudOrderSide, HudOrderType, HudPlacementTracker, MAX_INFLIGHT_HUD_PLACEMENTS,
+};
 pub(crate) use position_actions::{NukePlan, reject_if_positions_incomplete_for_action};
 pub(crate) use quick_order::QuickOrderSubmissionSnapshot;
 pub(crate) use sizing::order_size_from_quantity_input;
@@ -326,12 +328,37 @@ impl TradingTerminal {
         self.pending_order_action.is_some()
             || self.pending_nuke_execution.is_some()
             || self.pending_leverage_update.is_some()
-            || self.pending_one_shot_status_request.is_some()
+            || !self.pending_one_shot_status_requests.is_empty()
             || self.pending_cancel_status_request.is_some()
             || self.pending_move_status_request.is_some()
             || !self.pending_move_order_contexts.is_empty()
             || self.wallet_clusters.has_pending_execution()
             || self.has_pending_order_indicator_for_connected_account()
+            || self.has_inflight_hud_placement_for_connected_account()
+    }
+
+    fn has_inflight_hud_placement_for_connected_account(&self) -> bool {
+        self.connected_order_account_address()
+            .is_some_and(|address| self.hud_placements.has_any_for_account(&address))
+    }
+
+    /// HUD limit clicks are allowed to overlap each other, so this variant of
+    /// [`Self::has_pending_trading_request`] ignores HUD-placement-originated
+    /// state (the in-flight tracker, its chart indicators, and HUD one-shot
+    /// status checks) while still blocking on every other surface.
+    fn has_pending_trading_request_blocking_hud_placement(&self) -> bool {
+        self.pending_order_action.is_some()
+            || self.pending_nuke_execution.is_some()
+            || self.pending_leverage_update.is_some()
+            || self
+                .pending_one_shot_status_requests
+                .values()
+                .any(|pending| pending.surface() != OrderSurface::Hud)
+            || self.pending_cancel_status_request.is_some()
+            || self.pending_move_status_request.is_some()
+            || !self.pending_move_order_contexts.is_empty()
+            || self.wallet_clusters.has_pending_execution()
+            || self.has_non_hud_pending_order_indicator_for_connected_account()
     }
 
     pub(crate) fn reject_if_pending_trading_request(&mut self, action: &str) -> bool {
@@ -341,6 +368,37 @@ impl TradingTerminal {
 
         self.order_status = Some((
             format!("Wait for pending trading requests to finish before {action}"),
+            true,
+        ));
+        true
+    }
+
+    pub(crate) fn reject_if_pending_trading_request_blocking_hud_placement(
+        &mut self,
+        action: &str,
+    ) -> bool {
+        if !self.has_pending_trading_request_blocking_hud_placement() {
+            return false;
+        }
+
+        self.order_status = Some((
+            format!("Wait for pending trading requests to finish before {action}"),
+            true,
+        ));
+        true
+    }
+
+    pub(crate) fn reject_if_hud_placement_limit_reached(&mut self) -> bool {
+        let inflight = self
+            .connected_order_account_address()
+            .map(|address| self.hud_placements.count_for_account(&address))
+            .unwrap_or(0);
+        if inflight < MAX_INFLIGHT_HUD_PLACEMENTS {
+            return false;
+        }
+
+        self.order_status = Some((
+            "Too many HUD orders in flight; wait for confirmations".to_string(),
             true,
         ));
         true
@@ -595,7 +653,7 @@ mod tests {
         assert!(terminal.has_pending_trading_request());
         terminal.pending_leverage_update = None;
 
-        terminal.pending_one_shot_status_request = Some(PendingOneShotStatusRequest::new(
+        terminal.insert_pending_one_shot_status_request(PendingOneShotStatusRequest::new(
             7,
             &OneShotPlacementContext {
                 account_address: account.to_string(),
@@ -606,7 +664,7 @@ mod tests {
             },
         ));
         assert!(terminal.has_pending_trading_request());
-        terminal.pending_one_shot_status_request = None;
+        terminal.pending_one_shot_status_requests.clear();
 
         terminal.pending_cancel_status_request = Some(PendingCancelStatusRequest::new(
             account.to_string(),

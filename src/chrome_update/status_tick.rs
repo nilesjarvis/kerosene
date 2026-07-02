@@ -47,6 +47,7 @@ impl TradingTerminal {
         self.sync_chart_market_reference_prices();
         self.expire_stale_market_asset_contexts(now, now_ms);
         self.expire_pending_order_indicators();
+        self.hud_placements.expire(now_ms);
     }
 
     fn expire_stale_market_asset_contexts(&mut self, now: Instant, now_ms: u64) {

@@ -65,7 +65,8 @@ impl TradingTerminal {
                 self.account_data = None;
                 self.account_data_address = None;
                 self.pending_order_indicators.clear();
-                self.pending_one_shot_status_request = None;
+                self.hud_placements.clear();
+                self.pending_one_shot_status_requests.clear();
                 self.pending_cancel_status_request = None;
                 self.pending_move_status_request = None;
                 self.clear_pending_move_order_state();
@@ -259,7 +260,8 @@ impl TradingTerminal {
         self.account_data = None;
         self.account_data_address = None;
         self.pending_order_indicators.clear();
-        self.pending_one_shot_status_request = None;
+        self.hud_placements.clear();
+        self.pending_one_shot_status_requests.clear();
         self.pending_cancel_status_request = None;
         self.pending_move_status_request = None;
         self.clear_pending_move_order_state();
@@ -351,7 +353,8 @@ impl TradingTerminal {
         self.account_data = None;
         self.account_data_address = None;
         self.pending_order_indicators.clear();
-        self.pending_one_shot_status_request = None;
+        self.hud_placements.clear();
+        self.pending_one_shot_status_requests.clear();
         self.pending_cancel_status_request = None;
         self.pending_move_status_request = None;
         self.clear_pending_move_order_state();
@@ -896,13 +899,13 @@ mod tests {
         let mut terminal = TradingTerminal::boot().0;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal.wallet_address_input = TEST_ACCOUNT.to_ascii_uppercase();
-        terminal.pending_one_shot_status_request =
-            Some(pending_one_shot_status_request(TEST_ACCOUNT));
+        terminal
+            .insert_pending_one_shot_status_request(pending_one_shot_status_request(TEST_ACCOUNT));
 
         let _task = terminal.connect_wallet();
 
         assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
-        assert!(terminal.pending_one_shot_status_request.is_some());
+        assert!(terminal.has_pending_one_shot_status_requests_for_test());
         assert!(!terminal.account_loading);
         let toast = terminal
             .toasts
@@ -1296,13 +1299,13 @@ mod tests {
         let mut terminal = TradingTerminal::boot().0;
         terminal.connected_address = Some(TEST_ACCOUNT.to_string());
         terminal.wallet_address_input = TEST_ACCOUNT.to_string();
-        terminal.pending_one_shot_status_request =
-            Some(pending_one_shot_status_request(TEST_ACCOUNT));
+        terminal
+            .insert_pending_one_shot_status_request(pending_one_shot_status_request(TEST_ACCOUNT));
 
         let _task = terminal.disconnect_wallet();
 
         assert_eq!(terminal.connected_address.as_deref(), Some(TEST_ACCOUNT));
-        assert!(terminal.pending_one_shot_status_request.is_some());
+        assert!(terminal.has_pending_one_shot_status_requests_for_test());
         let toast = terminal
             .toasts
             .last()

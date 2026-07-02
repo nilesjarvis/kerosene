@@ -1325,6 +1325,7 @@ pub(crate) enum Message {
     SubmitHudOrder(HudOrderRequest),
     HudOrderResult {
         pending_indicator_id: Option<u64>,
+        inflight_id: Option<u64>,
         context: OneShotPlacementContext,
         result: Box<Result<ExchangeResponse, String>>,
     },

@@ -35,6 +35,7 @@ impl TradingTerminal {
         self.account_data = None;
         self.account_data_address = None;
         self.pending_order_indicators.clear();
+        self.hud_placements.clear();
         self.pending_cancel_status_request = None;
         self.pending_move_status_request = None;
         self.clear_pending_move_order_state();

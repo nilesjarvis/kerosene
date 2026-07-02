@@ -169,7 +169,7 @@ fn advanced_order_start_context_waits_for_pending_one_shot_status() {
     let mut terminal = TradingTerminal::boot().0;
     connect_test_account(&mut terminal);
     terminal.set_committed_agent_key_for_test("test-agent-key");
-    terminal.pending_one_shot_status_request = Some(pending_one_shot_status_request());
+    terminal.insert_pending_one_shot_status_request(pending_one_shot_status_request());
 
     assert!(
         terminal
@@ -183,7 +183,7 @@ fn advanced_order_start_context_waits_for_pending_one_shot_status() {
             true
         ))
     );
-    assert!(terminal.pending_one_shot_status_request.is_some());
+    assert!(terminal.has_pending_one_shot_status_requests_for_test());
 }
 
 #[test]

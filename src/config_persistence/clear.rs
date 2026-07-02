@@ -256,7 +256,8 @@ impl TradingTerminal {
         // the cleared account and must not outlive it (the agent key inside a
         // pending move context in particular).
         self.pending_order_indicators.clear();
-        self.pending_one_shot_status_request = None;
+        self.hud_placements.clear();
+        self.pending_one_shot_status_requests.clear();
         self.clear_pending_move_order_state();
         self.chase_orders.clear();
         self.selected_chase_id = None;
@@ -872,6 +873,9 @@ mod tests {
             "100".to_string(),
         );
         assert!(pending_id.is_some());
+        terminal
+            .hud_placements
+            .begin(TEST_ACCOUNT.to_string(), pending_id, 1_000);
         terminal.account_refresh_followup_pending = true;
         terminal.account_reconciliation_required = true;
         terminal.account_refresh_backoff_until_ms = Some(TradingTerminal::now_ms() + 60_000);
@@ -896,6 +900,7 @@ mod tests {
         });
 
         assert!(terminal.pending_order_indicators.is_empty());
+        assert!(!terminal.hud_placements.has_any_for_account(TEST_ACCOUNT));
         assert!(terminal.pending_move_order_contexts.is_empty());
         assert!(terminal.active_move_order_drag.is_none());
         assert!(!terminal.account_refresh_followup_pending);
