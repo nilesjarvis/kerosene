@@ -15,6 +15,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
     instance.macro_indicators.show_funding_rate = true;
     instance.macro_indicators.show_session_indicator = true;
     instance.macro_indicators.show_volume_profile = true;
+    instance.macro_indicators.show_high_low = true;
 
     let active = active_chart_indicators(&instance, &Theme::Dark);
     let labels_and_keys: Vec<_> = active
@@ -31,6 +32,7 @@ fn active_indicator_registry_preserves_badge_order_and_keys() {
             ("Funding", "show_funding_rate"),
             ("Sessions", "show_session_indicator"),
             ("Vol Profile", "show_volume_profile"),
+            ("High/Low", "show_high_low"),
         ]
     );
 }

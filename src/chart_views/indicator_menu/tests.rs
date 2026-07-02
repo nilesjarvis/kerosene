@@ -9,6 +9,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
         sma_200d: true,
         show_funding_rate: true,
         show_session_indicator: true,
+        show_high_low: true,
         show_labels: false,
         show_volume_profile: true,
         show_leledc_levels: true,
@@ -41,6 +42,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "show_funding_rate",
             "show_session_indicator",
             "show_labels",
+            "show_high_low",
             "show_volume_profile",
             "show_leledc_arrows",
             "show_leledc_levels",
@@ -60,6 +62,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "sma_200d",
             "show_funding_rate",
             "show_session_indicator",
+            "show_high_low",
             "show_volume_profile",
             "show_leledc_levels",
         ]

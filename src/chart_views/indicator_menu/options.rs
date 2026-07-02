@@ -140,6 +140,14 @@ pub(super) fn footer_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
     ]
 }
 
+pub(super) fn price_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
+    [IndicatorOption {
+        label: "High/Low",
+        key: "show_high_low",
+        checked: indicators.show_high_low,
+    }]
+}
+
 pub(super) fn volume_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 1] {
     [IndicatorOption {
         label: "Profile",
@@ -172,6 +180,7 @@ pub(super) fn all_indicator_options(indicators: &MacroIndicatorsConfig) -> Vec<I
     options.extend(weekly_options(indicators));
     options.extend(monthly_options(indicators));
     options.extend(footer_options(indicators));
+    options.extend(price_options(indicators));
     options.extend(volume_options(indicators));
     options.extend(leledc_options(indicators));
     options

@@ -7,6 +7,7 @@ use iced::widget::canvas;
 use iced::{Color, Theme};
 
 mod current_price;
+mod high_low;
 mod hud_order_animation;
 mod orders;
 mod positions;
@@ -48,6 +49,7 @@ impl CandlestickChart {
         IdxToCx: Fn(usize) -> f32,
     {
         self.draw_market_order_loading(ctx);
+        self.draw_visible_high_low_lines(ctx);
         self.draw_current_price_line(ctx);
         self.draw_hud_order_animation(ctx);
         self.draw_quick_order_limit_line(ctx);

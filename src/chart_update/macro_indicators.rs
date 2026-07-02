@@ -80,6 +80,10 @@ impl TradingTerminal {
                             inst.macro_indicators.show_volume_profile =
                                 !inst.macro_indicators.show_volume_profile
                         }
+                        "show_high_low" => {
+                            inst.macro_indicators.show_high_low =
+                                !inst.macro_indicators.show_high_low
+                        }
                         "show_leledc_arrows" => {
                             inst.macro_indicators.show_leledc_arrows =
                                 !inst.macro_indicators.show_leledc_arrows
@@ -167,6 +171,30 @@ mod tests {
                 .chart_configs_snapshot()
                 .iter()
                 .any(|config| config.id == 7 && config.macro_indicators.show_session_indicator)
+        );
+    }
+
+    #[test]
+    fn high_low_toggle_updates_canvas_state_and_snapshot() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.charts.clear();
+        terminal
+            .charts
+            .insert(7, ChartInstance::new(7, "BTC".to_string(), Timeframe::H1));
+
+        let _task = terminal.update_chart_macro_indicators(Message::ToggleMacroIndicator(
+            7,
+            "show_high_low".to_string(),
+        ));
+
+        let instance = terminal.charts.get(&7).expect("chart instance");
+        assert!(instance.macro_indicators.show_high_low);
+        assert!(instance.chart.macro_indicators.show_high_low);
+        assert!(
+            terminal
+                .chart_configs_snapshot()
+                .iter()
+                .any(|config| config.id == 7 && config.macro_indicators.show_high_low)
         );
     }
 
