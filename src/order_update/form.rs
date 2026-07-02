@@ -1,6 +1,6 @@
-use crate::account::AccountData;
+use crate::account::{AccountAbstractionMode, AccountData};
 use crate::app_state::TradingTerminal;
-use crate::helpers::{format_price, parse_number, positive_finite_value};
+use crate::helpers::{format_price, parse_finite_number, parse_number, positive_finite_value};
 use crate::message::Message;
 use crate::signing::OrderKind;
 use iced::Task;
@@ -215,6 +215,10 @@ impl TradingTerminal {
             });
         }
 
+        if self.is_spot_coin(&self.active_symbol) {
+            return self.spot_order_sizing_basis(&self.active_symbol, data);
+        }
+
         let available_margin = if self.is_outcome_coin(&self.active_symbol) {
             data.available_margin_for_token(
                 self.outcome_quote_token_index_for_coin(&self.active_symbol),
@@ -237,6 +241,41 @@ impl TradingTerminal {
         self.order_reduce_only
             && !self.is_spot_coin(&self.active_symbol)
             && !self.is_outcome_coin(&self.active_symbol)
+    }
+
+    /// Percentage sizing basis for spot markets, which trade wallet balances
+    /// rather than USDC margin: when the base token is held, size against the
+    /// sellable balance (total - hold); otherwise size buys against the
+    /// spendable spot USDC.
+    pub(in crate::order_update) fn spot_order_sizing_basis(
+        &self,
+        symbol: &str,
+        data: &AccountData,
+    ) -> Option<OrderSizingBasis> {
+        if let Some(sellable_size_coin) = self.spot_sellable_base_size(symbol, data) {
+            return Some(OrderSizingBasis::SpotSellableBalance { sellable_size_coin });
+        }
+
+        spot_spendable_quote_notional(data)
+            .map(|max_notional| OrderSizingBasis::MarginNotional { max_notional })
+    }
+
+    /// Sellable base-token balance (total - hold) for a spot pair, floored to
+    /// the pair's size decimals so a 100% sell never exceeds the balance.
+    fn spot_sellable_base_size(&self, symbol: &str, data: &AccountData) -> Option<f64> {
+        let exchange_symbol = self
+            .exchange_symbols
+            .iter()
+            .find(|exchange_symbol| exchange_symbol.key == symbol)?;
+        let balance = data
+            .spot
+            .balances
+            .iter()
+            .find(|balance| balance.coin.eq_ignore_ascii_case(&exchange_symbol.ticker))?;
+        let total = parse_finite_number(&balance.total)?;
+        let hold = parse_finite_number(&balance.hold)?;
+        let sellable = positive_finite_value(total - hold)?;
+        floor_to_size_decimals(sellable, exchange_symbol.sz_decimals)
     }
 
     pub(crate) fn clear_percentage_order_quantity(&mut self) {
@@ -345,6 +384,24 @@ impl TradingTerminal {
 
         None
     }
+}
+
+/// Spot USDC spendable on spot buys. Accounts without balance abstraction can
+/// only spend their spot USDC; abstraction modes auto-transfer, so they keep
+/// the account-level USDC availability.
+fn spot_spendable_quote_notional(data: &AccountData) -> Option<f64> {
+    let spendable = if data.account_abstraction == AccountAbstractionMode::Disabled {
+        data.spot_available_for_token(0)?
+    } else {
+        data.available_margin_for_token(0)?
+    };
+    positive_finite_value(spendable)
+}
+
+fn floor_to_size_decimals(size: f64, sz_decimals: u32) -> Option<f64> {
+    let decimals = sz_decimals.min(8);
+    let factor = 10f64.powi(decimals as i32);
+    positive_finite_value(((size * factor) + 1e-9).floor() / factor)
 }
 
 fn order_reference_price_matches(left: Option<f64>, right: Option<f64>) -> bool {

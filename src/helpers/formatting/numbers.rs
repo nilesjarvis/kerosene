@@ -188,8 +188,38 @@ pub fn format_price(price: f64) -> String {
     } else if price.abs() >= 1.0 {
         format!("{price:.2}")
     } else {
-        format!("{price:.4}")
+        format!("{price:.*}", small_price_decimals(price))
     }
+}
+
+/// Format a price as a plain decimal string suitable for order-input
+/// prefills: no thousands grouping, at least four decimals, and enough
+/// significant figures for low-priced spot markets.
+pub fn format_price_input(price: f64) -> String {
+    format!("{price:.*}", small_price_decimals(price))
+}
+
+/// Decimal places for sub-1.0 prices: keep at least four significant figures
+/// so low-priced spot tokens (which legally carry up to 8 decimal places on
+/// Hyperliquid) do not collapse to "0.0000", while prices at or above 0.1
+/// keep the historical fixed four decimals.
+fn small_price_decimals(price: f64) -> usize {
+    const MIN_DECIMALS: usize = 4;
+    // Hyperliquid prices never carry more than 8 decimal places.
+    const MAX_DECIMALS: usize = 8;
+    const SIGNIFICANT_FIGURES: i32 = 4;
+
+    let abs = price.abs();
+    if !abs.is_finite() || abs <= 0.0 || abs >= 1.0 {
+        return MIN_DECIMALS;
+    }
+
+    // -1 for 0.1234, -3 for 0.001234, -5 for 0.00001234.
+    let magnitude = abs.log10().floor() as i32;
+    let decimals = SIGNIFICANT_FIGURES - 1 - magnitude;
+    usize::try_from(decimals)
+        .unwrap_or(MIN_DECIMALS)
+        .clamp(MIN_DECIMALS, MAX_DECIMALS)
 }
 
 #[cfg(test)]

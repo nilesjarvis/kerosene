@@ -21,9 +21,36 @@ fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
     }
 }
 
+fn spot_symbol(key: &str, ticker: &str, display_name: &str) -> ExchangeSymbol {
+    ExchangeSymbol {
+        key: key.to_string(),
+        ticker: ticker.to_string(),
+        category: "spot".to_string(),
+        display_name: Some(display_name.to_string()),
+        keywords: vec!["spot".to_string()],
+        asset_index: 10_107,
+        collateral_token: None,
+        sz_decimals: 2,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: MarketType::Spot,
+        outcome: None,
+    }
+}
+
 fn terminal_with_hype() -> TradingTerminal {
     let mut terminal = TradingTerminal::boot().0;
     terminal.exchange_symbols = vec![symbol("HYPE", MarketType::Perp)];
+    terminal
+}
+
+fn terminal_with_hype_perp_and_spot() -> TradingTerminal {
+    let mut terminal = TradingTerminal::boot().0;
+    // Spot pair listed first to prove perp preference is a rule, not list order.
+    terminal.exchange_symbols = vec![
+        spot_symbol("@107", "HYPE", "HYPE/USDC"),
+        symbol("HYPE", MarketType::Perp),
+    ];
     terminal
 }
 

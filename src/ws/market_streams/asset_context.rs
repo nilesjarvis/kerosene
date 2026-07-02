@@ -5,9 +5,37 @@ use super::{KeyedAssetContextStreamEvent, SymbolAssetContextStreamEvent, WsStrea
 use futures::SinkExt as _;
 use tokio::sync::broadcast;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Active Asset Context Streams
 // ---------------------------------------------------------------------------
+
+/// Whether a websocket channel carries active asset context data.
+///
+/// Hyperliquid acknowledges `activeAssetCtx` subscriptions for spot pairs
+/// (`@{index}` symbols and PURR/USDC) but delivers their pushes on the
+/// `activeSpotAssetCtx` channel, so both channels must be accepted.
+pub(in crate::ws) fn is_active_asset_ctx_channel(channel: &str) -> bool {
+    channel == "activeAssetCtx" || channel == "activeSpotAssetCtx"
+}
+
+/// Parse an asset context push for `coin` out of a routed websocket message.
+/// Returns `None` for other channels, other coins, or malformed payloads.
+fn parse_active_asset_ctx(
+    channel: &str,
+    data: &serde_json::Value,
+    coin: &str,
+) -> Option<AssetContext> {
+    if !is_active_asset_ctx_channel(channel) {
+        return None;
+    }
+    if data.get("coin").and_then(|v| v.as_str()) != Some(coin) {
+        return None;
+    }
+    serde_json::from_value::<AssetContext>(data.get("ctx")?.clone()).ok()
+}
 
 fn ws_asset_ctx_stream(
     coin: &str,
@@ -45,10 +73,7 @@ fn ws_asset_ctx_stream(
         loop {
             match msg_rx.recv().await {
                 Ok(msg) => {
-                    if msg.channel == "activeAssetCtx"
-                        && msg.data.get("coin").and_then(|v| v.as_str()) == Some(&coin)
-                        && let Some(ctx_val) = msg.data.get("ctx")
-                        && let Ok(ctx) = serde_json::from_value::<AssetContext>(ctx_val.clone())
+                    if let Some(ctx) = parse_active_asset_ctx(&msg.channel, &msg.data, &coin)
                         && output.send(WsStreamEvent::Item(ctx)).await.is_err()
                     {
                         return;

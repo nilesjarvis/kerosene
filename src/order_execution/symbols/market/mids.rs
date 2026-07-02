@@ -1,4 +1,5 @@
 use super::live_mids::resolve_live_mid_from_candidates;
+use crate::api::spot_symbol_for_indexed_key;
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::signing::OrderKind;
@@ -28,7 +29,15 @@ impl TradingTerminal {
             push_unique(stripped.to_string());
         }
 
-        if let Some(sym) = self.exchange_symbols.iter().find(|s| s.key == symbol) {
+        // Saved state may still carry the legacy "@{index}" key for spot
+        // pairs the API names directly (PURR/USDC); resolving the alias adds
+        // the canonical key, which is the actual allMids entry.
+        if let Some(sym) = self
+            .exchange_symbols
+            .iter()
+            .find(|s| s.key == symbol)
+            .or_else(|| spot_symbol_for_indexed_key(&self.exchange_symbols, symbol))
+        {
             push_unique(sym.key.clone());
             if let Some((dex, ticker)) = sym.key.split_once(':') {
                 if let Some(stripped) = ticker.strip_prefix('U') {

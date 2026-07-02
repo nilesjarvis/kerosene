@@ -72,7 +72,6 @@ pub(super) fn fill_toast_message(fill: &UserFill, coin_label: &str, size_label: 
 #[derive(Debug, Clone)]
 pub(super) struct ChaseFillTotals {
     pub(super) side: String,
-    pub(super) coin: String,
     pub(super) filled_size: f64,
     pub(super) total_notional: f64,
 }
@@ -122,7 +121,6 @@ where
 
     let mut seen = HashSet::new();
     let mut side = None;
-    let mut coin = None;
     let mut filled_size = 0.0;
     let mut total_notional = 0.0;
     let mut matched = false;
@@ -152,7 +150,6 @@ where
                 "SELL".to_string()
             }
         });
-        coin.get_or_insert_with(|| fill.coin.clone());
         let Some((size, price)) = positive_fill_size_and_price(fill) else {
             continue;
         };
@@ -166,7 +163,6 @@ where
 
     Some(ChaseFillTotals {
         side: side.unwrap_or_else(|| "BUY".to_string()),
-        coin: coin.unwrap_or_else(|| "?".to_string()),
         filled_size,
         total_notional,
     })
@@ -175,38 +171,40 @@ where
 #[cfg(test)]
 pub(super) fn chase_fill_summary_for_oids(fills: &[UserFill], oids: &[u64]) -> Option<String> {
     let totals = chase_fill_totals(fills, oids)?;
+    let coin_label = fills
+        .iter()
+        .find(|fill| fill.oid.is_some_and(|oid| oids.contains(&oid)))
+        .map(|fill| fill.coin.clone())
+        .unwrap_or_else(|| "?".to_string());
 
-    if totals.filled_size > 0.0 {
-        let avg_px = totals.total_notional / totals.filled_size;
-        Some(format!(
-            "Chase filled: {} {} {} @ ${}",
-            totals.side,
-            format_chase_fill_number(totals.filled_size),
-            totals.coin,
-            format_chase_fill_number(avg_px)
-        ))
-    } else {
-        Some("Chase filled".to_string())
-    }
+    Some(chase_fill_summary_text(&totals, &coin_label))
 }
 
+/// `display_coin` is the human-readable pair name for `chase.coin`
+/// (spot fills report the raw "@{index}" key), resolved by the caller via
+/// `display_coin_for_journal`.
 pub(super) fn chase_fill_summary_for_chase(
     fills: &[UserFill],
     chase: &ChaseOrder,
+    display_coin: &str,
 ) -> Option<String> {
     let totals = chase_fill_totals_for_chase(fills, chase)?;
 
+    Some(chase_fill_summary_text(&totals, display_coin))
+}
+
+fn chase_fill_summary_text(totals: &ChaseFillTotals, coin_label: &str) -> String {
     if totals.filled_size > 0.0 {
         let avg_px = totals.total_notional / totals.filled_size;
-        Some(format!(
+        format!(
             "Chase filled: {} {} {} @ ${}",
             totals.side,
             format_chase_fill_number(totals.filled_size),
-            totals.coin,
+            coin_label,
             format_chase_fill_number(avg_px)
-        ))
+        )
     } else {
-        Some("Chase filled".to_string())
+        "Chase filled".to_string()
     }
 }
 
@@ -225,8 +223,9 @@ pub(super) fn chase_completed_summary(
     fills: &[UserFill],
     chase: &ChaseOrder,
     filled_size: f64,
+    display_coin: &str,
 ) -> String {
-    let summary = chase_fill_summary_for_chase(fills, chase)
+    let summary = chase_fill_summary_for_chase(fills, chase, display_coin)
         .unwrap_or_else(|| "Chase completed: target size filled".to_string());
     if chase.target_size.is_finite()
         && chase.target_size > 0.0

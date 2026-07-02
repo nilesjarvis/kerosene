@@ -106,6 +106,7 @@ pub(super) fn append_spot_contexts(
     }
 
     let mut parsed = Vec::new();
+    let mut pair_count = 0;
     for (i, coin_meta) in universe.iter().enumerate() {
         if let Some(spot_index) = coin_meta.get("index").and_then(|v| v.as_u64()) {
             let symbol_key = format!("@{spot_index}");
@@ -122,21 +123,25 @@ pub(super) fn append_spot_contexts(
                 .ok_or_else(|| format!("expected context object for @{spot_index}"))?;
             let prev_day_px = parse_optional_f64(ctx, "prevDayPx");
             let day_vlm = parse_optional_f64(ctx, "dayNtlVlm");
-            parsed.push((
-                symbol_key,
-                WatchlistContext {
-                    funding: None,
-                    prev_day_px,
-                    day_vlm,
-                },
-            ));
+            let context = WatchlistContext {
+                funding: None,
+                prev_day_px,
+                day_vlm,
+            };
+            pair_count += 1;
+            // API-named pairs (PURR/USDC) are keyed by their name in the
+            // exchange symbol list; keep the indexed key too so older saved
+            // watchlist entries keep resolving.
+            if let Some(name) = pair_name.filter(|name| *name != symbol_key) {
+                parsed.push((name.to_string(), context.clone()));
+            }
+            parsed.push((symbol_key, context));
         }
     }
 
-    let appended = parsed.len();
     map.extend(parsed);
 
-    Ok(appended)
+    Ok(pair_count)
 }
 
 fn spot_context_matches_symbol(

@@ -1,3 +1,4 @@
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::message::Message;
 use crate::order_execution::{
@@ -16,31 +17,42 @@ use zeroize::Zeroizing;
 // HUD Chart Order Submission
 // ---------------------------------------------------------------------------
 
+/// Spot orders trade tokens the account holds, so perp LONG/SHORT wording
+/// misrepresents them; label spot sides BUY/SELL instead.
+fn hud_side_label(market_type: MarketType, is_buy: bool) -> &'static str {
+    match (market_type == MarketType::Spot, is_buy) {
+        (true, true) => "BUY",
+        (true, false) => "SELL",
+        (false, true) => "LONG",
+        (false, false) => "SHORT",
+    }
+}
+
 impl TradingTerminal {
     pub(crate) fn handle_submit_hud_order(&mut self, request: HudOrderRequest) -> Task<Message> {
         let Some(instance) = self.charts.get(&request.chart_id) else {
-            self.order_status = Some(("HUD chart is no longer available".into(), true));
+            self.set_order_status("HUD chart is no longer available".into(), true);
             return Task::none();
         };
         if instance.chart.surface_id() != request.surface_id {
-            self.order_status = Some(("HUD order ignored: chart surface changed".into(), true));
+            self.set_order_status("HUD order ignored: chart surface changed".into(), true);
             return Task::none();
         }
         let chart_symbol = instance.symbol.clone();
         if chart_symbol != request.symbol_key {
-            self.order_status = Some(("HUD order ignored: chart symbol changed".into(), true));
+            self.set_order_status("HUD order ignored: chart symbol changed".into(), true);
             return Task::none();
         }
         if !instance.chart.hud_order_submission_enabled() {
-            self.order_status = Some((
+            self.set_order_status(
                 "HUD trading is in safe mode; arm the chart first".into(),
                 true,
-            ));
+            );
             return Task::none();
         }
 
         if chart_symbol.is_empty() {
-            self.order_status = Some(("Select a chart symbol before HUD trading".into(), true));
+            self.set_order_status("Select a chart symbol before HUD trading".into(), true);
             return Task::none();
         }
 
@@ -56,8 +68,7 @@ impl TradingTerminal {
             match request.limit_side {
                 Some(side) => side.is_buy(),
                 None => {
-                    self.order_status =
-                        Some(("No click-time side for HUD limit order".into(), true));
+                    self.set_order_status("No click-time side for HUD limit order".into(), true);
                     return Task::none();
                 }
             }
@@ -66,13 +77,16 @@ impl TradingTerminal {
         // Chart clicks can queue faster than results return; serialize HUD
         // submissions through the same pending-request gate as ticket orders.
         if self.reject_if_pending_trading_request("placing a HUD order") {
+            self.toast_order_status();
             return Task::none();
         }
         if self.reject_if_account_reconciliation_required("placing a HUD order", "account data") {
+            self.toast_order_status();
             return Task::none();
         }
 
         let Some((key, account_address)) = self.order_signing_context() else {
+            self.toast_order_status();
             return Task::none();
         };
         let intent = PlaceIntent {
@@ -101,7 +115,7 @@ impl TradingTerminal {
         let prepared = match self.prepare_place_order(intent) {
             Ok(prepared) => prepared,
             Err(message) => {
-                self.order_status = Some((message, true));
+                self.set_order_status(message, true);
                 return Task::none();
             }
         };
@@ -121,11 +135,13 @@ impl TradingTerminal {
             HudOrderType::Limit => "limit",
             HudOrderType::Market => "market",
         };
-        let side_label = if prepared.is_buy { "LONG" } else { "SHORT" };
+        let side_label = hud_side_label(prepared.market_type, prepared.is_buy);
+        // Spot symbol keys are raw "@{index}" pair indices; show the pair name.
+        let display_symbol = self.display_name_for_symbol(&prepared.symbol_key);
         self.order_status = Some((
             format!(
-                "Placing HUD {kind_label} {side_label} {} {}...",
-                prepared.size, prepared.symbol_key
+                "Placing HUD {kind_label} {side_label} {} {display_symbol}...",
+                prepared.size
             ),
             false,
         ));
@@ -194,7 +210,7 @@ impl TradingTerminal {
             HudOrderType::Limit => "LIMIT",
             HudOrderType::Market => "MKT",
         };
-        let side_label = if prepared.is_buy { "LONG" } else { "SHORT" };
+        let side_label = hud_side_label(prepared.market_type, prepared.is_buy);
         let label = format!(
             "{kind_label} {side_label} {} @ {}",
             prepared.size, prepared.price
@@ -316,6 +332,15 @@ mod tests {
         )
     }
 
+    fn error_toast_messages(terminal: &TradingTerminal) -> Vec<&str> {
+        terminal
+            .toasts
+            .iter()
+            .filter(|toast| toast.is_error)
+            .map(|toast| toast.message.as_str())
+            .collect()
+    }
+
     #[test]
     fn hud_order_submission_rejects_safe_mode() {
         let mut terminal = terminal_with_hud_chart(false);
@@ -330,6 +355,86 @@ mod tests {
             Some(("HUD trading is in safe mode; arm the chart first", true))
         );
         assert!(terminal.pending_order_action.is_none());
+    }
+
+    #[test]
+    fn hud_order_submission_safe_mode_rejection_pushes_toast() {
+        // HUD trading happens on charts, where the order ticket pane may be
+        // closed; rejections must surface as a toast, not only in the
+        // pane-local status line.
+        let mut terminal = terminal_with_hud_chart(false);
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            error_toast_messages(&terminal),
+            vec!["HUD trading is in safe mode; arm the chart first"]
+        );
+    }
+
+    #[test]
+    fn hud_order_submission_pending_gate_rejection_pushes_toast() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.pending_order_action = Some(PendingOrderAction::Sell);
+
+        let _task = terminal.handle_submit_hud_order(hud_request(ChartSurfaceId::Docked(1)));
+
+        assert_eq!(
+            error_toast_messages(&terminal),
+            vec!["Wait for pending trading requests to finish before placing a HUD order"]
+        );
+    }
+
+    #[test]
+    fn hud_order_submission_preflight_failure_pushes_toast() {
+        let mut terminal = terminal_with_hud_chart(true);
+        terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.quantity = "0".to_string();
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            error_toast_messages(&terminal),
+            vec!["Invalid HUD order size"]
+        );
+    }
+
+    #[test]
+    fn hud_spot_limit_submission_labels_sell_and_pair_name() {
+        // Spot has no shorting and the WS key is a raw "@{index}" pair index;
+        // the HUD status must read BUY/SELL with the pair name.
+        let mut terminal = terminal_with_hud_chart(true);
+        let mut spot = symbol("@107", MarketType::Spot);
+        spot.display_name = Some("HYPE/USDC".to_string());
+        terminal.exchange_symbols = vec![spot];
+        terminal.all_mids.insert("@107".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@107".to_string(), TradingTerminal::now_ms());
+        terminal
+            .charts
+            .get_mut(&1)
+            .expect("chart should exist")
+            .symbol = "@107".to_string();
+        let mut request = hud_request(ChartSurfaceId::Docked(1));
+        request.symbol_key = "@107".to_string();
+        request.price = 110.0;
+        request.limit_side = Some(HudOrderSide::Short);
+
+        let _task = terminal.handle_submit_hud_order(request);
+
+        assert_eq!(
+            terminal.pending_order_action,
+            Some(PendingOrderAction::Sell)
+        );
+        assert_eq!(
+            terminal
+                .order_status
+                .as_ref()
+                .map(|(message, is_error)| (message.as_str(), *is_error)),
+            Some(("Placing HUD limit SELL 1 HYPE/USDC...", false))
+        );
     }
 
     #[test]

@@ -12,6 +12,7 @@ pub(super) struct ParsedTradeIntent {
     pub(super) amount: Option<f64>,
     pub(super) amount_is_usd: bool,
     pub(super) symbol: Option<String>,
+    pub(super) explicit_spot: bool,
     pub(super) explicit_chase: bool,
     pub(super) explicit_limit: bool,
     pub(super) limit_price: Option<f64>,
@@ -40,6 +41,7 @@ pub(super) fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
     let mut amount = None;
     let mut amount_is_usd = false;
     let mut symbol = None;
+    let mut explicit_spot = false;
     let mut explicit_chase = false;
     let mut explicit_limit = false;
     let mut explicit_market = false;
@@ -69,6 +71,10 @@ pub(super) fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
             }
             "market" => {
                 explicit_market = true;
+                consumed[index] = true;
+            }
+            "spot" => {
+                explicit_spot = true;
                 consumed[index] = true;
             }
             "at" => {
@@ -122,6 +128,7 @@ pub(super) fn parse_trade_intent(query: &str) -> Option<ParsedTradeIntent> {
         amount,
         amount_is_usd,
         symbol,
+        explicit_spot,
         explicit_chase,
         explicit_limit,
         limit_price,

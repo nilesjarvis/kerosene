@@ -3,7 +3,7 @@ use crate::app_state::TradingTerminal;
 
 impl TradingTerminal {
     pub(crate) fn display_name_for_symbol(&self, coin: &str) -> String {
-        if let Some(symbol) = self.exchange_symbols.iter().find(|s| s.key == coin) {
+        if let Some(symbol) = self.exchange_symbol_for_key(coin) {
             return Self::exchange_symbol_display_name(symbol);
         }
         if let Some(label) = self.cached_outcome_display_label(coin) {

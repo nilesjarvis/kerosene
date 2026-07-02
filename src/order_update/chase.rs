@@ -92,12 +92,12 @@ impl TradingTerminal {
             self.order_status = Some((status, false));
             Task::batch([self.refresh_account_data(), status_task])
         } else {
-            self.order_status = Some((
+            self.set_order_status(
                 format!(
                     "{status}; checking previous account order status without clearing chase state"
                 ),
                 true,
-            ));
+            );
             status_task
         }
     }

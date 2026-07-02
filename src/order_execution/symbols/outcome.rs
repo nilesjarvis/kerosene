@@ -6,12 +6,12 @@ pub(crate) const OUTCOME_MAX_PRICE: f64 = 0.999;
 
 impl TradingTerminal {
     pub(crate) fn outcome_read_only_status(&mut self, action: &str) {
-        self.order_status = Some((
+        self.set_order_status(
             format!(
                 "Outcome {action} is not available from this control; use the main order ticket"
             ),
             true,
-        ));
+        );
     }
 
     pub(crate) fn outcome_balance_coin_to_trade_coin(coin: &str) -> Option<String> {

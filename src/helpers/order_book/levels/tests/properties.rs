@@ -73,10 +73,11 @@ proptest! {
         }
     }
 
-    /// For the ask side, every bucket price must be >= the highest input
-    /// price that landed in it (ceil semantics). For the bid side it must
-    /// be <= the lowest input price that landed in it (floor semantics).
-    /// This catches accidental sign flips in the keying logic.
+    /// For the ask side, every input price must land in a bucket at or
+    /// (within the grid-snap tolerance) above it, no more than one tick
+    /// away — ceil semantics. This catches accidental sign flips in the
+    /// keying logic without re-deriving the unguarded float division that
+    /// the grid snap exists to correct.
     #[test]
     fn ask_buckets_dominate_input_prices_via_ceil(
         levels in arb_levels(),
@@ -84,17 +85,17 @@ proptest! {
     ) {
         let tick = 10f64.powi(tick_exp);
         let aggregated = aggregate_levels(&levels, tick, false);
+        let slack = tick * 1e-5;
         for input in &levels {
-            let bucket_price = (input.px / tick).ceil() * tick;
             let found = aggregated.iter().any(|(p, _)| {
-                let diff = (p - bucket_price).abs();
-                diff <= (bucket_price.abs() * 1e-9).max(tick * 1e-9)
+                *p >= input.px - slack && *p < input.px + tick + slack
             });
             prop_assert!(
                 found,
-                "ask input {} (bucket {}) missing from output",
+                "ask input {} has no bucket in [{}, {})",
                 input.px,
-                bucket_price
+                input.px - slack,
+                input.px + tick + slack
             );
         }
     }

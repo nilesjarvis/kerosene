@@ -6,6 +6,30 @@ use super::{
 use std::time::Instant;
 
 #[test]
+fn twap_fill_summary_converts_base_token_fees_to_usd() {
+    // A spot HYPE/USDC TWAP child: the buy fill's fee arrives in HYPE (base
+    // token) and converts at the fill price; the USDC fee passes through.
+    let mut base_fee_fill = user_fill(42, "1", "40");
+    base_fee_fill.fee = "0.5".to_string();
+    base_fee_fill.fee_token = Some("HYPE".to_string());
+    let mut usdc_fee_fill = user_fill(42, "1", "40");
+    usdc_fee_fill.time = 2;
+    usdc_fee_fill.fee = "0.1".to_string();
+    usdc_fee_fill.fee_token = Some("USDC".to_string());
+
+    let summary = crate::twap_state::fills::fill_summary_for_order(
+        &[base_fee_fill, usdc_fee_fill],
+        42,
+        "BTC",
+        true,
+    )
+    .expect("fills for oid");
+
+    // 0.5 HYPE * $40 + $0.1 = $20.1
+    assert!((summary.fee - 20.1).abs() < 1e-9);
+}
+
+#[test]
 fn twap_fill_summary_does_not_invent_missing_fill_size() {
     let response = exchange_response_from_value(
         serde_json::json!({

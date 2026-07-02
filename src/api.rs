@@ -19,7 +19,7 @@ pub use candles::{
 pub(crate) use chart_asset_context::fetch_chart_asset_context;
 pub use exchange_symbols::{
     ExchangeSymbol, ExchangeSymbolsPayload, MarketType, OutcomeSymbolInfo, fetch_exchange_symbols,
-    fetch_exchange_symbols_cached,
+    fetch_exchange_symbols_cached, spot_symbol_for_indexed_key,
 };
 pub(crate) use hype_etfs::fetch_hype_etfs;
 pub(crate) use hype_unstaking_queue::fetch_hype_unstaking_queue;

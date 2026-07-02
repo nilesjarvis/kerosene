@@ -1,6 +1,6 @@
 use crate::app_state::TradingTerminal;
 use crate::config::OrderPreset;
-use crate::helpers::{parse_number, positive_finite_value};
+use crate::helpers::{format_price_input, parse_number, positive_finite_value};
 use crate::message::Message;
 use crate::order_execution::{AdvancedOrderKind, OrderSurface, TicketOrderPlaceIntent};
 use crate::signing::{ExchangeOrderKind, OrderKind};
@@ -120,7 +120,9 @@ impl TradingTerminal {
             } else {
                 mid
             };
-            format!("{target_price:.4}")
+            // Low-priced spot markets carry up to 8 decimal places; a fixed
+            // 4-decimal render would corrupt (or zero out) the preset offset.
+            format_price_input(target_price)
         } else {
             String::new()
         };
@@ -463,6 +465,39 @@ mod tests {
         assert!(indicator.is_buy);
         assert_eq!(indicator.size, "2.5");
         assert_eq!(indicator.price, "50000");
+    }
+
+    #[test]
+    fn limit_preset_offset_keeps_precision_on_low_priced_spot_markets() {
+        let mut terminal = preset_ready_terminal();
+        let mut spot = symbol("@107", MarketType::Spot);
+        spot.ticker = "MEME".to_string();
+        spot.display_name = Some("MEME/USDC".to_string());
+        spot.sz_decimals = 0;
+        spot.asset_index = 10_107;
+        terminal.active_symbol = "@107".to_string();
+        terminal.active_symbol_display = "MEME/USDC".to_string();
+        terminal.exchange_symbols = vec![spot];
+        terminal.all_mids.insert("@107".to_string(), 0.00035);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("@107".to_string(), TradingTerminal::now_ms());
+
+        let _task = terminal.handle_execute_preset(
+            OrderKind::Limit,
+            OrderPreset {
+                label: "-1% 100000".to_string(),
+                size: 100_000.0,
+                price_offset_pct: Some(1.0),
+            },
+            true,
+        );
+
+        // A fixed 4-decimal format would submit 0.0003 (-14.3% instead of
+        // the requested -1%) on a market that carries 8 decimal places.
+        assert_eq!(terminal.order_price, "0.0003465");
+        assert_eq!(terminal.order_kind, OrderKind::Limit);
+        assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
     }
 
     #[test]

@@ -102,28 +102,47 @@ fn compact_signed_amount_rounds_to_whole_values() {
 
 #[test]
 fn compact_position_size_trims_unneeded_zeroes() {
-    assert_eq!(trim_decimal_zeros(format_size(1.0)), "1");
-    assert_eq!(trim_decimal_zeros(format_size(1.25)), "1.25");
+    let terminal = crate::app_state::TradingTerminal::boot().0;
+
+    assert_eq!(
+        terminal.display_position_size("BTC", 1.0, PositionNumberMode::Compact),
+        "1"
+    );
+    assert_eq!(
+        terminal.display_position_size("BTC", 1.25, PositionNumberMode::Compact),
+        "1.25"
+    );
     assert_eq!(format_position_compact_number(12_500.0), "13k");
     assert_eq!(format_position_compact_number(532_023.0), "500k");
 }
 
 #[test]
-fn non_bitcoin_spot_position_size_rounds_to_two_decimals() {
+fn spot_position_size_keeps_small_position_precision() {
     let mut terminal = crate::app_state::TradingTerminal::boot().0;
     terminal.exchange_symbols.push(spot_symbol("@107", "HYPE"));
+    terminal.exchange_symbols.push(spot_symbol("@151", "UETH"));
 
     assert_eq!(
         terminal.display_position_size("@107", 6.7491729032, PositionNumberMode::Full),
-        "6.75"
+        "6.7492"
     );
     assert_eq!(
         terminal.display_position_size("@107", 6.7491729032, PositionNumberMode::Compact),
-        "6.75"
+        "6.7492"
     );
     assert_eq!(
         terminal.display_position_size("@107", 2.0, PositionNumberMode::Full),
         "2"
+    );
+    // Regression: a ~$10 UETH position (min spot notional) used to round to
+    // two decimals and display as "0".
+    assert_eq!(
+        terminal.display_position_size("@151", 0.0037, PositionNumberMode::Full),
+        "0.0037"
+    );
+    assert_eq!(
+        terminal.display_position_size("@151", 0.0037, PositionNumberMode::Compact),
+        "0.0037"
     );
 }
 

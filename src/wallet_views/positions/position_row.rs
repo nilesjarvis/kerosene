@@ -2,7 +2,9 @@ use crate::account::WalletPositionDetail;
 use crate::app_state::TradingTerminal;
 use crate::helpers::optional_value_color;
 use crate::message::Message;
-use crate::wallet_views::position_metrics::{wallet_position_upnl, wallet_position_value};
+use crate::wallet_views::position_metrics::{
+    wallet_position_upnl, wallet_position_value, wallet_spot_value_unavailable,
+};
 use crate::wallet_views::style::{wallet_signed_value_color, wallet_symbol_button};
 use crate::wallet_views::wallet_dex_label;
 
@@ -36,9 +38,46 @@ impl TradingTerminal {
         let upnl = wallet_position_upnl(szi, entry_px, &pos.unrealized_pnl, mark_px);
         let funding = Self::position_funding_pnl(pos.cum_funding.as_ref());
         let (side, side_color) = wallet_position_side(szi, &theme);
-        let upnl_color = wallet_signed_value_color(upnl, &theme);
         let invalid_color = theme.palette().warning;
         let weak_color = theme.extended_palette().background.weak.text;
+        // Synthesized spot/outcome rows without a derivable cost basis carry
+        // empty wire strings: show "-" (unavailable) instead of the invalid
+        // warning, matching the main positions table.
+        let spot_like = self.is_spot_coin(&pos.coin) || self.is_outcome_coin(&pos.coin);
+        let entry_unavailable = wallet_spot_value_unavailable(spot_like, entry_px, &pos.entry_px);
+        let pnl_unavailable = wallet_spot_value_unavailable(spot_like, upnl, &pos.unrealized_pnl);
+        let value_unavailable =
+            wallet_spot_value_unavailable(spot_like, position_value, &pos.position_value);
+        let entry_display = if entry_unavailable {
+            "-".to_string()
+        } else {
+            format_wallet_display_price(&denomination, entry_px)
+        };
+        let entry_color = if entry_unavailable {
+            weak_color
+        } else {
+            optional_value_color(entry_px, weak_color, invalid_color)
+        };
+        let value_display = if value_unavailable {
+            "-".to_string()
+        } else {
+            format_wallet_display_usd(&denomination, position_value, 0)
+        };
+        let value_color = if value_unavailable {
+            weak_color
+        } else {
+            optional_value_color(position_value, weak_color, invalid_color)
+        };
+        let upnl_display = if pnl_unavailable {
+            "-".to_string()
+        } else {
+            format_wallet_display_signed_usd(&denomination, upnl)
+        };
+        let upnl_color = if pnl_unavailable {
+            weak_color
+        } else {
+            wallet_signed_value_color(upnl, &theme)
+        };
         let liq_px = Self::parse_liquidation_px(&detail.asset_position);
         let symbol_button = wallet_symbol_button(symbol_label, symbol, 95.0, &theme);
 
@@ -59,10 +98,10 @@ impl TradingTerminal {
                 .font(crate::app_fonts::monospace_font())
                 .color(optional_value_color(szi, weak_color, invalid_color))
                 .width(84),
-            text(format_wallet_display_price(&denomination, entry_px))
+            text(entry_display)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
-                .color(optional_value_color(entry_px, weak_color, invalid_color))
+                .color(entry_color)
                 .width(78),
             text(
                 mark_px
@@ -80,16 +119,12 @@ impl TradingTerminal {
             .size(11)
             .font(crate::app_fonts::monospace_font())
             .width(78),
-            text(format_wallet_display_usd(&denomination, position_value, 0))
+            text(value_display)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
-                .color(optional_value_color(
-                    position_value,
-                    weak_color,
-                    invalid_color
-                ))
+                .color(value_color)
                 .width(84),
-            text(format_wallet_display_signed_usd(&denomination, upnl))
+            text(upnl_display)
                 .size(11)
                 .font(crate::app_fonts::monospace_font())
                 .color(upnl_color)

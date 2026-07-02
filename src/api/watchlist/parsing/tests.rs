@@ -137,3 +137,39 @@ fn spot_context_parser_keeps_positional_fallback_for_legacy_contexts_without_coi
     assert_eq!(context.prev_day_px, Some(60.0));
     assert_eq!(context.day_vlm, Some(987654.0));
 }
+
+#[test]
+fn spot_context_parser_keys_api_named_pairs_by_their_name() {
+    let raw = serde_json::json!([
+        {
+            "universe": [
+                { "name": "PURR/USDC", "index": 0 },
+                { "name": "@107", "index": 107 }
+            ]
+        },
+        [
+            {
+                "coin": "PURR/USDC",
+                "prevDayPx": "0.9",
+                "dayNtlVlm": "1234.0"
+            },
+            {
+                "coin": "@107",
+                "prevDayPx": "60.0",
+                "dayNtlVlm": "987654.0"
+            }
+        ]
+    ]);
+    let mut map = HashMap::new();
+
+    let parsed = append_spot_contexts(raw, &mut map);
+
+    assert_eq!(parsed, Ok(2));
+    // The canonical pair is keyed by its API name in the symbol list, so
+    // context lookups must resolve that key (the legacy "@0" stays too).
+    let context = map.get("PURR/USDC").expect("named context");
+    assert_eq!(context.prev_day_px, Some(0.9));
+    assert_eq!(context.day_vlm, Some(1234.0));
+    let legacy = map.get("@0").expect("legacy indexed context");
+    assert_eq!(legacy.prev_day_px, Some(0.9));
+}

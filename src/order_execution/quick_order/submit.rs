@@ -79,7 +79,7 @@ impl TradingTerminal {
         snapshot: QuickOrderSubmissionSnapshot,
     ) -> Task<Message> {
         if !self.quick_order_submission_snapshot_matches(chart_id, &snapshot) {
-            self.order_status = Some(("Quick order changed; review and submit again".into(), true));
+            self.set_order_status("Quick order changed; review and submit again".into(), true);
             return Task::none();
         }
 
@@ -92,14 +92,17 @@ impl TradingTerminal {
         is_buy: bool,
     ) -> Task<Message> {
         if self.reject_if_pending_trading_request("placing a quick order") {
+            self.toast_order_status();
             return Task::none();
         }
         if self.reject_if_account_reconciliation_required("placing a quick order", "account data") {
+            self.toast_order_status();
             return Task::none();
         }
 
         let _theme = self.theme();
         let Some((key, account_address)) = self.order_signing_context() else {
+            self.toast_order_status();
             return Task::none();
         };
 
@@ -159,7 +162,7 @@ impl TradingTerminal {
         let prepared = match self.prepare_place_order(intent) {
             Ok(prepared) => prepared,
             Err(message) => {
-                self.order_status = Some((message, true));
+                self.set_order_status(message, true);
                 self.restore_quick_order_form(chart_id, form, quick_order_surface);
                 return Task::none();
             }
@@ -189,10 +192,10 @@ impl TradingTerminal {
             || provenance.reduce_only != self.order_reduce_only
             || provenance.market_universe != self.market_universe
         {
-            self.order_status = Some((
+            self.set_order_status(
                 format!("Reselect percentage size before {action}; order context changed"),
                 true,
-            ));
+            );
             return Some(Task::none());
         }
 
@@ -200,68 +203,69 @@ impl TradingTerminal {
             let current_reference =
                 self.quick_order_reference_price(form.price, form.is_limit, chart_symbol);
             if !quick_order_reference_price_matches(current_reference, provenance.reference_price) {
-                self.order_status = Some((
+                self.set_order_status(
                     format!("Reselect percentage size before {action}; reference price changed"),
                     true,
-                ));
+                );
                 return Some(Task::none());
             }
         }
 
         if self.account_loading {
-            self.order_status = Some((
+            self.set_order_status(
                 format!("Account refresh in progress; wait for fresh account data before {action}"),
                 true,
-            ));
+            );
             return Some(Task::none());
         }
         if self.reject_if_account_reconciliation_required(action, "account data") {
+            self.toast_order_status();
             return Some(Task::none());
         }
 
         let Some((account_address, data)) = self.connected_order_account_snapshot() else {
-            self.order_status = Some((
+            self.set_order_status(
                 format!(
                     "No current account data for percentage size; refresh or reselect size before {action}"
                 ),
                 true,
-            ));
+            );
             return Some(self.refresh_account_data());
         };
 
         if account_address != provenance.account_address {
-            self.order_status = Some((
+            self.set_order_status(
                 format!(
                     "Percentage size was calculated for a different account; reselect size before {action}"
                 ),
                 true,
-            ));
+            );
             return Some(Task::none());
         }
 
         if self.account_data_revision != provenance.account_data_revision {
-            self.order_status = Some((
+            self.set_order_status(
                 format!(
                     "Percentage size was calculated from an older account snapshot; reselect size before {action}"
                 ),
                 true,
-            ));
+            );
             return Some(Task::none());
         }
 
         if !data.is_fresh_for_position_action(Self::now_ms()) {
-            self.order_status = Some((
+            self.set_order_status(
                 format!("Account data is stale for percentage size; refresh before {action}"),
                 true,
-            ));
+            );
             return Some(self.refresh_account_data());
         }
 
         if !data.completeness.positions_actionable {
-            self.order_status = Some((
+            self.set_order_status(
                 format!("Positions may be incomplete; refresh account data before {action}"),
                 true,
-            ));
+            );
             return Some(self.refresh_account_data());
         }
 
@@ -278,10 +282,12 @@ impl TradingTerminal {
     ) -> Task<Message> {
         let side_str = if prepared.is_buy { "BUY" } else { "SELL" };
         let kind_str = if is_limit { "limit" } else { "market" };
+        // Spot symbol keys are raw "@{index}" pair indices; show the pair name.
+        let display_symbol = self.display_name_for_symbol(&prepared.symbol_key);
         self.order_status = Some((
             format!(
-                "Placing {kind_str} {side_str} {} {}...",
-                prepared.size, prepared.symbol_key
+                "Placing {kind_str} {side_str} {} {display_symbol}...",
+                prepared.size
             ),
             false,
         ));

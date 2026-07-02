@@ -6,10 +6,9 @@ mod identity;
 mod model;
 mod position;
 
+use crate::helpers::non_perp_fee_usd;
 use builders::{apply_non_perp_fill, new_flip_trade, new_non_perp_trade, new_perp_trade};
-use helpers::{
-    add_legacy_note_id, legacy_trade_id, non_perp_fee_usd, parse_fill_values, stable_trade_id,
-};
+use helpers::{add_legacy_note_id, legacy_trade_id, parse_fill_values, stable_trade_id};
 use position::{
     POSITION_EPSILON, fill_position_transition, is_non_perp_coin, resolved_start_position,
     signed_fill_size,
@@ -74,8 +73,9 @@ pub fn aggregate_trades_with_diagnostics(mut fills: Vec<UserFill>) -> Aggregatio
         // Spot and outcome trades don't have a concept of open margin positions.
         // We aggregate their executions simply by Order ID.
         if is_non_perp_coin(&coin) {
-            // Non-USDC spot fees (base-token buy fees) are converted to USD so the
-            // trade card, per-asset table, and totals stay consistently USD-denominated.
+            // Base-token spot fees (buys) are converted to USD so the trade card,
+            // per-asset table, and totals stay consistently USD-denominated;
+            // dollar-stable quote fees (sells) are already USD and kept as-is.
             let fee_usd = non_perp_fee_usd(fee, &fill.fee_token, px);
             let mut trade = spot_trades
                 .remove(&fill.oid)

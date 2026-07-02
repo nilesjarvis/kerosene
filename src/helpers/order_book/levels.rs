@@ -30,17 +30,38 @@ pub fn nice_step_ceil(value: f64) -> f64 {
     stepped * base
 }
 
+/// Tolerance (in tick units) for snapping a price/tick ratio onto the grid.
+///
+/// Binary float division of a grid-aligned price by its tick often lands an
+/// epsilon away from the exact integer key (63.239 / 0.001 =
+/// 63238.99999999999), so unguarded `floor`/`ceil` would shift such levels a
+/// full tick down/up. Genuinely off-grid prices sit a large fraction of a
+/// tick away from the grid, far outside this tolerance.
+const GRID_SNAP_TOLERANCE: f64 = 1e-6;
+
+/// Integer bucket key for a price at the given tick: grid-aligned prices snap
+/// to their exact key; off-grid prices round down (bids) or up (asks).
+fn bucket_key(px: f64, tick: f64, is_bid: bool) -> i64 {
+    let scaled = px / tick;
+    let nearest = scaled.round();
+    let key = if (scaled - nearest).abs() <= GRID_SNAP_TOLERANCE {
+        nearest
+    } else if is_bid {
+        scaled.floor()
+    } else {
+        scaled.ceil()
+    };
+    key as i64
+}
+
 /// Aggregate raw book levels into buckets at the given tick size.
 pub fn aggregate_levels(levels: &[BookLevel], tick: f64, is_bid: bool) -> Vec<(f64, f64)> {
     let mut buckets: BTreeMap<i64, f64> = BTreeMap::new();
 
     for lvl in levels {
-        let bucket_key = if is_bid {
-            (lvl.px / tick).floor() as i64
-        } else {
-            (lvl.px / tick).ceil() as i64
-        };
-        *buckets.entry(bucket_key).or_insert(0.0) += lvl.sz;
+        *buckets
+            .entry(bucket_key(lvl.px, tick, is_bid))
+            .or_insert(0.0) += lvl.sz;
     }
 
     let mut result: Vec<(f64, f64)> = buckets

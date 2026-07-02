@@ -21,7 +21,8 @@ pub async fn fetch_watchlist_contexts(
     for symbol in &symbols {
         if symbol.starts_with('#') {
             insert_empty_context(&mut map, symbol);
-        } else if symbol.starts_with('@') {
+        } else if symbol.starts_with('@') || symbol.contains('/') {
+            // Spot pairs: "@{index}" or an API-named pair like "PURR/USDC".
             needs_spot = true;
         } else if let Some((dex, _)) = symbol.split_once(':') {
             needed_dexes.insert(dex.to_string());

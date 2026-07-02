@@ -1,4 +1,3 @@
-use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
 use crate::chart::ChartStatus;
 use crate::market_state::OrderBookSymbolMode;
@@ -27,16 +26,7 @@ impl TradingTerminal {
     }
 
     pub(crate) fn switch_active_symbol_internal(&mut self, key: String) -> Task<Message> {
-        let sym = self
-            .exchange_symbols
-            .iter()
-            .find(|s| s.key == key)
-            .or_else(|| {
-                self.exchange_symbols
-                    .iter()
-                    .find(|s| s.ticker == key && s.market_type == MarketType::Perp)
-            })
-            .or_else(|| self.exchange_symbols.iter().find(|s| s.ticker == key));
+        let sym = self.resolve_exchange_symbol_by_key_or_ticker(&key);
 
         let valid_key = sym.map(|s| s.key.clone()).unwrap_or(key.clone());
         let display = sym

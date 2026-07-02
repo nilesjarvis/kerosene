@@ -79,6 +79,25 @@ fn rejects_chase_price_modifiers() {
 }
 
 #[test]
+fn parses_spot_qualifier_token() {
+    let intent = trade_intent_or_panic("sell 10 HYPE spot");
+
+    assert_eq!(intent.side, Some(AlfredTradeSide::Sell));
+    assert_eq!(intent.amount, Some(10.0));
+    assert_eq!(intent.symbol.as_deref(), Some("HYPE"));
+    assert!(intent.explicit_spot);
+    assert_eq!(intent.order_kind(), OrderKind::Market);
+}
+
+#[test]
+fn spot_qualifier_is_not_mistaken_for_the_symbol() {
+    let intent = trade_intent_or_panic("sell 10 spot");
+
+    assert!(intent.explicit_spot);
+    assert_eq!(intent.symbol, None);
+}
+
+#[test]
 fn ignores_non_trade_queries() {
     assert_eq!(parse_trade_intent("portfolio pane"), None);
     assert_eq!(parse_trade_intent("hype"), None);

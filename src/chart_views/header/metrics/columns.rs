@@ -17,7 +17,7 @@ use formatting::format_volume;
 use formatting::{
     asset_volume_label, format_asset_volume, format_funding_pct, format_metric_price,
     format_open_interest, format_outcome_asset_volume, format_outcome_volume, open_interest_label,
-    outcome_volume_label, parse_ctx_f64,
+    outcome_volume_label, parse_ctx_f64, spot_base_ticker,
 };
 
 const HIDE_MARK_ORACLE_BELOW: f32 = 720.0;
@@ -221,7 +221,7 @@ pub(super) fn push_spot_metric_columns<'a>(
             base_volume,
             notional_volume,
             asset_volume_as_notional,
-            symbol_display,
+            spot_base_ticker(symbol_display),
         ),
         theme.palette().text,
         theme,

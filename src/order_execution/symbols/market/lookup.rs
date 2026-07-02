@@ -1,4 +1,4 @@
-use crate::api::{ExchangeSymbol, MarketType};
+use crate::api::{ExchangeSymbol, MarketType, spot_symbol_for_indexed_key};
 use crate::app_state::TradingTerminal;
 
 // ---------------------------------------------------------------------------
@@ -6,13 +6,21 @@ use crate::app_state::TradingTerminal;
 // ---------------------------------------------------------------------------
 
 impl TradingTerminal {
+    /// Exact key match plus the legacy "@{index}" alias for spot pairs the
+    /// API names directly (PURR/USDC), so persisted keys saved before the
+    /// pair was re-keyed keep resolving.
+    pub(crate) fn exchange_symbol_for_key(&self, key: &str) -> Option<&ExchangeSymbol> {
+        self.exchange_symbols
+            .iter()
+            .find(|s| s.key == key)
+            .or_else(|| spot_symbol_for_indexed_key(&self.exchange_symbols, key))
+    }
+
     pub(crate) fn resolve_exchange_symbol_by_key_or_ticker(
         &self,
         key_or_ticker: &str,
     ) -> Option<&ExchangeSymbol> {
-        self.exchange_symbols
-            .iter()
-            .find(|s| s.key == key_or_ticker)
+        self.exchange_symbol_for_key(key_or_ticker)
             .or_else(|| {
                 self.exchange_symbols
                     .iter()
@@ -99,6 +107,8 @@ impl TradingTerminal {
         self.market_type_for_symbol(coin) == Some(MarketType::Perp)
             || (!coin.starts_with('@')
                 && !coin.starts_with('#')
+                // API-named spot pairs carry a "{base}/{quote}" slash.
+                && !coin.contains('/')
                 && self.market_type_for_symbol(coin).is_none())
     }
 }

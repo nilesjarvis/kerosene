@@ -10,6 +10,7 @@ use crate::signing::OrderKind;
 mod order_book;
 mod reduce_only;
 mod reference_price;
+mod spot;
 
 const TEST_ACCOUNT: &str = "0xabc0000000000000000000000000000000000000";
 const OTHER_ACCOUNT: &str = "0xdef0000000000000000000000000000000000000";

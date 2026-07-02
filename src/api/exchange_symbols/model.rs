@@ -89,7 +89,8 @@ impl fmt::Debug for OutcomeSymbolInfo {
 /// `key` is the coin name in the format the candle/book/WS APIs expect:
 ///   - Main perp dex: "BTC", "ETH", "HYPE"
 ///   - HIP-3 dexes:   "xyz:NVDA", "flx:BTC", "km:US500"
-///   - Spot pairs:     "@1" (PURR/USDC), "@107" (HYPE/USDC)
+///   - Spot pairs:     "@107" (HYPE/USDC); pairs the API names directly use
+///     that name ("PURR/USDC" is the only such pair today)
 ///   - Outcomes:       "#0", "#1" (quote-token-denominated prediction contracts)
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExchangeSymbol {
@@ -142,6 +143,22 @@ impl fmt::Debug for ExchangeSymbol {
 }
 
 impl ExchangeSymbol {
+    /// Whether a spot pair is quoted in a USD-pegged stable, i.e. whether its
+    /// mid can be treated as a USD price. Spot symbols carry their quote in
+    /// the "{base}/{quote}" display label; symbols without one (legacy caches
+    /// or fixtures) default to the historical USDC assumption. Only
+    /// meaningful for `MarketType::Spot` symbols.
+    pub fn spot_quote_is_usd_stable(&self) -> bool {
+        match self
+            .display_name
+            .as_deref()
+            .and_then(|display| display.rsplit_once('/'))
+        {
+            Some((_, quote)) => matches!(quote, "USDC" | "USDE" | "USDT0" | "USDH"),
+            None => true,
+        }
+    }
+
     /// Outcome questions expose fallback settlement contracts that are useful
     /// for metadata, but should not appear as user-selectable markets.
     pub fn is_user_selectable_market(&self) -> bool {
@@ -155,9 +172,24 @@ impl ExchangeSymbol {
     }
 }
 
+/// Resolve a spot symbol from the legacy "@{index}" form of a pair the API
+/// names directly (PURR/USDC). Saved layouts, watchlists, and order state may
+/// still carry the indexed key those pairs were previously stored under, so
+/// key lookups accept it as an alias via the pair's spot asset index.
+pub fn spot_symbol_for_indexed_key<'a>(
+    symbols: &'a [ExchangeSymbol],
+    key: &str,
+) -> Option<&'a ExchangeSymbol> {
+    let index: u32 = key.strip_prefix('@')?.parse().ok()?;
+    let asset_index = 10_000u32.checked_add(index)?;
+    symbols
+        .iter()
+        .find(|symbol| symbol.market_type == MarketType::Spot && symbol.asset_index == asset_index)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
+    use super::{ExchangeSymbol, MarketType, OutcomeSymbolInfo, spot_symbol_for_indexed_key};
 
     fn outcome_info() -> OutcomeSymbolInfo {
         OutcomeSymbolInfo {
@@ -231,5 +263,52 @@ mod tests {
         assert!(!rendered.contains("BTC above threshold"));
         assert!(!rendered.contains("secret threshold"));
         assert!(!rendered.contains("75348.12"));
+    }
+
+    fn spot_symbol(key: &str, display_name: Option<&str>, asset_index: u32) -> ExchangeSymbol {
+        ExchangeSymbol {
+            key: key.to_string(),
+            ticker: key.to_string(),
+            category: "spot".to_string(),
+            display_name: display_name.map(str::to_string),
+            keywords: Vec::new(),
+            asset_index,
+            collateral_token: None,
+            sz_decimals: 2,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: MarketType::Spot,
+            outcome: None,
+        }
+    }
+
+    #[test]
+    fn spot_quote_stability_is_derived_from_the_pair_label() {
+        for usd_display in ["HYPE/USDC", "FOO/USDT0", "BAR/USDH", "BAZ/USDE"] {
+            assert!(
+                spot_symbol("@1", Some(usd_display), 10_001).spot_quote_is_usd_stable(),
+                "{usd_display} should count as USD-quoted"
+            );
+        }
+        assert!(!spot_symbol("@1", Some("UETH/UBTC"), 10_001).spot_quote_is_usd_stable());
+        // Legacy caches and fixtures without a label keep the historical
+        // USDC assumption.
+        assert!(spot_symbol("@1", None, 10_001).spot_quote_is_usd_stable());
+    }
+
+    #[test]
+    fn legacy_indexed_key_resolves_api_named_spot_pair_by_asset_index() {
+        let symbols = vec![
+            spot_symbol("PURR/USDC", Some("PURR/USDC"), 10_000),
+            spot_symbol("@107", Some("HYPE/USDC"), 10_107),
+        ];
+
+        let resolved = spot_symbol_for_indexed_key(&symbols, "@0")
+            .expect("legacy '@0' should resolve the API-named pair");
+        assert_eq!(resolved.key, "PURR/USDC");
+
+        assert!(spot_symbol_for_indexed_key(&symbols, "@1").is_none());
+        assert!(spot_symbol_for_indexed_key(&symbols, "PURR/USDC").is_none());
+        assert!(spot_symbol_for_indexed_key(&symbols, "@bad").is_none());
     }
 }

@@ -1,4 +1,4 @@
-use crate::api::ExchangeSymbol;
+use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::helpers::format_price;
 use crate::signing::OrderKind;
@@ -80,7 +80,7 @@ impl TradingTerminal {
                 error = Some("Symbols are still loading".to_string());
                 None
             }
-            Some(symbol) => match self.resolve_trade_symbol(symbol) {
+            Some(symbol) => match self.resolve_trade_symbol(symbol, intent.explicit_spot) {
                 Some(symbol) => {
                     if error.is_none()
                         && let Err(message) =
@@ -92,7 +92,7 @@ impl TradingTerminal {
                 }
                 None => {
                     if error.is_none() {
-                        error = Some(format!("Unknown symbol '{}'", symbol.to_ascii_uppercase()));
+                        error = Some(unresolved_trade_symbol_error(symbol, intent.explicit_spot));
                     }
                     None
                 }
@@ -160,10 +160,55 @@ impl TradingTerminal {
         }
     }
 
-    fn resolve_trade_symbol(&self, raw_symbol: &str) -> Option<&ExchangeSymbol> {
+    /// Bare tickers resolve perp-first (matching the quick symbol search and
+    /// `switch_active_symbol_internal`); the spot market must be requested
+    /// explicitly, either by its pair spelling ("HYPE/USDC") or with a `spot`
+    /// qualifier token. An explicit spot request never falls back to the perp.
+    fn resolve_trade_symbol(
+        &self,
+        raw_symbol: &str,
+        spot_requested: bool,
+    ) -> Option<&ExchangeSymbol> {
+        if raw_symbol.contains('/') {
+            return self.resolve_spot_pair_symbol(raw_symbol);
+        }
+
         let normalized = normalize_symbol_input(raw_symbol);
-        self.resolve_exchange_symbol_by_key_or_ticker(raw_symbol)
-            .or_else(|| self.resolve_exchange_symbol_by_key_or_ticker(&normalized))
+        let resolved = self
+            .resolve_exchange_symbol_by_key_or_ticker(raw_symbol)
+            .or_else(|| self.resolve_exchange_symbol_by_key_or_ticker(&normalized));
+        if !spot_requested {
+            return resolved;
+        }
+
+        resolved
+            .filter(|symbol| symbol.market_type == MarketType::Spot)
+            .or_else(|| self.spot_symbol_for_ticker(&normalized))
+    }
+
+    fn resolve_spot_pair_symbol(&self, pair: &str) -> Option<&ExchangeSymbol> {
+        self.exchange_symbols.iter().find(|symbol| {
+            symbol.market_type == MarketType::Spot
+                && symbol
+                    .display_name
+                    .as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(pair))
+        })
+    }
+
+    fn spot_symbol_for_ticker(&self, ticker: &str) -> Option<&ExchangeSymbol> {
+        self.exchange_symbols.iter().find(|symbol| {
+            symbol.market_type == MarketType::Spot && symbol.ticker.eq_ignore_ascii_case(ticker)
+        })
+    }
+}
+
+fn unresolved_trade_symbol_error(raw_symbol: &str, spot_requested: bool) -> String {
+    let symbol = raw_symbol.to_ascii_uppercase();
+    if spot_requested || raw_symbol.contains('/') {
+        format!("No spot market for '{symbol}'")
+    } else {
+        format!("Unknown symbol '{symbol}'")
     }
 }
 

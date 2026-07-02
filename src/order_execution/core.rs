@@ -653,11 +653,7 @@ impl TradingTerminal {
         &self,
         intent: CancelIntent,
     ) -> Result<PreparedCancelOrder, String> {
-        let Some(sym) = self
-            .exchange_symbols
-            .iter()
-            .find(|symbol| symbol.key == intent.symbol_key)
-        else {
+        let Some(sym) = self.exchange_symbol_for_key(&intent.symbol_key) else {
             return Err(intent
                 .surface
                 .symbol_not_found_status_text(&intent.symbol_key));
@@ -678,11 +674,7 @@ impl TradingTerminal {
         &self,
         intent: ModifyIntent,
     ) -> Result<PreparedModifyOrderResult, String> {
-        let Some(sym) = self
-            .exchange_symbols
-            .iter()
-            .find(|symbol| symbol.key == intent.symbol_key)
-        else {
+        let Some(sym) = self.exchange_symbol_for_key(&intent.symbol_key) else {
             return Err(intent
                 .surface
                 .symbol_not_found_status_text(&intent.symbol_key));
@@ -752,11 +744,7 @@ impl TradingTerminal {
         &self,
         intent: PlaceIntent,
     ) -> Result<PreparedExchangeOrder, String> {
-        let Some(sym) = self
-            .exchange_symbols
-            .iter()
-            .find(|symbol| symbol.key == intent.symbol_key)
-        else {
+        let Some(sym) = self.exchange_symbol_for_key(&intent.symbol_key) else {
             return Err(intent
                 .surface
                 .symbol_not_found_status_text(&intent.symbol_key));
@@ -1439,6 +1427,68 @@ mod tests {
             error,
             "Outcome position closing is not available from this control; use the main order ticket"
         );
+    }
+
+    fn purr_spot_symbol() -> ExchangeSymbol {
+        ExchangeSymbol {
+            ticker: "PURR".to_string(),
+            category: "spot".to_string(),
+            display_name: Some("PURR/USDC".to_string()),
+            asset_index: 10_000,
+            ..symbol("PURR/USDC", MarketType::Spot)
+        }
+    }
+
+    #[test]
+    fn prepare_cancel_order_accepts_api_named_spot_pair_and_legacy_indexed_key() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![purr_spot_symbol()];
+
+        // Open orders report the API coin name ("PURR/USDC"), which must
+        // resolve so resting spot orders can be canceled from the app.
+        let prepared = terminal
+            .prepare_cancel_order(CancelIntent {
+                surface: OrderSurface::Cancel,
+                symbol_key: "PURR/USDC".to_string(),
+                oid: 42,
+            })
+            .expect("cancel by API coin name");
+        assert_eq!(prepared.symbol_key, "PURR/USDC");
+        assert_eq!(prepared.asset, 10_000);
+        assert_eq!(prepared.market_type, MarketType::Spot);
+
+        // State saved before the pair was re-keyed may still send "@0".
+        let prepared = terminal
+            .prepare_cancel_order(CancelIntent {
+                surface: OrderSurface::Cancel,
+                symbol_key: "@0".to_string(),
+                oid: 42,
+            })
+            .expect("cancel by legacy indexed key");
+        assert_eq!(prepared.symbol_key, "PURR/USDC");
+        assert_eq!(prepared.asset, 10_000);
+    }
+
+    #[test]
+    fn prepare_modify_order_accepts_legacy_indexed_key_for_api_named_spot_pair() {
+        let (mut terminal, _) = TradingTerminal::boot();
+        terminal.exchange_symbols = vec![purr_spot_symbol()];
+        terminal.all_mids.insert("PURR/USDC".to_string(), 100.0);
+        terminal
+            .all_mids_updated_at_ms
+            .insert("PURR/USDC".to_string(), TradingTerminal::now_ms());
+
+        let prepared = terminal
+            .prepare_modify_order(move_modify_intent("@0"))
+            .expect("modify by legacy indexed key");
+
+        match prepared {
+            PreparedModifyOrderResult::Prepared(prepared) => {
+                assert_eq!(prepared.symbol_key, "PURR/USDC");
+                assert_eq!(prepared.asset, 10_000);
+            }
+            PreparedModifyOrderResult::NoPriceChange => panic!("expected prepared order"),
+        }
     }
 
     #[test]

@@ -236,23 +236,29 @@ impl TradingTerminal {
         let include_fees = self.journal.include_fees_in_pnl;
         let net_pnl = journal_effective_pnl(trade, include_fees);
 
-        let snapshot = self.journal.snapshots.get(&trade.id);
-        let loaded = snapshot
-            .is_some_and(|snapshot| matches!(snapshot.status, JournalTradeSnapshotStatus::Loaded));
-        let entry_price = snapshot
-            .filter(|_| loaded)
-            .map(|snapshot| snapshot.metrics.entry_price)
-            .filter(|price| price.is_finite() && *price > 0.0)
-            .unwrap_or(trade.avg_entry_price);
-        let entry_display = if entry_price.is_finite() && entry_price > 0.0 {
-            helpers::format_price(entry_price)
+        let (entry_display, exit_display) = if journal_is_non_perp(&trade.coin) {
+            non_perp_entry_exit_display(trade)
         } else {
-            "—".to_string()
+            let snapshot = self.journal.snapshots.get(&trade.id);
+            let loaded = snapshot.is_some_and(|snapshot| {
+                matches!(snapshot.status, JournalTradeSnapshotStatus::Loaded)
+            });
+            let entry_price = snapshot
+                .filter(|_| loaded)
+                .map(|snapshot| snapshot.metrics.entry_price)
+                .filter(|price| price.is_finite() && *price > 0.0)
+                .unwrap_or(trade.avg_entry_price);
+            let entry_display = if entry_price.is_finite() && entry_price > 0.0 {
+                helpers::format_price(entry_price)
+            } else {
+                "—".to_string()
+            };
+            let exit_display = snapshot
+                .filter(|_| loaded && trade.end_time.is_some())
+                .map(|snapshot| helpers::format_price(snapshot.metrics.exit_price))
+                .unwrap_or_else(|| "—".to_string());
+            (entry_display, exit_display)
         };
-        let exit_display = snapshot
-            .filter(|_| loaded && trade.end_time.is_some())
-            .map(|snapshot| helpers::format_price(snapshot.metrics.exit_price))
-            .unwrap_or_else(|| "—".to_string());
 
         let r_display = journal_trade_r_multiple(trade, kpis.r_unit, include_fees)
             .map(|r| format!("{r:+.2}R"))
@@ -319,6 +325,24 @@ impl TradingTerminal {
     }
 }
 
+/// `(ENTRY, EXIT)` stat values for a spot/outcome trade. One non-perp trade is
+/// a single order whose fills all share one side, so its execution VWAP
+/// (accumulated in `avg_entry_price`) is an entry price for buys but the sale
+/// price for sells — a sell's VWAP belongs under EXIT, never ENTRY.
+fn non_perp_entry_exit_display(trade: &AggregatedTrade) -> (String, String) {
+    let vwap = trade.avg_entry_price;
+    let vwap_display = if vwap.is_finite() && vwap > 0.0 {
+        helpers::format_price(vwap)
+    } else {
+        "—".to_string()
+    };
+    if trade.is_long {
+        (vwap_display, "—".to_string())
+    } else {
+        ("—".to_string(), vwap_display)
+    }
+}
+
 fn stat_cell(
     label: &'static str,
     value: String,
@@ -348,4 +372,56 @@ fn stat_divider() -> Element<'static, Message> {
         .height(Length::Fixed(48.0))
         .width(Length::Fixed(1.0))
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn non_perp_trade(is_long: bool, vwap: f64) -> AggregatedTrade {
+        AggregatedTrade {
+            id: "spot:@107:9001".to_string(),
+            legacy_note_ids: Vec::new(),
+            coin: "@107".to_string(),
+            start_time: 1_000,
+            end_time: Some(1_000),
+            max_position: if is_long { 1.0 } else { -1.0 },
+            volume: vwap,
+            fee: 0.0,
+            pnl: 0.0,
+            status: "FILLED".to_string(),
+            fill_count: 1,
+            avg_entry_price: vwap,
+            total_entry_notional: vwap,
+            total_entry_size: 1.0,
+            is_long,
+            basis_complete: true,
+        }
+    }
+
+    #[test]
+    fn non_perp_buy_vwap_shows_under_entry() {
+        let (entry, exit) = non_perp_entry_exit_display(&non_perp_trade(true, 40.0));
+
+        assert_eq!(entry, helpers::format_price(40.0));
+        assert_eq!(exit, "—");
+    }
+
+    #[test]
+    fn non_perp_sell_vwap_shows_under_exit_not_entry() {
+        // A spot sell's VWAP is its sale price; rendering it as ENTRY implied a
+        // nonexistent cost basis.
+        let (entry, exit) = non_perp_entry_exit_display(&non_perp_trade(false, 50.0));
+
+        assert_eq!(entry, "—");
+        assert_eq!(exit, helpers::format_price(50.0));
+    }
+
+    #[test]
+    fn non_perp_missing_vwap_shows_dashes() {
+        let (entry, exit) = non_perp_entry_exit_display(&non_perp_trade(false, 0.0));
+
+        assert_eq!(entry, "—");
+        assert_eq!(exit, "—");
+    }
 }

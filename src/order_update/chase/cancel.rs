@@ -80,7 +80,7 @@ impl TradingTerminal {
                         .get(&chase_id)
                         .and_then(|chase| chase.stop_reason.clone())
                         .unwrap_or_else(|| ("Chase stopped".to_string(), false));
-                    self.order_status = Some(stop_status.clone());
+                    self.set_order_status_toast_on_error(stop_status.0.clone(), stop_status.1);
                     if let Some(chase) = self.chase_orders.get_mut(&chase_id) {
                         chase.record_oid(oid);
                         chase.current_oid = Some(oid);
@@ -140,7 +140,7 @@ impl TradingTerminal {
                     message
                 );
                 chase.stop_reason = Some((manual_status.clone(), true));
-                self.order_status = Some((manual_status, true));
+                self.set_order_status(manual_status, true);
                 if self.archive_disconnected_manual_check_chase(chase_id) {
                     return Task::none();
                 }
@@ -202,17 +202,15 @@ impl TradingTerminal {
                     chase.cancel_retries, suffix
                 );
                 chase.stop_reason = Some((manual_status.clone(), true));
-                self.order_status = Some((manual_status, true));
+                self.set_order_status(manual_status, true);
             } else {
-                self.order_status = Some((
-                    format!(
-                        "Chase cancel error (retry {}/{}): {}",
-                        chase.cancel_retries,
-                        signing::MAX_CHASE_CANCEL_RETRIES,
-                        message
-                    ),
-                    true,
-                ));
+                let retry_status = format!(
+                    "Chase cancel error (retry {}/{}): {}",
+                    chase.cancel_retries,
+                    signing::MAX_CHASE_CANCEL_RETRIES,
+                    message
+                );
+                self.set_order_status(retry_status, true);
             }
         }
     }

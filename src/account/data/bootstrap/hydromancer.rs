@@ -591,6 +591,14 @@ impl fmt::Debug for HydromancerPortfolioState {
 }
 
 impl HydromancerPortfolioState {
+    /// Test-only constructor accepting the same wire shape as
+    /// `parse_portfolio_state`, for exercising snapshot conversion without a
+    /// network fetch.
+    #[cfg(test)]
+    pub(crate) fn from_raw_for_tests(raw: Value) -> Result<Self, String> {
+        parse_portfolio_state(raw)
+    }
+
     pub(crate) fn account_abstraction(&self) -> AccountAbstractionMode {
         self.user_abstraction
             .as_str()

@@ -6,7 +6,7 @@ use crate::account_views::history_tables::numbers::{
 };
 use crate::account_views::history_tables::style::history_signed_value_color;
 use crate::app_state::TradingTerminal;
-use crate::helpers::{self, optional_value_color};
+use crate::helpers::{self, optional_value_color, trim_decimal_zeros};
 use crate::message::Message;
 use iced::widget::text::Wrapping;
 use iced::widget::{Row, Space, row, text};
@@ -57,7 +57,8 @@ impl TradingTerminal {
         } else {
             format_history_display_usd(&denomination, pnl, 2)
         };
-        let fee_display = history_fee_display(&denomination, fee, self.hide_pnl);
+        let fee_display =
+            history_fee_display(&denomination, fee, fill.fee_token.as_deref(), self.hide_pnl);
 
         let mut coin_content = row![];
         if let Some(icon) = helpers::symbol_icon(&fill.coin, 14, theme.palette().text) {
@@ -127,22 +128,44 @@ fn trade_side_display(side: &str, theme: &Theme) -> (&'static str, Color) {
     }
 }
 
+/// Spot buy fees are charged in the base token (sells and perp fees in
+/// USDC), so a non-USDC fee is displayed as a token quantity with its token
+/// symbol instead of being passed off as a dollar amount.
 fn history_fee_display(
     denomination: &crate::denomination::DisplayDenominationContext,
     fee: Option<f64>,
+    fee_token: Option<&str>,
     hide_pnl: bool,
 ) -> String {
     if hide_pnl {
-        denomination.hidden_mask()
-    } else {
-        fee.map(|fee| {
-            format!(
-                "-{}",
-                format_history_display_usd(denomination, Some(fee), 2)
-            )
-        })
-        .unwrap_or_else(invalid_history_data)
+        return denomination.hidden_mask();
     }
+    let Some(fee) = fee else {
+        return invalid_history_data();
+    };
+    match fee_token.map(str::trim) {
+        Some(token) if !token.is_empty() && !token.eq_ignore_ascii_case("USDC") => {
+            format_token_fee(fee, token)
+        }
+        _ => format!(
+            "-{}",
+            format_history_display_usd(denomination, Some(fee), 2)
+        ),
+    }
+}
+
+/// Fees show as costs: a paid fee is negative, a rebate positive. Eight
+/// decimals cover Hyperliquid token precision; trailing zeros are trimmed.
+fn format_token_fee(fee: f64, token: &str) -> String {
+    let sign = if fee > 0.0 {
+        "-"
+    } else if fee < 0.0 {
+        "+"
+    } else {
+        ""
+    };
+    let amount = trim_decimal_zeros(format!("{:.8}", fee.abs()));
+    format!("{sign}{amount} {token}")
 }
 
 #[cfg(test)]

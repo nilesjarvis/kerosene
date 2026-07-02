@@ -11,8 +11,17 @@ use position::{percentage_for_position_quantity, position_quantity_for_percentag
 
 #[derive(Debug, Clone, Copy)]
 pub(in crate::order_update) enum OrderSizingBasis {
-    MarginNotional { max_notional: f64 },
-    ReduceOnlyPosition { position_size_coin: f64 },
+    MarginNotional {
+        max_notional: f64,
+    },
+    ReduceOnlyPosition {
+        position_size_coin: f64,
+    },
+    /// Spot markets have no margin: percentages size against the sellable
+    /// base-token balance (total - hold) held in the spot wallet.
+    SpotSellableBalance {
+        sellable_size_coin: f64,
+    },
 }
 
 impl OrderSizingBasis {
@@ -32,6 +41,12 @@ impl OrderSizingBasis {
             Self::ReduceOnlyPosition { position_size_coin } => percentage_for_position_quantity(
                 quantity,
                 position_size_coin,
+                quantity_is_usd,
+                reference_price,
+            ),
+            Self::SpotSellableBalance { sellable_size_coin } => percentage_for_position_quantity(
+                quantity,
+                sellable_size_coin,
                 quantity_is_usd,
                 reference_price,
             ),
@@ -56,6 +71,13 @@ impl OrderSizingBasis {
             Self::ReduceOnlyPosition { position_size_coin } => position_quantity_for_percentage(
                 percentage,
                 position_size_coin,
+                quantity_is_usd,
+                reference_price,
+                decimals,
+            ),
+            Self::SpotSellableBalance { sellable_size_coin } => position_quantity_for_percentage(
+                percentage,
+                sellable_size_coin,
                 quantity_is_usd,
                 reference_price,
                 decimals,

@@ -58,6 +58,55 @@ fn spot_usdc_fee_is_left_unchanged() {
 }
 
 #[test]
+fn spot_sell_fee_in_non_usdc_stable_quote_is_not_scaled_by_price() {
+    // Selling 0.1 UBTC on a USDT0-quoted pair at px 84,000 pays its fee in the
+    // quote token: ~4.7 USDT0, a ~$1 stable that is already USD-denominated.
+    // Multiplying by px (the old behavior) recorded a ~$394,800 fee.
+    let fills = vec![spot_fill(
+        1_000, 1, 9_030, "@142", "A", "84000.0", "0.1", "4.7", "USDT0", "150.0",
+    )];
+
+    let result = aggregate_trades_with_diagnostics(fills);
+
+    assert_eq!(result.trades.len(), 1);
+    let trade = &result.trades[0];
+    assert_approx_eq(trade.fee, 4.7);
+    assert_approx_eq(trade.pnl, 150.0);
+
+    let details = result
+        .trade_details
+        .get(&trade.id)
+        .expect("spot trade details");
+    assert_approx_eq(details.attributed_fills[0].fee, 4.7);
+}
+
+#[test]
+fn outcome_sell_fee_in_usdh_quote_is_left_unchanged() {
+    // Outcome markets quote in USDH with prices in [0, 1]; scaling the quote
+    // fee by px would understate it (0.12 USDH * 0.35 = $0.042).
+    let fills = vec![spot_fill(
+        1_000, 1, 9_031, "#950", "A", "0.35", "100.0", "0.12", "USDH", "5.0",
+    )];
+
+    let result = aggregate_trades_with_diagnostics(fills);
+
+    assert_eq!(result.trades.len(), 1);
+    assert_approx_eq(result.trades[0].fee, 0.12);
+}
+
+#[test]
+fn spot_stable_quote_fee_token_matches_case_insensitively() {
+    let fills = vec![spot_fill(
+        1_000, 1, 9_032, "@142", "A", "84000.0", "0.1", "3.2", "usde", "0.0",
+    )];
+
+    let result = aggregate_trades_with_diagnostics(fills);
+
+    assert_eq!(result.trades.len(), 1);
+    assert_approx_eq(result.trades[0].fee, 3.2);
+}
+
+#[test]
 fn spot_buy_and_sell_of_same_token_are_separate_trades_each_with_own_pnl() {
     let fills = vec![
         spot_fill(
@@ -87,6 +136,38 @@ fn spot_buy_and_sell_of_same_token_are_separate_trades_each_with_own_pnl() {
     assert_approx_eq(sell.pnl, 10.0);
     let total_pnl: f64 = result.trades.iter().map(|trade| trade.pnl).sum();
     assert_approx_eq(total_pnl, 10.0);
+}
+
+#[test]
+fn spot_trades_record_order_side_so_sell_vwap_is_not_an_entry() {
+    // One spot trade is one order, so its side must be carried on the trade:
+    // a sell's VWAP is its sale price and must not render as ENTRY.
+    let fills = vec![
+        spot_fill(
+            1_000, 1, 9_040, "@107", "B", "40.0", "1.0", "0.0", "USDC", "0.0",
+        ),
+        spot_fill(
+            2_000, 2, 9_041, "@107", "A", "50.0", "1.0", "0.0", "USDC", "10.0",
+        ),
+    ];
+
+    let result = aggregate_trades_with_diagnostics(fills);
+
+    let buy = result
+        .trades
+        .iter()
+        .find(|trade| trade.id.ends_with(":9040"))
+        .expect("buy trade");
+    let sell = result
+        .trades
+        .iter()
+        .find(|trade| trade.id.ends_with(":9041"))
+        .expect("sell trade");
+
+    assert!(buy.is_long);
+    assert_approx_eq(buy.avg_entry_price, 40.0);
+    assert!(!sell.is_long);
+    assert_approx_eq(sell.avg_entry_price, 50.0);
 }
 
 #[test]

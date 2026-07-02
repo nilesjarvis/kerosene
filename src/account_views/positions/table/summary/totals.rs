@@ -1,6 +1,5 @@
 use super::super::sort::PositionRowData;
-use crate::account::position_upnl_from_mark_or_wire;
-use crate::helpers::{finite_value, parse_finite_number};
+use crate::helpers::finite_value;
 
 // ---------------------------------------------------------------------------
 // Summary Totals
@@ -86,49 +85,4 @@ pub(super) fn position_total_pnl_percent(
         }
         _ => None,
     }
-}
-
-pub(super) fn parse_summary_number(raw: &str) -> Option<f64> {
-    parse_finite_number(raw)
-}
-
-pub(super) fn position_summary_position_upnl_value(
-    szi_raw: &str,
-    entry_raw: &str,
-    wire_upnl_raw: &str,
-    live_mid: Option<f64>,
-) -> Option<f64> {
-    position_upnl_from_mark_or_wire(
-        parse_summary_number(szi_raw),
-        parse_summary_number(entry_raw),
-        parse_summary_number(wire_upnl_raw),
-        live_mid,
-    )
-}
-
-pub(super) fn position_summary_spot_balance_value(
-    coin: &str,
-    total_raw: &str,
-    entry_ntl_raw: &str,
-    live_mid: Option<f64>,
-) -> Option<f64> {
-    let total = parse_summary_number(total_raw)?;
-    if total.abs() < 1e-12 {
-        return Some(0.0);
-    }
-    if matches!(coin, "USDC" | "USDE" | "USDT0" | "USDH") {
-        Some(total)
-    } else if let Some(mid) = live_mid {
-        Some(total * mid)
-    } else {
-        parse_summary_number(entry_ntl_raw)
-    }
-}
-
-pub(super) fn sum_required(values: impl IntoIterator<Item = Option<f64>>) -> Option<f64> {
-    let mut total = 0.0;
-    for value in values {
-        total += value?;
-    }
-    Some(total)
 }

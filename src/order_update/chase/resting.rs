@@ -61,49 +61,52 @@ fn chase_resting_order_wire_is_supported(order: &OpenOrder) -> Result<(), &'stat
 impl TradingTerminal {
     pub(crate) fn handle_chase_resting_order(&mut self, coin: String, oid: u64) -> Task<Message> {
         if self.has_pending_cancel_indicator(oid) {
-            self.order_status = Some((
+            self.set_order_status(
                 format!("Wait for pending cancel of order {oid} before starting a Chase"),
                 true,
-            ));
+            );
             return Task::none();
         }
         if self.reject_if_pending_trading_request("starting a Chase") {
+            self.toast_order_status();
             return Task::none();
         }
 
         let Some((key, account_address)) = self.captured_order_signing_context() else {
+            self.toast_order_status();
             return Task::none();
         };
         if self.symbol_key_is_hidden(&coin) {
-            self.order_status = Some(("Order ticker is hidden in Settings > Risk".into(), true));
+            self.set_order_status("Order ticker is hidden in Settings > Risk".into(), true);
             return Task::none();
         }
 
         if self.account_loading {
-            self.order_status = Some((
+            self.set_order_status(
                 "Account refresh in progress; wait for fresh open orders before starting chase"
                     .into(),
                 true,
-            ));
+            );
             return Task::none();
         }
         if self.reject_if_account_reconciliation_required("starting chase", "open orders") {
+            self.toast_order_status();
             return Task::none();
         }
         let order = {
             let Some(account_data) = self.account_data_for_order_account(&account_address) else {
-                self.order_status = Some((
+                self.set_order_status(
                     "No account data available; refresh before starting chase".into(),
                     true,
-                ));
+                );
                 return Task::none();
             };
             let now_ms = Self::now_ms();
             if !account_data.completeness.open_orders_complete {
-                self.order_status = Some((
+                self.set_order_status(
                     "Open orders are incomplete; refresh before starting chase".into(),
                     true,
-                ));
+                );
                 return self.refresh_account_data();
             }
             if !account_data.is_fresh_for_open_order_action_for_symbol(&coin, now_ms) {
@@ -111,10 +114,10 @@ impl TradingTerminal {
                     .open_order_action_snapshot_age_ms_for_symbol(&coin, now_ms)
                     .map(|age| format!("{}s old", age.div_ceil(1000)))
                     .unwrap_or_else(|| "from the future".to_string());
-                self.order_status = Some((
+                self.set_order_status(
                     format!("Open orders are stale ({age_label}); refresh before starting chase"),
                     true,
-                ));
+                );
                 return self.refresh_account_data();
             }
             let Some(order) = account_data
@@ -123,7 +126,7 @@ impl TradingTerminal {
                 .find(|order| order.oid == oid && order.coin == coin)
                 .cloned()
             else {
-                self.order_status = Some(("Order no longer exists".into(), true));
+                self.set_order_status("Order no longer exists".into(), true);
                 return Task::none();
             };
             order
@@ -137,7 +140,7 @@ impl TradingTerminal {
             return Task::none();
         }
         if self.active_advanced_order_count() >= MAX_ACTIVE_ADVANCED_ORDERS {
-            self.order_status = Some((
+            self.set_order_status(
                 format!(
                     concat!(
                         "Cannot start chase: maximum of ",
@@ -146,23 +149,23 @@ impl TradingTerminal {
                     MAX_ACTIVE_ADVANCED_ORDERS
                 ),
                 true,
-            ));
+            );
             return Task::none();
         }
 
         if let Err(message) = chase_resting_order_wire_is_supported(&order) {
-            self.order_status = Some((message.into(), true));
+            self.set_order_status(message.into(), true);
             return Task::none();
         }
         let Some(is_buy) = chase_resting_order_is_buy(&order.side) else {
-            self.order_status = Some((
+            self.set_order_status(
                 "Cannot chase order: open order has invalid side".into(),
                 true,
-            ));
+            );
             return Task::none();
         };
         let Some(sz) = order.sz.parse::<f64>().ok().and_then(positive_finite_value) else {
-            self.order_status = Some(("Cannot chase order with invalid size".into(), true));
+            self.set_order_status("Cannot chase order with invalid size".into(), true);
             return Task::none();
         };
         let Some(limit_px) = order
@@ -171,13 +174,13 @@ impl TradingTerminal {
             .ok()
             .and_then(positive_finite_value)
         else {
-            self.order_status = Some(("Cannot chase order with invalid price".into(), true));
+            self.set_order_status("Cannot chase order with invalid price".into(), true);
             return Task::none();
         };
 
         let symbol = self.exchange_symbols.iter().find(|s| s.key == coin);
         let Some(symbol) = symbol else {
-            self.order_status = Some((format!("Symbol '{coin}' not found"), true));
+            self.set_order_status(format!("Symbol '{coin}' not found"), true);
             return Task::none();
         };
         if symbol.market_type == MarketType::Outcome {
@@ -191,13 +194,13 @@ impl TradingTerminal {
         let reduce_only = match chase_resting_reduce_only(symbol.market_type, order.reduce_only) {
             Ok(reduce_only) => reduce_only,
             Err(message) => {
-                self.order_status = Some((message.into(), true));
+                self.set_order_status(message.into(), true);
                 return Task::none();
             }
         };
         let rounded_px = round_price(limit_px, sz_decimals, is_spot);
         let Some(rounded_px) = positive_finite_value(rounded_px) else {
-            self.order_status = Some(("Cannot chase order with invalid price".into(), true));
+            self.set_order_status("Cannot chase order with invalid price".into(), true);
             return Task::none();
         };
         let chase_id = self.next_chase_id();

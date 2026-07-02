@@ -247,3 +247,31 @@ fn late_cancel_result_without_chase_does_not_refresh_current_account() {
     assert!(!terminal.account_loading);
     assert!(terminal.chase_orders.is_empty());
 }
+
+#[test]
+fn max_cancel_retry_manual_check_pushes_toast() {
+    // The manual-check status is safety-critical (a live order may still be
+    // resting); it must surface as a toast when the order ticket pane is
+    // closed, with sensitive response text still redacted.
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.connected_address = Some("0xabc0000000000000000000000000000000000000".to_string());
+    terminal.chase_orders.insert(1, chase());
+
+    let _task = terminal.handle_chase_cancel_result(
+        1,
+        42,
+        Err("network timeout: private_key=super-secret".to_string()),
+    );
+
+    let manual_check_toast = terminal
+        .toasts
+        .iter()
+        .find(|toast| toast.is_error && toast.message.contains("requires manual check"))
+        .expect("manual-check toast should be pushed");
+    assert!(
+        manual_check_toast
+            .message
+            .contains("private_key=<redacted>")
+    );
+    assert!(!manual_check_toast.message.contains("super-secret"));
+}

@@ -2,7 +2,7 @@ use crate::account::{
     AssetPosition, Position, PositionLeverage, SpotBalance, UserFill,
     derive_spot_cost_basis_from_fills,
 };
-use crate::api::MarketType;
+use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
 use crate::helpers::parse_finite_number;
 use crate::signing::float_to_wire;
@@ -52,6 +52,25 @@ impl TradingTerminal {
         spot_asset_position_from_balance(balance, trade_coin, mark_px, fills)
     }
 
+    /// Live USD mark for a spot balance, resolved through the balance's spot
+    /// trade pair (the same balance-to-pair mapping the positions table uses)
+    /// rather than the bare token name, which is not a mids key.
+    pub(crate) fn spot_balance_mark_price(
+        &self,
+        balance: &SpotBalance,
+        fills: &[UserFill],
+    ) -> Option<f64> {
+        match self.spot_trade_coins_for_balance(balance) {
+            Some(trade_coins) => {
+                let trade_coin = self.select_spot_trade_coin(&trade_coins, balance, fills)?;
+                self.resolve_mid_for_symbol(&trade_coin)
+            }
+            // Stables, outcome balance coins, and unlisted tokens keep the
+            // direct lookup ("+NNN" outcome coins resolve via their "#" alias).
+            None => self.resolve_mid_for_symbol(&balance.coin),
+        }
+    }
+
     fn select_spot_trade_coin(
         &self,
         trade_coins: &[String],
@@ -90,13 +109,29 @@ impl TradingTerminal {
             return None;
         }
 
-        let mut trade_coins: Vec<(u32, String)> = self
+        let spot_pairs: Vec<&ExchangeSymbol> = self
             .exchange_symbols
             .iter()
             .filter(|symbol| {
                 symbol.market_type == MarketType::Spot
                     && symbol.ticker.eq_ignore_ascii_case(&balance.coin)
             })
+            .collect();
+        // Non-USD-quoted duplicates (e.g. a UBTC-quoted pair) report mids in
+        // quote units; valuing those as USD would misprice the balance, so
+        // they only count when no USD-stable-quoted pair exists.
+        let usd_quoted: Vec<&ExchangeSymbol> = spot_pairs
+            .iter()
+            .copied()
+            .filter(|symbol| symbol.spot_quote_is_usd_stable())
+            .collect();
+        let pairs = if usd_quoted.is_empty() {
+            spot_pairs
+        } else {
+            usd_quoted
+        };
+        let mut trade_coins: Vec<(u32, String)> = pairs
+            .into_iter()
             .map(|symbol| (symbol.asset_index, symbol.key.clone()))
             .collect();
         if trade_coins.is_empty() {
@@ -235,6 +270,18 @@ mod tests {
             only_isolated: false,
             market_type: MarketType::Spot,
             outcome: None,
+        }
+    }
+
+    fn spot_symbol_with_display(
+        key: &str,
+        ticker: &str,
+        asset_index: u32,
+        display: &str,
+    ) -> ExchangeSymbol {
+        ExchangeSymbol {
+            display_name: Some(display.to_string()),
+            ..spot_symbol(key, ticker, asset_index)
         }
     }
 
@@ -479,6 +526,70 @@ mod tests {
         assert_eq!(positions[0].position.coin, "@234");
         assert_wire_close(&positions[0].position.position_value, 58_358.0);
         assert_wire_close(&positions[0].position.unrealized_pnl, 58_358.0 - 60_191.0);
+    }
+
+    #[test]
+    fn spot_balances_ignore_non_usd_quoted_duplicates_for_valuation() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![
+            spot_symbol("@142", "UETH", 10_142),
+            spot_symbol_with_display("@151", "UETH", 10_151, "UETH/UBTC"),
+        ];
+        set_mid(&mut terminal, "@142", 2_500.0);
+        set_mid(&mut terminal, "@151", 0.037);
+        set_connected_account_data(
+            &mut terminal,
+            account_data_with_fills(
+                vec![spot_balance("UETH", "1", "0")],
+                // Fills reconcile to the UBTC-quoted pair, but its mid is in
+                // UBTC units and must not be rendered as a USD value.
+                vec![spot_fill("@151", "0.037", "1", "0", "USDC", 1)],
+            ),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "@142");
+        assert_wire_close(&positions[0].position.position_value, 2_500.0);
+    }
+
+    #[test]
+    fn purr_balance_maps_to_api_named_spot_pair() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![spot_symbol("PURR/USDC", "PURR", 10_000)];
+        set_mid(&mut terminal, "PURR/USDC", 4.0);
+        set_connected_account_data(
+            &mut terminal,
+            account_data(vec![spot_balance("PURR", "2", "3")]),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "PURR/USDC");
+        assert_wire_close(&positions[0].position.position_value, 8.0);
+        assert_wire_close(&positions[0].position.unrealized_pnl, 5.0);
+    }
+
+    #[test]
+    fn spot_balance_mark_price_resolves_through_the_spot_pair() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![spot_symbol("@77", "JEFF", 10_077)];
+        set_mid(&mut terminal, "@77", 2.0);
+
+        // The balance coin is the token name, which is not a mids key; the
+        // mark must come from the "@N" spot pair instead.
+        let balance = spot_balance("JEFF", "10", "5");
+        assert_eq!(terminal.spot_balance_mark_price(&balance, &[]), Some(2.0));
+
+        // Outcome balance coins keep their "+NNN" -> "#NNN" alias lookup.
+        set_mid(&mut terminal, "#950", 0.6);
+        let outcome_balance = spot_balance("+950", "30", "12");
+        assert_eq!(
+            terminal.spot_balance_mark_price(&outcome_balance, &[]),
+            Some(0.6)
+        );
     }
 
     #[test]

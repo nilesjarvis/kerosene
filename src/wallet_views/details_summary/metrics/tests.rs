@@ -36,6 +36,98 @@ fn wallet_details_summary_includes_reconciled_spot_fill_cost_basis() {
     );
 }
 
+/// Regression: a transferred-in spot balance (entryNtl "0", no reconciling
+/// fills) has no derivable cost basis and synthesizes empty entry/uPnL wire
+/// strings. Its unavailable PnL must be skipped, not poison the whole
+/// summary into "Invalid data", and the perp uPnL must survive.
+#[test]
+fn wallet_details_summary_skips_spot_rows_without_cost_basis() {
+    let mut terminal = TradingTerminal::boot().0;
+    let now_ms = TradingTerminal::now_ms();
+    terminal.exchange_symbols = vec![
+        spot_symbol("@142", "UBTC", 10_142),
+        spot_symbol("@200", "UFART", 10_200),
+    ];
+    terminal.all_mids.insert("BTC".to_string(), 90.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("BTC".to_string(), now_ms);
+    terminal.all_mids.insert("@142".to_string(), 58_358.0);
+    terminal
+        .all_mids_updated_at_ms
+        .insert("@142".to_string(), now_ms);
+    // "@200" has no mid at all: its value AND PnL are both unavailable.
+
+    let metrics = terminal.wallet_details_summary_metrics(&WalletDetailsData {
+        clearinghouse: ClearinghouseState {
+            margin_summary: MarginSummary {
+                account_value: "1000".to_string(),
+                total_ntl_pos: "999".to_string(),
+                total_margin_used: "100".to_string(),
+            },
+            cross_margin_summary: None,
+            cross_maintenance_margin_used: None,
+            withdrawable: "800".to_string(),
+            asset_positions: Vec::new(),
+        },
+        spot: SpotClearinghouseState {
+            balances: vec![
+                SpotBalance {
+                    coin: "UBTC".to_string(),
+                    token: Some(197),
+                    total: "2".to_string(),
+                    hold: "0".to_string(),
+                    entry_ntl: "0".to_string(),
+                    supplied: None,
+                },
+                SpotBalance {
+                    coin: "UFART".to_string(),
+                    token: Some(230),
+                    total: "5".to_string(),
+                    hold: "0".to_string(),
+                    entry_ntl: "0".to_string(),
+                    supplied: None,
+                },
+            ],
+            portfolio_margin_enabled: false,
+            portfolio_margin_ratio: None,
+            token_to_available_after_maintenance: None,
+        },
+        positions: vec![WalletPositionDetail {
+            dex: String::new(),
+            asset_position: AssetPosition {
+                position: Position {
+                    coin: "BTC".to_string(),
+                    szi: "-2".to_string(),
+                    entry_px: "100".to_string(),
+                    position_value: "999".to_string(),
+                    unrealized_pnl: "-999".to_string(),
+                    liquidation_px: None,
+                    leverage: PositionLeverage {
+                        leverage_type: "cross".to_string(),
+                        value: 10,
+                    },
+                    margin_used: "0".to_string(),
+                    cum_funding: None,
+                },
+                liquidation_px: None,
+            },
+        }],
+        open_orders: Vec::new(),
+        fills: Vec::new(),
+        warnings: Vec::new(),
+        fetched_at_ms: now_ms,
+    });
+
+    assert_eq!(metrics.active_position_count, 3);
+    // The perp uPnL survives; the basis-less spot rows are skipped.
+    assert_eq!(metrics.unrealized_pnl, Some(20.0));
+    // The priced spot balance still counts toward exposure; the unpriceable
+    // one is skipped rather than nulling the totals.
+    assert_approx_eq(metrics.long_exposure, 2.0 * 58_358.0);
+    assert_eq!(metrics.short_exposure, Some(180.0));
+}
+
 fn wallet_details_with_spot_basis(now_ms: u64) -> WalletDetailsData {
     WalletDetailsData {
         clearinghouse: ClearinghouseState {

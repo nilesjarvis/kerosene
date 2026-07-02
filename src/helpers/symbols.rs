@@ -151,11 +151,28 @@ pub fn hip3_dex(symbol: &str) -> Option<&str> {
 }
 
 pub fn compare_symbol_keys_for_same_ticker(a_key: &str, b_key: &str) -> Ordering {
-    match (hip3_dex(a_key), hip3_dex(b_key)) {
-        (Some(a_dex), Some(b_dex)) => hip3_dex_rank(a_dex)
-            .cmp(&hip3_dex_rank(b_dex))
-            .then_with(|| a_key.cmp(b_key)),
-        _ => a_key.cmp(b_key),
+    market_rank_for_symbol_key(a_key)
+        .cmp(&market_rank_for_symbol_key(b_key))
+        .then_with(|| match (hip3_dex(a_key), hip3_dex(b_key)) {
+            (Some(a_dex), Some(b_dex)) => hip3_dex_rank(a_dex)
+                .cmp(&hip3_dex_rank(b_dex))
+                .then_with(|| a_key.cmp(b_key)),
+            _ => a_key.cmp(b_key),
+        })
+}
+
+/// Same-ticker collisions rank perps first so list ordering agrees with the
+/// bare-ticker resolver (`resolve_exchange_symbol_by_key_or_ticker`) and
+/// `switch_active_symbol_internal`, both of which prefer the perp market.
+/// Perp keys are plain names (optionally `dex:`-prefixed); spot pair keys
+/// start with `@` or are API-named pairs like "PURR/USDC", and outcome keys
+/// start with `#`.
+fn market_rank_for_symbol_key(key: &str) -> u8 {
+    match key.as_bytes().first() {
+        Some(b'@') => 1,
+        Some(b'#') => 2,
+        _ if key.contains('/') => 1,
+        _ => 0,
     }
 }
 

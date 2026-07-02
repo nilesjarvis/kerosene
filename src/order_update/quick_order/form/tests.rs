@@ -1,7 +1,8 @@
 use super::{quick_order_quantity_for_percentage, toggled_quick_order_quantity_text};
 use crate::account::{
-    AccountData, AccountDataCompleteness, AssetPosition, ClearinghouseState, MarginSummary,
-    Position, PositionLeverage, SpotClearinghouseState, UserFeeRates,
+    AccountAbstractionMode, AccountData, AccountDataCompleteness, AssetPosition,
+    ClearinghouseState, MarginSummary, Position, PositionLeverage, SpotBalance,
+    SpotClearinghouseState, UserFeeRates,
 };
 use crate::api::{ExchangeSymbol, MarketType};
 use crate::app_state::TradingTerminal;
@@ -59,6 +60,64 @@ fn account_data_without_positions() -> AccountData {
         completeness: AccountDataCompleteness::default(),
         fetched_at_ms: TradingTerminal::now_ms(),
     }
+}
+
+fn spot_symbol(key: &str, ticker: &str, sz_decimals: u32) -> ExchangeSymbol {
+    ExchangeSymbol {
+        ticker: ticker.to_string(),
+        category: "spot".to_string(),
+        display_name: Some(format!("{ticker}/USDC")),
+        sz_decimals,
+        market_type: MarketType::Spot,
+        ..symbol(key)
+    }
+}
+
+fn spot_balance(coin: &str, token: Option<u32>, total: &str, hold: &str) -> SpotBalance {
+    SpotBalance {
+        coin: coin.to_string(),
+        token,
+        total: total.to_string(),
+        hold: hold.to_string(),
+        entry_ntl: "0".to_string(),
+        supplied: None,
+    }
+}
+
+fn quick_order_form(quantity_is_usd: bool) -> QuickOrderForm {
+    QuickOrderForm {
+        price: 100.0,
+        quantity: String::new(),
+        quantity_is_usd,
+        percentage: 0.0,
+        quantity_provenance: None,
+        is_limit: true,
+        click_x: 0.0,
+        click_y: 0.0,
+        chart_w: 400.0,
+        chart_h: 240.0,
+    }
+}
+
+fn spot_quick_order_terminal(
+    chart_id: u64,
+    quantity_is_usd: bool,
+    abstraction: AccountAbstractionMode,
+    withdrawable: &str,
+    balances: Vec<SpotBalance>,
+) -> TradingTerminal {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![spot_symbol("@107", "HYPE", 2)];
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    let mut data = account_data_without_positions();
+    data.account_abstraction = abstraction;
+    data.clearinghouse.withdrawable = withdrawable.to_string();
+    data.spot.balances = balances;
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+    let mut instance = ChartInstance::new(chart_id, "@107".to_string(), Timeframe::H1);
+    instance.set_quick_order(quick_order_form(quantity_is_usd));
+    terminal.charts.insert(chart_id, instance);
+    terminal
 }
 
 fn account_data_with_position(coin: &str, szi: &str) -> AccountData {
@@ -351,4 +410,94 @@ fn reduce_only_quick_order_percentage_without_position_fails_closed() {
         .expect("quick-order form should still be open");
     assert_eq!(form.quantity, "0");
     assert!(form.quantity_provenance.is_none());
+}
+
+#[test]
+fn spot_quick_order_percentage_sizes_sell_all_from_sellable_base_balance() {
+    let chart_id = 7;
+    let mut terminal = spot_quick_order_terminal(
+        chart_id,
+        false,
+        AccountAbstractionMode::Default,
+        "50000",
+        vec![
+            spot_balance("HYPE", Some(107), "100", "0"),
+            spot_balance("USDC", Some(0), "50", "0"),
+        ],
+    );
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 100.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "100.00");
+    assert!(form.quantity_provenance.is_some());
+}
+
+#[test]
+fn spot_quick_order_percentage_respects_holds_on_base_balance() {
+    let chart_id = 7;
+    let mut terminal = spot_quick_order_terminal(
+        chart_id,
+        false,
+        AccountAbstractionMode::Default,
+        "50000",
+        vec![spot_balance("HYPE", Some(107), "100", "25")],
+    );
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 100.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "75.00");
+}
+
+#[test]
+fn spot_quick_order_percentage_uses_spot_usdc_for_spot_only_disabled_account() {
+    let chart_id = 7;
+    let mut terminal = spot_quick_order_terminal(
+        chart_id,
+        true,
+        AccountAbstractionMode::Disabled,
+        "0",
+        vec![spot_balance("USDC", Some(0), "10000", "0")],
+    );
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 50.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "5,000.00");
+}
+
+#[test]
+fn perp_quick_order_percentage_still_sizes_from_margin_with_spot_balances_present() {
+    let chart_id = 7;
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![symbol("BTC")];
+    terminal.connected_address = Some(TEST_ACCOUNT.to_string());
+    let mut data = account_data_without_positions();
+    data.spot.balances = vec![spot_balance("USDC", Some(0), "2000", "0")];
+    terminal.set_account_data_for_address_for_test(TEST_ACCOUNT, data);
+    let mut instance = ChartInstance::new(chart_id, "BTC".to_string(), Timeframe::H1);
+    instance.set_quick_order(quick_order_form(true));
+    terminal.charts.insert(chart_id, instance);
+
+    terminal.handle_quick_order_percentage_changed(chart_id, 100.0);
+
+    let form = terminal
+        .charts
+        .get(&chart_id)
+        .and_then(|instance| instance.quick_order.as_ref())
+        .expect("quick-order form should still be open");
+    assert_eq!(form.quantity, "2,000.00");
 }

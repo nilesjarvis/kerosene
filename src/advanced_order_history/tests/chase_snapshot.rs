@@ -110,6 +110,26 @@ fn chase_history_preserves_overfill_without_authoritative_fills() {
     assert_eq!(entry.average_price, None);
 }
 
+#[test]
+fn chase_history_converts_base_token_fees_to_usd() {
+    let mut chase = chase_order();
+    chase.known_oids = vec![42, 43];
+
+    // A spot HYPE/USDC chase: the buy fill's fee arrives in HYPE (base
+    // token), the maker rebate arrives in USDC and passes through unchanged.
+    let mut base_fee_fill = fill(42, 1_000, "40", "1", "0.5", "0");
+    base_fee_fill.fee_token = Some("HYPE".to_string());
+    let mut usdc_fee_fill = fill(43, 2_000, "40", "1", "-0.1", "0");
+    usdc_fee_fill.fee_token = Some("USDC".to_string());
+
+    let metrics =
+        AdvancedOrderHistoryEntry::chase_fill_metrics(&[base_fee_fill, usdc_fee_fill], &chase)
+            .expect("matching chase fills");
+
+    // 0.5 HYPE * $40 - $0.1 rebate = $19.9
+    assert!((metrics.total_fee - 19.9).abs() < 1e-9);
+}
+
 fn account_data(fills: Vec<UserFill>) -> AccountData {
     AccountData {
         fetch_scope: Default::default(),

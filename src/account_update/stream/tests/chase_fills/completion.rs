@@ -148,3 +148,69 @@ fn account_refresh_fill_reconciliation_ignores_chase_for_other_connected_account
     );
     assert!(terminal.advanced_order_history.is_empty());
 }
+
+#[test]
+fn spot_chase_completion_summary_and_archive_use_pair_name() {
+    // Spot chase coins are raw "@{index}" pair keys (HYPE/USDC is "@107");
+    // the completion status and the archived history summary must show the
+    // pair name instead.
+    let mut chase = chase_order();
+    chase.coin = "@107".to_string();
+    chase.is_spot = true;
+    let mut fill = fill_with_oid(1_001, 42, "100", "1.0");
+    fill.coin = "@107".to_string();
+    let mut terminal = terminal_with_chase_fills(chase, vec![fill]);
+    terminal.exchange_symbols = vec![crate::api::ExchangeSymbol {
+        key: "@107".to_string(),
+        ticker: "HYPE".to_string(),
+        category: "spot".to_string(),
+        display_name: Some("HYPE/USDC".to_string()),
+        keywords: Vec::new(),
+        asset_index: 10_107,
+        collateral_token: None,
+        sz_decimals: 2,
+        max_leverage: 1,
+        only_isolated: false,
+        market_type: crate::api::MarketType::Spot,
+        outcome: None,
+    }];
+
+    let _task = terminal.reconcile_chase_after_account_refresh();
+
+    assert!(terminal.chase_orders.is_empty());
+    let (message, is_error) = terminal
+        .order_status
+        .clone()
+        .expect("completion status should be set");
+    assert!(!is_error, "unexpected error status: {message}");
+    assert_eq!(message, "Chase filled: BUY 1 HYPE/USDC @ $100");
+    let entry = terminal
+        .advanced_order_history
+        .front()
+        .expect("completed chase should be archived");
+    assert!(entry.summary.contains("HYPE/USDC"), "{}", entry.summary);
+    assert!(!entry.summary.contains("@107"), "{}", entry.summary);
+}
+
+#[test]
+fn overfilled_chase_completion_error_pushes_toast() {
+    // Overfill summaries are errors; they must surface as a toast when the
+    // order ticket pane is closed.
+    let mut chase = chase_order();
+    chase.known_oids.push(43);
+    let mut terminal = connected_terminal_with_chase_account(
+        chase,
+        vec![fill_with_oid(1_001, 42, "100", "1.2")],
+        vec![open_order(43, Some(false))],
+    );
+
+    let _task = terminal.reconcile_chase_fills_from_account();
+
+    assert!(
+        terminal
+            .toasts
+            .iter()
+            .any(|toast| toast.is_error && toast.message.contains("over target")),
+        "expected an error toast containing the overfill summary"
+    );
+}

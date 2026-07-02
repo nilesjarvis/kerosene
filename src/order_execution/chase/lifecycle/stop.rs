@@ -60,14 +60,17 @@ impl TradingTerminal {
             } => {
                 let key = chase.agent_key.clone_for_task();
                 if key.is_empty() {
-                    self.order_status = Some((
+                    self.set_order_status(
                         "Chase stopped: original agent key is unavailable".into(),
                         true,
-                    ));
+                    );
                     self.remove_chase_order(chase_id);
                     return Task::none();
                 }
-                self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
+                self.set_order_status_toast_on_error(
+                    format!("{reason}: cancelling order {oid}"),
+                    is_error,
+                );
                 cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
                     chase_id,
                     oid,
@@ -75,22 +78,28 @@ impl TradingTerminal {
                 })
             }
             StopChaseAction::AwaitPlaceResult => {
-                self.order_status = Some((
+                self.set_order_status_toast_on_error(
                     format!("{reason}: waiting for order id before cancelling"),
                     is_error,
-                ));
+                );
                 Task::none()
             }
             StopChaseAction::AwaitModifyResult => {
-                self.order_status = Some((format!("{reason}: modify already in flight"), is_error));
+                self.set_order_status_toast_on_error(
+                    format!("{reason}: modify already in flight"),
+                    is_error,
+                );
                 Task::none()
             }
             StopChaseAction::AwaitCancelResult => {
-                self.order_status = Some((format!("{reason}: cancel already in flight"), is_error));
+                self.set_order_status_toast_on_error(
+                    format!("{reason}: cancel already in flight"),
+                    is_error,
+                );
                 Task::none()
             }
             StopChaseAction::Clear => {
-                self.order_status = Some((reason, is_error));
+                self.set_order_status_toast_on_error(reason, is_error);
                 self.remove_chase_order(chase_id);
                 Task::none()
             }
@@ -165,7 +174,7 @@ impl TradingTerminal {
                 phase: ChaseStopPhase::VerifyingCancel { oid },
             };
             chase.stop_reason = Some(manual_status.clone());
-            self.order_status = Some(manual_status);
+            self.set_order_status_toast_on_error(manual_status.0, manual_status.1);
             return Task::none();
         }
         chase.record_oid(oid);
@@ -176,15 +185,15 @@ impl TradingTerminal {
         chase.stop_reason = Some((reason.clone(), is_error));
         let key = chase.agent_key.clone_for_task();
         if key.is_empty() {
-            self.order_status = Some((
+            self.set_order_status(
                 format!("{reason}: manual check required; original agent key is unavailable"),
                 true,
-            ));
+            );
             return Task::none();
         }
 
         let asset = chase.asset;
-        self.order_status = Some((format!("{reason}: cancelling order {oid}"), is_error));
+        self.set_order_status_toast_on_error(format!("{reason}: cancelling order {oid}"), is_error);
         cancel_order_task(key, asset, oid, move |r| Message::ChaseCancelResult {
             chase_id,
             oid,

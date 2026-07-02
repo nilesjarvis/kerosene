@@ -1,3 +1,4 @@
+use super::analytics::journal_effective_pnl;
 use crate::app_state::TradingTerminal;
 use crate::journal::{self, AggregatedTrade};
 use crate::message::Message;
@@ -15,15 +16,28 @@ impl TradingTerminal {
             .filter(|trade| self.journal.filter.matches_coin(&trade.coin))
             .collect();
 
+        // Sort by the same fee-adjusted PnL the rows display so the visible
+        // NET PNL column stays monotonic under PnL sorting.
+        let include_fees = self.journal.include_fees_in_pnl;
         match self.journal.sort {
             journal::JournalSort::TimeDesc => {
                 // Already sorted newest-first by aggregate_trades.
             }
             journal::JournalSort::PnlDesc => {
-                filtered_trades.sort_by(|a, b| compare_f64_desc(a.pnl, b.pnl));
+                filtered_trades.sort_by(|a, b| {
+                    compare_f64_desc(
+                        journal_effective_pnl(a, include_fees),
+                        journal_effective_pnl(b, include_fees),
+                    )
+                });
             }
             journal::JournalSort::PnlAsc => {
-                filtered_trades.sort_by(|a, b| compare_f64_asc(a.pnl, b.pnl));
+                filtered_trades.sort_by(|a, b| {
+                    compare_f64_asc(
+                        journal_effective_pnl(a, include_fees),
+                        journal_effective_pnl(b, include_fees),
+                    )
+                });
             }
         }
 
@@ -100,6 +114,14 @@ mod tests {
     fn sortable_trade(coin: &str, start_time: u64, pnl: f64) -> AggregatedTrade {
         AggregatedTrade {
             pnl,
+            ..trade(coin, start_time)
+        }
+    }
+
+    fn fee_trade(coin: &str, start_time: u64, pnl: f64, fee: f64) -> AggregatedTrade {
+        AggregatedTrade {
+            pnl,
+            fee,
             ..trade(coin, start_time)
         }
     }
@@ -184,6 +206,35 @@ mod tests {
         assert_eq!(
             sorted_coins(&mut terminal, journal::JournalSort::PnlAsc),
             vec!["BTC", "SOL", "ETH"]
+        );
+    }
+
+    #[test]
+    fn journal_sort_uses_fee_adjusted_pnl_when_fees_are_included() {
+        let mut terminal = TradingTerminal::boot().0;
+        // BTC is the gross winner (+5) but the net loser (5 - 10 = -5);
+        // ETH is +4 both ways. The rows display net PnL, so PnL sorting must
+        // order by net, not gross.
+        terminal.journal.trades = vec![
+            fee_trade("BTC", 200, 5.0, 10.0),
+            fee_trade("ETH", 100, 4.0, 0.0),
+        ];
+        terminal.journal.include_fees_in_pnl = true;
+
+        assert_eq!(
+            sorted_coins(&mut terminal, journal::JournalSort::PnlDesc),
+            vec!["ETH", "BTC"]
+        );
+        assert_eq!(
+            sorted_coins(&mut terminal, journal::JournalSort::PnlAsc),
+            vec!["BTC", "ETH"]
+        );
+
+        // With fees excluded the gross ordering applies.
+        terminal.journal.include_fees_in_pnl = false;
+        assert_eq!(
+            sorted_coins(&mut terminal, journal::JournalSort::PnlDesc),
+            vec!["BTC", "ETH"]
         );
     }
 }

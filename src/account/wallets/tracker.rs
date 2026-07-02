@@ -1,6 +1,6 @@
 use super::super::{
-    AccountDataFetchScope, ClearinghouseState, HydromancerPortfolioState, OpenOrder,
-    WalletTrackerSnapshot, fetch_hydromancer_frontend_open_orders_scoped,
+    AccountDataFetchScope, AssetPosition, ClearinghouseState, HydromancerPortfolioState, OpenOrder,
+    SpotClearinghouseState, WalletTrackerSnapshot, fetch_hydromancer_frontend_open_orders_scoped,
     fetch_hydromancer_portfolio_states,
 };
 use crate::api::API_URL;
@@ -13,10 +13,16 @@ mod open_orders;
 mod snapshot;
 mod spot_fallback;
 
+#[cfg(test)]
+mod tests;
+
 use hip3::append_hip3_margin_and_positions;
 use open_orders::fetch_wallet_tracker_open_order_count_scoped;
 use snapshot::{build_wallet_tracker_snapshot, parse_tracker_number};
-use spot_fallback::apply_spot_equity_fallback;
+use spot_fallback::{
+    apply_spot_equity_fallback, fetch_spot_fallback_mids, merge_spot_equity_fallback,
+    spot_equity_fallback_from_state, spot_equity_fallback_needed,
+};
 
 /// Fetch a low-cost account snapshot for the wallet tracker.
 ///
@@ -71,7 +77,9 @@ pub async fn fetch_wallet_tracker_snapshot_scoped(
         .and_then(|v| v.as_str())
         .and_then(parse_tracker_number);
 
-    apply_spot_equity_fallback(&client, &address, &mut equity, &mut withdrawable).await?;
+    // Best-effort like the HIP-3 pass below: a transient failure of the
+    // auxiliary spot request must not discard the perp snapshot in hand.
+    apply_spot_equity_fallback(&client, &address, &mut equity, &mut withdrawable).await;
     append_hip3_margin_and_positions(
         &client,
         &address,
@@ -145,12 +153,49 @@ pub async fn fetch_wallet_tracker_snapshots_scoped_with_provider(
         .await;
     }
 
-    fetch_hydromancer_portfolio_states(addresses, scope.clone(), hydromancer_api_key)
-        .await
+    let values: Vec<(String, Result<PortfolioTrackerValues, String>)> =
+        fetch_hydromancer_portfolio_states(addresses, scope.clone(), hydromancer_api_key)
+            .await
+            .into_iter()
+            .map(|(address, result)| {
+                let result = result
+                    .and_then(|portfolio| wallet_tracker_values_from_portfolio(portfolio, &scope));
+                (address, result)
+            })
+            .collect();
+
+    // Portfolio-margin wallets hold their equity as spot balances, so the
+    // perp clearinghouse reports ~0 equity/withdrawable. Price those balances
+    // with a single best-effort allMids fetch per batch, mirroring the
+    // direct-Hyperliquid spot fallback.
+    let needs_mids = values.iter().any(|(_, result)| {
+        result
+            .as_ref()
+            .is_ok_and(|values| values.spot_fallback.is_some())
+    });
+    let mids = if needs_mids {
+        fetch_spot_fallback_mids(&crate::api::CLIENT.clone()).await
+    } else {
+        Err("no portfolio-margin wallets in batch".to_string())
+    };
+
+    values
         .into_iter()
         .map(|(address, result)| {
-            let result = result
-                .and_then(|portfolio| wallet_tracker_snapshot_from_portfolio(portfolio, &scope));
+            let result = result.map(|mut values| {
+                if let Some(spot) = values.spot_fallback.take() {
+                    let outcome = mids
+                        .as_ref()
+                        .map(|mids| spot_equity_fallback_from_state(&spot, mids))
+                        .map_err(String::clone);
+                    merge_spot_equity_fallback(
+                        outcome,
+                        &mut values.equity,
+                        &mut values.withdrawable,
+                    );
+                }
+                values.into_snapshot()
+            });
             (address, result)
         })
         .collect()
@@ -189,10 +234,33 @@ fn order_has_size(order: &OpenOrder) -> bool {
         .is_some_and(|size| size.is_finite() && size.abs() > f64::EPSILON)
 }
 
-fn wallet_tracker_snapshot_from_portfolio(
+/// Snapshot inputs extracted from a Hydromancer portfolio state, with the
+/// portfolio-margin spot state retained for the batch-level equity fallback.
+struct PortfolioTrackerValues {
+    equity: Option<f64>,
+    withdrawable: Option<f64>,
+    margin_used: Option<f64>,
+    asset_positions: Vec<AssetPosition>,
+    /// `Some` only for portfolio-margin wallets whose perp equity or
+    /// withdrawable does not already reflect real equity.
+    spot_fallback: Option<SpotClearinghouseState>,
+}
+
+impl PortfolioTrackerValues {
+    fn into_snapshot(self) -> WalletTrackerSnapshot {
+        build_wallet_tracker_snapshot(
+            self.equity,
+            self.withdrawable,
+            self.margin_used,
+            self.asset_positions,
+        )
+    }
+}
+
+fn wallet_tracker_values_from_portfolio(
     portfolio: HydromancerPortfolioState,
     scope: &AccountDataFetchScope,
-) -> Result<WalletTrackerSnapshot, String> {
+) -> Result<PortfolioTrackerValues, String> {
     let (clearinghouse, _, hip3_states) = portfolio.clearinghouses_for_scope(scope)?;
     let equity = parse_tracker_number(&clearinghouse.margin_summary.account_value);
     let withdrawable = parse_tracker_number(&clearinghouse.withdrawable);
@@ -205,10 +273,19 @@ fn wallet_tracker_snapshot_from_portfolio(
         );
         asset_positions.extend(hip3_state.asset_positions);
     }
-    Ok(build_wallet_tracker_snapshot(
+    let spot_fallback = if spot_equity_fallback_needed(equity, withdrawable) {
+        portfolio
+            .spot_clearinghouse()
+            .ok()
+            .filter(|spot| spot.portfolio_margin_enabled)
+    } else {
+        None
+    };
+    Ok(PortfolioTrackerValues {
         equity,
         withdrawable,
         margin_used,
         asset_positions,
-    ))
+        spot_fallback,
+    })
 }

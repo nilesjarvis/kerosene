@@ -2,6 +2,9 @@ use super::{ExchangeSymbol, MarketType};
 use serde_json::Value;
 use std::collections::HashMap;
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Spot Symbols
 // ---------------------------------------------------------------------------
@@ -33,14 +36,14 @@ pub(super) fn append_spot_symbols(symbols: &mut Vec<ExchangeSymbol>, spot_meta: 
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let is_canonical = pair
-                .get("isCanonical")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
 
             let tokens_arr = pair.get("tokens").and_then(|v| v.as_array());
             let base_idx = tokens_arr
                 .and_then(|a| a.first())
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let quote_idx = tokens_arr
+                .and_then(|a| a.get(1))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
 
@@ -48,16 +51,27 @@ pub(super) fn append_spot_symbols(symbols: &mut Vec<ExchangeSymbol>, spot_meta: 
                 .get(&base_idx)
                 .cloned()
                 .unwrap_or_else(|| (format!("?{}", base_idx), 2, None));
+            let quote_name = token_info
+                .get(&quote_idx)
+                .map(|(name, _, _)| name.clone())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| "USDC".to_string());
 
             if base_name == "USDC" || base_name.is_empty() {
                 continue;
             }
 
-            let key = format!("@{spot_index}");
-            let display = if is_canonical && !pair_name.is_empty() && pair_name != key {
-                Some(pair_name)
+            let indexed_key = format!("@{spot_index}");
+            // Hyperliquid names canonical launch pairs directly (PURR/USDC is
+            // the only one today) and uses that name — not "@{index}" — as the
+            // coin in allMids, candles, l2Book, open orders, and fills, so it
+            // must be the symbol key. Every other pair stays keyed "@{index}".
+            let is_api_named = !pair_name.is_empty() && pair_name != indexed_key;
+            let key = if is_api_named { pair_name } else { indexed_key };
+            let display = if is_api_named {
+                Some(key.clone())
             } else {
-                Some(format!("{base_name}/USDC"))
+                Some(format!("{base_name}/{quote_name}"))
             };
 
             let mut kw = Vec::new();

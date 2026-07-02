@@ -1,20 +1,22 @@
 mod aggregation;
+mod fees;
 mod formatting;
 mod order_book;
 mod symbols;
 mod ui;
 
 pub(crate) use aggregation::{add_optional_f64, positive_percent_change, sum_optional_f64};
+pub(crate) use fees::{is_usd_stable_fee_token, non_perp_fee_usd};
 pub use formatting::{
     ellipsized_text, fallback_initials, finite_value, format_decimal_with_commas, format_duration,
-    format_price, format_relative_time, format_seen_latency_label, format_signed_percent_value,
-    format_size, format_timestamp, format_timestamp_exact, format_usd, format_with_commas,
-    invalid_data_placeholder, normalize_two_decimal_display_value, not_available_placeholder,
-    parse_finite_json_number, parse_finite_number, parse_number, parse_positive_finite_number,
-    parse_positive_number, path_neutral_io_error_detail, positive_finite_value,
-    redact_sensitive_response_text, redact_wallet_address_debug_value, response_excerpt,
-    response_snippet, sensitive_response_excerpt, sensitive_response_snippet, text_excerpt,
-    trim_decimal_zeros, values_match_approx,
+    format_price, format_price_input, format_relative_time, format_seen_latency_label,
+    format_signed_percent_value, format_size, format_timestamp, format_timestamp_exact, format_usd,
+    format_with_commas, invalid_data_placeholder, normalize_two_decimal_display_value,
+    not_available_placeholder, parse_finite_json_number, parse_finite_number, parse_number,
+    parse_positive_finite_number, parse_positive_number, path_neutral_io_error_detail,
+    positive_finite_value, redact_sensitive_response_text, redact_wallet_address_debug_value,
+    response_excerpt, response_snippet, sensitive_response_excerpt, sensitive_response_snippet,
+    text_excerpt, trim_decimal_zeros, values_match_approx,
 };
 pub use order_book::{
     BOOK_ROW_HEIGHT, BookRowData, aggregate_levels, book_row, book_tick_options,

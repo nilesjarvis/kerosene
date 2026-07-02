@@ -1,5 +1,5 @@
 use crate::account::UserFill;
-use crate::helpers::positive_finite_value;
+use crate::helpers::{is_usd_stable_fee_token, non_perp_fee_usd, positive_finite_value};
 use crate::signing::ChaseOrder;
 use crate::twap_state::{TwapOrder, TwapStatus, twap_weighted_average_fill_price};
 
@@ -49,7 +49,14 @@ impl AdvancedOrderHistoryEntry {
                 metrics.gross_notional += size * price;
             }
             if let Some(fee) = parse_finite_fill_number(&fill.fee) {
-                metrics.total_fee += fee;
+                let fee_token = fill.fee_token.as_deref().unwrap_or("");
+                if fee_token.is_empty() || is_usd_stable_fee_token(fee_token) {
+                    metrics.total_fee += fee;
+                } else if let Some(price) = parse_positive_fill_number(&fill.px) {
+                    // Spot buy fees arrive in the base token; convert so the
+                    // history total stays USD-denominated.
+                    metrics.total_fee += non_perp_fee_usd(fee, fee_token, price);
+                }
             }
             if let Some(closed_pnl) = parse_finite_fill_number(&fill.closed_pnl) {
                 metrics.closed_pnl += closed_pnl;

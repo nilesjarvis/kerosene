@@ -55,3 +55,17 @@ fn ticker_fallback_returns_non_perp_when_no_perp_exists() {
     assert_eq!(resolved.key, "@1");
     assert_eq!(resolved.market_type, MarketType::Spot);
 }
+
+#[test]
+fn legacy_indexed_key_resolves_api_named_spot_pair() {
+    // PURR/USDC is keyed by its API name; layouts saved before the re-key
+    // still carry "@0" and must migrate to the canonical key on load.
+    let mut purr = symbol("PURR/USDC", "PURR", MarketType::Spot);
+    purr.asset_index = 10_000;
+    let symbols = vec![purr, symbol("HYPE", "HYPE", MarketType::Perp)];
+
+    let resolved = resolve_exchange_symbol(&symbols, "@0").expect("symbol");
+
+    assert_eq!(resolved.key, "PURR/USDC");
+    assert_eq!(resolved.market_type, MarketType::Spot);
+}

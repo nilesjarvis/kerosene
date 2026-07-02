@@ -2,7 +2,7 @@ use super::{
     ChartHeaderMetricVisibility, asset_volume_label, format_asset_volume, format_funding_pct,
     format_open_interest, format_open_interest_notional, format_outcome_asset_volume,
     format_outcome_volume, format_volume, funding_countdown_from_minute_second,
-    open_interest_label, outcome_volume_label, parse_ctx_f64,
+    open_interest_label, outcome_volume_label, parse_ctx_f64, spot_base_ticker,
 };
 use crate::api::OutcomeVolume24h;
 
@@ -106,6 +106,24 @@ fn asset_volume_formats_coin_and_notional_modes() {
     );
     assert_eq!(asset_volume_label(false), "24h Vol");
     assert_eq!(asset_volume_label(true), "24h Vol $");
+}
+
+#[test]
+fn spot_base_volume_is_labelled_with_the_base_ticker_not_the_pair_name() {
+    assert_eq!(spot_base_ticker("HYPE/USDC"), "HYPE");
+    assert_eq!(spot_base_ticker("PURR/USDC"), "PURR");
+    // Perp-style bare tickers pass through unchanged.
+    assert_eq!(spot_base_ticker("HYPE"), "HYPE");
+
+    assert_eq!(
+        format_asset_volume(
+            Some(15_500.0),
+            Some(600_000.0),
+            false,
+            spot_base_ticker("HYPE/USDC"),
+        ),
+        "15.5K HYPE"
+    );
 }
 
 #[test]

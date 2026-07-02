@@ -1,4 +1,4 @@
-use crate::account::AccountData;
+use crate::account::{AccountAbstractionMode, AccountData, ClearinghouseState};
 use crate::app_state::TradingTerminal;
 
 mod calculations;
@@ -27,10 +27,49 @@ pub(in crate::account_views::summary::connected) struct ConnectedSummaryValues {
 }
 
 impl TradingTerminal {
-    pub(super) fn connected_summary_values(&self, data: &AccountData) -> ConnectedSummaryValues {
-        let clearinghouse = self.visible_clearinghouse_state(data);
+    /// Headline account value: the connected summary header total and the
+    /// positions summary Total PnL % denominator both use this so the two
+    /// can never diverge. Shared-balance accounts report the same USDC pool
+    /// through both the perp clearinghouse and spot balances, so those are
+    /// deduped with max() semantics instead of summed twice.
+    pub(crate) fn account_summary_total_value(&self, data: &AccountData) -> Option<f64> {
+        if matches!(data.account_abstraction, AccountAbstractionMode::Unknown(_)) {
+            return None;
+        }
         let include_spot = self.account_view_includes_spot_balances(data);
-        let live_upnl = sum_optional(
+        if data.uses_shared_account_balance() && !include_spot {
+            return self.visible_collateral_token().and_then(|token| {
+                shared_account_token_total_value(data, token, |balance| {
+                    self.spot_balance_mark_price(balance, &data.fills)
+                })
+            });
+        }
+        if data.uses_shared_account_balance() {
+            return shared_account_total_value(data, || self.visible_spot_balance_value(data));
+        }
+
+        let clearinghouse = self.visible_clearinghouse_state(data);
+        let spot_value = if include_spot {
+            self.visible_spot_balance_value(data)
+        } else {
+            Some(0.0)
+        };
+        let perp_equity = parse_summary_number(&clearinghouse.margin_summary.account_value);
+        let (live_upnl, stale_upnl) = self.visible_position_upnl(clearinghouse);
+        match (perp_equity, spot_value, live_upnl, stale_upnl) {
+            (Some(perp_equity), Some(spot_value), Some(live_upnl), Some(stale_upnl)) => {
+                Some(perp_equity + spot_value + (live_upnl - stale_upnl))
+            }
+            _ => None,
+        }
+    }
+
+    /// (live, stale) unrealized PnL totals over visible perp positions.
+    fn visible_position_upnl(
+        &self,
+        clearinghouse: &ClearinghouseState,
+    ) -> (Option<f64>, Option<f64>) {
+        let live = sum_optional(
             clearinghouse
                 .asset_positions
                 .iter()
@@ -44,6 +83,38 @@ impl TradingTerminal {
                     )
                 }),
         );
+        let stale = sum_optional(
+            clearinghouse
+                .asset_positions
+                .iter()
+                .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
+                .map(|ap| parse_summary_number(&ap.position.unrealized_pnl)),
+        );
+        (live, stale)
+    }
+
+    /// USD value of visible spot balances, marking each through its spot
+    /// trade pair (falling back to entry notional when no mid exists).
+    fn visible_spot_balance_value(&self, data: &AccountData) -> Option<f64> {
+        sum_optional(
+            data.spot
+                .balances
+                .iter()
+                .filter(|b| !self.account_spot_balance_is_hidden(data, &b.coin))
+                .map(|b| {
+                    spot_balance_value(
+                        &b.coin,
+                        &b.total,
+                        &b.entry_ntl,
+                        self.spot_balance_mark_price(b, &data.fills),
+                    )
+                }),
+        )
+    }
+
+    pub(super) fn connected_summary_values(&self, data: &AccountData) -> ConnectedSummaryValues {
+        let clearinghouse = self.visible_clearinghouse_state(data);
+        let (live_upnl, stale_upnl) = self.visible_position_upnl(clearinghouse);
 
         let live_ntl = sum_optional(
             clearinghouse
@@ -59,58 +130,9 @@ impl TradingTerminal {
                 }),
         );
 
-        let visible_spot_value = || {
-            sum_optional(
-                data.spot
-                    .balances
-                    .iter()
-                    .filter(|b| !self.account_spot_balance_is_hidden(data, &b.coin))
-                    .map(|b| {
-                        spot_balance_value(
-                            &b.coin,
-                            &b.total,
-                            &b.entry_ntl,
-                            self.resolve_mid_for_symbol(&b.coin),
-                        )
-                    }),
-            )
-        };
-        let spot_value = if include_spot {
-            visible_spot_value()
-        } else {
-            Some(0.0)
-        };
-
-        let stale_upnl = sum_optional(
-            clearinghouse
-                .asset_positions
-                .iter()
-                .filter(|ap| !self.symbol_key_is_hidden(&ap.position.coin))
-                .map(|ap| parse_summary_number(&ap.position.unrealized_pnl)),
-        );
-        let balances_can_be_sized = !matches!(
-            data.account_abstraction,
-            crate::account::AccountAbstractionMode::Unknown(_)
-        );
-        let total_value = if !balances_can_be_sized {
-            None
-        } else if data.uses_shared_account_balance() && !include_spot {
-            self.visible_collateral_token().and_then(|token| {
-                shared_account_token_total_value(data, token, |coin| {
-                    self.resolve_mid_for_symbol(coin)
-                })
-            })
-        } else if data.uses_shared_account_balance() {
-            shared_account_total_value(data, visible_spot_value)
-        } else {
-            let perp_equity = parse_summary_number(&clearinghouse.margin_summary.account_value);
-            match (perp_equity, spot_value, live_upnl, stale_upnl) {
-                (Some(perp_equity), Some(spot_value), Some(live_upnl), Some(stale_upnl)) => {
-                    Some(perp_equity + spot_value + (live_upnl - stale_upnl))
-                }
-                _ => None,
-            }
-        };
+        let balances_can_be_sized =
+            !matches!(data.account_abstraction, AccountAbstractionMode::Unknown(_));
+        let total_value = self.account_summary_total_value(data);
 
         let available = if !balances_can_be_sized {
             None

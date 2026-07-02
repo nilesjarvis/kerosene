@@ -27,6 +27,39 @@ fn duplicate_hip3_tickers_use_known_dex_order() {
 }
 
 #[test]
+fn same_ticker_perp_keys_rank_before_spot_and_outcome_keys() {
+    // Bare-ticker resolution prefers the perp market, so same-ticker list
+    // ordering must put the perp first ('@' sorts before letters in ASCII,
+    // which would otherwise put the spot pair first by accident).
+    assert_eq!(
+        compare_symbol_keys_for_same_ticker("HYPE", "@107"),
+        Ordering::Less
+    );
+    assert_eq!(
+        compare_symbol_keys_for_same_ticker("@107", "HYPE"),
+        Ordering::Greater
+    );
+    assert_eq!(
+        compare_symbol_keys_for_same_ticker("xyz:HYPE", "@107"),
+        Ordering::Less
+    );
+    assert_eq!(
+        compare_symbol_keys_for_same_ticker("@107", "#660"),
+        Ordering::Less
+    );
+    // API-named spot pairs (PURR/USDC) carry no '@' prefix but must still
+    // rank as spot: after the perp, before outcome keys.
+    assert_eq!(
+        compare_symbol_keys_for_same_ticker("PURR", "PURR/USDC"),
+        Ordering::Less
+    );
+    assert_eq!(
+        compare_symbol_keys_for_same_ticker("PURR/USDC", "#660"),
+        Ordering::Less
+    );
+}
+
+#[test]
 fn svg_aspect_ratio_reads_view_box_dimensions() {
     // Uses the third/fourth viewBox values (width/height), ignoring the origin.
     let svg = br#"<svg viewBox="14 14 36 18" xmlns="http://www.w3.org/2000/svg"></svg>"#;

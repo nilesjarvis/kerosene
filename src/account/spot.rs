@@ -55,6 +55,10 @@ fn mid_candidates(coin: &str) -> Vec<String> {
         out.push(format!("#{encoding}"));
     }
 
+    // The API names canonical spot pairs directly (PURR/USDC is the only one
+    // today), so "{coin}/USDC" is a real allMids key for those tokens.
+    out.push(format!("{coin}/USDC"));
+
     if let Some(stripped) = coin.strip_prefix('U') {
         out.push(stripped.to_string());
     }

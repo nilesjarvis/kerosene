@@ -121,16 +121,18 @@ impl TradingTerminal {
         let _theme = self.theme();
         let Some(start_context) = self.advanced_order_start_context(AdvancedOrderKind::Chase)
         else {
+            self.toast_order_status();
             return Task::none();
         };
         if let Some(task) = self.stale_percentage_order_quantity_task("starting a chase") {
+            self.toast_order_status();
             return task;
         }
 
         let raw_qty: f64 = match helpers::parse_positive_number(&self.order_quantity) {
             Some(v) => v,
             _ => {
-                self.order_status = Some(("Invalid quantity".into(), true));
+                self.set_order_status("Invalid quantity".into(), true);
                 return Task::none();
             }
         };
@@ -141,14 +143,14 @@ impl TradingTerminal {
             .find(|s| s.key == self.active_symbol)
             .cloned();
         let Some(sym) = sym else {
-            self.order_status = Some((format!("Symbol '{}' not found", self.active_symbol), true));
+            self.set_order_status(format!("Symbol '{}' not found", self.active_symbol), true);
             return Task::none();
         };
         if let Err(error) = self.validate_exchange_symbol_orderable(
             &sym,
             OrderSurface::Chase.orderability_context_label(),
         ) {
-            self.order_status = Some((error, true));
+            self.set_order_status(error, true);
             return Task::none();
         }
         if let Err(error) = validate_surface_market_type(
@@ -159,16 +161,16 @@ impl TradingTerminal {
             if sym.market_type == MarketType::Outcome
                 && let Err(e) = self.validate_outcome_contract_size(raw_qty)
             {
-                self.order_status = Some((e, true));
+                self.set_order_status(e, true);
             } else {
-                self.order_status = Some((error.status_text(), true));
+                self.set_order_status(error.status_text(), true);
             }
             return Task::none();
         }
 
         let reference_price = if self.order_quantity_is_usd {
             let Some(price) = self.resolve_mid_for_symbol(&self.active_symbol) else {
-                self.order_status = Some((
+                self.set_order_status(
                     format!(
                         concat!(
                             "Cannot start USD Chase: no fresh mid price for {}. ",
@@ -177,7 +179,7 @@ impl TradingTerminal {
                         self.active_symbol
                     ),
                     true,
-                ));
+                );
                 return Task::none();
             };
             price
@@ -192,7 +194,7 @@ impl TradingTerminal {
             sym.sz_decimals,
         ) else {
             let message = "Invalid quantity for asset precision".to_string();
-            self.order_status = Some((message, true));
+            self.set_order_status(message, true);
             return Task::none();
         };
 

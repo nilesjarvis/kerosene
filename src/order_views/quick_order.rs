@@ -34,7 +34,7 @@ impl TradingTerminal {
         let qty_input = Self::quick_order_quantity_input(chart_id, form);
         let size_controls = self.quick_order_size_controls(chart_id, form);
         let action_row = self.quick_order_action_row(chart_id, surface_id, form);
-        let fee_el = self.quick_order_fee_estimate(form);
+        let fee_el = self.quick_order_fee_estimate(chart_id, form);
 
         let qty_header = row![
             text("Qty")

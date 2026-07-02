@@ -334,9 +334,7 @@ impl TradingTerminal {
             return (!symbol.starts_with('#')).then(|| symbol.to_string());
         }
 
-        self.exchange_symbols
-            .iter()
-            .find(|candidate| candidate.key == symbol)
+        self.exchange_symbol_for_key(symbol)
             .or_else(|| {
                 self.exchange_symbols.iter().find(|candidate| {
                     candidate.ticker == symbol && candidate.market_type == MarketType::Perp

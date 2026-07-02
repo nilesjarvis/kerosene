@@ -3,6 +3,7 @@ use super::parsing::hydromancer_control_message;
 use super::{HYDROMANCER_RECONNECT_DELAY_SECS, HydromancerStreamKey, HydromancerWsMessage};
 use crate::account::AssetContext;
 use crate::api::{Candle, parse_ws_book};
+use crate::ws::market_streams::is_active_asset_ctx_channel;
 use crate::ws::{
     KeyedAssetContextStreamEvent, KeyedBookStreamEvent, KeyedCandleStreamEvent,
     SpaghettiCandleStreamEvent, SymbolAssetContextStreamEvent, WsStream,
@@ -353,7 +354,9 @@ fn hydromancer_asset_ctx_stream(
                         }
                         continue;
                     }
-                    if msg.msg_type != "activeAssetCtx" {
+                    // Spot pairs answer an activeAssetCtx subscription on the
+                    // activeSpotAssetCtx channel; accept both.
+                    if !is_active_asset_ctx_channel(&msg.msg_type) {
                         continue;
                     }
                     for item in active_asset_ctx_items(msg.data.as_ref()) {

@@ -92,6 +92,9 @@ impl TradingTerminal {
                                 "Chase stopped: open-orders stream could not verify the ",
                                 "chased order"
                             );
+                            // The queued safety cancel toasts this summary via
+                            // `cancel_known_chase_order_for_safety`; toasting
+                            // here as well would double-notify.
                             self.order_status = Some((summary.into(), true));
                             cancel_ids.push((chase_id, oid, summary.to_string(), true));
                         }

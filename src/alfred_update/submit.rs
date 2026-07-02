@@ -149,7 +149,7 @@ impl TradingTerminal {
                 "USD sizing is not supported for outcome markets; use contracts".to_string(),
                 true,
             ));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
 
@@ -184,15 +184,15 @@ impl TradingTerminal {
         is_buy: bool,
     ) -> bool {
         if self.reject_if_pending_trading_request("placing an order") {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
         if self.reject_if_account_reconciliation_required("placing an order", "account data") {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
         if self.checked_order_signing_account().is_none() {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
 
@@ -200,7 +200,7 @@ impl TradingTerminal {
             Ok(kind) => kind,
             Err(message) => {
                 self.order_status = Some((message.into(), true));
-                self.push_order_status_toast();
+                self.toast_order_status();
                 return false;
             }
         };
@@ -219,7 +219,7 @@ impl TradingTerminal {
             Ok(_) => true,
             Err(message) => {
                 self.order_status = Some((message, true));
-                self.push_order_status_toast();
+                self.toast_order_status();
                 false
             }
         }
@@ -242,19 +242,19 @@ impl TradingTerminal {
                 ),
                 true,
             ));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
         if self.reject_if_pending_trading_request("starting a chase") {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
         if self.reject_if_account_reconciliation_required("starting a chase", "account data") {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
         if self.checked_order_signing_account().is_none() {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
 
@@ -265,7 +265,7 @@ impl TradingTerminal {
             .cloned()
         else {
             self.order_status = Some((format!("Symbol '{symbol_key}' not found"), true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         };
         if let Err(error) = self.validate_exchange_symbol_orderable(
@@ -273,7 +273,7 @@ impl TradingTerminal {
             OrderSurface::Chase.orderability_context_label(),
         ) {
             self.order_status = Some((error, true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
         if let Err(error) = validate_surface_market_type(
@@ -282,13 +282,13 @@ impl TradingTerminal {
             symbol.market_type,
         ) {
             self.order_status = Some((error.status_text(), true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
 
         let Some(raw_qty) = parse_positive_number(&quantity) else {
             self.order_status = Some(("Invalid quantity".into(), true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         };
         let reference_price = if quantity_is_usd {
@@ -303,7 +303,7 @@ impl TradingTerminal {
                     ),
                     true,
                 ));
-                self.push_order_status_toast();
+                self.toast_order_status();
                 return false;
             };
             price
@@ -319,17 +319,11 @@ impl TradingTerminal {
         .is_none()
         {
             self.order_status = Some(("Invalid quantity for asset precision".into(), true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return false;
         }
 
         true
-    }
-
-    fn push_order_status_toast(&mut self) {
-        if let Some((message, is_error)) = self.order_status.clone() {
-            self.push_toast(message, is_error);
-        }
     }
 
     fn submit_alfred_nuke(&mut self) -> Task<Message> {
@@ -403,11 +397,11 @@ impl TradingTerminal {
         fraction: f64,
     ) -> Option<Task<Message>> {
         if self.reject_if_pending_trading_request("closing positions") {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(Task::none());
         }
         let Some(account_address) = self.checked_order_signing_account() else {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(Task::none());
         };
         if self.account_loading {
@@ -415,15 +409,15 @@ impl TradingTerminal {
                 "Account refresh in progress; wait for fresh account data before closing".into(),
                 true,
             ));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(Task::none());
         }
         if self.reject_if_account_reconciliation_required("closing", "account data") {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(Task::none());
         }
         if let Some(task) = reject_if_positions_incomplete_for_action(self, "closing positions") {
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(task);
         }
 
@@ -433,7 +427,7 @@ impl TradingTerminal {
                     "No account data available; refresh before closing".into(),
                     true,
                 ));
-                self.push_order_status_toast();
+                self.toast_order_status();
                 return Some(Task::none());
             };
             let now_ms = Self::now_ms();
@@ -448,7 +442,7 @@ impl TradingTerminal {
                     ),
                     true,
                 ));
-                self.push_order_status_toast();
+                self.toast_order_status();
                 return Some(self.refresh_account_data());
             }
 
@@ -460,7 +454,7 @@ impl TradingTerminal {
                 .map(|ap| &ap.position)
             else {
                 self.order_status = Some((format!("No position found for {coin}"), true));
-                self.push_order_status_toast();
+                self.toast_order_status();
                 return Some(Task::none());
             };
             position.szi.clone()
@@ -470,7 +464,7 @@ impl TradingTerminal {
             positive_finite_value(fraction).filter(|fraction| *fraction <= 1.0)
         else {
             self.order_status = Some(("Close fraction is invalid".into(), true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(Task::none());
         };
         let Some(position_size) = raw_szi
@@ -481,7 +475,7 @@ impl TradingTerminal {
             .filter(|size| size.abs() > 1e-12)
         else {
             self.order_status = Some(("Position size is invalid".into(), true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(Task::none());
         };
 
@@ -503,7 +497,7 @@ impl TradingTerminal {
         };
         if let Err(message) = self.prepare_place_order(intent) {
             self.order_status = Some((message, true));
-            self.push_order_status_toast();
+            self.toast_order_status();
             return Some(Task::none());
         }
 
@@ -556,6 +550,16 @@ mod tests {
             only_isolated: false,
             market_type,
             outcome: None,
+        }
+    }
+
+    fn spot_symbol(key: &str, ticker: &str) -> ExchangeSymbol {
+        ExchangeSymbol {
+            ticker: ticker.to_string(),
+            category: "spot".to_string(),
+            display_name: Some(format!("{ticker}/USDC")),
+            max_leverage: 1,
+            ..symbol(key, MarketType::Spot)
         }
     }
 
@@ -871,6 +875,32 @@ mod tests {
         assert!(!terminal.presets_menu_expanded);
         assert!(!terminal.alfred.open);
         assert_eq!(terminal.pending_order_action, Some(PendingOrderAction::Buy));
+    }
+
+    #[test]
+    fn alfred_spot_pair_trade_switches_to_and_submits_on_the_spot_market() {
+        let mut terminal = alfred_trade_terminal();
+        connect_test_account(&mut terminal);
+        // A same-ticker perp exists: the explicit pair spelling must still
+        // target the spot market, never the perp.
+        terminal
+            .exchange_symbols
+            .push(symbol("HYPE", MarketType::Perp));
+        terminal.exchange_symbols.push(spot_symbol("@107", "HYPE"));
+        add_mid(&mut terminal, "@107", 25.0);
+        terminal.alfred.query = "sell 1 hype/usdc".to_string();
+
+        let _task = terminal.submit_alfred_command(AlfredCommandId::NaturalLanguageTrading);
+
+        assert_eq!(terminal.active_symbol, "@107");
+        assert_eq!(terminal.active_symbol_display, "HYPE/USDC");
+        assert_eq!(terminal.order_kind, OrderKind::Market);
+        assert_eq!(terminal.order_quantity, "1");
+        assert!(!terminal.alfred.open);
+        assert_eq!(
+            terminal.pending_order_action,
+            Some(PendingOrderAction::Sell)
+        );
     }
 
     #[test]

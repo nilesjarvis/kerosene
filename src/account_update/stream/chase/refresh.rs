@@ -72,17 +72,17 @@ impl TradingTerminal {
             } = chase_snapshot.lifecycle
             {
                 if !open_orders_complete || !fills_complete {
-                    self.order_status = Some((
+                    self.set_order_status_once(
                         "Chase stopping: waiting for complete account snapshot before clearing"
                             .into(),
                         true,
-                    ));
+                    );
                     continue;
                 }
                 if let Some(oid) = first_open_chase_oid(chase_snapshot, &open_orders) {
                     if let Some((summary, is_error)) = chase_cancel_retry_cap_status(chase_snapshot)
                     {
-                        self.order_status = Some((summary, is_error));
+                        self.set_order_status_toast_on_error(summary, is_error);
                         continue;
                     }
                     let (summary, is_error) = chase_snapshot
@@ -110,18 +110,19 @@ impl TradingTerminal {
             };
             let wants_replacement = chase_snapshot.desired_price.is_some();
             if !open_orders_complete || !fills_complete {
-                self.order_status = Some((
+                self.set_order_status_once(
                     concat!(
                         "Chase paused: account refresh was incomplete; not mutating until fills ",
                         "and open orders are verified"
                     )
                     .into(),
                     true,
-                ));
+                );
                 continue;
             }
             if chase_snapshot.residual_size() <= f64::EPSILON {
-                let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
+                let display_coin = self.display_coin_for_journal(&chase_snapshot.coin);
+                let status = chase_fill_summary_for_chase(&fills, chase_snapshot, &display_coin)
                     .unwrap_or_else(|| "Chase completed: target size filled".to_string());
                 let is_error = chase_snapshot.target_size.is_finite()
                     && chase_snapshot.target_size > 0.0
@@ -136,14 +137,14 @@ impl TradingTerminal {
 
             let Some(oid) = chase_snapshot.current_oid else {
                 if matches!(verification_reason, ChaseVerificationReason::Placement) {
-                    self.order_status = Some((
+                    self.set_order_status(
                         concat!(
                             "Chase placement status is still uncertain; waiting for ",
                             "orderStatus before placing another order"
                         )
                         .into(),
                         true,
-                    ));
+                    );
                     continue;
                 }
                 if matches!(
@@ -153,10 +154,10 @@ impl TradingTerminal {
                 {
                     replacement_ids.push(chase_id);
                 } else if wants_replacement {
-                    self.order_status = Some((
+                    self.set_order_status(
                         "Chase replacement blocked: previous order is still unresolved".into(),
                         true,
-                    ));
+                    );
                 }
                 continue;
             };
@@ -194,6 +195,9 @@ impl TradingTerminal {
                                     "Chase stopped: account refresh could not verify the ",
                                     "chased order"
                                 );
+                                // The queued safety cancel toasts this summary
+                                // via `cancel_known_chase_order_for_safety`;
+                                // toasting here as well would double-notify.
                                 self.order_status = Some((summary.into(), true));
                                 cancel_ids.push((chase_id, order.oid, summary.to_string(), true));
                             }
@@ -227,8 +231,10 @@ impl TradingTerminal {
                         verification_reason,
                         ChaseVerificationReason::MissingOrderResolvedNoFill
                     ) {
-                        let status = chase_fill_summary_for_chase(&fills, chase_snapshot)
-                            .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
+                        let display_coin = self.display_coin_for_journal(&chase_snapshot.coin);
+                        let status =
+                            chase_fill_summary_for_chase(&fills, chase_snapshot, &display_coin)
+                                .unwrap_or_else(|| "Chase ended: order no longer open".to_string());
                         self.order_status = Some((status.clone(), false));
                         remove_ids.push((chase_id, status, false));
                     } else {
@@ -236,16 +242,16 @@ impl TradingTerminal {
                     }
                 }
                 None => {
-                    self.order_status = Some((
+                    self.set_order_status_once(
                         "Chase status uncertain: open orders refresh was incomplete".into(),
                         true,
-                    ));
+                    );
                 }
             }
         }
 
         for (chase_id, summary, is_error) in remove_ids {
-            self.order_status = Some((summary.clone(), is_error));
+            self.set_order_status_toast_on_error(summary.clone(), is_error);
             self.remove_chase_order_with_summary(chase_id, Some(summary));
         }
         for (chase_id, oid, summary, is_error) in cancel_ids {

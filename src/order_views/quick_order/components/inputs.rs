@@ -94,26 +94,13 @@ impl TradingTerminal {
 
     pub(in crate::order_views::quick_order) fn quick_order_fee_estimate<'a>(
         &'a self,
+        chart_id: ChartId,
         form: &QuickOrderForm,
     ) -> Element<'a, Message> {
         let theme = self.theme();
-        let is_spot = self.is_spot_coin(&self.active_symbol);
-        let fee_price = if form.is_limit {
-            Some(form.price)
-        } else {
-            self.resolve_mid_for_symbol(&self.active_symbol)
-        };
-        let fee_qty = fee_price.and_then(|price| {
-            let sz_decimals = self
-                .exchange_symbols
-                .iter()
-                .find(|symbol| symbol.key == self.active_symbol)
-                .map(|symbol| symbol.sz_decimals)?;
-            quick_order_fee_quantity(form, price, sz_decimals)
-        });
 
-        match (fee_price, fee_qty) {
-            (Some(px), Some(qty)) => {
+        match self.quick_order_fee_inputs(chart_id, form) {
+            Some((px, qty, is_spot)) => {
                 let m_text = if let Some((fee_amt, _)) = self.estimate_fee(px, qty, true, is_spot) {
                     format!("Maker: ${fee_amt:.2}")
                 } else {
@@ -132,11 +119,39 @@ impl TradingTerminal {
                     .color(theme.extended_palette().background.weak.text)
                     .into()
             }
-            _ => text("Est. Fees: Maker: \u{2014} | Taker: \u{2014}")
+            None => text("Est. Fees: Maker: \u{2014} | Taker: \u{2014}")
                 .size(9)
                 .color(theme.extended_palette().background.weak.text)
                 .into(),
         }
+    }
+
+    /// Fee-estimate inputs (price, size, is_spot) for a quick-order HUD. The
+    /// HUD is a per-chart overlay, so every market-dependent input must come
+    /// from that chart's symbol — not the globally active symbol, which can
+    /// point at a different market (e.g. for detached chart windows).
+    fn quick_order_fee_inputs(
+        &self,
+        chart_id: ChartId,
+        form: &QuickOrderForm,
+    ) -> Option<(f64, f64, bool)> {
+        let symbol = self
+            .charts
+            .get(&chart_id)
+            .map(|instance| instance.symbol.as_str())?;
+        let is_spot = self.is_spot_coin(symbol);
+        let fee_price = if form.is_limit {
+            Some(form.price)
+        } else {
+            self.resolve_mid_for_symbol(symbol)
+        }?;
+        let sz_decimals = self
+            .exchange_symbols
+            .iter()
+            .find(|exchange_symbol| exchange_symbol.key == symbol)
+            .map(|exchange_symbol| exchange_symbol.sz_decimals)?;
+        let fee_qty = quick_order_fee_quantity(form, fee_price, sz_decimals)?;
+        Some((fee_price, fee_qty, is_spot))
     }
 }
 

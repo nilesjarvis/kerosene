@@ -8,7 +8,7 @@ mod outcomes;
 mod perps;
 mod spot;
 
-pub use model::{ExchangeSymbol, MarketType, OutcomeSymbolInfo};
+pub use model::{ExchangeSymbol, MarketType, OutcomeSymbolInfo, spot_symbol_for_indexed_key};
 use outcomes::{OutcomeMetaResponse, append_outcome_symbols};
 use perps::append_perp_symbols;
 use spot::append_spot_symbols;

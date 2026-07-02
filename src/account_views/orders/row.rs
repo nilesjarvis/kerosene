@@ -76,11 +76,7 @@ impl TradingTerminal {
         if let Some(icon) = helpers::symbol_icon(&order.coin, 14, theme.palette().text) {
             coin_content = coin_content.push(icon).push(Space::new().width(4.0));
         }
-        let coin_label = if is_outcome_order {
-            self.display_name_for_symbol(&order.coin)
-        } else {
-            order.coin.clone()
-        };
+        let coin_label = self.open_order_symbol_label(&order.coin);
         coin_content = coin_content
             .push(text(coin_label).size(12).wrapping(Wrapping::None))
             .align_y(iced::Alignment::Center);
@@ -158,11 +154,7 @@ impl TradingTerminal {
         if let Some(icon) = helpers::symbol_icon(&indicator.symbol, 14, weak_color) {
             coin_content = coin_content.push(icon).push(Space::new().width(4.0));
         }
-        let coin_label = if is_outcome_order {
-            self.display_name_for_symbol(&indicator.symbol)
-        } else {
-            indicator.symbol.clone()
-        };
+        let coin_label = self.open_order_symbol_label(&indicator.symbol);
         coin_content = coin_content
             .push(
                 text(coin_label)
@@ -207,6 +199,15 @@ impl TradingTerminal {
         .align_y(iced::Alignment::Center)
         .into()
     }
+
+    /// Spot open orders arrive keyed "@{index}"; map them (and outcome
+    /// coins) to their human-readable pair names like the trades table does.
+    fn open_order_symbol_label(&self, coin: &str) -> String {
+        if self.is_outcome_coin(coin) || coin.starts_with('@') {
+            return self.display_name_for_symbol(coin);
+        }
+        coin.to_string()
+    }
 }
 
 fn parse_open_order_positive(value: &str) -> Option<f64> {
@@ -244,7 +245,9 @@ fn format_open_order_price(
             if is_outcome {
                 format!("{limit_px:.4}")
             } else {
-                denomination.format_value(limit_px, 2)
+                // Significant-figure aware: sub-cent spot limit prices would
+                // collapse to "$0.00" with a fixed two decimals.
+                denomination.format_price(limit_px)
             }
         })
         .unwrap_or_else(invalid_account_data)

@@ -1,4 +1,4 @@
-use super::analytics::{journal_is_non_perp, journal_trade_r_multiple};
+use super::analytics::{journal_effective_pnl, journal_is_non_perp, journal_trade_r_multiple};
 use super::trade_card::journal_chip;
 use super::trades::journal_pnl_color;
 use crate::app_state::TradingTerminal;
@@ -78,7 +78,10 @@ impl TradingTerminal {
         theme: &Theme,
     ) -> Element<'a, Message> {
         let selected = self.journal.selected_trade_id.as_deref() == Some(trade.id.as_str());
-        let pnl_color = journal_pnl_color(trade.pnl, theme);
+        // The column is headed NET PNL, so honor the fee toggle exactly like
+        // the KPI strip and the detail pane do.
+        let net_pnl = journal_effective_pnl(trade, self.journal.include_fees_in_pnl);
+        let pnl_color = journal_pnl_color(net_pnl, theme);
         let display_coin = self.display_coin_for_journal(&trade.coin);
 
         let monogram = journal_asset_badge(&display_coin, MONOGRAM_SIZE, 18, theme);
@@ -116,7 +119,7 @@ impl TradingTerminal {
             .map(|r| format!("{r:+.1}R"))
             .unwrap_or_default();
         let metrics = column![
-            text(denomination.format_signed_value(trade.pnl, 2))
+            text(denomination.format_signed_value(net_pnl, 2))
                 .size(13)
                 .font(crate::app_fonts::monospace_font())
                 .color(pnl_color),

@@ -242,6 +242,45 @@ impl TradingTerminal {
             self.play_notification_sound(is_error);
         }
     }
+
+    /// Set the order status and toast it only when it is an error, without
+    /// the success sound `set_order_status` plays. For statuses whose error
+    /// flag is decided at runtime (chase lifecycle summaries): failures must
+    /// surface when the order ticket pane is closed, while routine progress
+    /// updates stay quiet.
+    pub(crate) fn set_order_status_toast_on_error(&mut self, message: String, is_error: bool) {
+        if is_error {
+            self.set_order_status(message, true);
+        } else {
+            self.order_status = Some((message, false));
+        }
+    }
+
+    /// `set_order_status` for statuses that recur while a condition persists
+    /// (e.g. chase reconciliation re-running on every account refresh with an
+    /// incomplete snapshot): toasts only on the transition into the status so
+    /// the user is alerted once, not on every refresh cycle.
+    pub(crate) fn set_order_status_once(&mut self, message: String, is_error: bool) {
+        if self
+            .order_status
+            .as_ref()
+            .is_some_and(|(current, _)| *current == message)
+        {
+            return;
+        }
+        self.set_order_status(message, is_error);
+    }
+
+    /// Re-surface the current `order_status` as a toast so chart-surface
+    /// failures (HUD, quick orders, chase) stay visible when the order
+    /// ticket pane is closed. Used after shared gates that set
+    /// `order_status` without toasting; the gates themselves stay silent
+    /// because some callers (Alfred) already toast the status they set.
+    pub(crate) fn toast_order_status(&mut self) {
+        if let Some((message, is_error)) = self.order_status.clone() {
+            self.push_toast(message, is_error);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -256,6 +295,23 @@ mod tests {
             created_at: std::time::Instant::now(),
             dismissing_at: None,
         }
+    }
+
+    #[test]
+    fn set_order_status_once_toasts_only_on_transition() {
+        // Recurring reconciliation statuses (chase refresh loops) must alert
+        // once, not replay the toast and error sound on every refresh cycle.
+        let mut terminal = crate::app_state::TradingTerminal::boot().0;
+        let message = "Chase paused: account refresh was incomplete".to_string();
+
+        terminal.set_order_status_once(message.clone(), true);
+        assert_eq!(terminal.toasts.len(), 1);
+
+        terminal.set_order_status_once(message.clone(), true);
+        assert_eq!(terminal.toasts.len(), 1, "repeat status must not re-toast");
+
+        terminal.set_order_status_once("Chase filled".to_string(), true);
+        assert_eq!(terminal.toasts.len(), 2, "new status must toast again");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::account::AccountData;
+use crate::account::{AccountData, SpotBalance};
 use crate::account::{position_notional_from_mark_or_wire, position_upnl_from_mark_or_wire};
 use crate::helpers::parse_finite_number;
 
@@ -91,7 +91,7 @@ pub(in crate::account_views::summary::connected) fn shared_account_total_value(
 pub(in crate::account_views::summary::connected) fn shared_account_token_total_value(
     data: &AccountData,
     token: u32,
-    resolve_mid: impl FnOnce(&str) -> Option<f64>,
+    resolve_mid: impl FnOnce(&SpotBalance) -> Option<f64>,
 ) -> Option<f64> {
     let balance = data
         .spot
@@ -112,7 +112,7 @@ pub(in crate::account_views::summary::connected) fn shared_account_token_total_v
         &balance.coin,
         &balance.total,
         &balance.entry_ntl,
-        resolve_mid(&balance.coin),
+        resolve_mid(balance),
     )
 }
 

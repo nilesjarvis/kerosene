@@ -27,7 +27,9 @@ pub async fn fetch_chart_asset_context(symbol: String) -> Result<Option<AssetCon
     if symbol.is_empty() || symbol.starts_with('#') {
         return Ok(None);
     }
-    if symbol.starts_with('@') {
+    // Spot pairs are keyed "@{index}", except pairs the API names directly
+    // ("PURR/USDC"), whose keys carry the "{base}/{quote}" slash.
+    if symbol.starts_with('@') || symbol.contains('/') {
         return fetch_spot_chart_asset_context(symbol).await;
     }
 
@@ -110,8 +112,9 @@ pub(crate) fn parse_chart_asset_context(
     None
 }
 
-/// Locate a spot `@index` symbol within a `spotMetaAndAssetCtxs`
-/// `[meta, contexts]` response and deserialize its context object.
+/// Locate a spot symbol — the "@{index}" form or an API-named pair like
+/// "PURR/USDC" — within a `spotMetaAndAssetCtxs` `[meta, contexts]` response
+/// and deserialize its context object.
 pub(crate) fn parse_spot_chart_asset_context(resp: &Value, symbol: &str) -> Option<AssetContext> {
     let arr = resp.as_array()?;
     if arr.len() != 2 {
@@ -126,10 +129,10 @@ pub(crate) fn parse_spot_chart_asset_context(resp: &Value, symbol: &str) -> Opti
         let Some(spot_index) = coin_meta.get("index").and_then(Value::as_u64) else {
             continue;
         };
-        if format!("@{spot_index}") != symbol {
+        let pair_name = coin_meta.get("name").and_then(Value::as_str);
+        if format!("@{spot_index}") != symbol && pair_name != Some(symbol) {
             continue;
         }
-        let pair_name = coin_meta.get("name").and_then(Value::as_str);
         let ctx_val = ctxs_by_coin
             .get(symbol)
             .copied()
@@ -271,6 +274,32 @@ mod tests {
         assert_eq!(ctx.day_base_vlm.as_deref(), Some("15555.0"));
         assert!(ctx.funding.is_none());
         assert!(ctx.open_interest.is_none());
+    }
+
+    #[test]
+    fn parses_spot_context_by_api_pair_name() {
+        // The canonical pair is keyed by its API name ("PURR/USDC"), not by
+        // its "@{index}" form, and must still resolve its spot context.
+        let resp = json!([
+            {
+                "universe": [
+                    { "name": "PURR/USDC", "index": 0 },
+                    { "name": "HYPE/USDC", "index": 107 }
+                ]
+            },
+            [
+                { "midPx": "1.0", "prevDayPx": "0.9", "dayNtlVlm": "1234.0",
+                  "dayBaseVlm": "567.0" },
+                { "midPx": "62.1", "prevDayPx": "60.0", "dayNtlVlm": "987654.0",
+                  "dayBaseVlm": "15555.0" }
+            ]
+        ]);
+
+        let ctx = parse_spot_chart_asset_context(&resp, "PURR/USDC").expect("spot context");
+
+        assert_eq!(ctx.mid_px.as_deref(), Some("1.0"));
+        assert_eq!(ctx.prev_day_px.as_deref(), Some("0.9"));
+        assert_eq!(ctx.day_ntl_vlm.as_deref(), Some("1234.0"));
     }
 
     #[test]

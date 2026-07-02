@@ -36,6 +36,21 @@ fn symbol(key: &str, market_type: MarketType) -> ExchangeSymbol {
     }
 }
 
+fn spot_symbol(key: &str, display_name: &str) -> ExchangeSymbol {
+    let mut symbol = symbol(key, MarketType::Spot);
+    symbol.display_name = Some(display_name.to_string());
+    symbol
+}
+
+fn error_toast_messages(terminal: &TradingTerminal) -> Vec<&str> {
+    terminal
+        .toasts
+        .iter()
+        .filter(|toast| toast.is_error)
+        .map(|toast| toast.message.as_str())
+        .collect()
+}
+
 fn quick_order_form() -> QuickOrderForm {
     QuickOrderForm {
         price: 100.0,
@@ -343,6 +358,89 @@ fn handle_submit_quick_order_sets_pending_order_action() {
             .get(&chart_id)
             .and_then(|instance| instance.quick_order.as_ref())
             .is_none()
+    );
+}
+
+#[test]
+fn quick_order_placing_status_shows_spot_pair_name() {
+    // Spot symbol keys are raw "@{index}" pair indices (HYPE/USDC is "@107");
+    // the placement status must show the pair name instead.
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "@107");
+    terminal.exchange_symbols = vec![spot_symbol("@107", "HYPE/USDC")];
+    add_fresh_mid(&mut terminal, "@107", 100.0);
+
+    let _task = terminal.handle_submit_quick_order(chart_id, true);
+
+    let (message, is_error) = order_status_or_panic(&terminal);
+    assert!(!is_error, "unexpected error status: {message}");
+    assert_eq!(message, "Placing limit BUY 1.25 HYPE/USDC...");
+}
+
+#[test]
+fn quick_order_pending_gate_rejection_pushes_toast() {
+    // Quick orders are submitted from charts, where the order ticket pane may
+    // be closed; gate rejections must surface as a toast, not only in the
+    // pane-local status line.
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "BTC");
+    terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+    terminal.pending_order_action = Some(PendingOrderAction::Sell);
+
+    let _task = terminal.handle_submit_quick_order(chart_id, true);
+
+    assert_eq!(
+        error_toast_messages(&terminal),
+        vec!["Wait for pending trading requests to finish before placing a quick order"]
+    );
+}
+
+#[test]
+fn quick_order_prepare_failure_pushes_toast() {
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "BTC");
+    terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+    add_fresh_mid(&mut terminal, "BTC", 100.0);
+    if let Some(form) = terminal
+        .charts
+        .get_mut(&chart_id)
+        .and_then(|instance| instance.quick_order.as_mut())
+    {
+        form.quantity = "0".to_string();
+    }
+
+    let _task = terminal.handle_submit_quick_order(chart_id, true);
+
+    assert_eq!(
+        error_toast_messages(&terminal),
+        vec!["Invalid quantity for asset precision"]
+    );
+    let instance = chart_instance_or_panic(&terminal, chart_id);
+    assert!(instance.quick_order.is_some());
+}
+
+#[test]
+fn stale_quick_order_snapshot_rejection_pushes_toast() {
+    let chart_id = 42;
+    let mut terminal = terminal_with_quick_order(chart_id, "BTC");
+    terminal.exchange_symbols = vec![symbol("BTC", MarketType::Perp)];
+    add_fresh_mid(&mut terminal, "BTC", 100.0);
+    let old_surface = ChartSurfaceId::Docked(chart_id);
+    let old_form = quick_order_or_panic(chart_instance_or_panic(&terminal, chart_id));
+    let snapshot = terminal.quick_order_submission_snapshot(chart_id, old_surface, old_form);
+    let mut new_form = quick_order_form();
+    new_form.quantity = "9.5".to_string();
+    terminal
+        .charts
+        .get_mut(&chart_id)
+        .expect("chart")
+        .set_quick_order(new_form);
+
+    let _task = terminal.handle_submit_quick_order_from_snapshot(chart_id, true, snapshot);
+
+    assert_eq!(
+        error_toast_messages(&terminal),
+        vec!["Quick order changed; review and submit again"]
     );
 }
 

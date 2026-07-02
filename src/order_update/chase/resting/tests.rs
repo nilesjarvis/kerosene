@@ -338,3 +338,41 @@ fn resting_chase_refuses_pending_order_action() {
     assert!(message.contains("pending trading requests"));
     assert!(message.contains("starting a Chase"));
 }
+
+#[test]
+fn resting_chase_missing_order_rejection_pushes_toast() {
+    // Chase-from-chart runs without the order ticket pane; rejections must
+    // surface as a toast, not only in the pane-local status line.
+    let mut terminal = terminal_with_open_order(open_order(42));
+
+    let _task = terminal.handle_chase_resting_order("BTC".to_string(), 43);
+
+    assert!(terminal.chase_orders.is_empty());
+    let error_toasts: Vec<&str> = terminal
+        .toasts
+        .iter()
+        .filter(|toast| toast.is_error)
+        .map(|toast| toast.message.as_str())
+        .collect();
+    assert_eq!(error_toasts, vec!["Order no longer exists"]);
+}
+
+#[test]
+fn resting_chase_pending_gate_rejection_pushes_toast() {
+    let mut terminal = terminal_with_open_order(open_order(42));
+    terminal.pending_order_action = Some(PendingOrderAction::Buy);
+
+    let _task = terminal.handle_chase_resting_order("BTC".to_string(), 42);
+
+    assert!(terminal.chase_orders.is_empty());
+    let error_toasts: Vec<&str> = terminal
+        .toasts
+        .iter()
+        .filter(|toast| toast.is_error)
+        .map(|toast| toast.message.as_str())
+        .collect();
+    assert_eq!(
+        error_toasts,
+        vec!["Wait for pending trading requests to finish before starting a Chase"]
+    );
+}

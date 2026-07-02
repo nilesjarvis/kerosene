@@ -4,7 +4,9 @@ use crate::helpers::add_optional_f64;
 use crate::wallet_views::numbers::{
     invalid_wallet_data, parse_wallet_number, wallet_has_visible_nonzero,
 };
-use crate::wallet_views::position_metrics::{wallet_position_upnl, wallet_position_value};
+use crate::wallet_views::position_metrics::{
+    wallet_position_upnl, wallet_position_value, wallet_spot_value_unavailable,
+};
 
 use super::WalletDetailsSummaryMetrics;
 
@@ -42,8 +44,19 @@ impl TradingTerminal {
                 .or_else(|| self.resolve_mid_for_symbol(&pos.coin));
             let position_value = wallet_position_value(szi, &pos.position_value, mark_px);
             let row_upnl = wallet_position_upnl(szi, entry_px, &pos.unrealized_pnl, mark_px);
-            add_optional_f64(&mut unrealized_pnl, row_upnl);
+            // Synthesized spot/outcome rows with no derivable cost basis
+            // carry empty wire strings: their PnL/value is unavailable, not
+            // invalid, so skip them instead of poisoning the totals.
+            let spot_like = self.is_spot_coin(&pos.coin) || self.is_outcome_coin(&pos.coin);
+            let pnl_unavailable =
+                wallet_spot_value_unavailable(spot_like, row_upnl, &pos.unrealized_pnl);
+            let value_unavailable =
+                wallet_spot_value_unavailable(spot_like, position_value, &pos.position_value);
+            if !pnl_unavailable {
+                add_optional_f64(&mut unrealized_pnl, row_upnl);
+            }
             match szi {
+                Some(_) if value_unavailable => {}
                 Some(szi) if szi > 0.0 => add_optional_f64(&mut long_exposure, position_value),
                 Some(_) => add_optional_f64(&mut short_exposure, position_value),
                 None => {

@@ -24,7 +24,10 @@ pub(super) fn new_non_perp_trade(coin: &str, fill: &UserFill) -> AggregatedTrade
         avg_entry_price: 0.0,
         total_entry_notional: 0.0,
         total_entry_size: 0.0,
-        is_long: true,
+        // A spot/outcome trade is one order, so every fill shares its side:
+        // buys ("B") are long, sells ("A") are short. The side decides whether
+        // the order's VWAP renders as an entry (buy) or an exit (sell) price.
+        is_long: fill.side != "A",
         basis_complete: true,
     }
 }
@@ -50,6 +53,9 @@ pub(super) fn apply_non_perp_fill(
     trade.pnl += closed_pnl;
     trade.fill_count += 1;
 
+    // All fills of one order share a side, so these accumulators hold the
+    // order's execution VWAP: an entry price for buys, the sale price for
+    // sells (`is_long` tells views which label applies).
     trade.total_entry_size += sz;
     trade.total_entry_notional += sz * px;
     if trade.total_entry_size > 0.0 {

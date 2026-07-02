@@ -13,6 +13,7 @@ use std::{future::Future, time::Duration};
 #[cfg(test)]
 use tokio::sync::mpsc;
 
+pub(in crate::ws) use asset_context::is_active_asset_ctx_channel;
 pub use asset_context::ws_asset_ctx_stream_keyed;
 pub use asset_context::ws_asset_ctx_stream_symbol;
 pub use books::ws_book_stream_keyed_events;

@@ -1,5 +1,7 @@
 use crate::account::Position;
+use crate::api::MarketType;
 use crate::app_state::TradingTerminal;
+use crate::helpers::{parse_finite_number, trim_decimal_zeros};
 
 mod parse;
 
@@ -51,6 +53,8 @@ impl TradingTerminal {
                     error = Some("No account data available".to_string());
                 } else if let Some((coin, position)) = self.resolve_close_position(symbol) {
                     resolved_position = Some((coin, position.clone()));
+                } else if let Some(spot_error) = self.spot_holding_close_error(symbol) {
+                    error = Some(spot_error);
                 } else {
                     error = Some(format!(
                         "No open position for {}",
@@ -114,6 +118,52 @@ impl TradingTerminal {
                 resolved_key.and_then(|key| positions.iter().find(|ap| ap.position.coin == key))
             })
             .map(|ap| (ap.position.coin.clone(), &ap.position))
+    }
+
+    /// `close` only targets perp positions, but the Positions tab shows spot
+    /// holdings as positions too. When the ticker misses the perp
+    /// clearinghouse yet matches a held spot balance, say so explicitly
+    /// instead of denying a position the user can see.
+    fn spot_holding_close_error(&self, raw_symbol: &str) -> Option<String> {
+        let (_, data) = self.connected_order_account_snapshot()?;
+        let ticker = self.close_symbol_spot_ticker(raw_symbol)?;
+        let balance = data
+            .spot
+            .balances
+            .iter()
+            .find(|balance| balance.coin.eq_ignore_ascii_case(&ticker))?;
+        let holding = self.spot_asset_position_for_balance(balance, &data.fills)?;
+
+        let coin = balance.coin.clone();
+        let pair = self.display_name_for_symbol(&holding.position.coin);
+        let sellable = parse_finite_number(&balance.total)?
+            - parse_finite_number(&balance.hold).unwrap_or(0.0);
+        if sellable > 0.0 {
+            let amount = trim_decimal_zeros(format!("{sellable:.8}"));
+            Some(format!(
+                "{coin} is a spot balance; close only closes perp positions — try 'sell {amount} {pair}'"
+            ))
+        } else {
+            Some(format!(
+                "{coin} is a spot balance; close only closes perp positions"
+            ))
+        }
+    }
+
+    /// Maps a typed close symbol to the spot balance ticker it names:
+    /// "hype" and "HYPE/USDC" resolve to "HYPE", and a raw pair key like
+    /// "@107" resolves through its spot market entry.
+    fn close_symbol_spot_ticker(&self, raw_symbol: &str) -> Option<String> {
+        let normalized = normalize_close_symbol_input(raw_symbol);
+        let base = normalized.split('/').next().unwrap_or(&normalized);
+        if base.starts_with('@') {
+            return self
+                .exchange_symbols
+                .iter()
+                .find(|symbol| symbol.key == base && symbol.market_type == MarketType::Spot)
+                .map(|symbol| symbol.ticker.clone());
+        }
+        Some(base.to_string())
     }
 }
 

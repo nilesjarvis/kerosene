@@ -59,6 +59,10 @@ impl TradingTerminal {
             );
         }
 
+        if self.is_spot_coin(symbol) {
+            return self.spot_order_sizing_basis(symbol, data);
+        }
+
         self.quick_order_margin_notional(symbol, data)
             .map(|max_notional| OrderSizingBasis::MarginNotional { max_notional })
     }

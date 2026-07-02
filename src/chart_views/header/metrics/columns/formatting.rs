@@ -139,6 +139,16 @@ fn format_compact_amount(value: f64) -> String {
     }
 }
 
+/// Spot `dayBaseVlm` is denominated purely in the base token, but spot chart
+/// instances carry the pair display name ("HYPE/USDC"); label base-unit
+/// volume with the base ticker so it does not read as pair units.
+pub(super) fn spot_base_ticker(symbol_display: &str) -> &str {
+    symbol_display
+        .split_once('/')
+        .map(|(base, _quote)| base)
+        .unwrap_or(symbol_display)
+}
+
 pub(super) fn format_metric_price(value: Option<f64>) -> String {
     value
         .map(format_price)

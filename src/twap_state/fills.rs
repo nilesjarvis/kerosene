@@ -1,5 +1,5 @@
 use crate::account::UserFill;
-use crate::helpers::{finite_value, positive_finite_value};
+use crate::helpers::{finite_value, non_perp_fee_usd, positive_finite_value};
 use crate::signing::ExchangeResponse;
 
 use std::collections::HashSet;
@@ -94,7 +94,10 @@ pub(super) fn fill_summary_for_order(
         if let Ok(parsed_fee) = fill.fee.parse::<f64>()
             && let Some(parsed_fee) = finite_value(parsed_fee)
         {
-            fee += parsed_fee.abs();
+            // Spot buy fees arrive in the base token; convert at the fill
+            // price so TWAP fee totals stay USD-denominated.
+            let fee_token = fill.fee_token.as_deref().unwrap_or("");
+            fee += non_perp_fee_usd(parsed_fee, fee_token, price).abs();
         }
     }
 
