@@ -40,7 +40,7 @@ impl CandlestickChart {
             },
         );
 
-        ctx.fisheye.stroke_projected_line(
+        ctx.fisheye.stroke_projected_line_without_edge_blur(
             frame,
             Point::new(0.0, panel_y),
             Point::new(ctx.chart_w, panel_y),
@@ -95,7 +95,7 @@ impl CandlestickChart {
         };
         let baseline_y = display_range.rate_to_y(0.0, plot_top, plot_bottom);
         if baseline_y >= plot_top && baseline_y <= plot_bottom {
-            ctx.fisheye.stroke_projected_line(
+            ctx.fisheye.stroke_projected_line_without_edge_blur(
                 frame,
                 Point::new(0.0, baseline_y),
                 Point::new(ctx.chart_w, baseline_y),

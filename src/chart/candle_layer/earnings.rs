@@ -58,9 +58,13 @@ impl CandlestickChart {
                     .with_width(1.0),
             );
             let marker_center = Point::new(x, dot_y);
-            ctx.fisheye
-                .fill_projected_circle(frame, marker_center, EARNINGS_DOT_RADIUS, dot_color);
-            ctx.fisheye.stroke_projected_circle(
+            ctx.fisheye.fill_projected_circle_without_edge_blur(
+                frame,
+                marker_center,
+                EARNINGS_DOT_RADIUS,
+                dot_color,
+            );
+            ctx.fisheye.stroke_projected_circle_without_edge_blur(
                 frame,
                 marker_center,
                 EARNINGS_DOT_RADIUS,

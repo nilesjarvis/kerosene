@@ -48,7 +48,7 @@ impl CandlestickChart {
         };
 
         if measurement.bottom > measurement.top {
-            ctx.fisheye.fill_projected_rect(
+            ctx.fisheye.fill_projected_rect_without_edge_blur(
                 ctx.frame,
                 Point::new(0.0, measurement.top),
                 Size::new(ctx.chart_w, measurement.bottom - measurement.top),
@@ -56,7 +56,7 @@ impl CandlestickChart {
             );
         }
 
-        ctx.fisheye.stroke_projected_line(
+        ctx.fisheye.stroke_projected_line_without_edge_blur(
             ctx.frame,
             Point::new(0.0, measurement.anchor_y),
             Point::new(ctx.chart_w, measurement.anchor_y),
@@ -65,7 +65,7 @@ impl CandlestickChart {
                 .with_width(1.0),
         );
 
-        ctx.fisheye.stroke_projected_line(
+        ctx.fisheye.stroke_projected_line_without_edge_blur(
             ctx.frame,
             Point::new(0.0, measurement.hover_y),
             Point::new(ctx.chart_w, measurement.hover_y),

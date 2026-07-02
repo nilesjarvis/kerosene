@@ -34,7 +34,9 @@ pub(super) fn stroke_projected_hline(
         return;
     }
 
-    fisheye.stroke_projected_line(
+    // Price-anchored lines (current price, positions, orders) stay sharp:
+    // they carry information the trader reads at the edges too.
+    fisheye.stroke_projected_line_without_edge_blur(
         frame,
         Point::new(0.0, y),
         Point::new(chart_w, y),
@@ -65,7 +67,12 @@ pub(super) fn stroke_projected_segmented_hline_with_offset(
         let start = x.max(0.0);
         let end = (x + style.segment_len).min(chart_w);
         if end > start {
-            fisheye.stroke_projected_line(frame, Point::new(start, y), Point::new(end, y), stroke);
+            fisheye.stroke_projected_line_without_edge_blur(
+                frame,
+                Point::new(start, y),
+                Point::new(end, y),
+                stroke,
+            );
         }
         x += stride;
     }

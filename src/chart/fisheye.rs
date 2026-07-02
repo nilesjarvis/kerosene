@@ -11,22 +11,28 @@ const MAX_EDGE_BLUR_SHIFT_PX: f32 = 4.8;
 const CHROMATIC_STROKE_ALPHA: f32 = 0.55;
 const CHROMATIC_FILL_ALPHA: f32 = 0.34;
 const CHROMATIC_ALPHA_CEILING: f32 = 0.6;
-const EDGE_BLUR_STROKE_ALPHA: f32 = 0.16;
-const EDGE_BLUR_FILL_ALPHA: f32 = 0.10;
+const EDGE_BLUR_STROKE_ALPHA: f32 = 0.26;
+const EDGE_BLUR_FILL_ALPHA: f32 = 0.16;
+const EDGE_BLUR_ALPHA_CEILING: f32 = 0.28;
 const LINE_SAMPLE_PX: f32 = 18.0;
 const MAX_LINE_SAMPLES: usize = 96;
 const NEWTON_STEPS: usize = 6;
-const EDGE_BLUR_BUCKETS: usize = 4;
+const EDGE_BLUR_BUCKETS: usize = 6;
 const EDGE_BLUR_INNER_RADIUS: f32 = 0.22;
 const EDGE_BLUR_RADIUS_RANGE: f32 = 1.0 - EDGE_BLUR_INNER_RADIUS;
-const EDGE_BLUR_PASSES: [EdgeBlurPass; 4] = [
-    EdgeBlurPass::RadialOut,
-    EdgeBlurPass::RadialIn,
-    EdgeBlurPass::TangentialPositive,
-    EdgeBlurPass::TangentialNegative,
+// The blur is a soft-focus skirt: geometry is re-stroked in place with these
+// widened, fading layers rather than displaced ghost copies, which read as
+// double vision instead of defocus.
+const EDGE_BLUR_LAYERS: [EdgeBlurLayer; 2] = [
+    EdgeBlurLayer {
+        radius_scale: 0.55,
+        alpha_scale: 1.0,
+    },
+    EdgeBlurLayer {
+        radius_scale: 1.0,
+        alpha_scale: 0.5,
+    },
 ];
-const EDGE_BLUR_MICRO_RECT_PASSES: [EdgeBlurPass; 2] =
-    [EdgeBlurPass::RadialOut, EdgeBlurPass::RadialIn];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ChartFisheye {
@@ -274,6 +280,38 @@ impl ChartFisheye {
             .stroke_projected_rect(frame, origin, size, stroke);
     }
 
+    pub(crate) fn stroke_projected_circle_without_edge_blur<'a>(
+        self,
+        frame: &mut canvas::Frame,
+        center: Point,
+        radius: f32,
+        stroke: canvas::Stroke<'a>,
+    ) {
+        self.without_edge_blur()
+            .stroke_projected_circle(frame, center, radius, stroke);
+    }
+
+    pub(crate) fn fill_projected_circle_without_edge_blur(
+        self,
+        frame: &mut canvas::Frame,
+        center: Point,
+        radius: f32,
+        color: Color,
+    ) {
+        self.without_edge_blur()
+            .fill_projected_circle(frame, center, radius, color);
+    }
+
+    pub(crate) fn fill_projected_polygon_without_edge_blur(
+        self,
+        frame: &mut canvas::Frame,
+        points: &[Point],
+        color: Color,
+    ) {
+        self.without_edge_blur()
+            .fill_projected_polygon(frame, points, color);
+    }
+
     pub(crate) fn fill_projected_rects(
         self,
         frame: &mut canvas::Frame,
@@ -377,7 +415,6 @@ impl ChartFisheye {
         self.fill_edge_blurred_rect_buckets(
             frame,
             &blur_buckets,
-            &EDGE_BLUR_MICRO_RECT_PASSES,
             color,
             EDGE_BLUR_FILL_ALPHA * 0.65,
         );
@@ -708,42 +745,50 @@ impl ChartFisheye {
         }
     }
 
-    fn append_rect_for_edge_blur(
+    fn append_projected_rect_boundary(
         self,
         path: &mut canvas::path::Builder,
         origin: Point,
         size: Size,
         cols: usize,
         rows: usize,
-        pass: EdgeBlurPass,
     ) {
         let cols = cols.max(1);
         let rows = rows.max(1);
+        let right = origin.x + size.width;
+        let bottom = origin.y + size.height;
         let cell_w = size.width / cols as f32;
         let cell_h = size.height / rows as f32;
 
-        for row in 0..rows {
-            for col in 0..cols {
-                let left = origin.x + col as f32 * cell_w;
-                let top = origin.y + row as f32 * cell_h;
-                let right = if col + 1 == cols {
-                    origin.x + size.width
-                } else {
-                    left + cell_w
-                };
-                let bottom = if row + 1 == rows {
-                    origin.y + size.height
-                } else {
-                    top + cell_h
-                };
-
-                path.move_to(self.edge_blur_point(Point::new(left, top), pass));
-                path.line_to(self.edge_blur_point(Point::new(right, top), pass));
-                path.line_to(self.edge_blur_point(Point::new(right, bottom), pass));
-                path.line_to(self.edge_blur_point(Point::new(left, bottom), pass));
-                path.close();
-            }
+        path.move_to(self.project(origin));
+        for col in 1..=cols {
+            let x = if col == cols {
+                right
+            } else {
+                origin.x + col as f32 * cell_w
+            };
+            path.line_to(self.project(Point::new(x, origin.y)));
         }
+        for row in 1..=rows {
+            let y = if row == rows {
+                bottom
+            } else {
+                origin.y + row as f32 * cell_h
+            };
+            path.line_to(self.project(Point::new(right, y)));
+        }
+        for col in (0..cols).rev() {
+            let x = if col == 0 {
+                origin.x
+            } else {
+                origin.x + col as f32 * cell_w
+            };
+            path.line_to(self.project(Point::new(x, bottom)));
+        }
+        for row in (1..rows).rev() {
+            path.line_to(self.project(Point::new(origin.x, origin.y + row as f32 * cell_h)));
+        }
+        path.close();
     }
 
     fn stroke_edge_blurred_line<'a>(
@@ -754,24 +799,111 @@ impl ChartFisheye {
         samples: usize,
         stroke: canvas::Stroke<'a>,
     ) {
-        let blur_factor = self.edge_blur_factor_for_points(&[start, end]);
-        if blur_factor <= f32::EPSILON {
+        let mut points = Vec::with_capacity(samples + 1);
+        points.push(ProjectedPathPoint {
+            point: self.project(start),
+            starts_segment: true,
+        });
+        for sample in 1..=samples {
+            let t = sample as f32 / samples as f32;
+            points.push(ProjectedPathPoint {
+                point: self.project(lerp_point(start, end, t)),
+                starts_segment: false,
+            });
+        }
+        self.stroke_edge_blurred_polyline(frame, &points, stroke);
+    }
+
+    /// Stroke soft skirts under an already-projected polyline, bucketing
+    /// sub-segments by their local edge factor so the blur tapers along the
+    /// geometry instead of hazing its full length at the edge maximum.
+    fn stroke_edge_blurred_polyline<'a>(
+        self,
+        frame: &mut canvas::Frame,
+        points: &[ProjectedPathPoint],
+        stroke: canvas::Stroke<'a>,
+    ) {
+        let source_color = stroke_color(&stroke);
+        let runs = self.edge_blur_polyline_runs(points);
+        for (bucket, bucket_runs) in runs.iter().enumerate() {
+            if bucket_runs.is_empty() {
+                continue;
+            }
+            let factor = edge_blur_bucket_factor(bucket);
+            let radius = self.edge_blur_strength * MAX_EDGE_BLUR_SHIFT_PX * factor;
+            if radius <= f32::EPSILON {
+                continue;
+            }
+            let path = path_from_runs(bucket_runs);
+            for layer in EDGE_BLUR_LAYERS {
+                frame.stroke(
+                    &path,
+                    stroke
+                        .with_color(self.edge_blur_color(
+                            source_color,
+                            EDGE_BLUR_STROKE_ALPHA * layer.alpha_scale,
+                            factor,
+                        ))
+                        .with_width(stroke.width + 2.0 * radius * layer.radius_scale),
+                );
+            }
+        }
+    }
+
+    fn edge_blur_polyline_runs(
+        self,
+        points: &[ProjectedPathPoint],
+    ) -> [Vec<Vec<Point>>; EDGE_BLUR_BUCKETS] {
+        let mut runs: [Vec<Vec<Point>>; EDGE_BLUR_BUCKETS] = std::array::from_fn(|_| Vec::new());
+        let mut previous: Option<(Point, usize)> = None;
+
+        for pair in points.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            if b.starts_segment {
+                previous = None;
+                continue;
+            }
+            let factor = self
+                .edge_blur_factor(a.point)
+                .max(self.edge_blur_factor(b.point));
+            let Some(bucket) = edge_blur_bucket(factor) else {
+                previous = None;
+                continue;
+            };
+            let extends_previous = matches!(previous, Some((last, last_bucket)) if last_bucket == bucket && last == a.point);
+            if extends_previous {
+                if let Some(run) = runs[bucket].last_mut() {
+                    run.push(b.point);
+                }
+            } else {
+                runs[bucket].push(vec![a.point, b.point]);
+            }
+            previous = Some((b.point, bucket));
+        }
+        runs
+    }
+
+    /// Stroke a filled shape's boundary with widened, fading layers of its own
+    /// color to soften the silhouette; the inner half of each skirt hides
+    /// under the fill drawn on top.
+    fn stroke_soft_boundary(
+        self,
+        frame: &mut canvas::Frame,
+        boundary: &canvas::Path,
+        color: Color,
+        factor: f32,
+        alpha_base: f32,
+    ) {
+        let radius = self.edge_blur_strength * MAX_EDGE_BLUR_SHIFT_PX * factor;
+        if radius <= f32::EPSILON {
             return;
         }
-
-        let source_color = stroke_color(&stroke);
-        let width = self.edge_blur_stroke_width(stroke.width, blur_factor);
-        for pass in EDGE_BLUR_PASSES {
-            let path = self.edge_blur_line_path(start, end, samples, pass);
+        for layer in EDGE_BLUR_LAYERS {
             frame.stroke(
-                &path,
-                stroke
-                    .with_color(self.edge_blur_color(
-                        source_color,
-                        EDGE_BLUR_STROKE_ALPHA * pass.alpha_scale(),
-                        blur_factor,
-                    ))
-                    .with_width(width),
+                boundary,
+                canvas::Stroke::default()
+                    .with_color(self.edge_blur_color(color, alpha_base * layer.alpha_scale, factor))
+                    .with_width(2.0 * radius * layer.radius_scale),
             );
         }
     }
@@ -790,19 +922,10 @@ impl ChartFisheye {
             return;
         }
 
-        for pass in EDGE_BLUR_PASSES {
-            let path = canvas::Path::new(|path| {
-                self.append_rect_for_edge_blur(path, origin, size, cols, rows, pass);
-            });
-            frame.fill(
-                &path,
-                self.edge_blur_color(
-                    color,
-                    EDGE_BLUR_FILL_ALPHA * pass.alpha_scale(),
-                    blur_factor,
-                ),
-            );
-        }
+        let boundary = canvas::Path::new(|path| {
+            self.append_projected_rect_boundary(path, origin, size, cols, rows);
+        });
+        self.stroke_soft_boundary(frame, &boundary, color, blur_factor, EDGE_BLUR_FILL_ALPHA);
     }
 
     fn fill_edge_blurred_rects(
@@ -812,13 +935,7 @@ impl ChartFisheye {
         color: Color,
     ) {
         let blur_buckets = self.edge_blur_rect_buckets(rects);
-        self.fill_edge_blurred_rect_buckets(
-            frame,
-            &blur_buckets,
-            &EDGE_BLUR_PASSES,
-            color,
-            EDGE_BLUR_FILL_ALPHA,
-        );
+        self.fill_edge_blurred_rect_buckets(frame, &blur_buckets, color, EDGE_BLUR_FILL_ALPHA);
     }
 
     fn edge_blur_rect_buckets(
@@ -848,34 +965,27 @@ impl ChartFisheye {
         self,
         frame: &mut canvas::Frame,
         buckets: &[Vec<EdgeBlurRect>; EDGE_BLUR_BUCKETS],
-        passes: &[EdgeBlurPass],
         color: Color,
         alpha_scale: f32,
     ) {
-        for pass in passes {
-            for (bucket, rects) in buckets.iter().enumerate() {
-                if rects.is_empty() {
-                    continue;
-                }
-
-                let bucket_factor = edge_blur_bucket_factor(bucket);
-                let path = canvas::Path::new(|path| {
-                    for rect in rects {
-                        self.append_rect_for_edge_blur(
-                            path,
-                            rect.origin,
-                            rect.size,
-                            rect.cols,
-                            rect.rows,
-                            *pass,
-                        );
-                    }
-                });
-                frame.fill(
-                    &path,
-                    self.edge_blur_color(color, alpha_scale * pass.alpha_scale(), bucket_factor),
-                );
+        for (bucket, rects) in buckets.iter().enumerate() {
+            if rects.is_empty() {
+                continue;
             }
+
+            let bucket_factor = edge_blur_bucket_factor(bucket);
+            let boundary = canvas::Path::new(|path| {
+                for rect in rects {
+                    self.append_projected_rect_boundary(
+                        path,
+                        rect.origin,
+                        rect.size,
+                        rect.cols,
+                        rect.rows,
+                    );
+                }
+            });
+            self.stroke_soft_boundary(frame, &boundary, color, bucket_factor, alpha_scale);
         }
     }
 
@@ -887,26 +997,19 @@ impl ChartFisheye {
         samples: usize,
         stroke: canvas::Stroke<'a>,
     ) {
-        let blur_factor = self.edge_blur_factor_for_circle(center, radius);
-        if blur_factor <= f32::EPSILON {
-            return;
+        let mut points = Vec::with_capacity(samples + 1);
+        points.push(ProjectedPathPoint {
+            point: self.project(point_on_circle(center, radius, 0.0)),
+            starts_segment: true,
+        });
+        for sample in 1..=samples {
+            let theta = sample as f32 / samples as f32 * std::f32::consts::TAU;
+            points.push(ProjectedPathPoint {
+                point: self.project(point_on_circle(center, radius, theta)),
+                starts_segment: false,
+            });
         }
-
-        let source_color = stroke_color(&stroke);
-        let width = self.edge_blur_stroke_width(stroke.width, blur_factor);
-        for pass in EDGE_BLUR_PASSES {
-            let path = self.edge_blur_circle_path(center, radius, samples, pass);
-            frame.stroke(
-                &path,
-                stroke
-                    .with_color(self.edge_blur_color(
-                        source_color,
-                        EDGE_BLUR_STROKE_ALPHA * pass.alpha_scale(),
-                        blur_factor,
-                    ))
-                    .with_width(width),
-            );
-        }
+        self.stroke_edge_blurred_polyline(frame, &points, stroke);
     }
 
     fn fill_edge_blurred_circle(
@@ -922,17 +1025,8 @@ impl ChartFisheye {
             return;
         }
 
-        for pass in EDGE_BLUR_PASSES {
-            let path = self.edge_blur_circle_path(center, radius, samples, pass);
-            frame.fill(
-                &path,
-                self.edge_blur_color(
-                    color,
-                    EDGE_BLUR_FILL_ALPHA * pass.alpha_scale(),
-                    blur_factor,
-                ),
-            );
-        }
+        let boundary = self.circle_path(center, radius, samples, ChromaticChannel::Main);
+        self.stroke_soft_boundary(frame, &boundary, color, blur_factor, EDGE_BLUR_FILL_ALPHA);
     }
 
     fn fill_edge_blurred_polygon(self, frame: &mut canvas::Frame, points: &[Point], color: Color) {
@@ -941,17 +1035,8 @@ impl ChartFisheye {
             return;
         }
 
-        for pass in EDGE_BLUR_PASSES {
-            let path = self.edge_blur_polygon_path(points, pass);
-            frame.fill(
-                &path,
-                self.edge_blur_color(
-                    color,
-                    EDGE_BLUR_FILL_ALPHA * pass.alpha_scale(),
-                    blur_factor,
-                ),
-            );
-        }
+        let boundary = self.polygon_path(points, ChromaticChannel::Main);
+        self.stroke_soft_boundary(frame, &boundary, color, blur_factor, EDGE_BLUR_FILL_ALPHA);
     }
 
     fn stroke_edge_blurred_path_points<'a>(
@@ -960,29 +1045,14 @@ impl ChartFisheye {
         points: &[ProjectedPathPoint],
         stroke: canvas::Stroke<'a>,
     ) {
-        let blur_factor = points
+        let projected: Vec<ProjectedPathPoint> = points
             .iter()
-            .map(|point| self.edge_blur_factor(point.point))
-            .fold(0.0_f32, f32::max);
-        if blur_factor <= f32::EPSILON {
-            return;
-        }
-
-        let source_color = stroke_color(&stroke);
-        let width = self.edge_blur_stroke_width(stroke.width, blur_factor);
-        for pass in EDGE_BLUR_PASSES {
-            let path = self.edge_blur_path_points(points, pass);
-            frame.stroke(
-                &path,
-                stroke
-                    .with_color(self.edge_blur_color(
-                        source_color,
-                        EDGE_BLUR_STROKE_ALPHA * pass.alpha_scale(),
-                        blur_factor,
-                    ))
-                    .with_width(width),
-            );
-        }
+            .map(|point| ProjectedPathPoint {
+                point: self.project(point.point),
+                starts_segment: point.starts_segment,
+            })
+            .collect();
+        self.stroke_edge_blurred_polyline(frame, &projected, stroke);
     }
 
     fn stroke_chromatic_line<'a>(
@@ -1030,22 +1100,6 @@ impl ChartFisheye {
         })
     }
 
-    fn edge_blur_line_path(
-        self,
-        start: Point,
-        end: Point,
-        samples: usize,
-        pass: EdgeBlurPass,
-    ) -> canvas::Path {
-        canvas::Path::new(|path| {
-            path.move_to(self.edge_blur_point(start, pass));
-            for sample in 1..=samples {
-                let t = sample as f32 / samples as f32;
-                path.line_to(self.edge_blur_point(lerp_point(start, end, t), pass));
-            }
-        })
-    }
-
     fn circle_path(
         self,
         center: Point,
@@ -1064,45 +1118,10 @@ impl ChartFisheye {
         })
     }
 
-    fn edge_blur_circle_path(
-        self,
-        center: Point,
-        radius: f32,
-        samples: usize,
-        pass: EdgeBlurPass,
-    ) -> canvas::Path {
-        canvas::Path::new(|path| {
-            let first = point_on_circle(center, radius, 0.0);
-            path.move_to(self.edge_blur_point(first, pass));
-            for sample in 1..=samples {
-                let theta = sample as f32 / samples as f32 * std::f32::consts::TAU;
-                path.line_to(self.edge_blur_point(point_on_circle(center, radius, theta), pass));
-            }
-            path.close();
-        })
-    }
-
     fn path_points(self, points: &[ProjectedPathPoint], channel: ChromaticChannel) -> canvas::Path {
         canvas::Path::new(|path| {
             for point in points {
                 let projected = self.visual_point(point.point, channel);
-                if point.starts_segment {
-                    path.move_to(projected);
-                } else {
-                    path.line_to(projected);
-                }
-            }
-        })
-    }
-
-    fn edge_blur_path_points(
-        self,
-        points: &[ProjectedPathPoint],
-        pass: EdgeBlurPass,
-    ) -> canvas::Path {
-        canvas::Path::new(|path| {
-            for point in points {
-                let projected = self.edge_blur_point(point.point, pass);
                 if point.starts_segment {
                     path.move_to(projected);
                 } else {
@@ -1120,19 +1139,6 @@ impl ChartFisheye {
             path.move_to(self.visual_point(*first, channel));
             for point in &points[1..] {
                 path.line_to(self.visual_point(*point, channel));
-            }
-            path.close();
-        })
-    }
-
-    fn edge_blur_polygon_path(self, points: &[Point], pass: EdgeBlurPass) -> canvas::Path {
-        canvas::Path::new(|path| {
-            let Some(first) = points.first() else {
-                return;
-            };
-            path.move_to(self.edge_blur_point(*first, pass));
-            for point in &points[1..] {
-                path.line_to(self.edge_blur_point(*point, pass));
             }
             path.close();
         })
@@ -1169,40 +1175,6 @@ impl ChartFisheye {
         ))
     }
 
-    fn edge_blur_point(self, point: Point, pass: EdgeBlurPass) -> Point {
-        let projected = self.project(point);
-        if !self.edge_blur_enabled {
-            return projected;
-        }
-
-        let radius = self.edge_blur_shift(projected) * pass.shift_scale();
-        if radius <= f32::EPSILON {
-            return projected;
-        }
-
-        let center = self.center();
-        let dx = projected.x - center.x;
-        let dy = projected.y - center.y;
-        let len = (dx * dx + dy * dy).sqrt();
-        if len <= f32::EPSILON || !len.is_finite() {
-            return projected;
-        }
-
-        let radial_x = dx / len;
-        let radial_y = dy / len;
-        let (axis_x, axis_y) = match pass {
-            EdgeBlurPass::RadialOut => (radial_x, radial_y),
-            EdgeBlurPass::RadialIn => (-radial_x, -radial_y),
-            EdgeBlurPass::TangentialPositive => (-radial_y, radial_x),
-            EdgeBlurPass::TangentialNegative => (radial_y, -radial_x),
-        };
-
-        self.clamp_projected_point(Point::new(
-            projected.x + axis_x * radius,
-            projected.y + axis_y * radius,
-        ))
-    }
-
     fn chromatic_color(self, source: Color, channel: ChromaticChannel, alpha_scale: f32) -> Color {
         // Real lateral chromatic aberration separates the source's own color
         // channels, so each fringe carries only its channel and fades with the
@@ -1234,21 +1206,10 @@ impl ChartFisheye {
 
     fn edge_blur_color(self, source: Color, alpha_scale: f32, edge_factor: f32) -> Color {
         Color {
-            a: (source.a * alpha_scale * self.edge_blur_strength * edge_factor).clamp(0.0, 0.24),
+            a: (source.a * alpha_scale * self.edge_blur_strength * edge_factor)
+                .clamp(0.0, EDGE_BLUR_ALPHA_CEILING),
             ..source
         }
-    }
-
-    fn edge_blur_stroke_width(self, width: f32, edge_factor: f32) -> f32 {
-        if width.is_finite() {
-            width + self.edge_blur_strength * MAX_EDGE_BLUR_SHIFT_PX * edge_factor * 0.45
-        } else {
-            width
-        }
-    }
-
-    fn edge_blur_shift(self, point: Point) -> f32 {
-        self.edge_blur_strength * MAX_EDGE_BLUR_SHIFT_PX * self.edge_blur_factor(point)
     }
 
     fn edge_blur_factor(self, point: Point) -> f32 {
@@ -1264,7 +1225,7 @@ impl ChartFisheye {
     fn edge_blur_factor_for_points(self, points: &[Point]) -> f32 {
         points
             .iter()
-            .map(|point| self.edge_blur_factor(*point))
+            .map(|point| self.edge_blur_factor(self.project(*point)))
             .fold(0.0_f32, f32::max)
     }
 
@@ -1371,27 +1332,24 @@ enum ChromaticChannel {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum EdgeBlurPass {
-    RadialOut,
-    RadialIn,
-    TangentialPositive,
-    TangentialNegative,
+struct EdgeBlurLayer {
+    radius_scale: f32,
+    alpha_scale: f32,
 }
 
-impl EdgeBlurPass {
-    fn shift_scale(self) -> f32 {
-        match self {
-            EdgeBlurPass::RadialOut | EdgeBlurPass::RadialIn => 1.0,
-            EdgeBlurPass::TangentialPositive | EdgeBlurPass::TangentialNegative => 0.62,
+fn path_from_runs(runs: &[Vec<Point>]) -> canvas::Path {
+    canvas::Path::new(|path| {
+        for run in runs {
+            let mut points = run.iter();
+            let Some(first) = points.next() else {
+                continue;
+            };
+            path.move_to(*first);
+            for point in points {
+                path.line_to(*point);
+            }
         }
-    }
-
-    fn alpha_scale(self) -> f32 {
-        match self {
-            EdgeBlurPass::RadialOut | EdgeBlurPass::RadialIn => 1.0,
-            EdgeBlurPass::TangentialPositive | EdgeBlurPass::TangentialNegative => 0.72,
-        }
-    }
+    })
 }
 
 fn line_samples(start: Point, end: Point) -> usize {
@@ -1437,15 +1395,13 @@ fn edge_blur_bucket(edge_factor: f32) -> Option<usize> {
         return None;
     }
 
-    Some(
-        ((edge_factor * EDGE_BLUR_BUCKETS as f32).ceil() as usize)
-            .saturating_sub(1)
-            .min(EDGE_BLUR_BUCKETS - 1),
-    )
+    Some(((edge_factor * EDGE_BLUR_BUCKETS as f32) as usize).min(EDGE_BLUR_BUCKETS - 1))
 }
 
+// Bucket midpoints rather than upper edges: a factor barely past the inner
+// radius should get a whisper of blur, not jump a full bucket's worth.
 fn edge_blur_bucket_factor(bucket: usize) -> f32 {
-    (bucket + 1) as f32 / EDGE_BLUR_BUCKETS as f32
+    (bucket as f32 + 0.5) / EDGE_BLUR_BUCKETS as f32
 }
 
 fn smoothstep(t: f32) -> f32 {
@@ -1461,7 +1417,7 @@ fn stroke_color(stroke: &canvas::Stroke<'_>) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{CHROMATIC_STROKE_ALPHA, ChartFisheye, ChromaticChannel};
+    use super::{CHROMATIC_STROKE_ALPHA, ChartFisheye, ChromaticChannel, ProjectedPathPoint};
     use iced::{Color, Point, Size};
 
     #[test]
@@ -1547,9 +1503,46 @@ mod tests {
         let near_edge = Point::new(700.0, 200.0);
 
         assert!(lens.is_enabled());
-        assert!(lens.edge_blur_shift(center) <= f32::EPSILON);
-        assert!(lens.edge_blur_shift(near_center) > lens.edge_blur_shift(center));
-        assert!(lens.edge_blur_shift(near_edge) > lens.edge_blur_shift(near_center));
+        assert!(lens.edge_blur_factor(center) <= f32::EPSILON);
+        assert!(lens.edge_blur_factor(near_center) > lens.edge_blur_factor(center));
+        assert!(lens.edge_blur_factor(near_edge) > lens.edge_blur_factor(near_center));
+    }
+
+    #[test]
+    fn edge_blur_runs_skip_the_sharp_chart_center() {
+        let lens = ChartFisheye::new(false, 1.0, 800.0, 400.0).with_edge_blur(true, 1.0);
+        let points: Vec<ProjectedPathPoint> = (0..=32)
+            .map(|i| ProjectedPathPoint {
+                point: Point::new(i as f32 * 25.0, 200.0),
+                starts_segment: i == 0,
+            })
+            .collect();
+
+        let runs = lens.edge_blur_polyline_runs(&points);
+        let run_points: Vec<Point> = runs.iter().flatten().flatten().copied().collect();
+
+        assert!(!run_points.is_empty());
+        for point in &run_points {
+            assert!(
+                (point.x - 400.0).abs() >= 60.0,
+                "blur geometry reached the sharp center: x={}",
+                point.x
+            );
+        }
+    }
+
+    #[test]
+    fn edge_blur_buckets_start_gently_and_grade_smoothly() {
+        let low_bucket = super::edge_blur_bucket(0.01).expect("small factors still bucket");
+        assert!(super::edge_blur_bucket_factor(low_bucket) < 0.15);
+
+        let high_bucket = super::edge_blur_bucket(1.0).expect("full factor buckets");
+        assert!(super::edge_blur_bucket_factor(high_bucket) <= 1.0);
+        for bucket in 0..high_bucket {
+            assert!(
+                super::edge_blur_bucket_factor(bucket) < super::edge_blur_bucket_factor(bucket + 1)
+            );
+        }
     }
 
     #[test]

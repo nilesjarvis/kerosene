@@ -87,7 +87,7 @@ impl CandlestickChart {
             },
         );
 
-        ctx.fisheye.stroke_projected_line(
+        ctx.fisheye.stroke_projected_line_without_edge_blur(
             frame,
             Point::new(0.0, panel_y),
             Point::new(ctx.chart_w, panel_y),

@@ -46,7 +46,7 @@ pub(super) fn stroke_segmented_hline_range(
             let start = x.max(start_x);
             let end = (x + style.segment_len).min(end_x);
             if end > start {
-                fisheye.stroke_projected_line(
+                fisheye.stroke_projected_line_without_edge_blur(
                     frame,
                     Point::new(start, y),
                     Point::new(end, y),
@@ -129,7 +129,7 @@ pub(super) fn stroke_segmented_quadratic_curve(
                 if dash_end > dash_start {
                     let start_t = (dash_start - segment_start_distance) / segment_len;
                     let end_t = (dash_end - segment_start_distance) / segment_len;
-                    fisheye.stroke_projected_line(
+                    fisheye.stroke_projected_line_without_edge_blur(
                         frame,
                         lerp_point(previous, current, start_t),
                         lerp_point(previous, current, end_t),

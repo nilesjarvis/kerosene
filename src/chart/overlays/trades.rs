@@ -76,9 +76,10 @@ impl CandlestickChart {
             ..ctx.theme.extended_palette().background.strong.color
         };
         for dot in layout.visible_dots() {
-            ctx.fisheye
-                .fill_projected_circle(ctx.frame, dot.center, dot.radius, fill_color);
-            ctx.fisheye.stroke_projected_circle(
+            ctx.fisheye.fill_projected_circle_without_edge_blur(
+                ctx.frame, dot.center, dot.radius, fill_color,
+            );
+            ctx.fisheye.stroke_projected_circle_without_edge_blur(
                 ctx.frame,
                 dot.center,
                 dot.radius,

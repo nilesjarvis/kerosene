@@ -83,13 +83,13 @@ impl CandlestickChart {
                 .with_width(1.4 + 1.4 * (1.0 - progress))
                 .with_line_cap(canvas::LineCap::Round);
 
-            ctx.fisheye.stroke_projected_line(
+            ctx.fisheye.stroke_projected_line_without_edge_blur(
                 ctx.frame,
                 Point::new(left_x, y),
                 Point::new(origin_x, y),
                 stroke,
             );
-            ctx.fisheye.stroke_projected_line(
+            ctx.fisheye.stroke_projected_line_without_edge_blur(
                 ctx.frame,
                 Point::new(origin_x, y),
                 Point::new(right_x, y),
@@ -132,7 +132,7 @@ fn draw_hit_marker<PriceToY, IdxToCx>(
     let diagonal = std::f32::consts::FRAC_1_SQRT_2;
     for x_sign in [-1.0, 1.0] {
         for y_sign in [-1.0, 1.0] {
-            ctx.fisheye.stroke_projected_line(
+            ctx.fisheye.stroke_projected_line_without_edge_blur(
                 ctx.frame,
                 Point::new(
                     center.x + x_sign * inner * diagonal,
@@ -206,7 +206,7 @@ fn draw_dot_wave<PriceToY, IdxToCx>(
             let distance = (dx * dx + dy * dy).sqrt();
             let wave = 1.0 - ((distance - radius).abs() / thickness).clamp(0.0, 1.0);
             if wave > 0.0 {
-                ctx.fisheye.fill_projected_circle(
+                ctx.fisheye.fill_projected_circle_without_edge_blur(
                     ctx.frame,
                     Point::new(x, y),
                     style.dot_radius + wave * 1.6,

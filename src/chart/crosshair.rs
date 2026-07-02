@@ -311,7 +311,7 @@ impl CandlestickChart {
         let visual_center = ctx.fisheye.project(source_center);
         let accent = ctx.theme.palette().primary;
         let radius = hud_lerp(EARNINGS_DOT_RADIUS, EARNINGS_HOVER_RADIUS, hover);
-        ctx.fisheye.fill_projected_circle(
+        ctx.fisheye.fill_projected_circle_without_edge_blur(
             ctx.frame,
             source_center,
             radius + 3.5 * hover,
@@ -320,7 +320,7 @@ impl CandlestickChart {
                 ..accent
             },
         );
-        ctx.fisheye.fill_projected_circle(
+        ctx.fisheye.fill_projected_circle_without_edge_blur(
             ctx.frame,
             source_center,
             radius,
@@ -329,7 +329,7 @@ impl CandlestickChart {
                 ..accent
             },
         );
-        ctx.fisheye.stroke_projected_circle(
+        ctx.fisheye.stroke_projected_circle_without_edge_blur(
             ctx.frame,
             source_center,
             radius,
@@ -982,7 +982,7 @@ fn draw_hud_cancel_collapsed_reticle(
         .with_width(hud_lerp(1.15, 0.8, progress))
         .with_line_cap(canvas::LineCap::Round);
 
-    fisheye.stroke_projected_circle(frame, center, radius, stroke);
+    fisheye.stroke_projected_circle_without_edge_blur(frame, center, radius, stroke);
     for (start, end) in [
         (
             Point::new(center.x - arm, center.y),
@@ -1001,10 +1001,10 @@ fn draw_hud_cancel_collapsed_reticle(
             Point::new(center.x, center.y + arm * 0.55),
         ),
     ] {
-        fisheye.stroke_projected_line(frame, start, end, stroke);
+        fisheye.stroke_projected_line_without_edge_blur(frame, start, end, stroke);
     }
 
-    fisheye.fill_projected_circle(
+    fisheye.fill_projected_circle_without_edge_blur(
         frame,
         center,
         hud_lerp(1.45, 1.0, progress),

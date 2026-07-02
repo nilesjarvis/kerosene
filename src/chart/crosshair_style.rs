@@ -160,7 +160,7 @@ pub(crate) fn draw_crosshair_style(
             ChartCrosshairStyle::Classic => {}
             ChartCrosshairStyle::Circle => {
                 let radius = scaled_value(scale, 22.0, 9.0);
-                fisheye.stroke_projected_circle(
+                fisheye.stroke_projected_circle_without_edge_blur(
                     frame,
                     position,
                     radius,
@@ -214,13 +214,13 @@ fn draw_guides(frame: &mut canvas::Frame, theme: &Theme, render: GuideRender) {
         .with_color(guide_line_color(theme, style, accent_color))
         .with_width(guide_line_width(style) * scale.clamp(0.75, 2.0));
 
-    fisheye.stroke_projected_line(
+    fisheye.stroke_projected_line_without_edge_blur(
         frame,
         Point::new(0.0, position.y),
         Point::new(size.width, position.y),
         stroke,
     );
-    fisheye.stroke_projected_line(
+    fisheye.stroke_projected_line_without_edge_blur(
         frame,
         Point::new(position.x, 0.0),
         Point::new(position.x, size.height),
@@ -282,8 +282,8 @@ fn draw_scope_reticle(
     let line_end = outer_radius - 4.0 * scale;
     let stroke = shape_stroke(theme, ChartCrosshairStyle::Scope, scale);
 
-    fisheye.stroke_projected_circle(frame, center, outer_radius, stroke);
-    fisheye.stroke_projected_circle(frame, center, inner_radius, stroke);
+    fisheye.stroke_projected_circle_without_edge_blur(frame, center, outer_radius, stroke);
+    fisheye.stroke_projected_circle_without_edge_blur(frame, center, inner_radius, stroke);
 
     stroke_segment(
         frame,
@@ -314,7 +314,7 @@ fn draw_scope_reticle(
         Point::new(center.x, center.y + line_end),
     );
 
-    fisheye.fill_projected_circle(
+    fisheye.fill_projected_circle_without_edge_blur(
         frame,
         center,
         (1.9 * scale).max(1.2),
@@ -379,8 +379,8 @@ fn draw_hud_reticle(
     let bracket_y = (35.0 * scale).max(17.0);
     let bracket_len = (16.0 * scale).max(7.0);
 
-    fisheye.stroke_projected_circle(frame, center, inner_radius, stroke);
-    fisheye.fill_projected_circle(
+    fisheye.stroke_projected_circle_without_edge_blur(frame, center, inner_radius, stroke);
+    fisheye.fill_projected_circle_without_edge_blur(
         frame,
         center,
         (1.45 * scale).max(0.9),
@@ -438,7 +438,12 @@ fn draw_hud_reticle(
 
     let acquisition_center = Point::new(center.x, center.y + (72.0 * scale).max(31.0));
     let acquisition_radius = (18.0 * scale).max(8.0);
-    fisheye.stroke_projected_circle(frame, acquisition_center, acquisition_radius, fine_stroke);
+    fisheye.stroke_projected_circle_without_edge_blur(
+        frame,
+        acquisition_center,
+        acquisition_radius,
+        fine_stroke,
+    );
     for direction in [
         Point::new(0.0, -1.0),
         Point::new(1.0, 0.0),
@@ -638,9 +643,9 @@ fn draw_racing_hud_gauge(
         .with_line_cap(canvas::LineCap::Round)
         .with_line_join(canvas::LineJoin::Round);
 
-    fisheye.fill_projected_circle(frame, center, radius, panel_fill);
-    fisheye.stroke_projected_circle(frame, center, radius, outer_stroke);
-    fisheye.stroke_projected_circle(frame, center, radius * 0.79, fine_stroke);
+    fisheye.fill_projected_circle_without_edge_blur(frame, center, radius, panel_fill);
+    fisheye.stroke_projected_circle_without_edge_blur(frame, center, radius, outer_stroke);
+    fisheye.stroke_projected_circle_without_edge_blur(frame, center, radius * 0.79, fine_stroke);
 
     let start_angle = std::f32::consts::PI * 0.72;
     let end_angle = std::f32::consts::PI * 2.28;
@@ -763,8 +768,8 @@ fn draw_racing_gauge_needle(
         .with_width((1.9 * scale).max(1.1))
         .with_line_cap(canvas::LineCap::Round);
     stroke_segment(frame, fisheye, needle_stroke, needle_tail, needle_end);
-    fisheye.fill_projected_circle(frame, center, (3.4 * scale).max(1.9), color);
-    fisheye.fill_projected_circle(
+    fisheye.fill_projected_circle_without_edge_blur(frame, center, (3.4 * scale).max(1.9), color);
+    fisheye.fill_projected_circle_without_edge_blur(
         frame,
         center,
         (1.4 * scale).max(0.9),
@@ -1005,7 +1010,7 @@ fn draw_target_reticle(
     fisheye: ChartFisheye,
 ) {
     let radius = (42.0 * scale).max(19.0);
-    fisheye.stroke_projected_circle(
+    fisheye.stroke_projected_circle_without_edge_blur(
         frame,
         center,
         radius,
@@ -1090,7 +1095,7 @@ fn draw_target_blocks(
             block_len,
             point_len,
         );
-        fisheye.fill_projected_polygon(frame, &block, color);
+        fisheye.fill_projected_polygon_without_edge_blur(frame, &block, color);
     }
 }
 
@@ -1204,7 +1209,7 @@ fn stroke_segment(
     start: Point,
     end: Point,
 ) {
-    fisheye.stroke_projected_line(frame, start, end, stroke);
+    fisheye.stroke_projected_line_without_edge_blur(frame, start, end, stroke);
 }
 
 fn draw_rectangle(
