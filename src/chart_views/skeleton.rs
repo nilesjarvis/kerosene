@@ -73,27 +73,6 @@ struct ChartSkeleton {
     session_panel_height: Option<f32>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::timeframe::Timeframe;
-
-    #[test]
-    fn skeleton_session_panel_matches_chart_timeframe_visibility() {
-        let mut chart = CandlestickChart::new(1);
-        chart.macro_indicators.show_session_indicator = true;
-
-        chart.set_timeframe(Timeframe::H1);
-        assert_eq!(
-            skeleton_session_panel_height(&chart),
-            Some(chart.session_panel_height)
-        );
-
-        chart.set_timeframe(Timeframe::D1);
-        assert_eq!(skeleton_session_panel_height(&chart), None);
-    }
-}
-
 impl canvas::Program<Message> for ChartSkeleton {
     type State = ();
 
@@ -206,4 +185,25 @@ fn skeleton_panel_height(height: f32, available_h: f32, min_h: f32, max_h: f32) 
         return 0.0;
     }
     height.max(min_h.min(max_panel_h)).min(max_panel_h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::timeframe::Timeframe;
+
+    #[test]
+    fn skeleton_session_panel_matches_chart_timeframe_visibility() {
+        let mut chart = CandlestickChart::new(1);
+        chart.macro_indicators.show_session_indicator = true;
+
+        chart.set_timeframe(Timeframe::H1);
+        assert_eq!(
+            skeleton_session_panel_height(&chart),
+            Some(chart.session_panel_height)
+        );
+
+        chart.set_timeframe(Timeframe::D1);
+        assert_eq!(skeleton_session_panel_height(&chart), None);
+    }
 }
