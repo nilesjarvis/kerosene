@@ -269,6 +269,7 @@ fn load_os_keychain_secrets_with(
         &config.schwab_client_secret,
         &config.schwab_access_token,
         &config.schwab_refresh_token,
+        &config.openrouter_api_key,
     );
     if !payload.is_empty() {
         match store_payload(&payload) {
@@ -474,6 +475,8 @@ fn normalize_legacy_plaintext_secrets(config: &mut KeroseneConfig) -> Result<(),
     config.schwab_access_token = legacy_schwab_access_token.to_string().into();
     let legacy_schwab_refresh_token = std::mem::take(&mut config.schwab_refresh_token);
     config.schwab_refresh_token = legacy_schwab_refresh_token.to_string().into();
+    let legacy_openrouter_key = std::mem::take(&mut config.openrouter_api_key);
+    config.openrouter_api_key = legacy_openrouter_key.to_string().into();
     Ok(())
 }
 
@@ -488,6 +491,7 @@ fn has_legacy_plaintext_secrets(config: &KeroseneConfig) -> bool {
         || !config.schwab_client_secret.trim().is_empty()
         || !config.schwab_access_token.trim().is_empty()
         || !config.schwab_refresh_token.trim().is_empty()
+        || !config.openrouter_api_key.trim().is_empty()
         || config.accounts.iter().any(|profile| {
             !profile.agent_key.trim().is_empty() || !profile.hydromancer_api_key.trim().is_empty()
         })
@@ -523,6 +527,7 @@ fn clear_plaintext_secret_fields(config: &mut KeroseneConfig) {
     config.schwab_client_secret.zeroize();
     config.schwab_access_token.zeroize();
     config.schwab_refresh_token.zeroize();
+    config.openrouter_api_key.zeroize();
 }
 
 fn lock_encrypted_config_secrets_with(

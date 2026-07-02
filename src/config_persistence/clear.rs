@@ -298,6 +298,15 @@ impl TradingTerminal {
         if hyperdash_key_changed {
             self.bump_hyperdash_key_generation();
         }
+        let openrouter_key_changed = !self.openrouter_api_key.trim().is_empty()
+            || !self.openrouter_key_input.trim().is_empty();
+        self.openrouter_api_key.zeroize();
+        self.openrouter_key_input.zeroize();
+        self.openrouter_key_status = None;
+        if openrouter_key_changed {
+            self.bump_openrouter_key_generation();
+        }
+        self.openrouter_model = defaults.openrouter_model.clone();
         self.liquidations.clear();
         self.liquidation_summary_buckets.clear();
         self.liquidation_chart_buckets.clear();
@@ -1245,6 +1254,10 @@ mod tests {
         terminal.hydromancer_key_input = sensitive_string("hydro-key");
         terminal.hyperdash_api_key = sensitive_string("hyperdash-key");
         terminal.hyperdash_key_input = sensitive_string("hyperdash-key");
+        terminal.openrouter_api_key = sensitive_string("openrouter-key");
+        terminal.openrouter_key_input = sensitive_string("openrouter-key");
+        terminal.openrouter_key_status = Some(("Key valid".to_string(), false));
+        terminal.openrouter_model = "anthropic/claude-sonnet-4.5".to_string();
         terminal.accounts = vec![AccountProfile {
             secret_id: "acct-a".to_string(),
             name: "Keep Me".to_string(),
@@ -1270,6 +1283,10 @@ mod tests {
         assert!(terminal.hydromancer_key_input.is_empty());
         assert!(terminal.hyperdash_api_key.is_empty());
         assert!(terminal.hyperdash_key_input.is_empty());
+        assert!(terminal.openrouter_api_key.is_empty());
+        assert!(terminal.openrouter_key_input.is_empty());
+        assert!(terminal.openrouter_key_status.is_none());
+        assert!(terminal.openrouter_model.is_empty());
         assert_eq!(terminal.accounts.len(), 1);
         assert_eq!(terminal.accounts[0].name, "Main Trading");
         assert!(terminal.accounts[0].agent_key.is_empty());

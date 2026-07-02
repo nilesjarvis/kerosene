@@ -72,6 +72,9 @@ Plain config snapshots intentionally write empty secret fields:
 - `x_access_token`
 - `x_oauth_client_id`
 - `x_refresh_token`
+- `schwab_client_id` / `schwab_client_secret` / `schwab_access_token` /
+  `schwab_refresh_token`
+- `openrouter_api_key`
 
 Saved account profiles persist secret IDs and wallet metadata, not raw agent
 keys. Secret payloads map secret IDs to agent keys and global integration

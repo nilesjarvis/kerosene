@@ -272,6 +272,7 @@ fn secret_payload_defaults_missing_profiles_bundle() {
     assert_eq!(payload.global_schwab_client_secret(), "");
     assert_eq!(payload.global_schwab_access_token(), "");
     assert_eq!(payload.global_schwab_refresh_token(), "");
+    assert_eq!(payload.global_openrouter_api_key(), "");
 }
 
 #[test]
@@ -289,8 +290,41 @@ fn secret_payload_with_only_schwab_credentials_is_not_empty() {
         "",
         "schwab-access",
         "",
+        "",
     );
     assert!(!payload.is_empty());
+}
+
+#[test]
+fn secret_payload_with_only_openrouter_key_is_not_empty() {
+    let payload = SecretPayload::from_credentials_with_integrations(
+        &[],
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "openrouter-key",
+    );
+
+    assert!(!payload.is_empty());
+    assert_eq!(payload.global_openrouter_api_key(), "openrouter-key");
+}
+
+#[test]
+fn secret_payload_openrouter_key_setter_reports_changes_and_round_trips() {
+    let mut payload = SecretPayload::from_credentials(&[], "", "");
+
+    assert!(payload.set_global_openrouter_api_key("openrouter-key"));
+    assert!(!payload.set_global_openrouter_api_key("openrouter-key"));
+
+    let json = serde_json::to_string(&payload).unwrap();
+    let restored: SecretPayload = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored.global_openrouter_api_key(), "openrouter-key");
 }
 
 #[test]
@@ -311,6 +345,7 @@ fn secret_payload_debug_redacts_secret_values() {
         "schwab-app-secret",
         "schwab-access-secret",
         "schwab-refresh-secret",
+        "openrouter-secret",
     );
 
     let rendered = format!("{payload:?}");
@@ -329,6 +364,7 @@ fn secret_payload_debug_redacts_secret_values() {
         "schwab-app-secret",
         "schwab-access-secret",
         "schwab-refresh-secret",
+        "openrouter-secret",
     ] {
         assert!(!rendered.contains(secret), "debug output leaked {secret}");
     }

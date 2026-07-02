@@ -1,7 +1,7 @@
 # Integrations And Feeds
 
-Kerosene integrates with Hyperliquid, Hydromancer, HyperDash, Schwab, Telegram,
-X, ForexFactory-style calendar data, SEC APIs, HYPE ETF endpoints, and
+Kerosene integrates with Hyperliquid, Hydromancer, HyperDash, Schwab, OpenRouter,
+Telegram, X, ForexFactory-style calendar data, SEC APIs, HYPE ETF endpoints, and
 Hypurrscan-style unstaking data. Integrations enter the app as REST tasks,
 websocket subscriptions, timer-driven refreshes, or optional authenticated
 streams.
@@ -15,6 +15,7 @@ streams.
 | Hydromancer | `src/hydromancer_api.rs`, `src/ws/hydromancer/`, `src/feed_update/connection.rs` | Funding history, authenticated liquidation/tracked-trade feeds, optional read-data provider. |
 | HyperDash | `src/hyperdash_api.rs`, `src/hyperdash_update/` | GraphQL liquidation heatmaps, liquidation levels, positioning info, liquidation distribution. |
 | Schwab | `src/schwab.rs`, `src/account_update/schwab.rs`, `src/settings_views/integrations.rs`, chart backfill paths | User-supplied OAuth credentials, linked brokerage account summaries, and Schwab price-history candles. |
+| OpenRouter | `src/openrouter_api.rs`, `src/openrouter_update.rs` | AI chat-completion client foundation for news and TradFi filing summaries; key validation and default-model selection. |
 | Feeds | `src/feed_state/`, `src/feed_update/`, `src/feed_views/` | Liquidation feed, tracked trades, Telegram feed, aggregation, alerts, rendering. |
 | Telegram | `src/telegram_feed.rs`, `src/telegram_fast_feed.rs` | Public channel scraping and optional MTProto fast/private feed. |
 | Calendar and screener | `src/calendar_*`, `src/screener_*` | Economic calendar, market screener contexts/history. |
@@ -157,6 +158,32 @@ trading should be handled as a separate high-risk order-execution project with
 request construction tests, stale-account guards, confirmation/error states, and
 approval for the relevant Schwab API scopes.
 
+## OpenRouter
+
+OpenRouter is the foundation for AI-assisted features (news and TradFi filing
+summaries). The user supplies an API key in Settings > Integrations; saving it
+persists the key through the selected secret storage backend and validates it
+against `GET /api/v1/key`, surfacing usage/limit status in the settings UI.
+
+`src/openrouter_api.rs` owns:
+
+- a dedicated `reqwest::Client` with a long completion timeout (chat
+  completions outlive the shared 15s client budget)
+- `chat_completion` — non-streaming `POST /api/v1/chat/completions` with
+  `ChatCompletionRequest`/`ChatMessage` request builders
+- `fetch_key_status` — key validation and credit/limit reporting
+- typed error-envelope parsing with status-code hints (401/402/429/...)
+
+Components should take the key via
+`TradingTerminal::openrouter_api_key_for_task()`, the model via
+`openrouter_model_for_task()` (falls back to the `openrouter/auto` router), and
+gate features on `openrouter_configured()`. Results returned from tasks should
+be checked against `openrouter_key_generation_is_current` so responses that
+arrive after a key change are dropped.
+
+The OpenRouter key is secret-bearing. The default model slug is plain,
+non-secret config (`openrouter_model`).
+
 ## Liquidation Feed
 
 The liquidation feed uses Hydromancer websocket data. State includes:
@@ -295,6 +322,8 @@ Use focused tests in:
 - `src/hydromancer_api/tests.rs`
 - `src/hyperdash_api/**/tests.rs`
 - `src/hyperdash_update/**/tests.rs`
+- `src/openrouter_api/tests.rs`
+- `src/openrouter_update/tests.rs`
 - `src/feed_update/liquidations/tests.rs`
 - Telegram tests in `src/feed_update/` and `src/telegram_*`
 - `src/screener_*` tests

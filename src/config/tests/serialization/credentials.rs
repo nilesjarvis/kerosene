@@ -64,6 +64,7 @@ fn serialized_config_keeps_raw_credentials_out_of_json() {
         x_access_token: "x-secret".to_string().into(),
         x_oauth_client_id: "x-client-secret".to_string().into(),
         x_refresh_token: "x-refresh-secret".to_string().into(),
+        openrouter_api_key: "openrouter-secret".to_string().into(),
         ..KeroseneConfig::default()
     };
 
@@ -77,6 +78,28 @@ fn serialized_config_keeps_raw_credentials_out_of_json() {
     assert!(!json.contains("x-secret"));
     assert!(!json.contains("x-client-secret"));
     assert!(!json.contains("x-refresh-secret"));
+    assert!(!json.contains("openrouter-secret"));
+}
+
+#[test]
+fn openrouter_model_round_trips_and_defaults_empty_for_legacy_configs() {
+    let config = KeroseneConfig {
+        openrouter_model: "anthropic/claude-sonnet-4.5".to_string(),
+        ..KeroseneConfig::default()
+    };
+    let json = json_string(&config, "config should serialize");
+    assert!(json.contains("anthropic/claude-sonnet-4.5"));
+
+    let restored: KeroseneConfig = value_from_str(&json, "config should deserialize");
+    assert_eq!(restored.openrouter_model, "anthropic/claude-sonnet-4.5");
+
+    let mut value = default_config_value();
+    object_mut(&mut value, "config should serialize to object").remove("openrouter_model");
+    let legacy: KeroseneConfig = value_from_json(
+        value,
+        "legacy config without openrouter model should deserialize",
+    );
+    assert!(legacy.openrouter_model.is_empty());
 }
 
 #[test]

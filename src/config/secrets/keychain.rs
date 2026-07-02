@@ -133,6 +133,7 @@ pub fn store_keychain_secrets_with_profile_removals_with_integrations(
     schwab_client_secret: &str,
     schwab_access_token: &str,
     schwab_refresh_token: &str,
+    openrouter_api_key: &str,
     removed_profile_secret_ids: &[String],
 ) -> Result<Option<String>, String> {
     if in_memory_config_mode() {
@@ -150,6 +151,7 @@ pub fn store_keychain_secrets_with_profile_removals_with_integrations(
         schwab_client_secret,
         schwab_access_token,
         schwab_refresh_token,
+        openrouter_api_key,
         removed_profile_secret_ids,
         KeychainProfileRemovalStoreHooks {
             load_payload: load_keychain_secret_payload,
@@ -193,6 +195,7 @@ fn store_keychain_secrets_with_profile_removals_with<
     schwab_client_secret: &str,
     schwab_access_token: &str,
     schwab_refresh_token: &str,
+    openrouter_api_key: &str,
     removed_profile_secret_ids: &[String],
     mut hooks: KeychainProfileRemovalStoreHooks<
         LoadPayload,
@@ -220,6 +223,7 @@ where
         schwab_client_secret,
         schwab_access_token,
         schwab_refresh_token,
+        openrouter_api_key,
     );
     let requires_removed_profile_cleanup = removed_profile_secret_ids
         .iter()
@@ -780,6 +784,7 @@ mod tests {
             "",
             "",
             "",
+            "",
             &[removed_profile.secret_id.clone()],
             KeychainProfileRemovalStoreHooks {
                 load_payload: || Ok(Some(SecretPayload::from_credentials(&[], "", ""))),
@@ -833,6 +838,7 @@ mod tests {
 
         let result = store_keychain_secrets_with_profile_removals_with(
             &[kept_profile, removed_profile.clone()],
+            "",
             "",
             "",
             "",

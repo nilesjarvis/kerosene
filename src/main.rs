@@ -61,6 +61,8 @@ mod market_update;
 mod market_views;
 mod message;
 mod notification_state;
+mod openrouter_api;
+mod openrouter_update;
 mod order_execution;
 mod order_pending_indicators;
 mod order_update;

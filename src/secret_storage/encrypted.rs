@@ -27,6 +27,7 @@ impl TradingTerminal {
             schwab_client_secret.as_str(),
             schwab_access_token.as_str(),
             schwab_refresh_token.as_str(),
+            &self.openrouter_api_key,
         )
     }
 
@@ -236,6 +237,16 @@ impl TradingTerminal {
         self.hyperdash_key_input = self.hyperdash_api_key.clone();
         if hyperdash_key_changed {
             self.bump_hyperdash_key_generation();
+        }
+        let previous_openrouter_key = Zeroizing::new(self.openrouter_api_key.trim().to_string());
+        let openrouter_key_changed =
+            previous_openrouter_key.as_str() != payload.global.openrouter_api_key.trim();
+        self.openrouter_api_key.zeroize();
+        self.openrouter_api_key = payload.global.openrouter_api_key.into();
+        self.openrouter_key_input.zeroize();
+        self.openrouter_key_input = self.openrouter_api_key.clone();
+        if openrouter_key_changed {
+            self.bump_openrouter_key_generation();
         }
         self.x_feed.set_oauth_credentials_from_secret(
             x_access_token.as_str(),

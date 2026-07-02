@@ -323,6 +323,13 @@ pub struct KeroseneConfig {
     #[serde(default)]
     #[serde(skip_serializing)]
     pub schwab_refresh_token: Zeroizing<String>,
+    /// OpenRouter API key for AI news and TradFi filing summaries.
+    #[serde(default)]
+    #[serde(skip_serializing)]
+    pub openrouter_api_key: Zeroizing<String>,
+    /// Default OpenRouter model slug for AI features; empty uses the auto router.
+    #[serde(default)]
+    pub openrouter_model: String,
     /// Sound notifications enabled.
     #[serde(default)]
     pub sound_enabled: bool,

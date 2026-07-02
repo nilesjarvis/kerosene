@@ -324,6 +324,15 @@ impl TradingTerminal {
             hyperdash_key_input: crate::app_state::sensitive_string(
                 cfg.hyperdash_api_key.trim().to_string(),
             ),
+            openrouter_api_key: crate::app_state::sensitive_string(
+                cfg.openrouter_api_key.trim().to_string(),
+            ),
+            openrouter_key_generation: 0,
+            openrouter_key_input: crate::app_state::sensitive_string(
+                cfg.openrouter_api_key.trim().to_string(),
+            ),
+            openrouter_key_status: None,
+            openrouter_model: cfg.openrouter_model.trim().to_string(),
             toasts: Vec::new(),
             next_toast_id: 0,
             toast_position: cfg.toast_position,

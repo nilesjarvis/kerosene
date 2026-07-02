@@ -115,6 +115,8 @@ pub struct GlobalSecretPayload {
     pub schwab_access_token: Zeroizing<String>,
     #[serde(default)]
     pub schwab_refresh_token: Zeroizing<String>,
+    #[serde(default)]
+    pub openrouter_api_key: Zeroizing<String>,
 }
 
 impl fmt::Debug for GlobalSecretPayload {
@@ -129,6 +131,7 @@ impl fmt::Debug for GlobalSecretPayload {
             .field("schwab_client_secret", &"<redacted>")
             .field("schwab_access_token", &"<redacted>")
             .field("schwab_refresh_token", &"<redacted>")
+            .field("openrouter_api_key", &"<redacted>")
             .finish()
     }
 }
@@ -205,6 +208,7 @@ impl SecretPayload {
             "",
             "",
             "",
+            "",
         )
     }
 
@@ -220,6 +224,7 @@ impl SecretPayload {
         schwab_client_secret: &str,
         schwab_access_token: &str,
         schwab_refresh_token: &str,
+        openrouter_api_key: &str,
     ) -> Self {
         Self {
             schema: SECRET_PAYLOAD_SCHEMA.to_string(),
@@ -244,6 +249,7 @@ impl SecretPayload {
                 schwab_client_secret: schwab_client_secret.to_string().into(),
                 schwab_access_token: schwab_access_token.to_string().into(),
                 schwab_refresh_token: schwab_refresh_token.to_string().into(),
+                openrouter_api_key: openrouter_api_key.to_string().into(),
             },
         }
     }
@@ -259,6 +265,7 @@ impl SecretPayload {
             && self.global.schwab_client_secret.trim().is_empty()
             && self.global.schwab_access_token.trim().is_empty()
             && self.global.schwab_refresh_token.trim().is_empty()
+            && self.global.openrouter_api_key.trim().is_empty()
     }
 
     #[cfg(test)]
@@ -345,6 +352,10 @@ impl SecretPayload {
 
     pub fn global_schwab_refresh_token(&self) -> &str {
         &self.global.schwab_refresh_token
+    }
+
+    pub fn global_openrouter_api_key(&self) -> &str {
+        &self.global.openrouter_api_key
     }
 
     #[cfg(test)]
@@ -499,6 +510,14 @@ impl SecretPayload {
             return false;
         }
         self.global.schwab_refresh_token = value.to_string().into();
+        true
+    }
+
+    pub fn set_global_openrouter_api_key(&mut self, value: &str) -> bool {
+        if self.global.openrouter_api_key.as_str() == value {
+            return false;
+        }
+        self.global.openrouter_api_key = value.to_string().into();
         true
     }
 }

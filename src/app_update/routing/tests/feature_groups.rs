@@ -47,6 +47,23 @@ fn alfred_screener_settings_and_window_routes_stay_on_feature_modules() {
 }
 
 #[test]
+fn openrouter_routes_stay_on_openrouter_module() {
+    assert_route(
+        Message::OpenRouterKeyInputChanged("sentinel-secret".into()),
+        UpdateRoute::OpenRouter,
+    );
+    assert_route(Message::SaveOpenRouterKey, UpdateRoute::OpenRouter);
+    assert_route(
+        Message::OpenRouterKeyChecked(0, Err("key check failed".to_string())),
+        UpdateRoute::OpenRouter,
+    );
+    assert_route(
+        Message::OpenRouterModelChanged("openrouter/auto".to_string()),
+        UpdateRoute::OpenRouter,
+    );
+}
+
+#[test]
 fn journal_spaghetti_and_wallet_tracker_routes_stay_on_feature_modules() {
     assert_route(Message::JournalRefresh, UpdateRoute::Journal);
     assert_route(

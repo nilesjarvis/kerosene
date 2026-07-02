@@ -195,6 +195,37 @@ impl TradingTerminal {
         self.hyperdash_key_generation == generation
     }
 
+    pub(crate) fn openrouter_api_key_for_task(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.openrouter_api_key.trim().to_string())
+    }
+
+    /// Whether AI features backed by OpenRouter can run.
+    #[allow(dead_code)] // availability check for upcoming AI components
+    pub(crate) fn openrouter_configured(&self) -> bool {
+        !self.openrouter_api_key.trim().is_empty()
+    }
+
+    /// Model slug AI components should request: the configured default model,
+    /// or OpenRouter's auto router when none is set.
+    #[allow(dead_code)] // model selection for upcoming AI components
+    pub(crate) fn openrouter_model_for_task(&self) -> String {
+        let model = self.openrouter_model.trim();
+        if model.is_empty() {
+            crate::openrouter_api::DEFAULT_OPENROUTER_MODEL.to_string()
+        } else {
+            model.to_string()
+        }
+    }
+
+    pub(crate) fn bump_openrouter_key_generation(&mut self) {
+        self.openrouter_key_generation = self.openrouter_key_generation.wrapping_add(1);
+        self.openrouter_key_status = None;
+    }
+
+    pub(crate) fn openrouter_key_generation_is_current(&self, generation: u64) -> bool {
+        self.openrouter_key_generation == generation
+    }
+
     pub(crate) fn invalidate_positioning_info_requests(&mut self) {
         self.positioning_info_pending.clear();
         for instance in self.positioning_infos.values_mut() {
@@ -470,6 +501,12 @@ pub(crate) struct TradingTerminal {
     pub(crate) hyperdash_api_key: SensitiveString,
     pub(crate) hyperdash_key_generation: u64,
     pub(crate) hyperdash_key_input: SensitiveString,
+    // OpenRouter API key and default model for AI summaries
+    pub(crate) openrouter_api_key: SensitiveString,
+    pub(crate) openrouter_key_generation: u64,
+    pub(crate) openrouter_key_input: SensitiveString,
+    pub(crate) openrouter_key_status: Option<(String, bool)>,
+    pub(crate) openrouter_model: String,
     // Toast notification queue
     pub(crate) toasts: Vec<Toast>,
     pub(crate) next_toast_id: u64,

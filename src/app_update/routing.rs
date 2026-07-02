@@ -18,6 +18,7 @@ pub(super) enum UpdateRoute {
     Journal,
     Layout,
     Market,
+    OpenRouter,
     Order,
     PaneInteractions,
     Panes,
@@ -652,6 +653,11 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleHeatmapOverlay(_)
         | Message::ChartHeatmapLoaded(_, _, _)
         | Message::RefreshHeatmap => UpdateRoute::Hyperdash,
+
+        Message::OpenRouterKeyInputChanged(_)
+        | Message::SaveOpenRouterKey
+        | Message::OpenRouterKeyChecked(_, _)
+        | Message::OpenRouterModelChanged(_) => UpdateRoute::OpenRouter,
     }
 }
 

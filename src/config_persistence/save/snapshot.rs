@@ -134,6 +134,8 @@ impl TradingTerminal {
             schwab_client_secret: String::new().into(),
             schwab_access_token: String::new().into(),
             schwab_refresh_token: String::new().into(),
+            openrouter_api_key: String::new().into(),
+            openrouter_model: self.openrouter_model.trim().to_string(),
             sound_enabled: layout_snapshot.sound_enabled,
             desktop_notifications: layout_snapshot.desktop_notifications,
             toast_position: self.toast_position,

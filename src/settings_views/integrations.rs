@@ -28,6 +28,16 @@ impl TradingTerminal {
         } else {
             current_theme.palette().success
         };
+        let openrouter_status = if self.openrouter_api_key.trim().is_empty() {
+            "Not configured"
+        } else {
+            "Configured"
+        };
+        let openrouter_status_color = if self.openrouter_api_key.trim().is_empty() {
+            current_theme.palette().danger
+        } else {
+            current_theme.palette().success
+        };
         let schwab_status = if self.schwab.has_access_token() {
             "Connected"
         } else if self.schwab.has_refresh_credentials() {
@@ -162,6 +172,69 @@ impl TradingTerminal {
                 text("Enables LIQ and HEAT on perp charts")
                     .size(11)
                     .color(current_theme.extended_palette().background.weak.text),
+            ]
+            .spacing(8),
+            rule::horizontal(1),
+            column![
+                row![
+                    text("OpenRouter")
+                        .size(14)
+                        .color(current_theme.palette().text)
+                        .width(Fill),
+                    text(openrouter_status)
+                        .size(12)
+                        .color(openrouter_status_color),
+                ]
+                .align_y(iced::Alignment::Center),
+                row![
+                    text_input("OpenRouter API key", &self.openrouter_key_input)
+                        .style(helpers::text_input_style)
+                        .on_input(|value| Message::OpenRouterKeyInputChanged(value.into()))
+                        .on_submit(Message::SaveOpenRouterKey)
+                        .secure(true)
+                        .size(12)
+                        .padding(6)
+                        .width(Fill),
+                    button(text("Save").size(12))
+                        .padding([6, 12])
+                        .on_press(Message::SaveOpenRouterKey),
+                ]
+                .spacing(8)
+                .align_y(iced::Alignment::Center),
+                row![
+                    text("Default model")
+                        .size(12)
+                        .color(current_theme.palette().text)
+                        .width(Fill),
+                    text_input(
+                        crate::openrouter_api::DEFAULT_OPENROUTER_MODEL,
+                        &self.openrouter_model
+                    )
+                    .style(helpers::text_input_style)
+                    .on_input(Message::OpenRouterModelChanged)
+                    .size(12)
+                    .padding(6)
+                    .width(Length::Fixed(240.0)),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+                text(
+                    self.openrouter_key_status
+                        .as_ref()
+                        .map(|(message, _)| message.as_str())
+                        .unwrap_or("Enables AI summaries for news and TradFi filings")
+                )
+                .size(11)
+                .color(
+                    self.openrouter_key_status
+                        .as_ref()
+                        .map(|(_, is_error)| if *is_error {
+                            current_theme.palette().danger
+                        } else {
+                            current_theme.extended_palette().background.weak.text
+                        })
+                        .unwrap_or(current_theme.extended_palette().background.weak.text)
+                ),
             ]
             .spacing(8),
             rule::horizontal(1),

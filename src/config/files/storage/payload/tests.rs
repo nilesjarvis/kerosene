@@ -143,6 +143,7 @@ fn apply_secret_payload_replaces_plaintext_and_clears_profile_integrations() {
         schwab_client_secret: "old-schwab-secret".to_string().into(),
         schwab_access_token: "old-schwab-access".to_string().into(),
         schwab_refresh_token: "old-schwab-refresh".to_string().into(),
+        openrouter_api_key: "old-openrouter".to_string().into(),
         ..KeroseneConfig::default()
     };
     let payload = SecretPayload::from_credentials_with_integrations(
@@ -156,6 +157,7 @@ fn apply_secret_payload_replaces_plaintext_and_clears_profile_integrations() {
         "new-schwab-secret",
         "new-schwab-access",
         "new-schwab-refresh",
+        "new-openrouter",
     );
 
     apply_secret_payload(&mut config, &payload);
@@ -173,6 +175,7 @@ fn apply_secret_payload_replaces_plaintext_and_clears_profile_integrations() {
     assert_eq!(config.schwab_client_secret.as_str(), "new-schwab-secret");
     assert_eq!(config.schwab_access_token.as_str(), "new-schwab-access");
     assert_eq!(config.schwab_refresh_token.as_str(), "new-schwab-refresh");
+    assert_eq!(config.openrouter_api_key.as_str(), "new-openrouter");
 }
 
 #[test]
@@ -235,6 +238,7 @@ fn apply_secret_payload_preserving_plaintext_only_replaces_present_schwab_creden
         "stored-schwab-secret",
         "stored-schwab-access",
         "stored-schwab-refresh",
+        "",
     );
     apply_secret_payload_preserving_missing_plaintext(&mut config, &stored_payload);
 
@@ -245,6 +249,36 @@ fn apply_secret_payload_preserving_plaintext_only_replaces_present_schwab_creden
         config.schwab_refresh_token.as_str(),
         "stored-schwab-refresh"
     );
+}
+
+#[test]
+fn apply_secret_payload_preserving_plaintext_only_replaces_present_openrouter_key() {
+    let mut config = KeroseneConfig {
+        openrouter_api_key: "old-openrouter".to_string().into(),
+        ..KeroseneConfig::default()
+    };
+    let empty_payload = SecretPayload::from_credentials(&[], "", "");
+
+    apply_secret_payload_preserving_missing_plaintext(&mut config, &empty_payload);
+
+    assert_eq!(config.openrouter_api_key.as_str(), "old-openrouter");
+
+    let stored_payload = SecretPayload::from_credentials_with_integrations(
+        &[],
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "stored-openrouter",
+    );
+    apply_secret_payload_preserving_missing_plaintext(&mut config, &stored_payload);
+
+    assert_eq!(config.openrouter_api_key.as_str(), "stored-openrouter");
 }
 
 #[test]

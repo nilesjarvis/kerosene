@@ -22,6 +22,7 @@ use crate::market_state::{
     LiveWatchlistId, OrderBookDisplayMode, OrderBookId, OrderBookSymbolMode,
     SymbolSearchMarketFilter, SymbolSearchSortMode,
 };
+use crate::openrouter_api::OpenRouterKeyStatus;
 use crate::order_execution::{
     AdvancedOrderStartSnapshot, HudOrderRequest, OneShotPlacementContext,
     OrderLeverageSubmissionSnapshot, PendingLeverageUpdateContext, QuickOrderRecovery,
@@ -1481,6 +1482,11 @@ pub(crate) enum Message {
     ToggleHeatmapOverlay(ChartId),
     ChartHeatmapLoaded(String, u64, Box<Result<LiquidationHeatmap, String>>),
     RefreshHeatmap,
+    // OpenRouter AI integration
+    OpenRouterKeyInputChanged(SecretInput),
+    SaveOpenRouterKey,
+    OpenRouterKeyChecked(u64, Result<OpenRouterKeyStatus, String>),
+    OpenRouterModelChanged(String),
 }
 
 #[cfg(test)]

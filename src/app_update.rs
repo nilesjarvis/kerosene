@@ -33,6 +33,7 @@ impl TradingTerminal {
             UpdateRoute::Account => self.update_account(message),
             UpdateRoute::Feed => self.update_feed(message),
             UpdateRoute::Hyperdash => self.update_hyperdash(message),
+            UpdateRoute::OpenRouter => self.update_openrouter(message),
         }
     }
 }

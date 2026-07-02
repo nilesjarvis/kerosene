@@ -59,6 +59,8 @@ impl TradingTerminal {
                     schwab_access_token,
                     schwab_refresh_token,
                 ) = self.schwab.oauth_credentials_for_secret();
+                let openrouter_api_key =
+                    Zeroizing::new(self.openrouter_api_key.as_str().to_string());
                 self.apply_os_keychain_storage_selection_with(
                     config::save_config,
                     move |profiles,
@@ -78,6 +80,7 @@ impl TradingTerminal {
                             schwab_client_secret.as_str(),
                             schwab_access_token.as_str(),
                             schwab_refresh_token.as_str(),
+                            openrouter_api_key.as_str(),
                             &[],
                         )
                     },
