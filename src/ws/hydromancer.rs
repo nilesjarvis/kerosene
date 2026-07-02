@@ -121,12 +121,16 @@ const HYDROMANCER_LATENCY_PROBE_INTERVAL: Duration = Duration::from_secs(30);
 #[cfg(test)]
 const HYDROMANCER_LATENCY_PROBE_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Performs a lightweight `ping` against the Hydromancer REST API and records
-/// the round-trip latency into ws telemetry. Scheduled by the subscription
-/// layer while Hydromancer is the active read data provider.
+/// Performs a lightweight `exchangeStatus` request against the Hydromancer REST
+/// API and records the round-trip latency into ws telemetry. Scheduled by the
+/// subscription layer while a Hydromancer API key is configured.
+fn hydromancer_api_latency_probe_payload() -> serde_json::Value {
+    serde_json::json!({ "type": "exchangeStatus" })
+}
+
 async fn update_hydromancer_api_latency_once(api_key: Zeroizing<String>) {
     let start_time = now_ms();
-    let payload = serde_json::json!({ "type": "ping" });
+    let payload = hydromancer_api_latency_probe_payload();
     if let Ok(resp) = CLIENT
         .clone()
         .post(HYDROMANCER_API_URL)
@@ -141,10 +145,10 @@ async fn update_hydromancer_api_latency_once(api_key: Zeroizing<String>) {
     }
 }
 
-/// Subscription recipe: periodically probes Hydromancer REST latency while the
-/// Hydromancer read data provider is selected. Yields `Message::NoOp` after
-/// each probe; the status bar ticks every second and re-reads telemetry, so
-/// the updated latency surfaces without a dedicated message.
+/// Subscription recipe: periodically probes Hydromancer REST latency while a
+/// Hydromancer API key is configured. Yields `Message::NoOp` after each probe;
+/// the status bar ticks every second and re-reads telemetry, so the updated
+/// latency surfaces without a dedicated message.
 pub fn ws_hydromancer_api_latency_probe(stream_key: &HydromancerStreamKey) -> WsStream<Message> {
     let api_key = stream_key.api_key_for_task();
     Box::pin(iced::stream::channel(1, async move |mut output| {
@@ -278,6 +282,14 @@ mod tests {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         hasher.finish()
+    }
+
+    #[test]
+    fn hydromancer_api_latency_probe_uses_exchange_status_health_check() {
+        assert_eq!(
+            hydromancer_api_latency_probe_payload(),
+            serde_json::json!({ "type": "exchangeStatus" })
+        );
     }
 
     #[test]

@@ -82,13 +82,35 @@ impl TradingTerminal {
             }
         }
 
-        if let Some(api_key) = self.hydromancer_read_provider_key() {
-            let stream_key =
-                HydromancerStreamKey::from_zeroizing(api_key, self.hydromancer_key_generation);
-            subs.push(Subscription::run_with(
-                stream_key,
-                crate::ws::ws_hydromancer_api_latency_probe,
-            ));
-        }
+        subs.push(Subscription::run_with(
+            hydromancer_key,
+            crate::ws::ws_hydromancer_api_latency_probe,
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hydromancer_api_latency_probe_requires_configured_key() {
+        let terminal = TradingTerminal::boot().0;
+        let mut subscriptions = Vec::new();
+
+        terminal.push_hydromancer_subscriptions(&mut subscriptions);
+
+        assert!(subscriptions.is_empty());
+    }
+
+    #[test]
+    fn hydromancer_api_latency_probe_runs_when_key_configured_without_read_provider() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.hydromancer_api_key = "hydro-key".to_string().into();
+        let mut subscriptions = Vec::new();
+
+        terminal.push_hydromancer_subscriptions(&mut subscriptions);
+
+        assert_eq!(subscriptions.len(), 1);
     }
 }

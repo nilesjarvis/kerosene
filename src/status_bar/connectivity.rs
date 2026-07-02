@@ -147,7 +147,10 @@ impl TradingTerminal {
             .color(theme.palette().primary),
         );
 
-        let row = if self.read_data_provider == ReadDataProvider::Hydromancer {
+        let row = if should_show_hydromancer_api_latency_label(
+            self.read_data_provider,
+            self.hydromancer_api_key.trim(),
+        ) {
             push_status_gap(row, separated).push(
                 text(format_hydromancer_api_latency_label(
                     ws_stats.hydromancer_api_latency_ms,
@@ -209,6 +212,13 @@ fn format_api_latency_label(
     }
 }
 
+fn should_show_hydromancer_api_latency_label(
+    provider: ReadDataProvider,
+    hydromancer_api_key: &str,
+) -> bool {
+    provider == ReadDataProvider::Hydromancer || !hydromancer_api_key.trim().is_empty()
+}
+
 fn format_hydromancer_api_latency_label(
     api_latency_ms: u64,
     api_last_success_ms: u64,
@@ -229,6 +239,7 @@ fn format_hydromancer_api_latency_label(
 mod tests {
     use super::{
         API_LATENCY_STALE_AFTER_MS, format_api_latency_label, format_hydromancer_api_latency_label,
+        should_show_hydromancer_api_latency_label,
     };
 
     #[test]
@@ -257,6 +268,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn hydromancer_api_latency_label_visibility_matches_provider_or_key() {
+        assert!(!should_show_hydromancer_api_latency_label(
+            crate::config::ReadDataProvider::Hyperliquid,
+            ""
+        ));
+        assert!(should_show_hydromancer_api_latency_label(
+            crate::config::ReadDataProvider::Hydromancer,
+            ""
+        ));
+        assert!(should_show_hydromancer_api_latency_label(
+            crate::config::ReadDataProvider::Hyperliquid,
+            " hydro-key "
+        ));
+    }
     #[test]
     fn hydromancer_api_latency_label_shows_fresh_probe_latency() {
         assert_eq!(
