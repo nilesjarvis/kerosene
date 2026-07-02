@@ -6,10 +6,11 @@ use iced::{Color, Point, Size};
 // ---------------------------------------------------------------------------
 
 const MAX_BARREL_COEFFICIENT: f32 = 0.18;
-const MAX_CHROMATIC_SHIFT_PX: f32 = 3.2;
+const MAX_CHROMATIC_SHIFT_PX: f32 = 7.0;
 const MAX_EDGE_BLUR_SHIFT_PX: f32 = 4.8;
-const CHROMATIC_STROKE_ALPHA: f32 = 0.28;
-const CHROMATIC_FILL_ALPHA: f32 = 0.14;
+const CHROMATIC_STROKE_ALPHA: f32 = 0.55;
+const CHROMATIC_FILL_ALPHA: f32 = 0.34;
+const CHROMATIC_ALPHA_CEILING: f32 = 0.6;
 const EDGE_BLUR_STROKE_ALPHA: f32 = 0.16;
 const EDGE_BLUR_FILL_ALPHA: f32 = 0.10;
 const LINE_SAMPLE_PX: f32 = 18.0;
@@ -1161,7 +1162,7 @@ impl ChartFisheye {
 
         let radius = self.normalized_radius(point);
         let shift =
-            direction_sign * self.chromatic_strength * MAX_CHROMATIC_SHIFT_PX * radius.powf(1.35);
+            direction_sign * self.chromatic_strength * MAX_CHROMATIC_SHIFT_PX * radius.powf(1.2);
         self.clamp_projected_point(Point::new(
             point.x + dx / len * shift,
             point.y + dy / len * shift,
@@ -1206,21 +1207,26 @@ impl ChartFisheye {
         // Real lateral chromatic aberration separates the source's own color
         // channels, so each fringe carries only its channel and fades with the
         // energy the source has in it (a pure-green candle shows no red fringe).
+        // Channel values are sqrt-boosted: the isolated channel reads dimmer
+        // than the composite color, so partial channels need brightening to
+        // stay visible without reintroducing fringes the source can't produce.
         let alpha = |channel_energy: f32| {
-            (source.a * alpha_scale * self.chromatic_strength * channel_energy).clamp(0.0, 0.38)
+            (source.a * alpha_scale * self.chromatic_strength * channel_energy.max(0.0).sqrt())
+                .clamp(0.0, CHROMATIC_ALPHA_CEILING)
         };
+        let boost = |value: f32| value.max(0.0).sqrt();
         match channel {
             ChromaticChannel::Main => source,
             ChromaticChannel::Red => Color {
-                r: source.r,
+                r: boost(source.r),
                 g: 0.0,
                 b: 0.0,
                 a: alpha(source.r),
             },
             ChromaticChannel::Cyan => Color {
                 r: 0.0,
-                g: source.g,
-                b: source.b,
+                g: boost(source.g),
+                b: boost(source.b),
                 a: alpha(source.g.max(source.b)),
             },
         }
@@ -1455,7 +1461,7 @@ fn stroke_color(stroke: &canvas::Stroke<'_>) -> Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChartFisheye, ChromaticChannel};
+    use super::{CHROMATIC_STROKE_ALPHA, ChartFisheye, ChromaticChannel};
     use iced::{Color, Point, Size};
 
     #[test]
@@ -1499,12 +1505,25 @@ mod tests {
         let source = Color::from_rgb(0.9, 0.6, 0.3);
 
         let red = lens.chromatic_color(source, ChromaticChannel::Red, 1.0);
-        assert_eq!((red.r, red.g, red.b), (source.r, 0.0, 0.0));
-        assert!(red.a > 0.0);
+        assert_eq!((red.g, red.b), (0.0, 0.0));
+        assert!(red.r >= source.r && red.a > 0.0);
 
         let cyan = lens.chromatic_color(source, ChromaticChannel::Cyan, 1.0);
-        assert_eq!((cyan.r, cyan.g, cyan.b), (0.0, source.g, source.b));
-        assert!(cyan.a > 0.0);
+        assert_eq!(cyan.r, 0.0);
+        assert!(cyan.g >= source.g && cyan.b >= source.b && cyan.a > 0.0);
+    }
+
+    #[test]
+    fn max_strength_chromatic_fringe_stays_prominent() {
+        let lens = ChartFisheye::new(false, 1.0, 800.0, 400.0).with_chromatic(true, 1.0);
+
+        let white_stroke =
+            lens.chromatic_color(Color::WHITE, ChromaticChannel::Red, CHROMATIC_STROKE_ALPHA);
+        assert!(white_stroke.a >= 0.4);
+
+        let near_edge = Point::new(780.0, 200.0);
+        let shift = (lens.chromatic_point(near_edge, 1.0).x - near_edge.x).abs();
+        assert!(shift >= 5.0);
     }
 
     #[test]
