@@ -2,6 +2,7 @@ mod axes;
 mod candles;
 mod earnings;
 mod funding;
+mod leledc;
 mod line_series;
 mod liquidity;
 mod secondary_series;
@@ -116,6 +117,7 @@ impl CandlestickChart {
                     };
                     self.draw_macro_moving_averages(&mut moving_average_layer);
 
+                    self.draw_leledc_overlay(ctx, frame);
                     self.draw_secondary_series(ctx, frame);
                     self.draw_liquidation_bucket_bars(ctx, frame);
                 });

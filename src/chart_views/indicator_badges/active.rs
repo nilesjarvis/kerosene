@@ -23,6 +23,8 @@ enum IndicatorColorRole {
     Funding,
     Sessions,
     VolumeProfile,
+    LeledcArrows,
+    LeledcLevels,
 }
 
 impl IndicatorColorRole {
@@ -34,9 +36,10 @@ impl IndicatorColorRole {
             Self::Slow => extended.primary.base.color,
             Self::WeeklyFast => extended.success.base.color,
             Self::WeeklySlow | Self::Funding => extended.secondary.strong.color,
-            Self::Monthly => extended.danger.base.color,
+            Self::Monthly | Self::LeledcArrows => extended.danger.base.color,
             Self::Sessions => extended.warning.base.color,
             Self::VolumeProfile => theme.palette().primary,
+            Self::LeledcLevels => extended.success.base.color,
         }
     }
 }
@@ -214,6 +217,22 @@ pub(in crate::chart_views::indicator_badges) fn active_chart_indicators(
         "Vol Profile",
         "show_volume_profile",
         IndicatorColorRole::VolumeProfile,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.show_leledc_arrows,
+        "Leledc Arrows",
+        "show_leledc_arrows",
+        IndicatorColorRole::LeledcArrows,
+        theme,
+    );
+    push_indicator(
+        &mut active,
+        indicators.show_leledc_levels,
+        "Leledc Levels",
+        "show_leledc_levels",
+        IndicatorColorRole::LeledcLevels,
         theme,
     );
 

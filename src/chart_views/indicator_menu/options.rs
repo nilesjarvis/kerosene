@@ -148,6 +148,21 @@ pub(super) fn volume_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOp
     }]
 }
 
+pub(super) fn leledc_options(indicators: &MacroIndicatorsConfig) -> [IndicatorOption; 2] {
+    [
+        IndicatorOption {
+            label: "Arrows",
+            key: "show_leledc_arrows",
+            checked: indicators.show_leledc_arrows,
+        },
+        IndicatorOption {
+            label: "Levels",
+            key: "show_leledc_levels",
+            checked: indicators.show_leledc_levels,
+        },
+    ]
+}
+
 #[cfg(test)]
 pub(super) fn all_indicator_options(indicators: &MacroIndicatorsConfig) -> Vec<IndicatorOption> {
     let mut options = Vec::new();
@@ -158,5 +173,6 @@ pub(super) fn all_indicator_options(indicators: &MacroIndicatorsConfig) -> Vec<I
     options.extend(monthly_options(indicators));
     options.extend(footer_options(indicators));
     options.extend(volume_options(indicators));
+    options.extend(leledc_options(indicators));
     options
 }

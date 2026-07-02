@@ -47,6 +47,10 @@ pub struct MacroIndicatorsConfig {
     pub show_session_indicator: bool,
     #[serde(default)]
     pub show_volume_profile: bool,
+    #[serde(default)]
+    pub show_leledc_arrows: bool,
+    #[serde(default)]
+    pub show_leledc_levels: bool,
     #[serde(default = "default_true")]
     pub show_labels: bool,
 }
@@ -75,6 +79,8 @@ impl Default for MacroIndicatorsConfig {
             show_funding_rate: false,
             show_session_indicator: false,
             show_volume_profile: false,
+            show_leledc_arrows: false,
+            show_leledc_levels: false,
             show_labels: true,
         }
     }

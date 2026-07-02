@@ -9,6 +9,8 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         sma_50h: true,
         show_volume_profile: true,
         show_session_indicator: true,
+        show_leledc_arrows: true,
+        show_leledc_levels: true,
         ..MacroIndicatorsConfig::default()
     };
     let config = KeroseneConfig {
@@ -48,6 +50,8 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
     assert!(decoded.charts[0].macro_indicators.sma_50h);
     assert!(decoded.charts[0].macro_indicators.show_volume_profile);
     assert!(decoded.charts[0].macro_indicators.show_session_indicator);
+    assert!(decoded.charts[0].macro_indicators.show_leledc_arrows);
+    assert!(decoded.charts[0].macro_indicators.show_leledc_levels);
 
     let mut legacy_chart = json_value(&config.charts[0], "chart serializes");
     object_mut(&mut legacy_chart, "chart config is an object").remove("secondary_symbol");
@@ -147,4 +151,17 @@ fn chart_trade_marker_toggle_round_trips_and_legacy_defaults_off() {
         value_from_json(legacy_macro, "legacy macro indicators should deserialize");
 
     assert!(!decoded_macro.sma_50h);
+
+    let mut legacy_macro = json_value(
+        &config.charts[0].macro_indicators,
+        "macro indicators serialize",
+    );
+    let legacy_macro_object = object_mut(&mut legacy_macro, "macro indicators config is an object");
+    legacy_macro_object.remove("show_leledc_arrows");
+    legacy_macro_object.remove("show_leledc_levels");
+    let decoded_macro: MacroIndicatorsConfig =
+        value_from_json(legacy_macro, "legacy macro indicators should deserialize");
+
+    assert!(!decoded_macro.show_leledc_arrows);
+    assert!(!decoded_macro.show_leledc_levels);
 }

@@ -11,6 +11,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
         show_session_indicator: true,
         show_labels: false,
         show_volume_profile: true,
+        show_leledc_levels: true,
         ..MacroIndicatorsConfig::default()
     };
 
@@ -41,6 +42,8 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "show_session_indicator",
             "show_labels",
             "show_volume_profile",
+            "show_leledc_arrows",
+            "show_leledc_levels",
         ]
     );
 
@@ -58,6 +61,7 @@ fn indicator_menu_options_preserve_keys_and_checked_states() {
             "show_funding_rate",
             "show_session_indicator",
             "show_volume_profile",
+            "show_leledc_levels",
         ]
     );
 }
