@@ -85,7 +85,7 @@ impl TradingTerminal {
             .push(separator())
             .push(indicator_group(
                 chart_id,
-                "EXH",
+                "LELEDC",
                 leledc_options(indicator_options),
             ));
 

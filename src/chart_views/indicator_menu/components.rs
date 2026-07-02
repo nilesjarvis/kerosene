@@ -9,6 +9,9 @@ use iced::{Alignment, Color, Element, Fill, Length, Theme};
 // Indicator Menu Components
 // ---------------------------------------------------------------------------
 
+/// Wide enough for the longest group label ("LELEDC") at size-10 monospace.
+const GROUP_LABEL_WIDTH: f32 = 42.0;
+
 pub(super) fn indicator_group<const N: usize>(
     chart_id: ChartId,
     label: &'static str,
@@ -46,7 +49,7 @@ pub(super) fn indicator_footer<const N: usize>(
         option_row = option_row.push(indicator_checkbox(chart_id, option));
     }
 
-    row![Space::new().width(24.0), option_row]
+    row![Space::new().width(GROUP_LABEL_WIDTH), option_row]
         .spacing(6)
         .align_y(Alignment::Center)
         .width(Fill)
@@ -58,7 +61,7 @@ pub(super) fn indicator_group_label(label: &'static str) -> Element<'static, Mes
         .size(10)
         .font(crate::app_fonts::monospace_font())
         .color(Color::from_rgb8(0x88, 0x88, 0x88))
-        .width(24.0)
+        .width(GROUP_LABEL_WIDTH)
         .into()
 }
 
