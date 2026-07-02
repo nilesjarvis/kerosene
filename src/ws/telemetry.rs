@@ -19,6 +19,8 @@ pub struct WsTelemetrySnapshot {
     pub ws_latency_ms: u64,
     pub api_latency_ms: u64,
     pub api_last_success_ms: u64,
+    pub hydromancer_api_latency_ms: u64,
+    pub hydromancer_api_last_success_ms: u64,
 }
 
 #[derive(Debug, Default)]
@@ -33,6 +35,8 @@ struct WsTelemetry {
     ws_latency_ms: AtomicU64,
     api_latency_ms: AtomicU64,
     api_last_success_ms: AtomicU64,
+    hydromancer_api_latency_ms: AtomicU64,
+    hydromancer_api_last_success_ms: AtomicU64,
 }
 
 static WS_TELEMETRY: OnceLock<WsTelemetry> = OnceLock::new();
@@ -135,6 +139,16 @@ pub(super) fn telemetry_update_api_latency(latency: u64) {
         .store(now_ms, Ordering::Relaxed);
 }
 
+pub(super) fn telemetry_update_hydromancer_api_latency(latency: u64) {
+    let now_ms = now_ms();
+    ws_telemetry()
+        .hydromancer_api_latency_ms
+        .store(latency, Ordering::Relaxed);
+    ws_telemetry()
+        .hydromancer_api_last_success_ms
+        .store(now_ms, Ordering::Relaxed);
+}
+
 pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
     let t = ws_telemetry();
     let exchange_open_connections = t.exchange_open_connections.load(Ordering::Relaxed);
@@ -152,6 +166,8 @@ pub fn telemetry_snapshot() -> WsTelemetrySnapshot {
         ws_latency_ms: t.ws_latency_ms.load(Ordering::Relaxed),
         api_latency_ms: t.api_latency_ms.load(Ordering::Relaxed),
         api_last_success_ms: t.api_last_success_ms.load(Ordering::Relaxed),
+        hydromancer_api_latency_ms: t.hydromancer_api_latency_ms.load(Ordering::Relaxed),
+        hydromancer_api_last_success_ms: t.hydromancer_api_last_success_ms.load(Ordering::Relaxed),
     }
 }
 
@@ -204,5 +220,16 @@ mod tests {
         let snapshot = telemetry_snapshot();
         assert_eq!(snapshot.api_latency_ms, 123);
         assert!(snapshot.api_last_success_ms >= before);
+    }
+
+    #[test]
+    fn hydromancer_api_latency_update_records_success_timestamp() {
+        let before = now_ms();
+
+        telemetry_update_hydromancer_api_latency(77);
+
+        let snapshot = telemetry_snapshot();
+        assert_eq!(snapshot.hydromancer_api_latency_ms, 77);
+        assert!(snapshot.hydromancer_api_last_success_ms >= before);
     }
 }

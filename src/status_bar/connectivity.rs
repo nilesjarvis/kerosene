@@ -6,6 +6,7 @@ use self::widgets::{
 };
 
 use crate::app_state::TradingTerminal;
+use crate::config::ReadDataProvider;
 use crate::helpers;
 use crate::message::Message;
 use crate::ws;
@@ -72,7 +73,7 @@ impl TradingTerminal {
             && ws_stats.exchange_last_rx_ms > 0
             && now_ms.saturating_sub(ws_stats.exchange_last_rx_ms) <= 5_000;
         let (ws_label, ws_color) = if ws_live {
-            ("EXCH LIVE", theme.palette().success)
+            ("LIVE", theme.palette().success)
         } else if ws_stats.exchange_open_connections > 0 {
             ("EXCH STALE", theme.palette().primary)
         } else {
@@ -135,7 +136,7 @@ impl TradingTerminal {
             .color(theme.palette().primary),
         );
 
-        push_status_gap(row, separated).push(
+        let row = push_status_gap(row, separated).push(
             text(format_api_latency_label(
                 ws_stats.exchange_open_connections,
                 ws_stats.api_latency_ms,
@@ -144,7 +145,23 @@ impl TradingTerminal {
             ))
             .size(10)
             .color(theme.palette().primary),
-        )
+        );
+
+        let row = if self.read_data_provider == ReadDataProvider::Hydromancer {
+            push_status_gap(row, separated).push(
+                text(format_hydromancer_api_latency_label(
+                    ws_stats.hydromancer_api_latency_ms,
+                    ws_stats.hydromancer_api_last_success_ms,
+                    now_ms,
+                ))
+                .size(10)
+                .color(theme.palette().primary),
+            )
+        } else {
+            row
+        };
+
+        row
     }
 
     fn status_right_row(&self, separated: bool) -> Row<'static, Message> {
@@ -192,9 +209,27 @@ fn format_api_latency_label(
     }
 }
 
+fn format_hydromancer_api_latency_label(
+    api_latency_ms: u64,
+    api_last_success_ms: u64,
+    now_ms: u64,
+) -> String {
+    if api_latency_ms == 0 || api_last_success_ms == 0 {
+        return "HYDRO: --ms".to_string();
+    }
+
+    if now_ms.saturating_sub(api_last_success_ms) > API_LATENCY_STALE_AFTER_MS {
+        "HYDRO STALE".to_string()
+    } else {
+        format!("HYDRO: {api_latency_ms}ms")
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{API_LATENCY_STALE_AFTER_MS, format_api_latency_label};
+    use super::{
+        API_LATENCY_STALE_AFTER_MS, format_api_latency_label, format_hydromancer_api_latency_label,
+    };
 
     #[test]
     fn api_latency_label_shows_fresh_probe_latency() {
@@ -219,6 +254,30 @@ mod tests {
         assert_eq!(
             format_api_latency_label(1, 42, 1_000, 1_001 + API_LATENCY_STALE_AFTER_MS),
             "API STALE"
+        );
+    }
+
+    #[test]
+    fn hydromancer_api_latency_label_shows_fresh_probe_latency() {
+        assert_eq!(
+            format_hydromancer_api_latency_label(42, 1_000, 1_000 + API_LATENCY_STALE_AFTER_MS),
+            "HYDRO: 42ms"
+        );
+    }
+
+    #[test]
+    fn hydromancer_api_latency_label_hides_missing_probe_latency() {
+        assert_eq!(
+            format_hydromancer_api_latency_label(0, 0, 1_100),
+            "HYDRO: --ms"
+        );
+    }
+
+    #[test]
+    fn hydromancer_api_latency_label_marks_old_probe_stale() {
+        assert_eq!(
+            format_hydromancer_api_latency_label(42, 1_000, 1_001 + API_LATENCY_STALE_AFTER_MS),
+            "HYDRO STALE"
         );
     }
 }

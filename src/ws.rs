@@ -22,10 +22,11 @@ pub(crate) use telemetry::{
 pub(crate) use hydromancer::hydromancer_manager_reconnect_sent_for_test;
 pub use hydromancer::{
     HydromancerStreamKey, HydromancerWsMessage, LiquidationEvent, TrackedTradeEvent,
-    evict_hydromancer_manager, reconnect_hydromancer, ws_hydromancer_asset_ctx_stream_keyed,
-    ws_hydromancer_asset_ctx_stream_symbol, ws_hydromancer_book_stream_keyed_events,
-    ws_hydromancer_candle_stream_keyed, ws_hydromancer_liquidations,
-    ws_hydromancer_spaghetti_candle_stream, ws_hydromancer_tracked_trades,
+    evict_hydromancer_manager, reconnect_hydromancer, ws_hydromancer_api_latency_probe,
+    ws_hydromancer_asset_ctx_stream_keyed, ws_hydromancer_asset_ctx_stream_symbol,
+    ws_hydromancer_book_stream_keyed_events, ws_hydromancer_candle_stream_keyed,
+    ws_hydromancer_liquidations, ws_hydromancer_spaghetti_candle_stream,
+    ws_hydromancer_tracked_trades,
 };
 pub use market_streams::{
     KeyedAssetContextStreamEvent, KeyedBookStreamEvent, KeyedCandleStreamEvent,

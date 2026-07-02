@@ -81,5 +81,14 @@ impl TradingTerminal {
                 );
             }
         }
+
+        if let Some(api_key) = self.hydromancer_read_provider_key() {
+            let stream_key =
+                HydromancerStreamKey::from_zeroizing(api_key, self.hydromancer_key_generation);
+            subs.push(Subscription::run_with(
+                stream_key,
+                crate::ws::ws_hydromancer_api_latency_probe,
+            ));
+        }
     }
 }

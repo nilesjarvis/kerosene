@@ -5,6 +5,12 @@ mod parsing;
 mod recent;
 mod tracked_trades;
 
+use super::WsStream;
+use super::telemetry::{now_ms, telemetry_update_hydromancer_api_latency};
+use crate::api::CLIENT;
+use crate::hydromancer_api::HYDROMANCER_API_URL;
+use crate::message::Message;
+use futures::SinkExt as _;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
 use std::future::Future;
@@ -104,6 +110,52 @@ where
         tokio::time::sleep(pause).await;
     }
     true
+}
+
+// ---------------------------------------------------------------------------
+// Hydromancer REST Latency Probe
+// ---------------------------------------------------------------------------
+
+#[cfg(not(test))]
+const HYDROMANCER_LATENCY_PROBE_INTERVAL: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const HYDROMANCER_LATENCY_PROBE_INTERVAL: Duration = Duration::from_millis(50);
+
+/// Performs a lightweight `ping` against the Hydromancer REST API and records
+/// the round-trip latency into ws telemetry. Scheduled by the subscription
+/// layer while Hydromancer is the active read data provider.
+async fn update_hydromancer_api_latency_once(api_key: Zeroizing<String>) {
+    let start_time = now_ms();
+    let payload = serde_json::json!({ "type": "ping" });
+    if let Ok(resp) = CLIENT
+        .clone()
+        .post(HYDROMANCER_API_URL)
+        .bearer_auth(api_key.trim())
+        .json(&payload)
+        .send()
+        .await
+        && resp.status().is_success()
+    {
+        let latency = now_ms().saturating_sub(start_time);
+        telemetry_update_hydromancer_api_latency(latency);
+    }
+}
+
+/// Subscription recipe: periodically probes Hydromancer REST latency while the
+/// Hydromancer read data provider is selected. Yields `Message::NoOp` after
+/// each probe; the status bar ticks every second and re-reads telemetry, so
+/// the updated latency surfaces without a dedicated message.
+pub fn ws_hydromancer_api_latency_probe(stream_key: &HydromancerStreamKey) -> WsStream<Message> {
+    let api_key = stream_key.api_key_for_task();
+    Box::pin(iced::stream::channel(1, async move |mut output| {
+        loop {
+            update_hydromancer_api_latency_once(api_key.clone()).await;
+            if output.send(Message::NoOp).await.is_err() {
+                return;
+            }
+            tokio::time::sleep(HYDROMANCER_LATENCY_PROBE_INTERVAL).await;
+        }
+    }))
 }
 
 #[derive(Clone)]
