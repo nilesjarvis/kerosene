@@ -29,7 +29,7 @@ impl TradingTerminal {
         );
         instance
             .canvas
-            .set_gradient_background(self.chart_gradient_background);
+            .set_gradient_background(self.chart_gradient_background, self.chart_gradient_contrast);
         instance
             .canvas
             .set_hollow_candle_mode(self.chart_hollow_candle_mode);

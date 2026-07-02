@@ -70,6 +70,8 @@ pub struct SpaghettiCanvas {
     pub(crate) dotted_background_opacity: f32,
     /// Whether chart plot backgrounds use a theme-aware gradient.
     pub(crate) gradient_background: bool,
+    /// Tint contrast for the gradient chart background.
+    pub(crate) gradient_contrast: f32,
     /// Which pair-ratio candle bodies render hollow instead of filled.
     pub(crate) hollow_candle_mode: crate::config::ChartHollowCandleMode,
     /// Reticle style used for the chart crosshair.
@@ -99,6 +101,7 @@ impl SpaghettiCanvas {
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
             gradient_background: false,
+            gradient_contrast: crate::config::default_chart_gradient_contrast(),
             hollow_candle_mode: Default::default(),
             crosshair_style: Default::default(),
             crosshair_guides_enabled: true,
@@ -159,9 +162,13 @@ impl SpaghettiCanvas {
         }
     }
 
-    pub(crate) fn set_gradient_background(&mut self, enabled: bool) {
-        if self.gradient_background != enabled {
+    pub(crate) fn set_gradient_background(&mut self, enabled: bool, contrast: f32) {
+        let contrast = crate::config::normalize_chart_gradient_contrast(contrast);
+        if self.gradient_background != enabled
+            || (self.gradient_contrast - contrast).abs() > f32::EPSILON
+        {
             self.gradient_background = enabled;
+            self.gradient_contrast = contrast;
             self.cache.clear();
         }
     }

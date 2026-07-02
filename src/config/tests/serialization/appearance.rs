@@ -9,8 +9,8 @@ use crate::config::{
     WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig, default_alfred_popup_scale,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
-    default_chart_fisheye_strength, default_pane_border_thickness, default_pane_corner_radius,
-    default_ui_scale, default_widget_padding,
+    default_chart_fisheye_strength, default_chart_gradient_contrast, default_pane_border_thickness,
+    default_pane_corner_radius, default_ui_scale, default_widget_padding,
 };
 
 mod chrome;

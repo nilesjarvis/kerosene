@@ -6,9 +6,10 @@ use crate::config::{
     default_market_slippage_pct, new_secret_id, normalize_alfred_popup_scale,
     normalize_chart_chromatic_aberration_strength, normalize_chart_dotted_background_opacity,
     normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
-    normalize_chart_hud_order_sound_volume, normalize_market_slippage_pct,
-    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_pane_split_ratio,
-    normalize_ui_scale, prune_legacy_unsupported_pane_layout, push_config_warning,
+    normalize_chart_gradient_contrast, normalize_chart_hud_order_sound_volume,
+    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
+    normalize_pane_split_ratio, normalize_ui_scale, prune_legacy_unsupported_pane_layout,
+    push_config_warning,
 };
 use std::collections::{BTreeSet, HashSet};
 use zeroize::Zeroize;
@@ -79,6 +80,8 @@ fn normalize_pane_chrome(config: &mut KeroseneConfig) {
     config.chart_hollow_candles = false;
     config.chart_dotted_background_opacity =
         normalize_chart_dotted_background_opacity(config.chart_dotted_background_opacity);
+    config.chart_gradient_contrast =
+        normalize_chart_gradient_contrast(config.chart_gradient_contrast);
     config.chart_fisheye_strength = normalize_chart_fisheye_strength(config.chart_fisheye_strength);
     config.chart_chromatic_aberration_strength =
         normalize_chart_chromatic_aberration_strength(config.chart_chromatic_aberration_strength);

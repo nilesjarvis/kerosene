@@ -85,6 +85,9 @@ impl TradingTerminal {
             chart_dotted_background: cfg.chart_dotted_background,
             chart_dotted_background_opacity: cfg.chart_dotted_background_opacity,
             chart_gradient_background: cfg.chart_gradient_background,
+            chart_gradient_contrast: config::normalize_chart_gradient_contrast(
+                cfg.chart_gradient_contrast,
+            ),
             chart_hollow_candle_mode: cfg.chart_hollow_candle_mode,
             chart_series_style: cfg.chart_series_style,
             chart_fisheye_enabled: cfg.chart_fisheye_enabled,

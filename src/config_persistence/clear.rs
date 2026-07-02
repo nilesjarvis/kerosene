@@ -347,6 +347,7 @@ impl TradingTerminal {
         self.chart_dotted_background = defaults.chart_dotted_background;
         self.chart_dotted_background_opacity = defaults.chart_dotted_background_opacity;
         self.chart_gradient_background = defaults.chart_gradient_background;
+        self.chart_gradient_contrast = defaults.chart_gradient_contrast;
         self.chart_hollow_candle_mode = defaults.chart_hollow_candle_mode;
         self.chart_series_style = defaults.chart_series_style;
         self.chart_fisheye_enabled = defaults.chart_fisheye_enabled;

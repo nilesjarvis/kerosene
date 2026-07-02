@@ -5,9 +5,9 @@ use super::{
     WidgetPaddingOverrideConfig, WidgetPaddingTargetConfig, default_alfred_popup_scale,
     default_chart_chromatic_aberration_strength, default_chart_crosshair_scale,
     default_chart_dotted_background_opacity, default_chart_edge_blur_strength,
-    default_chart_fisheye_strength, default_config_value, default_pane_border_thickness,
-    default_pane_corner_radius, default_ui_scale, default_widget_padding, json_string, object_mut,
-    value_from_json, value_from_str,
+    default_chart_fisheye_strength, default_chart_gradient_contrast, default_config_value,
+    default_pane_border_thickness, default_pane_corner_radius, default_ui_scale,
+    default_widget_padding, json_string, object_mut, value_from_json, value_from_str,
 };
 use crate::config::{ReadDataProvider, take_config_warnings};
 
@@ -19,6 +19,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         chart_dotted_background: true,
         chart_dotted_background_opacity: 0.27,
         chart_gradient_background: true,
+        chart_gradient_contrast: 0.8,
         chart_hollow_candle_mode: ChartHollowCandleMode::Both,
         chart_series_style: ChartSeriesStyle::Line,
         chart_fisheye_enabled: true,
@@ -65,6 +66,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     assert!(decoded.chart_dotted_background);
     assert_eq!(decoded.chart_dotted_background_opacity, 0.27);
     assert!(decoded.chart_gradient_background);
+    assert_eq!(decoded.chart_gradient_contrast, 0.8);
     assert_eq!(
         decoded.chart_hollow_candle_mode,
         ChartHollowCandleMode::Both
@@ -119,6 +121,7 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
     object.remove("chart_dotted_background");
     object.remove("chart_dotted_background_opacity");
     object.remove("chart_gradient_background");
+    object.remove("chart_gradient_contrast");
     object.remove("chart_hollow_candle_mode");
     object.remove("chart_series_style");
     object.remove("chart_fisheye_enabled");
@@ -152,6 +155,10 @@ fn widget_chrome_round_trips_and_legacy_defaults_current_values() {
         default_chart_dotted_background_opacity()
     );
     assert!(!decoded_legacy.chart_gradient_background);
+    assert_eq!(
+        decoded_legacy.chart_gradient_contrast,
+        default_chart_gradient_contrast()
+    );
     assert!(!decoded_legacy.chart_hollow_candles);
     assert_eq!(
         decoded_legacy.chart_hollow_candle_mode,

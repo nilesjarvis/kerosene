@@ -780,6 +780,7 @@ pub(crate) enum Message {
     ToggleChartDottedBackground(bool),
     ChartDottedBackgroundOpacityChanged(f32),
     ToggleChartGradientBackground(bool),
+    ChartGradientContrastChanged(f32),
     ChartHollowCandleModeChanged(config::ChartHollowCandleMode),
     ChartSeriesStyleChanged(config::ChartSeriesStyle),
     ToggleChartFisheye(bool),

@@ -81,6 +81,10 @@ pub const MAX_ALFRED_POPUP_SCALE: f32 = 1.60;
 pub const DEFAULT_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.14;
 pub const MIN_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.04;
 pub const MAX_CHART_DOTTED_BACKGROUND_OPACITY: f32 = 0.35;
+// 0.5 reproduces the gradient's historical tint levels; 1.0 doubles them.
+pub const DEFAULT_CHART_GRADIENT_CONTRAST: f32 = 0.50;
+pub const MIN_CHART_GRADIENT_CONTRAST: f32 = 0.10;
+pub const MAX_CHART_GRADIENT_CONTRAST: f32 = 1.0;
 pub const DEFAULT_CHART_FISHEYE_STRENGTH: f32 = 0.55;
 pub const MIN_CHART_FISHEYE_STRENGTH: f32 = 0.10;
 pub const MAX_CHART_FISHEYE_STRENGTH: f32 = 1.0;
@@ -139,6 +143,18 @@ pub fn normalize_chart_dotted_background_opacity(value: f32) -> f32 {
         )
     } else {
         default_chart_dotted_background_opacity()
+    }
+}
+
+pub fn default_chart_gradient_contrast() -> f32 {
+    DEFAULT_CHART_GRADIENT_CONTRAST
+}
+
+pub fn normalize_chart_gradient_contrast(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(MIN_CHART_GRADIENT_CONTRAST, MAX_CHART_GRADIENT_CONTRAST)
+    } else {
+        default_chart_gradient_contrast()
     }
 }
 
@@ -287,6 +303,7 @@ impl Default for KeroseneConfig {
             chart_dotted_background: false,
             chart_dotted_background_opacity: default_chart_dotted_background_opacity(),
             chart_gradient_background: false,
+            chart_gradient_contrast: default_chart_gradient_contrast(),
             chart_hollow_candles: false,
             chart_hollow_candle_mode: Default::default(),
             chart_series_style: Default::default(),

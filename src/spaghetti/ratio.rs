@@ -100,7 +100,13 @@ impl SpaghettiCanvas {
         frame.fill_rectangle(Point::ORIGIN, ctx.bounds.size(), iced::Color::TRANSPARENT);
 
         if self.gradient_background {
-            draw_gradient_background(&mut frame, ctx.theme, ctx.chart_w, ctx.chart_h);
+            draw_gradient_background(
+                &mut frame,
+                ctx.theme,
+                ctx.chart_w,
+                ctx.chart_h,
+                self.gradient_contrast,
+            );
         }
         if self.dotted_background {
             draw_dotted_background(

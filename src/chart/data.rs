@@ -45,6 +45,7 @@ impl CandlestickChart {
             dotted_background: false,
             dotted_background_opacity: crate::config::default_chart_dotted_background_opacity(),
             gradient_background: false,
+            gradient_contrast: crate::config::default_chart_gradient_contrast(),
             hollow_candle_mode: Default::default(),
             series_style: Default::default(),
             fisheye_enabled: false,
@@ -127,6 +128,7 @@ impl CandlestickChart {
             dotted_background: self.dotted_background,
             dotted_background_opacity: self.dotted_background_opacity,
             gradient_background: self.gradient_background,
+            gradient_contrast: self.gradient_contrast,
             hollow_candle_mode: self.hollow_candle_mode,
             series_style: self.series_style,
             fisheye_enabled: self.fisheye_enabled,
@@ -324,9 +326,13 @@ impl CandlestickChart {
         }
     }
 
-    pub(crate) fn set_gradient_background(&mut self, enabled: bool) {
-        if self.gradient_background != enabled {
+    pub(crate) fn set_gradient_background(&mut self, enabled: bool, contrast: f32) {
+        let contrast = crate::config::normalize_chart_gradient_contrast(contrast);
+        if self.gradient_background != enabled
+            || (self.gradient_contrast - contrast).abs() > f32::EPSILON
+        {
             self.gradient_background = enabled;
+            self.gradient_contrast = contrast;
             self.candle_cache.clear();
         }
     }

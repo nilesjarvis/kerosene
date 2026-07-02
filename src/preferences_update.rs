@@ -3,8 +3,8 @@ use crate::config::{
     normalize_alfred_popup_scale, normalize_chart_chromatic_aberration_strength,
     normalize_chart_crosshair_scale, normalize_chart_dotted_background_opacity,
     normalize_chart_edge_blur_strength, normalize_chart_fisheye_strength,
-    normalize_market_slippage_pct, normalize_pane_border_thickness, normalize_pane_corner_radius,
-    normalize_ui_scale,
+    normalize_chart_gradient_contrast, normalize_market_slippage_pct,
+    normalize_pane_border_thickness, normalize_pane_corner_radius, normalize_ui_scale,
 };
 use crate::helpers::path_neutral_io_error_detail;
 use crate::market_state::SymbolSearchMarketFilter;
@@ -83,6 +83,14 @@ impl TradingTerminal {
                 self.chart_gradient_background = enabled;
                 self.sync_chart_gradient_background();
                 self.persist_config();
+            }
+            Message::ChartGradientContrastChanged(value) => {
+                let contrast = normalize_chart_gradient_contrast(value);
+                if (self.chart_gradient_contrast - contrast).abs() > f32::EPSILON {
+                    self.chart_gradient_contrast = contrast;
+                    self.sync_chart_gradient_background();
+                    self.persist_config();
+                }
             }
             Message::ChartHollowCandleModeChanged(mode)
                 if self.chart_hollow_candle_mode != mode =>

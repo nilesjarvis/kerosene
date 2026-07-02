@@ -269,6 +269,7 @@ pub(super) fn message_route(message: &Message) -> UpdateRoute {
         | Message::ToggleChartDottedBackground(_)
         | Message::ChartDottedBackgroundOpacityChanged(_)
         | Message::ToggleChartGradientBackground(_)
+        | Message::ChartGradientContrastChanged(_)
         | Message::ChartHollowCandleModeChanged(_)
         | Message::ChartSeriesStyleChanged(_)
         | Message::ToggleChartFisheye(_)

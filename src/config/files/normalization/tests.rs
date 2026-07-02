@@ -118,6 +118,7 @@ fn normalizes_out_of_range_pane_chrome() {
         ui_scale: 99.0,
         alfred_popup_scale: 99.0,
         chart_dotted_background_opacity: 99.0,
+        chart_gradient_contrast: 99.0,
         chart_fisheye_strength: 99.0,
         chart_chromatic_aberration_strength: 99.0,
         chart_edge_blur_strength: 99.0,
@@ -164,6 +165,10 @@ fn normalizes_out_of_range_pane_chrome() {
     assert_eq!(
         config.chart_dotted_background_opacity,
         crate::config::normalize_chart_dotted_background_opacity(99.0)
+    );
+    assert_eq!(
+        config.chart_gradient_contrast,
+        crate::config::normalize_chart_gradient_contrast(99.0)
     );
     assert_eq!(
         config.chart_fisheye_strength,

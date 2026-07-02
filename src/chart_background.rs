@@ -41,22 +41,29 @@ pub(crate) fn draw_gradient_background(
     theme: &Theme,
     width: f32,
     height: f32,
+    contrast: f32,
 ) {
     if width <= 0.0 || height <= 0.0 || !width.is_finite() || !height.is_finite() {
         return;
     }
 
-    let (start, middle, anchor, end) = chart_gradient_colors(theme);
+    let (start, end) = chart_gradient_colors(theme, contrast);
     let gradient = canvas::gradient::Linear::new(Point::ORIGIN, Point::new(width, height))
         .add_stop(0.0, start)
-        .add_stop(0.42, middle)
-        .add_stop(0.72, anchor)
         .add_stop(1.0, end);
     let path = canvas::Path::rectangle(Point::ORIGIN, Size::new(width, height));
     frame.fill(&path, gradient);
 }
 
-fn chart_gradient_colors(theme: &Theme) -> (Color, Color, Color, Color) {
+// Tints at full contrast; the default contrast (0.5) reproduces the gradient's
+// historical accent/secondary levels.
+const GRADIENT_DARK_ACCENT_TINT: f32 = 0.22;
+const GRADIENT_DARK_SECONDARY_TINT: f32 = 0.15;
+const GRADIENT_LIGHT_ACCENT_TINT: f32 = 0.11;
+const GRADIENT_LIGHT_SECONDARY_TINT: f32 = 0.10;
+
+fn chart_gradient_colors(theme: &Theme, contrast: f32) -> (Color, Color) {
+    let contrast = crate::config::normalize_chart_gradient_contrast(contrast);
     let palette = theme.extended_palette();
     let base = palette.background.base.color;
     let accent = if palette.is_dark {
@@ -69,19 +76,16 @@ fn chart_gradient_colors(theme: &Theme) -> (Color, Color, Color, Color) {
     } else {
         palette.primary.strong.color
     };
-    let contrast = palette.background.base.text;
 
-    let (accent_tint, middle_tint, contrast_tint, secondary_tint) = if palette.is_dark {
-        (0.11, 0.10, 0.035, 0.075)
+    let (accent_tint, secondary_tint) = if palette.is_dark {
+        (GRADIENT_DARK_ACCENT_TINT, GRADIENT_DARK_SECONDARY_TINT)
     } else {
-        (0.055, 0.045, 0.025, 0.05)
+        (GRADIENT_LIGHT_ACCENT_TINT, GRADIENT_LIGHT_SECONDARY_TINT)
     };
 
     (
-        mix_color(base, accent, accent_tint),
-        mix_color(base, palette.background.strong.color, middle_tint),
-        mix_color(base, contrast, contrast_tint),
-        mix_color(base, secondary, secondary_tint),
+        mix_color(base, accent, accent_tint * contrast),
+        mix_color(base, secondary, secondary_tint * contrast),
     )
 }
 
@@ -180,7 +184,7 @@ impl TradingTerminal {
             self.chart_dotted_background,
             self.chart_dotted_background_opacity,
         );
-        chart.set_gradient_background(self.chart_gradient_background);
+        chart.set_gradient_background(self.chart_gradient_background, self.chart_gradient_contrast);
         chart.set_hollow_candle_mode(self.chart_hollow_candle_mode);
         chart.set_series_style(self.chart_series_style);
         chart.set_fisheye(self.chart_fisheye_enabled, self.chart_fisheye_strength);
@@ -208,11 +212,12 @@ impl TradingTerminal {
 
     pub(crate) fn sync_chart_gradient_background(&mut self) {
         let enabled = self.chart_gradient_background;
+        let contrast = self.chart_gradient_contrast;
         for instance in self.charts.values_mut() {
-            instance.chart.set_gradient_background(enabled);
+            instance.chart.set_gradient_background(enabled, contrast);
         }
         for instance in self.spaghetti_charts.values_mut() {
-            instance.canvas.set_gradient_background(enabled);
+            instance.canvas.set_gradient_background(enabled, contrast);
         }
     }
 
@@ -298,7 +303,45 @@ impl TradingTerminal {
 
 #[cfg(test)]
 mod tests {
-    use super::{dotted_background_dot_count, dotted_background_dot_origins};
+    use super::{
+        chart_gradient_colors, dotted_background_dot_count, dotted_background_dot_origins,
+    };
+    use iced::Theme;
+
+    fn color_distance(a: iced::Color, b: iced::Color) -> f32 {
+        (a.r - b.r).abs() + (a.g - b.g).abs() + (a.b - b.b).abs()
+    }
+
+    #[test]
+    fn gradient_uses_two_distinct_theme_tints() {
+        let theme = Theme::Dark;
+        let (start, end) = chart_gradient_colors(&theme, 0.5);
+        assert!(color_distance(start, end) > 0.0);
+    }
+
+    #[test]
+    fn gradient_contrast_scales_tint_away_from_base() {
+        let theme = Theme::Dark;
+        let base = theme.extended_palette().background.base.color;
+        let (low_start, low_end) = chart_gradient_colors(&theme, 0.1);
+        let (high_start, high_end) = chart_gradient_colors(&theme, 1.0);
+
+        assert!(color_distance(high_start, base) > color_distance(low_start, base));
+        assert!(color_distance(high_end, base) > color_distance(low_end, base));
+    }
+
+    #[test]
+    fn gradient_contrast_is_normalized_before_mixing() {
+        let theme = Theme::Dark;
+        assert_eq!(
+            chart_gradient_colors(&theme, f32::NAN),
+            chart_gradient_colors(&theme, crate::config::default_chart_gradient_contrast())
+        );
+        assert_eq!(
+            chart_gradient_colors(&theme, 99.0),
+            chart_gradient_colors(&theme, 1.0)
+        );
+    }
 
     #[test]
     fn dotted_background_dot_origins_cover_positive_area_on_spacing_centers() {

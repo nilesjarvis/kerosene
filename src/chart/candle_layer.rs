@@ -77,7 +77,13 @@ impl CandlestickChart {
                 };
                 frame.with_clip(chart_region, |frame| {
                     if self.gradient_background {
-                        draw_gradient_background(frame, ctx.theme, ctx.chart_w, ctx.chart_h);
+                        draw_gradient_background(
+                            frame,
+                            ctx.theme,
+                            ctx.chart_w,
+                            ctx.chart_h,
+                            self.gradient_contrast,
+                        );
                     }
                     self.draw_session_chart_context(ctx, frame);
                     if self.dotted_background {

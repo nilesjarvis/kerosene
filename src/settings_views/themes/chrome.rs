@@ -8,10 +8,11 @@ use crate::config::{
     DEFAULT_CHART_HUD_ORDER_SOUND_VOLUME, DEFAULT_UI_SCALE,
     MAX_CHART_CHROMATIC_ABERRATION_STRENGTH, MAX_CHART_CROSSHAIR_SCALE,
     MAX_CHART_DOTTED_BACKGROUND_OPACITY, MAX_CHART_EDGE_BLUR_STRENGTH, MAX_CHART_FISHEYE_STRENGTH,
-    MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS, MAX_PANE_CORNER_RADIUS,
-    MAX_UI_SCALE, MAX_WIDGET_PADDING, MIN_CHART_CHROMATIC_ABERRATION_STRENGTH,
-    MIN_CHART_CROSSHAIR_SCALE, MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH,
-    MIN_CHART_FISHEYE_STRENGTH, MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS,
+    MAX_CHART_GRADIENT_CONTRAST, MAX_CHART_HUD_ORDER_SOUND_VOLUME, MAX_PANE_BORDER_THICKNESS,
+    MAX_PANE_CORNER_RADIUS, MAX_UI_SCALE, MAX_WIDGET_PADDING,
+    MIN_CHART_CHROMATIC_ABERRATION_STRENGTH, MIN_CHART_CROSSHAIR_SCALE,
+    MIN_CHART_DOTTED_BACKGROUND_OPACITY, MIN_CHART_EDGE_BLUR_STRENGTH, MIN_CHART_FISHEYE_STRENGTH,
+    MIN_CHART_GRADIENT_CONTRAST, MIN_CHART_HUD_ORDER_SOUND_VOLUME, MIN_PANE_BORDER_THICKNESS,
     MIN_PANE_CORNER_RADIUS, MIN_UI_SCALE, MIN_WIDGET_PADDING, default_pane_border_thickness,
     default_pane_corner_radius, default_widget_padding,
 };
@@ -103,6 +104,16 @@ impl TradingTerminal {
                 self.chart_dotted_background_opacity,
                 MIN_CHART_DOTTED_BACKGROUND_OPACITY..=MAX_CHART_DOTTED_BACKGROUND_OPACITY,
                 Message::ChartDottedBackgroundOpacityChanged,
+            ));
+        }
+
+        if self.chart_gradient_background {
+            background_controls = background_controls.push(scale_slider_row(
+                &theme,
+                "Contrast",
+                self.chart_gradient_contrast,
+                MIN_CHART_GRADIENT_CONTRAST..=MAX_CHART_GRADIENT_CONTRAST,
+                Message::ChartGradientContrastChanged,
             ));
         }
 
@@ -215,6 +226,7 @@ impl TradingTerminal {
                     chart_dotted_background: self.chart_dotted_background,
                     chart_dotted_background_opacity: self.chart_dotted_background_opacity,
                     chart_gradient_background: self.chart_gradient_background,
+                    chart_gradient_contrast: self.chart_gradient_contrast,
                     chart_series_style: self.chart_series_style,
                     chart_hollow_candle_mode: self.chart_hollow_candle_mode,
                     chart_fisheye_enabled: self.chart_fisheye_enabled,
@@ -371,6 +383,7 @@ struct AppearancePreview {
     chart_dotted_background: bool,
     chart_dotted_background_opacity: f32,
     chart_gradient_background: bool,
+    chart_gradient_contrast: f32,
     chart_series_style: ChartSeriesStyle,
     chart_hollow_candle_mode: ChartHollowCandleMode,
     chart_fisheye_enabled: bool,
@@ -649,10 +662,11 @@ impl iced::widget::canvas::Program<Message> for AppearancePreview {
         );
         frame.fill(&chart_rect, bg);
         if self.chart_gradient_background {
+            let tint = (self.chart_gradient_contrast * 0.44).clamp(0.0, 1.0);
             frame.fill_rectangle(
                 Point::new(chart_x, content_y),
                 Size::new(chart_w, content_h * 0.55),
-                Color { a: 0.22, ..primary },
+                Color { a: tint, ..primary },
             );
         }
         if self.chart_dotted_background {

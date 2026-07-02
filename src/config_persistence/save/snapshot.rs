@@ -57,6 +57,9 @@ impl TradingTerminal {
             chart_dotted_background: self.chart_dotted_background,
             chart_dotted_background_opacity: self.chart_dotted_background_opacity,
             chart_gradient_background: self.chart_gradient_background,
+            chart_gradient_contrast: config::normalize_chart_gradient_contrast(
+                self.chart_gradient_contrast,
+            ),
             chart_hollow_candles: false,
             chart_hollow_candle_mode: self.chart_hollow_candle_mode,
             chart_series_style: self.chart_series_style,
