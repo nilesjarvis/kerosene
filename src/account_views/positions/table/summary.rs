@@ -34,7 +34,7 @@ impl TradingTerminal {
         let account_balance = self
             .connected_order_account_snapshot()
             .and_then(|(_, data)| self.position_summary_account_value(data));
-        let total_pnl_pct = position_total_pnl_percent(totals.total_pnl, account_balance);
+        let total_pnl_pct = position_total_pnl_percent(totals.total_pnl.value(), account_balance);
         let denomination = self.display_denomination_context();
 
         let summary = row![
@@ -42,7 +42,7 @@ impl TradingTerminal {
                 "Funding",
                 format_optional_unsigned_display(
                     &denomination,
-                    totals.funding_gross,
+                    totals.funding_gross.value(),
                     self.hide_pnl,
                     number_mode,
                 ),
@@ -75,7 +75,7 @@ impl TradingTerminal {
                 "Net Fund",
                 format_optional_signed_display(
                     &denomination,
-                    totals.net_funding,
+                    totals.net_funding.value(),
                     self.hide_pnl,
                     number_mode,
                 ),
@@ -90,7 +90,7 @@ impl TradingTerminal {
                 "uPnL",
                 format_optional_signed_display(
                     &denomination,
-                    totals.upnl,
+                    totals.upnl.value(),
                     self.hide_pnl,
                     number_mode,
                 ),
@@ -106,7 +106,7 @@ impl TradingTerminal {
                 "Total PnL",
                 format_optional_total_pnl_display(
                     &denomination,
-                    totals.total_pnl,
+                    totals.total_pnl.value(),
                     total_pnl_pct,
                     self.hide_pnl,
                     number_mode,

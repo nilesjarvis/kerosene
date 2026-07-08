@@ -115,7 +115,7 @@ fn summary_pnl_card_metrics_include_outcome_balance_positions() {
     terminal.exchange_symbols = vec![outcome_symbol("#950")];
     set_connected_account_data(&mut terminal, outcome_account_data());
 
-    let Some(metrics) = terminal.summary_pnl_card_metrics() else {
+    let Ok(metrics) = terminal.summary_pnl_card_metrics() else {
         panic!("summary PnL card should include synthesized outcome positions");
     };
 
@@ -124,6 +124,47 @@ fn summary_pnl_card_metrics_include_outcome_balance_positions() {
     assert_eq!(metrics.upnl, 0.0);
     assert_eq!(metrics.asset_move_pct, Some(0.0));
     assert_eq!(metrics.leveraged_pct, Some(0.0));
+}
+
+#[test]
+fn summary_pnl_card_metrics_refuse_positions_with_unavailable_pnl() {
+    let mut terminal = TradingTerminal::boot().0;
+    terminal.exchange_symbols = vec![
+        outcome_symbol("#950"),
+        ExchangeSymbol {
+            key: "@142".to_string(),
+            ticker: "UBTC".to_string(),
+            category: "spot".to_string(),
+            display_name: Some("UBTC/USDC".to_string()),
+            keywords: Vec::new(),
+            asset_index: 10_142,
+            collateral_token: None,
+            sz_decimals: 5,
+            max_leverage: 1,
+            only_isolated: false,
+            market_type: MarketType::Spot,
+            outcome: None,
+        },
+    ];
+    let mut data = outcome_account_data();
+    // A spot balance without an entry notional or reconciling fills has no
+    // knowable PnL; the portfolio card must refuse rather than render a
+    // total that silently excludes it.
+    data.spot.balances.push(SpotBalance {
+        coin: "UBTC".to_string(),
+        token: None,
+        total: "2".to_string(),
+        hold: "0".to_string(),
+        entry_ntl: "0".to_string(),
+        supplied: None,
+    });
+    set_connected_account_data(&mut terminal, data);
+
+    let Err(message) = terminal.summary_pnl_card_metrics() else {
+        panic!("portfolio card must not total positions with unknown PnL");
+    };
+
+    assert!(message.contains("unavailable"));
 }
 
 #[test]

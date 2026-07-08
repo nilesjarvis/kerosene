@@ -81,13 +81,31 @@ impl TradingTerminal {
             return trade_coins.first().cloned();
         }
         // Duplicated tickers: prefer the market whose fills reconcile to the
-        // live balance (the one the user actually traded), then any market
-        // with a live mark, so a stale or differently-quoted duplicate cannot
-        // misprice the position.
+        // live balance (the one the user actually traded), then the market
+        // with the most recent fill — reconciliation fails transiently while
+        // a trade settles because fills and balances stream independently,
+        // and dropping straight to a mid-based pick would flip the row to a
+        // different market mid-trade — then any market with a live mark, so
+        // a stale or differently-quoted duplicate cannot misprice the
+        // position.
         trade_coins
             .iter()
             .find(|trade_coin| {
                 derive_spot_cost_basis_from_fills(balance, trade_coin, fills).is_some()
+            })
+            .or_else(|| {
+                trade_coins
+                    .iter()
+                    .filter_map(|trade_coin| {
+                        fills
+                            .iter()
+                            .filter(|fill| fill.coin == *trade_coin)
+                            .map(|fill| fill.time)
+                            .max()
+                            .map(|last_fill_time| (last_fill_time, trade_coin))
+                    })
+                    .max_by_key(|(last_fill_time, _)| *last_fill_time)
+                    .map(|(_, trade_coin)| trade_coin)
             })
             .or_else(|| {
                 trade_coins
@@ -479,6 +497,36 @@ mod tests {
         assert_eq!(positions[0].position.coin, "@234");
         assert_wire_close(&positions[0].position.entry_px, 60_191.0);
         assert_wire_close(&positions[0].position.unrealized_pnl, 58_358.0 - 60_191.0);
+    }
+
+    #[test]
+    fn spot_balances_keep_traded_pair_when_fills_do_not_reconcile_mid_trade() {
+        let mut terminal = TradingTerminal::boot().0;
+        terminal.exchange_symbols = vec![
+            spot_symbol("@142", "UBTC", 10_142),
+            spot_symbol("@234", "UBTC", 10_234),
+        ];
+        set_mid(&mut terminal, "@142", 58_000.0);
+        set_mid(&mut terminal, "@234", 58_358.0);
+        // The buy fill has landed but the balance snapshot still reports the
+        // pre-trade total, so no pair's fills reconcile. The row must stay on
+        // the most recently traded pair instead of flipping to a duplicate
+        // market, and must report no PnL rather than a possibly-wrong one.
+        set_connected_account_data(
+            &mut terminal,
+            account_data_with_fills(
+                vec![spot_balance("UBTC", "2", "0")],
+                vec![spot_fill("@234", "60191", "1", "0", "USDC", 1)],
+            ),
+        );
+
+        let positions = terminal.account_positions_with_outcomes();
+
+        assert_eq!(positions.len(), 1);
+        assert_eq!(positions[0].position.coin, "@234");
+        assert_eq!(positions[0].position.entry_px, "");
+        assert_eq!(positions[0].position.unrealized_pnl, "");
+        assert_wire_close(&positions[0].position.position_value, 2.0 * 58_358.0);
     }
 
     #[test]

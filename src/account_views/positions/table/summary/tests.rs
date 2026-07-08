@@ -14,22 +14,22 @@ fn format_unsigned_usd(value: f64, hide_pnl: bool, number_mode: PositionNumberMo
 }
 
 fn format_optional_unsigned_usd(
-    total: OptionalTotal,
+    total: Option<f64>,
     hide_pnl: bool,
     number_mode: PositionNumberMode,
 ) -> String {
-    match total.value() {
+    match total {
         Some(value) => format_unsigned_usd(value, hide_pnl, number_mode),
         None => "--".to_string(),
     }
 }
 
 fn format_optional_signed_usd(
-    total: OptionalTotal,
+    total: Option<f64>,
     hide_pnl: bool,
     number_mode: PositionNumberMode,
 ) -> String {
-    match total.value() {
+    match total {
         Some(_) if hide_pnl => "$***".to_string(),
         Some(value) => format_signed_usd(value, number_mode),
         None => "--".to_string(),
@@ -37,12 +37,12 @@ fn format_optional_signed_usd(
 }
 
 fn format_optional_total_pnl(
-    total: OptionalTotal,
+    total: Option<f64>,
     percent: Option<f64>,
     hide_pnl: bool,
     number_mode: PositionNumberMode,
 ) -> String {
-    match total.value() {
+    match total {
         Some(_) if hide_pnl => {
             let percent = percent
                 .map(|percent| format_signed_percent(percent, number_mode))

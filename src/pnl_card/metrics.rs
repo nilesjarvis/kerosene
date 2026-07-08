@@ -50,7 +50,7 @@ impl TradingTerminal {
         })
     }
 
-    pub(super) fn summary_pnl_card_metrics(&self) -> Option<PnlCardMetrics> {
+    pub(super) fn summary_pnl_card_metrics(&self) -> Result<PnlCardMetrics, String> {
         let mut count = 0usize;
         let mut upnl = 0.0;
         let mut entry_notional = 0.0;
@@ -59,8 +59,15 @@ impl TradingTerminal {
 
         for ap in self.visible_pnl_card_positions() {
             let pos = &ap.position;
+            // A position without resolvable numbers (e.g. a spot balance
+            // whose fill-derived cost basis is momentarily unavailable)
+            // makes the portfolio total unknown. Refuse the card rather
+            // than render a total that silently excludes the position.
             let Some(numbers) = PositionCardNumbers::from_position(self, pos) else {
-                continue;
+                return Err(format!(
+                    "PnL for {} is unavailable right now, so the portfolio total cannot be shown",
+                    self.display_coin_for_journal(&pos.coin)
+                ));
             };
             let leverage = f64::from(pos.leverage.value.max(1));
             let position_entry_notional = numbers.szi.abs() * numbers.entry_px.abs();
@@ -78,7 +85,7 @@ impl TradingTerminal {
         }
 
         if count == 0 {
-            return None;
+            return Err("No open positions".to_string());
         }
 
         let avg_leverage = if entry_notional > f64::EPSILON {
@@ -87,7 +94,7 @@ impl TradingTerminal {
             0.0
         };
 
-        Some(PnlCardMetrics {
+        Ok(PnlCardMetrics {
             ticker: "PORTFOLIO".to_string(),
             leverage_display: if avg_leverage > 0.0 {
                 format!("{avg_leverage:.1}x avg")

@@ -1,6 +1,5 @@
 use super::super::super::PositionNumberMode;
 use super::super::format_position_display_value;
-use super::totals::OptionalTotal;
 use crate::denomination::DisplayDenominationContext;
 
 // ---------------------------------------------------------------------------
@@ -22,11 +21,11 @@ pub(super) fn format_unsigned_display(
 
 pub(super) fn format_optional_unsigned_display(
     context: &DisplayDenominationContext,
-    total: OptionalTotal,
+    total: Option<f64>,
     hide_pnl: bool,
     number_mode: PositionNumberMode,
 ) -> String {
-    match total.value() {
+    match total {
         Some(value) => format_unsigned_display(context, value, hide_pnl, number_mode),
         None => "--".to_string(),
     }
@@ -34,11 +33,11 @@ pub(super) fn format_optional_unsigned_display(
 
 pub(super) fn format_optional_signed_display(
     context: &DisplayDenominationContext,
-    total: OptionalTotal,
+    total: Option<f64>,
     hide_pnl: bool,
     number_mode: PositionNumberMode,
 ) -> String {
-    match total.value() {
+    match total {
         Some(_) if hide_pnl => context.hidden_mask(),
         Some(value) => format_signed_display(context, value, number_mode),
         None => "--".to_string(),
@@ -47,12 +46,12 @@ pub(super) fn format_optional_signed_display(
 
 pub(super) fn format_optional_total_pnl_display(
     context: &DisplayDenominationContext,
-    total: OptionalTotal,
+    total: Option<f64>,
     percent: Option<f64>,
     hide_pnl: bool,
     number_mode: PositionNumberMode,
 ) -> String {
-    match total.value() {
+    match total {
         Some(_) if hide_pnl => {
             let percent = percent
                 .map(|percent| format_signed_percent(percent, number_mode))

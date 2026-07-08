@@ -89,9 +89,7 @@ impl TradingTerminal {
             PnlCardTarget::Position(coin) => self
                 .position_pnl_card_metrics(coin)
                 .ok_or_else(|| "Position is no longer open".to_string()),
-            PnlCardTarget::Summary => self
-                .summary_pnl_card_metrics()
-                .ok_or_else(|| "No open positions".to_string()),
+            PnlCardTarget::Summary => self.summary_pnl_card_metrics(),
         }
     }
 

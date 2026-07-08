@@ -8,6 +8,13 @@ use std::collections::HashSet;
 // Recent Fills
 // ---------------------------------------------------------------------------
 
+/// Matches the Hyperliquid REST `userFills` depth (the most recent 2000
+/// fills). Spot cost-basis estimation replays a coin's acquisition fills from
+/// `AccountData::fills`, so live fill merges must not evict REST-seeded
+/// history: truncating below the REST depth killed the estimate on the first
+/// live fill and it stayed dead until the next account refresh.
+const MERGED_FILLS_MAX_LEN: usize = 2000;
+
 pub(super) fn prepend_recent_fills(
     existing: &mut Vec<UserFill>,
     incoming: Vec<UserFill>,
@@ -55,7 +62,7 @@ where
             .filter(|fill| !is_hidden(&fill.coin))
             .cloned()
             .collect();
-        prepend_recent_fills(existing, fills, 200);
+        prepend_recent_fills(existing, fills, MERGED_FILLS_MAX_LEN);
         toast_fills
     }
 }

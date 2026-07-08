@@ -11,8 +11,8 @@ pub(super) struct PositionSummaryTotals {
     pub(super) long_notional: f64,
     pub(super) short_notional: f64,
     pub(super) net_funding: OptionalTotal,
-    pub(super) upnl: OptionalTotal,
-    pub(super) total_pnl: OptionalTotal,
+    pub(super) upnl: CompleteTotal,
+    pub(super) total_pnl: CompleteTotal,
 }
 
 impl PositionSummaryTotals {
@@ -56,6 +56,9 @@ impl PositionSummaryTotals {
     }
 }
 
+/// Total over rows where a missing value means "not applicable" (e.g. spot
+/// rows have no funding), so absent rows are skipped and the sum over the
+/// contributing rows is still displayable.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub(super) struct OptionalTotal {
     value: f64,
@@ -75,11 +78,39 @@ impl OptionalTotal {
     }
 }
 
+/// Total over rows where a missing value means "unknown" (e.g. a spot
+/// position whose fill-derived cost basis is momentarily unavailable while a
+/// trade settles). One unknown row makes the whole total unknown: summing
+/// the rest would display a figure that is wrong by the missing position's
+/// PnL, and no PnL must be shown over a possibly-wrong one.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(super) struct CompleteTotal {
+    value: f64,
+    count: usize,
+    missing: usize,
+}
+
+impl CompleteTotal {
+    pub(super) fn add(&mut self, value: Option<f64>) {
+        match value.and_then(finite_value) {
+            Some(value) => {
+                self.value += value;
+                self.count += 1;
+            }
+            None => self.missing += 1,
+        }
+    }
+
+    pub(super) fn value(self) -> Option<f64> {
+        (self.count > 0 && self.missing == 0).then_some(self.value)
+    }
+}
+
 pub(super) fn position_total_pnl_percent(
-    total_pnl: OptionalTotal,
+    total_pnl: Option<f64>,
     account_balance: Option<f64>,
 ) -> Option<f64> {
-    match (total_pnl.value(), account_balance) {
+    match (total_pnl, account_balance) {
         (Some(total_pnl), Some(account_balance)) if account_balance.abs() > f64::EPSILON => {
             Some(total_pnl / account_balance * 100.0)
         }

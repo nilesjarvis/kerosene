@@ -34,6 +34,32 @@ fn recent_fills_drop_extra_incoming_when_batch_exceeds_limit() {
 }
 
 #[test]
+fn live_fill_updates_preserve_rest_seeded_fill_depth() {
+    // The REST bootstrap seeds up to 2000 fills, and spot cost-basis
+    // estimation replays deep acquisition fills from that history. A live
+    // fill merge must keep it instead of truncating to a short recent window.
+    let mut existing: Vec<_> = (2..=300).map(fill).collect();
+
+    let toast_fills = apply_fills_update(&mut existing, vec![fill(1)], false, |_| false);
+
+    assert_eq!(toast_fills.len(), 1);
+    assert_eq!(existing.len(), 300);
+    assert_eq!(existing.first().map(|fill| fill.time), Some(1));
+    assert_eq!(existing.last().map(|fill| fill.time), Some(300));
+}
+
+#[test]
+fn live_fill_updates_cap_history_at_rest_depth() {
+    let mut existing: Vec<_> = (2..=2001).map(fill).collect();
+
+    let _ = apply_fills_update(&mut existing, vec![fill(1)], false, |_| false);
+
+    assert_eq!(existing.len(), 2000);
+    assert_eq!(existing.first().map(|fill| fill.time), Some(1));
+    assert_eq!(existing.last().map(|fill| fill.time), Some(2000));
+}
+
+#[test]
 fn fill_snapshot_replaces_existing_history_without_dropping_hidden_symbols() {
     let mut existing = vec![fill(10)];
     let mut hidden_fill = fill(1);
